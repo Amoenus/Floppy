@@ -30,12 +30,16 @@ jobs:
 
           stale-issue-message: >
             This issue has been automatically marked as stale because it has
-            not had recent activity. It will stay open for now; comment with
-            updated details if this is still relevant.
+            not had recent activity. It will be closed in 180 days if there
+            is no further activity.
           stale-pr-message: >
             This pull request has been automatically marked as stale because it
             has not had recent activity. It will be closed in 30 days if there
             is no further activity.
+          close-issue-message: >
+            This issue was closed because it remained inactive after being
+            marked stale. Feel free to reopen it or open a new issue if this
+            is still relevant.
           close-pr-message: >
             This pull request was closed because it remained inactive after
             being marked stale. Feel free to reopen it or open a new pull
