@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 base_url = "https://openlibrary.org/api"
 search_url = "https://openlibrary.org/search.json"
+headers = {"User-Agent": "Yamtrack/1.0 (github@fuzzygrim.com)"}
 
 
 def handle_error(error):
@@ -48,6 +49,7 @@ def search(query, page):
                 "GET",
                 search_url,
                 params=params,
+                headers=headers,
             )
         except requests.RequestException as e:
             handle_error(e)
@@ -136,6 +138,7 @@ async def async_book(media_id):
                 Sources.OPENLIBRARY.value,
                 "GET",
                 book_url,
+                headers=headers,
             )
         except requests.RequestException as e:
             handle_error(e)
@@ -151,6 +154,7 @@ async def async_book(media_id):
                     Sources.OPENLIBRARY.value,
                     "GET",
                     work_url,
+                    headers=headers,
                 )
             except requests.RequestException as e:
                 handle_error(e)
@@ -298,7 +302,7 @@ async def get_authors_full(response):
     authors = []
     author_entries = response.get("authors", [])
 
-    async with aiohttp.ClientSession() as session:
+    async with aiohttp.ClientSession(headers=headers) as session:
         tasks = []
         for index, author in enumerate(author_entries):
             if isinstance(author, dict) and "author" in author:
@@ -373,7 +377,10 @@ async def get_editions(response_book, response_work):
     # limit to 500 editions, pagination is not supported
     url = f"https://openlibrary.org/works/{work_id}/editions.json?limit=500"
 
-    async with aiohttp.ClientSession() as session, session.get(url) as response:
+    async with (
+        aiohttp.ClientSession(headers=headers) as session,
+        session.get(url) as response,
+    ):
         if response.status == requests.codes.ok:
             data = await response.json()
             return [
@@ -402,7 +409,10 @@ async def get_ratings(response_work):
 
     url = f"https://openlibrary.org/works/{work_id}/ratings.json"
 
-    async with aiohttp.ClientSession() as session, session.get(url) as response:
+    async with (
+        aiohttp.ClientSession(headers=headers) as session,
+        session.get(url) as response,
+    ):
         if response.status == requests.codes.ok:
             data = await response.json()
             summary = data.get("summary", {})
