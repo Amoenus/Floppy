@@ -54,6 +54,7 @@ def search(media_type, query, page):
             "q": query,
             "fields": "media_type,start_date,alternative_titles",
             "limit": settings.PER_PAGE,
+            "offset": (page - 1) * settings.PER_PAGE,
         }
         if settings.MAL_NSFW:
             params["nsfw"] = "true"
@@ -87,8 +88,8 @@ def search(media_type, query, page):
 
         data = helpers.format_search_response(
             page,
-            100,
-            len(results),
+            settings.PER_PAGE,
+            settings.PER_PAGE * 3,  # MAL has no limit, we set max of 3 pages
             results,
         )
 
