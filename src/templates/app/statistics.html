@@ -30,6 +30,19 @@
       scrollbar-color: #4b5563 #2a2f35;
     }
 
+    .stats-hero-title { font-size: 1.875rem; }
+    @media (min-width: 1024px) {
+      .stats-hero-row   { grid-template-columns: repeat(5, 1fr); }
+      .stats-hero-text  { grid-column: span 2 / span 2; container-type: inline-size; align-self: center; }
+      .stats-hero-cards { grid-column: span 3 / span 3; }
+      .stats-hero-title {
+        font-size: clamp(1.2rem, 8cqi, 3.5rem);
+        line-height: 1.1;
+        white-space: nowrap;
+        overflow: hidden;
+      }
+    }
+
     /* Mobile-only highlight carousel */
     .stats-highlight-dots {
       display: flex;
@@ -661,11 +674,8 @@
       {% if user.manga_enabled %}{value: 'manga', label: 'Manga'},{% endif %}
     ]
   })" x-init="init()">
-    <div class="mb-4 sm:mb-8">
-      <h1 class="text-3xl font-bold mb-2">Statistics</h1>
-      <p class="text-gray-400">Track your media consumption habits</p>
-    </div>
-    <div class="stats-range-row flex flex-wrap items-center justify-end gap-2 mb-4 sm:mb-8">
+    <div class="stats-range-row flex flex-wrap items-center justify-end gap-2 mb-4 sm:mb-6">
+      <div class="flex flex-wrap items-center gap-2">
       <div class="stats-range-wrapper relative min-w-0">
         <button @click="toggleRangeDropdown()"
                 class="stats-range-button flex items-center gap-2 px-4 py-2.5 bg-[#2a2f35] hover:bg-[#343a40] rounded-lg transition-all duration-200 border border-gray-700 shadow-sm cursor-pointer">
@@ -939,21 +949,41 @@
           <path d="M2.66 8.43a10 10 0 1 1 .57 8.38"></path>
         </svg>
       </button>
+      </div>
     </div>
 
     <div class="space-y-8">
-      <div x-show="selectedMediaType === 'all'" x-cloak>
-        {% with highlights=history_highlights %}
-          {% include "app/components/statistics/highlight_set.html" %}
-        {% endwith %}
+      <!-- Hero + Highlight Cards -->
+      <div class="stats-hero-row grid grid-cols-1 gap-3 sm:gap-4 items-start">
+        <div class="flex flex-col justify-center stats-hero-text">
+          <p class="stats-hero-title font-bold text-white leading-snug">
+            You've spent <span class="text-indigo-400 tabular-nums" x-text="(currentTypeSummary.total_hours || 0).toLocaleString()"></span> hours
+          </p>
+          <p class="stats-hero-title font-bold text-white leading-snug">
+            with <span class="text-indigo-400 tabular-nums" x-text="(currentTypeSummary.total || 0).toLocaleString()"></span> <span x-text="currentTypeLabel + '.'"></span>
+          </p>
+          <div class="flex items-center gap-2 mt-4 pb-3 text-sm text-gray-400">
+            <div class="w-7 h-7 rounded-full bg-[#2a2f35] flex items-center justify-center text-indigo-400 shrink-0">
+              <svg viewBox="0 0 20 20" fill="currentColor" class="w-3.5 h-3.5"><path d="M10 2l1.8 5.4L17 10l-5.2 2.6L10 18l-1.8-5.4L3 10l5.2-2.6z"/></svg>
+            </div>
+            <span>That's <span x-text="(currentTypeSummary.total_days || 0).toLocaleString()"></span> days of <span x-text="currentTypeFlavor"></span>. Keep exploring.</span>
+          </div>
+        </div>
+        <div class="min-w-0 stats-hero-cards">
+          <div x-show="selectedMediaType === 'all'" x-cloak>
+            {% with highlights=history_highlights %}
+              {% include "app/components/statistics/highlight_set.html" %}
+            {% endwith %}
+          </div>
+          {% for mt, type_highlights in history_highlights_by_type.items %}
+          <div x-show="selectedMediaType === '{{ mt }}'" x-cloak>
+            {% with highlights=type_highlights %}
+              {% include "app/components/statistics/highlight_set.html" %}
+            {% endwith %}
+          </div>
+          {% endfor %}
+        </div>
       </div>
-      {% for mt, type_highlights in history_highlights_by_type.items %}
-      <div x-show="selectedMediaType === '{{ mt }}'" x-cloak>
-        {% with highlights=type_highlights %}
-          {% include "app/components/statistics/highlight_set.html" %}
-        {% endwith %}
-      </div>
-      {% endfor %}
 
       <!-- Statistics Cards -->
       <div class="grid grid-cols-2 gap-3 sm:gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-2 sm:mb-4">

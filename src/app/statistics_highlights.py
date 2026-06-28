@@ -230,7 +230,7 @@ def _normalize_history_highlight_images(history_highlights):
     if not isinstance(history_highlights, dict):
         return
 
-    for key in ("first_play", "last_play", "today_in_history", "today_in_user_history"):
+    for key in ("first_play", "last_play"):
         entry = history_highlights.get(key)
         if not isinstance(entry, dict):
             continue
@@ -240,6 +240,16 @@ def _normalize_history_highlight_images(history_highlights):
             fallback,
             allow_network=True,
         )
+    today_card = history_highlights.get("today_card")
+    if isinstance(today_card, dict):
+        entry = today_card.get("entry")
+        if isinstance(entry, dict):
+            fallback = entry.get("image") or entry.get("poster")
+            entry["image"] = _get_horizontal_history_image(
+                entry.get("item"),
+                fallback,
+                allow_network=True,
+            )
 
 
 def _normalize_history_highlights_by_type(highlights_by_type):

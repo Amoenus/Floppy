@@ -2,6 +2,7 @@
 
 import calendar
 import heapq
+import random as _random
 import itertools
 import logging
 from collections import Counter, defaultdict
@@ -36,6 +37,30 @@ from app.statistics_day_builder import (
 )
 
 logger = logging.getLogger(__name__)
+
+def _build_today_card(today_in_history, today_in_history_year, today_in_user_history, today_in_user_history_year):
+    if today_in_history and today_in_user_history:
+        use_user = _random.random() < 0.5
+    elif today_in_user_history:
+        use_user = True
+    else:
+        use_user = False
+    if use_user:
+        return {
+            "entry": today_in_user_history,
+            "year": today_in_user_history_year,
+            "label": "TODAY IN YOUR HISTORY",
+            "date_prefix": "Played in",
+            "use_release_url": False,
+        }
+    return {
+        "entry": today_in_history,
+        "year": today_in_history_year,
+        "label": "TODAY IN HISTORY",
+        "date_prefix": "Released in",
+        "use_release_url": True,
+    }
+
 
 def _parse_activity_dt(value):
     if not value:
@@ -1416,10 +1441,10 @@ def _aggregate_statistics_from_days(
     history_highlights = {
         "first_play": first_play,
         "last_play": last_play,
-        "today_in_history": today_in_history,
-        "today_in_history_year": today_in_history_year,
-        "today_in_user_history": today_in_user_history,
-        "today_in_user_history_year": today_in_user_history_year,
+        "today_card": _build_today_card(
+            today_in_history, today_in_history_year,
+            today_in_user_history, today_in_user_history_year,
+        ),
         "today_month": today.month,
         "today_day": today.day,
     }
@@ -1439,10 +1464,10 @@ def _aggregate_statistics_from_days(
         history_highlights_by_type[_mt] = {
             "first_play": _select_history_entry_for_day(_first_payload, pick_earliest=True, media_type_filter=_mt),
             "last_play": _select_history_entry_for_day(_last_payload, pick_latest=True, media_type_filter=_mt),
-            "today_in_history": _type_today_h,
-            "today_in_history_year": _type_today_year,
-            "today_in_user_history": _type_today_user_h,
-            "today_in_user_history_year": _type_today_user_year,
+            "today_card": _build_today_card(
+                _type_today_h, _type_today_year,
+                _type_today_user_h, _type_today_user_year,
+            ),
             "today_month": today.month,
             "today_day": today.day,
         }
@@ -1466,11 +1491,14 @@ def _aggregate_statistics_from_days(
 
     _end_date_for_streak = end_date.date() if hasattr(end_date, "date") else end_date
 
+    _all_total_minutes = sum(minutes_by_type.values())
+
     # "all" bucket mirrors the already-computed activity_data.stats values
     summary_stats_by_type = {
         "all": {
             "completed": status_distribution_payload["total_completed"],
             "total": media_count.get("total", 0),
+            "total_minutes": _all_total_minutes,
             "average_score": average_score,
             "has_score": bool(total_scored),
             "most_active_day": activity_data["stats"].get("most_active_day"),
@@ -1490,9 +1518,11 @@ def _aggregate_statistics_from_days(
         _mt_streaks = stats.calculate_streak_details(_mt_date_counts, _end_date_for_streak)
         _mt_completed = status_distribution.get(_mt, {}).get(Status.COMPLETED.value, 0)
         _mt_total = media_count.get(_mt, 0)
+        _mt_minutes = minutes_by_type.get(_mt, 0)
         summary_stats_by_type[_mt] = {
             "completed": _mt_completed,
             "total": _mt_total,
+            "total_minutes": _mt_minutes,
             "average_score": _average_score_by_type.get(_mt),
             "has_score": _average_score_by_type.get(_mt) is not None,
             "most_active_day": _mt_most_active,

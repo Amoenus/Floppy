@@ -69,7 +69,35 @@ function dateRangePicker(options = {}) {
         };
         dates = start === end ? fmt(start) : `${fmt(start)} – ${fmt(end)}`;
       }
-      return { ...s, longest_streak_dates_display: dates };
+      const totalMinutes = s.total_minutes || 0;
+      const totalHours = Math.round(totalMinutes / 60);
+      const totalDays = Math.floor(totalMinutes / 60 / 24);
+      return { ...s, longest_streak_dates_display: dates, total_hours: totalHours, total_days: totalDays };
+    },
+
+    get currentTypeLabel() {
+      const labels = {
+        all: "titles", movie: "films", tv: "shows", game: "games",
+        book: "books", anime: "titles", music: "albums", podcast: "podcasts",
+        comic: "comics", manga: "manga",
+      };
+      return labels[this.selectedMediaType] || "titles";
+    },
+
+    get currentTypeFlavor() {
+      const flavors = {
+        all: "stories, ideas, and worlds",
+        movie: "film and storytelling",
+        tv: "episodes and seasons",
+        game: "play and adventure",
+        book: "reading and discovery",
+        anime: "anime and storytelling",
+        music: "music and discovery",
+        podcast: "listening and learning",
+        comic: "comics and art",
+        manga: "manga and art",
+      };
+      return flavors[this.selectedMediaType] || "stories, ideas, and worlds";
     },
 
     init() {
