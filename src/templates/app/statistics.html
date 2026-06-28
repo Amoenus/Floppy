@@ -1126,7 +1126,7 @@
             </p>
             {% if total_activity_comparison.badge %}
               <div class="flex items-center gap-1 text-xs sm:text-sm text-gray-500">
-                <span>vs {{ selected_compare_label|lower }}</span>
+                <span>vs {{ activity_comparison_period_label }}</span>
                 {% if total_activity_comparison.tooltip %}
                   <div class="relative" x-data="{ tooltipOpen: false }">
                     <button @mouseenter="tooltipOpen = true" @mouseleave="tooltipOpen = false" @click="tooltipOpen = !tooltipOpen" @click.outside="tooltipOpen = false" class="text-gray-500 hover:text-gray-400 transition-colors cursor-pointer inline-flex items-center" type="button" aria-label="Show comparison totals" style="transform: translateY(1px);">
@@ -1139,7 +1139,7 @@
                          x-transition:leave="transition ease-in duration-150"
                          x-transition:leave-start="opacity-100 scale-100"
                          x-transition:leave-end="opacity-0 scale-95"
-                         class="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-56 max-w-[calc(100vw-2rem)] p-3 text-white text-xs rounded-lg z-10 stats-tooltip"
+                         class="absolute right-0 bottom-full mb-2 w-56 max-w-[calc(100vw-2rem)] p-3 text-white text-xs rounded-lg z-10 stats-tooltip"
                          style="display: none;">
                       <div class="stats-tooltip-lines">
                         <div class="stats-tooltip-line">
@@ -1151,7 +1151,7 @@
                           <span class="stats-tooltip-value">{{ total_activity_comparison.tooltip.comparison_total }}</span>
                         </div>
                       </div>
-                      <div class="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent stats-tooltip-arrow"></div>
+                      <div class="absolute right-2 top-full w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent stats-tooltip-arrow"></div>
                     </div>
                   </div>
                 {% endif %}

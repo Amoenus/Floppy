@@ -460,6 +460,21 @@ def statistics(request):
         start_date_str_for_url = start_date_str if start_date_str else ""
         end_date_str_for_url = end_date_str if end_date_str else ""
 
+        _compare_label = STATISTICS_COMPARE_LABELS[selected_compare_mode]
+        _range_to_comparison_label = {
+            "Today": "yesterday",
+            "Yesterday": "previous day",
+            "This Week": "last week",
+            "This Month": "last month",
+            "This Year": "last year",
+        }
+        if selected_range_name and selected_range_name.lower().startswith("last"):
+            activity_comparison_period_label = selected_range_name.lower()
+        elif selected_range_name in _range_to_comparison_label:
+            activity_comparison_period_label = _range_to_comparison_label[selected_range_name]
+        else:
+            activity_comparison_period_label = _compare_label.lower()
+
         context = {
             "user": request.user,
             "tvdb_enabled": tvdb.enabled(),
@@ -470,7 +485,8 @@ def statistics(request):
             "selected_range_name": selected_range_name,
             "selected_range_dates_label": selected_range_dates_label,
             "selected_compare_mode": selected_compare_mode,
-            "selected_compare_label": STATISTICS_COMPARE_LABELS[selected_compare_mode],
+            "selected_compare_label": _compare_label,
+            "activity_comparison_period_label": activity_comparison_period_label,
             "comparison_range_dates_label": comparison_range_dates_label,
             "hours_per_media_type_comparison": hours_per_media_type_comparison,
             "total_activity_comparison": total_activity_comparison,
