@@ -172,11 +172,11 @@
       white-space: nowrap;
     }
     .stats-range-wrapper {
-      flex: 1 1 24rem;
+      flex: 0 0 auto;
       min-width: 0;
     }
     .stats-compare-wrapper {
-      flex: 0 1 20rem;
+      flex: 0 0 auto;
       min-width: 0;
     }
     .stats-media-card-icon {
@@ -641,7 +641,7 @@
       <h1 class="text-3xl font-bold mb-2">Statistics</h1>
       <p class="text-gray-400">Track your media consumption habits</p>
     </div>
-    <div class="stats-range-row flex flex-wrap items-center gap-2 mb-4 sm:mb-8">
+    <div class="stats-range-row flex flex-wrap items-center justify-end gap-2 mb-4 sm:mb-8">
       <div class="stats-range-wrapper relative min-w-0">
         <button @click="toggleRangeDropdown()"
                 class="stats-range-button flex items-center gap-2 px-4 py-2.5 bg-[#2a2f35] hover:bg-[#343a40] rounded-lg transition-all duration-200 border border-gray-700 shadow-sm cursor-pointer">
@@ -662,8 +662,6 @@
           </svg>
           <div class="stats-button-copy">
             <span class="stats-button-title" x-text="rangeTriggerLabel()"></span>
-            <span class="stats-button-divider hidden sm:block"></span>
-            <span class="stats-button-summary" x-text="currentRangeSummaryLabel()"></span>
           </div>
           <svg xmlns="http://www.w3.org/2000/svg"
                width="24"
@@ -777,8 +775,7 @@
                 :disabled="!hasFiniteRange()"
                 class="stats-compare-button flex items-center gap-2 w-full px-4 py-2.5 bg-[#2a2f35] hover:bg-[#343a40] disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-all duration-200 border border-gray-700 shadow-sm cursor-pointer">
           <div class="stats-compare-copy">
-            <span class="stats-compare-prefix">compared to</span>
-            <span class="stats-button-divider"></span>
+            <span class="stats-compare-prefix">Compare to:</span>
             <span class="stats-compare-value"
                   x-text="comparisonTriggerLabel()"></span>
           </div>
