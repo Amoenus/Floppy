@@ -487,6 +487,8 @@ def statistics(request):
             "manga_consumption": statistics_data.get("manga_consumption", {}),
             "daily_hours_by_media_type": statistics_data["daily_hours_by_media_type"],
             "history_highlights": statistics_data.get("history_highlights", {}),
+            "history_highlights_by_type": statistics_data.get("history_highlights_by_type", {}),
+            "summary_stats_by_type": statistics_data.get("summary_stats_by_type", {}),
             "show_year_charts": show_year_charts,
             "user_django_date_format": DATE_FORMAT_DJANGO_MAP.get(
                 request.user.date_format, ""

@@ -4,6 +4,7 @@ function dateRangePicker(options = {}) {
     initialStartDate = "",
     initialEndDate = "",
     initialCompareMode = "previous_period",
+    initialMediaTypeOptions = [],
     refreshUrl = "",
     compareModeUpdateUrl = "",
     csrfToken = "",
@@ -38,21 +39,45 @@ function dateRangePicker(options = {}) {
   return {
     isRangeOpen: false,
     isCompareOpen: false,
+    isMediaTypeOpen: false,
     activeTab: "predefined",
     selectedRange: initialRangeName || "Last 12 Months",
     startDate: initialStartDate || formatDateForInput(defaultStartDate),
     endDate: initialEndDate || formatDateForInput(today),
     customRangeLabel: "",
     compareMode: initialCompareMode,
+    selectedMediaType: "all",
+    mediaTypeOptions: initialMediaTypeOptions,
+    summaryStatsByType: {},
     refreshing: false,
     predefinedRanges,
     comparisonOptions,
+
+    get currentTypeSummary() {
+      const key = this.summaryStatsByType[this.selectedMediaType]
+        ? this.selectedMediaType
+        : "all";
+      const s = this.summaryStatsByType[key] || {};
+      const start = s.longest_streak_start;
+      const end = s.longest_streak_end;
+      let dates = "";
+      if (start) {
+        const fmt = (iso) => {
+          const [y, m, d] = iso.split("-").map(Number);
+          const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+          return `${months[m - 1]} ${d}, ${y}`;
+        };
+        dates = start === end ? fmt(start) : `${fmt(start)} – ${fmt(end)}`;
+      }
+      return { ...s, longest_streak_dates_display: dates };
+    },
 
     init() {
       const urlParams = new URLSearchParams(window.location.search);
       const startDateParam = urlParams.get("start-date");
       const endDateParam = urlParams.get("end-date");
       const compareParam = urlParams.get("compare");
+      const mediaTypeParam = urlParams.get("media-type");
 
       if (startDateParam && endDateParam) {
         this.startDate = startDateParam;
@@ -66,12 +91,28 @@ function dateRangePicker(options = {}) {
 
       this.detectRangeFromDates(initialRangeName);
       this.compareMode = this.normalizeCompareMode(compareParam || initialCompareMode);
+
+      if (mediaTypeParam && this.mediaTypeOptions.some((o) => o.value === mediaTypeParam)) {
+        this.selectedMediaType = mediaTypeParam;
+      }
+
+      const summaryEl = document.getElementById("summary_stats_by_type");
+      if (summaryEl) {
+        try { this.summaryStatsByType = JSON.parse(summaryEl.textContent); } catch (_) {}
+      }
+
+      window.addEventListener("stats-charts-initialized", () => {
+        if (this.selectedMediaType !== "all") {
+          this.updateFilteredCharts();
+        }
+      });
     },
 
     toggleRangeDropdown() {
       this.isRangeOpen = !this.isRangeOpen;
       if (this.isRangeOpen) {
         this.isCompareOpen = false;
+        this.isMediaTypeOpen = false;
       }
     },
 
@@ -83,7 +124,67 @@ function dateRangePicker(options = {}) {
       this.isCompareOpen = !this.isCompareOpen;
       if (this.isCompareOpen) {
         this.isRangeOpen = false;
+        this.isMediaTypeOpen = false;
       }
+    },
+
+    toggleMediaTypeDropdown() {
+      this.isMediaTypeOpen = !this.isMediaTypeOpen;
+      if (this.isMediaTypeOpen) {
+        this.isRangeOpen = false;
+        this.isCompareOpen = false;
+      }
+    },
+
+    selectMediaType(value) {
+      this.selectedMediaType = value;
+      this.isMediaTypeOpen = false;
+      const url = new URL(window.location.href);
+      if (value === "all") {
+        url.searchParams.delete("media-type");
+      } else {
+        url.searchParams.set("media-type", value);
+      }
+      window.history.replaceState({}, "", url.toString());
+      this.$nextTick(() => {
+        this.updateFilteredCharts();
+        window.dispatchEvent(new CustomEvent("stats-media-type-changed"));
+      });
+    },
+
+    updateFilteredCharts() {
+      const type = this.selectedMediaType;
+      if (typeof Chart === "undefined") return;
+      const chart = Chart.getChart("scoreStackedChartCopy");
+      if (chart) {
+        const labelToType = {
+          "TV Show": "tv", "TV Season": "tv",
+          "Movie": "movie",
+          "Anime": "anime",
+          "Manga": "manga",
+          "Game": "game",
+          "Book": "book",
+          "Comic": "comic", "Comic Issue": "comic",
+          "Board Game": "boardgame",
+          "Music": "music",
+          "Podcast": "podcast",
+        };
+        chart.data.datasets.forEach((ds) => {
+          const dsType = ds.media_type || labelToType[ds.label];
+          ds.hidden = type !== "all" && dsType !== type;
+        });
+        chart.update("none");
+      }
+    },
+
+    isMediaTypeVisible(type) {
+      return this.selectedMediaType === "all" || this.selectedMediaType === type;
+    },
+
+    mediaTypeTriggerLabel() {
+      if (this.selectedMediaType === "all") return "All media";
+      const opt = this.mediaTypeOptions.find((o) => o.value === this.selectedMediaType);
+      return opt ? opt.label : "All media";
     },
 
     hasFiniteRange() {
@@ -276,6 +377,11 @@ function dateRangePicker(options = {}) {
       url.searchParams.set("start-date", this.startDate);
       url.searchParams.set("end-date", this.endDate);
       url.searchParams.set("compare", this.normalizeCompareMode(this.compareMode));
+      if (this.selectedMediaType && this.selectedMediaType !== "all") {
+        url.searchParams.set("media-type", this.selectedMediaType);
+      } else {
+        url.searchParams.delete("media-type");
+      }
       window.location.href = url.toString();
     },
 

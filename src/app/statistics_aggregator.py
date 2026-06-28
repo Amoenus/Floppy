@@ -5,7 +5,7 @@ import heapq
 import itertools
 import logging
 from collections import Counter, defaultdict
-from datetime import datetime, timedelta
+from datetime import date as date_type, datetime, timedelta
 
 from django.apps import apps
 from django.core.cache import cache
@@ -115,6 +115,14 @@ def _build_media_charts_from_counts(day_counts, hour_counts, color, dataset_labe
         "by_weekday": stats._build_single_series_chart(weekday_labels, weekday_values, color, dataset_label),
         "by_time_of_day": stats._build_single_series_chart(hour_labels, hour_values, color, dataset_label),
     }
+
+
+def _date_to_iso(value):
+    if value is None:
+        return None
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return str(value)
 
 
 def _build_daily_hours_chart(day_minutes_by_type, day_list):
@@ -1415,6 +1423,86 @@ def _aggregate_statistics_from_days(
         "today_month": today.month,
         "today_day": today.day,
     }
+
+    # Per-media-type highlight cards (same structure as history_highlights)
+    history_highlights_by_type = {}
+    for _mt, _day_map in day_minutes_by_type.items():
+        _active_days = sorted(d for d, m in _day_map.items() if m > 0)
+        if not _active_days:
+            continue
+        _first_day = date_type.fromisoformat(_active_days[0])
+        _last_day = date_type.fromisoformat(_active_days[-1])
+        _first_payload = _get_history_day_payload(user, _first_day)
+        _last_payload = _get_history_day_payload(user, _last_day)
+        _type_today_user_h, _type_today_user_year = _get_today_history_entries(user, media_type_filter=_mt)
+        _type_today_h, _type_today_year = _get_today_release_entry(user, media_type_filter=_mt)
+        history_highlights_by_type[_mt] = {
+            "first_play": _select_history_entry_for_day(_first_payload, pick_earliest=True, media_type_filter=_mt),
+            "last_play": _select_history_entry_for_day(_last_payload, pick_latest=True, media_type_filter=_mt),
+            "today_in_history": _type_today_h,
+            "today_in_history_year": _type_today_year,
+            "today_in_user_history": _type_today_user_h,
+            "today_in_user_history_year": _type_today_user_year,
+            "today_month": today.month,
+            "today_day": today.day,
+        }
+
+    # Per-media-type average scores (uses items_by_type already in memory)
+    _average_score_by_type = {}
+    for _mt in active_types:
+        _mt_items = items_by_type.get(_mt, {})
+        _mt_sum = 0.0
+        _mt_count = 0
+        for _meta in _mt_items.values():
+            _score = _meta.get("score")
+            if _score is None:
+                continue
+            _sv = float(_score)
+            if score_scale_max == 5:
+                _sv = _sv / 2
+            _mt_sum += _sv
+            _mt_count += 1
+        _average_score_by_type[_mt] = round(_mt_sum / _mt_count, 2) if _mt_count > 0 else None
+
+    _end_date_for_streak = end_date.date() if hasattr(end_date, "date") else end_date
+
+    # "all" bucket mirrors the already-computed activity_data.stats values
+    summary_stats_by_type = {
+        "all": {
+            "completed": status_distribution_payload["total_completed"],
+            "total": media_count.get("total", 0),
+            "average_score": average_score,
+            "has_score": bool(total_scored),
+            "most_active_day": activity_data["stats"].get("most_active_day"),
+            "most_active_day_percentage": activity_data["stats"].get("most_active_day_percentage", 0),
+            "current_streak": activity_data["stats"].get("current_streak", 0),
+            "longest_streak": activity_data["stats"].get("longest_streak", 0),
+            "longest_streak_start": _date_to_iso(activity_data["stats"].get("longest_streak_start")),
+            "longest_streak_end": _date_to_iso(activity_data["stats"].get("longest_streak_end")),
+        }
+    }
+    for _mt, _day_map in day_minutes_by_type.items():
+        _mt_date_counts = {
+            date_type.fromisoformat(d): 1
+            for d, m in _day_map.items() if m > 0
+        }
+        _mt_most_active, _mt_day_pct = stats.calculate_most_active_weekday({_mt: _day_map}, day_list)
+        _mt_streaks = stats.calculate_streak_details(_mt_date_counts, _end_date_for_streak)
+        _mt_completed = status_distribution.get(_mt, {}).get(Status.COMPLETED.value, 0)
+        _mt_total = media_count.get(_mt, 0)
+        summary_stats_by_type[_mt] = {
+            "completed": _mt_completed,
+            "total": _mt_total,
+            "average_score": _average_score_by_type.get(_mt),
+            "has_score": _average_score_by_type.get(_mt) is not None,
+            "most_active_day": _mt_most_active,
+            "most_active_day_percentage": _mt_day_pct,
+            "current_streak": _mt_streaks.get("current_streak", 0),
+            "longest_streak": _mt_streaks.get("longest_streak", 0),
+            "longest_streak_start": _date_to_iso(_mt_streaks.get("longest_streak_start")),
+            "longest_streak_end": _date_to_iso(_mt_streaks.get("longest_streak_end")),
+        }
+
     has_movie_tv_activity = bool(
         plays_by_type.get(MediaTypes.MOVIE.value, 0)
         or plays_by_type.get(MediaTypes.TV.value, 0)
@@ -1456,5 +1544,7 @@ def _aggregate_statistics_from_days(
         "manga_consumption": manga_consumption,
         "daily_hours_by_media_type": daily_hours_by_media_type,
         "history_highlights": history_highlights,
+        "history_highlights_by_type": history_highlights_by_type,
+        "summary_stats_by_type": summary_stats_by_type,
     }
 

@@ -45,6 +45,7 @@ from app.statistics_highlights import (
     _get_today_release_entry,
     _history_entry_card_payload,
     _normalize_history_highlight_images,
+    _normalize_history_highlights_by_type,
     _select_history_entry_for_day,
 )
 from app.models import (
@@ -655,6 +656,8 @@ def _get_empty_statistics_data():
             "today_month": None,
             "today_day": None,
         },
+        "history_highlights_by_type": {},
+        "summary_stats_by_type": {},
     }
 
 
@@ -767,6 +770,7 @@ def get_statistics_data(user, start_date, end_date, range_name=None):
         )
         _normalize_hours_per_media_type(data.get("hours_per_media_type"))
         _normalize_history_highlight_images(data.get("history_highlights"))
+        _normalize_history_highlights_by_type(data.get("history_highlights_by_type"))
         return data
 
     eager_mode = bool(
@@ -787,6 +791,7 @@ def get_statistics_data(user, start_date, end_date, range_name=None):
                 if data:
                     _normalize_hours_per_media_type(data.get("hours_per_media_type"))
                     _normalize_history_highlight_images(data.get("history_highlights"))
+                    _normalize_history_highlights_by_type(data.get("history_highlights_by_type"))
                     return data
             schedule_statistics_refresh(user.id, range_name, allow_inline=False)
         elif not history_version:
@@ -796,11 +801,13 @@ def get_statistics_data(user, start_date, end_date, range_name=None):
                     if data:
                         _normalize_hours_per_media_type(data.get("hours_per_media_type"))
                         _normalize_history_highlight_images(data.get("history_highlights"))
+                        _normalize_history_highlights_by_type(data.get("history_highlights_by_type"))
                         return data
                 schedule_statistics_refresh(user.id, range_name, allow_inline=False)
         data = cache_entry.get("data", {})
         _normalize_hours_per_media_type(data.get("hours_per_media_type"))
         _normalize_history_highlight_images(data.get("history_highlights"))
+        _normalize_history_highlights_by_type(data.get("history_highlights_by_type"))
         return data
 
     # Cache miss - check if refresh is in progress
@@ -815,6 +822,7 @@ def get_statistics_data(user, start_date, end_date, range_name=None):
             if data:
                 _normalize_hours_per_media_type(data.get("hours_per_media_type"))
                 _normalize_history_highlight_images(data.get("history_highlights"))
+                _normalize_history_highlights_by_type(data.get("history_highlights_by_type"))
                 return data
         # Refresh is in progress, return minimal empty data structure
         # Frontend will poll and update when refresh completes
@@ -845,6 +853,7 @@ def get_statistics_data(user, start_date, end_date, range_name=None):
         if data:
             _normalize_hours_per_media_type(data.get("hours_per_media_type"))
             _normalize_history_highlight_images(data.get("history_highlights"))
+            _normalize_history_highlights_by_type(data.get("history_highlights_by_type"))
             return data
         return _get_empty_statistics_data()
 

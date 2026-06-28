@@ -242,10 +242,35 @@ def _normalize_history_highlight_images(history_highlights):
         )
 
 
-def _select_history_entry_for_day(day_payload, pick_earliest=False, pick_latest=False):
+def _normalize_history_highlights_by_type(highlights_by_type):
+    """Apply image normalization to each per-type highlights dict."""
+    if not isinstance(highlights_by_type, dict):
+        return
+    for type_highlights in highlights_by_type.values():
+        _normalize_history_highlight_images(type_highlights)
+
+
+_TV_FAMILY = {MediaTypes.TV.value, MediaTypes.EPISODE.value, MediaTypes.SEASON.value}
+_ANIME_FAMILY = {MediaTypes.ANIME.value}
+
+
+def _entry_matches_type_filter(entry, media_type_filter):
+    if not media_type_filter:
+        return True
+    entry_type = entry.get("media_type")
+    if media_type_filter == MediaTypes.TV.value:
+        return entry_type in _TV_FAMILY
+    if media_type_filter == MediaTypes.ANIME.value:
+        return entry_type in _ANIME_FAMILY
+    return entry_type == media_type_filter
+
+
+def _select_history_entry_for_day(day_payload, pick_earliest=False, pick_latest=False, media_type_filter=None):
     if not day_payload:
         return None
     entries = day_payload.get("entries") or []
+    if media_type_filter:
+        entries = [e for e in entries if _entry_matches_type_filter(e, media_type_filter)]
     if not entries:
         return None
     if pick_earliest:
@@ -257,7 +282,7 @@ def _select_history_entry_for_day(day_payload, pick_earliest=False, pick_latest=
     return _history_entry_card_payload(entry)
 
 
-def _get_today_history_entries(user):
+def _get_today_history_entries(user, media_type_filter=None):
     today = timezone.localdate()
     day_keys = _get_history_index_days(user)
     matching_dates = []
@@ -272,6 +297,16 @@ def _get_today_history_entries(user):
     if not matching_dates:
         return None, None
 
+    if media_type_filter:
+        candidates = matching_dates[:]
+        random.shuffle(candidates)
+        for candidate in candidates[:12]:
+            payload = _get_history_day_payload(user, candidate)
+            entry = _select_history_entry_for_day(payload, media_type_filter=media_type_filter)
+            if entry:
+                return entry, candidate.year
+        return None, None
+
     available_years = sorted({day_date.year for day_date in matching_dates})
     selected_year = random.choice(available_years)
     year_dates = [day_date for day_date in matching_dates if day_date.year == selected_year]
@@ -283,7 +318,7 @@ def _get_today_history_entries(user):
     return _select_history_entry_for_day(day_payload), selected_year
 
 
-def _get_today_release_entry(user):
+def _get_today_release_entry(user, media_type_filter=None):
     today = timezone.localdate()
     active_types = list(getattr(user, "get_active_media_types", lambda: [])())
     if not active_types:
@@ -294,6 +329,15 @@ def _get_today_release_entry(user):
         for media_type in active_types
         if media_type not in (MediaTypes.EPISODE.value, MediaTypes.PODCAST.value)
     ]
+    if media_type_filter:
+        if media_type_filter == MediaTypes.TV.value:
+            allowed = _TV_FAMILY - {MediaTypes.EPISODE.value}
+        elif media_type_filter == MediaTypes.ANIME.value:
+            allowed = _ANIME_FAMILY
+        else:
+            allowed = {media_type_filter}
+        active_types = [mt for mt in active_types if mt in allowed]
+        include_podcasts = include_podcasts and media_type_filter == MediaTypes.PODCAST.value
 
     items_by_year = defaultdict(list)
     seen_item_ids = set()
@@ -329,6 +373,7 @@ def _get_today_release_entry(user):
                 "release_date": release_date,
             })
 
+    include_episodes = not media_type_filter or media_type_filter in (MediaTypes.TV.value,)
     Episode = apps.get_model("app", "Episode")
     episode_qs = (
         Episode.objects.filter(
@@ -345,6 +390,7 @@ def _get_today_release_entry(user):
             release_day=ExtractDay("item__release_datetime"),
         )
         .filter(release_month=today.month, release_day=today.day)
+        if include_episodes else []
     )
     for episode in episode_qs:
         episode_item = getattr(episode, "item", None)

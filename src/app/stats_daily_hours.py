@@ -279,6 +279,7 @@ def get_daily_hours_by_media_type(user_media, start_date, end_date):
 
         datasets.append({
             "label": app_tags.media_type_readable(media_type),
+            "media_type": media_type,
             "data": [round(date_map[d] / 60, 2) for d in labels],
             "background_color": config.get_stats_color(media_type),
         })

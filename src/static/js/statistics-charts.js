@@ -322,6 +322,7 @@ function initStatisticsCharts() {
       datasets: chartData.datasets
         .map((dataset) => ({
           label: dataset.label,
+          media_type: dataset.media_type,
           data: dataset.data,
           backgroundColor: dataset.background_color,
           borderColor: "rgba(255, 255, 255, 0.1)",
@@ -668,6 +669,7 @@ function initStatisticsCharts() {
             const newLabels = labels.map((k) => formatBucketLabel('day', k, startIso, endIso));
             const newDatasets = dailyData.datasets.map((ds) => ({
               label: ds.label,
+              media_type: ds.media_type,
               data: ds.data.map((v) => Number(v) || 0),
               background_color: ds.background_color || ds.backgroundColor || ds.backgroundColor,
             }));
@@ -699,6 +701,7 @@ function initStatisticsCharts() {
           const newLabels = rawKeys.map((k) => formatBucketLabel(bucket, k, startIso, endIso));
           const newDatasets = dailyData.datasets.map((ds, i) => ({
             label: ds.label,
+            media_type: ds.media_type,
             data: rawKeys.map((k) => bucketMap.get(k)[i] || 0),
             background_color: ds.background_color || ds.backgroundColor || ds.backgroundColor,
           }));
@@ -984,6 +987,8 @@ function initStatisticsCharts() {
     "podcastPlaysByTimeChart",
     "podcast_plays_by_time"
   );
+
+  window.dispatchEvent(new CustomEvent("stats-charts-initialized"));
 
   // Initial sizing and on resize for the copied score chart wrapper
   matchScoreCopyHeight();
