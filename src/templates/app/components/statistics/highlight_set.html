@@ -1,6 +1,6 @@
 {% load app_tags %}
 {% load user_tags %}
-<div x-data="highlightCarousel()" x-init="init()" class="mb-2 sm:mb-4">
+<div x-data="highlightCarousel()" x-init="init()">
   <div x-ref="track"
        class="stats-highlight-track grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3">
   {% if highlights.first_play %}

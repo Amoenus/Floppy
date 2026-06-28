@@ -426,15 +426,28 @@ def statistics(request):
             selected_range_name,
             selected_compare_mode,
         )
+        _duration_fmt = getattr(request.user, "duration_format", "hours_minutes")
+        _current_minutes_map = _get_statistics_minutes_by_type(statistics_data)
         hours_per_media_type_comparison = _build_hours_per_media_type_comparison(
-            _get_statistics_minutes_by_type(statistics_data),
+            _current_minutes_map,
             comparison_minutes_by_type,
             selected_compare_mode,
             comparison_card_suffix,
             current_tooltip_label,
             comparison_tooltip_label,
-            duration_format=getattr(request.user, "duration_format", "hours_minutes"),
+            duration_format=_duration_fmt,
         )
+        _current_total_minutes = sum(_current_minutes_map.values())
+        _comparison_total_minutes = sum(float(v or 0) for v in comparison_minutes_by_type.values())
+        total_activity_comparison = _build_hours_per_media_type_comparison(
+            {"all": _current_total_minutes},
+            {"all": _comparison_total_minutes},
+            selected_compare_mode,
+            comparison_card_suffix,
+            current_tooltip_label,
+            comparison_tooltip_label,
+            duration_format=_duration_fmt,
+        ).get("all") or {}
 
         top_rated_by_type = statistics_data.get("top_rated_by_type", {})
         top_rated_movie = top_rated_by_type.get("movie", [])
@@ -460,6 +473,7 @@ def statistics(request):
             "selected_compare_label": STATISTICS_COMPARE_LABELS[selected_compare_mode],
             "comparison_range_dates_label": comparison_range_dates_label,
             "hours_per_media_type_comparison": hours_per_media_type_comparison,
+            "total_activity_comparison": total_activity_comparison,
             "media_count": statistics_data["media_count"],
             "activity_data": statistics_data["activity_data"],
             "media_type_distribution": statistics_data["media_type_distribution"],
