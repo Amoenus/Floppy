@@ -490,6 +490,7 @@ def statistics(request):
             "comparison_range_dates_label": comparison_range_dates_label,
             "hours_per_media_type_comparison": hours_per_media_type_comparison,
             "total_activity_comparison": total_activity_comparison,
+            "weekday_hour_chart_data": statistics_data.get("weekday_hour_chart_data", {}),
             "media_count": statistics_data["media_count"],
             "activity_data": statistics_data["activity_data"],
             "media_type_distribution": statistics_data["media_type_distribution"],

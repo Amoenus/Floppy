@@ -1160,6 +1160,27 @@
           </div>
         </div>
       </div>
+      <!-- Activity Rhythm + Time Across Your Worlds -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
+    <!-- Activity Rhythm -->
+    <div class="bg-[#2a2f35] rounded-lg p-4 sm:p-6">
+      <h2 class="text-base font-semibold text-white mb-0.5">Your activity rhythm</h2>
+      <p class="text-xs text-gray-400 mb-3">When you watch, play, and listen.</p>
+      <div id="activityRhythmContainer" class="w-full"></div>
+    </div>
+    <!-- Time Across Your Worlds -->
+    <div class="bg-[#2a2f35] rounded-lg p-4 sm:p-6">
+      <h2 class="text-base font-semibold text-white mb-0.5" id="timeWorldsTitle">Time across your worlds</h2>
+      <p class="text-xs text-gray-400 mb-3" id="timeWorldsSubtitle">Where your hours go.</p>
+      <div id="timeWorldsContainer" class="flex items-center gap-4 sm:gap-6">
+        <div class="relative shrink-0" style="width:150px;height:150px;">
+          <div id="timeWorldsCenter" class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center"></div>
+          <canvas id="timeWorldsChart" style="position:relative;z-index:1"></canvas>
+        </div>
+        <div id="timeWorldsLegend" class="flex-1 min-w-0 space-y-1.5"></div>
+      </div>
+    </div>
+  </div>
       </div>
 
   <!-- Activity History Section -->
@@ -1452,56 +1473,6 @@
 
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-8"
            x-show="selectedMediaType === 'all'">
-        <!-- Media Type Distribution Section -->
-        <div class="bg-[#2a2f35] rounded-lg p-4 sm:p-6 stat-scroll-safe stat-tooltip-safe">
-          <div class="flex items-center gap-2 mb-4">
-            <h2 class="text-xl font-semibold">Media Type Distribution</h2>
-            <div class="relative" x-data="{ tooltipOpen: false }">
-              <button @mouseenter="tooltipOpen = true" @mouseleave="tooltipOpen = false" @click="tooltipOpen = !tooltipOpen" @click.outside="tooltipOpen = false" class="text-gray-400 hover:text-gray-300 transition-colors cursor-pointer" type="button" aria-label="Show information">
-                {% include "app/icons/info.svg" with classes="w-4 h-4" %}
-              </button>
-              <div x-show="tooltipOpen"
-                   x-transition:enter="transition ease-out duration-200"
-                   x-transition:enter-start="opacity-0 scale-95"
-                   x-transition:enter-end="opacity-100 scale-100"
-                   x-transition:leave="transition ease-in duration-150"
-                   x-transition:leave-start="opacity-100 scale-100"
-                   x-transition:leave-end="opacity-0 scale-95"
-                   class="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-64 max-w-[calc(100vw-2rem)] p-3 text-white text-xs rounded-lg z-10 stats-tooltip"
-                   style="display: none;">
-                <p>Share of total hours by media type for the selected range, based on runtime metadata and progress.</p>
-                <div class="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent stats-tooltip-arrow"></div>
-              </div>
-            </div>
-          </div>
-
-          {% if media_type_distribution.labels %}
-            <div class="h-80 flex justify-center items-center">
-              <canvas id="mediaTypeChart"></canvas>
-            </div>
-          {% else %}
-            <div class="flex flex-col items-center justify-center py-16">
-              <div class="bg-[#39404b] rounded-full p-4 w-16 h-16 mx-auto mb-4 flex items-center justify-center">
-                <svg xmlns="http://www.w3.org/2000/svg"
-                     width="24"
-                     height="24"
-                     viewBox="0 0 24 24"
-                     fill="none"
-                     stroke="currentColor"
-                     stroke-width="2"
-                     stroke-linecap="round"
-                     stroke-linejoin="round"
-                     class="w-8 h-8 text-gray-400">
-                  <path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path>
-                  <path d="M22 12A10 10 0 0 0 12 2v10z"></path>
-                </svg>
-              </div>
-              <h3 class="text-lg font-medium mb-2">No media types to display</h3>
-              <p class="text-gray-400 text-center max-w-md">Add different types of media to see their distribution.</p>
-            </div>
-          {% endif %}
-        </div>
-
         <!-- Status Distribution Section -->
         <div class="bg-[#2a2f35] rounded-lg p-4 sm:p-6 stat-scroll-safe">
           <h2 class="text-xl font-semibold mb-4">Status Distribution</h2>
@@ -2315,6 +2286,13 @@
   <!-- JSON data for charts -->
   {{ date_format_values|json_script:"date_format_values" }}
   {{ media_type_distribution|json_script:"media_type_distribution" }}
+  {{ tv_consumption.top_genres|default:"[]"|json_script:"tv_top_genres" }}
+  {{ movie_consumption.top_genres|default:"[]"|json_script:"movie_top_genres" }}
+  {{ anime_consumption.top_genres|default:"[]"|json_script:"anime_top_genres" }}
+  {{ music_consumption.top_genres|default:"[]"|json_script:"music_top_genres" }}
+  {{ game_consumption.top_genres|default:"[]"|json_script:"game_top_genres" }}
+  {{ user.duration_format|default:'hours_minutes'|json_script:"stats_duration_format" }}
+  {{ weekday_hour_chart_data|json_script:"weekday_hour_chart_data" }}
   {{ status_pie_chart_data|json_script:"status_pie_chart_data" }}
   {{ status_distribution|json_script:"status_distribution" }}
   {{ score_distribution|json_script:"score_distribution" }}

@@ -408,20 +408,6 @@ function initStatisticsCharts() {
     return desiredHeight;
   }
 
-  // Create Media Type Distribution Chart
-  const mediaTypeDistributionElement = document.getElementById(
-    "media_type_distribution"
-  );
-  if (mediaTypeDistributionElement) {
-    const mediaTypeData = JSON.parse(mediaTypeDistributionElement.textContent);
-    initializeChartIfExists(
-      "mediaTypeChart",
-      "pie",
-      mediaTypeData,
-      pieChartConfig
-    );
-  }
-
   // Create Status Distribution Chart
   const statusPieChartElement = document.getElementById(
     "status_pie_chart_data"
@@ -987,6 +973,412 @@ function initStatisticsCharts() {
     "podcastPlaysByTimeChart",
     "podcast_plays_by_time"
   );
+
+  function getCurrentMediaType() {
+    try {
+      return new URL(window.location.href).searchParams.get("media-type") || "all";
+    } catch (_) {
+      return "all";
+    }
+  }
+
+  // ─── Activity Rhythm SVG dot matrix ────────────────────────────────────────
+  const weekdayHourEl = document.getElementById("weekday_hour_chart_data");
+  const rhythmContainer = document.getElementById("activityRhythmContainer");
+  if (weekdayHourEl && rhythmContainer) {
+    const rhythmData = JSON.parse(weekdayHourEl.textContent || "{}");
+
+    const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    const cellSize = 12;
+    const cellGap = 4;
+    const dotArea = cellSize + cellGap;
+    const maxR = cellSize / 2;
+    const labelW = 30;
+    const labelH = 14;
+    const totalW = labelW + 24 * dotArea;
+    const totalH = labelH + 7 * dotArea;
+
+    // Number of intensity tiers (tier 0 = empty cell, tiers 1..TIERS = non-zero).
+    const TIERS = 6;
+
+    // Tier → dot radius. Empty cells get the smallest dot; non-zero tiers ramp up to maxR.
+    function tierRadius(tier) {
+      return tier === 0 ? 1.5 : 2 + (tier / TIERS) * (maxR - 2);
+    }
+
+    // Tier → fill. Empty cells faint grey; non-zero tiers ramp indigo opacity up.
+    function tierFill(tier) {
+      if (tier === 0) return "rgba(255,255,255,0.05)";
+      const opacity = 0.2 + 0.8 * (tier / TIERS);
+      return `rgba(99,102,241,${opacity.toFixed(2)})`;
+    }
+
+    function drawRhythmChart(mediaType) {
+      const key = mediaType && mediaType !== "all" ? mediaType : "all";
+      const matrix = rhythmData[key] || (key !== "all" ? rhythmData["all"] : null);
+      if (!matrix) {
+        rhythmContainer.innerHTML =
+          '<p class="text-sm text-gray-500 text-center py-6">No activity data for this range.</p>';
+        return;
+      }
+
+      // Quantile bucketing: rank each cell by its percentile within the non-zero values.
+      // This is robust to bulk-import outliers (a single huge day can't crush the scale).
+      const nonZeroVals = [];
+      for (let r = 0; r < 7; r++) {
+        for (let c = 0; c < 24; c++) {
+          const v = (matrix[r] && matrix[r][c]) || 0;
+          if (v > 0) nonZeroVals.push(v);
+        }
+      }
+      nonZeroVals.sort(function (a, b) { return a - b; });
+
+      function tierFor(v) {
+        if (v <= 0 || nonZeroVals.length === 0) return 0;
+        // index of first value >= v → percentile rank
+        let lo = 0;
+        let hi = nonZeroVals.length;
+        while (lo < hi) {
+          const mid = (lo + hi) >> 1;
+          if (nonZeroVals[mid] < v) lo = mid + 1;
+          else hi = mid;
+        }
+        const pct = lo / nonZeroVals.length;
+        return Math.min(TIERS, Math.floor(pct * TIERS) + 1);
+      }
+
+      let cells = "";
+      for (let r = 0; r < 7; r++) {
+        const cy = labelH + r * dotArea + cellSize / 2;
+        cells +=
+          `<text x="${labelW - 4}" y="${cy + 3.5}" text-anchor="end" ` +
+          `font-size="9" fill="#6b7280">${DAY_LABELS[r]}</text>`;
+        for (let c = 0; c < 24; c++) {
+          const cx = labelW + c * dotArea + cellSize / 2;
+          const count = (matrix[r] && matrix[r][c]) || 0;
+          const tier = tierFor(count);
+          const radius = tierRadius(tier);
+          const fill = tierFill(tier);
+          const title = count > 0
+            ? `<title>${DAY_LABELS[r]} ${c}:00 — ${count} session${count !== 1 ? "s" : ""}</title>`
+            : "";
+          cells += `<circle cx="${cx}" cy="${cy}" r="${radius.toFixed(1)}" fill="${fill}">${title}</circle>`;
+        }
+      }
+
+      let hourLabels = "";
+      for (const h of [0, 6, 12, 18]) {
+        const cx = labelW + h * dotArea + cellSize / 2;
+        const lbl = h === 0 ? "12a" : h === 12 ? "12p" : h < 12 ? `${h}a` : `${h - 12}p`;
+        hourLabels +=
+          `<text x="${cx}" y="${labelH - 2}" text-anchor="middle" ` +
+          `font-size="9" fill="#6b7280">${lbl}</text>`;
+      }
+
+      // "Low → High" legend: one swatch per tier, growing in size + opacity.
+      const legendY = maxR;
+      const legendGap = dotArea;
+      const legendStartX = labelW + maxR;
+      let legendDots = "";
+      for (let t = 1; t <= TIERS; t++) {
+        const lx = legendStartX + (t - 1) * legendGap;
+        legendDots +=
+          `<circle cx="${lx}" cy="${legendY}" r="${tierRadius(t).toFixed(1)}" fill="${tierFill(t)}"/>`;
+      }
+      const legendLowX = legendStartX - maxR - 4;
+      const legendHighX = legendStartX + (TIERS - 1) * legendGap + maxR + 4;
+      const legendSvg =
+        `<svg width="100%" viewBox="0 0 ${totalW} ${maxR * 2}" ` +
+        `xmlns="http://www.w3.org/2000/svg" ` +
+        `style="overflow:visible;display:block;margin-top:8px">` +
+        `<text x="${legendLowX}" y="${legendY + 3.5}" text-anchor="end" ` +
+        `font-size="9" fill="#6b7280">Low</text>` +
+        legendDots +
+        `<text x="${legendHighX}" y="${legendY + 3.5}" text-anchor="start" ` +
+        `font-size="9" fill="#6b7280">High</text>` +
+        `</svg>`;
+
+      rhythmContainer.innerHTML =
+        `<svg width="100%" viewBox="0 0 ${totalW} ${totalH}" ` +
+        `xmlns="http://www.w3.org/2000/svg" style="overflow:visible;display:block">` +
+        hourLabels + cells + `</svg>` + legendSvg;
+    }
+
+    drawRhythmChart(getCurrentMediaType());
+    window.addEventListener("stats-media-type-changed", function () {
+      drawRhythmChart(getCurrentMediaType());
+    });
+  }
+
+  // ─── Time Across Your Worlds doughnut ───────────────────────────────────────
+  const timeWorldsCanvas = document.getElementById("timeWorldsChart");
+  const timeWorldsLegendEl = document.getElementById("timeWorldsLegend");
+  const timeWorldsCenterEl = document.getElementById("timeWorldsCenter");
+  const distEl = document.getElementById("media_type_distribution");
+
+  if (timeWorldsCanvas && distEl) {
+    const fullDistData = JSON.parse(distEl.textContent || "{}");
+
+    // User's Duration Format preference (mirrors stats_utils._format_hours_minutes).
+    let durationFormat = "hours_minutes";
+    try {
+      const dfEl = document.getElementById("stats_duration_format");
+      if (dfEl) durationFormat = JSON.parse(dfEl.textContent) || "hours_minutes";
+    } catch (_) { /* keep default */ }
+
+    // Format a duration given in hours, respecting the Duration Format preference.
+    // maxParts caps how many units are shown (default 2); pass Infinity for tooltips.
+    function fmtHours(hrs, maxParts) {
+      if (maxParts === undefined) maxParts = 2;
+      let minutes = Math.round(hrs * 60);
+      if (minutes <= 0) return "0h 0min";
+      if (durationFormat === "long_units") {
+        if (minutes < 60) return minutes + "min";
+        if (minutes < 1440) {
+          return Math.floor(minutes / 60) + "h " + (minutes % 60) + "min";
+        }
+        const MONTH = 43800;
+        const DAY = 1440;
+        const HOUR = 60;
+        const mo = Math.floor(minutes / MONTH);
+        let rem = minutes % MONTH;
+        const d = Math.floor(rem / DAY);
+        rem %= DAY;
+        const h = Math.floor(rem / HOUR);
+        const m = rem % HOUR;
+        const parts = [];
+        if (mo) parts.push(mo + "mo");
+        if (d) parts.push(d + "d");
+        if (h) parts.push(h + "h");
+        if (m || !parts.length) parts.push(m + "min");
+        return parts.slice(0, maxParts).join(" ");
+      }
+      return Math.floor(minutes / 60) + "h " + (minutes % 60) + "min";
+    }
+
+    // Palette for genre slices (cycles if there are more genres than colors).
+    const GENRE_PALETTE = [
+      "#6366f1", "#ec4899", "#10b981", "#f59e0b", "#3b82f6",
+      "#8b5cf6", "#ef4444", "#14b8a6", "#f97316", "#a855f7",
+      "#06b6d4", "#84cc16",
+    ];
+
+    // Genre data keyed by media type slug (minutes-based types only).
+    function loadGenreData(slug) {
+      try {
+        const el = document.getElementById(slug + "_top_genres");
+        return el ? JSON.parse(el.textContent || "[]") : [];
+      } catch (_) { return []; }
+    }
+    const GENRE_TYPES = { tv: 1, movie: 1, anime: 1, music: 1, game: 1 };
+
+    // Elements for updating the card header.
+    const timeWorldsTitleEl = document.getElementById("timeWorldsTitle");
+    const timeWorldsSubtitleEl = document.getElementById("timeWorldsSubtitle");
+
+    let donutChartInstance = null;
+
+    // External HTML tooltip — lives in <body> so it's never clipped by the canvas.
+    function getOrCreateTooltipEl() {
+      let el = document.getElementById("timeWorldsTooltip");
+      if (!el) {
+        el = document.createElement("div");
+        el.id = "timeWorldsTooltip";
+        el.style.cssText =
+          "position:fixed;z-index:9999;pointer-events:none;opacity:0;transition:opacity 0.1s;" +
+          "background:#1f2937;border:1px solid rgba(255,255,255,0.1);border-radius:6px;" +
+          "padding:8px 10px;font-size:12px;color:#f3f4f6;white-space:nowrap;box-shadow:0 4px 12px rgba(0,0,0,0.4);";
+        document.body.appendChild(el);
+      }
+      return el;
+    }
+
+    function externalTooltipHandler(context, getTotalHours) {
+      const tooltipEl = getOrCreateTooltipEl();
+      const tooltip = context.tooltip;
+
+      if (tooltip.opacity === 0) {
+        tooltipEl.style.opacity = "0";
+        return;
+      }
+
+      if (tooltip.dataPoints && tooltip.dataPoints.length) {
+        const dp = tooltip.dataPoints[0];
+        const label = dp.label || "";
+        const hrs = dp.raw;
+        const total = getTotalHours();
+        const pct = total > 0 ? Math.round((hrs / total) * 100) : 0;
+        const color = dp.dataset.backgroundColor[dp.dataIndex];
+
+        tooltipEl.innerHTML =
+          '<div style="font-weight:600;margin-bottom:4px;color:#fff">' + label + "</div>" +
+          '<div style="display:flex;align-items:center;gap:6px">' +
+            '<span style="width:10px;height:10px;border-radius:2px;background:' + color + ';flex-shrink:0"></span>' +
+            '<span>' + fmtHours(hrs, Infinity) + " (" + pct + "%)</span>" +
+          "</div>";
+      }
+
+      const rect = timeWorldsCanvas.getBoundingClientRect();
+      const x = rect.left + tooltip.caretX;
+      const y = rect.top + tooltip.caretY;
+
+      // Flip left if near right edge of viewport.
+      const tipW = tooltipEl.offsetWidth || 160;
+      const left = x + 12 + tipW > window.innerWidth ? x - tipW - 12 : x + 12;
+
+      tooltipEl.style.left = left + "px";
+      tooltipEl.style.top = (y - 16) + "px";
+      tooltipEl.style.opacity = "1";
+    }
+
+    function renderDonut(labels, data, colors, getTotalHours) {
+      const externalTooltip = function (ctx) { externalTooltipHandler(ctx, getTotalHours); };
+
+      if (donutChartInstance) {
+        donutChartInstance.data.labels = labels;
+        donutChartInstance.data.datasets[0].data = data;
+        donutChartInstance.data.datasets[0].backgroundColor = colors;
+        donutChartInstance.options.plugins.tooltip.external = externalTooltip;
+        donutChartInstance.update();
+      } else {
+        donutChartInstance = new Chart(timeWorldsCanvas.getContext("2d"), {
+          type: "doughnut",
+          data: { labels: labels, datasets: [{ data: data, backgroundColor: colors }] },
+          options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            cutout: "68%",
+            plugins: {
+              legend: { display: false },
+              datalabels: { display: false },
+              tooltip: { enabled: false, external: externalTooltip },
+            },
+            elements: { arc: { borderWidth: 1, borderColor: "rgba(0,0,0,0.15)" } },
+          },
+        });
+        window.__yamtrackStatsCharts.push(donutChartInstance);
+      }
+    }
+
+    function renderLegend(labels, data, colors, totalHours) {
+      if (!timeWorldsLegendEl) return;
+      timeWorldsLegendEl.innerHTML = "";
+      const sortedIndices = labels.map(function (_, i) { return i; })
+        .sort(function (a, b) { return data[b] - data[a]; });
+      sortedIndices.forEach(function (i) {
+        const label = labels[i];
+        const hrs = data[i];
+        const color = colors[i];
+        const pct = totalHours > 0 ? Math.round((hrs / totalHours) * 100) : 0;
+        const row = document.createElement("div");
+        row.style.cssText = "display:flex;align-items:center;gap:14px;font-size:11px;";
+        row.innerHTML =
+          '<div style="flex-shrink:0;display:flex;align-items:center;gap:6px;width:74px">' +
+            '<span style="flex-shrink:0;width:10px;height:10px;border-radius:2px;background:' + color + '"></span>' +
+            '<span style="flex:1;color:#d1d5db;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + label + "</span>" +
+          '</div>' +
+          '<div style="flex:1;height:5px;border-radius:3px;background:rgba(255,255,255,0.07);overflow:hidden;min-width:40px">' +
+            '<div style="height:100%;border-radius:3px;background:' + color + ';width:' + pct + '%"></div>' +
+          '</div>' +
+          '<span style="flex-shrink:0;width:34px;text-align:center;color:#d1d5db;font-weight:600">' + pct + "%</span>" +
+          '<span style="flex-shrink:0;min-width:80px;text-align:center;color:#6b7280;font-variant-numeric:tabular-nums;white-space:nowrap">' + fmtHours(hrs) + "</span>";
+        timeWorldsLegendEl.appendChild(row);
+      });
+    }
+
+    function drawTimeWorldsChart(mediaType) {
+      const container = document.getElementById("timeWorldsContainer");
+      const isFiltered = mediaType && mediaType !== "all";
+      const hasGenres = isFiltered && GENRE_TYPES[mediaType];
+      const genres = hasGenres ? loadGenreData(mediaType) : [];
+
+      if (isFiltered && hasGenres && genres.length > 0) {
+        // ── Genre mode ──────────────────────────────────────────────────────
+        const labels = genres.map(function (g) { return g.name; });
+        const data = genres.map(function (g) { return +(g.minutes / 60).toFixed(2); });
+        const colors = genres.map(function (_, i) { return GENRE_PALETTE[i % GENRE_PALETTE.length]; });
+        const totalHours = data.reduce(function (a, b) { return a + b; }, 0);
+
+        if (timeWorldsTitleEl) timeWorldsTitleEl.textContent = "Top genres";
+        if (timeWorldsSubtitleEl) timeWorldsSubtitleEl.textContent = "Where your " + mediaType + " hours go.";
+
+        if (timeWorldsCenterEl) {
+          timeWorldsCenterEl.innerHTML =
+            '<span style="font-size:1rem;font-weight:700;color:#fff;line-height:1.2;text-align:center">' +
+            fmtHours(totalHours) + "</span>" +
+            '<span style="font-size:0.65rem;color:#9ca3af;line-height:1.2">total</span>';
+        }
+
+        renderDonut(labels, data, colors, function () { return totalHours; });
+        renderLegend(labels, data, colors, totalHours);
+        return;
+      }
+
+      // ── Type distribution mode (all, or filtered type with no genre data) ─
+      if (timeWorldsTitleEl) timeWorldsTitleEl.textContent = "Time across your worlds";
+      if (timeWorldsSubtitleEl) timeWorldsSubtitleEl.textContent = "Where your hours go.";
+
+      // Build the filtered view of the distribution data.
+      let labels, data, colors;
+      if (!isFiltered || !fullDistData.labels) {
+        labels = fullDistData.labels || [];
+        const ds = (fullDistData.datasets || [{}])[0] || {};
+        data = ds.data || [];
+        colors = ds.backgroundColor || [];
+      } else {
+        // Single-type filter for a type with no genre breakdown.
+        const MEDIA_SLUG_TO_LABEL = {
+          tv: "TV Show", movie: "Movie", anime: "Anime", music: "Music",
+          podcast: "Podcast", book: "Book", comic: "Comic",
+          boardgame: "Board Game", game: "Game", manga: "Manga",
+        };
+        const targetLabel = MEDIA_SLUG_TO_LABEL[mediaType];
+        const idx = targetLabel ? (fullDistData.labels || []).indexOf(targetLabel) : -1;
+        if (idx >= 0) {
+          const ds = fullDistData.datasets[0];
+          labels = [fullDistData.labels[idx]];
+          data = [ds.data[idx]];
+          colors = [ds.backgroundColor[idx]];
+        } else {
+          labels = []; data = []; colors = [];
+        }
+      }
+
+      if (!labels.length) {
+        if (donutChartInstance) { donutChartInstance.destroy(); donutChartInstance = null; }
+        if (container) {
+          container.innerHTML =
+            '<p class="text-sm text-gray-500 text-center py-8 w-full">No time data available for this filter.</p>';
+        }
+        return;
+      }
+
+      const totalHours = data.reduce(function (a, b) { return a + b; }, 0);
+
+      if (timeWorldsCenterEl) {
+        timeWorldsCenterEl.innerHTML =
+          '<span style="font-size:1rem;font-weight:700;color:#fff;line-height:1.2;text-align:center">' +
+          fmtHours(totalHours) + "</span>" +
+          '<span style="font-size:0.65rem;color:#9ca3af;line-height:1.2">total</span>';
+      }
+
+      renderDonut(labels, data, colors, function () { return totalHours; });
+      renderLegend(labels, data, colors, totalHours);
+    }
+
+    if (fullDistData.labels && fullDistData.labels.length > 0) {
+      drawTimeWorldsChart(getCurrentMediaType());
+      window.addEventListener("stats-media-type-changed", function () {
+        drawTimeWorldsChart(getCurrentMediaType());
+      });
+    } else {
+      const container = document.getElementById("timeWorldsContainer");
+      if (container) {
+        container.innerHTML =
+          '<p class="text-sm text-gray-500 text-center py-8 w-full">No time data available for this range.</p>';
+      }
+    }
+  }
 
   window.dispatchEvent(new CustomEvent("stats-charts-initialized"));
 

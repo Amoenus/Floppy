@@ -396,6 +396,7 @@ def _aggregate_statistics_from_days(
     minutes_by_type = defaultdict(float)
     plays_by_type = defaultdict(int)
     hour_counts = defaultdict(lambda: defaultdict(int))
+    weekday_hour_counts = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
     day_play_counts = defaultdict(dict)
     day_minutes_by_type = defaultdict(dict)
     movie_genres = defaultdict(lambda: {"minutes": 0, "plays": 0, "name": ""})
@@ -548,6 +549,7 @@ def _aggregate_statistics_from_days(
             for media_type, hours in day_stats.get("hour_counts", {}).items():
                 for hour, count in hours.items():
                     hour_counts[media_type][hour] += count
+                    weekday_hour_counts[media_type][day.weekday()][int(hour)] += count
 
             for media_type, minutes in day_stats.get("daily_minutes_by_type", {}).items():
                 day_minutes_by_type[media_type][day.isoformat()] = minutes
@@ -1550,6 +1552,19 @@ def _aggregate_statistics_from_days(
         )
     )
 
+    def _build_weekday_hour_matrix(wh_counts):
+        return [[wh_counts[wd][h] for h in range(24)] for wd in range(7)]
+
+    all_wh: defaultdict = defaultdict(lambda: defaultdict(int))
+    for mt_counts in weekday_hour_counts.values():
+        for wd, hours in mt_counts.items():
+            for h, count in hours.items():
+                all_wh[wd][h] += count
+
+    weekday_hour_chart_data = {"all": _build_weekday_hour_matrix(all_wh)}
+    for mt, wh in weekday_hour_counts.items():
+        weekday_hour_chart_data[mt] = _build_weekday_hour_matrix(wh)
+
     return {
         "media_count": media_count,
         "activity_data": activity_data,
@@ -1576,5 +1591,6 @@ def _aggregate_statistics_from_days(
         "history_highlights": history_highlights,
         "history_highlights_by_type": history_highlights_by_type,
         "summary_stats_by_type": summary_stats_by_type,
+        "weekday_hour_chart_data": weekday_hour_chart_data,
     }
 
