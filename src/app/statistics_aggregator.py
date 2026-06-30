@@ -97,7 +97,7 @@ def _compute_metric_breakdown_for_range(total_value, start_date, end_date):
     return breakdown
 
 
-def _build_media_charts_from_counts(day_counts, hour_counts, color, dataset_label):
+def _build_media_charts_from_counts(day_counts, hour_counts, color, dataset_label, *, to_hours=False):
     empty_chart = {"labels": [], "datasets": []}
     if not day_counts:
         return {
@@ -106,6 +106,9 @@ def _build_media_charts_from_counts(day_counts, hour_counts, color, dataset_labe
             "by_weekday": empty_chart,
             "by_time_of_day": empty_chart,
         }
+
+    def _transform(value):
+        return round(value / 60, 2) if to_hours else value
 
     year_counts = Counter()
     month_counts = Counter()
@@ -121,18 +124,18 @@ def _build_media_charts_from_counts(day_counts, hour_counts, color, dataset_labe
 
     sorted_years = sorted(year_counts)
     year_labels = [str(year) for year in sorted_years]
-    year_values = [year_counts[year] for year in sorted_years]
+    year_values = [_transform(year_counts[year]) for year in sorted_years]
 
     month_labels = [calendar.month_abbr[i] for i in range(1, 13)]
-    month_values = [month_counts.get(i, 0) for i in range(1, 13)]
+    month_values = [_transform(month_counts.get(i, 0)) for i in range(1, 13)]
 
     weekday_map = {0: "Mon", 1: "Tue", 2: "Wed", 3: "Thu", 4: "Fri", 5: "Sat", 6: "Sun"}
     weekday_order = [6, 0, 1, 2, 3, 4, 5]
     weekday_labels = [weekday_map[index] for index in weekday_order]
-    weekday_values = [weekday_counts.get(index, 0) for index in weekday_order]
+    weekday_values = [_transform(weekday_counts.get(index, 0)) for index in weekday_order]
 
     hour_labels = [stats._format_hour_label(hour) for hour in range(24)]
-    hour_values = [hour_counts.get(str(hour), 0) for hour in range(24)]
+    hour_values = [_transform(hour_counts.get(str(hour), 0)) for hour in range(24)]
 
     return {
         "by_year": stats._build_single_series_chart(year_labels, year_values, color, dataset_label),
@@ -397,6 +400,7 @@ def _aggregate_statistics_from_days(
     minutes_by_type = defaultdict(float)
     plays_by_type = defaultdict(int)
     hour_counts = defaultdict(lambda: defaultdict(int))
+    hour_minutes = defaultdict(lambda: defaultdict(float))
     weekday_hour_counts = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
     day_play_counts = defaultdict(dict)
     day_minutes_by_type = defaultdict(dict)
@@ -551,6 +555,10 @@ def _aggregate_statistics_from_days(
                 for hour, count in hours.items():
                     hour_counts[media_type][hour] += count
                     weekday_hour_counts[media_type][day.weekday()][int(hour)] += count
+
+            for media_type, hours in day_stats.get("hour_minutes", {}).items():
+                for hour, minutes in hours.items():
+                    hour_minutes[media_type][hour] += minutes or 0
 
             for media_type, minutes in day_stats.get("daily_minutes_by_type", {}).items():
                 day_minutes_by_type[media_type][day.isoformat()] = minutes
@@ -1566,6 +1574,50 @@ def _aggregate_statistics_from_days(
     for mt, wh in weekday_hour_counts.items():
         weekday_hour_chart_data[mt] = _build_weekday_hour_matrix(wh)
 
+    combined_hours_media_types = (
+        MediaTypes.MOVIE.value,
+        MediaTypes.TV.value,
+        MediaTypes.ANIME.value,
+        MediaTypes.MUSIC.value,
+        MediaTypes.PODCAST.value,
+    )
+
+    merged_day_minutes: defaultdict = defaultdict(float)
+    merged_hour_minutes: defaultdict = defaultdict(float)
+    per_type_hours_charts = {}
+    for media_type in combined_hours_media_types:
+        type_day_minutes = day_minutes_by_type.get(media_type, {})
+        type_hour_minutes = hour_minutes.get(media_type, {})
+        per_type_hours_charts[media_type] = _build_media_charts_from_counts(
+            type_day_minutes,
+            type_hour_minutes,
+            config.get_stats_color(media_type),
+            "Hours",
+            to_hours=True,
+        )
+        for day_str, minutes in type_day_minutes.items():
+            merged_day_minutes[day_str] += minutes or 0
+        for hour, minutes in type_hour_minutes.items():
+            merged_hour_minutes[hour] += minutes or 0
+
+    all_hours_chart = _build_media_charts_from_counts(
+        dict(merged_day_minutes),
+        dict(merged_hour_minutes),
+        "#6366f1",
+        "Hours",
+        to_hours=True,
+    )
+
+    combined_hours_charts = {
+        "by_month": {"all": all_hours_chart["by_month"]},
+        "by_weekday": {"all": all_hours_chart["by_weekday"]},
+        "by_time_of_day": {"all": all_hours_chart["by_time_of_day"]},
+    }
+    for media_type, chart in per_type_hours_charts.items():
+        combined_hours_charts["by_month"][media_type] = chart["by_month"]
+        combined_hours_charts["by_weekday"][media_type] = chart["by_weekday"]
+        combined_hours_charts["by_time_of_day"][media_type] = chart["by_time_of_day"]
+
     return {
         "media_count": media_count,
         "activity_data": activity_data,
@@ -1593,5 +1645,6 @@ def _aggregate_statistics_from_days(
         "history_highlights_by_type": history_highlights_by_type,
         "summary_stats_by_type": summary_stats_by_type,
         "weekday_hour_chart_data": weekday_hour_chart_data,
+        "combined_plays_charts": combined_hours_charts,
     }
 

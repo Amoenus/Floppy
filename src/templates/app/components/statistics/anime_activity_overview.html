@@ -104,46 +104,6 @@
           </div>
           {% endif %}
 
-          <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
-            <div class="bg-[#39404b] rounded-lg p-3 sm:p-4">
-              <h3 class="text-sm font-medium uppercase tracking-wide text-gray-300 mb-4">Episode Plays by Month</h3>
-              {% if anime_consumption.charts.by_month.labels %}
-                <div class="h-64">
-                  <canvas id="animeEpisodesByMonthChart"></canvas>
-                </div>
-              {% else %}
-                <div class="flex flex-col items-center justify-center py-12 text-gray-400">
-                  <p class="text-sm">No monthly episode plays recorded.</p>
-                </div>
-              {% endif %}
-            </div>
-            <div class="bg-[#39404b] rounded-lg p-3 sm:p-4">
-              <h3 class="text-sm font-medium uppercase tracking-wide text-gray-300 mb-4">Episode Plays by Day of Week</h3>
-              {% if anime_consumption.charts.by_weekday.labels %}
-                <div class="h-64">
-                  <canvas id="animeEpisodesByWeekdayChart"></canvas>
-                </div>
-              {% else %}
-                <div class="flex flex-col items-center justify-center py-12 text-gray-400">
-                  <p class="text-sm">No weekday data available.</p>
-                </div>
-              {% endif %}
-            </div>
-          </div>
-
-          <div class="bg-[#39404b] rounded-lg p-3 sm:p-4">
-            <h3 class="text-sm font-medium uppercase tracking-wide text-gray-300 mb-4">Episode Plays by Time of Day</h3>
-            {% if anime_consumption.charts.by_time_of_day.labels %}
-              <div class="h-64">
-                <canvas id="animeEpisodesByTimeChart"></canvas>
-              </div>
-            {% else %}
-              <div class="flex flex-col items-center justify-center py-12 text-gray-400">
-                <p class="text-sm">No time-of-day data available.</p>
-              </div>
-            {% endif %}
-          </div>
-
           <!-- Top 3 Cards: Most Played, Top Genres, Top Rated -->
           <div class="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
             <!-- Most Played -->

@@ -105,6 +105,7 @@ def build_stats_for_day(user_id: int, day_value):
     minutes_by_type: dict[str, float] = defaultdict(float)
     plays_by_type: dict[str, int] = defaultdict(int)
     hour_counts: dict[str, dict[int, int]] = defaultdict(lambda: defaultdict(int))
+    hour_minutes: dict[str, dict[int, float]] = defaultdict(lambda: defaultdict(float))
     daily_minutes_by_type: dict[str, float] = defaultdict(float)
     movie_genres = defaultdict(lambda: {"minutes": 0, "plays": 0})
     tv_genres = defaultdict(lambda: {"minutes": 0, "plays": 0})
@@ -215,13 +216,14 @@ def build_stats_for_day(user_id: int, day_value):
             if media_id:
                 entry["media_id"] = media_id
 
-    def _add_hour(media_type: str, activity_dt):
+    def _add_hour(media_type: str, activity_dt, minutes: float = 0):
         if not activity_dt:
             return
         localized = stats._localize_datetime(activity_dt)
         if not localized:
             return
         hour_counts[media_type][localized.hour] += 1
+        hour_minutes[media_type][localized.hour] += minutes or 0
 
     def _add_genres(genre_map, genres, minutes):
         if not genres or not minutes:
@@ -277,9 +279,9 @@ def build_stats_for_day(user_id: int, day_value):
             )
             plays_by_type[ep_type] += 1
             play_count += 1
-            _add_hour(ep_type, play_dt)
-
             runtime_minutes = _safe_runtime_minutes(row.get("item__runtime_minutes"))
+            _add_hour(ep_type, play_dt, runtime_minutes)
+
             if runtime_minutes <= 0:
                 missing_runtime += 1
                 media_id = row.get("item__media_id")
@@ -377,7 +379,7 @@ def build_stats_for_day(user_id: int, day_value):
                 plays_by_type[MediaTypes.MOVIE.value] += 1
                 play_count += 1
                 runtime_minutes = _safe_runtime_minutes(row.get("item__runtime_minutes"))
-                _add_hour(MediaTypes.MOVIE.value, activity_dt)
+                _add_hour(MediaTypes.MOVIE.value, activity_dt, runtime_minutes)
                 if runtime_minutes > 0:
                     daily_minutes_by_type[MediaTypes.MOVIE.value] += runtime_minutes
 
@@ -732,7 +734,7 @@ def build_stats_for_day(user_id: int, day_value):
             localized = stats._localize_datetime(play_end)
             plays_by_type[MediaTypes.MUSIC.value] += 1
             play_count += 1
-            _add_hour(MediaTypes.MUSIC.value, localized)
+            _add_hour(MediaTypes.MUSIC.value, localized, runtime_minutes)
             if runtime_minutes:
                 minutes_by_type[MediaTypes.MUSIC.value] += runtime_minutes
                 daily_minutes_by_type[MediaTypes.MUSIC.value] += runtime_minutes
@@ -879,7 +881,7 @@ def build_stats_for_day(user_id: int, day_value):
                 localized = stats._localize_datetime(play_end)
                 plays_by_type[MediaTypes.PODCAST.value] += 1
                 play_count += 1
-                _add_hour(MediaTypes.PODCAST.value, localized)
+                _add_hour(MediaTypes.PODCAST.value, localized, runtime_minutes)
                 minutes_by_type[MediaTypes.PODCAST.value] += runtime_minutes
                 daily_minutes_by_type[MediaTypes.PODCAST.value] += runtime_minutes
 
@@ -1045,6 +1047,7 @@ def build_stats_for_day(user_id: int, day_value):
             "plays_by_type": dict(plays_by_type),
         },
         "hour_counts": {},
+        "hour_minutes": {},
         "genres": {
             "movie": dict(movie_genres),
             "tv": dict(tv_genres),
@@ -1080,6 +1083,9 @@ def build_stats_for_day(user_id: int, day_value):
 
     for media_type, hours in hour_counts.items():
         day_stats["hour_counts"][media_type] = {str(hour): count for hour, count in hours.items()}
+
+    for media_type, hours in hour_minutes.items():
+        day_stats["hour_minutes"][media_type] = {str(hour): minutes for hour, minutes in hours.items()}
 
     game_genre_payload = {}
     for genre, payload in game_genres.items():

@@ -25,7 +25,6 @@ function initStatisticsCharts() {
     if (!tooltipEl) {
       tooltipEl = document.createElement("div");
       tooltipEl.id = "chartjs-tooltip";
-      tooltipEl.innerHTML = "<table></table>";
       document.body.appendChild(tooltipEl);
     }
 
@@ -58,53 +57,28 @@ function initStatisticsCharts() {
         }
       }
 
-      // Get all values for this stack and format to 1 decimal place
-      let tableBody =
-        '<thead><tr><th colspan="2">' +
-        formattedTitle +
-        "</th></tr></thead><tbody>";
-      let stackTotal = 0;
-
       function fmt(v) {
         const n = Number(v) || 0;
         return n.toFixed(1);
       }
 
-      chart.data.datasets.forEach((dataset, i) => {
+      let html = '<div style="font-weight:600;margin-bottom:6px;color:#fff">' + formattedTitle + "</div>";
+      chart.data.datasets.forEach((dataset) => {
         const raw = Number(dataset.data[dataIndex]) || 0;
         if (raw > 0) {
-          stackTotal += raw;
           const bgColor = dataset.backgroundColor;
           const label = dataset.label || "";
-          const value = fmt(raw);
-
-          tableBody +=
-            "<tr>" +
-            '<td style="padding-right:15px;"><span style="display:inline-block;width:12px;height:12px;background:' +
+          html +=
+            '<div style="display:flex;align-items:center;gap:6px;margin-top:4px">' +
+            '<span style="width:10px;height:10px;border-radius:2px;background:' +
             bgColor +
-            ';margin-right:8px;border-radius:2px;"></span>' +
-            label +
-            ":</td>" +
-            '<td style="text-align:right;font-weight:bold;">' +
-            value +
-            "</td>" +
-            "</tr>";
+            ';flex-shrink:0"></span>' +
+            "<span>" + label + ": " + fmt(raw) + "</span>" +
+            "</div>";
         }
       });
 
-      // Add total row (formatted)
-      tableBody +=
-        '<tr class="total-row">' +
-        "<td>Total:</td>" +
-        '<td style="text-align:right;font-weight:bold;">' +
-        (stackTotal.toFixed ? stackTotal.toFixed(1) : Number(stackTotal).toFixed(1)) +
-        "</td>" +
-        "</tr>";
-
-      tableBody += "</tbody>";
-
-      const tableRoot = tooltipEl.querySelector("table");
-      tableRoot.innerHTML = tableBody;
+      tooltipEl.innerHTML = html;
     }
 
     // Position and style the tooltip
@@ -754,51 +728,15 @@ function initStatisticsCharts() {
     "tvEpisodesByYearChart",
     "tv_episodes_by_year"
   );
-  initializeSingleSeriesBarChart(
-    "tvEpisodesByMonthChart",
-    "tv_episodes_by_month"
-  );
-  initializeSingleSeriesBarChart(
-    "tvEpisodesByWeekdayChart",
-    "tv_episodes_by_weekday"
-  );
-  initializeSingleSeriesBarChart(
-    "tvEpisodesByTimeChart",
-    "tv_episodes_by_time"
-  );
 
   initializeSingleSeriesBarChart(
     "animeEpisodesByYearChart",
     "anime_episodes_by_year"
   );
-  initializeSingleSeriesBarChart(
-    "animeEpisodesByMonthChart",
-    "anime_episodes_by_month"
-  );
-  initializeSingleSeriesBarChart(
-    "animeEpisodesByWeekdayChart",
-    "anime_episodes_by_weekday"
-  );
-  initializeSingleSeriesBarChart(
-    "animeEpisodesByTimeChart",
-    "anime_episodes_by_time"
-  );
 
   initializeSingleSeriesBarChart(
     "moviePlaysByYearChart",
     "movie_plays_by_year"
-  );
-  initializeSingleSeriesBarChart(
-    "moviePlaysByMonthChart",
-    "movie_plays_by_month"
-  );
-  initializeSingleSeriesBarChart(
-    "moviePlaysByWeekdayChart",
-    "movie_plays_by_weekday"
-  );
-  initializeSingleSeriesBarChart(
-    "moviePlaysByTimeChart",
-    "movie_plays_by_time"
   );
   initializeSingleSeriesBarChart(
     "bookFinishedByYearChart",
@@ -858,7 +796,6 @@ function initStatisticsCharts() {
       if (!tooltipEl) {
         tooltipEl = document.createElement("div");
         tooltipEl.id = "chartjs-tooltip";
-        tooltipEl.innerHTML = "<table></table>";
         document.body.appendChild(tooltipEl);
       }
 
@@ -869,41 +806,25 @@ function initStatisticsCharts() {
       }
 
       if (tooltipModel.body) {
-        const dataIndex = tooltipModel.dataPoints[0].dataIndex;
         const bandLabel = tooltipModel.title[0] || "";
         const bandGames = topGamesByBand[bandLabel] || [];
-        const totalCount = tooltipModel.dataPoints[0].raw || 0;
 
-        let tableBody =
-          '<thead><tr><th colspan="2">Avg/day: ' + bandLabel + "</th></tr></thead><tbody>";
+        let html = '<div style="font-weight:600;margin-bottom:6px;color:#fff">Avg/day: ' + bandLabel + "</div>";
+        bandGames.forEach(function (game, idx) {
+          html +=
+            '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:4px">' +
+            '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px">' +
+            (idx + 1) +
+            ". " +
+            (game.title || "Unknown") +
+            "</span>" +
+            '<span style="font-weight:600;white-space:nowrap">' +
+            (game.formatted_daily_average || "") +
+            "</span>" +
+            "</div>";
+        });
 
-        if (bandGames.length > 0) {
-          bandGames.forEach(function (game, idx) {
-            tableBody +=
-              "<tr>" +
-              '<td style="padding-right:15px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' +
-              (idx + 1) +
-              ". " +
-              (game.title || "Unknown") +
-              "</td>" +
-              '<td style="text-align:right;font-weight:bold;white-space:nowrap;">' +
-              (game.formatted_daily_average || "") +
-              "</td>" +
-              "</tr>";
-          });
-        }
-
-        tableBody +=
-          '<tr class="total-row">' +
-          "<td>Games:</td>" +
-          '<td style="text-align:right;font-weight:bold;">' +
-          totalCount +
-          "</td>" +
-          "</tr>";
-        tableBody += "</tbody>";
-
-        const tableRoot = tooltipEl.querySelector("table");
-        tableRoot.innerHTML = tableBody;
+        tooltipEl.innerHTML = html;
       }
 
       const position = context.chart.canvas.getBoundingClientRect();
@@ -943,35 +864,11 @@ function initStatisticsCharts() {
     "musicPlaysByYearChart",
     "music_plays_by_year"
   );
-  initializeSingleSeriesBarChart(
-    "musicPlaysByMonthChart",
-    "music_plays_by_month"
-  );
-  initializeSingleSeriesBarChart(
-    "musicPlaysByWeekdayChart",
-    "music_plays_by_weekday"
-  );
-  initializeSingleSeriesBarChart(
-    "musicPlaysByTimeChart",
-    "music_plays_by_time"
-  );
 
   // Podcast charts
   initializeSingleSeriesBarChart(
     "podcastPlaysByYearChart",
     "podcast_plays_by_year"
-  );
-  initializeSingleSeriesBarChart(
-    "podcastPlaysByMonthChart",
-    "podcast_plays_by_month"
-  );
-  initializeSingleSeriesBarChart(
-    "podcastPlaysByWeekdayChart",
-    "podcast_plays_by_weekday"
-  );
-  initializeSingleSeriesBarChart(
-    "podcastPlaysByTimeChart",
-    "podcast_plays_by_time"
   );
 
   function getCurrentMediaType() {
@@ -1105,6 +1002,181 @@ function initStatisticsCharts() {
     window.addEventListener("stats-media-type-changed", function () {
       drawRhythmChart(getCurrentMediaType());
     });
+  }
+
+  // ─── Combined Plays charts (by_month / by_weekday / by_time_of_day) ────────
+  const combinedPlaysEl = document.getElementById("combined_plays_charts");
+  if (combinedPlaysEl) {
+    let combinedPlaysData = null;
+    try {
+      combinedPlaysData = JSON.parse(combinedPlaysEl.textContent || "null");
+    } catch (_) {
+      combinedPlaysData = null;
+    }
+
+    const COMBINED_CHART_SPECS = [
+      {
+        key: "by_month",
+        canvasId: "combinedPlaysByMonthChart",
+        containerId: "combinedPlaysByMonthContainer",
+      },
+      {
+        key: "by_weekday",
+        canvasId: "combinedPlaysByWeekdayChart",
+        containerId: "combinedPlaysByWeekdayContainer",
+      },
+      {
+        key: "by_time_of_day",
+        canvasId: "combinedPlaysByTimeChart",
+        containerId: "combinedPlaysByTimeContainer",
+      },
+    ];
+    const combinedChartInstances = {};
+
+    const COMBINED_PLAYS_MEDIA_TYPES = ["movie", "tv", "anime", "music", "podcast"];
+    const COMBINED_PLAYS_TYPE_LABELS = {
+      movie: "Movies",
+      tv: "TV Shows",
+      anime: "Anime",
+      music: "Music",
+      podcast: "Podcasts",
+    };
+
+    function combinedPlaysTooltip(spec) {
+      return function (context) {
+        let tooltipEl = document.getElementById("combinedPlaysTooltip");
+        if (!tooltipEl) {
+          tooltipEl = document.createElement("div");
+          tooltipEl.id = "combinedPlaysTooltip";
+          tooltipEl.style.cssText =
+            "position:absolute;z-index:100;pointer-events:none;opacity:0;transition:opacity 0.2s ease;" +
+            "background:#1f2937;border:1px solid rgba(255,255,255,0.1);border-radius:6px;" +
+            "padding:10px 12px;font-size:13px;color:#f3f4f6;min-width:160px;" +
+            "box-shadow:0 4px 12px rgba(0,0,0,0.4);";
+          document.body.appendChild(tooltipEl);
+        }
+
+        const tooltipModel = context.tooltip;
+        if (tooltipModel.opacity === 0) {
+          tooltipEl.style.opacity = 0;
+          return;
+        }
+
+        if (tooltipModel.body) {
+          const dataIndex = tooltipModel.dataPoints[0].dataIndex;
+          const title = tooltipModel.title[0] || "";
+          const byKey = (combinedPlaysData && combinedPlaysData[spec.key]) || {};
+          const currentMediaType = getCurrentMediaType();
+          const relevantTypes =
+            currentMediaType === "all" ? COMBINED_PLAYS_MEDIA_TYPES : [currentMediaType];
+
+          const rows = relevantTypes
+            .map(function (type) {
+              const typeChart = byKey[type];
+              const ds = typeChart && typeChart.datasets && typeChart.datasets[0];
+              const value = ds ? Number(ds.data[dataIndex]) || 0 : 0;
+              const color = ds ? ds.background_color : "#9ca3af";
+              return {
+                label: COMBINED_PLAYS_TYPE_LABELS[type] || type,
+                value: value,
+                color: color,
+              };
+            })
+            .filter(function (row) {
+              return row.value > 0;
+            })
+            .sort(function (a, b) {
+              return b.value - a.value;
+            });
+
+          function fmtHoursValue(hrs) {
+            return (Number(hrs) || 0).toFixed(1) + "h";
+          }
+
+          let html = '<div style="font-weight:600;margin-bottom:6px;color:#fff">' + title + "</div>";
+          rows.forEach(function (row) {
+            html +=
+              '<div style="display:flex;align-items:center;gap:6px;margin-top:4px">' +
+              '<span style="width:10px;height:10px;border-radius:2px;background:' +
+              row.color +
+              ';flex-shrink:0"></span>' +
+              "<span>" + row.label + ": " + fmtHoursValue(row.value) + "</span>" +
+              "</div>";
+          });
+
+          tooltipEl.innerHTML = html;
+        }
+
+        const position = context.chart.canvas.getBoundingClientRect();
+        tooltipEl.style.opacity = 1;
+        tooltipEl.style.left =
+          position.left + window.scrollX + tooltipModel.caretX + "px";
+        tooltipEl.style.top =
+          position.top + window.scrollY + tooltipModel.caretY + "px";
+        tooltipEl.style.transform = "translate(-50%, -100%)";
+      };
+    }
+
+    function drawCombinedChart(spec, mediaType) {
+      const container = document.getElementById(spec.containerId);
+      const byKey = (combinedPlaysData && combinedPlaysData[spec.key]) || {};
+      const chartData = byKey[mediaType] || byKey.all;
+
+      if (!chartData || !chartData.labels || chartData.labels.length === 0) {
+        if (combinedChartInstances[spec.key]) {
+          combinedChartInstances[spec.key].destroy();
+          combinedChartInstances[spec.key] = null;
+        }
+        if (container) {
+          container.innerHTML =
+            '<p class="text-sm text-gray-500 text-center py-8 w-full">No data for this filter.</p>';
+        }
+        return;
+      }
+
+      if (!container.querySelector("canvas")) {
+        container.innerHTML = `<canvas id="${spec.canvasId}"></canvas>`;
+      }
+
+      const chartOptions = JSON.parse(JSON.stringify(barChartConfig));
+      chartOptions.scales.x.stacked = false;
+      chartOptions.scales.y.stacked = false;
+      if (chartOptions.plugins && chartOptions.plugins.legend) {
+        chartOptions.plugins.legend.display = false;
+      }
+      chartOptions.plugins.tooltip = {
+        enabled: false,
+        mode: "index",
+        intersect: false,
+        external: combinedPlaysTooltip(spec),
+      };
+      const processed = processBarData(chartData);
+
+      if (combinedChartInstances[spec.key]) {
+        combinedChartInstances[spec.key].data = processed;
+        combinedChartInstances[spec.key].update();
+      } else {
+        const chart = new Chart(
+          document.getElementById(spec.canvasId).getContext("2d"),
+          { type: "bar", data: processed, options: chartOptions }
+        );
+        window.__yamtrackStatsCharts.push(chart);
+        combinedChartInstances[spec.key] = chart;
+      }
+    }
+
+    function drawAllCombinedCharts(mediaType) {
+      COMBINED_CHART_SPECS.forEach(function (spec) {
+        drawCombinedChart(spec, mediaType);
+      });
+    }
+
+    if (combinedPlaysData && typeof combinedPlaysData === "object") {
+      drawAllCombinedCharts(getCurrentMediaType());
+      window.addEventListener("stats-media-type-changed", function () {
+        drawAllCombinedCharts(getCurrentMediaType());
+      });
+    }
   }
 
   // ─── Time Across Your Worlds doughnut ───────────────────────────────────────

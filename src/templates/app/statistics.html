@@ -289,11 +289,12 @@
       color: #9ca3af;
     }
     .stats-tooltip {
-      background: #111827;
-      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+      background: #1f2937;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
     }
     .stats-tooltip-arrow {
-      border-top-color: #111827;
+      border-top-color: #1f2937;
     }
     .stats-tooltip-lines {
       display: grid;
@@ -1190,7 +1191,7 @@
 
   <!-- Activity History Section -->
   {% if user.activity_history_view != 'stacked' %}
-  <div id="activityHistory" class="bg-[#2a2f35] rounded-lg p-4 sm:p-6 w-full overflow-hidden">
+  <div id="activityHistory" class="bg-[#2a2f35] rounded-lg p-4 sm:p-6 w-full overflow-hidden mb-4">
         <div class="flex items-center justify-between mb-3">
           <div>
             <h2 class="text-base font-semibold text-white mb-0.5">Activity History</h2>
@@ -1247,7 +1248,29 @@
         </div>
     </div>
   {% endif %}
-      
+
+  <!-- Combined Hours charts -->
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
+    <div class="bg-[#2a2f35] rounded-lg p-4 sm:p-6">
+      <h2 class="text-base font-semibold text-white mb-3">Hours by Month</h2>
+      <div id="combinedPlaysByMonthContainer" class="h-64">
+        <canvas id="combinedPlaysByMonthChart"></canvas>
+      </div>
+    </div>
+    <div class="bg-[#2a2f35] rounded-lg p-4 sm:p-6">
+      <h2 class="text-base font-semibold text-white mb-3">Hours by Day of Week</h2>
+      <div id="combinedPlaysByWeekdayContainer" class="h-64">
+        <canvas id="combinedPlaysByWeekdayChart"></canvas>
+      </div>
+    </div>
+    <div class="bg-[#2a2f35] rounded-lg p-4 sm:p-6">
+      <h2 class="text-base font-semibold text-white mb-3">Hours by Time of Day</h2>
+      <div id="combinedPlaysByTimeContainer" class="h-64">
+        <canvas id="combinedPlaysByTimeChart"></canvas>
+      </div>
+    </div>
+  </div>
+
     <!-- Copied: Score Distribution by Media Type (placed under Activity History) -->
     {% if user.activity_history_view != 'heatmap' %}
     <div id="scoreCopyWrapper" class="bg-[#2a2f35] rounded-lg p-4 sm:p-6 stat-scroll-safe mt-0">
@@ -2296,6 +2319,7 @@
   {{ game_consumption.top_genres|default:"[]"|json_script:"game_top_genres" }}
   {{ user.duration_format|default:'hours_minutes'|json_script:"stats_duration_format" }}
   {{ weekday_hour_chart_data|json_script:"weekday_hour_chart_data" }}
+  {{ combined_plays_charts|json_script:"combined_plays_charts" }}
   {{ status_pie_chart_data|json_script:"status_pie_chart_data" }}
   {{ status_distribution|json_script:"status_distribution" }}
   {{ score_distribution|json_script:"score_distribution" }}
@@ -2306,21 +2330,12 @@
   {% if show_year_charts %}
     {{ tv_consumption.charts.by_year|json_script:"tv_episodes_by_year" }}
   {% endif %}
-  {{ tv_consumption.charts.by_month|json_script:"tv_episodes_by_month" }}
-  {{ tv_consumption.charts.by_weekday|json_script:"tv_episodes_by_weekday" }}
-  {{ tv_consumption.charts.by_time_of_day|json_script:"tv_episodes_by_time" }}
   {% if show_year_charts %}
     {{ anime_consumption.charts.by_year|json_script:"anime_episodes_by_year" }}
   {% endif %}
-  {{ anime_consumption.charts.by_month|json_script:"anime_episodes_by_month" }}
-  {{ anime_consumption.charts.by_weekday|json_script:"anime_episodes_by_weekday" }}
-  {{ anime_consumption.charts.by_time_of_day|json_script:"anime_episodes_by_time" }}
   {% if show_year_charts %}
     {{ movie_consumption.charts.by_year|json_script:"movie_plays_by_year" }}
   {% endif %}
-  {{ movie_consumption.charts.by_month|json_script:"movie_plays_by_month" }}
-  {{ movie_consumption.charts.by_weekday|json_script:"movie_plays_by_weekday" }}
-  {{ movie_consumption.charts.by_time_of_day|json_script:"movie_plays_by_time" }}
   {% if user.book_enabled and book_consumption.has_data %}
     {% if show_year_charts %}
       {{ book_consumption.completion_charts.by_year|json_script:"book_finished_by_year" }}
@@ -2351,17 +2366,11 @@
     {% if show_year_charts %}
       {{ music_consumption.charts.by_year|json_script:"music_plays_by_year" }}
     {% endif %}
-    {{ music_consumption.charts.by_month|json_script:"music_plays_by_month" }}
-    {{ music_consumption.charts.by_weekday|json_script:"music_plays_by_weekday" }}
-    {{ music_consumption.charts.by_time_of_day|json_script:"music_plays_by_time" }}
   {% endif %}
   {% if user.podcast_enabled and podcast_consumption.has_data %}
     {% if show_year_charts %}
       {{ podcast_consumption.charts.by_year|json_script:"podcast_plays_by_year" }}
     {% endif %}
-    {{ podcast_consumption.charts.by_month|json_script:"podcast_plays_by_month" }}
-    {{ podcast_consumption.charts.by_weekday|json_script:"podcast_plays_by_weekday" }}
-    {{ podcast_consumption.charts.by_time_of_day|json_script:"podcast_plays_by_time" }}
   {% endif %}
 
   <script src="{% static 'js/statistics-charts.js' %}{% get_static_file_mtime 'js/statistics-charts.js' %}"></script>

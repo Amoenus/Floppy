@@ -559,6 +559,7 @@ def statistics(request):
             "hours_per_media_type_comparison": hours_per_media_type_comparison,
             "total_activity_comparison": total_activity_comparison,
             "weekday_hour_chart_data": statistics_data.get("weekday_hour_chart_data", {}),
+            "combined_plays_charts": statistics_data.get("combined_plays_charts", {}),
             "media_count": statistics_data["media_count"],
             "activity_data": _extend_heatmap_with_future(
                 statistics_data["activity_data"],
