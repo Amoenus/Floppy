@@ -166,6 +166,7 @@ def _build_daily_hours_chart(day_minutes_by_type, day_list):
             continue
         datasets.append({
             "label": app_tags.media_type_readable(media_type),
+            "media_type": media_type,
             "data": [round(minutes / 60, 2) for minutes in totals],
             "background_color": config.get_stats_color(media_type),
         })

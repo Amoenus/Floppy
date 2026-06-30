@@ -1075,33 +1075,30 @@ function initStatisticsCharts() {
           `font-size="9" fill="#6b7280">${lbl}</text>`;
       }
 
-      // "Low → High" legend: one swatch per tier, growing in size + opacity.
-      const legendY = maxR;
-      const legendGap = dotArea;
-      const legendStartX = labelW + maxR;
-      let legendDots = "";
-      for (let t = 1; t <= TIERS; t++) {
-        const lx = legendStartX + (t - 1) * legendGap;
-        legendDots +=
-          `<circle cx="${lx}" cy="${legendY}" r="${tierRadius(t).toFixed(1)}" fill="${tierFill(t)}"/>`;
+      // "Low → High" legend rendered into the header container (top-right).
+      const legendEl = document.getElementById("activityRhythmLegend");
+      if (legendEl) {
+        legendEl.innerHTML =
+          '<span style="font-size:9px;color:#6b7280">Low</span>';
+        for (let t = 1; t <= TIERS; t++) {
+          const r = tierRadius(t);
+          const size = (r * 2).toFixed(1) + "px";
+          const dot = document.createElement("span");
+          dot.style.cssText =
+            `display:inline-block;width:${size};height:${size};border-radius:50%;` +
+            `background:${tierFill(t)};flex-shrink:0;`;
+          legendEl.appendChild(dot);
+        }
+        legendEl.insertAdjacentHTML(
+          "beforeend",
+          '<span style="font-size:9px;color:#6b7280">High</span>'
+        );
       }
-      const legendLowX = legendStartX - maxR - 4;
-      const legendHighX = legendStartX + (TIERS - 1) * legendGap + maxR + 4;
-      const legendSvg =
-        `<svg width="100%" viewBox="0 0 ${totalW} ${maxR * 2}" ` +
-        `xmlns="http://www.w3.org/2000/svg" ` +
-        `style="overflow:visible;display:block;margin-top:8px">` +
-        `<text x="${legendLowX}" y="${legendY + 3.5}" text-anchor="end" ` +
-        `font-size="9" fill="#6b7280">Low</text>` +
-        legendDots +
-        `<text x="${legendHighX}" y="${legendY + 3.5}" text-anchor="start" ` +
-        `font-size="9" fill="#6b7280">High</text>` +
-        `</svg>`;
 
       rhythmContainer.innerHTML =
         `<svg width="100%" viewBox="0 0 ${totalW} ${totalH}" ` +
         `xmlns="http://www.w3.org/2000/svg" style="overflow:visible;display:block">` +
-        hourLabels + cells + `</svg>` + legendSvg;
+        hourLabels + cells + `</svg>`;
     }
 
     drawRhythmChart(getCurrentMediaType());
@@ -1299,7 +1296,7 @@ function initStatisticsCharts() {
         const colors = genres.map(function (_, i) { return GENRE_PALETTE[i % GENRE_PALETTE.length]; });
         const totalHours = data.reduce(function (a, b) { return a + b; }, 0);
 
-        if (timeWorldsTitleEl) timeWorldsTitleEl.textContent = "Top genres";
+        if (timeWorldsTitleEl) timeWorldsTitleEl.textContent = "Top Genres";
         if (timeWorldsSubtitleEl) timeWorldsSubtitleEl.textContent = "Where your " + mediaType + " hours go.";
 
         if (timeWorldsCenterEl) {
@@ -1315,7 +1312,7 @@ function initStatisticsCharts() {
       }
 
       // ── Type distribution mode (all, or filtered type with no genre data) ─
-      if (timeWorldsTitleEl) timeWorldsTitleEl.textContent = "Time across your worlds";
+      if (timeWorldsTitleEl) timeWorldsTitleEl.textContent = "Hours by Media Type";
       if (timeWorldsSubtitleEl) timeWorldsSubtitleEl.textContent = "Where your hours go.";
 
       // Build the filtered view of the distribution data.

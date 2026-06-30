@@ -1,3 +1,4 @@
+import calendar as _calendar
 import logging
 import re
 from datetime import date, timedelta
@@ -41,6 +42,73 @@ DATE_FORMAT_DJANGO_MAP = {
 }
 
 logger = logging.getLogger(__name__)
+
+
+def _extend_heatmap_with_future(activity_data, start_date, end_date, week_start_sunday=False):
+    """Extend calendar_weeks beyond today with empty future cells to fill the period.
+
+    Runs at render time so it's never affected by the Celery-managed cache.
+    """
+    if not isinstance(activity_data, dict):
+        return activity_data
+    today = timezone.localdate()
+    weeks = activity_data.get("calendar_weeks", [])
+    if not weeks:
+        return activity_data
+
+    # Find the first and last dates currently in the grid.
+    first_day = None
+    for day in weeks[0]:
+        if day:
+            first_day = date.fromisoformat(day["date"])
+            break
+    last_day = None
+    for day in reversed(weeks[-1]):
+        if day:
+            last_day = date.fromisoformat(day["date"])
+            break
+    if not first_day or not last_day:
+        return activity_data
+
+    # Determine how far to extend.
+    start_local = start_date.date() if start_date and hasattr(start_date, "date") else start_date
+    end_local = end_date.date() if end_date and hasattr(end_date, "date") else today
+
+    if start_local and start_local.month == 1 and start_local.day == 1 and end_local >= today - timedelta(days=1):
+        display_end = date(today.year, 12, 31)
+    elif start_local and start_local.day == 1 and end_local >= today - timedelta(days=1):
+        display_end = date(today.year, today.month, _calendar.monthrange(today.year, today.month)[1])
+    else:
+        days_to_end = (6 - today.weekday()) if not week_start_sunday else ((5 - today.weekday()) % 7)
+        display_end = today + timedelta(days=days_to_end)
+
+    if display_end <= last_day:
+        return activity_data
+
+    # Build a lookup of existing cells, then extend through display_end.
+    existing = {date.fromisoformat(d["date"]): d for w in weeks for d in w if d}
+    all_days = [first_day + timedelta(days=i) for i in range((display_end - first_day).days + 1)]
+    all_cells = [
+        existing.get(d, {"date": d.strftime("%Y-%m-%d"), "count": 0, "level": 0, "future": True})
+        for d in all_days
+    ]
+
+    new_weeks = [all_cells[i:i + 7] for i in range(0, len(all_cells), 7)]
+
+    # Rebuild month header labels from the full date range.
+    week_start_weekday = 6 if week_start_sunday else 0
+    months, current_month, monday_count = [], first_day.strftime("%b"), 0
+    for d in all_days:
+        if d.weekday() == week_start_weekday:
+            month = d.strftime("%b")
+            if current_month != month:
+                months.append((current_month if monday_count > 1 else "", monday_count))
+                current_month, monday_count = month, 0
+            monday_count += 1
+    if monday_count > 1:
+        months.append((current_month, monday_count))
+
+    return {**activity_data, "calendar_weeks": new_weeks, "months": months}
 
 STATISTICS_COMPARE_PREVIOUS_PERIOD = "previous_period"
 STATISTICS_COMPARE_LAST_YEAR = "last_year"
@@ -492,7 +560,12 @@ def statistics(request):
             "total_activity_comparison": total_activity_comparison,
             "weekday_hour_chart_data": statistics_data.get("weekday_hour_chart_data", {}),
             "media_count": statistics_data["media_count"],
-            "activity_data": statistics_data["activity_data"],
+            "activity_data": _extend_heatmap_with_future(
+                statistics_data["activity_data"],
+                start_date,
+                end_date,
+                week_start_sunday=request.user.week_start_day == WeekStartDayChoices.SUNDAY,
+            ),
             "media_type_distribution": statistics_data["media_type_distribution"],
             "score_distribution": statistics_data["score_distribution"],
             "top_rated": statistics_data["top_rated"],

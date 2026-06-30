@@ -464,6 +464,15 @@
   overflow: visible;
 }
 
+.scrollbar-hidden {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hidden::-webkit-scrollbar {
+  display: none;
+}
+
 .home-row-scrollbar-hidden {
   -ms-overflow-style: none;
   scrollbar-width: none;

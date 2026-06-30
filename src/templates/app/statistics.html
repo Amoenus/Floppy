@@ -954,7 +954,7 @@
     </div>
 
     <div class="space-y-8">
-      <div class="space-y-4">
+      <div class="space-y-4 mb-4">
       <!-- Hero + Highlight Cards -->
       <div class="stats-hero-row grid grid-cols-1 gap-x-3 sm:gap-x-4 items-start">
         <div class="flex flex-col justify-center stats-hero-text">
@@ -1164,13 +1164,18 @@
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
     <!-- Activity Rhythm -->
     <div class="bg-[#2a2f35] rounded-lg p-4 sm:p-6">
-      <h2 class="text-base font-semibold text-white mb-0.5">Your activity rhythm</h2>
-      <p class="text-xs text-gray-400 mb-3">When you watch, play, and listen.</p>
+      <div class="flex items-center justify-between mb-3">
+        <div>
+          <h2 class="text-base font-semibold text-white mb-0.5">Activity Rhythm</h2>
+          <p class="text-xs text-gray-400">Each cell is one day. Brighter means more.</p>
+        </div>
+        <div id="activityRhythmLegend" class="flex-shrink-0 flex items-center gap-1.5 ml-3"></div>
+      </div>
       <div id="activityRhythmContainer" class="w-full"></div>
     </div>
     <!-- Time Across Your Worlds -->
     <div class="bg-[#2a2f35] rounded-lg p-4 sm:p-6">
-      <h2 class="text-base font-semibold text-white mb-0.5" id="timeWorldsTitle">Time across your worlds</h2>
+      <h2 class="text-base font-semibold text-white mb-0.5" id="timeWorldsTitle">Hours by Media Type</h2>
       <p class="text-xs text-gray-400 mb-3" id="timeWorldsSubtitle">Where your hours go.</p>
       <div id="timeWorldsContainer" class="flex items-center gap-4 sm:gap-6">
         <div class="relative shrink-0" style="width:150px;height:150px;">
@@ -1185,42 +1190,53 @@
 
   <!-- Activity History Section -->
   {% if user.activity_history_view != 'stacked' %}
-  <div id="activityHistory" class="bg-[#2a2f35] rounded-lg p-4 sm:p-6 stat-scroll-safe">
-        <h2 class="text-xl font-semibold mb-3 sm:mb-4 text-center">Activity History</h2>
-        <div class="overflow-x-auto flex flex-col justify-center"
-             x-data="{ graphTooWide: false }"
-             x-init="$nextTick(() => { const graphWidth = $refs.graphContainer.scrollWidth; const parentWidth = $el.clientWidth; graphTooWide = graphWidth > parentWidth; })"
-             :class="graphTooWide ? 'items-start' : 'items-center'">
+  <div id="activityHistory" class="bg-[#2a2f35] rounded-lg p-4 sm:p-6 w-full overflow-hidden">
+        <div class="flex items-center justify-between mb-3">
+          <div>
+            <h2 class="text-base font-semibold text-white mb-0.5">Activity History</h2>
+            <p class="text-xs text-gray-400">Each cell is one day. Brighter means more activity.</p>
+          </div>
+          <div class="flex-shrink-0 flex items-center gap-2 text-xs text-gray-400">
+            <span>Less</span>
+            <div class="w-3 h-3 rounded-sm bg-[#2f353e]"></div>
+            <div class="w-3 h-3 rounded-sm bg-indigo-700"></div>
+            <div class="w-3 h-3 rounded-sm bg-indigo-600"></div>
+            <div class="w-3 h-3 rounded-sm bg-indigo-500"></div>
+            <div class="w-3 h-3 rounded-sm bg-indigo-400"></div>
+            <span>More</span>
+          </div>
+        </div>
+        <div class="w-full overflow-x-auto overflow-y-hidden scrollbar-hidden">
 
-          <div class="p-3 sm:p-4" x-ref="graphContainer">
-            <!-- Months row -->
-            <div class="flex mb-2 pl-[36.68px]">
+          <div class="w-full" x-ref="graphContainer">
+            <!-- Months row: proportional flex to track responsive column widths -->
+            <div class="flex mb-2 pl-[37px] gap-1">
               {% for month, week_count in activity_data.months %}
-                <div class="text-xs text-gray-400"
-                     style="width: calc({{ week_count }} * 1rem + ({{ week_count }} * 0.25rem))">{{ month }}</div>
+                <div class="text-xs text-gray-400 min-w-0 overflow-hidden"
+                     style="flex: {{ week_count }} {{ week_count }} 0; min-width: calc({{ week_count }} * 1rem)">{{ month }}</div>
               {% endfor %}
             </div>
 
             <!-- Graph wrapper -->
             <div class="flex">
-              <!-- Weekday labels -->
-              <div class="flex flex-col justify-between pr-2 text-sm text-gray-400">
+              <!-- Weekday labels: gap-1 + flex-1 items tracks responsive cell height -->
+              <div class="flex flex-col gap-1 pr-2 text-sm text-gray-400 flex-shrink-0" style="width:37px">
                 {% for label in activity_data.weekday_labels %}
                   {% if forloop.counter|divisibleby:2 %}
-                    <div class="h-4"></div>
+                    <div class="flex-1"></div>
                   {% else %}
-                    <div class="h-4 flex items-center">{{ label }}</div>
+                    <div class="flex-1 flex items-center justify-end">{{ label }}</div>
                   {% endif %}
                 {% endfor %}
               </div>
 
-              <!-- Weeks grid -->
-              <div class="flex gap-1">
+              <!-- Weeks grid: flex-1 columns grow to fill width, capped at 20px -->
+              <div class="flex gap-1 flex-1 min-w-0">
                 {% for week in activity_data.calendar_weeks %}
-                  <div class="flex flex-col gap-1">
+                  <div class="flex flex-col gap-1 flex-1 min-w-4" style="max-width:20px">
                     {% for day in week %}
-                      <div class="w-4 h-4 rounded-sm transition-colors duration-200 hover:ring-2 hover:ring-white {% if day.level == 0 %}bg-[#2f353e]{% elif day.level == 1 %}bg-indigo-700{% elif day.level == 2 %}bg-indigo-600{% elif day.level == 3 %}bg-indigo-500{% elif day.level == 4 %}bg-indigo-400{% endif %}"
-                           title="{{ day.date }}: {{ day.count }} activit{{ day.count|pluralize:"y,ies" }}"></div>
+                      <div class="aspect-square w-full rounded-sm transition-colors duration-200 {% if day.future %}bg-[#2f353e] cursor-default{% else %}hover:ring-2 hover:ring-white {% if day.level == 0 %}bg-[#2f353e]{% elif day.level == 1 %}bg-indigo-700{% elif day.level == 2 %}bg-indigo-600{% elif day.level == 3 %}bg-indigo-500{% elif day.level == 4 %}bg-indigo-400{% endif %}{% endif %}"
+                           title="{% if day.future %}{{ day.date }}{% else %}{{ day.date }}: {{ day.count }} activit{{ day.count|pluralize:"y,ies" }}{% endif %}"></div>
                     {% endfor %}
                   </div>
                 {% endfor %}
@@ -1228,17 +1244,6 @@
             </div>
           </div>
 
-          <!-- Legend -->
-          <div class="flex items-center gap-2 pl-4 sm:pl-6 text-xs text-gray-400"
-               :class="graphTooWide ? 'mb-5 mt-2' : 'mt-4'">
-            <span>Less</span>
-            <div class="w-4 h-4 rounded-sm bg-[#2f353e]"></div>
-            <div class="w-4 h-4 rounded-sm bg-indigo-700"></div>
-            <div class="w-4 h-4 rounded-sm bg-indigo-600"></div>
-            <div class="w-4 h-4 rounded-sm bg-indigo-500"></div>
-            <div class="w-4 h-4 rounded-sm bg-indigo-400"></div>
-            <span>More</span>
-          </div>
         </div>
     </div>
   {% endif %}
@@ -1276,8 +1281,6 @@
         {% endif %}
       </div>
     {% endif %}
-
-      {% include "app/components/statistics_media_type_hours_cards.html" %}
 
       {% with talent=top_talent %}
       {% with talent_sort=request.user.top_talent_sort_by|default:'plays' %}
