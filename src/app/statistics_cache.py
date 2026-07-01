@@ -658,6 +658,7 @@ def _get_empty_statistics_data():
         },
         "history_highlights_by_type": {},
         "summary_stats_by_type": {},
+        "consumption_stats_by_type": {},
     }
 
 

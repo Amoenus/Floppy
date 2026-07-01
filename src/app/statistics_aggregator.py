@@ -97,6 +97,15 @@ def _compute_metric_breakdown_for_range(total_value, start_date, end_date):
     return breakdown
 
 
+def _sum_top_played_plays(top_played_by_type, media_type):
+    return sum(entry.get("plays", 0) for entry in top_played_by_type.get(media_type, {}).values())
+
+
+def _avg_daily_playtime_hours(total_hours, day_minutes_map):
+    days_active = sum(1 for m in day_minutes_map.values() if m and m > 0)
+    return round(total_hours / days_active, 2) if days_active else 0
+
+
 def _build_media_charts_from_counts(day_counts, hour_counts, color, dataset_label, *, to_hours=False):
     empty_chart = {"labels": [], "datasets": []}
     if not day_counts:
@@ -370,6 +379,7 @@ def _empty_reading_consumption(unit_name="Unit", completion_label="Items Finishe
         },
         "completed_length_chart": {"labels": [], "datasets": []},
         "release_chart": {"labels": [], "datasets": []},
+        "completed_lengths": [],
         "has_data": False,
         "unit_name": unit_name,
         "unit_label": f"{unit_name}s Read",
@@ -1223,6 +1233,12 @@ def _aggregate_statistics_from_days(
 
     game_consumption = {
         "hours": _compute_metric_breakdown_for_range(game_total_hours, start_date, end_date),
+        "plays": _compute_metric_breakdown_for_range(
+            _sum_top_played_plays(top_played_by_type, MediaTypes.GAME.value), start_date, end_date,
+        ),
+        "average_daily_playtime_hours": _avg_daily_playtime_hours(
+            game_total_hours, day_minutes_by_type.get(MediaTypes.GAME.value, {}),
+        ),
         "charts": {
             "by_year": game_hours_charts["by_year"],
             "by_month": game_hours_charts["by_month"],
@@ -1232,6 +1248,19 @@ def _aggregate_statistics_from_days(
         "top_genres": game_genre_items,
         "top_daily_average_games": top_daily_avg_payload,
         "platform_breakdown": platform_breakdown,
+    }
+
+    boardgame_total_minutes = minutes_by_type.get(MediaTypes.BOARDGAME.value, 0)
+    boardgame_total_hours = boardgame_total_minutes / 60 if boardgame_total_minutes else 0
+    boardgame_consumption = {
+        "hours": _compute_metric_breakdown_for_range(boardgame_total_hours, start_date, end_date),
+        "plays": _compute_metric_breakdown_for_range(
+            _sum_top_played_plays(top_played_by_type, MediaTypes.BOARDGAME.value), start_date, end_date,
+        ),
+        "average_daily_playtime_hours": _avg_daily_playtime_hours(
+            boardgame_total_hours, day_minutes_by_type.get(MediaTypes.BOARDGAME.value, {}),
+        ),
+        "has_data": boardgame_total_minutes > 0 or bool(top_played_by_type.get(MediaTypes.BOARDGAME.value)),
     }
 
     def _build_cached_reading_consumption(media_type):
@@ -1301,6 +1330,10 @@ def _aggregate_statistics_from_days(
             completed_length = entry.progress or getattr(entry.item, "number_of_pages", 0) or 0
             if completed_length > 0:
                 completed_lengths.append(completed_length)
+
+        average_completed_length = (
+            round(sum(completed_lengths) / len(completed_lengths), 1) if completed_lengths else 0
+        )
 
         release_chart = stats._build_release_year_chart(release_datetimes, color, release_label)
         completed_length_chart = stats._build_completed_length_distribution_chart(completed_lengths, unit_name, color)
@@ -1375,7 +1408,7 @@ def _aggregate_statistics_from_days(
             if score_value is not None:
                 scored_values.append(float(score_value))
 
-        average_length = round(sum(item_lengths) / len(item_lengths), 1) if item_lengths else 0
+        average_length = average_completed_length
         average_rating = round(sum(scored_values) / len(scored_values), 2) if scored_values else None
 
         return {
@@ -1388,6 +1421,7 @@ def _aggregate_statistics_from_days(
             },
             "completed_length_chart": completed_length_chart,
             "release_chart": release_chart,
+            "completed_lengths": completed_lengths,
             "has_data": unit_total > 0 or completion_total > 0,
             "unit_name": unit_name,
             "unit_label": chart_label,
@@ -1618,6 +1652,151 @@ def _aggregate_statistics_from_days(
         combined_hours_charts["by_weekday"][media_type] = chart["by_weekday"]
         combined_hours_charts["by_time_of_day"][media_type] = chart["by_time_of_day"]
 
+    def _pack_metric(breakdown, label, unit, icon, *, total_decimals=1):
+        if not breakdown:
+            return None
+        return {"label": label, "unit": unit, "icon": icon, "total_decimals": total_decimals, **breakdown}
+
+    def _minutes_breakdown_to_hours(breakdown):
+        return {**breakdown, **{k: v / 60 for k, v in breakdown.items() if k != "label"}}
+
+    def _sum_breakdowns(breakdowns):
+        keys = ("total", "per_year", "per_month", "per_day")
+        return {k: sum(b[k] for b in breakdowns) for k in keys}
+
+    # Shared bonus cards: one "Average Daily Playtime" across Games + Board Games,
+    # one "Average Page Length" across Book/Comic/Manga - not per-type, so they can
+    # appear once each on the "All" filter alongside their own type's filter.
+    combined_games_hours = game_total_hours + boardgame_total_hours
+    combined_games_day_minutes: defaultdict = defaultdict(float)
+    for day_str, minutes in day_minutes_by_type.get(MediaTypes.GAME.value, {}).items():
+        combined_games_day_minutes[day_str] += minutes or 0
+    for day_str, minutes in day_minutes_by_type.get(MediaTypes.BOARDGAME.value, {}).items():
+        combined_games_day_minutes[day_str] += minutes or 0
+    games_avg_daily_playtime = _avg_daily_playtime_hours(combined_games_hours, combined_games_day_minutes)
+    games_bonus = (
+        {"kind": "playtime", "icon": "gamepad", "value": games_avg_daily_playtime}
+        if games_avg_daily_playtime and (game_consumption["has_data"] or boardgame_consumption["has_data"])
+        else None
+    )
+
+    all_reading_lengths = (
+        book_consumption.get("completed_lengths", [])
+        + comic_consumption.get("completed_lengths", [])
+        + manga_consumption.get("completed_lengths", [])
+    )
+    reading_avg_length = (
+        round(sum(all_reading_lengths) / len(all_reading_lengths), 1) if all_reading_lengths else 0
+    )
+    reading_bonus = (
+        {"kind": "length", "icon": "book-open", "value": reading_avg_length}
+        if reading_avg_length
+        else None
+    )
+
+    consumption_stats_by_type = {
+        MediaTypes.TV.value: {
+            "primary": _pack_metric(tv_consumption["hours"], "Hours Watched", "Hours", "clock"),
+            "secondary": _pack_metric(tv_consumption["plays"], "Episode Plays", "Episodes", "repeat"),
+            "bonuses": [],
+            "has_data": tv_consumption["has_data"],
+        },
+        MediaTypes.MOVIE.value: {
+            "primary": _pack_metric(movie_consumption["hours"], "Hours Watched", "Hours", "clock"),
+            "secondary": _pack_metric(movie_consumption["plays"], "Movie Plays", "Movies", "repeat"),
+            "bonuses": [],
+            "has_data": movie_consumption["has_data"],
+        },
+        MediaTypes.ANIME.value: {
+            "primary": _pack_metric(anime_consumption["hours"], "Hours Watched", "Hours", "clock"),
+            "secondary": _pack_metric(anime_consumption["plays"], "Episode Plays", "Episodes", "repeat"),
+            "bonuses": [],
+            "has_data": anime_consumption["has_data"],
+        },
+        MediaTypes.MUSIC.value: {
+            "primary": _pack_metric(
+                _minutes_breakdown_to_hours(music_consumption["minutes"]), "Hours Listened", "Hours", "clock",
+            ),
+            "secondary": _pack_metric(music_consumption["plays"], "Music Plays", "Plays", "repeat"),
+            "bonuses": [],
+            "has_data": music_consumption["has_data"],
+        },
+        MediaTypes.PODCAST.value: {
+            "primary": _pack_metric(
+                _minutes_breakdown_to_hours(podcast_consumption["minutes"]), "Hours Listened", "Hours", "clock",
+            ),
+            "secondary": _pack_metric(podcast_consumption["plays"], "Podcast Plays", "Plays", "repeat"),
+            "bonuses": [],
+            "has_data": podcast_consumption["has_data"],
+        },
+        MediaTypes.GAME.value: {
+            "primary": _pack_metric(game_consumption["hours"], "Hours Played", "Hours", "clock"),
+            "secondary": _pack_metric(game_consumption["plays"], "Game Plays", "Plays", "repeat"),
+            "bonuses": [games_bonus] if games_bonus else [],
+            "has_data": game_consumption["has_data"],
+        },
+        MediaTypes.BOARDGAME.value: {
+            "primary": _pack_metric(boardgame_consumption["hours"], "Hours Played", "Hours", "clock"),
+            "secondary": _pack_metric(boardgame_consumption["plays"], "Board Game Plays", "Plays", "repeat"),
+            "bonuses": [games_bonus] if games_bonus else [],
+            "has_data": boardgame_consumption["has_data"],
+        },
+        MediaTypes.BOOK.value: {
+            "primary": _pack_metric(
+                book_consumption["units"], book_consumption["unit_label"],
+                book_consumption["unit_name"] + "s", "book-open", total_decimals=0,
+            ),
+            "secondary": _pack_metric(
+                book_consumption["completions"], book_consumption["completion_label"], "Books", "checkmark",
+            ),
+            "bonuses": [reading_bonus] if reading_bonus else [],
+            "has_data": book_consumption["has_data"],
+        },
+        MediaTypes.COMIC.value: {
+            "primary": _pack_metric(
+                comic_consumption["units"], comic_consumption["unit_label"],
+                comic_consumption["unit_name"] + "s", "book-open", total_decimals=0,
+            ),
+            "secondary": _pack_metric(
+                comic_consumption["completions"], comic_consumption["completion_label"], "Comics", "checkmark",
+            ),
+            "bonuses": [reading_bonus] if reading_bonus else [],
+            "has_data": comic_consumption["has_data"],
+        },
+        MediaTypes.MANGA.value: {
+            "primary": _pack_metric(
+                manga_consumption["units"], manga_consumption["unit_label"],
+                manga_consumption["unit_name"] + "s", "book-open", total_decimals=0,
+            ),
+            "secondary": _pack_metric(
+                manga_consumption["completions"], manga_consumption["completion_label"], "Manga", "checkmark",
+            ),
+            "bonuses": [reading_bonus] if reading_bonus else [],
+            "has_data": manga_consumption["has_data"],
+        },
+    }
+
+    consumption_stats_by_type["all"] = {
+        # Reuses the exact total already shown by the hero ("You've spent X hours") and
+        # total_activity_comparison, i.e. _all_total_minutes - not a second, different
+        # "all-media hours" figure. This does fold in the reading types' synthetic
+        # 60-min-per-completed-unit proxy (see statistics_day_builder.py), same as the
+        # hero already does today.
+        "primary": _pack_metric(
+            _compute_metric_breakdown_for_range(_all_total_minutes / 60, start_date, end_date),
+            "Hours Logged", "Hours", "clock",
+        ),
+        "secondary": _pack_metric(
+            _sum_breakdowns([
+                tv_consumption["plays"], anime_consumption["plays"], movie_consumption["plays"],
+                music_consumption["plays"], podcast_consumption["plays"],
+            ]),
+            "Total Plays", "Plays", "repeat",
+        ),
+        "bonuses": [b for b in [games_bonus, reading_bonus] if b],
+        "has_data": _all_total_minutes > 0,
+    }
+
     return {
         "media_count": media_count,
         "activity_data": activity_data,
@@ -1637,6 +1816,7 @@ def _aggregate_statistics_from_days(
         "music_consumption": music_consumption,
         "podcast_consumption": podcast_consumption,
         "game_consumption": game_consumption,
+        "boardgame_consumption": boardgame_consumption,
         "book_consumption": book_consumption,
         "comic_consumption": comic_consumption,
         "manga_consumption": manga_consumption,
@@ -1644,6 +1824,7 @@ def _aggregate_statistics_from_days(
         "history_highlights": history_highlights,
         "history_highlights_by_type": history_highlights_by_type,
         "summary_stats_by_type": summary_stats_by_type,
+        "consumption_stats_by_type": consumption_stats_by_type,
         "weekday_hour_chart_data": weekday_hour_chart_data,
         "combined_plays_charts": combined_hours_charts,
     }

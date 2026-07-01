@@ -34,6 +34,7 @@
     @media (min-width: 1024px) {
       .stats-hero-row     { grid-template-columns: repeat(5, 1fr); }
       .stats-summary-row  { grid-template-columns: repeat(5, 1fr); }
+      .consumption-row    { grid-template-columns: repeat(var(--consumption-cols, 3), 1fr); }
       .stats-hero-text  { grid-column: span 2 / span 2; container-type: inline-size; align-self: center; }
       .stats-hero-cards { grid-column: span 3 / span 3; }
       .stats-hero-title {
@@ -670,6 +671,7 @@
       {value: 'movie', label: 'Movies'},
       {value: 'anime', label: 'Anime'},
       {value: 'game', label: 'Games'},
+      {% if user.boardgame_enabled %}{value: 'boardgame', label: 'Board Games'},{% endif %}
       {% if user.music_enabled %}{value: 'music', label: 'Music'},{% endif %}
       {% if user.podcast_enabled %}{value: 'podcast', label: 'Podcasts'},{% endif %}
       {% if user.book_enabled %}{value: 'book', label: 'Books'},{% endif %}
@@ -1270,6 +1272,25 @@
         <canvas id="combinedPlaysByTimeChart"></canvas>
       </div>
     </div>
+  </div>
+
+  <!-- Consumption -->
+  <div class="consumption-row grid grid-cols-2 gap-3 sm:gap-4" style="margin-bottom:1rem; --consumption-cols: 3" :style="'margin-bottom:1rem; --consumption-cols: ' + consumptionTiles().length" x-show="currentConsumption.has_data">
+    <template x-for="tile in consumptionTiles()" :key="tile.key">
+      <div class="bg-[#2a2f35] rounded-lg p-3 sm:p-5 flex items-center min-w-0">
+        <div class="p-2 sm:p-3 rounded-full mr-3 shrink-0" :class="tile.bg">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+               class="w-4 h-4 sm:w-6 sm:h-6" :class="tile.color"
+               x-html="consumptionIconPath(tile)"></svg>
+        </div>
+        <div class="min-w-0">
+          <h3 class="text-xs sm:text-sm font-medium text-gray-400" x-text="tile.label"></h3>
+          <p class="text-xl sm:text-2xl font-bold" x-text="tile.value"></p>
+          <p class="text-xs text-gray-500" x-text="tile.caption"></p>
+        </div>
+      </div>
+    </template>
   </div>
 
   <!-- Status Composition + Rating Distribution -->
@@ -2297,6 +2318,7 @@
   {{ score_distribution|json_script:"score_distribution" }}
   {{ daily_hours_by_media_type|json_script:"daily_hours_by_media_type" }}
 {{ summary_stats_by_type|json_script:"summary_stats_by_type" }}
+  {{ consumption_stats_by_type|json_script:"consumption_stats_by_type" }}
   {{ start_date|date:"c"|default_if_none:""|json_script:"stats_start_date" }}
   {{ end_date|date:"c"|default_if_none:""|json_script:"stats_end_date" }}
   {% if show_year_charts %}

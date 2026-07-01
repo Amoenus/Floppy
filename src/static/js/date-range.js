@@ -22,6 +22,10 @@ const MEDIA_TYPE_VISUALS = {
     color: "#eab308",
     icon: '<line x1="6" x2="10" y1="11" y2="11"/><line x1="8" x2="8" y1="9" y2="13"/><line x1="15" x2="15.01" y1="12" y2="12"/><line x1="18" x2="18.01" y1="10" y2="10"/><path d="M17.32 5H6.68a4 4 0 0 0-3.978 3.59c-.006.052-.01.101-.017.152C2.649 9.416 2 14.456 2 16a3 3 0 0 0 3 3c1 0 1.5-.5 2-1l1.414-1.414A2 2 0 0 1 9.828 16h4.344a2 2 0 0 1 1.414.586L17 18c.5.5 1 1 2 1a3 3 0 0 0 3-3c0-1.545-.604-6.584-.685-7.258-.007-.05-.011-.1-.017-.151A4 4 0 0 0 17.32 5z"/>',
   },
+  boardgame: {
+    color: "#84cc16",
+    icon: '<rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="8" cy="8" r="2"/><path d="M16 8h-2"/><circle cx="16" cy="16" r="2"/><path d="M8 16v-2"/>',
+  },
   book: {
     color: "#d946ef",
     icon: '<path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/>',
@@ -39,6 +43,17 @@ const MEDIA_TYPE_VISUALS = {
     icon: '<path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="23"/><line x1="8" x2="16" y1="23" y2="23"/>',
   },
 };
+
+// Icon shapes for the combined "Consumption" card's primary/secondary metrics,
+// rendered via x-html the same way MEDIA_TYPE_VISUALS.icon is above.
+const CONSUMPTION_ICON_PATHS = {
+  clock: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+  gamepad: '<line x1="6" x2="10" y1="11" y2="11"/><line x1="8" x2="8" y1="9" y2="13"/><line x1="15" x2="15.01" y1="12" y2="12"/><line x1="18" x2="18.01" y1="10" y2="10"/><path d="M17.32 5H6.68a4 4 0 0 0-3.978 3.59c-.006.052-.01.101-.017.152C2.649 9.416 2 14.456 2 16a3 3 0 0 0 3 3c1 0 1.5-.5 2-1l1.414-1.414A2 2 0 0 1 9.828 16h4.344a2 2 0 0 1 1.414.586L17 18c.5.5 1 1 2 1a3 3 0 0 0 3-3c0-1.545-.604-6.584-.685-7.258-.007-.05-.011-.1-.017-.151A4 4 0 0 0 17.32 5z"/>',
+  "book-open": '<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>',
+  repeat: '<path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/>',
+  checkmark: '<path d="M20 6 9 17l-5-5"/>',
+};
+
 function dateRangePicker(options = {}) {
   const {
     initialRangeName = "",
@@ -92,6 +107,7 @@ function dateRangePicker(options = {}) {
     mediaTypeOptions: initialMediaTypeOptions,
     ratingScaleMax: ratingScaleMax,
     summaryStatsByType: {},
+    consumptionStatsByType: {},
     refreshing: false,
     predefinedRanges,
     comparisonOptions,
@@ -116,6 +132,68 @@ function dateRangePicker(options = {}) {
       const totalHours = Math.round(totalMinutes / 60);
       const totalDays = Math.floor(totalMinutes / 60 / 24);
       return { ...s, longest_streak_dates_display: dates, total_hours: totalHours, total_days: totalDays };
+    },
+
+    get currentConsumption() {
+      return this.consumptionStatsByType[this.selectedMediaType] || {};
+    },
+
+    fmt(value, decimals) {
+      return Number(value ?? 0).toFixed(decimals);
+    },
+
+    consumptionIconPath(metric) {
+      return metric ? CONSUMPTION_ICON_PATHS[metric.icon] || "" : "";
+    },
+
+    consumptionUnitAbbr(unit) {
+      return unit === "Hours" ? "hrs" : unit;
+    },
+
+    consumptionTiles() {
+      const c = this.currentConsumption;
+      if (!c || !c.primary) return [];
+      const primary = c.primary;
+      const secondary = c.secondary;
+      const buckets = [
+        { key: "year", label: "Per Year", field: "per_year" },
+        { key: "month", label: "Per Month", field: "per_month" },
+        { key: "day", label: "Per Day", field: "per_day" },
+      ];
+      const tiles = buckets.map((b) => ({
+        key: b.key,
+        icon: primary.icon,
+        bg: "bg-indigo-600/20",
+        color: "text-indigo-400",
+        label: b.label,
+        value: this.fmt(primary[b.field], 1) + " " + this.consumptionUnitAbbr(primary.unit),
+        caption: secondary ? this.fmt(secondary[b.field], 1) + " " + secondary.unit : "",
+      }));
+      (c.bonuses || []).forEach((bonus, i) => {
+        tiles.push(this.consumptionBonusTile(bonus, i));
+      });
+      return tiles;
+    },
+
+    consumptionBonusTile(bonus, i) {
+      if (bonus.kind === "playtime") {
+        const hrs = bonus.value;
+        const value = hrs < 1 ? Math.round(hrs * 60) + " min" : this.fmt(hrs, 1) + " hrs";
+        return {
+          key: "bonus-" + i, icon: "gamepad", bg: "bg-emerald-600/20", color: "text-emerald-400",
+          label: "Average Playtime", value, caption: "Per Day",
+        };
+      }
+      if (bonus.kind === "length") {
+        return {
+          key: "bonus-" + i, icon: "book-open", bg: "bg-emerald-600/20", color: "text-emerald-400",
+          label: "Average Length", value: this.fmt(bonus.value, 0), caption: "Pages",
+        };
+      }
+      return {
+        key: "bonus-" + i, icon: bonus.icon, bg: "bg-emerald-600/20", color: "text-emerald-400",
+        label: bonus.label, value: this.fmt(bonus.value, 2) + " " + bonus.unit, caption: "",
+      };
     },
 
     averageRatingRows() {
@@ -198,6 +276,11 @@ function dateRangePicker(options = {}) {
       const summaryEl = document.getElementById("summary_stats_by_type");
       if (summaryEl) {
         try { this.summaryStatsByType = JSON.parse(summaryEl.textContent); } catch (_) {}
+      }
+
+      const consumptionEl = document.getElementById("consumption_stats_by_type");
+      if (consumptionEl) {
+        try { this.consumptionStatsByType = JSON.parse(consumptionEl.textContent); } catch (_) {}
       }
 
       window.addEventListener("stats-charts-initialized", () => {

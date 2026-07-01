@@ -11,45 +11,6 @@
         </div>
 
         <div class="space-y-4 sm:space-y-6">
-          <div class="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-            <div class="bg-[#39404b] rounded-lg p-3 sm:p-4 text-center">
-              <p class="text-xs uppercase tracking-widest text-gray-400">Hours Played</p>
-              {% if game_consumption.has_data %}
-                <p class="text-3xl font-bold mt-2">{{ game_consumption.hours.total|default:0|floatformat:1 }}</p>
-              {% else %}
-                <p class="text-3xl font-bold mt-2 text-gray-500">--</p>
-              {% endif %}
-              <p class="text-xs text-gray-500 mt-1">Total</p>
-            </div>
-            <div class="bg-[#39404b] rounded-lg p-3 sm:p-4 text-center">
-              <p class="text-xs uppercase tracking-widest text-gray-400">Per Year</p>
-              {% if game_consumption.has_data %}
-                <p class="text-3xl font-bold mt-2">{{ game_consumption.hours.per_year|default:0|floatformat:1 }}</p>
-              {% else %}
-                <p class="text-3xl font-bold mt-2 text-gray-500">--</p>
-              {% endif %}
-              <p class="text-xs text-gray-500 mt-1">Hours</p>
-            </div>
-            <div class="bg-[#39404b] rounded-lg p-3 sm:p-4 text-center">
-              <p class="text-xs uppercase tracking-widest text-gray-400">Per Month</p>
-              {% if game_consumption.has_data %}
-                <p class="text-3xl font-bold mt-2">{{ game_consumption.hours.per_month|default:0|floatformat:1 }}</p>
-              {% else %}
-                <p class="text-3xl font-bold mt-2 text-gray-500">--</p>
-              {% endif %}
-              <p class="text-xs text-gray-500 mt-1">Hours</p>
-            </div>
-            <div class="bg-[#39404b] rounded-lg p-3 sm:p-4 text-center">
-              <p class="text-xs uppercase tracking-widest text-gray-400">Per Day</p>
-              {% if game_consumption.has_data %}
-                <p class="text-3xl font-bold mt-2">{{ game_consumption.hours.per_day|default:0|floatformat:2 }}</p>
-              {% else %}
-                <p class="text-3xl font-bold mt-2 text-gray-500">--</p>
-              {% endif %}
-              <p class="text-xs text-gray-500 mt-1">Hours</p>
-            </div>
-          </div>
-
           {% if show_year_charts %}
           <div class="bg-[#39404b] rounded-lg p-3 sm:p-4">
             <h3 class="text-sm font-medium uppercase tracking-wide text-gray-300 mb-4">Game Hours by Year</h3>
