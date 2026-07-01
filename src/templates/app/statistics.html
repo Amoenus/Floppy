@@ -663,6 +663,7 @@
     refreshUrl: '{% url "refresh_statistics" %}',
     compareModeUpdateUrl: '{% url "update_statistics_compare_mode" %}',
     csrfToken: '{{ csrf_token }}',
+    ratingScaleMax: {{ user|rating_scale_max }},
     initialMediaTypeOptions: [
       {value: 'all', label: 'All media'},
       {value: 'tv', label: 'TV Shows'},
@@ -1250,7 +1251,7 @@
   {% endif %}
 
   <!-- Combined Hours charts -->
-  <div class="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4" style="margin-bottom:1rem">
     <div class="bg-[#2a2f35] rounded-lg p-4 sm:p-6">
       <h2 class="text-base font-semibold text-white mb-3">Hours by Month</h2>
       <div id="combinedPlaysByMonthContainer" class="h-64">
@@ -1267,6 +1268,74 @@
       <h2 class="text-base font-semibold text-white mb-3">Hours by Time of Day</h2>
       <div id="combinedPlaysByTimeContainer" class="h-64">
         <canvas id="combinedPlaysByTimeChart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Status Composition + Rating Distribution -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4" style="margin-bottom:1rem">
+    <div class="bg-[#2a2f35] rounded-lg p-4 sm:p-6 flex flex-col h-full">
+      <h2 class="text-base font-semibold text-white mb-0.5" id="statusCompositionTitle">Status Composition</h2>
+      <p class="text-xs text-gray-400 mb-3" id="statusCompositionSubtitle">What portion of your library is in each state.</p>
+      <div id="statusCompositionContainer" class="flex-1 flex items-center gap-4 sm:gap-6">
+        <div class="relative shrink-0" style="width:150px;height:150px;">
+          <div id="statusCompositionCenter" class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center"></div>
+          <canvas id="statusCompositionChart" style="position:relative;z-index:1"></canvas>
+        </div>
+        <div id="statusCompositionLegend" class="flex-1 min-w-0 space-y-2"></div>
+      </div>
+    </div>
+    <div class="bg-[#2a2f35] rounded-lg p-4 sm:p-6">
+      <h2 class="text-base font-semibold text-white mb-0.5" id="ratingDistributionTitle">Rating Distribution</h2>
+      <p class="text-xs text-gray-400 mb-3" id="ratingDistributionSubtitle">How your rated items are distributed.</p>
+      <div id="ratingDistributionContainer" class="h-[174px]">
+        <canvas id="ratingDistributionChart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Status Breakdown + Average Rating -->
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
+    <div class="bg-[#2a2f35] rounded-lg p-4 sm:p-6 lg:col-span-2">
+      <h2 class="text-base font-semibold text-white mb-0.5" id="statusBreakdownTitle">Status Breakdown</h2>
+      <div id="statusBreakdownContainer"></div>
+    </div>
+    <div class="bg-[#2a2f35] rounded-lg p-4 sm:p-6 lg:col-span-1">
+      <h2 class="text-base font-semibold text-white mb-0.5">Average Rating</h2>
+      <p class="text-xs text-gray-400 pb-2 mb-1 border-b border-gray-700">Your average score by type.</p>
+      <div>
+        <template x-for="row in averageRatingRows()" :key="row.value">
+          <div class="flex items-center gap-3 py-2 border-b border-gray-700/50 last:border-0">
+            <div class="flex items-center gap-2 flex-1 min-w-0" style="min-width:110px">
+              <svg xmlns="http://www.w3.org/2000/svg"
+                   width="24" height="24" viewBox="0 0 24 24"
+                   fill="none" stroke="currentColor" stroke-width="2"
+                   stroke-linecap="round" stroke-linejoin="round"
+                   class="w-4 h-4 shrink-0"
+                   :style="'color:' + row.color"
+                   x-html="row.icon"></svg>
+              <span class="text-sm text-gray-300 truncate" x-text="row.label"></span>
+            </div>
+            <div class="relative shrink-0" style="width:96px;height:16px;">
+              <div class="absolute inset-0 flex gap-1 text-gray-600">
+                <svg style="flex-shrink:0" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                <svg style="flex-shrink:0" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                <svg style="flex-shrink:0" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                <svg style="flex-shrink:0" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                <svg style="flex-shrink:0" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+              </div>
+              <div class="absolute inset-0 overflow-hidden flex gap-1" :style="'width:' + row.pct + '%; color:' + row.color">
+                <svg style="flex-shrink:0" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                <svg style="flex-shrink:0" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                <svg style="flex-shrink:0" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                <svg style="flex-shrink:0" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                <svg style="flex-shrink:0" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+              </div>
+            </div>
+            <span class="text-sm font-semibold text-white w-10 text-center shrink-0" x-text="row.average_score_display"></span>
+          </div>
+        </template>
+        <p x-show="averageRatingRows().length === 0" class="text-sm text-gray-500 text-center py-6" style="display:none">No ratings yet.</p>
       </div>
     </div>
   </div>
@@ -1496,103 +1565,6 @@
           {% include "app/components/statistics/podcast_activity_overview.html" %}
         </div>
       {% endif %}
-
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-8"
-           x-show="selectedMediaType === 'all'">
-        <!-- Status Distribution Section -->
-        <div class="bg-[#2a2f35] rounded-lg p-4 sm:p-6 stat-scroll-safe">
-          <h2 class="text-xl font-semibold mb-4">Status Distribution</h2>
-
-          {% if status_pie_chart_data.labels %}
-            <div class="h-80 flex justify-center items-center">
-              <canvas id="statusChart"></canvas>
-            </div>
-          {% else %}
-            <div class="flex flex-col items-center justify-center py-16">
-              <div class="bg-[#39404b] rounded-full p-4 w-16 h-16 mx-auto mb-4 flex items-center justify-center">
-                <svg xmlns="http://www.w3.org/2000/svg"
-                     width="24"
-                     height="24"
-                     viewBox="0 0 24 24"
-                     fill="none"
-                     stroke="currentColor"
-                     stroke-width="2"
-                     stroke-linecap="round"
-                     stroke-linejoin="round"
-                     class="w-8 h-8 text-gray-400">
-                  <line x1="12" x2="12" y1="20" y2="10"></line><line x1="18" x2="18" y1="20" y2="4"></line><line x1="6" x2="6" y1="20" y2="16"></line>
-                </svg>
-              </div>
-              <h3 class="text-lg font-medium mb-2">No status data to display</h3>
-              <p class="text-gray-400 text-center max-w-md">Track media items with different statuses to see their distribution.</p>
-            </div>
-          {% endif %}
-        </div>
-
-        <!-- Status Distribution by Media Type Section -->
-        <div class="bg-[#2a2f35] rounded-lg p-4 sm:p-6 stat-scroll-safe">
-          <h2 class="text-xl font-semibold mb-4">Status Distribution by Media Type</h2>
-
-          {% if media_type_distribution.labels %}
-            <div class="h-80 flex justify-center items-center">
-              <canvas id="statusStackedChart"></canvas>
-            </div>
-          {% else %}
-            <div class="flex flex-col items-center justify-center py-16">
-              <div class="bg-[#39404b] rounded-full p-4 w-16 h-16 mx-auto mb-4 flex items-center justify-center">
-                <svg xmlns="http://www.w3.org/2000/svg"
-                     width="24"
-                     height="24"
-                     viewBox="0 0 24 24"
-                     fill="none"
-                     stroke="currentColor"
-                     stroke-width="2"
-                     stroke-linecap="round"
-                     stroke-linejoin="round"
-                     class="w-8 h-8 text-gray-400">
-                  <line x1="18" x2="18" y1="20" y2="10"></line><line x1="12" x2="12" y1="20" y2="4"></line><line x1="6" x2="6" y1="20" y2="14"></line>
-                </svg>
-              </div>
-              <h3 class="text-lg font-medium mb-2">No data available</h3>
-              <p class="text-gray-400 text-center max-w-md">
-                Add media items with different statuses to see their distribution by type.
-              </p>
-            </div>
-          {% endif %}
-        </div>
-
-        <!-- Score Distribution by Media Type Section -->
-        <div class="bg-[#2a2f35] rounded-lg p-4 sm:p-6 stat-scroll-safe">
-          <h2 class="text-xl font-semibold mb-4">Score Distribution by Media Type</h2>
-
-          {% if score_distribution.total_scored %}
-            <div class="h-80 flex justify-center items-center">
-              <canvas id="scoreStackedChart"></canvas>
-            </div>
-          {% else %}
-            <div class="flex flex-col items-center justify-center py-16">
-              <div class="bg-[#39404b] rounded-full p-4 w-16 h-16 mx-auto mb-4 flex items-center justify-center">
-                <svg xmlns="http://www.w3.org/2000/svg"
-                     width="24"
-                     height="24"
-                     viewBox="0 0 24 24"
-                     fill="none"
-                     stroke="currentColor"
-                     stroke-width="2"
-                     stroke-linecap="round"
-                     stroke-linejoin="round"
-                     class="w-8 h-8 text-gray-400">
-                  <path d="m15.477 12.89 1.515 8.526a.5.5 0 0 1-.81.47l-3.58-2.687a1 1 0 0 0-1.197 0l-3.586 2.686a.5.5 0 0 1-.81-.469l1.514-8.526">
-                  </path>
-                  <circle cx="12" cy="8" r="6"></circle>
-                </svg>
-              </div>
-              <h3 class="text-lg font-medium mb-2">No ratings yet</h3>
-              <p class="text-gray-400 text-center max-w-md">Rate your media items to see score distribution statistics.</p>
-            </div>
-          {% endif %}
-        </div>
-      </div>
 
       <!-- Top Movies Section -->
       {% comment %}

@@ -95,150 +95,6 @@ function initStatisticsCharts() {
     tooltipEl.style.pointerEvents = "none";
   }
 
-  // Custom external tooltip for pie charts
-  function customPieTooltip(context) {
-    // External custom tooltip
-    let tooltipEl = document.getElementById("chartjs-pie-tooltip");
-
-    // Create element if it doesn't exist
-    if (!tooltipEl) {
-      tooltipEl = document.createElement("div");
-      tooltipEl.id = "chartjs-pie-tooltip";
-      document.body.appendChild(tooltipEl);
-    }
-
-    // Hide if no tooltip
-    const tooltipModel = context.tooltip;
-    if (tooltipModel.opacity === 0) {
-      tooltipEl.style.opacity = 0;
-      return;
-    }
-
-    // Set Text
-    if (tooltipModel.body) {
-      const dataPoint = tooltipModel.dataPoints[0];
-      const label = dataPoint.label;
-      const value = dataPoint.raw;
-      const { valueLabel, valueSuffix, valueDecimals } = getPieValueConfig(
-        context.chart,
-        dataPoint.datasetIndex
-      );
-      const formattedValue = formatPieValue(value, valueDecimals);
-      const valueText = valueSuffix ? `${formattedValue}${valueSuffix}` : formattedValue;
-
-      // Calculate percentage
-      const dataset = context.chart.data.datasets[dataPoint.datasetIndex];
-      const total = dataset.data.reduce((sum, val) => sum + val, 0);
-      const percentage = Math.round((value / total) * 100);
-
-      // Create tooltip content
-      let tooltipContent = `
-        <div class="pie-label">${label}</div>
-        <div class="pie-value">${valueLabel}: ${valueText}</div>
-        <div class="pie-percent">${percentage}%</div>
-      `;
-
-      tooltipEl.innerHTML = tooltipContent;
-    }
-
-    // Position and style the tooltip
-    const position = context.chart.canvas.getBoundingClientRect();
-
-    // Set tooltip styles
-    tooltipEl.style.opacity = 1;
-    tooltipEl.style.position = "absolute";
-    tooltipEl.style.left =
-      position.left + window.scrollX + tooltipModel.caretX + "px";
-    tooltipEl.style.top =
-      position.top + window.scrollY + tooltipModel.caretY + "px";
-    tooltipEl.style.transform = "translate(-50%, -100%)";
-    tooltipEl.style.pointerEvents = "none";
-  }
-
-  // Common configuration for pie charts
-  const pieChartConfig = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      datalabels: {
-        color: "#D1D5DB",
-        font: { size: 12 },
-        formatter: (value, ctx) => {
-          const total = ctx.dataset.data.reduce((acc, data) => acc + data, 0);
-          const percentage = Math.round((value / total) * 100);
-          const label = ctx.chart.data.labels[ctx.dataIndex];
-          return percentage > 5 ? `${label}\n${percentage}%` : "";
-        },
-        textAlign: "center",
-        textStrokeColor: "rgba(0,0,0,0.5)",
-        textStrokeWidth: 2,
-        textShadowBlur: 5,
-        textShadowColor: "rgba(0,0,0,0.5)",
-        padding: 6,
-      },
-      legend: {
-        position: "bottom",
-        labels: {
-          color: "#D1D5DB",
-          padding: 20,
-          usePointStyle: true,
-          pointStyle: "rectRounded",
-          generateLabels: function (chart) {
-            const original =
-              Chart.overrides.pie.plugins.legend.labels.generateLabels;
-            const labels = original.call(this, chart);
-            const dataset = chart.data.datasets[0] || {};
-            const valueSuffix = dataset.value_suffix || "";
-            const valueDecimals = Number.isFinite(dataset.value_decimals)
-              ? dataset.value_decimals
-              : 0;
-            labels.forEach((label, i) => {
-              const rawValue = chart.data.datasets[0].data[i];
-              const formattedValue = formatPieValue(rawValue, valueDecimals);
-              label.text = `${label.text} (${formattedValue}${valueSuffix})`;
-              label.strokeStyle = "transparent";
-            });
-            return labels;
-          },
-        },
-        margin: { top: 20 },
-      },
-      tooltip: {
-        enabled: false,
-        external: customPieTooltip,
-      },
-    },
-    layout: { padding: { bottom: 10 } },
-    elements: {
-      arc: {
-        borderWidth: 1,
-        borderColor: "#d3d3d3",
-      },
-    },
-  };
-
-  function formatPieValue(value, decimals) {
-    const numeric = Number(value);
-    if (!Number.isFinite(numeric)) {
-      return "0";
-    }
-    if (Number.isFinite(decimals)) {
-      return numeric.toFixed(decimals);
-    }
-    return `${numeric}`;
-  }
-
-  function getPieValueConfig(chart, datasetIndex) {
-    const dataset = chart.data.datasets[datasetIndex] || {};
-    return {
-      valueLabel: dataset.value_label || "Count",
-      valueSuffix: dataset.value_suffix || "",
-      valueDecimals: Number.isFinite(dataset.value_decimals)
-        ? dataset.value_decimals
-        : 0,
-    };
-  }
-
   // Common configuration for bar charts
   const barChartConfig = {
     responsive: true,
@@ -382,34 +238,6 @@ function initStatisticsCharts() {
     return desiredHeight;
   }
 
-  // Create Status Distribution Chart
-  const statusPieChartElement = document.getElementById(
-    "status_pie_chart_data"
-  );
-  if (statusPieChartElement) {
-    const statusPieData = JSON.parse(statusPieChartElement.textContent);
-    initializeChartIfExists(
-      "statusChart",
-      "pie",
-      statusPieData,
-      pieChartConfig
-    );
-  }
-
-  // Create Status Stacked Bar Chart
-  const statusDistributionElement = document.getElementById(
-    "status_distribution"
-  );
-  if (statusDistributionElement) {
-    const statusData = JSON.parse(statusDistributionElement.textContent);
-    initializeChartIfExists(
-      "statusStackedChart",
-      "bar",
-      processBarData(statusData),
-      barChartConfig
-    );
-  }
-
   // Create Score Stacked Bar Chart
   const scoreDistributionElement =
     document.getElementById("score_distribution");
@@ -451,12 +279,6 @@ function initStatisticsCharts() {
       external: customBarTooltip,
     };
 
-    initializeChartIfExists(
-      "scoreStackedChart",
-      "bar",
-      processBarData(scoreData),
-      scoreChartOptions
-    );
     // Ensure copy wrapper is sized to match Activity History BEFORE initializing the copy
     matchScoreCopyHeight();
 
@@ -879,6 +701,15 @@ function initStatisticsCharts() {
     }
   }
 
+  // Maps the page's media-type filter slug to the readable label used as a
+  // chart "type" key throughout status_distribution / score_distribution /
+  // media_type_distribution payloads (e.g. "tv" -> "TV Show").
+  const MEDIA_SLUG_TO_LABEL = {
+    tv: "TV Show", movie: "Movie", anime: "Anime", music: "Music",
+    podcast: "Podcast", book: "Book", comic: "Comic",
+    boardgame: "Board Game", game: "Game", manga: "Manga",
+  };
+
   // ─── Activity Rhythm SVG dot matrix ────────────────────────────────────────
   const weekdayHourEl = document.getElementById("weekday_hour_chart_data");
   const rhythmContainer = document.getElementById("activityRhythmContainer");
@@ -1141,6 +972,8 @@ function initStatisticsCharts() {
       const chartOptions = JSON.parse(JSON.stringify(barChartConfig));
       chartOptions.scales.x.stacked = false;
       chartOptions.scales.y.stacked = false;
+      chartOptions.scales.x.grid = { display: false };
+      chartOptions.scales.y.border = { display: false };
       if (chartOptions.plugins && chartOptions.plugins.legend) {
         chartOptions.plugins.legend.display = false;
       }
@@ -1396,11 +1229,6 @@ function initStatisticsCharts() {
         colors = ds.backgroundColor || [];
       } else {
         // Single-type filter for a type with no genre breakdown.
-        const MEDIA_SLUG_TO_LABEL = {
-          tv: "TV Show", movie: "Movie", anime: "Anime", music: "Music",
-          podcast: "Podcast", book: "Book", comic: "Comic",
-          boardgame: "Board Game", game: "Game", manga: "Manga",
-        };
         const targetLabel = MEDIA_SLUG_TO_LABEL[mediaType];
         const idx = targetLabel ? (fullDistData.labels || []).indexOf(targetLabel) : -1;
         if (idx >= 0) {
@@ -1445,6 +1273,496 @@ function initStatisticsCharts() {
       if (container) {
         container.innerHTML =
           '<p class="text-sm text-gray-500 text-center py-8 w-full">No time data available for this range.</p>';
+      }
+    }
+  }
+
+  // ─── Status Composition donut (status_distribution, aggregated or single-type) ──
+  const statusCompositionDataEl = document.getElementById("status_distribution");
+  if (statusCompositionDataEl) {
+    const statusCompositionData = JSON.parse(statusCompositionDataEl.textContent || "{}");
+    let statusCompositionChartInstance = null;
+
+    function getOrCreateStatusCompositionTooltipEl() {
+      let el = document.getElementById("statusCompositionTooltip");
+      if (!el) {
+        el = document.createElement("div");
+        el.id = "statusCompositionTooltip";
+        el.style.cssText =
+          "position:fixed;z-index:9999;pointer-events:none;opacity:0;transition:opacity 0.1s;" +
+          "background:#1f2937;border:1px solid rgba(255,255,255,0.1);border-radius:6px;" +
+          "padding:8px 10px;font-size:12px;color:#f3f4f6;white-space:nowrap;box-shadow:0 4px 12px rgba(0,0,0,0.4);";
+        document.body.appendChild(el);
+      }
+      return el;
+    }
+
+    function statusCompositionTooltipHandler(context, canvas, getTotal) {
+      const tooltipEl = getOrCreateStatusCompositionTooltipEl();
+      const tooltip = context.tooltip;
+      if (tooltip.opacity === 0) {
+        tooltipEl.style.opacity = "0";
+        return;
+      }
+      if (tooltip.dataPoints && tooltip.dataPoints.length) {
+        const dp = tooltip.dataPoints[0];
+        const label = dp.label || "";
+        const count = dp.raw;
+        const total = getTotal();
+        const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+        const color = dp.dataset.backgroundColor[dp.dataIndex];
+        tooltipEl.innerHTML =
+          '<div style="font-weight:600;margin-bottom:4px;color:#fff">' + label + "</div>" +
+          '<div style="display:flex;align-items:center;gap:6px">' +
+            '<span style="width:10px;height:10px;border-radius:2px;background:' + color + ';flex-shrink:0"></span>' +
+            "<span>" + count.toLocaleString() + " (" + pct + "%)</span>" +
+          "</div>";
+      }
+      const rect = canvas.getBoundingClientRect();
+      const x = rect.left + tooltip.caretX;
+      const y = rect.top + tooltip.caretY;
+      const tipW = tooltipEl.offsetWidth || 160;
+      const left = x + 12 + tipW > window.innerWidth ? x - tipW - 12 : x + 12;
+      tooltipEl.style.left = left + "px";
+      tooltipEl.style.top = (y - 16) + "px";
+      tooltipEl.style.opacity = "1";
+    }
+
+    function renderStatusComposition(canvas, legendEl, centerEl, labels, data, colors) {
+      const total = data.reduce(function (a, b) { return a + b; }, 0);
+      const externalTooltip = function (ctx) {
+        statusCompositionTooltipHandler(ctx, canvas, function () { return total; });
+      };
+
+      if (centerEl) {
+        centerEl.innerHTML =
+          '<span style="font-size:1.1rem;font-weight:700;color:#fff;line-height:1.2">' +
+          total.toLocaleString() + "</span>" +
+          '<span style="font-size:0.65rem;color:#9ca3af;line-height:1.2">total items</span>';
+      }
+
+      if (statusCompositionChartInstance) {
+        statusCompositionChartInstance.data.labels = labels;
+        statusCompositionChartInstance.data.datasets[0].data = data;
+        statusCompositionChartInstance.data.datasets[0].backgroundColor = colors;
+        statusCompositionChartInstance.options.plugins.tooltip.external = externalTooltip;
+        statusCompositionChartInstance.update();
+      } else {
+        statusCompositionChartInstance = new Chart(canvas.getContext("2d"), {
+          type: "doughnut",
+          data: { labels: labels, datasets: [{ data: data, backgroundColor: colors }] },
+          options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            cutout: "68%",
+            plugins: {
+              legend: { display: false },
+              datalabels: { display: false },
+              tooltip: { enabled: false, external: externalTooltip },
+            },
+            elements: { arc: { borderWidth: 1, borderColor: "rgba(0,0,0,0.15)" } },
+          },
+        });
+        window.__yamtrackStatsCharts.push(statusCompositionChartInstance);
+      }
+
+      if (legendEl) {
+        legendEl.innerHTML = "";
+        const sortedIndices = labels.map(function (_, i) { return i; })
+          .sort(function (a, b) { return data[b] - data[a]; });
+        sortedIndices.forEach(function (i) {
+          const label = labels[i];
+          const count = data[i];
+          const color = colors[i];
+          const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+          const row = document.createElement("div");
+          row.style.cssText = "display:flex;align-items:center;gap:10px;font-size:11px;";
+          row.innerHTML =
+            '<div style="flex-shrink:0;display:flex;align-items:center;gap:6px;min-width:0;width:84px">' +
+              '<span style="flex-shrink:0;width:10px;height:10px;border-radius:2px;background:' + color + '"></span>' +
+              '<span style="min-width:0;color:#d1d5db;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + label + "</span>" +
+            "</div>" +
+            '<div style="flex:1;height:5px;border-radius:3px;background:rgba(255,255,255,0.07);overflow:hidden;min-width:40px">' +
+              '<div style="height:100%;border-radius:3px;background:' + color + ';width:' + pct + '%"></div>' +
+            "</div>" +
+            '<span style="flex-shrink:0;width:34px;text-align:center;color:#fff;font-weight:700">' + pct + "%</span>" +
+            '<span style="flex-shrink:0;min-width:60px;text-align:center;color:#6b7280;font-variant-numeric:tabular-nums">' + count.toLocaleString() + "</span>";
+          legendEl.appendChild(row);
+        });
+      }
+    }
+
+    function drawStatusComposition(mediaType) {
+      const container = document.getElementById("statusCompositionContainer");
+      const subtitleEl = document.getElementById("statusCompositionSubtitle");
+      const isFiltered = mediaType && mediaType !== "all";
+      const statusLabels = (statusCompositionData.datasets || []).map(function (ds) { return ds.label; });
+      const statusColors = (statusCompositionData.datasets || []).map(function (ds) { return ds.background_color; });
+
+      let labels = [];
+      let data = [];
+      let colors = [];
+      let targetLabel = null;
+
+      if (!isFiltered) {
+        (statusCompositionData.datasets || []).forEach(function (ds, i) {
+          const total = (ds.data || []).reduce(function (a, b) { return a + (Number(b) || 0); }, 0);
+          if (total > 0) {
+            labels.push(statusLabels[i]);
+            data.push(total);
+            colors.push(statusColors[i]);
+          }
+        });
+      } else {
+        targetLabel = MEDIA_SLUG_TO_LABEL[mediaType];
+        const idx = targetLabel ? (statusCompositionData.labels || []).indexOf(targetLabel) : -1;
+        if (idx >= 0) {
+          (statusCompositionData.datasets || []).forEach(function (ds, i) {
+            const value = Number((ds.data || [])[idx]) || 0;
+            if (value > 0) {
+              labels.push(statusLabels[i]);
+              data.push(value);
+              colors.push(statusColors[i]);
+            }
+          });
+        }
+      }
+
+      if (subtitleEl) {
+        subtitleEl.textContent = isFiltered && targetLabel
+          ? targetLabel + " status breakdown."
+          : "What portion of your library is in each state.";
+      }
+
+      if (!labels.length) {
+        if (statusCompositionChartInstance) { statusCompositionChartInstance.destroy(); statusCompositionChartInstance = null; }
+        if (container) {
+          container.innerHTML =
+            '<p class="text-sm text-gray-500 text-center py-8 w-full">No status data available for this filter.</p>';
+        }
+        return;
+      }
+
+      if (container && !container.querySelector("canvas")) {
+        container.innerHTML =
+          '<div class="relative shrink-0" style="width:150px;height:150px;">' +
+            '<div id="statusCompositionCenter" class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center"></div>' +
+            '<canvas id="statusCompositionChart" style="position:relative;z-index:1"></canvas>' +
+          "</div>" +
+          '<div id="statusCompositionLegend" class="flex-1 min-w-0 space-y-1.5"></div>';
+        statusCompositionChartInstance = null;
+      }
+
+      const canvas = document.getElementById("statusCompositionChart");
+      const legendEl = document.getElementById("statusCompositionLegend");
+      const centerEl = document.getElementById("statusCompositionCenter");
+      if (canvas) {
+        renderStatusComposition(canvas, legendEl, centerEl, labels, data, colors);
+      }
+    }
+
+    if (statusCompositionData.labels && statusCompositionData.labels.length > 0) {
+      drawStatusComposition(getCurrentMediaType());
+      window.addEventListener("stats-media-type-changed", function () {
+        drawStatusComposition(getCurrentMediaType());
+      });
+    } else {
+      const container = document.getElementById("statusCompositionContainer");
+      if (container) {
+        container.innerHTML =
+          '<p class="text-sm text-gray-500 text-center py-8 w-full">No status data available for this range.</p>';
+      }
+    }
+  }
+
+  // ─── Rating Distribution (score_distribution, aggregated or single-type) ──
+  const ratingDistributionDataEl = document.getElementById("score_distribution");
+  if (ratingDistributionDataEl) {
+    const ratingDistributionData = JSON.parse(ratingDistributionDataEl.textContent || "{}");
+    let ratingDistributionChartInstance = null;
+
+    function buildRatingDistribution(mediaType) {
+      const isFiltered = mediaType && mediaType !== "all";
+      const labels = ratingDistributionData.labels || [];
+      const datasets = ratingDistributionData.datasets || [];
+      const data = labels.map(function () { return 0; });
+      let totalScored = 0;
+
+      function addDataset(ds) {
+        (ds.data || []).forEach(function (v, i) {
+          const value = Number(v) || 0;
+          data[i] += value;
+          totalScored += value;
+        });
+      }
+
+      let targetLabel = null;
+      if (!isFiltered) {
+        datasets.forEach(addDataset);
+      } else {
+        targetLabel = MEDIA_SLUG_TO_LABEL[mediaType];
+        const match = datasets.find(function (ds) { return ds.label === targetLabel; });
+        if (match) addDataset(match);
+      }
+
+      return { labels: labels, data: data, totalScored: totalScored, targetLabel: targetLabel };
+    }
+
+    function drawRatingDistribution(mediaType) {
+      const container = document.getElementById("ratingDistributionContainer");
+      const subtitleEl = document.getElementById("ratingDistributionSubtitle");
+      const built = buildRatingDistribution(mediaType);
+
+      if (subtitleEl) {
+        const itemsPhrase = built.totalScored.toLocaleString() + " rated" +
+          (built.targetLabel ? " " + built.targetLabel : "") + " item" + (built.totalScored === 1 ? "" : "s");
+        subtitleEl.textContent = "How your " + itemsPhrase + " are distributed.";
+      }
+
+      if (!built.totalScored) {
+        if (ratingDistributionChartInstance) { ratingDistributionChartInstance.destroy(); ratingDistributionChartInstance = null; }
+        if (container) {
+          container.innerHTML =
+            '<p class="text-sm text-gray-500 text-center py-8 w-full">No ratings yet for this filter.</p>';
+        }
+        return;
+      }
+
+      if (container && !container.querySelector("canvas")) {
+        container.innerHTML = '<canvas id="ratingDistributionChart"></canvas>';
+        ratingDistributionChartInstance = null;
+      }
+
+      const canvas = document.getElementById("ratingDistributionChart");
+      if (!canvas) return;
+
+      const chartOptions = JSON.parse(JSON.stringify(barChartConfig));
+      chartOptions.scales.x.stacked = false;
+      chartOptions.scales.y.stacked = false;
+      chartOptions.scales.x.grid = { display: false };
+      chartOptions.scales.y.border = { display: false };
+      // Headroom so the top-of-bar count/percentage datalabel never clips
+      // against the tallest bar. grace is a percentage of the data range, so
+      // it shrinks in pixel terms as the container gets shorter -- pair it
+      // with fixed pixel padding that reserves room for the two-line label
+      // regardless of container height.
+      chartOptions.scales.y.grace = "15%";
+      chartOptions.layout = { padding: { top: 26 } };
+      if (chartOptions.plugins && chartOptions.plugins.legend) {
+        chartOptions.plugins.legend.display = false;
+      }
+      chartOptions.plugins.datalabels = {
+        display: true,
+        anchor: "end",
+        align: "end",
+        color: "#9ca3af",
+        font: { size: 10 },
+        formatter: function (value) {
+          if (!value) return "";
+          const pct = built.totalScored > 0 ? ((value / built.totalScored) * 100).toFixed(1) : "0.0";
+          return value.toLocaleString() + "\n(" + pct + "%)";
+        },
+      };
+      chartOptions.plugins.tooltip = {
+        enabled: false,
+        mode: "index",
+        intersect: false,
+        external: function (context) {
+          let tooltipEl = document.getElementById("ratingDistributionTooltip");
+          if (!tooltipEl) {
+            tooltipEl = document.createElement("div");
+            tooltipEl.id = "ratingDistributionTooltip";
+            tooltipEl.style.cssText =
+              "position:absolute;z-index:100;pointer-events:none;opacity:0;transition:opacity 0.2s ease;" +
+              "background:#1f2937;border:1px solid rgba(255,255,255,0.1);border-radius:6px;" +
+              "padding:8px 10px;font-size:12px;color:#f3f4f6;box-shadow:0 4px 12px rgba(0,0,0,0.4);";
+            document.body.appendChild(tooltipEl);
+          }
+          const tooltipModel = context.tooltip;
+          if (tooltipModel.opacity === 0) {
+            tooltipEl.style.opacity = 0;
+            return;
+          }
+          if (tooltipModel.body) {
+            const dataIndex = tooltipModel.dataPoints[0].dataIndex;
+            const value = built.data[dataIndex] || 0;
+            tooltipEl.innerHTML =
+              '<div style="font-weight:600;color:#fff">Rating ' + built.labels[dataIndex] + "</div>" +
+              '<div style="margin-top:4px">' + value.toLocaleString() + (value === 1 ? " item" : " items") + "</div>";
+          }
+          const position = context.chart.canvas.getBoundingClientRect();
+          tooltipEl.style.opacity = 1;
+          tooltipEl.style.left = position.left + window.scrollX + tooltipModel.caretX + "px";
+          tooltipEl.style.top = position.top + window.scrollY + tooltipModel.caretY + "px";
+          tooltipEl.style.transform = "translate(-50%, -100%)";
+        },
+      };
+
+      const chartData = {
+        labels: built.labels,
+        datasets: [{
+          label: "Items",
+          data: built.data,
+          backgroundColor: "#6366f1",
+          borderColor: "rgba(255, 255, 255, 0.1)",
+          borderRadius: 6,
+          borderWidth: 1,
+        }],
+      };
+
+      if (ratingDistributionChartInstance) {
+        ratingDistributionChartInstance.data = chartData;
+        ratingDistributionChartInstance.options = chartOptions;
+        ratingDistributionChartInstance.update();
+      } else {
+        ratingDistributionChartInstance = new Chart(canvas.getContext("2d"), {
+          type: "bar",
+          data: chartData,
+          options: chartOptions,
+        });
+        window.__yamtrackStatsCharts.push(ratingDistributionChartInstance);
+      }
+    }
+
+    if (ratingDistributionData.labels && ratingDistributionData.labels.length > 0) {
+      drawRatingDistribution(getCurrentMediaType());
+      window.addEventListener("stats-media-type-changed", function () {
+        drawRatingDistribution(getCurrentMediaType());
+      });
+    } else {
+      const container = document.getElementById("ratingDistributionContainer");
+      if (container) {
+        container.innerHTML =
+          '<p class="text-sm text-gray-500 text-center py-8 w-full">No ratings yet.</p>';
+      }
+    }
+  }
+
+  // ─── Status Breakdown (status_distribution, table by media type) ──────────
+  const statusBreakdownDataEl = document.getElementById("status_distribution");
+  if (statusBreakdownDataEl) {
+    const statusBreakdownData = JSON.parse(statusBreakdownDataEl.textContent || "{}");
+
+    // Reverse of MEDIA_SLUG_TO_LABEL (readable label -> slug) so a row's
+    // display name can be matched back to its icon/color in MEDIA_TYPE_VISUALS.
+    const LABEL_TO_MEDIA_SLUG = {};
+    Object.keys(MEDIA_SLUG_TO_LABEL).forEach(function (slug) {
+      LABEL_TO_MEDIA_SLUG[MEDIA_SLUG_TO_LABEL[slug]] = slug;
+    });
+
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, function (ch) {
+        return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch];
+      });
+    }
+
+    function drawStatusBreakdown(mediaType) {
+      const container = document.getElementById("statusBreakdownContainer");
+      const isFiltered = mediaType && mediaType !== "all";
+      const targetLabel = isFiltered ? MEDIA_SLUG_TO_LABEL[mediaType] : null;
+      const subtitleText = targetLabel
+        ? targetLabel + " status counts."
+        : "Breakdown by type across all status states.";
+
+      const typeLabels = statusBreakdownData.labels || [];
+      let rowIndices = [];
+      typeLabels.forEach(function (label, i) {
+        if (!isFiltered || label === targetLabel) rowIndices.push(i);
+      });
+
+      // Only show status columns that actually have items, mirroring the
+      // donut/rating-distribution "hide empty series" convention.
+      const statusColumns = (statusBreakdownData.datasets || []).filter(function (ds) {
+        return (ds.total || (ds.data || []).reduce(function (a, b) { return a + (Number(b) || 0); }, 0)) > 0;
+      });
+
+      if (!rowIndices.length || !statusColumns.length) {
+        if (container) {
+          container.innerHTML =
+            '<p class="text-xs text-gray-400 mb-3">' + escapeHtml(subtitleText) + "</p>" +
+            '<p class="text-sm text-gray-500 text-center py-8 w-full">No status data available for this filter.</p>';
+        }
+        return;
+      }
+
+      const totalFor = function (idx) {
+        return statusColumns.reduce(function (sum, ds) { return sum + (Number((ds.data || [])[idx]) || 0); }, 0);
+      };
+      rowIndices = rowIndices.slice().sort(function (a, b) { return totalFor(b) - totalFor(a); });
+
+      const colWidth = function (ds) { return ds.label === "Completed" ? 116 : 84; };
+
+      let html = '<div class="statistics-card-scroll" style="overflow-x:auto;">';
+      html += '<div style="min-width:' + (170 + statusColumns.reduce(function (sum, ds) { return sum + colWidth(ds); }, 0) + 56) + 'px;">';
+
+      // Subtitle + column-header row share a single line.
+      html += '<div class="flex items-center gap-3 pb-2 mb-1 border-b border-gray-700">';
+      html +=
+        '<p class="text-xs text-gray-400 flex-1 min-w-0" style="min-width:110px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" ' +
+        'id="statusBreakdownSubtitle" title="' + escapeHtml(subtitleText) + '">' + escapeHtml(subtitleText) + "</p>";
+      html += '<div class="shrink-0 text-right text-xs font-medium text-gray-400" style="width:56px">Total</div>';
+      statusColumns.forEach(function (ds) {
+        html +=
+          '<div class="shrink-0 text-right text-xs font-medium" style="width:' + colWidth(ds) + 'px;color:' + ds.background_color + '">' +
+          escapeHtml(ds.label) + "</div>";
+      });
+      html += "</div>";
+
+      // Data rows.
+      rowIndices.forEach(function (idx) {
+        const typeLabel = typeLabels[idx];
+        const slug = LABEL_TO_MEDIA_SLUG[typeLabel];
+        const visuals = MEDIA_TYPE_VISUALS[slug] || {};
+        const total = totalFor(idx);
+
+        html += '<div class="flex items-center gap-3 py-2 border-b border-gray-700/50 last:border-0">';
+        html +=
+          '<div class="flex items-center gap-2 flex-1 min-w-0" style="min-width:110px">' +
+          '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" ' +
+          'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" ' +
+          'class="w-4 h-4 shrink-0" style="color:' + (visuals.color || "#9ca3af") + '">' + (visuals.icon || "") + "</svg>" +
+          '<span class="text-sm text-gray-300 truncate">' + escapeHtml(typeLabel) + "</span>" +
+          "</div>";
+        html +=
+          '<div class="shrink-0 text-sm font-semibold text-white text-right" style="width:56px">' +
+          total.toLocaleString() + "</div>";
+
+        statusColumns.forEach(function (ds) {
+          const value = Number((ds.data || [])[idx]) || 0;
+          if (ds.label === "Completed") {
+            const pct = total > 0 ? Math.max(0, Math.min(100, (value / total) * 100)) : 0;
+            html +=
+              '<div class="shrink-0 flex items-center gap-2" style="width:' + colWidth(ds) + 'px">' +
+              '<div class="rounded-full overflow-hidden shrink-0" style="width:34px;height:4px;background:rgba(255,255,255,0.1)">' +
+              '<div style="height:100%;width:' + pct + '%;background:' + ds.background_color + '"></div>' +
+              "</div>" +
+              '<span class="text-sm text-right flex-1" style="color:' + ds.background_color + '">' + value.toLocaleString() + "</span>" +
+              "</div>";
+          } else {
+            html +=
+              '<div class="shrink-0 text-sm text-right" style="width:' + colWidth(ds) + 'px;color:' + ds.background_color + '">' +
+              value.toLocaleString() + "</div>";
+          }
+        });
+
+        html += "</div>";
+      });
+
+      html += "</div></div>";
+
+      if (container) container.innerHTML = html;
+    }
+
+    if (statusBreakdownData.labels && statusBreakdownData.labels.length > 0) {
+      drawStatusBreakdown(getCurrentMediaType());
+      window.addEventListener("stats-media-type-changed", function () {
+        drawStatusBreakdown(getCurrentMediaType());
+      });
+    } else {
+      const container = document.getElementById("statusBreakdownContainer");
+      if (container) {
+        container.innerHTML =
+          '<p class="text-sm text-gray-500 text-center py-8 w-full">No status data available for this range.</p>';
       }
     }
   }

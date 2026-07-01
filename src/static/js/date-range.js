@@ -1,3 +1,44 @@
+// Mirrors app/config.py's MEDIA_TYPE_CONFIG stats_color + svg_icon fields so
+// the Average Rating card's icons match the rest of the app without a round
+// trip to the server for markup that's identical across every user.
+const MEDIA_TYPE_VISUALS = {
+  tv: {
+    color: "#10b981",
+    icon: '<rect width="20" height="15" x="2" y="7" rx="2" ry="2"/><polyline points="17 2 12 7 7 2"/>',
+  },
+  movie: {
+    color: "#f97316",
+    icon: '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M7 3v18"/><path d="M3 7.5h4"/><path d="M3 12h18"/><path d="M3 16.5h4"/><path d="M17 3v18"/><path d="M17 7.5h4"/><path d="M17 16.5h4"/>',
+  },
+  anime: {
+    color: "#3b82f6",
+    icon: '<circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/>',
+  },
+  manga: {
+    color: "#ef4444",
+    icon: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>',
+  },
+  game: {
+    color: "#eab308",
+    icon: '<line x1="6" x2="10" y1="11" y2="11"/><line x1="8" x2="8" y1="9" y2="13"/><line x1="15" x2="15.01" y1="12" y2="12"/><line x1="18" x2="18.01" y1="10" y2="10"/><path d="M17.32 5H6.68a4 4 0 0 0-3.978 3.59c-.006.052-.01.101-.017.152C2.649 9.416 2 14.456 2 16a3 3 0 0 0 3 3c1 0 1.5-.5 2-1l1.414-1.414A2 2 0 0 1 9.828 16h4.344a2 2 0 0 1 1.414.586L17 18c.5.5 1 1 2 1a3 3 0 0 0 3-3c0-1.545-.604-6.584-.685-7.258-.007-.05-.011-.1-.017-.151A4 4 0 0 0 17.32 5z"/>',
+  },
+  book: {
+    color: "#d946ef",
+    icon: '<path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/>',
+  },
+  comic: {
+    color: "#06b6d4",
+    icon: '<rect width="8" height="18" x="3" y="3" rx="1"/><path d="M7 3v18"/><path d="M20.4 18.9c.2.5-.1 1.1-.6 1.3l-1.9.7c-.5.2-1.1-.1-1.3-.6L11.1 5.1c-.2-.5.1-1.1.6-1.3l1.9-.7c.5-.2 1.1.1 1.3.6Z"/>',
+  },
+  music: {
+    color: "#fb7185",
+    icon: '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
+  },
+  podcast: {
+    color: "#a855f7",
+    icon: '<path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="23"/><line x1="8" x2="16" y1="23" y2="23"/>',
+  },
+};
 function dateRangePicker(options = {}) {
   const {
     initialRangeName = "",
@@ -8,6 +49,7 @@ function dateRangePicker(options = {}) {
     refreshUrl = "",
     compareModeUpdateUrl = "",
     csrfToken = "",
+    ratingScaleMax = 10,
   } = options;
 
   const today = new Date();
@@ -48,6 +90,7 @@ function dateRangePicker(options = {}) {
     compareMode: initialCompareMode,
     selectedMediaType: "all",
     mediaTypeOptions: initialMediaTypeOptions,
+    ratingScaleMax: ratingScaleMax,
     summaryStatsByType: {},
     refreshing: false,
     predefinedRanges,
@@ -73,6 +116,34 @@ function dateRangePicker(options = {}) {
       const totalHours = Math.round(totalMinutes / 60);
       const totalDays = Math.floor(totalMinutes / 60 / 24);
       return { ...s, longest_streak_dates_display: dates, total_hours: totalHours, total_days: totalDays };
+    },
+
+    averageRatingRows() {
+      const types = this.selectedMediaType === "all"
+        ? this.mediaTypeOptions.filter((opt) => opt.value !== "all")
+        : this.mediaTypeOptions.filter((opt) => opt.value === this.selectedMediaType);
+      const scaleMax = this.ratingScaleMax || 10;
+      return types
+        .map((opt) => {
+          const visuals = MEDIA_TYPE_VISUALS[opt.value] || {};
+          const score = this.summaryStatsByType[opt.value]
+            ? this.summaryStatsByType[opt.value].average_score
+            : null;
+          const pct = score !== null && score !== undefined
+            ? Math.max(0, Math.min(100, (score / scaleMax) * 100))
+            : 0;
+          return {
+            value: opt.value,
+            label: opt.label,
+            average_score: score,
+            average_score_display: score !== null && score !== undefined ? score.toFixed(1) : "",
+            icon: visuals.icon || "",
+            color: visuals.color || "#9ca3af",
+            pct: pct,
+          };
+        })
+        .filter((row) => row.average_score !== null && row.average_score !== undefined)
+        .sort((a, b) => b.average_score - a.average_score);
     },
 
     get currentTypeLabel() {
