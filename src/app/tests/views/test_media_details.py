@@ -7402,3 +7402,80 @@ class MediaDetailsViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         item.refresh_from_db()
         self.assertEqual(item.image, existing_image)
+
+
+class AnimeNextEpisodeRedirectTests(TestCase):
+    """Test the anime_next_episode click-time redirect view."""
+
+    def setUp(self):
+        self.credentials = {"username": "nextep", "password": "12345"}
+        self.user = get_user_model().objects.create_user(**self.credentials)
+        self.client.login(**self.credentials)
+        self.item = Item.objects.create(
+            media_id="51553",
+            source=Sources.MAL.value,
+            media_type=MediaTypes.ANIME.value,
+            title="Witch Hat Atelier",
+            image="http://example.com/anime.jpg",
+        )
+        Anime.objects.create(
+            item=self.item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+            progress=3,
+        )
+        self.url = reverse(
+            "anime_next_episode",
+            kwargs={"media_id": "51553", "title": "witch-hat-atelier"},
+        )
+        self.detail_url = reverse(
+            "media_details",
+            kwargs={
+                "source": Sources.MAL.value,
+                "media_type": MediaTypes.ANIME.value,
+                "media_id": "51553",
+                "title": "witch-hat-atelier",
+            },
+        )
+
+    @patch("app.views._build_flat_anime_episode_preview")
+    @patch("app.views.services.get_media_metadata")
+    def test_redirects_to_mapped_next_episode(self, mock_metadata, mock_preview):
+        mock_metadata.return_value = {"title": "Witch Hat Atelier", "details": {}}
+        mock_preview.return_value = [
+            {
+                "source": Sources.TMDB.value,
+                "media_id": "241259",
+                "season_number": 1,
+                "episode_number": episode_number,
+                "display_episode_number": episode_number,
+            }
+            for episode_number in range(1, 6)
+        ]
+
+        response = self.client.get(self.url)
+
+        self.assertRedirects(
+            response,
+            reverse(
+                "anime_episode_details",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_id": "241259",
+                    "title": "witch-hat-atelier",
+                    "season_number": 1,
+                    "episode_number": 4,
+                },
+            ),
+            fetch_redirect_response=False,
+        )
+
+    @patch("app.views._build_flat_anime_episode_preview")
+    @patch("app.views.services.get_media_metadata")
+    def test_falls_back_to_detail_page_without_mapping(self, mock_metadata, mock_preview):
+        mock_metadata.return_value = {"title": "Witch Hat Atelier", "details": {}}
+        mock_preview.return_value = None
+
+        response = self.client.get(self.url)
+
+        self.assertRedirects(response, self.detail_url, fetch_redirect_response=False)

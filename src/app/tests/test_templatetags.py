@@ -884,3 +884,116 @@ class AppTagsTests(TestCase):
         self.assertTrue(app_tags.show_media_score(1, mock_user_hide))
         self.assertFalse(app_tags.show_media_score(0, mock_user_hide))
         self.assertFalse(app_tags.show_media_score(None, mock_user_hide))
+
+
+class NextEpisodeUrlTests(TestCase):
+    """Test the next_episode_url template tag."""
+
+    def setUp(self):
+        """Set up a user for tracked media."""
+        self.user = get_user_model().objects.create_user(
+            username="nextep",
+            password="12345",
+        )
+
+    def _create_tv_with_completed_season(self, media_id="1668", progress=8):
+        """Return a TV show whose only tracked season is completed."""
+        from app.models import TV, Season, Status
+
+        tv_item = Item.objects.create(
+            media_id=media_id,
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Untracked Next Season TV",
+            image="http://example.com/tv.jpg",
+        )
+        tv = TV.objects.create(
+            item=tv_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        season_item = Item.objects.create(
+            media_id=media_id,
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Untracked Next Season TV",
+            image="http://example.com/tv-s1.jpg",
+            season_number=1,
+        )
+        Season.objects.create(
+            item=season_item,
+            user=self.user,
+            related_tv=tv,
+            status=Status.COMPLETED.value,
+        )
+        return tv_item, tv
+
+    def test_tv_show_falls_back_to_untracked_season_events(self):
+        """Link the first event episode of the next untracked season."""
+        from events.models import Event
+
+        tv_item, tv = self._create_tv_with_completed_season()
+        untracked_season_item = Item.objects.create(
+            media_id="1668",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Untracked Next Season TV",
+            image="http://example.com/tv-s2.jpg",
+            season_number=2,
+        )
+        Event.objects.create(
+            item=untracked_season_item,
+            content_number=1,
+            datetime=timezone.now(),
+            notification_sent=False,
+        )
+
+        url = app_tags.next_episode_url(tv_item, tv)
+
+        self.assertEqual(
+            url,
+            reverse(
+                "episode_details",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_id": "1668",
+                    "title": "untracked-next-season-tv",
+                    "season_number": 2,
+                    "episode_number": 1,
+                },
+            ),
+        )
+
+    def test_tv_show_without_untracked_events_returns_empty(self):
+        """No fallback URL when the untracked season has no events."""
+        tv_item, tv = self._create_tv_with_completed_season()
+
+        self.assertEqual(app_tags.next_episode_url(tv_item, tv), "")
+
+    def test_flat_mal_anime_links_next_episode_redirect(self):
+        """Flat MAL anime cards link the click-time resolver endpoint."""
+        from app.models import Anime, Status
+
+        anime_item = Item.objects.create(
+            media_id="51553",
+            source=Sources.MAL.value,
+            media_type=MediaTypes.ANIME.value,
+            title="Witch Hat Atelier",
+            image="http://example.com/anime.jpg",
+        )
+        anime = Anime.objects.create(
+            item=anime_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+            progress=3,
+        )
+
+        url = app_tags.next_episode_url(anime_item, anime)
+
+        self.assertEqual(
+            url,
+            reverse(
+                "anime_next_episode",
+                kwargs={"media_id": "51553", "title": "witch-hat-atelier"},
+            ),
+        )
