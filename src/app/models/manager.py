@@ -576,6 +576,29 @@ class MediaManager(models.Manager):
                 candidates.extend(_ordered_episodes_for_related(season))
 
             if progress_index >= len(candidates):
+                # Seasons not started yet have no Season row, so their calendar
+                # events are invisible above — without them a show whose next
+                # episode opens an untracked season gets no air date and sorts
+                # into the no-date tail.
+                tracked_season_numbers = {
+                    season.item.season_number
+                    for season in seasons
+                    if getattr(season, "item", None) is not None
+                }
+                untracked_events = (
+                    events.models.Event.objects.filter(
+                        item__media_id=item.media_id,
+                        item__source=item.source,
+                        item__media_type=MediaTypes.SEASON.value,
+                        item__season_number__gt=0,
+                        content_number__isnull=False,
+                    )
+                    .exclude(item__season_number__in=tracked_season_numbers)
+                    .order_by("item__season_number", "content_number")
+                )
+                candidates.extend(untracked_events)
+
+            if progress_index >= len(candidates):
                 return None
 
             candidate = candidates[progress_index]
