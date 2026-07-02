@@ -1316,7 +1316,7 @@
   </div>
 
   <!-- Status Breakdown + Average Rating -->
-  <div class="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4" style="margin-bottom:1rem">
     <div class="bg-[#2a2f35] rounded-lg p-4 sm:p-6 lg:col-span-2">
       <h2 class="text-base font-semibold text-white mb-0.5" id="statusBreakdownTitle">Status Breakdown</h2>
       <div id="statusBreakdownContainer"></div>
@@ -1395,143 +1395,52 @@
       </div>
     {% endif %}
 
-      {% with talent=top_talent %}
-      {% with talent_sort=request.user.top_talent_sort_by|default:'plays' %}
-      {% if talent.top_actors or talent.top_actresses or talent.top_directors or talent.top_writers or talent.top_studios %}
-      <section class="bg-[#2a2f35] rounded-lg p-6 mobile-tight-section stat-scroll-safe mb-4 sm:mb-8 space-y-8"
-               x-show="['all','tv','movie','anime'].includes(selectedMediaType)"
-               x-data="{
-                 open: false,
-                 selectedSort: '{{ talent_sort|escapejs }}',
-                 currentRangeName: '{{ selected_range_name|default:""|escapejs }}',
-                 currentStartDate: '{{ start_date_str|default:""|escapejs }}',
-                 currentEndDate: '{{ end_date_str|default:""|escapejs }}',
-                 selectedLabel: '',
-                 init() {
-                   this.selectedLabel = this.selectedSort === 'time' ? 'Time' : (this.selectedSort === 'titles' ? 'Titles' : 'Plays');
-                 },
-                 async setSort(sortBy, label) {
-                   if (this.selectedSort === sortBy) {
-                     this.open = false;
-                     return;
-                   }
-                   const previousSort = this.selectedSort;
-                   const previousLabel = this.selectedLabel;
-                   this.selectedSort = sortBy;
-                   this.selectedLabel = label;
-                   this.open = false;
-                   try {
-                     const body = new URLSearchParams();
-                     body.set('sort_by', sortBy);
-                     if (this.currentRangeName) {
-                       body.set('range_name', this.currentRangeName);
-                     }
-                     if (this.currentStartDate) {
-                       body.set('start_date', this.currentStartDate);
-                     }
-                     if (this.currentEndDate) {
-                       body.set('end_date', this.currentEndDate);
-                     }
-                     const response = await fetch('{% url 'update_top_talent_sort' %}', {
-                       method: 'POST',
-                       headers: {
-                         'Content-Type': 'application/x-www-form-urlencoded',
-                         'X-CSRFToken': '{{ csrf_token }}',
-                         'X-Requested-With': 'XMLHttpRequest'
-                       },
-                       body: body.toString()
-                     });
-                     const data = await response.json();
-                     if (!response.ok || !data.success) {
-                       throw new Error(data.error || 'Failed to save top talent sort');
-                     }
-                     if (data.requires_reload) {
-                       window.location.reload();
-                       return;
-                     }
-                     if (data.grid_html && this.$refs.topTalentGrid) {
-                       this.$refs.topTalentGrid.innerHTML = data.grid_html;
-                     }
-                   } catch (error) {
-                     this.selectedSort = previousSort;
-                     this.selectedLabel = previousLabel;
-                     console.error('Failed to save top talent sort:', error);
-                   }
-                 }
-               }">
-        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div class="flex flex-col space-y-1">
-            <span class="text-sm uppercase tracking-widest text-gray-400">Cast &amp; Crew</span>
-            <h2 class="text-2xl font-semibold text-white">Top Talent &amp; Studios</h2>
-            <span class="text-sm text-gray-500" x-text="selectedRange"></span>
-          </div>
-
-          <div class="w-full sm:w-auto sm:ml-auto text-right">
-            <label class="block text-xs uppercase tracking-wide text-gray-400">Sort By</label>
-            <div class="relative mt-1">
-              <button type="button"
-                      @click="open = !open"
-                      @click.outside="open = false"
-                      class="flex items-center justify-between w-full gap-2 px-3 py-2 bg-[#272c31] border border-gray-600 rounded-md text-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent cursor-pointer">
-                <span x-text="selectedLabel"></span>
-                <svg xmlns="http://www.w3.org/2000/svg"
-                     width="24"
-                     height="24"
-                     viewBox="0 0 24 24"
-                     fill="none"
-                     stroke="currentColor"
-                     stroke-width="2"
-                     stroke-linecap="round"
-                     stroke-linejoin="round"
-                     class="w-4 h-4 ml-1 text-gray-400">
-                  <path d="m6 9 6 6 6-6"></path>
-                </svg>
-              </button>
-              <div x-show="open"
-                   x-transition:enter="transition ease-out duration-100"
-                   x-transition:enter-start="transform opacity-0 scale-95"
-                   x-transition:enter-end="transform opacity-100 scale-100"
-                   x-transition:leave="transition ease-in duration-75"
-                   x-transition:leave-start="transform opacity-100 scale-100"
-                   x-transition:leave-end="transform opacity-0 scale-95"
-                   class="absolute left-0 right-0 mt-2 py-1 bg-[#272c31] rounded-md shadow-lg overflow-hidden z-10 border border-gray-600">
-                <button type="button"
-                        @click="setSort('plays', 'Plays')"
-                        class="block w-full px-3 py-2 text-left text-sm transition-colors text-gray-300 hover:bg-[#39404b] hover:text-white">
-                  Plays
-                </button>
-                <button type="button"
-                        @click="setSort('time', 'Time')"
-                        class="block w-full px-3 py-2 text-left text-sm transition-colors text-gray-300 hover:bg-[#39404b] hover:text-white">
-                  Time
-                </button>
-                <button type="button"
-                        @click="setSort('titles', 'Titles')"
-                        class="block w-full px-3 py-2 text-left text-sm transition-colors text-gray-300 hover:bg-[#39404b] hover:text-white">
-                  Titles
-                </button>
-              </div>
+      {% if featured_person or role_leaders.columns or studio_footprint.studios %}
+      <div class="mb-4 sm:mb-8 space-y-4 sm:space-y-4"
+           style="margin-top: 1rem;"
+           x-show="['all','tv','movie','anime'].includes(selectedMediaType)">
+        <div class="grid grid-cols-1 lg:grid-cols-5 gap-3 sm:gap-4 items-start">
+          <div class="bg-[#2a2f35] rounded-lg p-4 sm:p-6 lg:col-span-2 overflow-hidden" id="featured-repeat-player">
+            <div class="flex flex-col space-y-1 mb-4">
+              <h2 class="text-xl font-semibold text-white">Featured Repeat Player</h2>
+              <p class="text-sm text-gray-400">The most recurring talent in your library.</p>
+            </div>
+            <div x-ref="featuredPlayer">
+              {% include "app/components/featured_repeat_player_content.html" %}
+            </div>
+            <div x-ref="featuredPlayerFooter">
+              {% include "app/components/featured_repeat_player_footer.html" %}
             </div>
           </div>
+          <div class="bg-[#2a2f35] rounded-lg p-4 sm:p-6 lg:col-span-3 overflow-hidden">
+            {% include "app/components/role_leaders.html" %}
+          </div>
         </div>
 
-        <div id="top-talent-grid" x-ref="topTalentGrid">
-          {% if talent.by_sort %}
-            {% if talent_sort == 'time' %}
-              {% include "app/components/top_talent_grid.html" with talent=talent.by_sort.time talent_sort='time' %}
-            {% elif talent_sort == 'titles' %}
-              {% include "app/components/top_talent_grid.html" with talent=talent.by_sort.titles talent_sort='titles' %}
-            {% else %}
-              {% include "app/components/top_talent_grid.html" with talent=talent.by_sort.plays talent_sort='plays' %}
-            {% endif %}
-          {% else %}
-            {% include "app/components/top_talent_grid.html" with talent=talent talent_sort=talent_sort %}
-          {% endif %}
+        <div class="bg-[#2a2f35] rounded-lg p-4 sm:p-6" id="person-media-strip">
+          <div x-ref="personStrip">
+            {% include "app/components/person_media_strip_row.html" %}
+          </div>
         </div>
-      </section>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 items-start">
+          <div class="bg-[#2a2f35] rounded-lg p-4 sm:p-6">
+            <div class="flex flex-col space-y-1 mb-4">
+              <h2 class="text-xl font-semibold text-white">Studio Footprint</h2>
+              <p class="text-sm text-gray-400">Studios that appear most often in your library.</p>
+            </div>
+            {% include "app/components/studio_footprint.html" %}
+          </div>
+          <div class="bg-[#2a2f35] rounded-lg p-4 sm:p-6">
+            <div class="flex flex-col space-y-1 mb-4">
+              <h2 class="text-xl font-semibold text-white">Taste Signals</h2>
+              <p class="text-sm text-gray-400">What your library says about your taste.</p>
+            </div>
+            {% include "app/components/taste_signals.html" %}
+          </div>
+        </div>
+      </div>
       {% endif %}
-      {% endwith %}
-      {% endwith %}
 
       {% if tv_consumption.has_data %}
         <div x-show="isMediaTypeVisible('tv')">
@@ -2369,4 +2278,5 @@
 
   <script src="{% static 'js/statistics-charts.js' %}{% get_static_file_mtime 'js/statistics-charts.js' %}"></script>
   <script src="{% static 'js/cache-updater.js' %}"></script>
+  {% include "app/components/_scrollable_row_js.html" %}
 {% endblock js %}

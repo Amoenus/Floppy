@@ -131,16 +131,9 @@ def _is_writer_credit(credit) -> bool:
     return any(keyword in role for keyword in ("writer", "screenplay", "story", "teleplay", "script"))
 
 
-def get_person_talent_totals(user, person_source, person_id, start_date=None, end_date=None):
-    """Return stats-style totals for a single person's primary talent bucket."""
-    if not user or not person_source or person_id is None:
-        return None
-
-    person = Person.objects.filter(
-        source=person_source,
-        source_person_id=str(person_id),
-    ).first()
-    if not person:
+def _build_person_talent_context(user, start_date=None, end_date=None, schedule_missing_backfill=True):
+    """Build shared watched-item context for per-person talent computations."""
+    if not user:
         return None
 
     movie_play_counts = Counter()
@@ -208,19 +201,52 @@ def get_person_talent_totals(user, person_source, person_id, start_date=None, en
     tv_items_with_usable_credits = credit_helpers.usable_credits_backfill_item_ids(tv_item_ids)
 
     missing_credit_item_ids = credit_helpers.missing_credits_backfill_item_ids(played_item_ids)
-    if missing_credit_item_ids:
+    if missing_credit_item_ids and schedule_missing_backfill:
         try:
             from app.tasks import enqueue_credits_backfill_items
 
             enqueue_credits_backfill_items(missing_credit_item_ids, countdown=3)
         except Exception as exc:  # pragma: no cover - best effort scheduling
             logger.debug(
-                "person_talent_credits_backfill_schedule_failed user_id=%s person_source=%s person_id=%s error=%s",
+                "person_talent_credits_backfill_schedule_failed user_id=%s item_count=%s error=%s",
                 user.id,
-                person_source,
-                person_id,
+                len(missing_credit_item_ids),
                 exc,
             )
+
+    return {
+        "movie_play_counts": movie_play_counts,
+        "movie_watch_minutes": movie_watch_minutes,
+        "episode_play_rows": episode_play_rows,
+        "season_items_with_cast_credits": season_items_with_cast_credits,
+        "season_items_with_director_credits": season_items_with_director_credits,
+        "season_items_with_writer_credits": season_items_with_writer_credits,
+        "season_items_with_usable_credits": season_items_with_usable_credits,
+        "item_media_type_by_id": item_media_type_by_id,
+        "item_media_key_by_id": item_media_key_by_id,
+        "item_source_by_id": item_source_by_id,
+        "tv_items_with_usable_credits": tv_items_with_usable_credits,
+        "played_item_ids": played_item_ids,
+    }
+
+
+def _get_person_talent_totals_from_context(user, person, context):
+    """Reduce a shared watched-item context down to one person's totals."""
+    if not context:
+        return None
+
+    movie_play_counts = context["movie_play_counts"]
+    movie_watch_minutes = context["movie_watch_minutes"]
+    episode_play_rows = context["episode_play_rows"]
+    season_items_with_cast_credits = context["season_items_with_cast_credits"]
+    season_items_with_director_credits = context["season_items_with_director_credits"]
+    season_items_with_writer_credits = context["season_items_with_writer_credits"]
+    season_items_with_usable_credits = context["season_items_with_usable_credits"]
+    item_media_type_by_id = context["item_media_type_by_id"]
+    item_media_key_by_id = context["item_media_key_by_id"]
+    item_source_by_id = context["item_source_by_id"]
+    tv_items_with_usable_credits = context["tv_items_with_usable_credits"]
+    played_item_ids = context["played_item_ids"]
 
     actor_credit_item_ids = set()
     actress_credit_item_ids = set()
@@ -259,6 +285,7 @@ def get_person_talent_totals(user, person_source, person_id, start_date=None, en
     bucket_movie_items = defaultdict(set)
     bucket_show_items = defaultdict(set)
     bucket_minutes_by_media_key = defaultdict(lambda: defaultdict(int))
+    bucket_plays_by_media_key = defaultdict(lambda: defaultdict(int))
 
     role_sources = (
         ("actor", actor_credit_item_ids, season_items_with_cast_credits, CreditRoleType.CAST.value),
@@ -280,6 +307,7 @@ def get_person_talent_totals(user, person_source, person_id, start_date=None, en
             bucket_movie_items[bucket].add(item_id)
             if media_key:
                 bucket_minutes_by_media_key[bucket][media_key] += watched_minutes
+                bucket_plays_by_media_key[bucket][media_key] += plays
 
     for episode_item_id, season_item_id, tv_item_id, watched_minutes in episode_play_rows:
         if not tv_item_id:
@@ -312,6 +340,7 @@ def get_person_talent_totals(user, person_source, person_id, start_date=None, en
             bucket_show_items[bucket].add(tv_item_id)
             if media_key:
                 bucket_minutes_by_media_key[bucket][media_key] += watched_minutes
+                bucket_plays_by_media_key[bucket][media_key] += 1
 
     bucket_payloads = {}
     for bucket, _item_ids, _season_credit_item_ids, _role_type in role_sources:
@@ -327,6 +356,7 @@ def get_person_talent_totals(user, person_source, person_id, start_date=None, en
             "unique_shows": unique_shows,
             "unique_titles": unique_movies + unique_shows,
             "minutes_by_media_key": dict(bucket_minutes_by_media_key.get(bucket, {})),
+            "plays_by_media_key": dict(bucket_plays_by_media_key.get(bucket, {})),
         }
 
     nonzero_buckets = [
@@ -368,6 +398,31 @@ def get_person_talent_totals(user, person_source, person_id, start_date=None, en
         )
 
     return bucket_payloads.get(selected_bucket)
+
+
+def get_person_talent_totals(
+    user,
+    person_source,
+    person_id,
+    start_date=None,
+    end_date=None,
+    context=None,
+):
+    """Return stats-style totals for a single person's primary talent bucket."""
+    if not user or not person_source or person_id is None:
+        return None
+
+    person = Person.objects.filter(
+        source=person_source,
+        source_person_id=str(person_id),
+    ).first()
+    if not person:
+        return None
+
+    if context is None:
+        context = _build_person_talent_context(user, start_date, end_date)
+
+    return _get_person_talent_totals_from_context(user, person, context)
 
 
 def _aggregate_top_talent(user, start_date, end_date, limit=STATISTICS_TOP_N, schedule_missing_backfill=True):

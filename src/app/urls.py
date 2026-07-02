@@ -157,6 +157,11 @@ urlpatterns = [
         name="update_statistics_compare_mode",
     ),
     path(
+        "statistics/select-featured-person",
+        views.select_featured_person,
+        name="select_featured_person",
+    ),
+    path(
         "statistics/top-talent-sort",
         views.update_top_talent_sort,
         name="update_top_talent_sort",

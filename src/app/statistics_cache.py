@@ -28,12 +28,13 @@ from app.statistics_talent import (
     STATISTICS_TOP_N,
     STATISTICS_TOP_RATED_OVERALL,
     _aggregate_top_talent,
+    _build_person_talent_context,
     _is_director_credit,
     _is_writer_credit,
     _resolve_missing_credit_item_ids,
     _safe_runtime_minutes,
     _tv_episode_play_rows,
-    get_person_talent_totals,
+    get_person_talent_totals as _compute_person_talent_totals,
 )
 from app.statistics_highlights import (
     _cached_horizontal_backdrop,
@@ -177,6 +178,88 @@ def _dirty_days_key(user_id: int) -> str:
 
 def _history_version_key(user_id: int) -> str:
     return f"{STATISTICS_HISTORY_VERSION_PREFIX}:{user_id}"
+
+
+def _range_cache_component(value: datetime | date | str | None) -> str:
+    if value is None:
+        return "none"
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    return str(value)
+
+
+def _person_talent_context_cache_key(
+    user_id: int,
+    history_version: str,
+    start_date: datetime | date | None,
+    end_date: datetime | date | None,
+) -> str:
+    return (
+        f"{STATISTICS_CACHE_PREFIX}:person_talent_context:{user_id}:"
+        f"{history_version}:{CREDITS_BACKFILL_VERSION}:"
+        f"{_range_cache_component(start_date)}:{_range_cache_component(end_date)}"
+    )
+
+
+def _person_talent_totals_cache_key(
+    user_id: int,
+    history_version: str,
+    person_source: str,
+    person_id: str | int,
+    start_date: datetime | date | None,
+    end_date: datetime | date | None,
+) -> str:
+    return (
+        f"{STATISTICS_CACHE_PREFIX}:person_talent_totals:{user_id}:"
+        f"{history_version}:{CREDITS_BACKFILL_VERSION}:{person_source}:{person_id}:"
+        f"{_range_cache_component(start_date)}:{_range_cache_component(end_date)}"
+    )
+
+
+def _encode_person_talent_media_key(media_key) -> str:
+    media_type, media_id = media_key
+    return f"{media_type}::{media_id}"
+
+
+def _decode_person_talent_media_key(encoded_key):
+    if isinstance(encoded_key, tuple):
+        return encoded_key
+    media_type, _separator, media_id = encoded_key.partition("::")
+    return (media_type, media_id)
+
+
+def _serialize_person_talent_totals_for_cache(totals):
+    if not isinstance(totals, dict):
+        return totals
+
+    serialized = dict(totals)
+    for field_name in ("minutes_by_media_key", "plays_by_media_key"):
+        raw_map = serialized.get(field_name)
+        if not isinstance(raw_map, dict):
+            continue
+        serialized[field_name] = {
+            _encode_person_talent_media_key(media_key): value
+            for media_key, value in raw_map.items()
+        }
+    return serialized
+
+
+def _deserialize_person_talent_totals_from_cache(totals):
+    if not isinstance(totals, dict):
+        return totals
+
+    deserialized = dict(totals)
+    for field_name in ("minutes_by_media_key", "plays_by_media_key"):
+        raw_map = deserialized.get(field_name)
+        if not isinstance(raw_map, dict):
+            continue
+        deserialized[field_name] = {
+            _decode_person_talent_media_key(encoded_key): value
+            for encoded_key, value in raw_map.items()
+        }
+    return deserialized
 
 
 def _metadata_refresh_lock_key(user_id: int) -> str:
@@ -715,6 +798,76 @@ def get_top_talent_data(user, start_date, end_date, range_name=None):
                 return top_talent
 
     return _aggregate_top_talent(user, start_date, end_date)
+
+
+def get_statistics_media_count(user, start_date, end_date, range_name=None):
+    """Return media counts without rebuilding the full statistics payload."""
+    if range_name in PREDEFINED_RANGES:
+        cache_entry = cache.get(_cache_key(user.id, range_name))
+        if isinstance(cache_entry, dict):
+            data = cache_entry.get("data") or {}
+            media_count = data.get("media_count")
+            if isinstance(media_count, dict):
+                return media_count
+
+    _user_media, media_count = stats.get_user_media(user, start_date, end_date)
+    return media_count or {"total": 0}
+
+
+def get_person_talent_context(user, start_date=None, end_date=None):
+    """Return cached watched-item context for per-person statistics lookups."""
+    if not user:
+        return None
+
+    history_version = _get_history_version(user.id)
+    cache_key = _person_talent_context_cache_key(
+        user.id,
+        history_version,
+        start_date,
+        end_date,
+    )
+    cached_context = cache.get(cache_key)
+    if cached_context is not None:
+        return cached_context
+
+    context = _build_person_talent_context(user, start_date, end_date)
+    cache.set(cache_key, context, timeout=STATISTICS_CACHE_TIMEOUT)
+    return context
+
+
+def get_person_talent_totals(user, person_source, person_id, start_date=None, end_date=None):
+    """Return cached per-person talent totals for the watched range."""
+    if not user or not person_source or person_id is None:
+        return None
+
+    history_version = _get_history_version(user.id)
+    cache_key = _person_talent_totals_cache_key(
+        user.id,
+        history_version,
+        person_source,
+        person_id,
+        start_date,
+        end_date,
+    )
+    cached_totals = cache.get(cache_key)
+    if cached_totals is not None:
+        return _deserialize_person_talent_totals_from_cache(cached_totals)
+
+    context = get_person_talent_context(user, start_date, end_date)
+    totals = _compute_person_talent_totals(
+        user,
+        person_source,
+        person_id,
+        start_date,
+        end_date,
+        context=context,
+    )
+    cache.set(
+        cache_key,
+        _serialize_person_talent_totals_for_cache(totals),
+        timeout=STATISTICS_CACHE_TIMEOUT,
+    )
+    return totals
 
 
 def get_statistics_minutes_by_type(user, start_date, end_date, range_name=None):

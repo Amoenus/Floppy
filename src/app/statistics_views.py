@@ -4,7 +4,6 @@ import re
 from datetime import date, timedelta
 
 from dateutil.relativedelta import relativedelta
-from django.conf import settings
 from django.db.utils import OperationalError
 from django.http import JsonResponse
 from django.shortcuts import render
@@ -14,7 +13,7 @@ from django.utils.dateparse import parse_date
 from django.utils.timezone import datetime
 from django.views.decorators.http import require_GET, require_POST
 
-from app import config, statistics_cache
+from app import config, statistics_cache, stats_cast_crew
 from app import statistics as stats
 from app.models import MediaTypes
 from app.providers import tvdb
@@ -517,6 +516,42 @@ def statistics(request):
             duration_format=_duration_fmt,
         ).get("all") or {}
 
+        top_talent = statistics_data.get("top_talent", {})
+        active_top_talent_sort = getattr(request.user, "top_talent_sort_by", "plays")
+        featured_person, person_media_strip = stats_cast_crew.get_featured_repeat_player_with_strip(
+            request.user,
+            start_date,
+            end_date,
+            top_talent,
+            total_library_titles=statistics_data.get("media_count", {}).get("total", 0),
+            sort_by=active_top_talent_sort,
+        )
+        person_media_strip_row = stats_cast_crew.build_media_strip_row(
+            person_media_strip,
+            person_name=featured_person.get("name") if featured_person else None,
+            total_titles=featured_person.get("unique_titles") if featured_person else None,
+            sort_by=active_top_talent_sort,
+        )
+        role_leaders = stats_cast_crew.get_role_leaders(top_talent, sort_by=active_top_talent_sort)
+        studio_footprint = stats_cast_crew.get_studio_footprint(
+            request.user,
+            start_date,
+            end_date,
+            top_talent,
+            comparison_start_date=comparison_start_date,
+            comparison_end_date=comparison_end_date,
+        )
+        era_spotlight = stats_cast_crew.get_era_spotlight(
+            request.user,
+            start_date,
+            end_date,
+        )
+        top_genres_combined = stats_cast_crew.get_top_genres_combined(
+            statistics_data.get("movie_consumption", {}),
+            statistics_data.get("tv_consumption", {}),
+        )
+        collection_mix = stats_cast_crew.get_collection_mix(request.user)
+
         top_rated_by_type = statistics_data.get("top_rated_by_type", {})
         top_rated_movie = top_rated_by_type.get("movie", [])
         top_rated_tv = top_rated_by_type.get("tv", [])
@@ -577,7 +612,15 @@ def statistics(request):
             "top_rated_comic": top_rated_comic,
             "top_rated_manga": top_rated_manga,
             "top_played": statistics_data["top_played"],
-            "top_talent": statistics_data.get("top_talent", {}),
+            "top_talent": top_talent,
+            "featured_person": featured_person,
+            "person_media_strip": person_media_strip,
+            "person_media_strip_row": person_media_strip_row,
+            "role_leaders": role_leaders,
+            "studio_footprint": studio_footprint,
+            "era_spotlight": era_spotlight,
+            "top_genres_combined": top_genres_combined,
+            "collection_mix": collection_mix,
             "status_distribution": statistics_data["status_distribution"],
             "status_pie_chart_data": statistics_data["status_pie_chart_data"],
             "hours_per_media_type": statistics_data["hours_per_media_type"],
@@ -710,6 +753,14 @@ def statistics(request):
             "top_rated_manga": [],
             "top_played": empty_statistics_data["top_played"],
             "top_talent": empty_statistics_data["top_talent"],
+            "featured_person": None,
+            "person_media_strip": [],
+            "person_media_strip_row": stats_cast_crew.build_media_strip_row([]),
+            "role_leaders": {"columns": []},
+            "studio_footprint": {"studios": [], "delta": None},
+            "era_spotlight": [],
+            "top_genres_combined": [],
+            "collection_mix": {"formats": [], "total": 0},
             "status_distribution": empty_statistics_data["status_distribution"],
             "status_pie_chart_data": empty_statistics_data["status_pie_chart_data"],
             "hours_per_media_type": empty_statistics_data["hours_per_media_type"],
@@ -758,12 +809,101 @@ def refresh_statistics(request):
 
 
 @require_POST
+def select_featured_person(request):
+    """Swap the Featured Repeat Player card + media strip for a clicked person."""
+    person_source = request.POST.get("person_source")
+    person_id = request.POST.get("person_id")
+    range_name = request.POST.get("range_name")
+    start_date_str = request.POST.get("start_date")
+    end_date_str = request.POST.get("end_date")
+    total_library_titles = request.POST.get("total_library_titles")
+    sort_by = request.POST.get("sort_by") or getattr(request.user, "top_talent_sort_by", "plays")
+
+    if not person_source or not person_id:
+        return JsonResponse(
+            {"error": "person_source and person_id are required"},
+            status=400,
+        )
+
+    start_date, end_date = _resolve_statistics_range_inputs(
+        range_name,
+        start_date_str,
+        end_date_str,
+    )
+
+    try:
+        total_library_titles = int(total_library_titles)
+    except (TypeError, ValueError):
+        total_library_titles = None
+
+    if total_library_titles is None or total_library_titles < 0:
+        media_count = statistics_cache.get_statistics_media_count(
+            request.user,
+            start_date,
+            end_date,
+            range_name=range_name,
+        )
+        total_library_titles = media_count.get("total", 0)
+
+    featured_person, person_media_strip = stats_cast_crew.get_featured_person_with_strip(
+        request.user,
+        person_source,
+        person_id,
+        start_date,
+        end_date,
+        total_library_titles=total_library_titles,
+        sort_by=sort_by,
+    )
+    if not featured_person:
+        return JsonResponse({"error": "Person not found"}, status=404)
+
+    featured_html = render_to_string(
+        "app/components/featured_repeat_player_content.html",
+        {
+            "featured_person": featured_person,
+            "csrf_token": request.META.get("CSRF_COOKIE"),
+        },
+        request=request,
+    )
+    footer_html = render_to_string(
+        "app/components/featured_repeat_player_footer.html",
+        {
+            "featured_person": featured_person,
+        },
+        request=request,
+    )
+    strip_html = render_to_string(
+        "app/components/person_media_strip_row.html",
+        {
+            "person_media_strip_row": stats_cast_crew.build_media_strip_row(
+                person_media_strip,
+                person_name=featured_person.get("name"),
+                total_titles=featured_person.get("unique_titles"),
+                sort_by=sort_by,
+            ),
+        },
+        request=request,
+    )
+
+    return JsonResponse(
+        {
+            "success": True,
+            "featured_html": featured_html,
+            "footer_html": footer_html,
+            "strip_html": strip_html,
+            "pct_of_library": featured_person.get("pct_of_library", 0),
+        },
+    )
+
+
+@require_POST
 def update_top_talent_sort(request):
-    """Autosave top talent sort preference from statistics page controls."""
+    """Autosave top talent sort preference and refresh role leaders + featured person."""
     sort_by = request.POST.get("sort_by")
     range_name = request.POST.get("range_name")
     start_date_str = request.POST.get("start_date")
     end_date_str = request.POST.get("end_date")
+    total_library_titles = request.POST.get("total_library_titles")
 
     valid_sort_values = list(TopTalentSortChoices.values)
     if sort_by not in valid_sort_values:
@@ -779,7 +919,6 @@ def update_top_talent_sort(request):
     updated_sort = request.user.update_preference("top_talent_sort_by", sort_by)
     changed = previous_sort != updated_sort
     requires_reload = False
-    grid_html = ""
 
     if range_name in statistics_cache.PREDEFINED_RANGES:
         try:
@@ -795,29 +934,94 @@ def update_top_talent_sort(request):
                 exc,
             )
 
-    if not requires_reload:
-        start_date, end_date = _resolve_statistics_range_inputs(
-            range_name,
-            start_date_str,
-            end_date_str,
+    if requires_reload:
+        return JsonResponse(
+            {
+                "success": True,
+                "sort_by": updated_sort,
+                "changed": changed,
+                "requires_reload": True,
+            },
         )
-        top_talent = statistics_cache.get_top_talent_data(
+
+    start_date, end_date = _resolve_statistics_range_inputs(
+        range_name,
+        start_date_str,
+        end_date_str,
+    )
+
+    try:
+        total_library_titles = int(total_library_titles)
+    except (TypeError, ValueError):
+        total_library_titles = None
+
+    if total_library_titles is None or total_library_titles < 0:
+        media_count = statistics_cache.get_statistics_media_count(
             request.user,
             start_date,
             end_date,
             range_name=range_name,
         )
-        selected_talent = top_talent
-        by_sort = top_talent.get("by_sort") if isinstance(top_talent, dict) else None
-        if isinstance(by_sort, dict):
-            selected_talent = by_sort.get(updated_sort) or {}
+        total_library_titles = media_count.get("total", 0)
 
-        grid_html = render_to_string(
-            "app/components/top_talent_grid.html",
+    top_talent = statistics_cache.get_top_talent_data(
+        request.user,
+        start_date,
+        end_date,
+        range_name=range_name,
+    )
+    role_leaders = stats_cast_crew.get_role_leaders(top_talent, sort_by=sort_by)
+    featured_person, person_media_strip = stats_cast_crew.get_featured_repeat_player_with_strip(
+        request.user,
+        start_date,
+        end_date,
+        top_talent,
+        total_library_titles=total_library_titles,
+        sort_by=sort_by,
+    )
+
+    role_leaders_html = render_to_string(
+        "app/components/role_leaders_grid.html",
+        {
+            "role_leaders": role_leaders,
+        },
+        request=request,
+    )
+
+    featured_html = ""
+    footer_html = ""
+    strip_html = ""
+    selected_person_key = ""
+    pct_of_library = 0
+
+    if featured_person:
+        selected_person_key = (
+            f"{featured_person.get('source', '')}:{featured_person.get('person_id', '')}"
+        )
+        pct_of_library = featured_person.get("pct_of_library", 0)
+        featured_html = render_to_string(
+            "app/components/featured_repeat_player_content.html",
             {
-                "talent": selected_talent,
-                "talent_sort": updated_sort,
-                "IMG_NONE": settings.IMG_NONE,
+                "featured_person": featured_person,
+            },
+            request=request,
+        )
+        footer_html = render_to_string(
+            "app/components/featured_repeat_player_footer.html",
+            {
+                "featured_person": featured_person,
+            },
+            request=request,
+        )
+        strip_html = render_to_string(
+            "app/components/person_media_strip_row.html",
+            {
+                "person_media_strip_row": stats_cast_crew.build_media_strip_row(
+                    person_media_strip,
+                    person_name=featured_person.get("name"),
+                    total_titles=featured_person.get("unique_titles"),
+                    sort_by=sort_by,
+                ),
             },
             request=request,
         )
@@ -827,8 +1031,13 @@ def update_top_talent_sort(request):
             "success": True,
             "sort_by": updated_sort,
             "changed": changed,
-            "requires_reload": requires_reload,
-            "grid_html": grid_html,
+            "requires_reload": False,
+            "role_leaders_html": role_leaders_html,
+            "featured_html": featured_html,
+            "footer_html": footer_html,
+            "strip_html": strip_html,
+            "selected_person_key": selected_person_key,
+            "pct_of_library": pct_of_library,
         },
     )
 

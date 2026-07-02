@@ -211,10 +211,11 @@ from app.statistics_views import (
     _resolve_statistics_range_inputs,
     _statistics_day_boundary,
     refresh_statistics,
+    select_featured_person,
     statistics,
+    update_top_talent_sort,
     update_statistics_compare_mode,
     update_statistics_preferences,
-    update_top_talent_sort,
 )
 
 # history_cache is imported above

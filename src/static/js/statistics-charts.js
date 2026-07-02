@@ -1767,6 +1767,152 @@ function initStatisticsCharts() {
     }
   }
 
+  // ─── Featured Repeat Player "X% of titles" ring ──────────────────────────
+  (function initFeaturedPersonRing() {
+    let featuredPersonRingChart = null;
+    let featuredPersonRingCanvas = null;
+
+    function readFeaturedPersonPct() {
+      const el = document.getElementById("featured_person_pct");
+      if (!el) return 0;
+      try {
+        return Number(JSON.parse(el.textContent || "0")) || 0;
+      } catch (_) {
+        return 0;
+      }
+    }
+
+    window.renderFeaturedPersonRing = function (pct) {
+      const canvas = document.getElementById("featuredPersonRingChart");
+      const centerEl = document.getElementById("featuredPersonRingCenter");
+      if (!canvas) {
+        if (featuredPersonRingChart) {
+          featuredPersonRingChart.destroy();
+        }
+        featuredPersonRingChart = null;
+        featuredPersonRingCanvas = null;
+        return;
+      }
+      const clamped = Math.max(0, Math.min(100, Number(pct) || 0));
+      const data = [clamped, Math.max(0, 100 - clamped)];
+      const colors = ["#6366f1", "rgba(255,255,255,0.07)"];
+
+      if (centerEl) {
+        centerEl.innerHTML =
+          '<span style="font-size:1rem;font-weight:700;color:#fff;line-height:1.2">' +
+          clamped.toFixed(1).replace(/\.0$/, "") + "%</span>" +
+          '<span style="font-size:0.6rem;color:#9ca3af;line-height:1.2">of titles</span>';
+      }
+
+      if (featuredPersonRingChart && featuredPersonRingCanvas !== canvas) {
+        featuredPersonRingChart.destroy();
+        featuredPersonRingChart = null;
+        featuredPersonRingCanvas = null;
+      }
+
+      if (featuredPersonRingChart) {
+        featuredPersonRingChart.data.datasets[0].data = data;
+        featuredPersonRingChart.data.datasets[0].backgroundColor = colors;
+        featuredPersonRingChart.update();
+        return;
+      }
+
+      featuredPersonRingChart = new Chart(canvas.getContext("2d"), {
+        type: "doughnut",
+        data: { labels: ["Featured", "Other"], datasets: [{ data: data, backgroundColor: colors }] },
+        options: {
+          responsive: true,
+          maintainAspectRatio: true,
+          cutout: "68%",
+          plugins: {
+            legend: { display: false },
+            datalabels: { display: false },
+            tooltip: { enabled: false },
+          },
+          elements: { arc: { borderWidth: 1, borderColor: "rgba(0,0,0,0.15)" } },
+        },
+      });
+      featuredPersonRingCanvas = canvas;
+      window.__yamtrackStatsCharts.push(featuredPersonRingChart);
+    };
+
+    if (document.getElementById("featuredPersonRingChart")) {
+      window.renderFeaturedPersonRing(readFeaturedPersonPct());
+    }
+  })();
+
+  // ─── Collection Mix donut (collection_mix, owned-format breakdown) ──────
+  (function initCollectionMixDonut() {
+    const dataEl = document.getElementById("collection_mix_data");
+    if (!dataEl) return;
+    let collectionMixData;
+    try {
+      collectionMixData = JSON.parse(dataEl.textContent || "{}");
+    } catch (_) {
+      return;
+    }
+    const formats = collectionMixData.formats || [];
+    if (!formats.length) return;
+
+    const canvas = document.getElementById("collectionMixChart");
+    const legendEl = document.getElementById("collectionMixLegend");
+    const centerEl = document.getElementById("collectionMixCenter");
+    if (!canvas) return;
+
+    const labels = formats.map(function (f) { return f.name; });
+    const data = formats.map(function (f) { return f.count; });
+    const colors = labels.map(function (_, i) { return GENRE_PALETTE[i % GENRE_PALETTE.length]; });
+    const total = collectionMixData.total || data.reduce(function (a, b) { return a + b; }, 0);
+
+    if (centerEl) {
+      centerEl.innerHTML =
+        '<span style="font-size:1.1rem;font-weight:700;color:#fff;line-height:1.2">' +
+        total.toLocaleString() + "</span>" +
+        '<span style="font-size:0.65rem;color:#9ca3af;line-height:1.2">owned items</span>';
+    }
+
+    new Chart(canvas.getContext("2d"), {
+      type: "doughnut",
+      data: { labels: labels, datasets: [{ data: data, backgroundColor: colors }] },
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        cutout: "68%",
+        plugins: {
+          legend: { display: false },
+          datalabels: { display: false },
+          tooltip: { enabled: true },
+        },
+        elements: { arc: { borderWidth: 1, borderColor: "rgba(0,0,0,0.15)" } },
+      },
+    });
+
+    if (legendEl) {
+      legendEl.innerHTML = "";
+      const sortedIndices = labels.map(function (_, i) { return i; })
+        .sort(function (a, b) { return data[b] - data[a]; });
+      sortedIndices.forEach(function (i) {
+        const label = labels[i];
+        const count = data[i];
+        const color = colors[i];
+        const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+        const row = document.createElement("div");
+        row.style.cssText = "display:flex;align-items:center;gap:10px;font-size:11px;";
+        row.innerHTML =
+          '<div style="flex-shrink:0;display:flex;align-items:center;gap:6px;min-width:0;width:84px">' +
+            '<span style="flex-shrink:0;width:10px;height:10px;border-radius:2px;background:' + color + '"></span>' +
+            '<span style="min-width:0;color:#d1d5db;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + label + "</span>" +
+          "</div>" +
+          '<div style="flex:1;height:5px;border-radius:3px;background:rgba(255,255,255,0.07);overflow:hidden;min-width:40px">' +
+            '<div style="height:100%;border-radius:3px;background:' + color + ';width:' + pct + '%"></div>' +
+          "</div>" +
+          '<span style="flex-shrink:0;width:34px;text-align:center;color:#fff;font-weight:700">' + pct + "%</span>" +
+          '<span style="flex-shrink:0;min-width:60px;text-align:center;color:#6b7280;font-variant-numeric:tabular-nums">' + count.toLocaleString() + "</span>";
+        legendEl.appendChild(row);
+      });
+    }
+  })();
+
   window.dispatchEvent(new CustomEvent("stats-charts-initialized"));
 
   // Initial sizing and on resize for the copied score chart wrapper
