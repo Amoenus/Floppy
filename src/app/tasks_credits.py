@@ -115,7 +115,14 @@ def _populate_credits_for_items(items, delay_seconds):
                 _record_backfill_failure(item, MetadataBackfillField.CREDITS, "no credits payload")
                 continue
 
-            credits.sync_item_credits_from_metadata(item, metadata)
+            # Suppress per-row signal side effects (each ItemPersonCredit
+            # delete/create would otherwise schedule its own Discover rebuild);
+            # _schedule_metadata_statistics_refresh below handles the follow-up
+            # invalidation for the whole batch instead.
+            from app.signals import suppress_media_change_side_effects  # noqa: PLC0415
+
+            with suppress_media_change_side_effects():
+                credits.sync_item_credits_from_metadata(item, metadata)
             _record_backfill_success(
                 item,
                 MetadataBackfillField.CREDITS,

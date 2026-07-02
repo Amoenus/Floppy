@@ -275,11 +275,21 @@ def get_featured_person_with_strip(
     return payload, strip
 
 
+_FEATURED_CANDIDATE_SORT_KEYS = {
+    "time": ("watched_minutes", "plays", "unique_titles"),
+    "titles": ("unique_titles", "plays", "watched_minutes"),
+    "plays": ("plays", "watched_minutes", "unique_titles"),
+}
+
+
 def pick_default_featured_candidate(top_talent, sort_by=None):
     """Pick the default Featured Repeat Player candidate.
 
-    Default selection = the person with the highest `unique_titles` across the
-    four leaderboards (actors/actresses/directors/writers).
+    Ranked by whichever metric the active sort mode uses (time -> watched
+    minutes, titles -> unique titles, plays -> play count), with the other two
+    metrics as tiebreakers. This keeps the featured pick consistent with
+    whoever is actually #1 in the visible Role Leaders column, instead of
+    always defaulting to unique-titles ranking regardless of the active sort.
     """
     if not isinstance(top_talent, dict):
         return None
@@ -295,9 +305,14 @@ def pick_default_featured_candidate(top_talent, sort_by=None):
     if not candidates:
         return None
 
+    metric_order = _FEATURED_CANDIDATE_SORT_KEYS.get(
+        sort_by,
+        _FEATURED_CANDIDATE_SORT_KEYS["plays"],
+    )
+
     return max(
         candidates,
-        key=lambda entry: (entry.get("unique_titles", 0), entry.get("plays", 0)),
+        key=lambda entry: tuple(entry.get(metric, 0) for metric in metric_order),
     )
 
 
@@ -363,6 +378,7 @@ def _run_comparison_studio_delta(
     studios,
     comparison_start_date,
     comparison_end_date,
+    media_type=None,
 ):
     """Re-run studio aggregation over the comparison window and return a delta."""
     try:
@@ -371,6 +387,7 @@ def _run_comparison_studio_delta(
             comparison_start_date,
             comparison_end_date,
             schedule_missing_backfill=False,
+            media_type=media_type,
         )
     except Exception as exc:  # noqa: BLE001 - best effort comparison
         logger.debug(
@@ -409,6 +426,7 @@ def get_studio_footprint(
     comparison_start_date=None,
     comparison_end_date=None,
     limit=STUDIO_FOOTPRINT_LIMIT,
+    media_type=None,
 ):
     """Reshape `top_talent.by_sort.plays.top_studios` into a percentage footprint.
 
@@ -445,6 +463,7 @@ def get_studio_footprint(
             studios,
             comparison_start_date,
             comparison_end_date,
+            media_type=media_type,
         )
 
     return {"studios": studio_rows, "delta": delta}

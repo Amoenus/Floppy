@@ -1,4 +1,5 @@
 import logging
+import os
 import sys
 from importlib import import_module
 
@@ -19,6 +20,11 @@ def _is_celery_worker_process() -> bool:
     )
 
 
+def _is_runserver_parent_process() -> bool:
+    """Return whether this is Django's autoreload parent for runserver."""
+    return "runserver" in sys.argv and os.environ.get("RUN_MAIN") != "true"
+
+
 class AppConfig(AppConfig):
     """Default app config."""
 
@@ -31,6 +37,7 @@ class AppConfig(AppConfig):
         if not settings.TESTING:
             self._repair_celery_redis_bindings()
         is_celery_worker = _is_celery_worker_process()
+        is_runserver_parent = _is_runserver_parent_process()
 
         runtime_cache_available = self._add_startup_cache_key(
             "runtime_population_startup_scheduled",
@@ -47,6 +54,7 @@ class AppConfig(AppConfig):
             and not getattr(settings, "RUNTIME_POPULATION_DISABLED", False)
             and getattr(settings, "RUNTIME_POPULATION_ON_STARTUP", False)
             and not is_celery_worker
+            and not is_runserver_parent
             and runtime_cache_available
         ):
             self._schedule_runtime_population()
@@ -54,15 +62,22 @@ class AppConfig(AppConfig):
         if (
             not settings.TESTING
             and not is_celery_worker
+            and not is_runserver_parent
             and getattr(settings, "DISCOVER_WARMUP_ON_STARTUP", False)
             and discover_cache_available
         ):
             self._schedule_discover_startup_warmup()
 
-        if not settings.TESTING and not is_celery_worker and history_cache_available:
+        if (
+            not settings.TESTING
+            and not is_celery_worker
+            and not is_runserver_parent
+            and history_cache_available
+        ):
             self._schedule_history_day_coverage_warmup()
 
-        if not settings.TESTING and not is_celery_worker:
+        if not settings.TESTING and not is_celery_worker and not is_runserver_parent:
+            self._schedule_imdb_game_person_profile_backfill()
             self._schedule_genre_backfill_reconcile()
             self._schedule_trakt_popularity_reconcile()
 
@@ -134,6 +149,30 @@ class AppConfig(AppConfig):
             logger.info("Scheduled history day coverage warmup")
         except Exception as error:  # noqa: BLE001
             logger.warning("Failed to schedule history day coverage warmup: %s", error)
+
+    def _schedule_imdb_game_person_profile_backfill(self):
+        """Schedule IMDB person profile repair when gender/image data is missing."""
+        try:
+            from app.services import imdb_game_credits  # noqa: PLC0415
+
+            missing_count = imdb_game_credits.count_people_missing_profiles()
+            if missing_count <= 0:
+                return
+
+            tasks_imdb = import_module("app.tasks_imdb")
+            # Use the long-lived refresh task name here instead of the newer
+            # dedicated profile-backfill task so older shared workers on the
+            # same broker can still execute the repair path.
+            tasks_imdb.refresh_imdb_game_credits_from_datasets.apply_async(
+                countdown=0,
+                priority=getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 1),
+            )
+            logger.info(
+                "Scheduled IMDB person profile repair via refresh task for %s people on startup",
+                missing_count,
+            )
+        except Exception as error:  # noqa: BLE001
+            logger.warning("Failed to schedule IMDB person profile backfill: %s", error)
 
     def _schedule_genre_backfill_reconcile(self):
         """Schedule a one-time genre backfill reconcile."""

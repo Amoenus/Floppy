@@ -1321,6 +1321,19 @@ def sync_metadata(request, source, media_type, media_id, season_number=None):
             MediaTypes.SEASON.value,
         ):
             credits.sync_item_credits_from_metadata(item, metadata)
+        elif source == Sources.IGDB.value and tracking_media_type == MediaTypes.GAME.value:
+            # No inline metadata payload for cast here — IMDB cast/crew is a
+            # separate best-effort match+download pipeline that's too heavy to
+            # run synchronously in a request. Queue it so a manual refresh
+            # doesn't have to wait for the nightly job to pick this game up.
+            # This is a manual force action from the UI, so it always fires —
+            # no silent debounce. The sync_metadata cache-TTL check above this
+            # block already throttles rapid refreshes on the same item with a
+            # visible message; that's the right layer for rate-limiting, not a
+            # silent global gate here.
+            from app.tasks_imdb import refresh_imdb_game_credits_from_datasets  # noqa: PLC0415
+
+            refresh_imdb_game_credits_from_datasets.apply_async(countdown=2)
 
         title = metadata["title"]
         if season_number:

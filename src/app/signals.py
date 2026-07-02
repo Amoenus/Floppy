@@ -417,6 +417,8 @@ def refresh_discover_cache_on_item_tag_change(sender, instance, **kwargs):  # no
 @receiver([post_save, post_delete], sender=ItemPersonCredit)
 def refresh_discover_cache_on_item_person_credit_change(sender, instance, **kwargs):  # noqa: ARG001
     """Refresh Discover when credited people change on tracked movie/TV items."""
+    if media_change_side_effects_suppressed():
+        return
     item = getattr(instance, "item", None)
     if item is None and getattr(instance, "item_id", None):
         item = Item.objects.filter(id=instance.item_id).only("id", "media_type").first()

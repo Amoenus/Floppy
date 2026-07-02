@@ -253,10 +253,18 @@ def _normalize_studio_rows(rows):
 
 
 @transaction.atomic
-def sync_item_credits_from_metadata(item, metadata):
-    """Persist cast/crew and studios for an item from normalized metadata."""
+def sync_item_credits_from_metadata(item, metadata, person_source=None):
+    """Persist cast/crew and studios for an item from normalized metadata.
+
+    person_source defaults to item.source. Pass it explicitly when the credit
+    data comes from a different provider than the item itself (e.g. IMDB cast
+    attached to an IGDB-sourced game) so Person/Studio rows aren't tagged with
+    the wrong source namespace.
+    """
     if not item or not isinstance(metadata, dict):
         return
+
+    person_source = person_source or item.source
 
     has_people_payload = "cast" in metadata or "crew" in metadata
     has_studio_payload = "studios_full" in metadata
@@ -269,7 +277,7 @@ def sync_item_credits_from_metadata(item, metadata):
         people_by_source_id = {}
         for row in cast_rows + crew_rows:
             person, _ = Person.objects.update_or_create(
-                source=item.source,
+                source=person_source,
                 source_person_id=row["person_id"],
                 defaults={
                     "name": row["name"] or "Unknown Person",
@@ -326,7 +334,7 @@ def sync_item_credits_from_metadata(item, metadata):
         studios_by_source_id = {}
         for row in studio_rows:
             studio, _ = Studio.objects.update_or_create(
-                source=item.source,
+                source=person_source,
                 source_studio_id=row["studio_id"],
                 defaults={
                     "name": row["name"] or "Unknown Studio",

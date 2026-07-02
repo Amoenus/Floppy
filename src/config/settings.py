@@ -1033,6 +1033,7 @@ CELERY_TASK_ROUTES = {
     "Backfill item metadata": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Ensure genre backfill reconcile": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Nightly metadata quality backfill": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
+    "Refresh IMDB game credits from datasets": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Warm Discover API Cache": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Warm Discover Startup Tabs": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Warm History Day Cache Coverage": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},

@@ -9,6 +9,7 @@ class Sources(models.TextChoices):
     MAL = "mal", "MyAnimeList"
     MANGAUPDATES = "mangaupdates", "MangaUpdates"
     IGDB = "igdb", "Internet Game Database"
+    IMDB = "imdb", "IMDb"
     OPENLIBRARY = "openlibrary", "Open Library"
     HARDCOVER = "hardcover", "Hardcover"
     COMICVINE = "comicvine", "Comic Vine"

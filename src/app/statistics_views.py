@@ -16,6 +16,7 @@ from django.views.decorators.http import require_GET, require_POST
 from app import config, statistics_cache, stats_cast_crew
 from app import statistics as stats
 from app.models import MediaTypes
+from app.statistics_talent import _aggregate_top_talent
 from app.providers import tvdb
 from app.templatetags import app_tags
 from users.models import (
@@ -904,6 +905,14 @@ def update_top_talent_sort(request):
     start_date_str = request.POST.get("start_date")
     end_date_str = request.POST.get("end_date")
     total_library_titles = request.POST.get("total_library_titles")
+    media_type = request.POST.get("media_type")
+    if media_type not in {
+        MediaTypes.MOVIE.value,
+        MediaTypes.TV.value,
+        MediaTypes.ANIME.value,
+        MediaTypes.GAME.value,
+    }:
+        media_type = None
 
     valid_sort_values = list(TopTalentSortChoices.values)
     if sort_by not in valid_sort_values:
@@ -964,12 +973,16 @@ def update_top_talent_sort(request):
         )
         total_library_titles = media_count.get("total", 0)
 
-    top_talent = statistics_cache.get_top_talent_data(
-        request.user,
-        start_date,
-        end_date,
-        range_name=range_name,
-    )
+    if media_type:
+        # Filtered variants aren't cached — only the unfiltered per-range payload is.
+        top_talent = _aggregate_top_talent(request.user, start_date, end_date, media_type=media_type)
+    else:
+        top_talent = statistics_cache.get_top_talent_data(
+            request.user,
+            start_date,
+            end_date,
+            range_name=range_name,
+        )
     role_leaders = stats_cast_crew.get_role_leaders(top_talent, sort_by=sort_by)
     featured_person, person_media_strip = stats_cast_crew.get_featured_repeat_player_with_strip(
         request.user,
@@ -979,11 +992,25 @@ def update_top_talent_sort(request):
         total_library_titles=total_library_titles,
         sort_by=sort_by,
     )
+    studio_footprint = stats_cast_crew.get_studio_footprint(
+        request.user,
+        start_date,
+        end_date,
+        top_talent,
+        media_type=media_type,
+    )
 
     role_leaders_html = render_to_string(
         "app/components/role_leaders_grid.html",
         {
             "role_leaders": role_leaders,
+        },
+        request=request,
+    )
+    studio_footprint_html = render_to_string(
+        "app/components/studio_footprint_grid.html",
+        {
+            "studio_footprint": studio_footprint,
         },
         request=request,
     )
@@ -1033,6 +1060,7 @@ def update_top_talent_sort(request):
             "changed": changed,
             "requires_reload": False,
             "role_leaders_html": role_leaders_html,
+            "studio_footprint_html": studio_footprint_html,
             "featured_html": featured_html,
             "footer_html": footer_html,
             "strip_html": strip_html,

@@ -11,7 +11,10 @@ _INTERACTIVE_REQUEST_EXCLUDED_PREFIXES = (
     "/api/",
     "/media/",
     "/static/",
-    "/_debug/",
+    # Django Debug Toolbar mounts at /__debug__/ and its history sidebar polls
+    # continuously in dev — that must not count as user activity or background
+    # backfills defer forever, one item per cycle.
+    "/__debug__/",
 )
 _INTERACTIVE_REQUEST_EXCLUDED_PATHS = {"/serviceworker.js"}
 

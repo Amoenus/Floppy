@@ -348,13 +348,13 @@
           {% include "app/components/seasons_grid.html" %}
         {% endif %}
 
-        {% if media.source == Sources.TMDB.value and media.cast %}
+        {% if cast_row.total %}
           <section class="mb-8">
             {% include "app/components/_scrollable_row.html" with row=cast_row grid_template="app/components/detail_cast_grid.html" collapse_key="detail-cast-open" %}
           </section>
         {% endif %}
 
-        {% if media.source == Sources.TMDB.value and media.crew %}
+        {% if crew_row.total %}
           <section class="mb-8">
             {% include "app/components/_scrollable_row.html" with row=crew_row grid_template="app/components/detail_cast_grid.html" collapse_key="detail-crew-open" %}
           </section>

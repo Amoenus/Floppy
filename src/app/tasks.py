@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 # dynamic imports) continue to work without any call-site changes.
 # ---------------------------------------------------------------------------
 from app.tasks_bulk_plays import bulk_episode_plays_task, bulk_music_plays_task  # noqa: E402
+from app.tasks_imdb import refresh_imdb_game_credits_from_datasets  # noqa: E402
 from app.tasks_discover import (  # noqa: E402
     refresh_discover_profiles,
     refresh_discover_rows,
@@ -165,6 +166,7 @@ NIGHTLY_METADATA_QUALITY_RUNTIME_COUNTDOWN = 15
 NIGHTLY_METADATA_QUALITY_EPISODE_COUNTDOWN = 30
 NIGHTLY_METADATA_QUALITY_CREDITS_COUNTDOWN = 45
 NIGHTLY_METADATA_QUALITY_TRAKT_POPULARITY_COUNTDOWN = 60
+NIGHTLY_METADATA_QUALITY_IMDB_GAME_CREDITS_COUNTDOWN = 90
 DISCOVER_METADATA_REFRESH_DEBOUNCE_SECONDS = 60 * 10
 DISCOVER_METADATA_REFRESH_COUNTDOWN_SECONDS = 60
 BACKGROUND_TASK_PRIORITY = getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 1)
@@ -473,6 +475,10 @@ def nightly_metadata_quality_backfill_task(
             trakt_popularity_item_ids,
             countdown=NIGHTLY_METADATA_QUALITY_TRAKT_POPULARITY_COUNTDOWN,
         )
+
+    refresh_imdb_game_credits_from_datasets.apply_async(
+        countdown=NIGHTLY_METADATA_QUALITY_IMDB_GAME_CREDITS_COUNTDOWN,
+    )
 
     summary = {
         "selected": {

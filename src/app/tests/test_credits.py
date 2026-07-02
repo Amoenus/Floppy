@@ -155,6 +155,30 @@ class CreditSyncSourceTests(TestCase):
             ItemStudioCredit.objects.filter(item=item, studio=studio).exists(),
         )
 
+    def test_sync_item_credits_from_metadata_honors_explicit_person_source(self):
+        item = Item.objects.create(
+            media_id="game-1",
+            source=Sources.IGDB.value,
+            media_type=MediaTypes.GAME.value,
+            title="Some Game",
+            image="http://example.com/game.jpg",
+        )
+
+        credits.sync_item_credits_from_metadata(
+            item,
+            {
+                "cast": [
+                    {"person_id": "nm001", "name": "Actor", "role": "Sam"},
+                ],
+                "crew": [],
+            },
+            person_source=Sources.IMDB.value,
+        )
+
+        person = Person.objects.get(source_person_id="nm001")
+        self.assertEqual(person.source, Sources.IMDB.value)
+        self.assertNotEqual(person.source, item.source)
+
     def test_upsert_person_profile_supports_non_tmdb_sources(self):
         person = credits.upsert_person_profile(
             Sources.OPENLIBRARY.value,

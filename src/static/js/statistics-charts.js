@@ -1173,7 +1173,7 @@ function initStatisticsCharts() {
         const color = colors[i];
         const pct = totalHours > 0 ? Math.round((hrs / totalHours) * 100) : 0;
         const row = document.createElement("div");
-        row.style.cssText = "display:flex;align-items:center;gap:14px;font-size:11px;";
+        row.style.cssText = "display:flex;align-items:center;gap:14px;font-size:11px;line-height:1.3;";
         row.innerHTML =
           '<div style="flex-shrink:0;display:flex;align-items:center;gap:6px;width:74px">' +
             '<span style="flex-shrink:0;width:10px;height:10px;border-radius:2px;background:' + color + '"></span>' +

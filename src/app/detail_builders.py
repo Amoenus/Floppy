@@ -827,7 +827,7 @@ def _build_detail_link_entry(label, url, brand_key):
     }
 
 
-def _build_detail_link_sections(media_metadata, media_type, identity_provider, display_provider):
+def _build_detail_link_sections(media_metadata, media_type, identity_provider, display_provider, item=None):
     """Return grouped source and external link chips for the media detail action row."""
     if not isinstance(media_metadata, dict):
         return []
@@ -879,6 +879,18 @@ def _build_detail_link_sections(media_metadata, media_type, identity_provider, d
         for name, url in external_links.items():
             append_entry(external_entries, name, url, name)
 
+    # Best-effort IMDB match for games (see app.services.imdb_game_credits) — not
+    # provided by IGDB itself, so it's read off the Item rather than media_metadata.
+    if item is not None and media_type == MediaTypes.GAME.value:
+        imdb_id = (item.provider_external_ids or {}).get("imdb_id")
+        if imdb_id:
+            append_entry(
+                external_entries,
+                "IMDb",
+                f"https://www.imdb.com/title/{imdb_id}/",
+                "imdb",
+            )
+
     sections = []
     if metadata_source_entries:
         if tracking_source_entries:
@@ -923,12 +935,53 @@ def _build_static_row(row_id, title, items, *, view_all_url=None, view_all_text=
     }
 
 
-def _build_detail_person_rows(media_metadata):
+def _game_cast_and_crew_from_credits(item):
+    """Return (cast, crew) display rows for a game's best-effort IMDB credits.
+
+    Person profile pages aren't wired up for the IMDB source yet, so these rows
+    omit person_id — person_card_inline.html renders them as plain (unlinked)
+    cards instead of pointing at a person_detail page that doesn't exist.
+    """
+    from app.models import CreditRoleType, ItemPersonCredit  # noqa: PLC0415
+
+    credits_qs = (
+        ItemPersonCredit.objects.filter(item=item)
+        .select_related("person")
+        .order_by("sort_order")
+    )
+    cast, crew = [], []
+    for credit in credits_qs:
+        person = credit.person
+        if not person:
+            continue
+        row = {
+            "name": person.name,
+            "image": person.image,
+            "role": credit.role,
+            "department": credit.department,
+        }
+        if credit.role_type == CreditRoleType.CAST.value:
+            cast.append(row)
+        elif credit.role_type == CreditRoleType.CREW.value:
+            crew.append(row)
+    return cast, crew
+
+
+def _build_detail_person_rows(media_metadata, item=None):
     """Build cast_row, crew_row, and recommendations_row dicts for _scrollable_row.html."""
     if not isinstance(media_metadata, dict):
         return {}
     cast = media_metadata.get("cast") or []
     crew = media_metadata.get("crew") or []
+
+    if (
+        not cast
+        and not crew
+        and item is not None
+        and item.media_type == MediaTypes.GAME.value
+        and item.source == Sources.IGDB.value
+    ):
+        cast, crew = _game_cast_and_crew_from_credits(item)
     raw_recommendations = (media_metadata.get("related") or {}).get("recommendations") or []
     # enrich_items_with_user_data wraps each item as {"item": <dict>, "media": <model>}.
     # Unwrap those so the card template receives the original metadata dicts.

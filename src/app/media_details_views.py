@@ -1842,6 +1842,7 @@ def media_details(
             media_type,
             identity_provider,
             display_provider,
+            item=detail_item,
         ),
         "detail_tag_sections": _build_detail_tag_sections(
             media_metadata,
@@ -1895,7 +1896,7 @@ def media_details(
         "detail_secondary_fragment_url": detail_secondary_fragment_url,
         "defer_detail_secondary": defer_detail_secondary,
         "render_secondary_only": render_secondary_only,
-        **_build_detail_person_rows(media_metadata),
+        **_build_detail_person_rows(media_metadata, item=detail_item),
     }
     logger.info(
         "detail_render_complete path=%s phase=%s media_type=%s source=%s duration_ms=%.2f",

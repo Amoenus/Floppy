@@ -18,8 +18,21 @@
        currentStartDate: '{{ start_date_str|default:""|escapejs }}',
        currentEndDate: '{{ end_date_str|default:""|escapejs }}',
        totalLibraryTitles: {{ media_count.total|default:0 }},
+       selectedMediaType: 'all',
        init() {
          this.selectedLabel = this.selectedSort === 'time' ? 'Time' : (this.selectedSort === 'titles' ? 'Titles' : 'Plays');
+         this.selectedMediaType = new URLSearchParams(window.location.search).get('media-type') || 'all';
+         window.addEventListener('stats-media-type-changed', () => {
+           this.selectedMediaType = new URLSearchParams(window.location.search).get('media-type') || 'all';
+           this.refresh();
+         });
+         // The initial server render is always the unfiltered all-types aggregate —
+         // if the page loaded with a media-type already in the URL (reload,
+         // bookmark, browser history), fetch the filtered cards immediately
+         // instead of waiting for the user to re-toggle the selector.
+         if (this.selectedMediaType !== 'all') {
+           this.refresh();
+         }
        },
        async animateSwap(target, html, afterSwap = null) {
          if (!target) {
@@ -61,21 +74,18 @@
            card.classList.remove('transition-all', 'duration-200', 'ease-out');
          });
        },
-       async setSort(sortBy, label) {
-         if (this.loading || this.selectedSort === sortBy) {
-           this.open = false;
+       async refresh() {
+         if (this.loading) {
            return;
          }
          const previousSort = this.selectedSort;
          const previousLabel = this.selectedLabel;
          const previousKey = this.selectedPersonKey;
-         this.selectedSort = sortBy;
-         this.selectedLabel = label;
          this.open = false;
          this.loading = true;
          try {
            const body = new URLSearchParams();
-           body.set('sort_by', sortBy);
+           body.set('sort_by', this.selectedSort);
            if (this.currentRangeName) {
              body.set('range_name', this.currentRangeName);
            }
@@ -85,9 +95,11 @@
            if (this.currentEndDate) {
              body.set('end_date', this.currentEndDate);
            }
-           body.set('sort_by', this.selectedSort);
            if (this.totalLibraryTitles) {
              body.set('total_library_titles', this.totalLibraryTitles);
+           }
+           if (this.selectedMediaType && this.selectedMediaType !== 'all') {
+             body.set('media_type', this.selectedMediaType);
            }
            const response = await fetch('{% url 'update_top_talent_sort' %}', {
              method: 'POST',
@@ -112,6 +124,9 @@
            if (data.role_leaders_html && this.$refs.roleLeadersGrid) {
              this.$refs.roleLeadersGrid.innerHTML = data.role_leaders_html;
            }
+           if (data.studio_footprint_html && this.$refs.studioFootprintGrid) {
+             this.$refs.studioFootprintGrid.innerHTML = data.studio_footprint_html;
+           }
            const swapTasks = [];
            if (data.featured_html && this.$refs.featuredPlayer) {
              swapTasks.push(
@@ -133,10 +148,19 @@
            this.selectedSort = previousSort;
            this.selectedLabel = previousLabel;
            this.selectedPersonKey = previousKey;
-           console.error('Failed to save top talent sort:', error);
+           console.error('Failed to refresh top talent cards:', error);
          } finally {
            this.loading = false;
          }
+       },
+       async setSort(sortBy, label) {
+         if (this.loading || this.selectedSort === sortBy) {
+           this.open = false;
+           return;
+         }
+         this.selectedSort = sortBy;
+         this.selectedLabel = label;
+         await this.refresh();
        },
        async selectPerson(source, personId) {
          const key = source + ':' + personId;

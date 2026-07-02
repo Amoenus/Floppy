@@ -1181,12 +1181,12 @@
     <div class="bg-[#2a2f35] rounded-lg p-4 sm:p-6">
       <h2 class="text-base font-semibold text-white mb-0.5" id="timeWorldsTitle">Hours by Media Type</h2>
       <p class="text-xs text-gray-400 mb-3" id="timeWorldsSubtitle">Where your hours go.</p>
-      <div id="timeWorldsContainer" class="flex items-center gap-4 sm:gap-6">
+      <div id="timeWorldsContainer" class="flex items-center gap-4 sm:gap-6" style="height:150px;">
         <div class="relative shrink-0" style="width:150px;height:150px;">
           <div id="timeWorldsCenter" class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center"></div>
           <canvas id="timeWorldsChart" style="position:relative;z-index:1"></canvas>
         </div>
-        <div id="timeWorldsLegend" class="flex-1 min-w-0 space-y-1.5"></div>
+        <div id="timeWorldsLegend" class="statistics-card-scroll flex-1 min-w-0 h-full overflow-y-auto space-y-1 pr-1"></div>
       </div>
     </div>
   </div>
@@ -1398,7 +1398,7 @@
       {% if featured_person or role_leaders.columns or studio_footprint.studios %}
       <div class="mb-4 sm:mb-8 space-y-4 sm:space-y-4"
            style="margin-top: 1rem;"
-           x-show="['all','tv','movie','anime'].includes(selectedMediaType)">
+           x-show="['all','tv','movie','anime','game'].includes(selectedMediaType)">
         <div class="grid grid-cols-1 lg:grid-cols-5 gap-3 sm:gap-4 items-start">
           <div class="bg-[#2a2f35] rounded-lg p-4 sm:p-6 lg:col-span-2 overflow-hidden" id="featured-repeat-player">
             <div class="flex flex-col space-y-1 mb-4">

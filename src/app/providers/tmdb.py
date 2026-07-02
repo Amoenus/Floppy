@@ -1765,6 +1765,52 @@ def _person_filmography_entries(combined_credits):
     return filmography
 
 
+def search_person_profile(name):
+    """Best-effort headshot + gender lookup by name (no id cross-reference, just a
+    name match).
+
+    Used to backfill artwork and gender for people synced from a source with no
+    (or unusably sparse) profile data of its own — e.g. IMDB-sourced game cast,
+    see app.services.imdb_game_credits. Returns {"image": str|None, "gender": str}
+    (gender is one of get_gender()'s values, "unknown" if TMDB has no data either),
+    or None if no name match was found at all.
+    """
+    if not name:
+        return None
+
+    cache_key = f"{Sources.TMDB.value}_person_search_profile_{name}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached or None
+
+    url = f"{base_url}/search/person"
+    params = {**base_params, "query": name}
+    try:
+        response = services.api_request(
+            Sources.TMDB.value,
+            "GET",
+            url,
+            params=params,
+        )
+    except requests.exceptions.HTTPError as error:
+        handle_error(error)
+        return None
+
+    results = response.get("results") or []
+    if not results:
+        cache.set(cache_key, "")
+        return None
+
+    top_result = results[0]
+    image = get_profile_image_url(top_result.get("profile_path"), size="h632")
+    if image == settings.IMG_NONE:
+        image = None
+    profile = {"image": image, "gender": get_gender(top_result.get("gender"))}
+
+    cache.set(cache_key, profile)
+    return profile
+
+
 def person(person_id):
     """Return metadata for a TMDB person profile."""
     cache_key = f"{Sources.TMDB.value}_person_{person_id}"
