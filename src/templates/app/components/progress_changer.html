@@ -13,7 +13,7 @@
 
   <div class="text-xs text-indigo-400 font-medium min-w-[4ch] text-center">
     <span class="progress-value">{{ media.formatted_progress }}</span>
-    {% if media.item.media_type != MediaTypes.GAME.value and media.item.media_type != MediaTypes.MOVIE.value %}
+    {% if media.item.media_type != MediaTypes.GAME.value and media.item.media_type != MediaTypes.MOVIE.value and not media.progress_is_percentage %}
       {% if media.max_progress %}
         <span class="progress-slash">/</span>
         <span class="progress-max">{{ media.max_progress }}</span>

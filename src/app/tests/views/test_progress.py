@@ -8,6 +8,7 @@ from django.urls import reverse
 from app.models import (
     TV,
     Anime,
+    Book,
     Episode,
     Item,
     MediaTypes,
@@ -337,3 +338,72 @@ class ProgressEditAnime(TestCase):
         )
 
         self.assertEqual(Anime.objects.get(item__media_id="1").progress, 1)
+
+
+class ProgressEditBook(TestCase):
+    """Test quick progress edits for a book through views."""
+
+    def setUp(self):
+        """Prepare the database with a 200-page book in progress."""
+        self.credentials = {"username": "test", "password": "12345"}
+        self.user = get_user_model().objects.create_user(**self.credentials)
+        self.client.login(**self.credentials)
+
+        self.item = Item.objects.create(
+            media_id="1",
+            source=Sources.OPENLIBRARY.value,
+            media_type=MediaTypes.BOOK.value,
+            title="Dune",
+            image="http://example.com/image.jpg",
+            number_of_pages=200,
+        )
+        self.book = Book.objects.create(
+            item=self.item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+            progress=50,
+        )
+
+    def _post(self, operation):
+        return self.client.post(
+            reverse(
+                "progress_edit",
+                kwargs={
+                    "media_type": MediaTypes.BOOK.value,
+                    "instance_id": self.book.id,
+                },
+            ),
+            {"operation": operation},
+        )
+
+    def test_progress_increase_by_page(self):
+        """Without the percentage preference, increase steps by 1 page."""
+        self._post("increase")
+        self.assertEqual(Book.objects.get(id=self.book.id).progress, 51)
+
+    def test_progress_decrease_by_page(self):
+        """Without the percentage preference, decrease steps by 1 page."""
+        self._post("decrease")
+        self.assertEqual(Book.objects.get(id=self.book.id).progress, 49)
+
+    def test_progress_increase_by_percentage(self):
+        """With the percentage preference, increase steps by 1% of the page count."""
+        self.user.book_comic_manga_progress_percentage = True
+        self.user.save(update_fields=["book_comic_manga_progress_percentage"])
+
+        response = self._post("increase")
+
+        updated_book = Book.objects.get(id=self.book.id)
+        self.assertEqual(updated_book.progress, 52)
+        self.assertIn("26%", response.content.decode())
+
+    def test_progress_decrease_by_percentage(self):
+        """With the percentage preference, decrease steps by 1% of the page count."""
+        self.user.book_comic_manga_progress_percentage = True
+        self.user.save(update_fields=["book_comic_manga_progress_percentage"])
+
+        response = self._post("decrease")
+
+        updated_book = Book.objects.get(id=self.book.id)
+        self.assertEqual(updated_book.progress, 48)
+        self.assertIn("24%", response.content.decode())

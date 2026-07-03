@@ -206,6 +206,11 @@ class Media(models.Model):
         return str(self.progress)
 
     @property
+    def progress_is_percentage(self):
+        """Return whether formatted_progress is rendering a percentage."""
+        return False
+
+    @property
     def formatted_aggregated_progress(self):
         """Return formatted aggregated progress string."""
         if hasattr(self, "aggregated_progress") and self.aggregated_progress is not None:
@@ -579,10 +584,68 @@ class BasicMedia(Media):
     objects = MediaManager()
 
 
+def _percentage_tracking_max_progress(media):
+    """Return max_progress if this media should be quick-updated in percentage terms."""
+    if media.user_id and media.user.book_comic_manga_progress_percentage:
+        return getattr(media, "max_progress", None)
+    return None
+
+
+def _percentage_progress_text(media):
+    """Return progress formatted as a percentage string, if percentage tracking applies."""
+    max_progress = _percentage_tracking_max_progress(media)
+    if max_progress:
+        percentage = round((media.progress / max_progress) * 100, 1)
+        return f"{percentage:g}%"
+    return None
+
+
+def _percentage_increase_progress(media):
+    """Increase progress by one percentage point, or fall back to the default +1 step."""
+    max_progress = _percentage_tracking_max_progress(media)
+    if max_progress:
+        step = max(1, round(max_progress * 0.01))
+        media.progress = min(media.progress + step, max_progress)
+        media.save()
+        logger.info("Increased progress of %s to %s", media, media.progress)
+    else:
+        Media.increase_progress(media)
+
+
+def _percentage_decrease_progress(media):
+    """Decrease progress by one percentage point, or fall back to the default -1 step."""
+    max_progress = _percentage_tracking_max_progress(media)
+    if max_progress:
+        step = max(1, round(max_progress * 0.01))
+        media.progress = max(media.progress - step, 0)
+        media.save()
+        logger.info("Decreased progress of %s to %s", media, media.progress)
+    else:
+        Media.decrease_progress(media)
+
+
 class Manga(Media):
     """Model for manga."""
 
     tracker = FieldTracker()
+
+    @property
+    def formatted_progress(self):
+        """Return progress as a percentage when percentage tracking is enabled."""
+        return _percentage_progress_text(self) or str(self.progress)
+
+    @property
+    def progress_is_percentage(self):
+        """Return whether formatted_progress is rendering a percentage."""
+        return _percentage_progress_text(self) is not None
+
+    def increase_progress(self):
+        """Increase progress, respecting the percentage tracking preference."""
+        _percentage_increase_progress(self)
+
+    def decrease_progress(self):
+        """Decrease progress, respecting the percentage tracking preference."""
+        _percentage_decrease_progress(self)
 
 
 class ActiveAnimeQuerySet(models.QuerySet):
@@ -674,15 +737,49 @@ class Book(Media):
     @property
     def formatted_progress(self):
         """Return progress formatted by book format: time for audiobooks, pages otherwise."""
+        percentage_text = _percentage_progress_text(self)
+        if percentage_text:
+            return percentage_text
         if getattr(self, "item", None) and self.item.format == "audiobook":
             return app.helpers.minutes_to_hhmm(self.progress)
         return str(self.progress)
+
+    @property
+    def progress_is_percentage(self):
+        """Return whether formatted_progress is rendering a percentage."""
+        return _percentage_progress_text(self) is not None
+
+    def increase_progress(self):
+        """Increase progress, respecting the percentage tracking preference."""
+        _percentage_increase_progress(self)
+
+    def decrease_progress(self):
+        """Decrease progress, respecting the percentage tracking preference."""
+        _percentage_decrease_progress(self)
 
 
 class Comic(Media):
     """Model for comics."""
 
     tracker = FieldTracker()
+
+    @property
+    def formatted_progress(self):
+        """Return progress as a percentage when percentage tracking is enabled."""
+        return _percentage_progress_text(self) or str(self.progress)
+
+    @property
+    def progress_is_percentage(self):
+        """Return whether formatted_progress is rendering a percentage."""
+        return _percentage_progress_text(self) is not None
+
+    def increase_progress(self):
+        """Increase progress, respecting the percentage tracking preference."""
+        _percentage_increase_progress(self)
+
+    def decrease_progress(self):
+        """Decrease progress, respecting the percentage tracking preference."""
+        _percentage_decrease_progress(self)
 
 
 class ComicIssue(Media):
