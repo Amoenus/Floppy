@@ -169,6 +169,78 @@ class SyncMetadataViewTests(TestCase):
         mock_fetch_releases.assert_called_once()
         mock_sync_plex_rating.assert_called_once()
 
+    @patch("app.metadata_sync_views._sync_plex_rating")
+    @patch("app.views.Item.fetch_releases")
+    @patch("app.views.credits.sync_item_credits_from_metadata")
+    @patch("app.views.trakt_popularity_service.refresh_trakt_popularity")
+    @patch("app.views.metadata_resolution.upsert_provider_links")
+    @patch("app.views.services.get_media_metadata")
+    def test_sync_metadata_scopes_to_anime_bucket_and_preserves_library_media_type(
+        self,
+        mock_get_media_metadata,
+        mock_upsert_provider_links,
+        mock_refresh_trakt_popularity,
+        mock_sync_item_credits,
+        mock_fetch_releases,
+        mock_sync_plex_rating,
+    ):
+        tv_item = Item.objects.create(
+            media_id="387",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=2,
+            title="Spongebob Squarepants",
+            image="https://example.com/tv.jpg",
+        )
+        anime_item = Item.objects.create(
+            media_id="387",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=2,
+            library_media_type=MediaTypes.ANIME.value,
+            title="Spongebob Squarepants (Anime)",
+            image="https://example.com/anime.jpg",
+        )
+        mock_get_media_metadata.return_value = {
+            "media_id": "387",
+            "title": "Spongebob Squarepants Season 2",
+            "media_type": MediaTypes.SEASON.value,
+            "source": Sources.TMDB.value,
+            "image": "https://example.com/refreshed.jpg",
+            "details": {},
+            "related": {},
+            "episodes": [],
+        }
+
+        response = self.client.post(
+            reverse(
+                "sync_metadata",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.SEASON.value,
+                    "media_id": "387",
+                    "season_number": 2,
+                },
+            ),
+            {"next": "/", "library_media_type": MediaTypes.ANIME.value},
+        )
+
+        self.assertEqual(response.status_code, 302)
+
+        tv_item.refresh_from_db()
+        anime_item.refresh_from_db()
+
+        # Only the anime-bucketed row should have been refreshed.
+        self.assertEqual(anime_item.title, "Spongebob Squarepants Season 2")
+        self.assertEqual(anime_item.image, "https://example.com/refreshed.jpg")
+
+        # The sibling TV-bucketed row must be untouched, and neither row's
+        # library_media_type should have been reclassified by the sync.
+        self.assertEqual(tv_item.title, "Spongebob Squarepants")
+        self.assertEqual(tv_item.image, "https://example.com/tv.jpg")
+        self.assertEqual(tv_item.library_media_type, MediaTypes.SEASON.value)
+        self.assertEqual(anime_item.library_media_type, MediaTypes.ANIME.value)
+
     @patch("app.views.services.get_media_metadata")
     def test_sync_metadata_restores_cached_entry_and_returns_error_for_htmx_failures(
         self,

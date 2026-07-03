@@ -1174,6 +1174,16 @@ def sync_metadata(request, source, media_type, media_id, season_number=None):
             media_type=tracking_media_type,
             season_number=season_number,
         )
+        library_media_type_param = request.POST.get("library_media_type")
+        if tracking_media_type in (
+            MediaTypes.TV.value,
+            MediaTypes.SEASON.value,
+            MediaTypes.EPISODE.value,
+        ):
+            if library_media_type_param == MediaTypes.ANIME.value:
+                item_qs = item_qs.filter(library_media_type=MediaTypes.ANIME.value)
+            else:
+                item_qs = item_qs.exclude(library_media_type=MediaTypes.ANIME.value)
         if item_qs.count() > 1:
             logger.warning(
                 "Multiple Item rows for media_id=%s source=%s media_type=%s season=%s — using oldest",
@@ -1183,10 +1193,11 @@ def sync_metadata(request, source, media_type, media_id, season_number=None):
                 season_number,
             )
         item = item_qs.order_by("id").first()
-        library_media_type_value = metadata.get("library_media_type") or media_type
+        library_media_type_value = (
+            library_media_type_param or metadata.get("library_media_type") or media_type
+        )
         item_fields = {
             **Item.title_fields_from_metadata(metadata),
-            "library_media_type": library_media_type_value,
             "image": metadata["image"],
             "number_of_pages": number_of_pages,
         }
@@ -1196,6 +1207,7 @@ def sync_metadata(request, source, media_type, media_id, season_number=None):
                 source=source,
                 media_type=tracking_media_type,
                 season_number=season_number,
+                library_media_type=library_media_type_value,
                 **item_fields,
             )
         else:
