@@ -322,6 +322,7 @@ def _get_person_talent_totals_from_context(user, person, context):
     bucket_plays = Counter()
     bucket_minutes = Counter()
     bucket_movie_items = defaultdict(set)
+    bucket_game_items = defaultdict(set)
     bucket_show_items = defaultdict(set)
     bucket_minutes_by_media_key = defaultdict(lambda: defaultdict(int))
     bucket_plays_by_media_key = defaultdict(lambda: defaultdict(int))
@@ -358,7 +359,7 @@ def _get_person_talent_totals_from_context(user, person, context):
                 continue
             bucket_plays[bucket] += plays
             bucket_minutes[bucket] += watched_minutes
-            bucket_movie_items[bucket].add(item_id)
+            bucket_game_items[bucket].add(item_id)
             if media_key:
                 bucket_minutes_by_media_key[bucket][media_key] += watched_minutes
                 bucket_plays_by_media_key[bucket][media_key] += plays
@@ -399,6 +400,7 @@ def _get_person_talent_totals_from_context(user, person, context):
     bucket_payloads = {}
     for bucket, _item_ids, _season_credit_item_ids, _role_type in role_sources:
         unique_movies = len(bucket_movie_items.get(bucket, set()))
+        unique_games = len(bucket_game_items.get(bucket, set()))
         unique_shows = len(bucket_show_items.get(bucket, set()))
         watched_minutes = int(bucket_minutes.get(bucket, 0))
         bucket_payloads[bucket] = {
@@ -407,8 +409,9 @@ def _get_person_talent_totals_from_context(user, person, context):
             "watched_minutes": watched_minutes,
             "watched_time": stats._format_hours_minutes(watched_minutes, user.duration_format),
             "unique_movies": unique_movies,
+            "unique_games": unique_games,
             "unique_shows": unique_shows,
-            "unique_titles": unique_movies + unique_shows,
+            "unique_titles": unique_movies + unique_games + unique_shows,
             "minutes_by_media_key": dict(bucket_minutes_by_media_key.get(bucket, {})),
             "plays_by_media_key": dict(bucket_plays_by_media_key.get(bucket, {})),
         }
@@ -711,14 +714,19 @@ def _aggregate_top_talent(
     studio_counts = Counter()
     studio_minutes = Counter()
     actor_movie_items = defaultdict(set)
+    actor_game_items = defaultdict(set)
     actor_show_items = defaultdict(set)
     actress_movie_items = defaultdict(set)
+    actress_game_items = defaultdict(set)
     actress_show_items = defaultdict(set)
     director_movie_items = defaultdict(set)
+    director_game_items = defaultdict(set)
     director_show_items = defaultdict(set)
     writer_movie_items = defaultdict(set)
+    writer_game_items = defaultdict(set)
     writer_show_items = defaultdict(set)
     studio_movie_items = defaultdict(set)
+    studio_game_items = defaultdict(set)
     studio_show_items = defaultdict(set)
 
     for item_id, plays in movie_play_counts.items():
@@ -746,9 +754,8 @@ def _aggregate_top_talent(
             studio_minutes[studio_id] += watched_minutes
             studio_movie_items[studio_id].add(item_id)
 
-    # Games are folded into the "movie" buckets for ranking purposes — there's no
-    # separate games category in the top-talent payload/templates, and a game is a
-    # single non-episodic title like a movie.
+    # Games are single-title credits like movies, but keep their title counts
+    # separate so Featured Repeat Player can show Movies, Games, and Shows.
     for item_id, plays in game_play_counts.items():
         if plays <= 0:
             continue
@@ -756,23 +763,23 @@ def _aggregate_top_talent(
         for person_id in cast_actor_ids_by_item.get(item_id, ()):
             actor_counts[person_id] += plays
             actor_minutes[person_id] += watched_minutes
-            actor_movie_items[person_id].add(item_id)
+            actor_game_items[person_id].add(item_id)
         for person_id in cast_actress_ids_by_item.get(item_id, ()):
             actress_counts[person_id] += plays
             actress_minutes[person_id] += watched_minutes
-            actress_movie_items[person_id].add(item_id)
+            actress_game_items[person_id].add(item_id)
         for person_id in director_ids_by_item.get(item_id, ()):
             director_counts[person_id] += plays
             director_minutes[person_id] += watched_minutes
-            director_movie_items[person_id].add(item_id)
+            director_game_items[person_id].add(item_id)
         for person_id in writer_ids_by_item.get(item_id, ()):
             writer_counts[person_id] += plays
             writer_minutes[person_id] += watched_minutes
-            writer_movie_items[person_id].add(item_id)
+            writer_game_items[person_id].add(item_id)
         for studio_id in studio_ids_by_item.get(item_id, ()):
             studio_counts[studio_id] += plays
             studio_minutes[studio_id] += watched_minutes
-            studio_movie_items[studio_id].add(item_id)
+            studio_game_items[studio_id].add(item_id)
 
     for episode_item_id, season_item_id, tv_item_id, watched_minutes in episode_play_rows:
         if not tv_item_id:
@@ -864,10 +871,11 @@ def _aggregate_top_talent(
             studio_minutes[studio_id] += watched_minutes
             studio_show_items[studio_id].add(tv_item_id)
 
-    def _person_sort_key(person_id, plays, minutes, movie_items_by_person, show_items_by_person, mode):
+    def _person_sort_key(person_id, plays, minutes, movie_items_by_person, game_items_by_person, show_items_by_person, mode):
         unique_movies = len(movie_items_by_person.get(person_id, set()))
+        unique_games = len(game_items_by_person.get(person_id, set()))
         unique_shows = len(show_items_by_person.get(person_id, set()))
-        unique_titles = unique_movies + unique_shows
+        unique_titles = unique_movies + unique_games + unique_shows
         person = people_by_id.get(person_id)
         name_key = person.name.lower() if person else ""
         if mode == "time":
@@ -876,10 +884,11 @@ def _aggregate_top_talent(
             return (-unique_titles, -plays, -minutes, name_key)
         return (-plays, -minutes, -unique_titles, name_key)
 
-    def _studio_sort_key(studio_id, plays, minutes, movie_items_by_studio, show_items_by_studio, mode):
+    def _studio_sort_key(studio_id, plays, minutes, movie_items_by_studio, game_items_by_studio, show_items_by_studio, mode):
         unique_movies = len(movie_items_by_studio.get(studio_id, set()))
+        unique_games = len(game_items_by_studio.get(studio_id, set()))
         unique_shows = len(show_items_by_studio.get(studio_id, set()))
-        unique_titles = unique_movies + unique_shows
+        unique_titles = unique_movies + unique_games + unique_shows
         studio = studios_by_id.get(studio_id)
         name_key = studio.name.lower() if studio else ""
         if mode == "time":
@@ -888,7 +897,7 @@ def _aggregate_top_talent(
             return (-unique_titles, -plays, -minutes, name_key)
         return (-plays, -minutes, -unique_titles, name_key)
 
-    def _sorted_people(counter_obj, minute_counter, movie_items_by_person, show_items_by_person, mode):
+    def _sorted_people(counter_obj, minute_counter, movie_items_by_person, game_items_by_person, show_items_by_person, mode):
         ranked = sorted(
             counter_obj.items(),
             key=lambda row: _person_sort_key(
@@ -896,6 +905,7 @@ def _aggregate_top_talent(
                 row[1],
                 int(minute_counter.get(row[0], 0)),
                 movie_items_by_person,
+                game_items_by_person,
                 show_items_by_person,
                 mode,
             ),
@@ -907,6 +917,7 @@ def _aggregate_top_talent(
                 continue
             watched_minutes = int(minute_counter.get(person_id, 0))
             unique_movies = len(movie_items_by_person.get(person_id, set()))
+            unique_games = len(game_items_by_person.get(person_id, set()))
             unique_shows = len(show_items_by_person.get(person_id, set()))
             payload.append(
                 {
@@ -918,13 +929,14 @@ def _aggregate_top_talent(
                     "watched_minutes": watched_minutes,
                     "watched_time": stats._format_hours_minutes(watched_minutes, user.duration_format),
                     "unique_movies": unique_movies,
+                    "unique_games": unique_games,
                     "unique_shows": unique_shows,
-                    "unique_titles": unique_movies + unique_shows,
+                    "unique_titles": unique_movies + unique_games + unique_shows,
                 },
             )
         return payload
 
-    def _sorted_studios(counter_obj, minute_counter, movie_items_by_studio, show_items_by_studio, mode):
+    def _sorted_studios(counter_obj, minute_counter, movie_items_by_studio, game_items_by_studio, show_items_by_studio, mode):
         ranked = sorted(
             counter_obj.items(),
             key=lambda row: _studio_sort_key(
@@ -932,6 +944,7 @@ def _aggregate_top_talent(
                 row[1],
                 int(minute_counter.get(row[0], 0)),
                 movie_items_by_studio,
+                game_items_by_studio,
                 show_items_by_studio,
                 mode,
             ),
@@ -943,6 +956,7 @@ def _aggregate_top_talent(
                 continue
             watched_minutes = int(minute_counter.get(studio_id, 0))
             unique_movies = len(movie_items_by_studio.get(studio_id, set()))
+            unique_games = len(game_items_by_studio.get(studio_id, set()))
             unique_shows = len(show_items_by_studio.get(studio_id, set()))
             payload.append(
                 {
@@ -954,8 +968,9 @@ def _aggregate_top_talent(
                     "watched_minutes": watched_minutes,
                     "watched_time": stats._format_hours_minutes(watched_minutes, user.duration_format),
                     "unique_movies": unique_movies,
+                    "unique_games": unique_games,
                     "unique_shows": unique_shows,
-                    "unique_titles": unique_movies + unique_shows,
+                    "unique_titles": unique_movies + unique_games + unique_shows,
                 },
             )
         return payload
@@ -967,6 +982,7 @@ def _aggregate_top_talent(
                 actor_counts,
                 actor_minutes,
                 actor_movie_items,
+                actor_game_items,
                 actor_show_items,
                 mode,
             ),
@@ -974,6 +990,7 @@ def _aggregate_top_talent(
                 actress_counts,
                 actress_minutes,
                 actress_movie_items,
+                actress_game_items,
                 actress_show_items,
                 mode,
             ),
@@ -981,6 +998,7 @@ def _aggregate_top_talent(
                 director_counts,
                 director_minutes,
                 director_movie_items,
+                director_game_items,
                 director_show_items,
                 mode,
             ),
@@ -988,6 +1006,7 @@ def _aggregate_top_talent(
                 writer_counts,
                 writer_minutes,
                 writer_movie_items,
+                writer_game_items,
                 writer_show_items,
                 mode,
             ),
@@ -995,6 +1014,7 @@ def _aggregate_top_talent(
                 studio_counts,
                 studio_minutes,
                 studio_movie_items,
+                studio_game_items,
                 studio_show_items,
                 mode,
             ),

@@ -97,6 +97,8 @@ class GamesInTopTalentAggregationTests(TestCase):
 
         entry = next(row for row in result["top_actresses"] if row["name"] == "Alice Actor")
         self.assertEqual(entry["unique_titles"], 1)
+        self.assertEqual(entry["unique_games"], 1)
+        self.assertEqual(entry["unique_movies"], 0)
 
     def test_game_studios_appear_in_top_studios(self):
         result = _aggregate_top_talent(
@@ -109,7 +111,8 @@ class GamesInTopTalentAggregationTests(TestCase):
         studio_entry = next(row for row in result["top_studios"] if row["name"] == "Dispatch Studio")
         self.assertEqual(studio_entry["plays"], 1)
         self.assertEqual(studio_entry["unique_titles"], 1)
-        self.assertEqual(studio_entry["unique_movies"], 1)
+        self.assertEqual(studio_entry["unique_games"], 1)
+        self.assertEqual(studio_entry["unique_movies"], 0)
         self.assertEqual(studio_entry["unique_shows"], 0)
 
     def test_movie_filter_excludes_game_cast(self):
@@ -216,3 +219,5 @@ class GamesInTopTalentAggregationTests(TestCase):
         self.assertEqual(totals["bucket"], "actor")
         self.assertEqual(totals["watched_minutes"], 90)
         self.assertEqual(totals["unique_titles"], 1)
+        self.assertEqual(totals["unique_games"], 1)
+        self.assertEqual(totals["unique_movies"], 0)

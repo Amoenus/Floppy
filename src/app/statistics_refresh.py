@@ -16,6 +16,7 @@ from app import statistics as stats
 from app.models import MediaTypes
 from app.statistics_aggregator import _aggregate_statistics_from_days
 from app.statistics_day_builder import (
+    _build_prefetch_for_range,
     _day_cache_key,
     _iter_day_range,
     _normalize_day_value,
@@ -29,6 +30,7 @@ from app.statistics_highlights import _normalize_history_highlight_images
 from app.statistics_cache import (
     PREDEFINED_RANGES,
     STATISTICS_ALL_TIME_REFRESH_DELAY,
+    STATISTICS_DAY_CACHE_TIMEOUT,
     STATISTICS_REFRESH_LOCK_PREFIX,
     STATISTICS_SCHEDULE_DEDUPE_TTL,
     STATISTICS_TASK_PRIORITY_BACKGROUND,
@@ -416,6 +418,38 @@ def _resolve_day_list(user, start_date, end_date):
     return _get_sparse_activity_days(user)
 
 
+def _enqueue_collected_backfills(user_id: int, collector: dict) -> None:
+    """Enqueue metadata backfills accumulated across a bulk day rebuild.
+
+    Mirrors the per-day scheduling block in `build_stats_for_day`, but runs
+    once with the union of every day's hints instead of once per day.
+    """
+    if not any(collector.values()):
+        return
+    try:
+        from app.tasks import (  # noqa: PLC0415 - deferred to avoid circular import
+            enqueue_credits_backfill_items,
+            enqueue_episode_runtime_backfill,
+            enqueue_genre_backfill_items,
+            enqueue_runtime_backfill_items,
+        )
+
+        if collector["runtime_item_ids"]:
+            enqueue_runtime_backfill_items(sorted(collector["runtime_item_ids"]))
+        if collector["genre_item_ids"]:
+            enqueue_genre_backfill_items(sorted(collector["genre_item_ids"]))
+        if collector["episode_runtime_keys"]:
+            enqueue_episode_runtime_backfill(sorted(collector["episode_runtime_keys"]))
+        if collector["credit_item_ids"]:
+            enqueue_credits_backfill_items(sorted(collector["credit_item_ids"]), countdown=3)
+    except Exception as exc:  # pragma: no cover - best-effort scheduling
+        logger.debug(
+            "stats_backfill_schedule_failed user_id=%s error=%s",
+            user_id,
+            exc,
+        )
+
+
 def refresh_statistics_cache(user_id: int, range_name: str):
     """Rebuild and store statistics for a user and range."""
     lock_key = _refresh_lock_key(user_id, range_name)
@@ -462,12 +496,40 @@ def refresh_statistics_cache(user_id: int, range_name: str):
         nonempty_days = 0
         credit_backfill_hints = 0
         build_started = time.perf_counter()
-        for day in sorted(days_to_refresh):
-            if not day:
-                continue
-            day_stats = build_stats_for_day(user_id, day)
+
+        sorted_days = [day for day in sorted(days_to_refresh) if day]
+        # One bulk query per media model across the whole range, bucketed by
+        # day in Python, instead of ~13 queries per day. For a full-history
+        # rebuild spanning hundreds/thousands of days this is the difference
+        # between a handful of round trips and thousands of them.
+        prefetch = _build_prefetch_for_range(user, sorted_days)
+        history_version = _get_history_version(user_id)
+        backfill_collector = {
+            "runtime_item_ids": set(),
+            "genre_item_ids": set(),
+            "episode_runtime_keys": set(),
+            "credit_item_ids": set(),
+        }
+        built_days = {}
+        pending_writes = {}
+        write_chunk_size = 500
+        for day in sorted_days:
+            day_stats = build_stats_for_day(
+                user_id,
+                day,
+                user=user,
+                prefetch=prefetch,
+                history_version=history_version,
+                defer_cache_write=True,
+                backfill_collector=backfill_collector,
+            )
             refreshed_days += 1
             if day_stats:
+                built_days[day] = day_stats
+                pending_writes[_day_cache_key(user_id, day)] = day_stats
+                if len(pending_writes) >= write_chunk_size:
+                    cache.set_many(pending_writes, timeout=STATISTICS_DAY_CACHE_TIMEOUT)
+                    pending_writes = {}
                 credit_backfill_hints += int(
                     day_stats.get("backfill", {}).get("missing_credits") or 0,
                 )
@@ -476,6 +538,10 @@ def refresh_statistics_cache(user_id: int, range_name: str):
                 daily_minutes_total = sum(day_stats.get("daily_minutes_by_type", {}).values())
                 if plays_total or minutes_total or daily_minutes_total:
                     nonempty_days += 1
+        if pending_writes:
+            cache.set_many(pending_writes, timeout=STATISTICS_DAY_CACHE_TIMEOUT)
+
+        _enqueue_collected_backfills(user_id, backfill_collector)
 
         stats_data = _aggregate_statistics_from_days(
             user,
@@ -484,8 +550,8 @@ def refresh_statistics_cache(user_id: int, range_name: str):
             end_date,
             build_missing=True,
             credit_backfill_hints=credit_backfill_hints,
+            prebuilt_days=built_days,
         )
-        history_version = _get_history_version(user_id)
         cache_statistics_data(user_id, range_name, stats_data, history_version=history_version)
 
         processed = {day.isoformat() for day in days_to_refresh if day}

@@ -759,8 +759,16 @@ def cache_statistics_data(user_id: int, range_name: str, data: dict, history_ver
     logger.debug("Cached statistics data for user %s, range %s", user_id, range_name)
 
 
+def _top_talent_bucket_has_game_counts(bucket: dict) -> bool:
+    for entries_key in ("top_actors", "top_actresses", "top_directors", "top_writers", "top_studios"):
+        entries = bucket.get(entries_key)
+        if entries:
+            return "unique_games" in entries[0]
+    return True
+
+
 def range_needs_top_talent_upgrade(user_id: int, range_name: str) -> bool:
-    """Return True when cached top_talent payload is missing precomputed by_sort data."""
+    """Return True when cached top_talent payload is missing the current shape."""
     if range_name not in PREDEFINED_RANGES:
         return False
 
@@ -781,7 +789,10 @@ def range_needs_top_talent_upgrade(user_id: int, range_name: str) -> bool:
         return True
 
     for mode in ("plays", "time", "titles"):
-        if not isinstance(by_sort.get(mode), dict):
+        bucket = by_sort.get(mode)
+        if not isinstance(bucket, dict):
+            return True
+        if not _top_talent_bucket_has_game_counts(bucket):
             return True
 
     return False
@@ -794,7 +805,11 @@ def get_top_talent_data(user, start_date, end_date, range_name=None):
         if isinstance(cache_entry, dict):
             data = cache_entry.get("data") or {}
             top_talent = data.get("top_talent")
-            if isinstance(top_talent, dict) and isinstance(top_talent.get("by_sort"), dict):
+            if (
+                isinstance(top_talent, dict)
+                and isinstance(top_talent.get("by_sort"), dict)
+                and not range_needs_top_talent_upgrade(user.id, range_name)
+            ):
                 return top_talent
 
     return _aggregate_top_talent(user, start_date, end_date)

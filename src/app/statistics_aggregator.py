@@ -404,6 +404,7 @@ def _aggregate_statistics_from_days(
     end_date,
     build_missing=False,
     credit_backfill_hints: int = 0,
+    prebuilt_days=None,
 ):
     items_by_type = defaultdict(dict)
     top_played_by_type = defaultdict(dict)
@@ -474,14 +475,18 @@ def _aggregate_statistics_from_days(
         MediaTypes.COMIC.value,
     }
 
+    # Day payloads built moments ago by the caller (e.g. a full refresh) are
+    # passed in-memory so we don't re-fetch and unpickle them from the cache.
+    prebuilt_days = prebuilt_days or {}
     chunk_size = 50
     for offset in range(0, len(day_list), chunk_size):
         chunk = day_list[offset : offset + chunk_size]
         key_map = {day: _day_cache_key(user.id, day) for day in chunk}
-        cached = cache.get_many(key_map.values())
+        fetch_keys = [key_map[day] for day in chunk if day not in prebuilt_days]
+        cached = cache.get_many(fetch_keys) if fetch_keys else {}
         for day in chunk:
             cache_key = key_map[day]
-            day_stats = cached.get(cache_key)
+            day_stats = prebuilt_days.get(day) or cached.get(cache_key)
             if not day_stats and build_missing:
                 day_stats = build_stats_for_day(user.id, day)
                 if day_stats:

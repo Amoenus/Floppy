@@ -76,13 +76,349 @@ def _overlap_day_filter(day_start, day_end):
     )
 
 
-def build_stats_for_day(user_id: int, day_value):
-    """Build a per-day statistics payload for a single user."""
-    user_model = get_user_model()
-    try:
-        user = user_model.objects.get(id=user_id)
-    except user_model.DoesNotExist:
+def _bucket_overlap_rows(rows, day_list_set):
+    """Bucket already-fetched Media-style rows by every day they overlap.
+
+    Mirrors `_overlap_day_filter`'s per-day semantics (a row with both
+    start_date and end_date lands on every calendar day in between; a row
+    with only one of the two lands on that field's single day) so a single
+    range-wide query can stand in for what used to be one query per day.
+    """
+    buckets = defaultdict(list)
+    for row in rows:
+        start_dt = row.get("start_date")
+        end_dt = row.get("end_date")
+        if start_dt and end_dt:
+            start_day = _normalize_day_value(start_dt)
+            end_day = _normalize_day_value(end_dt)
+            if not start_day or not end_day:
+                continue
+            if start_day > end_day:
+                start_day, end_day = end_day, start_day
+            for day in _iter_day_range(start_day, end_day):
+                if day in day_list_set:
+                    buckets[day].append(row)
+        elif start_dt:
+            day = _normalize_day_value(start_dt)
+            if day in day_list_set:
+                buckets[day].append(row)
+        elif end_dt:
+            day = _normalize_day_value(end_dt)
+            if day in day_list_set:
+                buckets[day].append(row)
+    return buckets
+
+
+def _bucket_single_field_rows(rows, field, day_list_set):
+    """Bucket already-fetched rows by the calendar day of a single datetime field."""
+    buckets = defaultdict(list)
+    for row in rows:
+        value = row.get(field)
+        if not value:
+            continue
+        day = _normalize_day_value(value)
+        if day in day_list_set:
+            buckets[day].append(row)
+    return buckets
+
+
+def _fetch_overlap_rows(model, user, day, day_start, day_end, values_fields, chunk_size, prefetch_key, prefetch):
+    """Return rows for one media model/day, from `prefetch` if supplied, else a live query."""
+    if prefetch is not None:
+        return prefetch.get(prefetch_key, {}).get(day, [])
+    return list(
+        model.objects.filter(user=user)
+        .filter(_overlap_day_filter(day_start, day_end))
+        .values(*values_fields)
+        .iterator(chunk_size=chunk_size),
+    )
+
+
+def _build_prefetch_for_range(user, day_list):
+    """Bulk-fetch every media model once across `day_list`'s full span, bucketed by day.
+
+    `build_stats_for_day` normally issues ~13 separate queries *per day* (one
+    per media type, scoped to that single day's window). For a full-history
+    rebuild spanning hundreds or thousands of active days, that's thousands
+    of serial round trips for the same handful of query shapes. This fetches
+    each model exactly once across the whole range and buckets the rows by
+    day in Python, so `build_stats_for_day(..., prefetch=...)` can look up
+    its per-day slice instead of hitting the DB again.
+    """
+    if not day_list:
         return None
+
+    active_media_types = set(getattr(user, "get_active_media_types", lambda: [])())
+    if not active_media_types:
+        active_media_types = set(MediaTypes.values)
+
+    day_list_set = set(day_list)
+    range_start, _ = _day_bounds(min(day_list))
+    _, range_end = _day_bounds(max(day_list))
+
+    prefetch = {}
+    credit_candidates = set()
+
+    if MediaTypes.TV.value in active_media_types or MediaTypes.SEASON.value in active_media_types:
+        Episode = apps.get_model("app", "Episode")
+        episode_rows = list(
+            Episode.objects.filter(
+                related_season__user=user,
+                end_date__gte=range_start,
+                end_date__lt=range_end,
+            )
+            .values(
+                "item_id",
+                "end_date",
+                "item__runtime_minutes",
+                "item__media_id",
+                "item__source",
+                "item__season_number",
+                "related_season_id",
+                "related_season__item_id",
+                "related_season__status",
+                "related_season__score",
+                "related_season__created_at",
+                "related_season__related_tv_id",
+                "related_season__related_tv__item_id",
+                "related_season__related_tv__status",
+                "related_season__related_tv__score",
+                "related_season__related_tv__created_at",
+                "related_season__related_tv__item__genres",
+                "related_season__related_tv__item__library_media_type",
+            )
+            .iterator(chunk_size=2000),
+        )
+        prefetch["episode"] = _bucket_single_field_rows(episode_rows, "end_date", day_list_set)
+        for row in episode_rows:
+            if row.get("item__source") == Sources.TMDB.value:
+                for key in (
+                    "item_id",
+                    "related_season__related_tv__item_id",
+                    "related_season__item_id",
+                ):
+                    candidate = row.get(key)
+                    if candidate:
+                        credit_candidates.add(candidate)
+
+    if MediaTypes.MOVIE.value in active_media_types:
+        Movie = apps.get_model("app", "Movie")
+        movie_rows = list(
+            Movie.objects.filter(user=user)
+            .filter(_overlap_day_filter(range_start, range_end))
+            .values(
+                "id",
+                "end_date",
+                "start_date",
+                "created_at",
+                "status",
+                "score",
+                "item_id",
+                "item__source",
+                "item__runtime_minutes",
+                "item__genres",
+            )
+            .iterator(chunk_size=2000),
+        )
+        prefetch["movie"] = _bucket_overlap_rows(movie_rows, day_list_set)
+        for row in movie_rows:
+            if row.get("item__source") == Sources.TMDB.value and row.get("item_id"):
+                credit_candidates.add(row["item_id"])
+
+    if MediaTypes.ANIME.value in active_media_types:
+        Anime = apps.get_model("app", "Anime")
+        anime_rows = list(
+            Anime.objects.filter(user=user)
+            .filter(_overlap_day_filter(range_start, range_end))
+            .values(
+                "id",
+                "item_id",
+                "end_date",
+                "start_date",
+                "created_at",
+                "status",
+                "score",
+                "progress",
+                "item__runtime_minutes",
+                "item__genres",
+            )
+            .iterator(chunk_size=2000),
+        )
+        prefetch["anime"] = _bucket_overlap_rows(anime_rows, day_list_set)
+
+    if MediaTypes.GAME.value in active_media_types:
+        Game = apps.get_model("app", "Game")
+        game_rows = list(
+            Game.objects.filter(user=user)
+            .filter(_overlap_day_filter(range_start, range_end))
+            .values(
+                "id",
+                "item_id",
+                "end_date",
+                "start_date",
+                "created_at",
+                "status",
+                "score",
+                "progress",
+                "item__genres",
+            )
+            .iterator(chunk_size=2000),
+        )
+        prefetch["game"] = _bucket_overlap_rows(game_rows, day_list_set)
+
+    if MediaTypes.BOARDGAME.value in active_media_types:
+        BoardGame = apps.get_model("app", "BoardGame")
+        boardgame_rows = list(
+            BoardGame.objects.filter(user=user)
+            .filter(_overlap_day_filter(range_start, range_end))
+            .values(
+                "id",
+                "item_id",
+                "end_date",
+                "start_date",
+                "created_at",
+                "status",
+                "score",
+                "progress",
+            )
+            .iterator(chunk_size=2000),
+        )
+        prefetch["boardgame"] = _bucket_overlap_rows(boardgame_rows, day_list_set)
+
+    if MediaTypes.MUSIC.value in active_media_types:
+        HistoricalMusic = apps.get_model("app", "HistoricalMusic")
+        music_history_rows = list(
+            HistoricalMusic.objects.filter(
+                Q(history_user=user) | Q(history_user__isnull=True),
+                end_date__gte=range_start,
+                end_date__lt=range_end,
+            )
+            .values("id", "end_date", "history_date")
+            .iterator(chunk_size=2000),
+        )
+        prefetch["music_history"] = _bucket_single_field_rows(music_history_rows, "end_date", day_list_set)
+
+        music_ids = {row["id"] for row in music_history_rows if row.get("id")}
+        if music_ids:
+            Music = apps.get_model("app", "Music")
+            prefetch["music_map"] = {
+                entry.id: entry
+                for entry in Music.objects.filter(id__in=music_ids).select_related(
+                    "item", "artist", "album", "track",
+                )
+            }
+        else:
+            prefetch["music_map"] = {}
+
+        track_duration_cache = {}
+        album_ids = {
+            music.album_id
+            for music in prefetch["music_map"].values()
+            if music and music.album_id
+        }
+        if album_ids:
+            Track = apps.get_model("app", "Track")
+            track_rows = Track.objects.filter(
+                album_id__in=album_ids,
+                duration_ms__isnull=False,
+            ).values("album_id", "title", "duration_ms", "musicbrainz_recording_id")
+            for track_data in track_rows:
+                title_key = (track_data["album_id"], track_data["title"])
+                track_duration_cache[title_key] = track_data["duration_ms"]
+                recording_id = track_data.get("musicbrainz_recording_id")
+                if recording_id:
+                    track_duration_cache[("recording", recording_id)] = track_data["duration_ms"]
+        prefetch["track_duration_cache"] = track_duration_cache
+
+    if MediaTypes.PODCAST.value in active_media_types:
+        HistoricalPodcast = apps.get_model("app", "HistoricalPodcast")
+        podcast_history_rows = list(
+            HistoricalPodcast.objects.filter(
+                Q(history_user=user) | Q(history_user__isnull=True),
+                end_date__gte=range_start,
+                end_date__lt=range_end,
+            )
+            .values("id", "end_date", "history_date", "progress")
+            .iterator(chunk_size=2000),
+        )
+        prefetch["podcast_history"] = _bucket_single_field_rows(podcast_history_rows, "end_date", day_list_set)
+
+        podcast_ids = {row["id"] for row in podcast_history_rows if row.get("id")}
+        if podcast_ids:
+            Podcast = apps.get_model("app", "Podcast")
+            prefetch["podcast_map"] = {
+                podcast.id: podcast
+                for podcast in Podcast.objects.filter(id__in=podcast_ids, user=user).select_related(
+                    "item", "show", "episode", "episode__show",
+                )
+            }
+        else:
+            prefetch["podcast_map"] = {}
+
+    reading_prefetch = {}
+    for media_type in (MediaTypes.MANGA.value, MediaTypes.BOOK.value, MediaTypes.COMIC.value):
+        if media_type not in active_media_types:
+            continue
+        model = apps.get_model("app", media_type)
+        rows = list(
+            model.objects.filter(user=user)
+            .filter(_overlap_day_filter(range_start, range_end))
+            .values(
+                "id",
+                "item_id",
+                "end_date",
+                "start_date",
+                "created_at",
+                "status",
+                "score",
+                "progress",
+                "item__genres",
+            )
+            .iterator(chunk_size=2000),
+        )
+        reading_prefetch[media_type] = _bucket_overlap_rows(rows, day_list_set)
+    prefetch["reading"] = reading_prefetch
+
+    # Resolve which TMDB candidates still need credits backfill once for the
+    # whole range; per-day builds intersect against this instead of issuing
+    # the same ~5 resolver queries on every day with a TMDB play.
+    prefetch["missing_credit_ids"] = set(
+        _resolve_missing_credit_item_ids(credit_candidates),
+    )
+
+    return prefetch
+
+
+def build_stats_for_day(
+    user_id: int,
+    day_value,
+    user=None,
+    prefetch=None,
+    history_version=None,
+    defer_cache_write=False,
+    backfill_collector=None,
+):
+    """Build a per-day statistics payload for a single user.
+
+    Pass an already-fetched `user` when building many days back-to-back
+    (e.g. a full-history rebuild) to avoid re-querying the same row per day.
+    Pass `prefetch` (from `_build_prefetch_for_range`) to source this day's
+    rows from an already-bucketed, range-wide fetch instead of issuing this
+    day's own set of per-model queries.
+
+    Bulk callers can also pass `history_version` (one cache GET per rebuild
+    instead of one per day), `defer_cache_write=True` (caller persists the
+    returned payloads via `cache.set_many`), and `backfill_collector` (a dict
+    of sets — `runtime_item_ids`, `genre_item_ids`, `episode_runtime_keys`,
+    `credit_item_ids` — accumulated across days and enqueued once instead of
+    per day).
+    """
+    if user is None:
+        user_model = get_user_model()
+        try:
+            user = user_model.objects.get(id=user_id)
+        except user_model.DoesNotExist:
+            return None
 
     day = _normalize_day_value(day_value)
     if not day:
@@ -238,35 +574,38 @@ def build_stats_for_day(user_id: int, day_value):
         return added
 
     if MediaTypes.TV.value in active_media_types or MediaTypes.SEASON.value in active_media_types:
-        Episode = apps.get_model("app", "Episode")
-        episodes = (
-            Episode.objects.filter(
-                related_season__user=user,
-                end_date__gte=day_start,
-                end_date__lt=day_end,
+        if prefetch is not None:
+            episodes = prefetch.get("episode", {}).get(day, [])
+        else:
+            Episode = apps.get_model("app", "Episode")
+            episodes = (
+                Episode.objects.filter(
+                    related_season__user=user,
+                    end_date__gte=day_start,
+                    end_date__lt=day_end,
+                )
+                .values(
+                    "item_id",
+                    "end_date",
+                    "item__runtime_minutes",
+                    "item__media_id",
+                    "item__source",
+                    "item__season_number",
+                    "related_season_id",
+                    "related_season__item_id",
+                    "related_season__status",
+                    "related_season__score",
+                    "related_season__created_at",
+                    "related_season__related_tv_id",
+                    "related_season__related_tv__item_id",
+                    "related_season__related_tv__status",
+                    "related_season__related_tv__score",
+                    "related_season__related_tv__created_at",
+                    "related_season__related_tv__item__genres",
+                    "related_season__related_tv__item__library_media_type",
+                )
+                .iterator(chunk_size=1000)
             )
-            .values(
-                "item_id",
-                "end_date",
-                "item__runtime_minutes",
-                "item__media_id",
-                "item__source",
-                "item__season_number",
-                "related_season_id",
-                "related_season__item_id",
-                "related_season__status",
-                "related_season__score",
-                "related_season__created_at",
-                "related_season__related_tv_id",
-                "related_season__related_tv__item_id",
-                "related_season__related_tv__status",
-                "related_season__related_tv__score",
-                "related_season__related_tv__created_at",
-                "related_season__related_tv__item__genres",
-            "related_season__related_tv__item__library_media_type",
-            )
-            .iterator(chunk_size=1000)
-        )
         for row in episodes:
             play_dt = row.get("end_date")
             ep_lib_type = row.get("related_season__related_tv__item__library_media_type")
@@ -346,10 +685,13 @@ def build_stats_for_day(user_id: int, day_value):
 
     if MediaTypes.MOVIE.value in active_media_types:
         Movie = apps.get_model("app", "Movie")
-        movie_rows = (
-            Movie.objects.filter(user=user)
-            .filter(_overlap_day_filter(day_start, day_end))
-            .values(
+        movie_rows = _fetch_overlap_rows(
+            Movie,
+            user,
+            day,
+            day_start,
+            day_end,
+            (
                 "id",
                 "end_date",
                 "start_date",
@@ -360,8 +702,10 @@ def build_stats_for_day(user_id: int, day_value):
                 "item__source",
                 "item__runtime_minutes",
                 "item__genres",
-            )
-            .iterator(chunk_size=1000)
+            ),
+            1000,
+            "movie",
+            prefetch,
         )
         for row in movie_rows:
             activity_dt = row.get("end_date") or row.get("start_date") or row.get("created_at")
@@ -415,10 +759,13 @@ def build_stats_for_day(user_id: int, day_value):
 
     if MediaTypes.ANIME.value in active_media_types:
         Anime = apps.get_model("app", "Anime")
-        anime_rows = (
-            Anime.objects.filter(user=user)
-            .filter(_overlap_day_filter(day_start, day_end))
-            .values(
+        anime_rows = _fetch_overlap_rows(
+            Anime,
+            user,
+            day,
+            day_start,
+            day_end,
+            (
                 "id",
                 "item_id",
                 "end_date",
@@ -429,8 +776,10 @@ def build_stats_for_day(user_id: int, day_value):
                 "progress",
                 "item__runtime_minutes",
                 "item__genres",
-            )
-            .iterator(chunk_size=500)
+            ),
+            500,
+            "anime",
+            prefetch,
         )
         for row in anime_rows:
             activity_dt = row.get("end_date") or row.get("start_date") or row.get("created_at")
@@ -489,10 +838,13 @@ def build_stats_for_day(user_id: int, day_value):
     if MediaTypes.GAME.value in active_media_types:
         Game = apps.get_model("app", "Game")
         game_rollup_days_counted = set()
-        game_rows = (
-            Game.objects.filter(user=user)
-            .filter(_overlap_day_filter(day_start, day_end))
-            .values(
+        game_rows = _fetch_overlap_rows(
+            Game,
+            user,
+            day,
+            day_start,
+            day_end,
+            (
                 "id",
                 "item_id",
                 "end_date",
@@ -502,8 +854,10 @@ def build_stats_for_day(user_id: int, day_value):
                 "score",
                 "progress",
                 "item__genres",
-            )
-            .iterator(chunk_size=500)
+            ),
+            500,
+            "game",
+            prefetch,
         )
         for row in game_rows:
             activity_dt = row.get("end_date") or row.get("start_date") or row.get("created_at")
@@ -608,10 +962,13 @@ def build_stats_for_day(user_id: int, day_value):
 
     if MediaTypes.BOARDGAME.value in active_media_types:
         BoardGame = apps.get_model("app", "BoardGame")
-        boardgame_rows = (
-            BoardGame.objects.filter(user=user)
-            .filter(_overlap_day_filter(day_start, day_end))
-            .values(
+        boardgame_rows = _fetch_overlap_rows(
+            BoardGame,
+            user,
+            day,
+            day_start,
+            day_end,
+            (
                 "id",
                 "item_id",
                 "end_date",
@@ -620,8 +977,10 @@ def build_stats_for_day(user_id: int, day_value):
                 "status",
                 "score",
                 "progress",
-            )
-            .iterator(chunk_size=500)
+            ),
+            500,
+            "boardgame",
+            prefetch,
         )
         for row in boardgame_rows:
             activity_dt = row.get("end_date") or row.get("start_date") or row.get("created_at")
@@ -665,16 +1024,22 @@ def build_stats_for_day(user_id: int, day_value):
                     daily_minutes_by_type[MediaTypes.BOARDGAME.value] += total_minutes
 
     if MediaTypes.MUSIC.value in active_media_types:
-        HistoricalMusic = apps.get_model("app", "HistoricalMusic")
-        music_history = (
-            HistoricalMusic.objects.filter(
-                Q(history_user=user) | Q(history_user__isnull=True),
-                end_date__gte=day_start,
-                end_date__lt=day_end,
+        if prefetch is not None:
+            music_history = prefetch.get("music_history", {}).get(day, [])
+            music_map = prefetch.get("music_map", {})
+            track_duration_cache = prefetch.get("track_duration_cache", {})
+        else:
+            HistoricalMusic = apps.get_model("app", "HistoricalMusic")
+            music_history = (
+                HistoricalMusic.objects.filter(
+                    Q(history_user=user) | Q(history_user__isnull=True),
+                    end_date__gte=day_start,
+                    end_date__lt=day_end,
+                )
+                .values("id", "end_date", "history_date")
+                .iterator(chunk_size=1000)
             )
-            .values("id", "end_date", "history_date")
-            .iterator(chunk_size=1000)
-        )
+
         plays_by_key = {}
         for record in music_history:
             music_id = record.get("id")
@@ -692,33 +1057,34 @@ def build_stats_for_day(user_id: int, day_value):
             if current_diff < existing_diff and current_diff < 86400:
                 plays_by_key[key] = hist_date
 
-        music_ids = {key[0] for key in plays_by_key}
-        if music_ids:
-            Music = apps.get_model("app", "Music")
-            music_map = {
-                entry.id: entry
-                for entry in Music.objects.filter(id__in=music_ids)
-                .select_related("item", "artist", "album", "track")
-            }
-        else:
-            music_map = {}
+        if prefetch is None:
+            music_ids = {key[0] for key in plays_by_key}
+            if music_ids:
+                Music = apps.get_model("app", "Music")
+                music_map = {
+                    entry.id: entry
+                    for entry in Music.objects.filter(id__in=music_ids)
+                    .select_related("item", "artist", "album", "track")
+                }
+            else:
+                music_map = {}
 
-        track_duration_cache = {}
-        if music_map:
-            album_ids = {music.album_id for music in music_map.values() if music and music.album_id}
-            if album_ids:
-                Track = apps.get_model("app", "Track")
-                track_rows = Track.objects.filter(
-                    album_id__in=album_ids,
-                    duration_ms__isnull=False,
-                ).values("album_id", "title", "duration_ms", "musicbrainz_recording_id")
-                for track_data in track_rows:
-                    title_key = (track_data["album_id"], track_data["title"])
-                    track_duration_cache[title_key] = track_data["duration_ms"]
-                    recording_id = track_data.get("musicbrainz_recording_id")
-                    if recording_id:
-                        recording_key = ("recording", recording_id)
-                        track_duration_cache[recording_key] = track_data["duration_ms"]
+            track_duration_cache = {}
+            if music_map:
+                album_ids = {music.album_id for music in music_map.values() if music and music.album_id}
+                if album_ids:
+                    Track = apps.get_model("app", "Track")
+                    track_rows = Track.objects.filter(
+                        album_id__in=album_ids,
+                        duration_ms__isnull=False,
+                    ).values("album_id", "title", "duration_ms", "musicbrainz_recording_id")
+                    for track_data in track_rows:
+                        title_key = (track_data["album_id"], track_data["title"])
+                        track_duration_cache[title_key] = track_data["duration_ms"]
+                        recording_id = track_data.get("musicbrainz_recording_id")
+                        if recording_id:
+                            recording_key = ("recording", recording_id)
+                            track_duration_cache[recording_key] = track_data["duration_ms"]
 
         for (music_id, play_end), _ in plays_by_key.items():
             music = music_map.get(music_id)
@@ -828,16 +1194,19 @@ def build_stats_for_day(user_id: int, day_value):
                 country_stats["name"] = stats._country_name_from_code(code_upper)
 
     if MediaTypes.PODCAST.value in active_media_types:
-        HistoricalPodcast = apps.get_model("app", "HistoricalPodcast")
-        podcast_history = (
-            HistoricalPodcast.objects.filter(
-                Q(history_user=user) | Q(history_user__isnull=True),
-                end_date__gte=day_start,
-                end_date__lt=day_end,
+        if prefetch is not None:
+            podcast_history = prefetch.get("podcast_history", {}).get(day, [])
+        else:
+            HistoricalPodcast = apps.get_model("app", "HistoricalPodcast")
+            podcast_history = (
+                HistoricalPodcast.objects.filter(
+                    Q(history_user=user) | Q(history_user__isnull=True),
+                    end_date__gte=day_start,
+                    end_date__lt=day_end,
+                )
+                .values("id", "end_date", "history_date", "progress")
+                .iterator(chunk_size=1000)
             )
-            .values("id", "end_date", "history_date", "progress")
-            .iterator(chunk_size=1000)
-        )
         podcast_plays = defaultdict(dict)
         for record in podcast_history:
             podcast_id = record.get("id")
@@ -856,16 +1225,19 @@ def build_stats_for_day(user_id: int, day_value):
                 if current_diff < existing_diff and current_diff < 86400:
                     plays_for_podcast[play_end] = (hist_date, progress)
 
-        podcast_ids = set(podcast_plays.keys())
-        if podcast_ids:
-            Podcast = apps.get_model("app", "Podcast")
-            podcast_map = {
-                podcast.id: podcast
-                for podcast in Podcast.objects.filter(id__in=podcast_ids, user=user)
-                .select_related("item", "show", "episode", "episode__show")
-            }
+        if prefetch is not None:
+            podcast_map = prefetch.get("podcast_map", {})
         else:
-            podcast_map = {}
+            podcast_ids = set(podcast_plays.keys())
+            if podcast_ids:
+                Podcast = apps.get_model("app", "Podcast")
+                podcast_map = {
+                    podcast.id: podcast
+                    for podcast in Podcast.objects.filter(id__in=podcast_ids, user=user)
+                    .select_related("item", "show", "episode", "episode__show")
+                }
+            else:
+                podcast_map = {}
 
         for podcast_id, plays_for_podcast in podcast_plays.items():
             podcast = podcast_map.get(podcast_id)
@@ -937,23 +1309,26 @@ def build_stats_for_day(user_id: int, day_value):
     for media_type in (MediaTypes.MANGA.value, MediaTypes.BOOK.value, MediaTypes.COMIC.value):
         if media_type not in active_media_types:
             continue
-        model = apps.get_model("app", media_type)
-        rows = (
-            model.objects.filter(user=user)
-            .filter(_overlap_day_filter(day_start, day_end))
-            .values(
-                "id",
-                "item_id",
-                "end_date",
-                "start_date",
-                "created_at",
-                "status",
-                "score",
-                "progress",
-                "item__genres",
+        if prefetch is not None:
+            rows = prefetch.get("reading", {}).get(media_type, {}).get(day, [])
+        else:
+            model = apps.get_model("app", media_type)
+            rows = (
+                model.objects.filter(user=user)
+                .filter(_overlap_day_filter(day_start, day_end))
+                .values(
+                    "id",
+                    "item_id",
+                    "end_date",
+                    "start_date",
+                    "created_at",
+                    "status",
+                    "score",
+                    "progress",
+                    "item__genres",
+                )
+                .iterator(chunk_size=500)
             )
-            .iterator(chunk_size=500)
-        )
         for row in rows:
             activity_dt = row.get("end_date") or row.get("start_date") or row.get("created_at")
             _update_item_meta(
@@ -1035,7 +1410,8 @@ def build_stats_for_day(user_id: int, day_value):
     if activity_count == 0 and sum(daily_minutes_by_type.values()) > 0:
         activity_count = 1
 
-    history_version = _get_history_version(user_id)
+    if history_version is None:
+        history_version = _get_history_version(user_id)
     day_stats = {
         "computed_at": timezone.now().isoformat(),
         "history_version": history_version,
@@ -1120,11 +1496,23 @@ def build_stats_for_day(user_id: int, day_value):
             "activity_dt": payload["activity_dt"].isoformat() if payload.get("activity_dt") else None,
         }
     day_stats["game"]["by_game"] = game_payload
-    missing_credit_item_ids = _resolve_missing_credit_item_ids(missing_credit_candidate_item_ids)
+    if prefetch is not None and "missing_credit_ids" in prefetch:
+        missing_credit_item_ids = sorted(
+            missing_credit_candidate_item_ids & prefetch["missing_credit_ids"],
+        )
+    else:
+        missing_credit_item_ids = _resolve_missing_credit_item_ids(
+            missing_credit_candidate_item_ids,
+        )
     missing_credits = len(missing_credit_item_ids)
     scheduled_credit_backfills = 0
 
-    if (
+    if backfill_collector is not None:
+        backfill_collector["runtime_item_ids"].update(missing_runtime_item_ids)
+        backfill_collector["genre_item_ids"].update(missing_genre_item_ids)
+        backfill_collector["episode_runtime_keys"].update(missing_episode_runtime_keys)
+        backfill_collector["credit_item_ids"].update(missing_credit_item_ids)
+    elif (
         missing_runtime_item_ids
         or missing_genre_item_ids
         or missing_episode_runtime_keys
@@ -1163,7 +1551,8 @@ def build_stats_for_day(user_id: int, day_value):
         "scheduled_credits": scheduled_credit_backfills,
     }
 
-    cache.set(_day_cache_key(user_id, day), day_stats, timeout=STATISTICS_DAY_CACHE_TIMEOUT)
+    if not defer_cache_write:
+        cache.set(_day_cache_key(user_id, day), day_stats, timeout=STATISTICS_DAY_CACHE_TIMEOUT)
     if play_count or missing_runtime or missing_credits:
         logger.info(
             (
@@ -1178,7 +1567,7 @@ def build_stats_for_day(user_id: int, day_value):
             missing_credits,
             scheduled_credit_backfills,
         )
-    else:
+    elif not defer_cache_write:
         logger.debug(
             (
                 "stats_day_summary user_id=%s day=%s plays=%s missing_runtime=%s "

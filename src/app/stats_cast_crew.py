@@ -160,6 +160,7 @@ def _build_person_payload_from_totals(person, totals, total_library_titles=None)
         "watched_minutes": totals.get("watched_minutes", 0),
         "watched_time": totals.get("watched_time", "0min"),
         "unique_movies": totals.get("unique_movies", 0),
+        "unique_games": totals.get("unique_games", 0),
         "unique_shows": totals.get("unique_shows", 0),
         "unique_titles": unique_titles,
         "pct_of_library": pct_of_library,
