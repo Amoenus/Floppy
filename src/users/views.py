@@ -1220,7 +1220,12 @@ def create_export_schedule(request):
     selected_media_types = request.POST.getlist("media_types") or request.POST.getlist("media_types_checkboxes")
     include_lists = request.POST.get("include_lists") == "on"
 
-    media_types = selected_media_types if selected_media_types else None
+    if selected_media_types:
+        media_types = selected_media_types
+    elif include_lists:
+        media_types = []  # no media types checked, lists checked -> lists-only export
+    else:
+        media_types = None  # nothing checked at all -> export everything
 
     def build_export_response():
         now = timezone.localtime()

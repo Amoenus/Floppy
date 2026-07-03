@@ -1343,6 +1343,23 @@
           </form>
         </div>
 
+        {# Import Template #}
+        <div class="bg-[#39404b] p-4 rounded-lg"
+             x-show="sourceSupports(['backup', 'screen', 'anime_manga', 'reading', 'games', 'podcasts', 'music'])"
+             x-transition.opacity.duration.150ms>
+          <div class="flex items-center mb-3">
+            {% include "app/icons/download.svg" with classes="w-5 h-5 text-indigo-400 mr-2" %}
+            <span class="font-medium text-gray-200">Import Template</span>
+          </div>
+          <p class="text-sm text-gray-400 mb-3">
+            Download the format, then re-upload it above to see it in your library.
+          </p>
+          <a href="{% url 'import_template_csv' %}"
+             class="flex items-center justify-center w-full px-4 py-2 text-sm rounded-md transition-colors bg-gray-600 text-gray-200 hover:bg-gray-500">
+            Download Sample Template
+          </a>
+        </div>
+
         {# HowLongToBeat #}
         <div class="bg-[#39404b] p-4 rounded-lg"
              x-show="sourceSupports(['games'])"

@@ -1,12 +1,14 @@
 import csv
 import json
 import logging
+from io import StringIO
 
 from django.apps import apps
+from django.conf import settings
 from django.db.models import Field, Prefetch
 
 from app import helpers
-from app.models import AlbumTracker, ArtistTracker, Episode, Item, MediaTypes, Season
+from app.models import AlbumTracker, ArtistTracker, Episode, Item, MediaTypes, Season, Sources
 from lists.models import CustomList
 
 logger = logging.getLogger(__name__)
@@ -212,6 +214,10 @@ def generate_rows(user, media_types=None, include_lists=True):
                 custom_list.allow_recommendations,
                 custom_list.source,
                 custom_list.source_id,
+                custom_list.is_smart,
+                json.dumps(custom_list.smart_media_types or []),
+                json.dumps(custom_list.smart_excluded_media_types or []),
+                json.dumps(custom_list.smart_filters or {}),
                 "",
             ]
         )
@@ -230,6 +236,10 @@ def generate_rows(user, media_types=None, include_lists=True):
                 + [
                     custom_list.id,
                     custom_list.name,
+                    "",
+                    "",
+                    "",
+                    "",
                     "",
                     "",
                     "",
@@ -317,5 +327,342 @@ def get_list_fields():
         "list_allow_recommendations",
         "list_source",
         "list_source_id",
+        "list_is_smart",
+        "list_smart_media_types",
+        "list_smart_excluded_media_types",
+        "list_smart_filters",
         "list_item_date_added",
     ]
+
+
+TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/w500/"
+
+SAMPLE_MOVIES = [
+    ("680", "Pulp Fiction", "vQWk5YBFWF4bZaofAbv0tShwBvQ.jpg"),
+    ("10494", "Perfect Blue", "6WTiOCfDPP8XV4jqfloiVWf7KHq.jpg"),
+    ("27205", "Inception", "xlaY2zyzMfkhk0HSC5VUwzoZPU1.jpg"),
+    ("155", "The Dark Knight", "qJ2tW6WMUDux911r6m7haRef0WH.jpg"),
+    ("238", "The Godfather", "3bhkrj58Vtu7enYsRolD1fZdja1.jpg"),
+]
+
+# (media_id, title, show poster path, season poster path)
+SAMPLE_TV_SHOWS = [
+    ("1668", "Friends", "2koX1xLkpTQM4IZebYvKysFW1Nh.jpg", "odCW88Cq5hAF0ZFVOkeJmeQv1nV.jpg"),
+    ("1396", "Breaking Bad", "ztkUQFLlC19CCMYHW9o1zWhJRNq.jpg", "ztkUQFLlC19CCMYHW9o1zWhJRNq.jpg"),
+    ("1399", "Game of Thrones", "1XS1oqL89opfnbLl8WnZY1O1uJx.jpg", "1XS1oqL89opfnbLl8WnZY1O1uJx.jpg"),
+    ("2316", "The Office", "7DJKHzAi83BmQrWLrYYOqcoKfhR.jpg", "7DJKHzAi83BmQrWLrYYOqcoKfhR.jpg"),
+    ("60625", "Rick and Morty", "owhkU6KRqdXoUQpjV8uyZGPtX58.jpg", "owhkU6KRqdXoUQpjV8uyZGPtX58.jpg"),
+]
+
+SAMPLE_ANIME = [
+    ("227", "FLCL", "https://cdn.myanimelist.net/images/anime/7/77356l.jpg"),
+    ("44511", "Chainsaw Man", "https://cdn.myanimelist.net/images/anime/1806/126216l.jpg"),
+    ("12189", "Hyouka", "https://cdn.myanimelist.net/images/anime/13/50521l.jpg"),
+    ("31043", "Erased", "https://cdn.myanimelist.net/images/anime/1555/106759l.jpg"),
+    ("1535", "Death Note", "https://cdn.myanimelist.net/images/anime/1079/138100.jpg"),
+]
+
+SAMPLE_MANGA = [
+    ("2", "Berserk", "https://cdn.myanimelist.net/images/manga/1/157897l.jpg"),
+    ("98270", "Fire Punch", "https://cdn.myanimelist.net/images/manga/2/180430l.jpg"),
+    ("44347", "One Punch-Man", "https://cdn.myanimelist.net/images/manga/3/80661l.jpg"),
+    ("13", "One Piece", "https://cdn.myanimelist.net/images/manga/2/253146.jpg"),
+    ("656", "Vagabond", "https://cdn.myanimelist.net/images/manga/1/259070.jpg"),
+]
+
+SAMPLE_GAMES = [
+    ("19562", "Resident Evil 7: Biohazard", "https://images.igdb.com/igdb/image/upload/t_original/co545w.jpg"),
+    ("72", "Portal 2", ""),
+    ("233", "Half-Life 2", ""),
+    ("7346", "The Legend of Zelda: Breath of the Wild", ""),
+    ("119133", "Elden Ring", ""),
+]
+
+SAMPLE_BOOKS = [
+    ("OL21733390M", "Nineteen Eighty-Four", "https://covers.openlibrary.org/b/id/9267242-L.jpg"),
+    ("OL51711263M", "The Hobbit", "https://covers.openlibrary.org/b/id/14627509-L.jpg"),
+    ("OL40236195M", "Fahrenheit 451", "https://covers.openlibrary.org/b/id/12993656-L.jpg"),
+    ("OL32848840M", "Dune", "https://covers.openlibrary.org/b/id/11481354-L.jpg"),
+    ("OL22570129M", "The Great Gatsby", "https://covers.openlibrary.org/b/id/10590366-L.jpg"),
+]
+
+SAMPLE_COMICS = [
+    ("796", "Batman"),
+    ("46568", "Saga"),
+    ("18166", "The Walking Dead"),
+    ("3622", "Watchmen"),
+    ("2127", "The Amazing Spider-Man"),
+]
+
+SAMPLE_BOARDGAMES = [
+    ("13", "Catan"),
+    ("30549", "Pandemic"),
+    ("174430", "Gloomhaven"),
+    ("266192", "Wingspan"),
+    ("9209", "Ticket to Ride"),
+]
+
+SAMPLE_PODCASTS = [
+    (
+        "1200361736",
+        "The Daily",
+        "https://is1-ssl.mzstatic.com/image/thumb/Podcasts221/v4/ab/64/66/"
+        "ab6466a9-9a7d-e20e-7a3d-bc5be37d29ce/mza_15084852813176276273.jpg/600x600bb.jpg",
+    ),
+    (
+        "1150510297",
+        "How I Built This with Guy Raz",
+        "https://is1-ssl.mzstatic.com/image/thumb/Podcasts126/v4/64/45/06/"
+        "644506b5-c44f-f661-f74e-f63a4b2511bc/mza_14892199991035639268.jpeg/600x600bb.jpg",
+    ),
+    (
+        "173001861",
+        "Dan Carlin's Hardcore History",
+        "https://is1-ssl.mzstatic.com/image/thumb/Podcasts115/v4/49/b7/eb/"
+        "49b7eb32-8f08-6fac-aadb-2f002131fe5f/mza_15196161972010256532.jpg/600x600bb.jpg",
+    ),
+    (
+        "917918570",
+        "Serial",
+        "https://is1-ssl.mzstatic.com/image/thumb/Podcasts221/v4/9a/fb/87/"
+        "9afb8760-0e05-2b3e-24a2-7e14cce74570/mza_14816055607064169808.jpg/600x600bb.jpg",
+    ),
+    (
+        "1441923632",
+        "Batman University",
+        "https://is1-ssl.mzstatic.com/image/thumb/Podcasts122/v4/2d/3c/5e/"
+        "2d3c5e31-ff23-2531-be0c-3f54dbeb2b0c/mza_4814953863670326339.jpg/600x600bb.jpg",
+    ),
+]
+
+# (artist musicbrainz_id, artist name, album release-group id, album title)
+SAMPLE_MUSIC = [
+    (
+        "ff95eb47-41c4-4f7f-a104-cdc30f02e872",
+        "Brian Eno",
+        "5fdd6ba8-83c1-3a87-b378-d5f61dec5ddd",
+        "Ambient 1: Music for Airports",
+    ),
+    (
+        "a74b1b7f-71a5-4011-9441-d0b5e4122711",
+        "Radiohead",
+        "b1392450-e666-3926-a536-22c65f834433",
+        "OK Computer",
+    ),
+    (
+        "bd13909f-1c29-4c27-a874-d4aaf27c5b1a",
+        "Fleetwood Mac",
+        "416bb5e5-c7d1-3977-8fd7-7c9daf6c2be6",
+        "Rumours",
+    ),
+    (
+        "381086ea-f511-4aba-bdf9-71c753dc5077",
+        "Kendrick Lamar",
+        "499c19c8-0dab-4824-884b-6191d145e95b",
+        "good kid, m.A.A.d city",
+    ),
+    (
+        "056e4f3e-d505-4dad-8ec1-d04f521cbb56",
+        "Daft Punk",
+        "48117b90-a16e-34ca-a514-19c702df1158",
+        "Discovery",
+    ),
+]
+
+
+def generate_sample_template():
+    """Build a sample CSV demonstrating the Yamtrack import format.
+
+    Uses real, verifiable catalog entries (real TMDB/MAL/IGDB/OpenLibrary/
+    ComicVine/BGG/Pocket Casts/MusicBrainz IDs) instead of placeholder data,
+    so re-importing the downloaded file unmodified brings in real,
+    recognizable titles rather than fake "sample" ones. Five items per
+    trackable media type, a regular list per media type, and one smart list
+    querying Completed+highly-rated items across every type.
+    """
+    output = StringIO()
+    writer = csv.writer(output, quoting=csv.QUOTE_ALL)
+
+    fields = {
+        "item": get_model_fields(Item),
+        "track": get_track_fields(),
+        "list": get_list_fields(),
+    }
+    writer.writerow(["row_type"] + fields["item"] + fields["track"] + fields["list"])
+
+    placeholder_image = settings.IMG_NONE
+
+    def write_media_row(item_vals, track_vals=None):
+        item_vals = {"source": Sources.MANUAL.value, "image": placeholder_image, **item_vals}
+        track_vals = track_vals or {}
+        writer.writerow(
+            ["media"]
+            + [item_vals.get(field, "") for field in fields["item"]]
+            + [track_vals.get(field, "") for field in fields["track"]]
+            + [""] * len(fields["list"]),
+        )
+
+    def write_list_row(list_vals):
+        writer.writerow(
+            ["list"]
+            + [""] * len(fields["item"])
+            + [""] * len(fields["track"])
+            + [list_vals.get(field, "") for field in fields["list"]],
+        )
+
+    def write_list_item_row(item_vals, list_vals):
+        item_vals = {"source": Sources.MANUAL.value, "image": placeholder_image, **item_vals}
+        writer.writerow(
+            ["list_item"]
+            + [item_vals.get(field, "") for field in fields["item"]]
+            + [""] * len(fields["track"])
+            + [list_vals.get(field, "") for field in fields["list"]],
+        )
+
+    # Every category gets the same 5-item status/score spread, so each one
+    # contributes exactly one item to the smart list below (the first slot:
+    # Completed with a score of 9.0).
+    status_score_sequence = [
+        ("Completed", "9.0"),
+        ("Completed", "6.0"),
+        ("In progress", ""),
+        ("Planning", ""),
+        ("Dropped", ""),
+    ]
+
+    def tmdb_image(path):
+        return f"{TMDB_IMAGE_BASE}{path}" if path else ""
+
+    def write_category_list(media_type, source, list_name, entries, image_fn=lambda x: x):
+        list_uid = f"sample-list-{media_type}"
+        write_list_row(
+            {
+                "list_uid": list_uid,
+                "list_name": list_name,
+                "list_description": f"All five sample {list_name.lower()}",
+                "list_visibility": "private",
+            },
+        )
+        for (media_id, title, *rest), (status, score) in zip(entries, status_score_sequence):
+            track_vals = {"status": status}
+            if score:
+                track_vals["score"] = score
+            if media_type == "game" and status == "Completed":
+                track_vals["progress"] = "5:30"
+            image = (image_fn(rest[0]) if rest else "") or placeholder_image
+            item_vals = {
+                "media_id": media_id,
+                "source": source,
+                "media_type": media_type,
+                "title": title,
+                "image": image,
+            }
+            write_media_row(item_vals, track_vals)
+            write_list_item_row(item_vals, {"list_uid": list_uid, "list_name": list_name})
+
+    write_category_list("movie", "tmdb", "Sample Movies", SAMPLE_MOVIES, tmdb_image)
+    write_category_list("anime", "mal", "Sample Anime", SAMPLE_ANIME, lambda url: url)
+    write_category_list("manga", "mal", "Sample Manga", SAMPLE_MANGA, lambda url: url)
+    write_category_list("game", "igdb", "Sample Games", SAMPLE_GAMES, lambda url: url)
+    write_category_list("book", "openlibrary", "Sample Books", SAMPLE_BOOKS, lambda url: url)
+    write_category_list("comic", "comicvine", "Sample Comics", SAMPLE_COMICS)
+    write_category_list("boardgame", "bgg", "Sample Board Games", SAMPLE_BOARDGAMES)
+    write_category_list("podcast", "pocketcasts", "Sample Podcasts", SAMPLE_PODCASTS, lambda url: url)
+
+    # TV shows also get a linked season (season_number=1) per show.
+    tv_list_uid = "sample-list-tv"
+    tv_list_name = "Sample TV Shows"
+    season_list_uid = "sample-list-season"
+    season_list_name = "Sample TV Seasons"
+    write_list_row(
+        {
+            "list_uid": tv_list_uid,
+            "list_name": tv_list_name,
+            "list_description": "All five sample TV shows",
+            "list_visibility": "private",
+        },
+    )
+    write_list_row(
+        {
+            "list_uid": season_list_uid,
+            "list_name": season_list_name,
+            "list_description": "Season 1 of each sample TV show",
+            "list_visibility": "private",
+        },
+    )
+    for (media_id, title, show_path, season_path), (status, score) in zip(
+        SAMPLE_TV_SHOWS,
+        status_score_sequence,
+    ):
+        tv_track_vals = {"status": status}
+        if score:
+            tv_track_vals["score"] = score
+        tv_item_vals = {
+            "media_id": media_id,
+            "source": "tmdb",
+            "media_type": "tv",
+            "title": title,
+            "image": tmdb_image(show_path),
+        }
+        season_item_vals = {
+            **tv_item_vals,
+            "media_type": "season",
+            "season_number": "1",
+            "image": tmdb_image(season_path),
+        }
+        write_media_row(tv_item_vals, tv_track_vals)
+        write_media_row(season_item_vals, tv_track_vals)
+        write_list_item_row(tv_item_vals, {"list_uid": tv_list_uid, "list_name": tv_list_name})
+        write_list_item_row(
+            season_item_vals,
+            {"list_uid": season_list_uid, "list_name": season_list_name},
+        )
+
+    # Music artists and their most iconic album. ArtistTracker/AlbumTracker
+    # aren't Item-backed, so they can't belong to a CustomList or the smart
+    # list below -- that's a structural constraint of the data model, not an
+    # omission.
+    for (artist_mbid, artist_name, release_group_id, album_title), (status, score) in zip(
+        SAMPLE_MUSIC,
+        status_score_sequence,
+    ):
+        track_vals = {"status": status}
+        if score:
+            track_vals["score"] = score
+        write_media_row(
+            {
+                "media_id": artist_mbid,
+                "source": "musicbrainz",
+                "media_type": "music_artist",
+                "title": artist_name,
+            },
+            track_vals,
+        )
+        write_media_row(
+            {
+                "media_id": release_group_id,
+                "source": "musicbrainz",
+                "media_type": "music_album",
+                "title": album_title,
+                "image": f"https://coverartarchive.org/release-group/{release_group_id}/front",
+            },
+            track_vals,
+        )
+
+    # A single smart list that queries across every list-eligible media type
+    # at once: the top-rated Completed pick from each, kept in sync
+    # automatically as the user's library changes.
+    write_list_row(
+        {
+            "list_uid": "sample-list-smart",
+            "list_name": "Top-Rated Completed (All Types)",
+            "list_description": (
+                "Auto-updates with every Completed item scored 8 or higher, across all media types"
+            ),
+            "list_visibility": "private",
+            "list_is_smart": "true",
+            "list_smart_filters": json.dumps({"status": "Completed", "rating_min": "8"}),
+        },
+    )
+
+    return output.getvalue()

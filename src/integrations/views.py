@@ -1773,12 +1773,27 @@ def import_hardcover(request):
 
 
 @require_GET
+def import_template_csv(request):
+    """View for downloading a sample CSV demonstrating the import format."""
+    content = exports.generate_sample_template()
+    response = HttpResponse(content, content_type="text/csv")
+    response["Content-Disposition"] = 'attachment; filename="yamtrack_import_template.csv"'
+    return response
+
+
+@require_GET
 def export_csv(request):
     """View for exporting all media data to a CSV file."""
     selected_media_types = request.GET.getlist("media_types")
     include_lists = request.GET.get("include_lists", "on") == "on"
 
-    media_types = selected_media_types if selected_media_types else None
+    if selected_media_types:
+        media_types = selected_media_types
+    elif request.GET:
+        # explicit request with no media types checked -> lists-only when lists are included
+        media_types = [] if include_lists else None
+    else:
+        media_types = None
 
     now = timezone.localtime()
     response = StreamingHttpResponse(

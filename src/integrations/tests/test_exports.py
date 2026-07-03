@@ -218,6 +218,23 @@ class ExportCSVTest(TestCase):
         self.assertIn("movie", exported_media_types)
         self.assertIn("episode", exported_media_types)
 
+    def test_export_csv_lists_only_when_no_media_types_selected(self):
+        """Deselecting all media types but keeping lists on exports only list rows."""
+        response = self.client.get(
+            reverse("export_csv"),
+            {"media_types": [], "include_lists": "on"},
+        )
+        self.assertEqual(response.status_code, 200)
+
+        content = b"".join(response.streaming_content).decode("utf-8")
+        reader = csv.DictReader(StringIO(content))
+        rows = list(reader)
+
+        row_types = {(row.get("row_type") or "media") for row in rows}
+        self.assertEqual(row_types, {"list", "list_item"})
+        self.assertTrue(any(row["row_type"] == "list" for row in rows))
+        self.assertTrue(any(row["row_type"] == "list_item" for row in rows))
+
     def test_export_csv_includes_item_entries_for_each_list_membership(self):
         """Items that appear on multiple lists should be exported once per list item."""
         movie_item = Item.objects.get(media_id="10494", media_type=MediaTypes.MOVIE.value)

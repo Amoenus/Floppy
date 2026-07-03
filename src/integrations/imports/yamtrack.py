@@ -45,6 +45,19 @@ def _parse_tags(value):
     return [tag.strip() for tag in str(value).split(",") if tag.strip()]
 
 
+def _parse_json_dict(value):
+    """Parse a JSON object string, defaulting to an empty dict."""
+    if not value:
+        return {}
+    try:
+        parsed = json.loads(value)
+        if isinstance(parsed, dict):
+            return parsed
+    except json.JSONDecodeError:
+        pass
+    return {}
+
+
 def _normalize_status(value):
     """Normalize status strings to match Status choices."""
     if value is None:
@@ -129,6 +142,7 @@ class YamtrackImporter:
         self.bulk_media = defaultdict(list)
         self.music_tracker_counts = defaultdict(int)
         self.list_map = {}
+        self.smart_lists = []
         self.status_overrides = {
             MediaTypes.TV.value: {},
             MediaTypes.SEASON.value: {},
@@ -167,6 +181,9 @@ class YamtrackImporter:
         helpers.cleanup_existing_media(self.to_delete, self.user)
         helpers.bulk_create_media(self.bulk_media, self.user)
         self._apply_status_overrides()
+
+        for custom_list in self.smart_lists:
+            custom_list.sync_smart_items()
 
         imported_counts = {
             media_type: len(media_list)
@@ -336,6 +353,10 @@ class YamtrackImporter:
         list_description = row.get("list_description") or ""
         list_allow_recommendations = _parse_bool(row.get("list_allow_recommendations"))
         list_tags = _parse_tags(row.get("list_tags"))
+        list_is_smart = _parse_bool(row.get("list_is_smart"))
+        list_smart_media_types = _parse_tags(row.get("list_smart_media_types"))
+        list_smart_excluded_media_types = _parse_tags(row.get("list_smart_excluded_media_types"))
+        list_smart_filters = _parse_json_dict(row.get("list_smart_filters"))
 
         existing = None
         if list_source_id:
@@ -358,6 +379,10 @@ class YamtrackImporter:
                 existing.allow_recommendations = list_allow_recommendations
                 existing.source = list_source
                 existing.source_id = list_source_id
+                existing.is_smart = list_is_smart
+                existing.smart_media_types = list_smart_media_types
+                existing.smart_excluded_media_types = list_smart_excluded_media_types
+                existing.smart_filters = list_smart_filters
                 existing.save(
                     update_fields=[
                         "description",
@@ -366,6 +391,10 @@ class YamtrackImporter:
                         "allow_recommendations",
                         "source",
                         "source_id",
+                        "is_smart",
+                        "smart_media_types",
+                        "smart_excluded_media_types",
+                        "smart_filters",
                     ],
                 )
                 if not already_seen:
@@ -380,8 +409,15 @@ class YamtrackImporter:
                 allow_recommendations=list_allow_recommendations,
                 source=list_source,
                 source_id=list_source_id,
+                is_smart=list_is_smart,
+                smart_media_types=list_smart_media_types,
+                smart_excluded_media_types=list_smart_excluded_media_types,
+                smart_filters=list_smart_filters,
                 owner=self.user,
             )
+
+        if custom_list.is_smart:
+            self.smart_lists.append(custom_list)
 
         if list_uid:
             self.list_map[list_uid] = custom_list
@@ -519,6 +555,88 @@ class YamtrackImporter:
         msg = f"Missing metadata for: {row}"
         raise MediaImportError(msg)
 
+    def _create_artist_from_musicbrainz(self, musicbrainz_id, fallback_name):
+        """Fetch and create an Artist from MusicBrainz, syncing its discography."""
+        from app.providers import musicbrainz
+        from app.services.music import sync_artist_discography
+
+        try:
+            artist_data = musicbrainz.get_artist(musicbrainz_id)
+        except Exception:
+            logger.exception(
+                "Failed to fetch artist %s from MusicBrainz during import",
+                musicbrainz_id,
+            )
+            return None
+        if not artist_data:
+            return None
+
+        artist = Artist.objects.create(
+            name=artist_data.get("name") or fallback_name or "Unknown Artist",
+            sort_name=artist_data.get("sort_name", ""),
+            musicbrainz_id=musicbrainz_id,
+            country=artist_data.get("country", "") or "",
+            genres=[
+                genre.get("name")
+                for genre in artist_data.get("genres", [])
+                if genre.get("name")
+            ],
+        )
+        try:
+            sync_artist_discography(artist)
+        except Exception:
+            logger.exception(
+                "Failed to sync discography for artist %s during import",
+                artist.name,
+            )
+        return artist
+
+    def _create_album_from_musicbrainz(self, release_group_id, fallback_title):
+        """Fetch and create an Album (and its Artist, if needed) from MusicBrainz."""
+        from app.providers import musicbrainz
+
+        try:
+            release_id = musicbrainz.get_release_for_group(release_group_id)
+            release_data = musicbrainz.get_release(release_id, skip_cover_art=True) if release_id else None
+        except Exception:
+            logger.exception(
+                "Failed to fetch release for group %s from MusicBrainz during import",
+                release_group_id,
+            )
+            return None
+        if not release_data:
+            return None
+
+        artist = None
+        artist_id = release_data.get("artist_id")
+        artist_name = release_data.get("artist_name")
+        if artist_id:
+            artist = Artist.objects.filter(musicbrainz_id=artist_id).first()
+            if artist is None:
+                artist = self._create_artist_from_musicbrainz(artist_id, artist_name or "")
+        if artist is None and artist_name:
+            artist = Artist.objects.filter(name=artist_name).first()
+            if artist is None:
+                artist = Artist.objects.create(name=artist_name)
+        if artist is None:
+            return None
+
+        # sync_artist_discography (triggered above) may have already created
+        # this album via its release-group; reuse it instead of duplicating.
+        album = Album.objects.filter(
+            artist=artist,
+            musicbrainz_release_group_id=release_group_id,
+        ).first()
+        if album:
+            return album
+
+        return Album.objects.create(
+            title=release_data.get("title") or fallback_title or "Unknown Album",
+            artist=artist,
+            musicbrainz_release_id=release_id,
+            musicbrainz_release_group_id=release_group_id,
+        )
+
     def _process_music_artist_row(self, row):
         """Process a music_artist tracker row from the CSV."""
         musicbrainz_id = (row.get("media_id") or "").strip()
@@ -528,8 +646,10 @@ class YamtrackImporter:
 
         artist = Artist.objects.filter(musicbrainz_id=musicbrainz_id).first()
         if artist is None:
+            artist = self._create_artist_from_musicbrainz(musicbrainz_id, row.get("title") or "")
+        if artist is None:
             self.warnings.append(
-                f"Skipping music_artist row: no artist found with musicbrainz_id={musicbrainz_id}."
+                f"Skipping music_artist row: could not fetch artist musicbrainz_id={musicbrainz_id}."
             )
             return
 
@@ -572,8 +692,10 @@ class YamtrackImporter:
 
         album = Album.objects.filter(musicbrainz_release_group_id=release_group_id).first()
         if album is None:
+            album = self._create_album_from_musicbrainz(release_group_id, row.get("title") or "")
+        if album is None:
             self.warnings.append(
-                f"Skipping music_album row: no album found with release_group_id={release_group_id}."
+                f"Skipping music_album row: could not fetch release_group_id={release_group_id}."
             )
             return
 

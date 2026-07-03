@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from io import BytesIO
 from pathlib import Path
 
 from django.contrib.auth import get_user_model
@@ -6,15 +7,24 @@ from django.test import TestCase
 
 from app.models import (
     TV,
+    Album,
+    AlbumTracker,
     Anime,
+    Artist,
+    ArtistTracker,
+    BoardGame,
     Book,
+    Comic,
     Episode,
+    Game,
     Manga,
     Movie,
+    Podcast,
     Season,
     Status,
 )
 from lists.models import CustomList, CustomListItem
+from integrations import exports
 from integrations.imports import (
     yamtrack,
 )
@@ -228,3 +238,108 @@ class ImportYamtrackStatusNormalization(TestCase):
         self.assertIsNotNone(season)
         self.assertEqual(tv.status, Status.COMPLETED.value)
         self.assertEqual(season.status, Status.IN_PROGRESS.value)
+
+
+class ImportSampleTemplate(TestCase):
+    """Test that the downloadable sample template imports cleanly, unmodified."""
+
+    def setUp(self):
+        """Create a user and import the generated sample template."""
+        self.credentials = {"username": "test", "password": "12345"}
+        self.user = get_user_model().objects.create_user(**self.credentials)
+        content = exports.generate_sample_template()
+        file = BytesIO(content.encode("utf-8"))
+        self.import_results, self.warnings = yamtrack.importer(file, self.user, "new")
+
+    def test_no_warnings(self):
+        """The sample template should import without any warnings."""
+        self.assertEqual(self.warnings, "")
+
+    def test_media_created_for_each_type(self):
+        """Five real items of every trackable media type should be created."""
+        self.assertEqual(Movie.objects.filter(user=self.user).count(), 5)
+        self.assertEqual(TV.objects.filter(user=self.user).count(), 5)
+        self.assertEqual(Season.objects.filter(user=self.user).count(), 5)
+        self.assertEqual(Anime.objects.filter(user=self.user).count(), 5)
+        self.assertEqual(Manga.objects.filter(user=self.user).count(), 5)
+        self.assertEqual(Game.objects.filter(user=self.user).count(), 5)
+        self.assertEqual(Book.objects.filter(user=self.user).count(), 5)
+        self.assertEqual(Comic.objects.filter(user=self.user).count(), 5)
+        self.assertEqual(BoardGame.objects.filter(user=self.user).count(), 5)
+        self.assertEqual(Podcast.objects.filter(user=self.user).count(), 5)
+
+    def test_real_titles_used(self):
+        """Imported items should carry real, recognizable titles, not placeholders."""
+        movie_titles = set(Movie.objects.filter(user=self.user).values_list("item__title", flat=True))
+        self.assertIn("Pulp Fiction", movie_titles)
+        tv_titles = set(TV.objects.filter(user=self.user).values_list("item__title", flat=True))
+        self.assertIn("Friends", tv_titles)
+        self.assertFalse(any("Sample" in title for title in movie_titles | tv_titles))
+
+    def test_music_artists_and_albums_created_from_musicbrainz(self):
+        """Music rows should fetch and create real Artist/Album records on demand."""
+        self.assertEqual(Artist.objects.filter(musicbrainz_id__isnull=False).count(), 5)
+        self.assertEqual(ArtistTracker.objects.filter(user=self.user).count(), 5)
+        self.assertEqual(AlbumTracker.objects.filter(user=self.user).count(), 5)
+        self.assertTrue(Artist.objects.filter(name="Radiohead").exists())
+        self.assertTrue(Album.objects.filter(title="OK Computer").exists())
+
+    def test_per_type_lists_created(self):
+        """A regular list should be created for each media type, with its 5 items."""
+        for media_type, list_name in (
+            ("movie", "Sample Movies"),
+            ("tv", "Sample TV Shows"),
+            ("season", "Sample TV Seasons"),
+            ("anime", "Sample Anime"),
+            ("manga", "Sample Manga"),
+            ("game", "Sample Games"),
+            ("book", "Sample Books"),
+            ("comic", "Sample Comics"),
+            ("boardgame", "Sample Board Games"),
+            ("podcast", "Sample Podcasts"),
+        ):
+            custom_list = CustomList.objects.get(owner=self.user, name=list_name)
+            self.assertFalse(custom_list.is_smart)
+            list_items = CustomListItem.objects.filter(custom_list=custom_list)
+            self.assertEqual(list_items.count(), 5)
+            self.assertTrue(
+                list_items.filter(item__media_type=media_type).exists(),
+            )
+
+    def test_no_music_list_since_trackers_are_not_item_backed(self):
+        """Music can't join a CustomList since Artist/Album aren't Item-backed."""
+        self.assertFalse(CustomList.objects.filter(owner=self.user, name__icontains="Music").exists())
+
+    def test_smart_list_created_and_synced(self):
+        """The cross-type smart list should be created and auto-populated."""
+        custom_list = CustomList.objects.get(
+            owner=self.user,
+            name="Top-Rated Completed (All Types)",
+        )
+        self.assertTrue(custom_list.is_smart)
+        self.assertEqual(custom_list.smart_filters, {"status": "Completed", "rating_min": "8"})
+
+        list_item_media_types = set(
+            CustomListItem.objects.filter(custom_list=custom_list).values_list(
+                "item__media_type",
+                flat=True,
+            ),
+        )
+        # Exactly one top-rated Completed item per list-eligible media type should match.
+        expected_media_types = {
+            "movie",
+            "tv",
+            "season",
+            "anime",
+            "manga",
+            "game",
+            "book",
+            "comic",
+            "boardgame",
+            "podcast",
+        }
+        self.assertEqual(list_item_media_types, expected_media_types)
+        self.assertEqual(
+            CustomListItem.objects.filter(custom_list=custom_list).count(),
+            len(expected_media_types),
+        )

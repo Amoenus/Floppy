@@ -73,6 +73,7 @@ urlpatterns = [
     path("import/lastfm/history", views.import_lastfm_history_manual, name="import_lastfm_history"),
     path("import/lastfm/poll", views.poll_lastfm_manual, name="poll_lastfm_manual"),
     path("export/csv", views.export_csv, name="export_csv"),
+    path("import/yamtrack/template", views.import_template_csv, name="import_template_csv"),
     path(
         "webhook/jellyfin/<str:token>",
         views.jellyfin_webhook,
