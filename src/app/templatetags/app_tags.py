@@ -900,6 +900,55 @@ def media_url(media):
     )
 
 
+def _untracked_season_next_episode_url(item, seasons, actual_media_type):
+    """Return the first-episode URL of the next untracked season, if known.
+
+    When every tracked season is complete the next unwatched episode lives in a
+    season without a Season row. Untracked seasons are only visible through
+    their calendar events (same source as _next_episode_air_date_value).
+    """
+    from events.models import Event
+
+    is_dict = isinstance(item, dict)
+    media_id = item["media_id"] if is_dict else getattr(item, "media_id", None)
+    source = item["source"] if is_dict else getattr(item, "source", None)
+    if not media_id or not source:
+        return ""
+
+    tracked_season_numbers = {
+        season.item.season_number
+        for season in seasons.all()
+        if getattr(season, "item", None) is not None
+    }
+    event = (
+        Event.objects.filter(
+            item__media_id=media_id,
+            item__source=source,
+            item__media_type=MediaTypes.SEASON.value,
+            item__season_number__gt=0,
+            content_number__isnull=False,
+        )
+        .exclude(item__season_number__in=tracked_season_numbers)
+        .order_by("item__season_number", "content_number")
+        .select_related("item")
+        .first()
+    )
+    if event is None:
+        return ""
+
+    title = item["title"] if is_dict else getattr(item, "title", "")
+    slug_title = slug(title) or slug(str(media_id)) or "item"
+    is_anime = actual_media_type == MediaTypes.ANIME.value
+    url_name = "anime_episode_details" if is_anime else "episode_details"
+    return reverse(url_name, kwargs={
+        "source": source,
+        "media_id": media_id,
+        "title": slug_title,
+        "season_number": event.item.season_number,
+        "episode_number": event.content_number,
+    })
+
+
 @register.simple_tag
 def next_episode_url(item, media):
     """Return the episode detail URL for the next unwatched episode.
@@ -941,6 +990,21 @@ def next_episode_url(item, media):
     if actual_media_type in (MediaTypes.TV.value, MediaTypes.ANIME.value):
         seasons = getattr(media, "seasons", None)
         if not media or seasons is None:
+            # Flat MAL anime has no seasons — resolve the provider mapping at
+            # click time via the redirect view instead of per card at render.
+            source = item["source"] if is_dict else getattr(item, "source", None)
+            media_id = item["media_id"] if is_dict else getattr(item, "media_id", None)
+            if (
+                actual_media_type == MediaTypes.ANIME.value
+                and source == Sources.MAL.value
+                and media_id
+            ):
+                title = item["title"] if is_dict else getattr(item, "title", "")
+                slug_title = slug(title) or slug(str(media_id)) or "item"
+                return reverse(
+                    "anime_next_episode",
+                    kwargs={"media_id": media_id, "title": slug_title},
+                )
             return ""
         # Seasons are already prefetched for TV home cards — no extra query
         in_progress = [
@@ -949,7 +1013,7 @@ def next_episode_url(item, media):
             and getattr(getattr(s, "item", None), "season_number", 0) != 0
         ]
         if not in_progress:
-            return ""
+            return _untracked_season_next_episode_url(item, seasons, actual_media_type)
         season = min(in_progress, key=lambda s: s.item.season_number)
         season_item = season.item
         slug_title = slug(season_item.title) or slug(str(season_item.media_id)) or "item"

@@ -668,6 +668,90 @@ def episode_details(request, source, media_id, title, season_number, episode_num
     }
     return render(request, "app/episode_details.html", context)
 
+
+@never_cache
+@require_GET
+def anime_next_episode(request, media_id, title):
+    """Redirect a flat MAL anime to its next unwatched mapped episode page.
+
+    Home cards can't resolve the MAL→provider mapping per card at render time,
+    so this resolves it once at click time and falls back to the anime detail
+    page when no mapping (or no next episode) exists.
+    """
+    detail_url = reverse(
+        "media_details",
+        kwargs={
+            "source": Sources.MAL.value,
+            "media_type": MediaTypes.ANIME.value,
+            "media_id": media_id,
+            "title": title,
+        },
+    )
+    if not request.user.is_authenticated:
+        return redirect(detail_url)
+
+    anime = Anime.objects.filter(
+        user=request.user,
+        item__media_id=media_id,
+        item__source=Sources.MAL.value,
+        item__media_type=MediaTypes.ANIME.value,
+    ).first()
+    progress = int(anime.progress or 0) if anime else 0
+
+    detail_item = Item.objects.filter(
+        media_id=media_id,
+        source=Sources.MAL.value,
+        media_type=MediaTypes.ANIME.value,
+    ).first()
+
+    try:
+        base_metadata = services.get_media_metadata(
+            MediaTypes.ANIME.value,
+            media_id,
+            Sources.MAL.value,
+        )
+    except Exception:
+        return redirect(detail_url)
+
+    try:
+        preview_episodes = _build_flat_anime_episode_preview(
+            request,
+            detail_item=detail_item,
+            media_id=media_id,
+            base_metadata=base_metadata,
+        ) or []
+    except Exception:
+        logger.warning(
+            "Failed to resolve next-episode mapping for MAL anime %s",
+            media_id,
+            exc_info=True,
+        )
+        preview_episodes = []
+
+    next_ep = next(
+        (
+            ep for ep in preview_episodes
+            if ep.get("display_episode_number") == progress + 1
+        ),
+        None,
+    )
+    if not next_ep:
+        return redirect(detail_url)
+
+    return redirect(
+        reverse(
+            "anime_episode_details",
+            kwargs={
+                "source": next_ep["source"],
+                "media_id": next_ep["media_id"],
+                "title": title,
+                "season_number": next_ep["season_number"],
+                "episode_number": next_ep["episode_number"],
+            },
+        ),
+    )
+
+
 @require_POST
 def music_bulk_save(request):
     """Dispatch a bulk music play range as a background task and return immediately."""

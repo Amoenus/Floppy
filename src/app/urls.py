@@ -53,6 +53,11 @@ urlpatterns = [
         name="anime_season_details",
     ),
     path(
+        "details/mal/anime/<str:media_id>/<str:title>/next-episode",
+        views.anime_next_episode,
+        name="anime_next_episode",
+    ),
+    path(
         "details/<source:source>/<media_type:media_type>/<path:media_id>/<str:title>",
         views.media_details,
         name="media_details",
