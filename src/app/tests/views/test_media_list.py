@@ -14,6 +14,7 @@ from app.models import (
     Anime,
     Artist,
     ArtistTracker,
+    BasicMedia,
     Book,
     Comic,
     ComicIssue,
@@ -1956,6 +1957,37 @@ class MediaListViewTests(TestCase):
             season_response,
             timezone.localtime(future_release).date().isoformat(),
         )
+
+    def test_tv_next_episode_air_date_uses_untracked_season_events(self):
+        """Fall back to untracked-season events when tracked seasons are exhausted."""
+        base_now = timezone.now().replace(hour=12, minute=0, second=0, microsecond=0)
+        season1_release = base_now - timedelta(days=30)
+        season2_release = base_now - timedelta(days=3)
+
+        tv, _season = self._create_tv_next_episode_air_date_entry(
+            "tv-next-episode-untracked",
+            "Untracked Season TV",
+            [season1_release, season1_release + timedelta(days=7)],
+            progress=2,
+        )
+
+        untracked_season_item = Item.objects.create(
+            media_id="tv-next-episode-untracked",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Untracked Season TV Season 2",
+            image="http://example.com/tv-next-episode-season2.jpg",
+            season_number=2,
+        )
+        Event.objects.create(
+            item=untracked_season_item,
+            content_number=1,
+            datetime=season2_release,
+            notification_sent=False,
+        )
+
+        air_date = BasicMedia.objects._next_episode_air_date_value(tv)
+        self.assertEqual(air_date, season2_release)
 
     def test_anime_sort_by_next_episode_air_date_orders_grouped_and_flat_rows(self):
         self.user.date_format = "iso_8601"
