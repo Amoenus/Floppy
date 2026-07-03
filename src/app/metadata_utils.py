@@ -207,6 +207,7 @@ def apply_item_metadata(
         include_release
         and values["release_datetime"]
         and item.release_datetime != values["release_datetime"]
+        and item.media_type != MediaTypes.SEASON.value
     ):
         item.release_datetime = values["release_datetime"]
         update_fields.append("release_datetime")

@@ -151,7 +151,11 @@ def process_tv_seasons(tv_item, seasons_to_process, events_bulk):
                     season_metadata,
                     fallback_title=tv_item.title,
                 ),
-                "library_media_type": tv_item.library_media_type,
+                "library_media_type": (
+                    MediaTypes.ANIME.value
+                    if tv_item.library_media_type == MediaTypes.ANIME.value
+                    else MediaTypes.SEASON.value
+                ),
                 "image": season_image,
             },
         )
@@ -345,6 +349,7 @@ def process_season_episodes(item, metadata, events_bulk):
     }
     items_to_update = []
     new_items = []
+    earliest_release = None
 
     for episode in metadata["episodes"]:
         episode_number = episode["episode_number"]
@@ -379,7 +384,12 @@ def process_season_episodes(item, metadata, events_bulk):
                 media_type=MediaTypes.EPISODE.value,
                 title=item.title,
                 image=image,
-                library_media_type=item.library_media_type,
+                library_media_type=(
+                    item.library_media_type
+                    if item.library_media_type
+                    and item.library_media_type != MediaTypes.SEASON.value
+                    else MediaTypes.EPISODE.value
+                ),
                 season_number=season_number,
                 episode_number=episode_number,
             )
@@ -387,6 +397,11 @@ def process_season_episodes(item, metadata, events_bulk):
             new_items.append(episode_item)
 
         release_datetime = episode_datetime if episode_datetime.year > 1900 else None
+
+        if release_datetime is not None and (
+            earliest_release is None or release_datetime < earliest_release
+        ):
+            earliest_release = release_datetime
 
         runtime_minutes = None
         if episode.get("runtime") is not None:
@@ -417,7 +432,13 @@ def process_season_episodes(item, metadata, events_bulk):
             batch_size=100,
         )
 
-    return bool(new_items or items_to_update)
+    season_release_updated = False
+    if earliest_release is not None and item.release_datetime != earliest_release:
+        item.release_datetime = earliest_release
+        item.save(update_fields=["release_datetime"])
+        season_release_updated = True
+
+    return bool(new_items or items_to_update or season_release_updated)
 
 
 def get_episode_datetime(episode, season_number, episode_number, tvmaze_map):
