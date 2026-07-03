@@ -522,7 +522,10 @@ def season_details(
         for episode in season_metadata["episodes"]:
             episode_number = episode.get("episode_number")
             episode["collection_entry"] = collection_entries.get(episode_number)
-            episode["item"] = item_by_episode_number.get(episode_number)
+            db_item = item_by_episode_number.get(episode_number)
+            episode["item"] = db_item
+            if db_item is not None and db_item.release_datetime is not None:
+                episode["air_date"] = db_item.release_datetime
 
     # Enrich related items with user tracking data
     # For public views, use list owner's data if available
