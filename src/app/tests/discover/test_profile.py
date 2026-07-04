@@ -720,3 +720,244 @@ class DiscoverProfileTests(TestCase):
         profile = compute_taste_profile(self.user, MediaTypes.MOVIE.value)
 
         self.assertEqual(profile.activity_snapshot_at, feedback_updated_at)
+
+    def _create_rated_movie(
+        self,
+        media_id,
+        *,
+        genres,
+        user_score,
+        provider_rating,
+        provider_rating_count=5000,
+        days_ago=30,
+        studios=None,
+    ):
+        item = Item.objects.create(
+            media_id=media_id,
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title=media_id,
+            image=f"http://example.com/{media_id}.jpg",
+            genres=genres,
+            provider_rating=provider_rating,
+            provider_rating_count=provider_rating_count,
+            studios=studios or [],
+        )
+        with patch(
+            "app.models.providers.services.get_media_metadata",
+            return_value={"max_progress": 1},
+        ):
+            Movie.objects.create(
+                item=item,
+                user=self.user,
+                score=user_score,
+                status=Status.COMPLETED.value,
+                end_date=timezone.now() - timedelta(days=days_ago),
+            )
+        return item
+
+    def test_world_alignment_offsets_detect_per_family_divergence(self):
+        # User consistently rates world-loved dramas far below consensus...
+        for index in range(3):
+            self._create_rated_movie(
+                f"drama-{index}",
+                genres=["Drama"],
+                user_score=3,
+                provider_rating=8.6,
+            )
+        # ...and rates family animation above consensus.
+        for index in range(3):
+            self._create_rated_movie(
+                f"family-{index}",
+                genres=["Animation", "Family"],
+                user_score=10,
+                provider_rating=6.4,
+            )
+        # A single-sample genre must be pruned by the min-sample threshold.
+        self._create_rated_movie(
+            "lone-western",
+            genres=["Western"],
+            user_score=10,
+            provider_rating=5.0,
+        )
+
+        profile = compute_taste_profile(self.user, MediaTypes.MOVIE.value)
+
+        genre_offsets = profile.world_alignment_offsets.get("genres") or {}
+        genre_samples = profile.world_alignment_offset_samples.get("genres") or {}
+        self.assertLess(genre_offsets["drama"], 0.0)
+        self.assertGreater(genre_offsets["animation"], 0.0)
+        self.assertNotIn("western", genre_offsets)
+        self.assertEqual(genre_samples["drama"], 3)
+        self.assertEqual(genre_samples["animation"], 3)
+        self.assertIn(
+            "global_residual_mean",
+            profile.world_rating_profile,
+        )
+
+    def test_profile_status_semantics_are_media_aware(self):
+        def create_movie(media_id, genres, status, created_days_ago, score=None):
+            item = Item.objects.create(
+                media_id=media_id,
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.MOVIE.value,
+                title=media_id,
+                image=f"http://example.com/{media_id}.jpg",
+                genres=genres,
+            )
+            with patch(
+                "app.models.providers.services.get_media_metadata",
+                return_value={"max_progress": 1},
+            ):
+                movie = Movie.objects.create(
+                    item=item,
+                    user=self.user,
+                    score=score,
+                    status=status,
+                )
+            Movie.objects.filter(id=movie.id).update(
+                created_at=timezone.now() - timedelta(days=created_days_ago),
+            )
+            return item
+
+        create_movie("dropped-movie", ["Western"], Status.DROPPED.value, 10)
+        create_movie("paused-movie", ["Sci-Fi Intent"], Status.PAUSED.value, 10)
+        create_movie("fresh-plan", ["Fresh Plan"], Status.PLANNING.value, 10)
+        create_movie("stale-plan", ["Stale Plan"], Status.PLANNING.value, 400)
+
+        tv_item = Item.objects.create(
+            media_id="dropped-show",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Dropped Show",
+            image="http://example.com/dropped-show.jpg",
+            genres=["Soap"],
+        )
+        with patch(
+            "app.models.providers.services.get_media_metadata",
+            return_value={"max_progress": 10},
+        ):
+            TV.objects.create(
+                item=tv_item,
+                user=self.user,
+                status=Status.DROPPED.value,
+            )
+
+        movie_profile = compute_taste_profile(self.user, MediaTypes.MOVIE.value)
+        tv_profile = compute_taste_profile(self.user, MediaTypes.TV.value)
+
+        # Movie dropped: no positive signal and, unlike TV, no negative either.
+        self.assertNotIn("western", movie_profile.genre_affinity)
+        self.assertNotIn("western", movie_profile.negative_genre_affinity)
+        # Movie paused counts as (reduced) intent.
+        self.assertGreater(movie_profile.genre_affinity.get("sci-fi intent", 0.0), 0.0)
+        # Stale planning decays below fresh planning.
+        self.assertGreater(
+            movie_profile.genre_affinity.get("fresh plan", 0.0),
+            movie_profile.genre_affinity.get("stale plan", 0.0),
+        )
+        self.assertGreater(movie_profile.genre_affinity.get("stale plan", 0.0), 0.0)
+        # TV dropped is a real negative and not a positive.
+        self.assertNotIn("soap", tv_profile.genre_affinity)
+        self.assertGreater(tv_profile.negative_genre_affinity.get("soap", 0.0), 0.0)
+
+    def test_avoidance_offsets_require_exposure_baseline(self):
+        catalog_items = []
+        for index in range(300):
+            catalog_items.append(
+                Item(
+                    media_id=f"catalog-sony-{index}",
+                    source=Sources.TMDB.value,
+                    media_type=MediaTypes.MOVIE.value,
+                    title=f"Sony Film {index}",
+                    image="http://example.com/sony.jpg",
+                    genres=["Action"],
+                    studios=["Sony Pictures"],
+                    provider_popularity=50.0,
+                ),
+            )
+        for index in range(300):
+            catalog_items.append(
+                Item(
+                    media_id=f"catalog-universal-{index}",
+                    source=Sources.TMDB.value,
+                    media_type=MediaTypes.MOVIE.value,
+                    title=f"Universal Film {index}",
+                    image="http://example.com/universal.jpg",
+                    genres=["Action"],
+                    studios=["Universal Pictures"],
+                    provider_popularity=50.0,
+                ),
+            )
+        Item.objects.bulk_create(catalog_items)
+
+        for index in range(10):
+            self._create_rated_movie(
+                f"watched-universal-{index}",
+                genres=["Action"],
+                user_score=8,
+                provider_rating=7.0,
+                studios=["Universal Pictures"],
+            )
+
+        profile = compute_taste_profile(self.user, MediaTypes.MOVIE.value)
+
+        studio_offsets = profile.avoidance_offsets.get("studios") or {}
+        studio_baselines = profile.avoidance_baselines.get("studios") or {}
+        self.assertLess(studio_offsets["sony pictures"], 0.0)
+        self.assertGreaterEqual(studio_offsets["sony pictures"], -0.08)
+        self.assertNotIn("universal pictures", studio_offsets)
+        self.assertGreater(
+            studio_baselines["sony pictures"]["expected_share"],
+            studio_baselines["sony pictures"]["observed_share"],
+        )
+
+    def test_avoidance_offsets_skipped_without_meaningful_catalog(self):
+        for index in range(6):
+            self._create_rated_movie(
+                f"tiny-catalog-{index}",
+                genres=["Action"],
+                user_score=8,
+                provider_rating=7.0,
+                studios=["Universal Pictures"],
+            )
+
+        profile = compute_taste_profile(self.user, MediaTypes.MOVIE.value)
+
+        self.assertEqual(profile.avoidance_offsets, {})
+        self.assertEqual(profile.avoidance_baselines, {})
+
+    def test_profile_schema_version_triggers_recompute(self):
+        self._create_rated_movie(
+            "cache-movie",
+            genres=["Action"],
+            user_score=8,
+            provider_rating=7.0,
+        )
+
+        first = get_or_compute_taste_profile(self.user, MediaTypes.MOVIE.value)
+        self.assertIn("world_alignment_offsets", first)
+
+        from app.models import DiscoverTasteProfile
+
+        entry = DiscoverTasteProfile.objects.get(
+            user=self.user,
+            media_type=MediaTypes.MOVIE.value,
+        )
+        self.assertEqual(entry.profile_schema_version, 2)
+
+        # Fresh cache at the current schema: no recompute.
+        with patch(
+            "app.discover.profile.compute_taste_profile",
+        ) as mock_compute:
+            get_or_compute_taste_profile(self.user, MediaTypes.MOVIE.value)
+            mock_compute.assert_not_called()
+
+        # Outdated schema version forces a recompute even when fresh.
+        DiscoverTasteProfile.objects.filter(id=entry.id).update(
+            profile_schema_version=1,
+        )
+        second = get_or_compute_taste_profile(self.user, MediaTypes.MOVIE.value)
+        self.assertIn("world_alignment_offsets", second)
+        entry.refresh_from_db()
+        self.assertEqual(entry.profile_schema_version, 2)

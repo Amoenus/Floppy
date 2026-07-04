@@ -33,6 +33,7 @@ from app.models import (
     CreditRoleType,
     DiscoverFeedback,
     DiscoverFeedbackType,
+    Item,
     ItemPersonCredit,
     ItemStudioCredit,
     ItemTag,
@@ -63,6 +64,49 @@ WORLD_RATING_PROFILE_MEDIA_TYPES = {
 }
 WORLD_RATING_PROFILE_ACTIVATION_MIN_SAMPLE = 5
 WORLD_RATING_PROFILE_MAX_CONFIDENCE_SAMPLE = 12.0
+
+# Bump when profile computation changes shape/meaning so cached rows recompute.
+PROFILE_SCHEMA_VERSION = 2
+
+# Per-family user-vs-world rating alignment (empirical-Bayes shrinkage).
+WORLD_ALIGNMENT_FAMILIES = (
+    "genres",
+    "studios",
+    "collections",
+    "directors",
+    "lead_cast",
+    "keywords",
+)
+WORLD_ALIGNMENT_SHRINKAGE_K = 5.0
+WORLD_ALIGNMENT_MIN_LABEL_SAMPLES = 3
+WORLD_ALIGNMENT_MAX_LABELS_PER_FAMILY = 50
+
+# Implicit action/inaction signals. Most library entries carry no rating, so
+# status transitions and timing carry taste information — with media-aware
+# semantics (a paused movie is pending intent, not rejection; movie drops are
+# too rare to trust as negatives).
+IMPLICIT_STATUS_MEDIA_TYPES = VIDEO_COMFORT_PROFILE_MEDIA_TYPES
+IMPLICIT_FAST_COMPLETION_DAYS = 14
+IMPLICIT_FAST_COMPLETION_MULTIPLIER = 1.25
+IMPLICIT_PLANNING_BASE = 0.6
+IMPLICIT_PLANNING_STALE_AFTER_DAYS = 180
+IMPLICIT_PLANNING_DECAY_FLOOR = 0.25
+IMPLICIT_PAUSED_MOVIE_MULTIPLIER = 0.6
+IMPLICIT_PAUSED_SERIAL_MULTIPLIER = 0.4
+IMPLICIT_DROPPED_SERIAL_NEGATIVE_WEIGHT = 0.6
+IMPLICIT_NEVER_REVISITED_MULTIPLIER = 0.85
+IMPLICIT_NEVER_REVISITED_AFTER_DAYS = 730
+
+# Avoidance priors: absence only counts against an exposure baseline, and the
+# whole signal is skipped when the local catalog is too small to be a
+# meaningful baseline (otherwise it is just the user's own library, circular).
+AVOIDANCE_FAMILIES = ("studios", "genres", "collections")
+AVOIDANCE_MEDIA_TYPES = WORLD_RATING_PROFILE_MEDIA_TYPES
+AVOIDANCE_MIN_EXPECTED_SHARE = 0.01
+AVOIDANCE_SHRINKAGE_K = 10.0
+AVOIDANCE_OFFSET_CAP = 0.08
+AVOIDANCE_MIN_CATALOG_ITEMS = 500
+AVOIDANCE_CATALOG_MULTIPLE = 3
 
 MODEL_BY_MEDIA_TYPE = {
     MediaTypes.MOVIE.value: "movie",
@@ -119,6 +163,10 @@ class ProfilePayload:
     negative_tag_affinity: dict[str, float]
     negative_person_affinity: dict[str, float]
     world_rating_profile: dict[str, float | int]
+    world_alignment_offsets: dict[str, dict[str, float]]
+    world_alignment_offset_samples: dict[str, dict[str, int]]
+    avoidance_offsets: dict[str, dict[str, float]]
+    avoidance_baselines: dict[str, dict[str, dict[str, float]]]
     activity_snapshot_at: timezone.datetime | None
 
     def to_dict(self) -> dict:
@@ -160,6 +208,10 @@ class ProfilePayload:
             "negative_tag_affinity": self.negative_tag_affinity,
             "negative_person_affinity": self.negative_person_affinity,
             "world_rating_profile": self.world_rating_profile,
+            "world_alignment_offsets": self.world_alignment_offsets,
+            "world_alignment_offset_samples": self.world_alignment_offset_samples,
+            "avoidance_offsets": self.avoidance_offsets,
+            "avoidance_baselines": self.avoidance_baselines,
             "activity_snapshot_at": self.activity_snapshot_at,
         }
 
@@ -525,6 +577,187 @@ def has_new_activity(user, media_type: str, snapshot_at) -> bool:
     return False
 
 
+def _implicit_status_multiplier(
+    entry,
+    media_type_key: str,
+    now,
+    *,
+    completed_watch_count: int,
+) -> tuple[float, bool]:
+    """Media-aware positive-weight multiplier and whether to add a serial negative.
+
+    Returns (multiplier, add_serial_negative). A multiplier of 0.0 excludes the
+    entry from positive affinity maps entirely.
+    """
+    status = getattr(entry, "status", None)
+    is_movie = media_type_key == MediaTypes.MOVIE.value
+
+    if status == Status.DROPPED.value:
+        # Movie drops are too rare to trust in either direction; serial drops
+        # usually reflect rejection after sampling.
+        return 0.0, not is_movie
+
+    if status == Status.PAUSED.value:
+        multiplier = (
+            IMPLICIT_PAUSED_MOVIE_MULTIPLIER
+            if is_movie
+            else IMPLICIT_PAUSED_SERIAL_MULTIPLIER
+        )
+        return multiplier, False
+
+    if status == Status.PLANNING.value:
+        created_at = getattr(entry, "created_at", None)
+        age_days = max(0, (now - created_at).days) if created_at else 0
+        stale_days = max(0, age_days - IMPLICIT_PLANNING_STALE_AFTER_DAYS)
+        decay = max(
+            IMPLICIT_PLANNING_DECAY_FLOOR,
+            1.0 - (stale_days / 365.0),
+        )
+        return IMPLICIT_PLANNING_BASE * decay, False
+
+    if status == Status.COMPLETED.value:
+        multiplier = 1.0
+        created_at = getattr(entry, "created_at", None)
+        end_date = getattr(entry, "end_date", None)
+        if created_at and end_date:
+            completion_days = (end_date - created_at).days
+            if 0 <= completion_days <= IMPLICIT_FAST_COMPLETION_DAYS:
+                multiplier *= IMPLICIT_FAST_COMPLETION_MULTIPLIER
+        activity_dt = _entry_activity_datetime(entry)
+        if (
+            getattr(entry, "score", None) is None
+            and completed_watch_count <= 1
+            and activity_dt
+            and (now - activity_dt).days > IMPLICIT_NEVER_REVISITED_AFTER_DAYS
+        ):
+            multiplier *= IMPLICIT_NEVER_REVISITED_MULTIPLIER
+        return multiplier, False
+
+    return 1.0, False
+
+
+def _entry_recency_weight(entry, now) -> float:
+    activity_dt = _entry_activity_datetime(entry)
+    if not activity_dt:
+        return 0.1
+    days_old = max(0, (now - activity_dt).days)
+    return max(0.1, 1.0 - (min(days_old, 365) / 365.0))
+
+
+def _finalize_alignment_offsets(
+    alignment_stats: dict[str, dict[str, list[float]]],
+    global_stats: list[float],
+) -> tuple[dict[str, dict[str, float]], dict[str, dict[str, int]], float]:
+    global_w_sum, global_wr_sum = global_stats
+    global_mean = global_wr_sum / global_w_sum if global_w_sum > 0 else 0.0
+
+    offsets: dict[str, dict[str, float]] = {}
+    samples: dict[str, dict[str, int]] = {}
+    for family, label_stats in alignment_stats.items():
+        kept = [
+            (label, w_sum, wr_sum, count)
+            for label, (w_sum, wr_sum, count) in label_stats.items()
+            if count >= WORLD_ALIGNMENT_MIN_LABEL_SAMPLES and w_sum > 0
+        ]
+        kept.sort(key=lambda row: row[1], reverse=True)
+        kept = kept[:WORLD_ALIGNMENT_MAX_LABELS_PER_FAMILY]
+        if not kept:
+            continue
+        offsets[family] = {}
+        samples[family] = {}
+        for label, w_sum, wr_sum, count in kept:
+            label_mean = wr_sum / w_sum
+            # Shrink by sample count (K acts as pseudo-observations); entry
+            # weights are fractional, so weight-sum shrinkage would let the
+            # global mean swamp every label.
+            shrunk = (
+                (count * label_mean)
+                + (WORLD_ALIGNMENT_SHRINKAGE_K * global_mean)
+            ) / (count + WORLD_ALIGNMENT_SHRINKAGE_K)
+            offsets[family][label] = round(shrunk, 4)
+            samples[family][label] = int(count)
+    return offsets, samples, round(global_mean, 4)
+
+
+def _catalog_family_weights(
+    catalog_rows: list[tuple],
+) -> dict[str, defaultdict[str, float]]:
+    catalog_weights: dict[str, defaultdict[str, float]] = {
+        family: defaultdict(float) for family in AVOIDANCE_FAMILIES
+    }
+    for genres, studios, collection_name, collection_id, popularity in catalog_rows:
+        weight = max(float(popularity or 0.0), 1.0)
+        families = {
+            "genres": normalize_features(genres or [], normalize_person_name),
+            "studios": normalize_features(studios or [], normalize_studio),
+            "collections": normalize_features(
+                [collection_name or collection_id],
+                normalize_collection,
+            ),
+        }
+        for family, labels in families.items():
+            for label in labels:
+                catalog_weights[family][label] += weight
+    return catalog_weights
+
+
+def _build_avoidance_offsets(
+    media_type_key: str,
+    observed_weights: dict[str, dict[str, float]],
+    total_completed_watches: float,
+) -> tuple[dict[str, dict[str, float]], dict[str, dict[str, dict[str, float]]]]:
+    if total_completed_watches <= 0:
+        return {}, {}
+
+    catalog_rows = list(
+        Item.objects.filter(media_type=media_type_key).values_list(
+            "genres",
+            "studios",
+            "provider_collection_name",
+            "provider_collection_id",
+            "provider_popularity",
+        ),
+    )
+    catalog_size = len(catalog_rows)
+    if (
+        catalog_size < AVOIDANCE_MIN_CATALOG_ITEMS
+        or catalog_size < AVOIDANCE_CATALOG_MULTIPLE * total_completed_watches
+    ):
+        return {}, {}
+
+    catalog_weights = _catalog_family_weights(catalog_rows)
+
+    offsets: dict[str, dict[str, float]] = {}
+    baselines: dict[str, dict[str, dict[str, float]]] = {}
+    for family in AVOIDANCE_FAMILIES:
+        family_catalog = catalog_weights[family]
+        catalog_total = sum(family_catalog.values())
+        family_observed = observed_weights.get(family) or {}
+        observed_total = sum(family_observed.values())
+        if catalog_total <= 0 or observed_total <= 0:
+            continue
+        for label, label_weight in family_catalog.items():
+            expected_share = label_weight / catalog_total
+            if expected_share < AVOIDANCE_MIN_EXPECTED_SHARE:
+                continue
+            observed_share = family_observed.get(label, 0.0) / observed_total
+            if observed_share >= expected_share:
+                continue
+            raw = 1.0 - (observed_share / expected_share)
+            n_expected = expected_share * total_completed_watches
+            shrink = n_expected / (n_expected + AVOIDANCE_SHRINKAGE_K)
+            offset = -min(AVOIDANCE_OFFSET_CAP, raw * shrink * AVOIDANCE_OFFSET_CAP)
+            if offset >= 0.0:
+                continue
+            offsets.setdefault(family, {})[label] = round(offset, 4)
+            baselines.setdefault(family, {})[label] = {
+                "expected_share": round(expected_share, 4),
+                "observed_share": round(observed_share, 4),
+                "samples": round(family_observed.get(label, 0.0), 2),
+            }
+    return offsets, baselines
+
+
 def compute_taste_profile(user, media_type: str) -> ProfilePayload:
     """Compute weighted taste profile vectors for selected media type."""
     now = timezone.now()
@@ -568,6 +801,14 @@ def compute_taste_profile(user, media_type: str) -> ProfilePayload:
     world_rating_user_scores: list[float] = []
     world_rating_scores: list[float] = []
     world_rating_weights: list[float] = []
+    alignment_stats: dict[str, dict[str, list[float]]] = {
+        family: defaultdict(lambda: [0.0, 0.0, 0])
+        for family in WORLD_ALIGNMENT_FAMILIES
+    }
+    alignment_global = [0.0, 0.0]
+    alignment_seen_items: set[int] = set()
+    avoidance_observed: dict[str, dict[str, defaultdict[str, float]]] = {}
+    avoidance_watch_totals: dict[str, float] = defaultdict(float)
 
     activity_snapshot = None
 
@@ -645,6 +886,14 @@ def compute_taste_profile(user, media_type: str) -> ProfilePayload:
                 lead_cast_map=lead_cast_map,
             )
 
+        completed_watch_counts: dict[int, int] = defaultdict(int)
+        for entry in entries:
+            if (
+                getattr(entry, "status", None) == Status.COMPLETED.value
+                and entry.item_id
+            ):
+                completed_watch_counts[entry.item_id] += 1
+
         for entry in entries:
             activity_dt = (
                 getattr(entry, "end_date", None)
@@ -691,6 +940,46 @@ def compute_taste_profile(user, media_type: str) -> ProfilePayload:
                 [release_decade_label(entry.item.release_datetime)],
                 normalize_person_name,
             )
+
+            if media_type_key in IMPLICIT_STATUS_MEDIA_TYPES:
+                status_multiplier, add_serial_negative = _implicit_status_multiplier(
+                    entry,
+                    media_type_key,
+                    now,
+                    completed_watch_count=completed_watch_counts.get(
+                        entry.item_id,
+                        0,
+                    ),
+                )
+                if add_serial_negative:
+                    negative_weight = (
+                        IMPLICIT_DROPPED_SERIAL_NEGATIVE_WEIGHT
+                        * _entry_recency_weight(entry, now)
+                    )
+                    for genre in genres:
+                        negative_genre_weights[genre] += negative_weight
+                    for tag in tags:
+                        negative_tag_weights[tag] += negative_weight
+                if status_multiplier <= 0.0:
+                    continue
+                weight *= status_multiplier
+
+            if (
+                media_type_key in AVOIDANCE_MEDIA_TYPES
+                and getattr(entry, "status", None) == Status.COMPLETED.value
+            ):
+                avoidance_watch_totals[media_type_key] += 1.0
+                observed = avoidance_observed.setdefault(
+                    media_type_key,
+                    {family: defaultdict(float) for family in AVOIDANCE_FAMILIES},
+                )
+                for family, labels in (
+                    ("studios", studios),
+                    ("genres", genres),
+                    ("collections", collections),
+                ):
+                    for label in labels:
+                        observed[family][label] += 1.0
 
             _update_affinity_maps(
                 genre_weights,
@@ -798,11 +1087,33 @@ def compute_taste_profile(user, media_type: str) -> ProfilePayload:
                 )
                 world_quality = float(world_payload.get("world_quality", 0.5))
                 if world_payload.get("world_source_blend") != "neutral":
-                    world_rating_user_scores.append(
-                        max(0.0, min(1.0, float(entry.score) / 10.0)),
-                    )
+                    user_score_norm = max(0.0, min(1.0, float(entry.score) / 10.0))
+                    sample_weight = max(weight, 0.1)
+                    world_rating_user_scores.append(user_score_norm)
                     world_rating_scores.append(world_quality)
-                    world_rating_weights.append(max(weight, 0.1))
+                    world_rating_weights.append(sample_weight)
+
+                    if entry.item_id in alignment_seen_items:
+                        continue
+                    alignment_seen_items.add(entry.item_id)
+                    # Alignment residuals count each title once: rewatches of
+                    # a single movie must not fabricate per-label sample size.
+                    residual = user_score_norm - world_quality
+                    alignment_global[0] += sample_weight
+                    alignment_global[1] += sample_weight * residual
+                    for family, labels in (
+                        ("genres", genres),
+                        ("studios", studios),
+                        ("collections", collections),
+                        ("directors", directors),
+                        ("lead_cast", lead_cast),
+                        ("keywords", keywords),
+                    ):
+                        for label in labels:
+                            stats = alignment_stats[family][label]
+                            stats[0] += sample_weight
+                            stats[1] += sample_weight * residual
+                            stats[2] += 1
 
         feedback_rows = list(
             DiscoverFeedback.objects.filter(
@@ -869,6 +1180,29 @@ def compute_taste_profile(user, media_type: str) -> ProfilePayload:
         1.0,
     )
 
+    (
+        world_alignment_offsets,
+        world_alignment_offset_samples,
+        global_residual_mean,
+    ) = _finalize_alignment_offsets(alignment_stats, alignment_global)
+
+    avoidance_offsets: dict[str, dict[str, float]] = {}
+    avoidance_baselines: dict[str, dict[str, dict[str, float]]] = {}
+    for avoidance_media_type, observed in avoidance_observed.items():
+        type_offsets, type_baselines = _build_avoidance_offsets(
+            avoidance_media_type,
+            observed,
+            avoidance_watch_totals.get(avoidance_media_type, 0.0),
+        )
+        for family, label_offsets in type_offsets.items():
+            merged_family = avoidance_offsets.setdefault(family, {})
+            merged_baselines = avoidance_baselines.setdefault(family, {})
+            for label, offset in label_offsets.items():
+                # Most-negative wins when media types disagree.
+                if label not in merged_family or offset < merged_family[label]:
+                    merged_family[label] = offset
+                    merged_baselines[label] = type_baselines[family][label]
+
     return ProfilePayload(
         genre_affinity=normalize_numeric_map(dict(genre_weights)),
         recent_genre_affinity=normalize_numeric_map(dict(recent_genre_weights)),
@@ -910,7 +1244,12 @@ def compute_taste_profile(user, media_type: str) -> ProfilePayload:
             "alignment": round(float(world_alignment), 6),
             "confidence": round(float(world_confidence), 6),
             "sample_size": world_sample_size,
+            "global_residual_mean": global_residual_mean,
         },
+        world_alignment_offsets=world_alignment_offsets,
+        world_alignment_offset_samples=world_alignment_offset_samples,
+        avoidance_offsets=avoidance_offsets,
+        avoidance_baselines=avoidance_baselines,
         activity_snapshot_at=activity_snapshot,
     )
 
@@ -950,10 +1289,16 @@ def get_or_compute_taste_profile(user, media_type: str, *, force: bool = False) 
         ):
             missing_world_rating_profile_backfill = True
 
+    cached_schema_outdated = bool(cached_entry) and (
+        int(getattr(cached_entry, "profile_schema_version", 0) or 0)
+        < PROFILE_SCHEMA_VERSION
+    )
+
     if (
         cached_entry
         and not force
         and not is_stale
+        and not cached_schema_outdated
         and not missing_video_comfort_backfill
         and not missing_world_rating_profile_backfill
         and not has_new_activity(user, media_type, cached_entry.activity_snapshot_at)
@@ -996,6 +1341,10 @@ def get_or_compute_taste_profile(user, media_type: str, *, force: bool = False) 
             "negative_tag_affinity": getattr(cached_entry, "negative_tag_affinity", None) or {},
             "negative_person_affinity": getattr(cached_entry, "negative_person_affinity", None) or {},
             "world_rating_profile": getattr(cached_entry, "world_rating_profile", None) or {},
+            "world_alignment_offsets": getattr(cached_entry, "world_alignment_offsets", None) or {},
+            "world_alignment_offset_samples": getattr(cached_entry, "world_alignment_offset_samples", None) or {},
+            "avoidance_offsets": getattr(cached_entry, "avoidance_offsets", None) or {},
+            "avoidance_baselines": getattr(cached_entry, "avoidance_baselines", None) or {},
             "activity_snapshot_at": cached_entry.activity_snapshot_at,
         }
 
@@ -1040,6 +1389,11 @@ def get_or_compute_taste_profile(user, media_type: str, *, force: bool = False) 
         negative_tag_affinity=profile.negative_tag_affinity,
         negative_person_affinity=profile.negative_person_affinity,
         world_rating_profile=profile.world_rating_profile,
+        world_alignment_offsets=profile.world_alignment_offsets,
+        world_alignment_offset_samples=profile.world_alignment_offset_samples,
+        avoidance_offsets=profile.avoidance_offsets,
+        avoidance_baselines=profile.avoidance_baselines,
+        profile_schema_version=PROFILE_SCHEMA_VERSION,
         activity_snapshot_at=profile.activity_snapshot_at,
         ttl_seconds=PROFILE_TTL_SECONDS,
     )

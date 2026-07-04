@@ -28,6 +28,23 @@ from app.discover.service_helpers import (
 )
 from app.models import BasicMedia, MediaTypes, Season, Status
 
+# Completing a title within this many days of adding it is treated as an
+# implicit satisfaction signal (most entries carry no explicit rating).
+FAST_COMPLETION_DAYS = 14
+
+
+def _fast_completion_breakdown(entry, entry_status: str) -> dict[str, float]:
+    if entry_status != Status.COMPLETED.value:
+        return {}
+    created_at = getattr(entry, "created_at", None)
+    end_date = getattr(entry, "end_date", None)
+    if not created_at or not end_date:
+        return {}
+    completion_days = (end_date - created_at).days
+    return {
+        "fast_completion": 1.0 if 0 <= completion_days <= FAST_COMPLETION_DAYS else 0.0,
+    }
+
 
 def _coerce_media_type(media_type: str | None) -> str:
     media_type = (media_type or ALL_MEDIA_KEY).strip().lower()
@@ -147,6 +164,7 @@ def _entries_to_candidates(
             candidate.score_breakdown["days_since_activity"] = float(
                 max(0, (timezone.now() - activity_dt).days),
             )
+        candidate.score_breakdown.update(_fast_completion_breakdown(entry, entry_status))
         candidates.append(candidate)
 
     return candidates

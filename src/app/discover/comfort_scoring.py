@@ -37,6 +37,9 @@ from app.discover.service_helpers import (
 
 COMFORT_DEBUG_TOP_N = 12
 COMFORT_SPREAD_COMPRESSION_THRESHOLD = 0.08
+DISPLAY_BASELINE = 0.55
+DISPLAY_RAW_WEIGHT = 0.25
+DISPLAY_COMPRESSED_BASELINE_DROP = 0.06
 
 def _apply_comfort_confidence(
     candidates: list[CandidateItem],
@@ -412,6 +415,17 @@ def _calibrate_comfort_display_scores(candidates: list[CandidateItem]) -> list[C
     max_raw = max(raw_scores)
     spread = max_raw - min_raw
     rank_denom = max(1, len(candidates) - 1)
+    # A compressed pool means the candidates are genuinely hard to tell apart;
+    # show a visibly lower confidence band instead of implying strong matches.
+    # Judge compression on the slice users actually see, not the scoring
+    # buffer: the pool can be wide while the rendered row is a near-tie.
+    visible_scores = raw_scores[: max(1, MAX_ITEMS_PER_ROW)]
+    visible_spread = max(visible_scores) - min(visible_scores)
+    display_baseline = (
+        DISPLAY_BASELINE - DISPLAY_COMPRESSED_BASELINE_DROP
+        if visible_spread < COMFORT_SPREAD_COMPRESSION_THRESHOLD
+        else DISPLAY_BASELINE
+    )
 
     calibrated: list[float] = []
     for index, candidate in enumerate(candidates):
@@ -423,8 +437,8 @@ def _calibrate_comfort_display_scores(candidates: list[CandidateItem]) -> list[C
         )
         rank_norm = 1.0 - (index / rank_denom)
         display_score = _clamp_unit(
-            0.58
-            + (raw_score * 0.22)
+            display_baseline
+            + (raw_score * DISPLAY_RAW_WEIGHT)
             + (spread_norm * 0.12)
             + (rank_norm * 0.08),
         )
@@ -478,6 +492,8 @@ def _build_movie_comfort_debug_payload(
                 "shape_coverage": 0.0,
                 "ready_now": 0.0,
                 "planning_confidence": 0.0,
+                "absence_boost": 0.0,
+                "avoidance": 0.0,
             },
             "profile_layer_weights": dict(MOVIE_COMFORT_PROFILE_LAYER_WEIGHTS),
             "family_weights": dict(MOVIE_COMFORT_FAMILY_WEIGHTS),
@@ -527,6 +543,8 @@ def _build_movie_comfort_debug_payload(
         "shape_coverage": 0.0,
         "ready_now": 0.0,
         "planning_confidence": 0.0,
+        "absence_boost": 0.0,
+        "avoidance": 0.0,
     }
     top_candidates: list[dict] = []
     multi_penalty_ids: list[str] = []
@@ -563,6 +581,12 @@ def _build_movie_comfort_debug_payload(
         contribution_totals["ready_now"] += float(score.get("ready_now_contribution", 0.0))
         contribution_totals["planning_confidence"] += float(
             score.get("planning_confidence_contribution", 0.0),
+        )
+        contribution_totals["absence_boost"] += float(
+            score.get("absence_boost_contribution", 0.0),
+        )
+        contribution_totals["avoidance"] += float(
+            score.get("avoidance_contribution", 0.0),
         )
 
         top_candidates.append(
@@ -657,6 +681,36 @@ def _build_movie_comfort_debug_payload(
                 ),
                 "rating_confidence": round(float(score.get("rating_confidence", 0.0)), 6),
                 "rewatch_strength": round(float(score.get("rewatch_strength", 0.0)), 6),
+                "rewatch_strength_raw": round(
+                    float(score.get("rewatch_strength_raw", 0.0)),
+                    6,
+                ),
+                "rotation_pressure": round(float(score.get("rotation_pressure", 0.0)), 6),
+                "absence_gate_active": float(score.get("absence_gate_active", 0.0)) >= 1.0,
+                "absence_norm": round(float(score.get("absence_norm", 0.0)), 6),
+                "absence_boost": round(float(score.get("absence_boost", 0.0)), 6),
+                "core_weight_profile": str(
+                    score.get("core_weight_profile", "comfort_default"),
+                ),
+                "personal_alignment_offset": round(
+                    float(score.get("personal_alignment_offset", 0.0)),
+                    6,
+                ),
+                "alignment_offset_families": list(
+                    score.get("alignment_offset_families") or [],
+                ),
+                "avoidance_prior": round(float(score.get("avoidance_prior", 0.0)), 6),
+                "applied_avoidance": round(
+                    float(score.get("applied_avoidance", 0.0)),
+                    6,
+                ),
+                "avoidance_families": list(score.get("avoidance_families") or []),
+                "rating_confidence_source": str(
+                    score.get("rating_confidence_source", "explicit"),
+                ),
+                "primary_reason_kind": str(
+                    score.get("primary_reason_kind", "phase_match"),
+                ),
                 "provider_support": round(float(score.get("provider_support", 0.0)), 6),
                 "world_quality": round(float(score.get("world_quality", 0.5)), 6),
                 "tmdb_world_quality": round(float(score.get("tmdb_world_quality", 0.0)), 6),
@@ -778,18 +832,78 @@ def _build_movie_comfort_debug_payload(
     return payload
 
 
+def _profile_signal_debug_summary(profile_payload: dict | None) -> dict:
+    """Audit view of the profile-side taste signals (Stage 2: observability).
+
+    Summarizes per-family alignment offsets and avoidance baselines so their
+    values can be sanity-checked in the debug panel before scoring consumes
+    them.
+    """
+    payload = profile_payload or {}
+    alignment_offsets = payload.get("world_alignment_offsets") or {}
+    alignment_samples = payload.get("world_alignment_offset_samples") or {}
+    avoidance_offsets = payload.get("avoidance_offsets") or {}
+    avoidance_baselines = payload.get("avoidance_baselines") or {}
+    world_rating_profile = payload.get("world_rating_profile") or {}
+
+    alignment_top: dict[str, list[dict]] = {}
+    for family, label_offsets in alignment_offsets.items():
+        ranked = sorted(
+            label_offsets.items(),
+            key=lambda pair: abs(float(pair[1])),
+            reverse=True,
+        )[:5]
+        alignment_top[family] = [
+            {
+                "label": label,
+                "offset": float(offset),
+                "samples": int((alignment_samples.get(family) or {}).get(label, 0)),
+            }
+            for label, offset in ranked
+        ]
+
+    avoidance_top: dict[str, list[dict]] = {}
+    for family, label_offsets in avoidance_offsets.items():
+        ranked = sorted(label_offsets.items(), key=lambda pair: float(pair[1]))[:10]
+        avoidance_top[family] = [
+            {
+                "label": label,
+                "offset": float(offset),
+                **((avoidance_baselines.get(family) or {}).get(label) or {}),
+            }
+            for label, offset in ranked
+        ]
+
+    return {
+        "alignment_offset_counts": {
+            family: len(label_offsets)
+            for family, label_offsets in alignment_offsets.items()
+        },
+        "alignment_offset_top_labels": alignment_top,
+        "avoidance_offset_counts": {
+            family: len(label_offsets)
+            for family, label_offsets in avoidance_offsets.items()
+        },
+        "avoidance_top_labels": avoidance_top,
+        "global_residual_mean": world_rating_profile.get("global_residual_mean"),
+    }
+
+
 def _build_comfort_debug_payload(
     candidates: list[CandidateItem],
     *,
     top_n: int = COMFORT_DEBUG_TOP_N,
     match_signal_details: dict | None = None,
+    profile_payload: dict | None = None,
 ) -> dict:
     if candidates and any("library_fit" in candidate.score_breakdown for candidate in candidates):
-        return _build_movie_comfort_debug_payload(
+        payload = _build_movie_comfort_debug_payload(
             candidates,
             top_n=top_n,
             match_signal_details=match_signal_details,
         )
+        payload["profile_signals"] = _profile_signal_debug_summary(profile_payload)
+        return payload
 
     if not candidates:
         return {

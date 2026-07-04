@@ -373,7 +373,7 @@ class DiscoverServiceTests(TestCase):
         self.assertEqual(candidates[0].image, settings.IMG_NONE)
         mock_get_cover_art.assert_not_called()
 
-    @patch("app.discover.service.services.get_media_metadata")
+    @patch("app.discover.provider_candidates.services.get_media_metadata")
     def test_trakt_ranked_rows_hydrate_first_buffered_reserve_candidate(
         self,
         mock_get_media_metadata,
@@ -417,9 +417,9 @@ class DiscoverServiceTests(TestCase):
     @patch("app.discover.service.TMDB_ADAPTER.top_rated", return_value=[])
     @patch("app.discover.service.TMDB_ADAPTER.upcoming", return_value=[])
     @patch("app.discover.service.TMDB_ADAPTER.current_cycle", return_value=[])
-    @patch("app.discover.service.TRAKT_ADAPTER.movie_anticipated", return_value=[])
-    @patch("app.discover.service.TRAKT_ADAPTER.movie_popular", return_value=[])
-    @patch("app.discover.service.TRAKT_ADAPTER.movie_watched_weekly", side_effect=RuntimeError("trakt down"))
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_anticipated", return_value=[])
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_popular", return_value=[])
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_watched_weekly", side_effect=RuntimeError("trakt down"))
     def test_row_failure_isolated_to_single_row(
         self,
         _mock_trending,
@@ -437,9 +437,9 @@ class DiscoverServiceTests(TestCase):
     @patch("app.discover.service.TMDB_ADAPTER.top_rated", return_value=[])
     @patch("app.discover.service.TMDB_ADAPTER.upcoming", return_value=[])
     @patch("app.discover.service.TMDB_ADAPTER.current_cycle", return_value=[])
-    @patch("app.discover.service.TRAKT_ADAPTER.movie_anticipated", return_value=[])
-    @patch("app.discover.service.TRAKT_ADAPTER.movie_popular", return_value=[])
-    @patch("app.discover.service.TRAKT_ADAPTER.movie_watched_weekly")
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_anticipated", return_value=[])
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_popular", return_value=[])
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_watched_weekly")
     def test_trending_row_rebuilds_when_cached_source_changes(
         self,
         mock_trending,
@@ -513,9 +513,9 @@ class DiscoverServiceTests(TestCase):
     @patch("app.discover.service.TMDB_ADAPTER.upcoming", return_value=[])
     @patch("app.discover.service.TMDB_ADAPTER.current_cycle", return_value=[])
     @patch("app.discover.service.get_tracked_keys_by_media_type")
-    @patch("app.discover.service.TRAKT_ADAPTER.movie_anticipated", return_value=[])
-    @patch("app.discover.service.TRAKT_ADAPTER.movie_popular", return_value=[])
-    @patch("app.discover.service.TRAKT_ADAPTER.movie_watched_weekly")
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_anticipated", return_value=[])
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_popular", return_value=[])
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_watched_weekly")
     def test_trending_row_overfetches_filters_and_caps_to_twelve(
         self,
         mock_trending,
@@ -568,10 +568,10 @@ class DiscoverServiceTests(TestCase):
     @patch("app.discover.service.TMDB_ADAPTER.upcoming", return_value=[])
     @patch("app.discover.service.TMDB_ADAPTER.current_cycle", return_value=[])
     @patch("app.discover.service._queue_stale_refresh")
-    @patch("app.discover.service.services.get_media_metadata")
-    @patch("app.discover.service.TRAKT_ADAPTER.movie_anticipated", return_value=[])
-    @patch("app.discover.service.TRAKT_ADAPTER.movie_popular", return_value=[])
-    @patch("app.discover.service.TRAKT_ADAPTER.movie_watched_weekly")
+    @patch("app.discover.provider_candidates.services.get_media_metadata")
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_anticipated", return_value=[])
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_popular", return_value=[])
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_watched_weekly")
     def test_trending_row_defers_missing_artwork_hydration_when_enabled(
         self,
         mock_trending,
@@ -630,10 +630,10 @@ class DiscoverServiceTests(TestCase):
     @patch("app.discover.service.TMDB_ADAPTER.upcoming", return_value=[])
     @patch("app.discover.service.TMDB_ADAPTER.current_cycle", return_value=[])
     @patch("app.discover.service._queue_stale_refresh")
-    @patch("app.discover.service.services.get_media_metadata")
-    @patch("app.discover.service.TRAKT_ADAPTER.movie_anticipated", return_value=[])
-    @patch("app.discover.service.TRAKT_ADAPTER.movie_popular", return_value=[])
-    @patch("app.discover.service.TRAKT_ADAPTER.movie_watched_weekly")
+    @patch("app.discover.provider_candidates.services.get_media_metadata")
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_anticipated", return_value=[])
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_popular", return_value=[])
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_watched_weekly")
     def test_cached_trending_row_with_missing_artwork_queues_refresh_when_deferred(
         self,
         mock_trending,
@@ -709,10 +709,10 @@ class DiscoverServiceTests(TestCase):
     @patch("app.discover.service.TMDB_ADAPTER.top_rated", return_value=[])
     @patch("app.discover.service.TMDB_ADAPTER.upcoming", return_value=[])
     @patch("app.discover.service.TMDB_ADAPTER.current_cycle", return_value=[])
-    @patch("app.discover.service.services.get_media_metadata")
-    @patch("app.discover.service.TRAKT_ADAPTER.movie_anticipated", return_value=[])
-    @patch("app.discover.service.TRAKT_ADAPTER.movie_popular", return_value=[])
-    @patch("app.discover.service.TRAKT_ADAPTER.movie_watched_weekly")
+    @patch("app.discover.provider_candidates.services.get_media_metadata")
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_anticipated", return_value=[])
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_popular", return_value=[])
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_watched_weekly")
     def test_trending_row_hydrates_missing_artwork_from_tmdb(
         self,
         mock_trending,
@@ -769,9 +769,9 @@ class DiscoverServiceTests(TestCase):
     @patch("app.discover.service.TMDB_ADAPTER.top_rated", return_value=[])
     @patch("app.discover.service.TMDB_ADAPTER.upcoming", return_value=[])
     @patch("app.discover.service.TMDB_ADAPTER.current_cycle", return_value=[])
-    @patch("app.discover.service.TRAKT_ADAPTER.movie_anticipated", return_value=[])
-    @patch("app.discover.service.TRAKT_ADAPTER.movie_popular", return_value=[])
-    @patch("app.discover.service.TRAKT_ADAPTER.movie_watched_weekly")
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_anticipated", return_value=[])
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_popular", return_value=[])
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_watched_weekly")
     def test_trending_row_rebuilds_cached_payload_with_missing_artwork(
         self,
         mock_trending,
@@ -847,9 +847,9 @@ class DiscoverServiceTests(TestCase):
     @patch("app.discover.service.TMDB_ADAPTER.upcoming", return_value=[])
     @patch("app.discover.service.TMDB_ADAPTER.current_cycle", return_value=[])
     @patch("app.discover.service.get_tracked_keys_by_media_type")
-    @patch("app.discover.service.TRAKT_ADAPTER.movie_anticipated", return_value=[])
-    @patch("app.discover.service.TRAKT_ADAPTER.movie_popular")
-    @patch("app.discover.service.TRAKT_ADAPTER.movie_watched_weekly")
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_anticipated", return_value=[])
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_popular")
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_watched_weekly")
     def test_all_time_greats_unseen_expands_popular_fetch_and_persists_pull_hint(
         self,
         mock_trending,
@@ -921,9 +921,9 @@ class DiscoverServiceTests(TestCase):
     @patch("app.discover.service.TMDB_ADAPTER.upcoming", return_value=[])
     @patch("app.discover.service.TMDB_ADAPTER.current_cycle", return_value=[])
     @patch("app.discover.service.get_tracked_keys_by_media_type", return_value=set())
-    @patch("app.discover.service.TRAKT_ADAPTER.movie_anticipated", return_value=[])
-    @patch("app.discover.service.TRAKT_ADAPTER.movie_popular")
-    @patch("app.discover.service.TRAKT_ADAPTER.movie_watched_weekly")
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_anticipated", return_value=[])
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_popular")
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_watched_weekly")
     def test_all_time_greats_unseen_keeps_overlap_items_when_cached_overlap(
         self,
         mock_trending,
@@ -985,9 +985,9 @@ class DiscoverServiceTests(TestCase):
     @patch("app.discover.service.TMDB_ADAPTER.top_rated", return_value=[])
     @patch("app.discover.service.TMDB_ADAPTER.upcoming", return_value=[])
     @patch("app.discover.service.TMDB_ADAPTER.current_cycle", return_value=[])
-    @patch("app.discover.service.TRAKT_ADAPTER.movie_anticipated", return_value=[])
-    @patch("app.discover.service.TRAKT_ADAPTER.movie_popular", return_value=[])
-    @patch("app.discover.service.TRAKT_ADAPTER.movie_watched_weekly", return_value=[])
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_anticipated", return_value=[])
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_popular", return_value=[])
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_watched_weekly", return_value=[])
     def test_all_time_greats_unseen_rebuilds_when_cached_schema_is_old(
         self,
         _mock_trending,
@@ -1059,9 +1059,9 @@ class DiscoverServiceTests(TestCase):
     @patch("app.discover.service.TMDB_ADAPTER.top_rated", return_value=[])
     @patch("app.discover.service.TMDB_ADAPTER.upcoming", return_value=[])
     @patch("app.discover.service.TMDB_ADAPTER.current_cycle", return_value=[])
-    @patch("app.discover.service.TRAKT_ADAPTER.movie_anticipated", return_value=[])
-    @patch("app.discover.service.TRAKT_ADAPTER.movie_popular", side_effect=RuntimeError("trakt down"))
-    @patch("app.discover.service.TRAKT_ADAPTER.movie_watched_weekly", return_value=[])
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_anticipated", return_value=[])
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_popular", side_effect=RuntimeError("trakt down"))
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_watched_weekly", return_value=[])
     def test_all_time_greats_unseen_uses_cached_row_when_rebuild_fails(
         self,
         _mock_trending,
@@ -1133,9 +1133,9 @@ class DiscoverServiceTests(TestCase):
     @patch("app.discover.service.get_or_compute_taste_profile", return_value={})
     @patch("app.discover.service.TMDB_ADAPTER.upcoming", return_value=[])
     @patch("app.discover.service.TMDB_ADAPTER.current_cycle", return_value=[])
-    @patch("app.discover.service.TRAKT_ADAPTER.movie_anticipated", return_value=[])
-    @patch("app.discover.service.TRAKT_ADAPTER.movie_popular", side_effect=RuntimeError("trakt down"))
-    @patch("app.discover.service.TRAKT_ADAPTER.movie_watched_weekly", return_value=[])
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_anticipated", return_value=[])
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_popular", side_effect=RuntimeError("trakt down"))
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_watched_weekly", return_value=[])
     @patch("app.discover.service.TMDB_ADAPTER.top_rated")
     def test_all_time_greats_unseen_falls_back_to_tmdb_when_trakt_fails_without_cache(
         self,
@@ -1188,9 +1188,9 @@ class DiscoverServiceTests(TestCase):
     @patch("app.discover.service.TMDB_ADAPTER.top_rated", return_value=[])
     @patch("app.discover.service.TMDB_ADAPTER.upcoming", return_value=[])
     @patch("app.discover.service.TMDB_ADAPTER.current_cycle", return_value=[])
-    @patch("app.discover.service.TRAKT_ADAPTER.movie_anticipated", return_value=[])
-    @patch("app.discover.service.TRAKT_ADAPTER.movie_popular", return_value=[])
-    @patch("app.discover.service.TRAKT_ADAPTER.movie_watched_weekly", return_value=[])
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_anticipated", return_value=[])
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_popular", return_value=[])
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_watched_weekly", return_value=[])
     @patch("app.discover.service._comfort_candidates")
     def test_comfort_rewatches_rebuilds_when_cached_schema_is_old(
         self,
@@ -1285,9 +1285,9 @@ class DiscoverServiceTests(TestCase):
     @patch("app.discover.service.TMDB_ADAPTER.top_rated", return_value=[])
     @patch("app.discover.service.TMDB_ADAPTER.upcoming", return_value=[])
     @patch("app.discover.service.TMDB_ADAPTER.current_cycle", return_value=[])
-    @patch("app.discover.service.TRAKT_ADAPTER.movie_anticipated")
-    @patch("app.discover.service.TRAKT_ADAPTER.movie_popular")
-    @patch("app.discover.service.TRAKT_ADAPTER.movie_watched_weekly")
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_anticipated")
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_popular")
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_watched_weekly")
     def test_coming_soon_row_uses_trakt_anticipated_in_third_slot(
         self,
         mock_trending,
@@ -1338,9 +1338,9 @@ class DiscoverServiceTests(TestCase):
     @patch("app.discover.service.get_or_compute_taste_profile", return_value={})
     @patch("app.discover.service._comfort_candidates")
     @patch("app.discover.service._top_picks_candidates")
-    @patch("app.discover.service.TRAKT_ADAPTER.movie_anticipated")
-    @patch("app.discover.service.TRAKT_ADAPTER.movie_popular")
-    @patch("app.discover.service.TRAKT_ADAPTER.movie_watched_weekly")
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_anticipated")
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_popular")
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_watched_weekly")
     def test_movie_rows_render_exactly_five_in_expected_order(
         self,
         mock_trending,
@@ -1381,9 +1381,9 @@ class DiscoverServiceTests(TestCase):
     @patch("app.discover.service.get_or_compute_taste_profile", return_value={})
     @patch("app.discover.service._comfort_candidates")
     @patch("app.discover.service._top_picks_candidates")
-    @patch("app.discover.service.TRAKT_ADAPTER.show_anticipated")
-    @patch("app.discover.service.TRAKT_ADAPTER.show_popular")
-    @patch("app.discover.service.TRAKT_ADAPTER.show_watched_weekly")
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.show_anticipated")
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.show_popular")
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.show_watched_weekly")
     def test_tv_rows_render_in_expected_order(
         self,
         mock_trending,
@@ -1433,9 +1433,9 @@ class DiscoverServiceTests(TestCase):
     @patch("app.discover.service.get_or_compute_taste_profile", return_value={})
     @patch("app.discover.service._comfort_candidates")
     @patch("app.discover.service._top_picks_candidates")
-    @patch("app.discover.service.TRAKT_ADAPTER.show_anticipated")
-    @patch("app.discover.service.TRAKT_ADAPTER.show_popular")
-    @patch("app.discover.service.TRAKT_ADAPTER.show_watched_weekly")
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.show_anticipated")
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.show_popular")
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.show_watched_weekly")
     def test_anime_rows_render_in_expected_order_and_uses_anime_filter(
         self,
         mock_trending,
@@ -1499,9 +1499,9 @@ class DiscoverServiceTests(TestCase):
     @patch("app.discover.service.get_or_compute_taste_profile", return_value={})
     @patch("app.discover.service._comfort_candidates", return_value=[])
     @patch("app.discover.service._top_picks_candidates", return_value=[])
-    @patch("app.discover.service.TRAKT_ADAPTER.show_anticipated", return_value=[])
-    @patch("app.discover.service.TRAKT_ADAPTER.show_popular", return_value=[])
-    @patch("app.discover.service.TRAKT_ADAPTER.show_watched_weekly", return_value=[])
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.show_anticipated", return_value=[])
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.show_popular", return_value=[])
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.show_watched_weekly", return_value=[])
     def test_tv_and_anime_rows_keep_all_slots_when_personalized_rows_empty(
         self,
         _mock_trending,
@@ -1655,7 +1655,7 @@ class DiscoverServiceTests(TestCase):
         )
 
     @patch("app.discover.service.get_or_compute_taste_profile", return_value={})
-    @patch("app.discover.service.services.get_media_metadata")
+    @patch("app.discover.provider_candidates.services.get_media_metadata")
     @patch("app.discover.service._queue_stale_refresh")
     @patch("app.discover.service._comfort_candidates", return_value=[])
     @patch("app.discover.service._top_picks_candidates", return_value=[])
@@ -1704,7 +1704,7 @@ class DiscoverServiceTests(TestCase):
 
     @patch("app.discover.service.get_or_compute_taste_profile", return_value={})
     @patch("app.discover.service._queue_stale_refresh")
-    @patch("app.discover.service.services.get_media_metadata")
+    @patch("app.discover.provider_candidates.services.get_media_metadata")
     @patch("app.discover.service._comfort_candidates", return_value=[])
     @patch("app.discover.service._top_picks_candidates", return_value=[])
     @patch("app.discover.service._provider_row_candidates")
@@ -1749,9 +1749,9 @@ class DiscoverServiceTests(TestCase):
     @patch("app.discover.service.get_or_compute_taste_profile", return_value={})
     @patch("app.discover.service._comfort_candidates", side_effect=RuntimeError("comfort row failed"))
     @patch("app.discover.service._top_picks_candidates", side_effect=RuntimeError("top picks row failed"))
-    @patch("app.discover.service.TRAKT_ADAPTER.show_anticipated")
-    @patch("app.discover.service.TRAKT_ADAPTER.show_popular")
-    @patch("app.discover.service.TRAKT_ADAPTER.show_watched_weekly")
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.show_anticipated")
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.show_popular")
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.show_watched_weekly")
     def test_tv_rows_still_render_empty_personalized_slots_when_row_build_fails(
         self,
         mock_trending,
@@ -1808,9 +1808,9 @@ class DiscoverServiceTests(TestCase):
     @patch("app.discover.service.get_or_compute_taste_profile", return_value={})
     @patch("app.discover.service._comfort_candidates")
     @patch("app.discover.service._top_picks_candidates")
-    @patch("app.discover.service.TRAKT_ADAPTER.show_anticipated")
-    @patch("app.discover.service.TRAKT_ADAPTER.show_popular")
-    @patch("app.discover.service.TRAKT_ADAPTER.show_watched_weekly")
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.show_anticipated")
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.show_popular")
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.show_watched_weekly")
     def test_tv_rows_render_live_items_when_cache_write_is_locked(
         self,
         mock_trending,
@@ -1852,9 +1852,9 @@ class DiscoverServiceTests(TestCase):
         )
 
     @patch("app.discover.service.get_or_compute_taste_profile", return_value={})
-    @patch("app.discover.service.TRAKT_ADAPTER.show_anticipated")
-    @patch("app.discover.service.TRAKT_ADAPTER.show_popular")
-    @patch("app.discover.service.TRAKT_ADAPTER.show_watched_weekly")
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.show_anticipated")
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.show_popular")
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.show_watched_weekly")
     def test_tv_top_picks_uses_planning_entries_without_activity_field_errors(
         self,
         mock_trending,
@@ -1931,9 +1931,9 @@ class DiscoverServiceTests(TestCase):
         )
 
     @patch("app.discover.service.get_or_compute_taste_profile", return_value={})
-    @patch("app.discover.service.TRAKT_ADAPTER.show_anticipated")
-    @patch("app.discover.service.TRAKT_ADAPTER.show_popular")
-    @patch("app.discover.service.TRAKT_ADAPTER.show_watched_weekly")
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.show_anticipated")
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.show_popular")
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.show_watched_weekly")
     def test_tv_top_picks_rebuilds_when_cached_schema_is_old(
         self,
         mock_trending,
@@ -2020,9 +2020,9 @@ class DiscoverServiceTests(TestCase):
         )
         self.assertNotIn("old-tv-pick", rendered_ids)
 
-    @patch("app.discover.service.TRAKT_ADAPTER.show_anticipated")
-    @patch("app.discover.service.TRAKT_ADAPTER.show_popular")
-    @patch("app.discover.service.TRAKT_ADAPTER.show_watched_weekly")
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.show_anticipated")
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.show_popular")
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.show_watched_weekly")
     def test_tv_personalized_rows_return_local_results(
         self,
         mock_trending,
@@ -2221,9 +2221,9 @@ class DiscoverServiceTests(TestCase):
             msg=f"TV comfort row missing comfort item: {self._row_snapshot(rows)}",
         )
 
-    @patch("app.discover.service.TRAKT_ADAPTER.show_anticipated")
-    @patch("app.discover.service.TRAKT_ADAPTER.show_popular")
-    @patch("app.discover.service.TRAKT_ADAPTER.show_watched_weekly")
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.show_anticipated")
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.show_popular")
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.show_watched_weekly")
     def test_anime_personalized_rows_return_local_results(
         self,
         mock_trending,
@@ -2397,10 +2397,10 @@ class DiscoverServiceTests(TestCase):
     @patch("app.discover.service.get_or_compute_taste_profile", return_value={})
     @patch("app.discover.service._comfort_candidates", return_value=[])
     @patch("app.discover.service._top_picks_candidates", return_value=[])
-    @patch("app.discover.service.services.get_media_metadata")
-    @patch("app.discover.service.TRAKT_ADAPTER.show_anticipated", return_value=[])
-    @patch("app.discover.service.TRAKT_ADAPTER.show_popular", return_value=[])
-    @patch("app.discover.service.TRAKT_ADAPTER.show_watched_weekly")
+    @patch("app.discover.provider_candidates.services.get_media_metadata")
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.show_anticipated", return_value=[])
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.show_popular", return_value=[])
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.show_watched_weekly")
     def test_tv_trending_row_hydrates_artwork_for_missing_images(
         self,
         mock_trending,
@@ -2520,9 +2520,9 @@ class DiscoverServiceTests(TestCase):
     @patch("app.discover.service.get_or_compute_taste_profile", return_value={})
     @patch("app.discover.service._comfort_candidates", return_value=[])
     @patch("app.discover.service._top_picks_candidates")
-    @patch("app.discover.service.TRAKT_ADAPTER.movie_anticipated")
-    @patch("app.discover.service.TRAKT_ADAPTER.movie_popular")
-    @patch("app.discover.service.TRAKT_ADAPTER.movie_watched_weekly")
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_anticipated")
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_popular")
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_watched_weekly")
     def test_top_picks_row_backfills_after_dedupe_using_buffered_candidates(
         self,
         mock_trending,
@@ -2565,9 +2565,9 @@ class DiscoverServiceTests(TestCase):
     @patch("app.discover.service.get_or_compute_taste_profile", return_value={})
     @patch("app.discover.service._comfort_candidates", return_value=[])
     @patch("app.discover.service._top_picks_candidates", return_value=[])
-    @patch("app.discover.service.TRAKT_ADAPTER.movie_anticipated")
-    @patch("app.discover.service.TRAKT_ADAPTER.movie_popular")
-    @patch("app.discover.service.TRAKT_ADAPTER.movie_watched_weekly")
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_anticipated")
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_popular")
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_watched_weekly")
     def test_movie_rows_hide_rows_four_to_six_when_no_personalized_data(
         self,
         mock_trending,
@@ -2599,9 +2599,9 @@ class DiscoverServiceTests(TestCase):
     @patch("app.discover.service.get_or_compute_taste_profile", return_value={})
     @patch("app.discover.service._comfort_candidates", return_value=[])
     @patch("app.discover.service._top_picks_candidates")
-    @patch("app.discover.service.TRAKT_ADAPTER.movie_anticipated")
-    @patch("app.discover.service.TRAKT_ADAPTER.movie_popular")
-    @patch("app.discover.service.TRAKT_ADAPTER.movie_watched_weekly")
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_anticipated")
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_popular")
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_watched_weekly")
     def test_top_picks_row_sets_debug_payload_when_enabled(
         self,
         mock_trending,
@@ -2655,9 +2655,9 @@ class DiscoverServiceTests(TestCase):
     @patch("app.discover.service._comfort_candidates")
     @patch("app.discover.service._top_picks_candidates")
     @patch("app.discover.service.get_tracked_keys_by_media_type")
-    @patch("app.discover.service.TRAKT_ADAPTER.movie_anticipated")
-    @patch("app.discover.service.TRAKT_ADAPTER.movie_popular")
-    @patch("app.discover.service.TRAKT_ADAPTER.movie_watched_weekly")
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_anticipated")
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_popular")
+    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_watched_weekly")
     def test_comfort_rewatches_allows_tracked_items(
         self,
         mock_trending,
@@ -5581,6 +5581,673 @@ class DiscoverServiceTests(TestCase):
             bursty.final_score,
             steady.final_score,
         )
+
+    def _movie_comfort_disney_profile(self):
+        return {
+            "phase_keyword_affinity": {"family": 1.0, "musical": 0.9, "animal": 0.8},
+            "recent_keyword_affinity": {"family": 1.0, "musical": 0.9},
+            "phase_studio_affinity": {"walt disney animation studios": 1.0},
+            "recent_studio_affinity": {"walt disney animation studios": 1.0},
+            "phase_collection_affinity": {"disney animation": 1.0},
+            "recent_collection_affinity": {"disney animation": 0.9},
+            "phase_certification_affinity": {"PG": 1.0},
+            "recent_certification_affinity": {"PG": 1.0},
+            "phase_runtime_bucket_affinity": {"90_109": 1.0},
+            "recent_runtime_bucket_affinity": {"90_109": 1.0},
+            "phase_decade_affinity": {"2010s": 0.8, "2020s": 0.8},
+            "recent_decade_affinity": {"2020s": 0.9},
+            "phase_genre_affinity": {"animation": 1.0, "adventure": 0.8, "comedy": 0.7},
+            "recent_genre_affinity": {"animation": 1.0, "adventure": 0.9, "comedy": 0.8},
+            "comfort_library_affinity": {
+                "keywords": {"family": 1.0, "musical": 0.9, "animal": 0.8},
+                "collections": {"disney animation": 1.0},
+                "studios": {"walt disney animation studios": 1.0},
+                "genres": {"animation": 1.0, "adventure": 0.9, "comedy": 0.8},
+                "directors": {},
+                "lead_cast": {},
+                "certifications": {"PG": 1.0},
+                "runtime_buckets": {"90_109": 1.0},
+                "decades": {"2010s": 0.8, "2020s": 0.8},
+            },
+            "comfort_rewatch_affinity": {
+                "keywords": {"family": 1.0, "animal": 0.9},
+                "collections": {"disney animation": 1.0},
+                "studios": {"walt disney animation studios": 1.0},
+                "genres": {"animation": 1.0, "adventure": 0.8},
+                "directors": {},
+                "lead_cast": {},
+                "certifications": {"PG": 1.0},
+                "runtime_buckets": {"90_109": 1.0},
+                "decades": {"2010s": 0.9},
+            },
+        }
+
+    def _movie_comfort_candidate(self, media_id, title, *, row_key, **overrides):
+        payload = {
+            "media_type": MediaTypes.MOVIE.value,
+            "source": Sources.TMDB.value,
+            "media_id": media_id,
+            "title": title,
+            "genres": ["Animation", "Adventure", "Comedy"],
+            "keywords": ["family", "animal"],
+            "studios": ["walt disney animation studios"],
+            "collection_name": "Disney Animation",
+            "certification": "PG",
+            "runtime_bucket": "90_109",
+            "release_decade": "2010s",
+            "popularity": 90.0,
+            "rating_count": 12000,
+            "row_key": row_key,
+            "score_breakdown": {
+                "user_score": 9.0,
+                "days_since_activity": 100.0,
+                "rewatch_count": 1.0,
+            },
+        }
+        payload.update(overrides)
+        return CandidateItem(**payload)
+
+    def _create_movie_watches(self, item, days_ago_list, score=9):
+        with patch(
+            "app.models.providers.services.get_media_metadata",
+            return_value={"max_progress": 1},
+        ):
+            for days_ago in days_ago_list:
+                Movie.objects.create(
+                    item=item,
+                    user=self.user,
+                    score=score,
+                    status=Status.COMPLETED.value,
+                    end_date=timezone.now() - timedelta(days=days_ago),
+                )
+
+    def _create_movie_item(self, media_id, title, **overrides):
+        payload = {
+            "media_id": media_id,
+            "source": Sources.TMDB.value,
+            "media_type": MediaTypes.MOVIE.value,
+            "title": title,
+            "image": f"http://example.com/{media_id}.jpg",
+            "genres": ["Animation", "Adventure", "Comedy"],
+            "provider_keywords": ["Family", "Animal"],
+            "provider_certification": "PG",
+            "provider_collection_name": "Disney Animation",
+            "runtime_minutes": 100,
+            "release_datetime": timezone.now() - timedelta(days=365 * 8),
+            "studios": ["Walt Disney Animation Studios"],
+        }
+        payload.update(overrides)
+        return Item.objects.create(**payload)
+
+    def test_comfort_rewatches_gates_titles_watched_within_90_days(self):
+        rotation_item = self._create_movie_item("gate-rotation", "Rotation Favorite")
+        absent_item = self._create_movie_item("gate-absent", "Absent Favorite")
+        self._create_movie_watches(rotation_item, [48, 93, 138])
+        self._create_movie_watches(absent_item, [400])
+
+        candidates = [
+            self._movie_comfort_candidate(
+                "gate-rotation",
+                "Rotation Favorite",
+                row_key="comfort_rewatches",
+                score_breakdown={
+                    "user_score": 9.0,
+                    "days_since_activity": 48.0,
+                    "rewatch_count": 3.0,
+                },
+            ),
+            self._movie_comfort_candidate(
+                "gate-absent",
+                "Absent Favorite",
+                row_key="comfort_rewatches",
+                keywords=["family"],
+                score_breakdown={
+                    "user_score": 8.0,
+                    "days_since_activity": 400.0,
+                    "rewatch_count": 1.0,
+                },
+            ),
+        ]
+
+        reranked = _apply_comfort_confidence(
+            candidates,
+            self._movie_comfort_disney_profile(),
+            use_movie_rewatch_model=True,
+            user=self.user,
+        )
+
+        rotation = next(c for c in reranked if c.media_id == "gate-rotation")
+        absent = next(c for c in reranked if c.media_id == "gate-absent")
+        self.assertEqual(rotation.score_breakdown["absence_gate_active"], 1.0)
+        self.assertEqual(absent.score_breakdown["absence_gate_active"], 0.0)
+        self.assertGreater(rotation.score_breakdown["cooldown_window_days"], 90.0)
+        self.assertLess(rotation.score_breakdown["ready_now_score"], 0.5)
+        # The weaker-affinity but long-absent title outranks the gated
+        # rotation title.
+        self.assertEqual(reranked[0].media_id, "gate-absent")
+
+    def test_comfort_rewatches_absence_boost_prefers_long_unseen_favorite(self):
+        long_item = self._create_movie_item("boost-long", "Long Unseen Favorite")
+        short_item = self._create_movie_item("boost-short", "Recent Favorite")
+        self._create_movie_watches(long_item, [2251])
+        self._create_movie_watches(short_item, [100, 250, 400])
+
+        candidates = [
+            self._movie_comfort_candidate(
+                "boost-short",
+                "Recent Favorite",
+                row_key="comfort_rewatches",
+                score_breakdown={
+                    "user_score": 9.0,
+                    "days_since_activity": 100.0,
+                    "rewatch_count": 3.0,
+                },
+            ),
+            self._movie_comfort_candidate(
+                "boost-long",
+                "Long Unseen Favorite",
+                row_key="comfort_rewatches",
+                score_breakdown={
+                    "user_score": 9.0,
+                    "days_since_activity": 2251.0,
+                    "rewatch_count": 1.0,
+                },
+            ),
+        ]
+
+        reranked = _apply_comfort_confidence(
+            candidates,
+            self._movie_comfort_disney_profile(),
+            use_movie_rewatch_model=True,
+            user=self.user,
+        )
+
+        long_unseen = next(c for c in reranked if c.media_id == "boost-long")
+        recent = next(c for c in reranked if c.media_id == "boost-short")
+        self.assertGreater(long_unseen.score_breakdown["absence_boost"], 0.10)
+        self.assertLess(recent.score_breakdown["absence_boost"], 0.02)
+        self.assertEqual(reranked[0].media_id, "boost-long")
+        # Legacy (frozen) path preferred the recent favorite via its stronger
+        # rewatch strength; the absence boost flips the current ordering.
+        self.assertLess(
+            recent.score_breakdown["legacy_rank"],
+            long_unseen.score_breakdown["legacy_rank"],
+        )
+
+    def test_comfort_rewatches_absence_boost_does_not_promote_weak_fit_titles(self):
+        weak_item = self._create_movie_item(
+            "weak-ancient",
+            "Ancient Weak Fit",
+            genres=["Western"],
+            provider_keywords=["Desert"],
+            provider_certification="R",
+            provider_collection_name="",
+            studios=["Unknown Pictures"],
+        )
+        strong_item = self._create_movie_item("strong-moderate", "Moderately Absent Favorite")
+        self._create_movie_watches(weak_item, [1500], score=8)
+        self._create_movie_watches(strong_item, [120])
+
+        candidates = [
+            self._movie_comfort_candidate(
+                "weak-ancient",
+                "Ancient Weak Fit",
+                row_key="comfort_rewatches",
+                genres=["Western"],
+                keywords=["desert"],
+                studios=["unknown pictures"],
+                collection_name=None,
+                certification="R",
+                runtime_bucket="130_plus",
+                release_decade="1970s",
+                score_breakdown={
+                    "user_score": 8.0,
+                    "days_since_activity": 1500.0,
+                    "rewatch_count": 1.0,
+                },
+            ),
+            self._movie_comfort_candidate(
+                "strong-moderate",
+                "Moderately Absent Favorite",
+                row_key="comfort_rewatches",
+                score_breakdown={
+                    "user_score": 9.0,
+                    "days_since_activity": 120.0,
+                    "rewatch_count": 1.0,
+                },
+            ),
+        ]
+
+        reranked = _apply_comfort_confidence(
+            candidates,
+            self._movie_comfort_disney_profile(),
+            use_movie_rewatch_model=True,
+            user=self.user,
+        )
+
+        # Absence breaks ties; it must not outweigh a materially stronger fit.
+        self.assertEqual(reranked[0].media_id, "strong-moderate")
+        weak = next(c for c in reranked if c.media_id == "weak-ancient")
+        strong = next(c for c in reranked if c.media_id == "strong-moderate")
+        self.assertGreater(
+            weak.score_breakdown["absence_norm"],
+            strong.score_breakdown["absence_norm"],
+        )
+        self.assertLess(
+            weak.score_breakdown["absence_boost"],
+            0.15,
+        )
+
+    def test_comfort_rewatches_rotation_lengthens_cooldown_and_attenuates_rewatch_strength(self):
+        bursty_item = self._create_movie_item("rotation-bursty", "Household Rotation")
+        steady_item = self._create_movie_item("rotation-steady", "Occasional Favorite")
+        self._create_movie_watches(bursty_item, [100, 114, 128, 142, 156])
+        self._create_movie_watches(steady_item, [100, 220])
+
+        candidates = [
+            self._movie_comfort_candidate(
+                "rotation-bursty",
+                "Household Rotation",
+                row_key="comfort_rewatches",
+                score_breakdown={
+                    "user_score": 9.0,
+                    "days_since_activity": 100.0,
+                    "rewatch_count": 5.0,
+                },
+            ),
+            self._movie_comfort_candidate(
+                "rotation-steady",
+                "Occasional Favorite",
+                row_key="comfort_rewatches",
+                score_breakdown={
+                    "user_score": 9.0,
+                    "days_since_activity": 100.0,
+                    "rewatch_count": 2.0,
+                },
+            ),
+        ]
+
+        reranked = _apply_comfort_confidence(
+            candidates,
+            self._movie_comfort_disney_profile(),
+            use_movie_rewatch_model=True,
+            user=self.user,
+        )
+
+        bursty = next(c for c in reranked if c.media_id == "rotation-bursty")
+        steady = next(c for c in reranked if c.media_id == "rotation-steady")
+        self.assertGreater(bursty.score_breakdown["rotation_pressure"], 0.5)
+        self.assertGreater(bursty.score_breakdown["cooldown_window_days"], 120.0)
+        self.assertLess(
+            bursty.score_breakdown["rewatch_strength"],
+            bursty.score_breakdown["rewatch_strength_raw"],
+        )
+        self.assertEqual(steady.score_breakdown["rotation_pressure"], 0.0)
+        self.assertEqual(
+            steady.score_breakdown["rewatch_strength"],
+            steady.score_breakdown["rewatch_strength_raw"],
+        )
+
+    def test_top_picks_new_titles_drop_constant_padding_and_decompress_spread(self):
+        def build(row_key):
+            return [
+                self._movie_comfort_candidate(
+                    "pick-strong",
+                    "Strong Match",
+                    row_key=row_key,
+                    score_breakdown={"planning_entry": 1.0},
+                ),
+                self._movie_comfort_candidate(
+                    "pick-medium",
+                    "Medium Match",
+                    row_key=row_key,
+                    keywords=["family"],
+                    collection_name=None,
+                    score_breakdown={"planning_entry": 1.0},
+                ),
+                self._movie_comfort_candidate(
+                    "pick-weak",
+                    "Weak Match",
+                    row_key=row_key,
+                    genres=["Drama"],
+                    keywords=["quiet"],
+                    studios=["indie films"],
+                    collection_name=None,
+                    certification="R",
+                    runtime_bucket="130_plus",
+                    release_decade="1990s",
+                    score_breakdown={"planning_entry": 1.0},
+                ),
+            ]
+
+        profile = self._movie_comfort_disney_profile()
+        top_picks = _apply_comfort_confidence(
+            build("top_picks_for_you"),
+            profile,
+            use_movie_rewatch_model=True,
+            user=self.user,
+        )
+        baseline = _apply_comfort_confidence(
+            build(None),
+            profile,
+            use_movie_rewatch_model=True,
+            user=self.user,
+        )
+
+        for candidate in top_picks:
+            score = candidate.score_breakdown
+            self.assertEqual(score["core_weight_profile"], "top_picks_new")
+            self.assertEqual(score["ready_now_contribution"], 0.0)
+            self.assertEqual(score["behavior_contribution"], 0.0)
+            self.assertLessEqual(score["planning_confidence_bonus"], 0.10)
+
+        def raw_spread(items):
+            raws = [float(c.score_breakdown["raw_final_score"]) for c in items]
+            return max(raws) - min(raws)
+
+        self.assertGreater(raw_spread(top_picks), raw_spread(baseline))
+        for candidate in baseline:
+            self.assertEqual(
+                candidate.score_breakdown["core_weight_profile"],
+                "comfort_default",
+            )
+
+    def test_top_picks_upcoming_release_gated_to_zero(self):
+        upcoming = self._movie_comfort_candidate(
+            "pick-upcoming",
+            "Upcoming Release",
+            row_key="top_picks_for_you",
+            release_date=(timezone.now() + timedelta(days=90)).strftime("%Y-%m-%d"),
+            score_breakdown={"planning_entry": 1.0},
+        )
+        released = self._movie_comfort_candidate(
+            "pick-released",
+            "Released Title",
+            row_key="top_picks_for_you",
+            score_breakdown={"planning_entry": 1.0},
+        )
+
+        reranked = _apply_comfort_confidence(
+            [upcoming, released],
+            self._movie_comfort_disney_profile(),
+            use_movie_rewatch_model=True,
+            user=self.user,
+        )
+
+        upcoming_result = next(c for c in reranked if c.media_id == "pick-upcoming")
+        self.assertEqual(upcoming_result.score_breakdown["release_status"], "upcoming")
+        self.assertEqual(upcoming_result.score_breakdown["raw_final_score"], 0.0)
+        self.assertEqual(reranked[0].media_id, "pick-released")
+
+    def test_quality_score_uses_per_family_alignment_offsets(self):
+        profile = self._movie_comfort_disney_profile()
+        profile["world_rating_profile"] = {
+            "alignment": 0.5,
+            "confidence": 1.0,
+            "sample_size": 20,
+        }
+        profile["world_alignment_offsets"] = {
+            "genres": {"drama": -0.09, "animation": 0.07},
+        }
+        profile["world_alignment_offset_samples"] = {
+            "genres": {"drama": 6, "animation": 9},
+        }
+
+        shared_ratings = {
+            "planning_entry": 1.0,
+            "provider_rating": 7.5,
+            "provider_rating_count": 5000,
+        }
+        drama = self._movie_comfort_candidate(
+            "align-drama",
+            "Acclaimed Drama",
+            row_key="top_picks_for_you",
+            genres=["Drama"],
+            score_breakdown=dict(shared_ratings),
+        )
+        animation = self._movie_comfort_candidate(
+            "align-animation",
+            "Beloved Animation",
+            row_key="top_picks_for_you",
+            genres=["Animation"],
+            score_breakdown=dict(shared_ratings),
+        )
+
+        reranked = _apply_comfort_confidence(
+            [drama, animation],
+            profile,
+            use_movie_rewatch_model=True,
+            user=self.user,
+        )
+
+        drama_result = next(c for c in reranked if c.media_id == "align-drama")
+        animation_result = next(c for c in reranked if c.media_id == "align-animation")
+        self.assertLess(
+            drama_result.score_breakdown["personal_alignment_offset"],
+            0.0,
+        )
+        self.assertGreater(
+            animation_result.score_breakdown["personal_alignment_offset"],
+            0.0,
+        )
+        # Same world rating, but personal divergence shifts the quality blend.
+        self.assertGreater(
+            animation_result.score_breakdown["quality_score"],
+            drama_result.score_breakdown["quality_score"],
+        )
+        self.assertTrue(
+            animation_result.score_breakdown["alignment_offset_families"],
+        )
+
+    def test_unrated_rewatched_candidate_gets_implicit_rating_confidence(self):
+        rewatched_item = self._create_movie_item("implicit-rewatched", "Unrated Favorite")
+        self._create_movie_watches(rewatched_item, [200, 500, 800])
+        rated_item = self._create_movie_item("explicit-rated", "Rated Favorite")
+        self._create_movie_watches(rated_item, [200])
+
+        unrated = self._movie_comfort_candidate(
+            "implicit-rewatched",
+            "Unrated Favorite",
+            row_key="comfort_rewatches",
+            score_breakdown={
+                "days_since_activity": 200.0,
+                "rewatch_count": 3.0,
+                "fast_completion": 1.0,
+            },
+        )
+        rated = self._movie_comfort_candidate(
+            "explicit-rated",
+            "Rated Favorite",
+            row_key="comfort_rewatches",
+            score_breakdown={
+                "user_score": 9.0,
+                "days_since_activity": 200.0,
+                "rewatch_count": 1.0,
+            },
+        )
+
+        reranked = _apply_comfort_confidence(
+            [unrated, rated],
+            self._movie_comfort_disney_profile(),
+            use_movie_rewatch_model=True,
+            user=self.user,
+        )
+
+        unrated_result = next(c for c in reranked if c.media_id == "implicit-rewatched")
+        rated_result = next(c for c in reranked if c.media_id == "explicit-rated")
+        self.assertEqual(
+            unrated_result.score_breakdown["rating_confidence_source"],
+            "implicit",
+        )
+        self.assertAlmostEqual(
+            unrated_result.score_breakdown["rating_confidence"],
+            0.65,
+            places=6,
+        )
+        self.assertEqual(
+            rated_result.score_breakdown["rating_confidence_source"],
+            "explicit",
+        )
+
+    def test_avoidance_prior_is_overridden_by_strong_rewatch_evidence(self):
+        profile = self._movie_comfort_disney_profile()
+        profile["avoidance_offsets"] = {
+            "genres": {"drama": -0.05},
+        }
+        profile["avoidance_baselines"] = {
+            "genres": {
+                "drama": {
+                    "expected_share": 0.05,
+                    "observed_share": 0.01,
+                    "samples": 3.0,
+                },
+            },
+        }
+
+        weak_item = self._create_movie_item("avoid-weak", "Single Watch")
+        self._create_movie_watches(weak_item, [200])
+        strong_item = self._create_movie_item("avoid-strong", "Rewatched Favorite")
+        self._create_movie_watches(strong_item, [200, 500, 800])
+
+        weak = self._movie_comfort_candidate(
+            "avoid-weak",
+            "Single Watch",
+            row_key="comfort_rewatches",
+            keywords=["quiet"],
+            collection_name=None,
+            genres=["Drama"],
+            studios=["unknown pictures"],
+            score_breakdown={
+                "user_score": 8.0,
+                "days_since_activity": 200.0,
+                "rewatch_count": 1.0,
+            },
+        )
+        strong = self._movie_comfort_candidate(
+            "avoid-strong",
+            "Rewatched Favorite",
+            row_key="comfort_rewatches",
+            genres=["Animation", "Drama"],
+            score_breakdown={
+                "user_score": 9.0,
+                "days_since_activity": 200.0,
+                "rewatch_count": 3.0,
+            },
+        )
+
+        reranked = _apply_comfort_confidence(
+            [weak, strong],
+            profile,
+            use_movie_rewatch_model=True,
+            user=self.user,
+        )
+
+        weak_result = next(c for c in reranked if c.media_id == "avoid-weak")
+        strong_result = next(c for c in reranked if c.media_id == "avoid-strong")
+        self.assertLess(weak_result.score_breakdown["applied_avoidance"], 0.0)
+        self.assertLess(weak_result.score_breakdown["avoidance_prior"], 0.0)
+        # Strong explicit evidence (rewatch strength >= 0.40) zeroes the prior.
+        self.assertEqual(strong_result.score_breakdown["applied_avoidance"], 0.0)
+        self.assertTrue(weak_result.score_breakdown["avoidance_families"])
+
+    def test_movie_comfort_debug_payload_exposes_taste_signal_fields(self):
+        from app.discover.comfort_scoring import _build_comfort_debug_payload
+
+        item = self._create_movie_item("debug-taste", "Taste Signal Movie")
+        self._create_movie_watches(item, [1500])
+        profile = self._movie_comfort_disney_profile()
+        profile["world_alignment_offsets"] = {"genres": {"animation": 0.07}}
+        profile["world_alignment_offset_samples"] = {"genres": {"animation": 5}}
+        profile["avoidance_offsets"] = {"studios": {"sony pictures": -0.03}}
+        profile["avoidance_baselines"] = {
+            "studios": {
+                "sony pictures": {
+                    "expected_share": 0.04,
+                    "observed_share": 0.01,
+                    "samples": 4.0,
+                },
+            },
+        }
+
+        candidates = [
+            self._movie_comfort_candidate(
+                "debug-taste",
+                "Taste Signal Movie",
+                row_key="comfort_rewatches",
+                score_breakdown={
+                    "user_score": 9.0,
+                    "days_since_activity": 1500.0,
+                    "rewatch_count": 1.0,
+                },
+            ),
+        ]
+        reranked = _apply_comfort_confidence(
+            candidates,
+            profile,
+            use_movie_rewatch_model=True,
+            user=self.user,
+        )
+        payload = _build_comfort_debug_payload(
+            reranked,
+            top_n=12,
+            profile_payload=profile,
+        )
+
+        entry = payload["top_candidates"][0]
+        for key in (
+            "personal_alignment_offset",
+            "alignment_offset_families",
+            "avoidance_prior",
+            "applied_avoidance",
+            "avoidance_families",
+            "rating_confidence_source",
+            "primary_reason_kind",
+        ):
+            self.assertIn(key, entry)
+        self.assertIn("avoidance", payload["contribution_totals"])
+        self.assertIn("profile_signals", payload)
+        self.assertEqual(
+            payload["profile_signals"]["alignment_offset_counts"],
+            {"genres": 1},
+        )
+        self.assertEqual(entry["primary_reason_kind"], "long_unseen_favorite")
+
+    def test_movie_comfort_debug_payload_exposes_absence_and_rotation_fields(self):
+        from app.discover.comfort_scoring import _build_movie_comfort_debug_payload
+
+        rotation_item = self._create_movie_item("debug-rotation", "Rotation Favorite")
+        self._create_movie_watches(rotation_item, [48, 93, 138])
+        candidates = [
+            self._movie_comfort_candidate(
+                "debug-rotation",
+                "Rotation Favorite",
+                row_key="comfort_rewatches",
+                score_breakdown={
+                    "user_score": 9.0,
+                    "days_since_activity": 48.0,
+                    "rewatch_count": 3.0,
+                },
+            ),
+        ]
+        reranked = _apply_comfort_confidence(
+            candidates,
+            self._movie_comfort_disney_profile(),
+            use_movie_rewatch_model=True,
+            user=self.user,
+        )
+        payload = _build_movie_comfort_debug_payload(reranked, top_n=12)
+
+        entry = payload["top_candidates"][0]
+        for key in (
+            "absence_gate_active",
+            "absence_norm",
+            "absence_boost",
+            "rotation_pressure",
+            "rewatch_strength_raw",
+            "core_weight_profile",
+        ):
+            self.assertIn(key, entry)
+        self.assertIn("absence_boost", payload["contribution_totals"])
 
     @patch("app.discover.comfort_scoring._is_holiday_window", return_value=False)
     def test_comfort_confidence_applies_out_of_season_holiday_penalty(self, _mock_window):

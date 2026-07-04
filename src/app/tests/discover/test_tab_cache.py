@@ -291,7 +291,7 @@ class DiscoverTabCacheTests(TestCase):
         self.assertEqual(rows[0].items[0].title, "Promoted Movie")
         self.assertEqual(rows[0].reserve_items, [])
 
-    @patch("app.discover.service.hydrate_visible_row_artwork")
+    @patch("app.discover.artwork.hydrate_visible_row_artwork")
     def test_apply_cached_action_hydrates_promoted_reserve_artwork(
         self,
         mock_hydrate_visible_row_artwork,
@@ -322,7 +322,7 @@ class DiscoverTabCacheTests(TestCase):
         self.assertEqual(rows[0].items[0].image, "https://example.com/hydrated.jpg")
         mock_hydrate_visible_row_artwork.assert_called_once()
 
-    @patch("app.discover.service.hydrate_visible_row_artwork")
+    @patch("app.discover.artwork.hydrate_visible_row_artwork")
     def test_apply_cached_action_skips_hydration_for_non_active_tabs(
         self,
         mock_hydrate_visible_row_artwork,

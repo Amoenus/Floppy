@@ -150,6 +150,11 @@ def set_taste_profile(
     world_rating_profile: dict[str, float | int],
     activity_snapshot_at,
     ttl_seconds: int,
+    world_alignment_offsets: dict[str, dict[str, float]] | None = None,
+    world_alignment_offset_samples: dict[str, dict[str, int]] | None = None,
+    avoidance_offsets: dict[str, dict[str, float]] | None = None,
+    avoidance_baselines: dict[str, dict[str, dict[str, float]]] | None = None,
+    profile_schema_version: int = 1,
 ) -> DiscoverTasteProfile:
     """Persist taste profile to DB-backed profile cache."""
     now = timezone.now()
@@ -191,6 +196,11 @@ def set_taste_profile(
         "negative_tag_affinity": negative_tag_affinity,
         "negative_person_affinity": negative_person_affinity,
         "world_rating_profile": world_rating_profile,
+        "world_alignment_offsets": world_alignment_offsets or {},
+        "world_alignment_offset_samples": world_alignment_offset_samples or {},
+        "avoidance_offsets": avoidance_offsets or {},
+        "avoidance_baselines": avoidance_baselines or {},
+        "profile_schema_version": int(profile_schema_version),
         "activity_snapshot_at": activity_snapshot_at,
         "computed_at": now,
         "expires_at": now + timedelta(seconds=ttl_seconds),

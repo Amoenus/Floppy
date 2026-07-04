@@ -16,6 +16,7 @@ from app.discover.artwork import (
     PROVIDER_ARTWORK_HYDRATION_ROW_KEYS,
     _hydrate_provider_ranked_artwork,
     _hydrate_trakt_ranked_artwork,
+    _is_missing_image,
     _row_ttl_seconds,
     _supports_provider_artwork_hydration,
 )
@@ -1241,6 +1242,7 @@ def get_discover_rows(
                 row.items,
                 top_n=COMFORT_DEBUG_TOP_N,
                 match_signal_details=match_signal_details,
+                profile_payload=profile_payload,
             )
 
         if match_signal_details:

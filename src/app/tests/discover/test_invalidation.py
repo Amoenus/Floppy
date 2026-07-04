@@ -90,6 +90,7 @@ class DiscoverInvalidationSignalTests(TestCase):
                     show_more=False,
                     debounce_seconds=discover_tab_cache.DISCOVER_DEFAULT_REFRESH_DEBOUNCE_SECONDS,
                     countdown=discover_tab_cache.DISCOVER_DEFAULT_REFRESH_COUNTDOWN,
+                    priority=discover_tab_cache.DISCOVER_TASK_PRIORITY_FOLLOWUP,
                 ),
                 call(
                     self.user.id,
@@ -97,6 +98,7 @@ class DiscoverInvalidationSignalTests(TestCase):
                     show_more=False,
                     debounce_seconds=discover_tab_cache.DISCOVER_DEFAULT_REFRESH_DEBOUNCE_SECONDS,
                     countdown=discover_tab_cache.DISCOVER_DEFAULT_REFRESH_COUNTDOWN,
+                    priority=discover_tab_cache.DISCOVER_TASK_PRIORITY_FOLLOWUP,
                 ),
             ],
             any_order=False,
@@ -131,6 +133,7 @@ class DiscoverInvalidationSignalTests(TestCase):
                     show_more=False,
                     debounce_seconds=discover_tab_cache.DISCOVER_DEFAULT_REFRESH_DEBOUNCE_SECONDS,
                     countdown=discover_tab_cache.DISCOVER_DEFAULT_REFRESH_COUNTDOWN,
+                    priority=discover_tab_cache.DISCOVER_TASK_PRIORITY_FOLLOWUP,
                 ),
                 call(
                     self.user.id,
@@ -138,6 +141,7 @@ class DiscoverInvalidationSignalTests(TestCase):
                     show_more=False,
                     debounce_seconds=discover_tab_cache.DISCOVER_DEFAULT_REFRESH_DEBOUNCE_SECONDS,
                     countdown=discover_tab_cache.DISCOVER_DEFAULT_REFRESH_COUNTDOWN,
+                    priority=discover_tab_cache.DISCOVER_TASK_PRIORITY_FOLLOWUP,
                 ),
             ],
             any_order=False,
