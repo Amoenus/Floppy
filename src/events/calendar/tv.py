@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import requests
@@ -446,12 +446,10 @@ def get_episode_datetime(episode, season_number, episode_number, tvmaze_map):
     tvmaze_key = f"{season_number}_{episode_number}"
     tvmaze_airstamp = tvmaze_map.get(tvmaze_key)
 
-    if tvmaze_airstamp:
-        return datetime.fromisoformat(tvmaze_airstamp)
-
-    if episode["air_date"]:
+    tmdb_datetime = None
+    if episode.get("air_date"):
         try:
-            return date_parser(episode["air_date"])
+            tmdb_datetime = date_parser(episode["air_date"])
         except ValueError:
             logger.warning(
                 "Invalid air date for S%sE%s from TMDB: %s",
@@ -459,6 +457,17 @@ def get_episode_datetime(episode, season_number, episode_number, tvmaze_map):
                 episode_number,
                 episode["air_date"],
             )
+
+    if tvmaze_airstamp:
+        tvmaze_datetime = datetime.fromisoformat(tvmaze_airstamp)
+        if tmdb_datetime is None or abs(tvmaze_datetime - tmdb_datetime) <= timedelta(
+            days=2,
+        ):
+            return tvmaze_datetime
+        return tmdb_datetime
+
+    if tmdb_datetime is not None:
+        return tmdb_datetime
 
     return datetime.min.replace(tzinfo=ZoneInfo("UTC"))
 
