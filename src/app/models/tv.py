@@ -46,7 +46,10 @@ class TV(Media):
         is_create = self._state.adding
         super(Media, self).save(*args, **kwargs)
 
-        if not is_create and self.tracker.has_changed("status"):
+        # A show created directly as COMPLETED (rather than transitioned into it)
+        # must still fan out completion to its seasons/episodes.
+        completed_on_create = is_create and self.status == Status.COMPLETED.value
+        if (not is_create and self.tracker.has_changed("status")) or completed_on_create:
             if self.status == Status.COMPLETED.value:
                 self._completed()
 
@@ -450,7 +453,10 @@ class Season(Media):
         is_create = self._state.adding
         super(Media, self).save(*args, **kwargs)
 
-        if not is_create and self.tracker.has_changed("status"):
+        # A season created directly as COMPLETED (rather than transitioned into
+        # it) must still create the remaining episode watch records.
+        completed_on_create = is_create and self.status == Status.COMPLETED.value
+        if (not is_create and self.tracker.has_changed("status")) or completed_on_create:
             if self.status == Status.COMPLETED.value:
                 season_metadata = providers.services.get_media_metadata(
                     MediaTypes.SEASON.value,
