@@ -6,7 +6,7 @@ import requests
 from django.core.cache import cache
 from django.test import TestCase
 
-from app.models import TV, Item, Season, Status
+from app.models import TV, Item, MediaTypes, Season, Sources, Status
 from events.calendar.helpers import date_parser
 from events.calendar.tv import (
     get_episode_datetime,
@@ -361,3 +361,116 @@ class CalendarTVTests(CalendarFixturesMixin, TestCase):
         ]
 
         self.assertEqual(get_tvmaze_response("81189"), {})
+
+    def test_get_seasons_to_process_refreshes_seasons_with_future_events(self):
+        """Seasons with future or unknown-date events should be reprocessed.
+
+        Sources without TMDB's next_episode_season field (TVDB) rely on this
+        to keep air dates current while a season is ongoing.
+        """
+        future_date = datetime.datetime.now(tz=ZoneInfo("UTC")) + datetime.timedelta(
+            days=7,
+        )
+        Event.objects.create(
+            item=self.season_item,
+            content_number=1,
+            datetime=future_date,
+        )
+        tv_metadata = {
+            "related": {
+                "seasons": [{"season_number": 1}],
+            },
+        }
+
+        self.assertEqual(
+            get_seasons_to_process(self.tv_item, tv_metadata=tv_metadata),
+            [1],
+        )
+
+    def test_get_seasons_to_process_skips_seasons_with_only_past_events(self):
+        """Fully aired seasons without next_episode_season should stay untouched."""
+        Event.objects.create(
+            item=self.season_item,
+            content_number=1,
+            datetime=date_parser("2008-01-20"),
+        )
+        tv_metadata = {
+            "related": {
+                "seasons": [{"season_number": 1}],
+            },
+        }
+
+        self.assertEqual(
+            get_seasons_to_process(self.tv_item, tv_metadata=tv_metadata),
+            [],
+        )
+
+    @patch("events.calendar.tv.get_tvmaze_episode_map")
+    @patch("events.calendar.tv.tvdb.tv_with_seasons")
+    @patch("events.calendar.tv.tvdb.tv")
+    @patch("events.calendar.tv.tmdb.tv")
+    def test_process_tv_tvdb_source_uses_tvdb_provider(
+        self,
+        mock_tmdb_tv,
+        mock_tvdb_tv,
+        mock_tvdb_tv_with_seasons,
+        mock_get_tvmaze_episode_map,
+    ):
+        """TVDB-sourced shows should fetch metadata from the TVDB provider."""
+        tvdb_tv_item = Item.objects.create(
+            media_id="418666",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Witch Hat Atelier",
+            image="http://example.com/witchhat.jpg",
+        )
+        TV.objects.create(
+            item=tvdb_tv_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+
+        mock_tvdb_tv.return_value = {
+            "related": {
+                "seasons": [{"season_number": 1, "episodes": [1, 2]}],
+            },
+        }
+        mock_tvdb_tv_with_seasons.return_value = {
+            "season/1": {
+                "image": "http://example.com/witchhat-s1.jpg",
+                "season_number": 1,
+                "episodes": [
+                    {"episode_number": 1, "air_date": "2026-04-06"},
+                    {"episode_number": 2, "air_date": "2026-04-13"},
+                ],
+                "tvdb_id": "418666",
+            },
+        }
+        mock_get_tvmaze_episode_map.return_value = {
+            "1_1": "2026-04-06T14:00:00+00:00",
+        }
+
+        events_bulk = []
+        process_tv(tvdb_tv_item, events_bulk)
+
+        mock_tmdb_tv.assert_not_called()
+        mock_tvdb_tv.assert_called_once_with("418666")
+        mock_tvdb_tv_with_seasons.assert_called_once_with("418666", [1])
+        mock_get_tvmaze_episode_map.assert_called_once_with("418666")
+
+        self.assertEqual(len(events_bulk), 2)
+        season_item = Item.objects.get(
+            media_id="418666",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=1,
+        )
+        self.assertEqual(events_bulk[0].item, season_item)
+        self.assertEqual(
+            events_bulk[0].datetime,
+            datetime.datetime.fromisoformat("2026-04-06T14:00:00+00:00"),
+        )
+        self.assertEqual(
+            events_bulk[1].datetime,
+            date_parser("2026-04-13"),
+        )

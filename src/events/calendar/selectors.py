@@ -46,6 +46,12 @@ def filter_items_to_fetch(items):
     )
     tv_items_to_include = get_tv_items_to_include(tv_items)
 
+    tvdb_tv_items = items.filter(
+        media_type=MediaTypes.TV.value,
+        source=Sources.TVDB.value,
+    )
+    tvdb_tv_items_to_include = get_tvdb_tv_items_to_include(tvdb_tv_items)
+
     movie_items = items.filter(
         media_type=MediaTypes.MOVIE.value,
         source=Sources.TMDB.value,
@@ -67,7 +73,7 @@ def filter_items_to_fetch(items):
         latest_comic_event_datetime=Subquery(latest_comic_event.values("datetime")[:1]),
     )
 
-    tv_q = Q(id__in=tv_items_to_include)
+    tv_q = Q(id__in=tv_items_to_include) | Q(id__in=tvdb_tv_items_to_include)
     movie_q = Q(id__in=movie_items_to_include)
 
     comic_q = Q(media_type=MediaTypes.COMIC.value) & (
@@ -123,6 +129,58 @@ def get_tv_items_to_include(tv_items):
         else:
             logger.info(
                 "TV selection: including %s (%s) because it has no season events yet",
+                item["title"],
+                item["media_id"],
+            )
+
+    return [item["id"] for item in included_tv_rows]
+
+
+def get_tvdb_tv_items_to_include(tv_items):
+    """Return tracked TVDB TV item ids that should be refreshed.
+
+    TVDB has no change feed equivalent to TMDB's, so refresh shows that have
+    no season events yet, plus shows that still have future or unknown-date
+    episodes so air dates stay current while a season is ongoing.
+    """
+    if not tv_items.exists():
+        return []
+
+    now = timezone.now()
+    season_events = Event.objects.filter(
+        item__media_id=OuterRef("media_id"),
+        item__source=OuterRef("source"),
+        item__media_type=MediaTypes.SEASON.value,
+    )
+    # Unknown air dates are stored as datetime.min (year 1); future events
+    # include the year-9999 sentinel. Both mean dates may still change.
+    refreshable_season_events = season_events.filter(
+        Q(datetime__gte=now) | Q(datetime__year=1),
+    )
+
+    included_tv_rows = list(
+        tv_items.annotate(
+            has_season_events=Exists(season_events),
+            has_refreshable_events=Exists(refreshable_season_events),
+        )
+        .filter(
+            Q(has_season_events=False) | Q(has_refreshable_events=True),
+        )
+        .values("id", "media_id", "title", "has_season_events"),
+    )
+
+    for item in included_tv_rows:
+        if item["has_season_events"]:
+            logger.info(
+                "TVDB TV selection: including %s (%s) because it has "
+                "future or unknown-date episodes",
+                item["title"],
+                item["media_id"],
+            )
+        else:
+            logger.info(
+                "TVDB TV selection: including %s (%s) because it has "
+                "no season events yet",
                 item["title"],
                 item["media_id"],
             )

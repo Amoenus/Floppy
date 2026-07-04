@@ -147,6 +147,108 @@ class CalendarSelectorTests(CalendarFixturesMixin, TestCase):
 
         self.assertIn(self.tv_item, items)
 
+    def _create_tvdb_tv(self):
+        tvdb_tv_item = Item.objects.create(
+            media_id="418666",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Witch Hat Atelier",
+            image="http://example.com/witchhat.jpg",
+        )
+        TV.objects.create(
+            item=tvdb_tv_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        tvdb_season_item = Item.objects.create(
+            media_id="418666",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Witch Hat Atelier",
+            image="http://example.com/witchhat.jpg",
+            season_number=1,
+        )
+        return tvdb_tv_item, tvdb_season_item
+
+    @patch("events.calendar.selectors.tmdb.movie_changes")
+    @patch("events.calendar.selectors.tmdb.tv_changes")
+    def test_get_items_to_process_includes_tvdb_tv_without_season_events(
+        self,
+        mock_tv_changes,
+        mock_movie_changes,
+    ):
+        """Tracked TVDB TV should bootstrap even when no season events exist yet."""
+        mock_tv_changes.return_value = set()
+        mock_movie_changes.return_value = set()
+        tvdb_tv_item, _ = self._create_tvdb_tv()
+
+        items = get_items_to_process(self.user)
+
+        self.assertIn(tvdb_tv_item, items)
+
+    @patch("events.calendar.selectors.tmdb.movie_changes")
+    @patch("events.calendar.selectors.tmdb.tv_changes")
+    def test_get_items_to_process_includes_tvdb_tv_with_future_events(
+        self,
+        mock_tv_changes,
+        mock_movie_changes,
+    ):
+        """TVDB TV with future season events should refresh to keep dates current."""
+        mock_tv_changes.return_value = set()
+        mock_movie_changes.return_value = set()
+        tvdb_tv_item, tvdb_season_item = self._create_tvdb_tv()
+        Event.objects.create(
+            item=tvdb_season_item,
+            content_number=1,
+            datetime=timezone.now() + timezone.timedelta(days=7),
+        )
+
+        items = get_items_to_process(self.user)
+
+        self.assertIn(tvdb_tv_item, items)
+
+    @patch("events.calendar.selectors.tmdb.movie_changes")
+    @patch("events.calendar.selectors.tmdb.tv_changes")
+    def test_get_items_to_process_includes_tvdb_tv_with_unknown_date_events(
+        self,
+        mock_tv_changes,
+        mock_movie_changes,
+    ):
+        """TVDB TV with datetime.min unknown-date events should keep refreshing."""
+        mock_tv_changes.return_value = set()
+        mock_movie_changes.return_value = set()
+        tvdb_tv_item, tvdb_season_item = self._create_tvdb_tv()
+        Event.objects.create(
+            item=tvdb_season_item,
+            content_number=1,
+            datetime=timezone.now().replace(year=1, month=1, day=1),
+        )
+
+        items = get_items_to_process(self.user)
+
+        self.assertIn(tvdb_tv_item, items)
+
+    @patch("events.calendar.selectors.tmdb.movie_changes")
+    @patch("events.calendar.selectors.tmdb.tv_changes")
+    def test_get_items_to_process_excludes_tvdb_tv_with_only_past_events(
+        self,
+        mock_tv_changes,
+        mock_movie_changes,
+    ):
+        """Fully aired TVDB TV should not be refetched every run."""
+        mock_tv_changes.return_value = set()
+        mock_movie_changes.return_value = set()
+        tvdb_tv_item, tvdb_season_item = self._create_tvdb_tv()
+        Event.objects.create(
+            item=tvdb_season_item,
+            content_number=1,
+            datetime=timezone.now() - timezone.timedelta(days=30),
+        )
+
+        items = get_items_to_process(self.user)
+
+        self.assertNotIn(tvdb_tv_item, items)
+
     @patch("events.calendar.selectors.tmdb.tv_changes")
     def test_get_changed_tmdb_tv_ids_returns_empty_on_provider_error(
         self,
