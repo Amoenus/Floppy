@@ -35,10 +35,21 @@ class Artist(models.Model):
         blank=True,
         help_text="Top genres/tags from MusicBrainz",
     )
+    artist_type = models.CharField(
+        max_length=20,
+        blank=True,
+        default="",
+        help_text="MusicBrainz artist type, e.g. 'Group' or 'Person'",
+    )
     discography_synced_at = models.DateTimeField(
         null=True,
         blank=True,
         help_text="When the discography was last synced from MusicBrainz",
+    )
+    members_synced_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When band members were last synced from MusicBrainz",
     )
 
     class Meta:
@@ -151,6 +162,45 @@ class AlbumArtist(models.Model):
                 name="unique_album_artist_credit",
             ),
         ]
+
+
+class ArtistMember(models.Model):
+    """Self-referential membership link between a band and a member artist."""
+
+    band = models.ForeignKey(
+        Artist,
+        on_delete=models.CASCADE,
+        related_name="members",
+    )
+    member = models.ForeignKey(
+        Artist,
+        on_delete=models.CASCADE,
+        related_name="bands",
+    )
+    role = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Instrument/role, e.g. 'guitar', 'vocals'",
+    )
+    joined_date = models.DateField(null=True, blank=True)
+    left_date = models.DateField(null=True, blank=True)
+    is_current = models.BooleanField(default=True)
+
+    class Meta:
+        """Meta options for the model."""
+
+        ordering = ["-is_current", "member__name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["band", "member", "role"],
+                name="unique_artist_member_role",
+            ),
+        ]
+
+    def __str__(self):
+        """Return the membership label."""
+        return f"{self.member.name} - {self.band.name}"
 
 
 class Track(models.Model):

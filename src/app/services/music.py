@@ -11,8 +11,25 @@ from django.utils.dateparse import parse_date
 
 from app.log_safety import exception_summary
 from app.models import Album, AlbumArtist, Artist, Item, Music, Track
+from app.models.music import ArtistMember
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_partial_date(date_str):
+    """Parse a MusicBrainz partial date string (YYYY, YYYY-MM, or YYYY-MM-DD)."""
+    if not date_str:
+        return None
+    try:
+        if len(date_str) >= 10:
+            return parse_date(date_str[:10])
+        if len(date_str) == 7:
+            return parse_date(date_str + "-01")
+        if len(date_str) == 4:
+            return parse_date(date_str + "-01-01")
+    except (ValueError, TypeError):
+        return None
+    return None
 
 
 def _dedupe_display_values(values) -> list[str]:
@@ -903,18 +920,7 @@ def sync_artist_discography(artist: Artist, force: bool = False) -> int:
                 continue
 
             # Parse release date
-            release_date = None
-            date_str = album_data.get("release_date", "")
-            if date_str:
-                try:
-                    if len(date_str) >= 10:
-                        release_date = parse_date(date_str[:10])
-                    elif len(date_str) == 7:
-                        release_date = parse_date(date_str + "-01")
-                    elif len(date_str) == 4:
-                        release_date = parse_date(date_str + "-01-01")
-                except (ValueError, TypeError):
-                    pass
+            release_date = _parse_partial_date(album_data.get("release_date", ""))
 
             # Update or create the album
             album, created = Album.objects.update_or_create(
@@ -959,6 +965,94 @@ def sync_artist_discography(artist: Artist, force: bool = False) -> int:
 
     except Exception as e:
         logger.exception("Failed to sync discography for artist %s: %s", artist.name, e)
+        return 0
+
+
+def _sync_single_artist_member(band: Artist, member_data: dict) -> bool:
+    """Create/update a single ArtistMember link from MusicBrainz member data.
+
+    Returns True if a member was synced (had a usable MusicBrainz ID).
+    """
+    member_mbid = member_data.get("artist_id")
+    if not member_mbid:
+        return False
+
+    member_artist, _ = Artist.objects.get_or_create(
+        musicbrainz_id=member_mbid,
+        defaults={"name": member_data.get("name", "Unknown")},
+    )
+
+    ArtistMember.objects.update_or_create(
+        band=band,
+        member=member_artist,
+        role=member_data.get("role", ""),
+        defaults={
+            "joined_date": _parse_partial_date(member_data.get("begin_date")),
+            "left_date": _parse_partial_date(member_data.get("end_date")),
+            "is_current": not member_data.get("ended", False),
+        },
+    )
+    return True
+
+
+def sync_artist_members(artist: Artist, force: bool = False) -> int:
+    """Sync band members for an artist from MusicBrainz.
+
+    Creates/updates Artist records for each member and links them via
+    ArtistMember, mirroring sync_artist_discography's staleness handling.
+
+    Args:
+        artist: The Artist object to sync
+        force: If True, sync even if already synced recently
+
+    Returns:
+        Number of members synced
+    """
+    from app.providers import musicbrainz
+
+    if not artist.pk:
+        artist.save()
+
+    if not artist.musicbrainz_id:
+        logger.debug("Artist %s has no MusicBrainz ID, skipping member sync", artist.name)
+        return 0
+
+    if not force and artist.members_synced_at:
+        days_since_sync = (timezone.now() - artist.members_synced_at).days
+        existing_members = ArtistMember.objects.filter(band=artist).exists()
+        max_age = 30 if existing_members else 7
+
+        if days_since_sync < max_age:
+            logger.debug(
+                "Artist %s members synced %d days ago (max_age=%d, has_members=%s), skipping",
+                artist.name,
+                days_since_sync,
+                max_age,
+                existing_members,
+            )
+            return 0
+
+    try:
+        artist_data = musicbrainz.get_artist(artist.musicbrainz_id)
+        members_data = artist_data.get("members", [])
+
+        synced_count = sum(
+            _sync_single_artist_member(artist, member_data)
+            for member_data in members_data
+        )
+
+        artist.members_synced_at = timezone.now()
+        artist.save(update_fields=["members_synced_at"])
+
+        logger.info(
+            "Synced %d members for artist %s from MusicBrainz",
+            synced_count,
+            artist.name,
+        )
+        return synced_count
+
+    except Exception as e:
+        logger.exception("Failed to sync members for artist %s: %s", artist.name, e)
         return 0
 
 

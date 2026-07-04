@@ -268,6 +268,7 @@ def _render_music_artist_details(request, artist):
         canonicalize_album,
         needs_discography_sync,
         sync_artist_discography,
+        sync_artist_members,
     )
     from app.services.music_scrobble import dedupe_artist_albums
 
@@ -438,6 +439,9 @@ def _render_music_artist_details(request, artist):
             bio = mb_data.get("bio", "")
 
             updated_fields = []
+            if mb_data.get("type") and mb_data.get("type") != artist.artist_type:
+                artist.artist_type = mb_data.get("type", "")
+                updated_fields.append("artist_type")
             if mb_data.get("country") and mb_data.get("country") != artist.country:
                 artist.country = mb_data.get("country", "")
                 updated_fields.append("country")
@@ -459,6 +463,18 @@ def _render_music_artist_details(request, artist):
                 artist.save(update_fields=["image"])
         except Exception as exc:
             logger.debug("Failed to fetch artist metadata from MusicBrainz: %s", exc)
+
+        try:
+            sync_artist_members(artist)
+        except Exception as exc:
+            logger.debug("Failed to sync artist members from MusicBrainz: %s", exc)
+
+    band_members = list(
+        artist.members.select_related("member").order_by("-is_current", "member__name"),
+    )
+    member_of_bands = list(
+        artist.bands.select_related("band").order_by("-is_current", "band__name"),
+    )
 
     genre_chips = []
     if genres:
@@ -520,6 +536,8 @@ def _render_music_artist_details(request, artist):
         "detail_collection_mode": "music_artist",
         "detail_link_sections": detail_link_sections,
         "discography_groups": discography_groups,
+        "band_members": band_members,
+        "member_of_bands": member_of_bands,
         "collection_stats": collection_stats,
         "music_artist_metadata": artist_metadata,
         "music_artist_rating": {

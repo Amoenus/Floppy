@@ -81,6 +81,7 @@ SpecialModels = [
     "Artist",
     "Album",
     "AlbumArtist",
+    "ArtistMember",
     "Track",
     "ArtistTracker",
     "AlbumTracker",

@@ -837,7 +837,7 @@ def get_artist(artist_id):
         return cached
 
     params = {
-        "inc": "releases+release-groups+tags+ratings+annotation+genres+url-rels",
+        "inc": "releases+release-groups+tags+ratings+annotation+genres+url-rels+artist-rels",
     }
 
     response = _mb_request(f"artist/{artist_id}", params)
@@ -943,6 +943,28 @@ def get_artist(artist_id):
             "first_release_date": rg.get("first-release-date", ""),
         })
 
+    # Band members: "member of band" relations where this artist is the band
+    # (the member is the source of the relation, so it appears with direction
+    # "backward" when fetched from the band's own artist page).
+    members = []
+    for rel in relations:
+        if rel.get("type") != "member of band" or rel.get("direction") != "backward":
+            continue
+        member_payload = rel.get("artist") or {}
+        member_id = member_payload.get("id")
+        member_name = member_payload.get("name", "")
+        if not member_id or not member_name:
+            continue
+        attributes = rel.get("attributes", [])
+        members.append({
+            "artist_id": member_id,
+            "name": member_name,
+            "role": ", ".join(attributes) if attributes else "",
+            "begin_date": rel.get("begin", ""),
+            "end_date": rel.get("end", ""),
+            "ended": rel.get("ended", False),
+        })
+
     result = {
         "artist_id": artist_id,
         "name": name,
@@ -962,6 +984,7 @@ def get_artist(artist_id):
         "rating": rating,
         "rating_count": rating_count,
         "albums": albums,
+        "members": members,
     }
 
     cache.set(cache_key, result, 60 * 60 * 24 * 7)
