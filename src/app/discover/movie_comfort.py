@@ -166,6 +166,13 @@ MOVIE_TOP_PICKS_CORE_WEIGHTS = {
     "comfort_safety": 0.075,
     "shape_coverage": 0.075,
 }
+# Coverage renorm floor: caps sparse-metadata amplification at ~1.8x.
+MOVIE_TOP_PICKS_MIN_COVERAGE_WEIGHT = 0.55
+# Unhydrated provider-sourced candidates (any source) must clear this genre
+# fit to stay in the pool. Applies uniformly regardless of pool_source: an
+# anchor-similarity guess is not self-validating evidence, it earns its spot
+# through the same fit math a genre-discovery guess does.
+MOVIE_TOP_PICKS_PROVIDER_GENRE_FIT_FLOOR = 0.20
 MOVIE_TOP_PICKS_UNWATCHED_DAYS_SENTINEL = 9999.0
 WORLD_RATING_PROFILE_MIN_SAMPLE_SIZE = 5
 WORLD_ALIGNMENT_OFFSET_CAP = 0.15
@@ -1805,12 +1812,38 @@ def _apply_movie_comfort_confidence(
             else 0.0
         )
 
+        family_coverage_weight = sum(
+            family_weight
+            for family, family_weight in MOVIE_COMFORT_FAMILY_WEIGHTS.items()
+            if candidate_families.get(family)
+        )
+        coverage_renorm_factor = 1.0
+        is_unhydrated_provider = (
+            candidate.score_breakdown.get("pool_source")
+            in {"similar_to_favorite", "taste_discovery"}
+            and float(candidate.score_breakdown.get("hydrated_from_item", 0.0)) < 1.0
+        )
         if is_top_picks_new:
             # New-to-you candidates carry no behavior signal (flat 0.225) and
             # no cooldown state; taste-fit differences drive the rank instead.
+            # Unhydrated provider candidates get a floored coverage
+            # renormalization: their missing families are unknown metadata,
+            # not genuine absence, so discount them modestly instead of
+            # structurally crushing them (self-correcting once
+            # hydration/backfill enriches the Item). Enriched candidates keep
+            # their true coverage — a movie with no collection is real signal.
+            if is_unhydrated_provider and 0.0 < family_coverage_weight < 1.0:
+                coverage_renorm_factor = 1.0 / max(
+                    family_coverage_weight,
+                    MOVIE_TOP_PICKS_MIN_COVERAGE_WEIGHT,
+                )
+            top_picks_library_fit = _clamp_unit(library_fit * coverage_renorm_factor)
+            top_picks_recency_fit = _clamp_unit(
+                recency_phase_fit * coverage_renorm_factor,
+            )
             core_affinity_score = _clamp_unit(
-                (library_fit * MOVIE_TOP_PICKS_CORE_WEIGHTS["library"])
-                + (recency_phase_fit * MOVIE_TOP_PICKS_CORE_WEIGHTS["recency_phase"])
+                (top_picks_library_fit * MOVIE_TOP_PICKS_CORE_WEIGHTS["library"])
+                + (top_picks_recency_fit * MOVIE_TOP_PICKS_CORE_WEIGHTS["recency_phase"])
                 + (quality_score * MOVIE_TOP_PICKS_CORE_WEIGHTS["quality"])
                 + (comfort_safety * MOVIE_TOP_PICKS_CORE_WEIGHTS["comfort_safety"])
                 + (shape_coverage * MOVIE_TOP_PICKS_CORE_WEIGHTS["shape_coverage"]),
@@ -2047,6 +2080,14 @@ def _apply_movie_comfort_confidence(
             1.0
             if is_comfort_rewatch_row and rotation_pressure > 0.0
             else 0.0
+        )
+        candidate.score_breakdown["family_coverage_weight"] = round(
+            family_coverage_weight,
+            6,
+        )
+        candidate.score_breakdown["coverage_renorm_factor"] = round(
+            coverage_renorm_factor,
+            6,
         )
         candidate.score_breakdown["lane_burstiness"] = round(
             float(cooldown_signal["lane_burstiness"]),
@@ -2340,6 +2381,54 @@ def _apply_movie_comfort_confidence(
 
     filtered_candidates: list[CandidateItem] = []
     for candidate in candidates:
+        if (
+            candidate.media_type == MediaTypes.MOVIE.value
+            and candidate.row_key == "top_picks_for_you"
+            and float(candidate.score_breakdown.get("title_history_present", 0.0)) >= 1.0
+        ):
+            # "New-to-you" means exactly that; rewatch suggestions belong to
+            # Comfort Rewatches.
+            candidate.score_breakdown["filtered_previously_watched"] = 1.0
+            continue
+        if (
+            candidate.media_type == MediaTypes.MOVIE.value
+            and candidate.row_key == "top_picks_for_you"
+            and candidate.score_breakdown.get("pool_source")
+            in {"similar_to_favorite", "taste_discovery"}
+            and float(candidate.score_breakdown.get("hydrated_from_item", 0.0)) < 1.0
+            and float(candidate.score_breakdown.get("genre_fit", 0.0))
+            < MOVIE_TOP_PICKS_PROVIDER_GENRE_FIT_FLOOR
+        ):
+            # Unhydrated provider candidates carry genres only; without at
+            # least a real genre fit they are just TMDB popularity noise —
+            # true for anchor-similarity guesses just as much as genre
+            # discovery guesses.
+            candidate.score_breakdown["filtered_provider_weak_genre_fit"] = 1.0
+            continue
+        if (
+            candidate.media_type == MediaTypes.MOVIE.value
+            and candidate.row_key == "top_picks_for_you"
+            and candidate.score_breakdown.get("pool_source") == "taste_discovery"
+        ):
+            target_genres = candidate.score_breakdown.get(
+                "taste_discovery_target_genres",
+            ) or []
+            candidate_genres_lower = [
+                str(genre).strip().lower() for genre in (candidate.genres or [])
+            ]
+            if (
+                target_genres
+                and candidate_genres_lower
+                and candidate_genres_lower[0] not in target_genres
+            ):
+                # The candidate must genuinely BE one of the target genres —
+                # i.e. carry it as its own primary (first-listed) TMDB genre —
+                # not merely have it trailing as a footnote co-tag. This is
+                # what stopped an anime whose real genre is Action/Adventure
+                # from surfacing under "Matches your Comedy taste" just
+                # because Comedy trailed somewhere in its tag list.
+                candidate.score_breakdown["filtered_provider_secondary_genre_mismatch"] = 1.0
+                continue
         is_unrated = float(candidate.score_breakdown.get("candidate_is_unrated", 0.0)) >= 1.0
         if (
             is_unrated

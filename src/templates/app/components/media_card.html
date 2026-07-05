@@ -496,6 +496,9 @@
                     {% if subtitle_override %} • {% endif %}{{ subtitle_match_percent }}% {% if subtitle_match_label %}{{ subtitle_match_label }}{% else %}match{% endif %}
                   {% endif %}
                 </p>
+                {% if provenance_text %}
+                  <p class="text-xs text-gray-500 mt-0.5 line-clamp-1">{{ provenance_text }}</p>
+                {% endif %}
               {% elif show_played_chip|default:False and media and media.last_played_at %}
                 <p class="media-card-year text-xs text-gray-400 mt-1">
                   {% if media.play_count and resolved_media_type == MediaTypes.MUSIC.value %}

@@ -26,7 +26,7 @@ ROW_REGISTRY: dict[str, list[RowDefinition]] = {
         RowDefinition("trending_right_now", "Trending Right Now", "Cultural Moment", "What everyone has been watching this week.", "trakt"),
         RowDefinition("all_time_greats_unseen", "All-Time Greats You Haven't Seen", "Canon", "Must-watch classics still missing", "trakt"),
         RowDefinition("coming_soon", "Coming Soon", "Anticipation", "Upcoming releases to watchlist", "trakt"),
-        RowDefinition("top_picks_for_you", "Top Picks For You", "Personal Taste Match", "New-to-you movies tailored to your taste.", "local", allow_tracked=True),
+        RowDefinition("top_picks_for_you", "Top Picks For You", "Personal Taste Match", "New-to-you movies tailored to your taste.", "local"),
         RowDefinition("comfort_rewatches", "Comfort Rewatches", "Comfort", COMFORT_REWATCHES_DESCRIPTION, "local", allow_tracked=True),
     ],
     MediaTypes.TV.value: [

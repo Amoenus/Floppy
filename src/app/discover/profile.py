@@ -66,7 +66,7 @@ WORLD_RATING_PROFILE_ACTIVATION_MIN_SAMPLE = 5
 WORLD_RATING_PROFILE_MAX_CONFIDENCE_SAMPLE = 12.0
 
 # Bump when profile computation changes shape/meaning so cached rows recompute.
-PROFILE_SCHEMA_VERSION = 2
+PROFILE_SCHEMA_VERSION = 3
 
 # Per-family user-vs-world rating alignment (empirical-Bayes shrinkage).
 WORLD_ALIGNMENT_FAMILIES = (
@@ -129,6 +129,7 @@ class ProfilePayload:
     genre_affinity: dict[str, float]
     recent_genre_affinity: dict[str, float]
     phase_genre_affinity: dict[str, float]
+    genre_primacy_ratio: dict[str, float]
     tag_affinity: dict[str, float]
     recent_tag_affinity: dict[str, float]
     phase_tag_affinity: dict[str, float]
@@ -174,6 +175,7 @@ class ProfilePayload:
             "genre_affinity": self.genre_affinity,
             "recent_genre_affinity": self.recent_genre_affinity,
             "phase_genre_affinity": self.phase_genre_affinity,
+            "genre_primacy_ratio": self.genre_primacy_ratio,
             "tag_affinity": self.tag_affinity,
             "recent_tag_affinity": self.recent_tag_affinity,
             "phase_tag_affinity": self.phase_tag_affinity,
@@ -765,6 +767,7 @@ def compute_taste_profile(user, media_type: str) -> ProfilePayload:
     genre_weights: dict[str, float] = defaultdict(float)
     recent_genre_weights: dict[str, float] = defaultdict(float)
     phase_genre_weights: dict[str, float] = defaultdict(float)
+    primary_genre_weights: dict[str, float] = defaultdict(float)
     tag_weights: dict[str, float] = defaultdict(float)
     recent_tag_weights: dict[str, float] = defaultdict(float)
     phase_tag_weights: dict[str, float] = defaultdict(float)
@@ -963,6 +966,18 @@ def compute_taste_profile(user, media_type: str) -> ProfilePayload:
                 if status_multiplier <= 0.0:
                     continue
                 weight *= status_multiplier
+
+            if genres:
+                # TMDB's own genre order is preserved end-to-end (get_genres,
+                # normalize_features); the first-listed genre is usually the
+                # "headline" one. A genre that co-occurs with a dominant
+                # genre but rarely leads (e.g. "Comedy" trailing "Animation"
+                # on nearly every animated-family title) shouldn't count as
+                # an independently-sought taste — see genre_primacy_ratio.
+                # Uses the post-status-adjustment weight so it stays in sync
+                # with genre_weights (entries dropped above via `continue`
+                # must not contribute here either).
+                primary_genre_weights[genres[0]] += weight
 
             if (
                 media_type_key in AVOIDANCE_MEDIA_TYPES
@@ -1203,10 +1218,21 @@ def compute_taste_profile(user, media_type: str) -> ProfilePayload:
                     merged_family[label] = offset
                     merged_baselines[label] = type_baselines[family][label]
 
+    # Fraction of each genre's total affinity weight that came from being the
+    # first-listed (primary/headline) TMDB genre, rather than a trailing
+    # co-tag. Multiplying genre_affinity by this ratio (in _top_profile_genres)
+    # discounts genres that only ever ride along with a dominant genre.
+    genre_primacy_ratio = {
+        genre: round(primary_genre_weights.get(genre, 0.0) / total, 4)
+        for genre, total in genre_weights.items()
+        if total > 0
+    }
+
     return ProfilePayload(
         genre_affinity=normalize_numeric_map(dict(genre_weights)),
         recent_genre_affinity=normalize_numeric_map(dict(recent_genre_weights)),
         phase_genre_affinity=normalize_numeric_map(dict(phase_genre_weights)),
+        genre_primacy_ratio=genre_primacy_ratio,
         tag_affinity=normalize_numeric_map(dict(tag_weights)),
         recent_tag_affinity=normalize_numeric_map(dict(recent_tag_weights)),
         phase_tag_affinity=normalize_numeric_map(dict(phase_tag_weights)),
@@ -1307,6 +1333,7 @@ def get_or_compute_taste_profile(user, media_type: str, *, force: bool = False) 
             "genre_affinity": getattr(cached_entry, "genre_affinity", None) or {},
             "recent_genre_affinity": getattr(cached_entry, "recent_genre_affinity", None) or {},
             "phase_genre_affinity": getattr(cached_entry, "phase_genre_affinity", None) or {},
+            "genre_primacy_ratio": getattr(cached_entry, "genre_primacy_ratio", None) or {},
             "tag_affinity": getattr(cached_entry, "tag_affinity", None) or {},
             "recent_tag_affinity": getattr(cached_entry, "recent_tag_affinity", None) or {},
             "phase_tag_affinity": getattr(cached_entry, "phase_tag_affinity", None) or {},
@@ -1355,6 +1382,7 @@ def get_or_compute_taste_profile(user, media_type: str, *, force: bool = False) 
         genre_affinity=profile.genre_affinity,
         recent_genre_affinity=profile.recent_genre_affinity,
         phase_genre_affinity=profile.phase_genre_affinity,
+        genre_primacy_ratio=profile.genre_primacy_ratio,
         tag_affinity=profile.tag_affinity,
         recent_tag_affinity=profile.recent_tag_affinity,
         phase_tag_affinity=profile.phase_tag_affinity,

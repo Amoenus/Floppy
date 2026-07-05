@@ -711,6 +711,22 @@ def _build_movie_comfort_debug_payload(
                 "primary_reason_kind": str(
                     score.get("primary_reason_kind", "phase_match"),
                 ),
+                "pool_source": str(score.get("pool_source", "planning")),
+                "source_reason": str(candidate.source_reason or ""),
+                "hydrated_from_item": float(
+                    score.get("hydrated_from_item", 0.0),
+                ) >= 1.0,
+                "family_coverage_weight": round(
+                    float(score.get("family_coverage_weight", 0.0)),
+                    6,
+                ),
+                "coverage_renorm_factor": round(
+                    float(score.get("coverage_renorm_factor", 1.0)),
+                    6,
+                ),
+                "source_quota_action": str(
+                    score.get("source_quota_action", ""),
+                ),
                 "provider_support": round(float(score.get("provider_support", 0.0)), 6),
                 "world_quality": round(float(score.get("world_quality", 0.5)), 6),
                 "tmdb_world_quality": round(float(score.get("tmdb_world_quality", 0.0)), 6),
@@ -782,10 +798,26 @@ def _build_movie_comfort_debug_payload(
             },
         )
 
+    pool_summary = {
+        "planning_in_top": sum(
+            1
+            for candidate in top_slice
+            if str(candidate.score_breakdown.get("pool_source", "planning"))
+            == "planning"
+        ),
+        "provider_in_top": sum(
+            1
+            for candidate in top_slice
+            if str(candidate.score_breakdown.get("pool_source", "planning"))
+            != "planning"
+        ),
+    }
+
     payload = {
         "score_model": "movie_behavior_first",
         "top_n": effective_top_n,
         "top_candidates": top_candidates,
+        "pool_summary": pool_summary,
         "score_distribution": {
             "raw_min": round(raw_min, 6),
             "raw_max": round(raw_max, 6),
@@ -845,6 +877,8 @@ def _profile_signal_debug_summary(profile_payload: dict | None) -> dict:
     avoidance_offsets = payload.get("avoidance_offsets") or {}
     avoidance_baselines = payload.get("avoidance_baselines") or {}
     world_rating_profile = payload.get("world_rating_profile") or {}
+    genre_affinity = payload.get("genre_affinity") or {}
+    genre_primacy_ratio = payload.get("genre_primacy_ratio") or {}
 
     alignment_top: dict[str, list[dict]] = {}
     for family, label_offsets in alignment_offsets.items():
@@ -874,6 +908,26 @@ def _profile_signal_debug_summary(profile_payload: dict | None) -> dict:
             for label, offset in ranked
         ]
 
+    # Corrected top genres actually used for genre_discovery queries, so a
+    # mismatch (like an unrelated genre pulling in an off-taste candidate) is
+    # auditable directly from this panel instead of requiring a shell script.
+    top_genres_corrected = [
+        genre
+        for genre, _ in sorted(
+            genre_affinity.items(),
+            key=lambda item: item[1] * genre_primacy_ratio.get(item[0], 0.0),
+            reverse=True,
+        )[:5]
+    ]
+    genre_primacy_top = [
+        {
+            "genre": genre,
+            "affinity": round(float(genre_affinity.get(genre, 0.0)), 4),
+            "primacy_ratio": round(float(genre_primacy_ratio.get(genre, 0.0)), 4),
+        }
+        for genre in top_genres_corrected
+    ]
+
     return {
         "alignment_offset_counts": {
             family: len(label_offsets)
@@ -886,6 +940,7 @@ def _profile_signal_debug_summary(profile_payload: dict | None) -> dict:
         },
         "avoidance_top_labels": avoidance_top,
         "global_residual_mean": world_rating_profile.get("global_residual_mean"),
+        "top_genres_corrected": genre_primacy_top,
     }
 
 

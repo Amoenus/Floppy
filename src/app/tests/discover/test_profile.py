@@ -641,6 +641,7 @@ class DiscoverProfileTests(TestCase):
             genre_affinity={},
             recent_genre_affinity={},
             phase_genre_affinity={},
+            genre_primacy_ratio={},
             tag_affinity={},
             recent_tag_affinity={},
             phase_tag_affinity={},
@@ -944,7 +945,7 @@ class DiscoverProfileTests(TestCase):
             user=self.user,
             media_type=MediaTypes.MOVIE.value,
         )
-        self.assertEqual(entry.profile_schema_version, 2)
+        self.assertEqual(entry.profile_schema_version, 3)
 
         # Fresh cache at the current schema: no recompute.
         with patch(
@@ -960,4 +961,59 @@ class DiscoverProfileTests(TestCase):
         second = get_or_compute_taste_profile(self.user, MediaTypes.MOVIE.value)
         self.assertIn("world_alignment_offsets", second)
         entry.refresh_from_db()
-        self.assertEqual(entry.profile_schema_version, 2)
+        self.assertEqual(entry.profile_schema_version, 3)
+
+    def test_genre_primacy_ratio_discounts_trailing_cotag(self):
+        # Household pattern: animated family films where "Comedy"/"Family"
+        # always trail "Animation" as co-tags, never lead.
+        for index in range(5):
+            self._create_rated_movie(
+                f"animated-family-{index}",
+                genres=["Animation", "Comedy", "Family"],
+                user_score=9,
+                provider_rating=7.0,
+            )
+        # A handful of movies where Comedy genuinely leads.
+        for index in range(2):
+            self._create_rated_movie(
+                f"standup-comedy-{index}",
+                genres=["Comedy"],
+                user_score=8,
+                provider_rating=6.5,
+            )
+
+        profile = compute_taste_profile(self.user, MediaTypes.MOVIE.value)
+
+        self.assertGreater(
+            profile.genre_primacy_ratio["animation"],
+            profile.genre_primacy_ratio["comedy"],
+        )
+        # Comedy has real affinity weight but rarely leads.
+        self.assertIn("comedy", profile.genre_affinity)
+        self.assertLess(profile.genre_primacy_ratio["comedy"], 0.5)
+        self.assertGreater(profile.genre_primacy_ratio["animation"], 0.9)
+
+    def test_top_profile_genres_excludes_inflated_cotag(self):
+        from app.discover.trakt_candidates import _top_profile_genres
+
+        for index in range(6):
+            self._create_rated_movie(
+                f"animated-family-{index}",
+                genres=["Animation", "Comedy", "Family"],
+                user_score=9,
+                provider_rating=7.0,
+            )
+
+        profile = compute_taste_profile(self.user, MediaTypes.MOVIE.value)
+        payload = profile.to_dict()
+
+        top_genres = _top_profile_genres(payload, limit=3)
+
+        self.assertIn("animation", top_genres)
+        # Comedy's affinity is numerically high (co-tagged on every title)
+        # but it never leads, so it should not out-rank primacy-earning
+        # genres for the discovery query target.
+        comedy_rank = top_genres.index("comedy") if "comedy" in top_genres else None
+        animation_rank = top_genres.index("animation")
+        if comedy_rank is not None:
+            self.assertLess(animation_rank, comedy_rank)

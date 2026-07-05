@@ -29,6 +29,7 @@ from app.discover.entry_candidates import (
     _clear_out_next_entries,
     _coerce_media_type,
     _entries_to_candidates,
+    _hydrate_movie_candidates_from_items,
     _in_progress_candidates,
     _planning_candidates,
 )
@@ -89,11 +90,13 @@ from app.discover.trakt_candidates import (
     _related_candidates_for_anchors,
     _related_row_candidates,
     _select_recent_anchors,
+    _select_top_picks_anchors,
     _top_profile_genres,
     _trakt_anticipated_candidates,
     _trakt_canon_candidates,
 )
 from app.models import (
+    DiscoverFeedbackType,
     Item,
     MediaTypes,
     Status,
@@ -103,6 +106,9 @@ logger = logging.getLogger(__name__)
 
 STALE_REFRESH_LOCK_SECONDS = 60
 ROW_CANDIDATE_BUFFER_MULTIPLIER = 5
+TOP_PICKS_MAX_ANCHORS = 5
+TOP_PICKS_PLANNING_MAX_VISIBLE = 6
+TOP_PICKS_PROVIDER_MIN_VISIBLE = 4
 ARTWORK_HYDRATION_ITEMS_PER_ROW = MAX_ITEMS_PER_ROW * 2
 FIVE_ROW_DISCOVER_KEYS = {
     "trending_right_now",
@@ -306,6 +312,62 @@ def _comfort_candidates(
     )
 
 
+def _top_picks_provider_pool(
+    user,
+    row_key: str,
+    profile_payload: dict,
+) -> list[CandidateItem]:
+    """Provider-sourced new-to-you movie candidates for Top Picks.
+
+    Blends similar-to-favorite titles (anchored on the user's own top movies)
+    with taste-matched genre discovery, then removes tracked/hidden titles and
+    hydrates metadata from local Item rows so family-fit scoring can see them.
+    """
+    media_type = MediaTypes.MOVIE.value
+    anchors = _select_top_picks_anchors(
+        user,
+        media_type,
+        max_anchors=TOP_PICKS_MAX_ANCHORS,
+    )
+    related = _related_candidates_for_anchors(
+        anchors,
+        media_type,
+        row_key=row_key,
+        source_reason="Because you watched {anchor_title}",
+    )
+    for candidate in related:
+        candidate.score_breakdown["pool_source"] = "similar_to_favorite"
+
+    top_genres = _top_profile_genres(profile_payload, limit=3)
+    discovery = _genre_discovery_candidates(
+        media_type,
+        row_key,
+        profile_payload,
+        genres=top_genres,
+        apply_scoring=False,
+    )
+    genre_label = "/".join(genre.title() for genre in top_genres[:2])
+    target_genres_lower = [genre.lower() for genre in top_genres]
+    for candidate in discovery:
+        candidate.score_breakdown["pool_source"] = "taste_discovery"
+        candidate.score_breakdown["taste_discovery_target_genres"] = target_genres_lower
+        if genre_label:
+            candidate.source_reason = f"Matches your {genre_label} taste"
+
+    provider_pool = _merge_unique_candidates(related, discovery)
+    if not provider_pool:
+        return []
+
+    excluded_keys = get_tracked_keys_by_media_type(user, media_type)
+    excluded_keys |= get_feedback_keys_by_media_type(
+        user,
+        media_type,
+        feedback_type=DiscoverFeedbackType.NOT_INTERESTED.value,
+    )
+    provider_pool = exclude_tracked_items(provider_pool, excluded_keys)
+    return _hydrate_movie_candidates_from_items(provider_pool)
+
+
 def _top_picks_candidates(user, media_type: str, row_key: str, profile_payload: dict) -> list[CandidateItem]:
     candidates = _planning_candidates(
         user,
@@ -313,7 +375,13 @@ def _top_picks_candidates(user, media_type: str, row_key: str, profile_payload: 
         row_key=row_key,
         source_reason="Ranked from your planning list",
     )
+    for candidate in candidates:
+        candidate.score_breakdown["pool_source"] = "planning"
     if media_type == MediaTypes.MOVIE.value:
+        candidates = _merge_unique_candidates(
+            candidates,
+            _top_picks_provider_pool(user, row_key, profile_payload),
+        )
         today = timezone.localdate()
         candidates = [
             candidate
@@ -333,6 +401,8 @@ def _top_picks_candidates(user, media_type: str, row_key: str, profile_payload: 
         )
 
     _apply_top_picks_confidence(candidates, profile_payload, media_type=media_type, user=user)
+    if media_type == MediaTypes.MOVIE.value:
+        _apply_top_picks_source_quotas(candidates)
     return candidates
 
 
@@ -366,6 +436,72 @@ def _clear_out_next_candidates(
         media_type=media_type,
         user=user,
     )
+    return candidates
+
+
+def _apply_top_picks_source_quotas(
+    candidates: list[CandidateItem],
+    *,
+    visible: int = MAX_ITEMS_PER_ROW,
+    planning_max: int = TOP_PICKS_PLANNING_MAX_VISIBLE,
+    provider_min: int = TOP_PICKS_PROVIDER_MIN_VISIBLE,
+) -> list[CandidateItem]:
+    """Guarantee freshness in the visible slice of Top Picks.
+
+    Walks the ranked pool filling the visible window with planning entries
+    capped at ``planning_max`` and provider-sourced titles guaranteed at least
+    ``provider_min`` slots when supply exists. Deferred items keep score order
+    behind the visible window (they land in the row's reserve).
+    """
+    if len(candidates) <= 1:
+        return candidates
+
+    def pool_source(candidate: CandidateItem) -> str:
+        return str(candidate.score_breakdown.get("pool_source", "planning"))
+
+    provider_supply = sum(
+        1 for candidate in candidates if pool_source(candidate) != "planning"
+    )
+    provider_target = min(provider_min, provider_supply)
+
+    selected: list[CandidateItem] = []
+    deferred: list[CandidateItem] = []
+    planning_count = 0
+    provider_count = 0
+    for candidate in candidates:
+        if len(selected) >= visible:
+            deferred.append(candidate)
+            continue
+        is_planning = pool_source(candidate) == "planning"
+        slots_left = visible - len(selected)
+        provider_needed = max(0, provider_target - provider_count)
+        if is_planning and planning_count >= planning_max and provider_supply:
+            candidate.score_breakdown["source_quota_action"] = "deferred"
+            deferred.append(candidate)
+            continue
+        if is_planning and slots_left <= provider_needed:
+            candidate.score_breakdown["source_quota_action"] = "deferred"
+            deferred.append(candidate)
+            continue
+        candidate.score_breakdown["source_quota_action"] = "selected"
+        selected.append(candidate)
+        if is_planning:
+            planning_count += 1
+        else:
+            provider_count += 1
+
+    if len(selected) < visible and deferred:
+        # Thin supply on one side: relax the quota rather than starve the row.
+        refill = deferred[: visible - len(selected)]
+        for candidate in refill:
+            candidate.score_breakdown["source_quota_action"] = "relaxed_fill"
+        selected.extend(refill)
+        deferred = deferred[len(refill):]
+
+    for candidate in deferred:
+        if candidate.score_breakdown.get("source_quota_action") != "deferred":
+            candidate.score_breakdown["source_quota_action"] = "reserve"
+    candidates[:] = selected + deferred
     return candidates
 
 

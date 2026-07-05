@@ -26,7 +26,7 @@ from app.discover.service_helpers import (
     _item_tag_map,
     _model_for_media_type,
 )
-from app.models import BasicMedia, MediaTypes, Season, Status
+from app.models import BasicMedia, Item, MediaTypes, Season, Status
 
 # Completing a title within this many days of adding it is treated as an
 # implicit satisfaction signal (most entries carry no explicit rating).
@@ -259,3 +259,109 @@ def _planning_candidates(user, media_type: str, *, row_key: str, source_reason: 
         row_key=row_key,
         source_reason=source_reason,
     )
+
+
+def _hydrate_movie_candidates_from_items(
+    candidates: list[CandidateItem],
+) -> list[CandidateItem]:
+    """Enrich provider-sourced movie candidates from local Item rows.
+
+    Fresh TMDB payloads carry only genres/popularity/rating; the behavior-first
+    scorer needs keywords/studios/credits/certification/runtime/decade to
+    compute family fits. Matching Items (from tracked or previously cached
+    titles) supply that metadata in three queries.
+    """
+    if not candidates:
+        return candidates
+
+    media_ids = sorted(
+        {
+            str(candidate.media_id).strip()
+            for candidate in candidates
+            if candidate.media_id
+        },
+    )
+    sources = sorted(
+        {
+            str(candidate.source).strip()
+            for candidate in candidates
+            if candidate.source
+        },
+    )
+    items_by_key = {
+        (item.source, str(item.media_id)): item
+        for item in Item.objects.filter(
+            media_type=MediaTypes.MOVIE.value,
+            source__in=sources,
+            media_id__in=media_ids,
+        )
+    }
+    item_ids = [item.id for item in items_by_key.values()]
+    _people_map, directors_map, lead_cast_map = _item_credit_feature_maps(item_ids)
+    studio_map = _item_studio_map(item_ids)
+
+    for candidate in candidates:
+        item = items_by_key.get(
+            (str(candidate.source or "").strip(), str(candidate.media_id or "").strip()),
+        )
+        if not item:
+            if not candidate.release_decade and candidate.release_date:
+                candidate.release_decade = (
+                    release_decade_label(candidate.release_date) or None
+                )
+            candidate.score_breakdown["hydrated_from_item"] = 0.0
+            continue
+
+        candidate.keywords = candidate.keywords or normalize_features(
+            item.provider_keywords or [],
+            normalize_keyword,
+        )
+        candidate.studios = candidate.studios or (
+            studio_map.get(item.id)
+            or normalize_features(item.studios or [], normalize_studio)
+        )
+        candidate.directors = candidate.directors or directors_map.get(item.id, [])
+        candidate.lead_cast = candidate.lead_cast or lead_cast_map.get(item.id, [])
+        candidate.collection_id = candidate.collection_id or (
+            str(item.provider_collection_id or "").strip() or None
+        )
+        candidate.collection_name = candidate.collection_name or (
+            str(item.provider_collection_name or "").strip() or None
+        )
+        candidate.certification = candidate.certification or (
+            normalize_certification(item.provider_certification) or None
+        )
+        candidate.runtime_bucket = candidate.runtime_bucket or (
+            runtime_bucket_label(item.runtime_minutes) or None
+        )
+        candidate.release_decade = candidate.release_decade or (
+            release_decade_label(item.release_datetime) or None
+        )
+        if not candidate.genres:
+            candidate.genres = list(item.genres or [])
+        if candidate.popularity is None:
+            candidate.popularity = item.provider_popularity
+        if candidate.rating is None:
+            candidate.rating = item.provider_rating
+        if candidate.rating_count is None:
+            candidate.rating_count = item.provider_rating_count
+        if not candidate.image:
+            candidate.image = item.image
+        candidate.score_breakdown["provider_rating"] = (
+            candidate.score_breakdown.get("provider_rating")
+            or item.provider_rating
+        )
+        candidate.score_breakdown["provider_rating_count"] = (
+            candidate.score_breakdown.get("provider_rating_count")
+            or item.provider_rating_count
+        )
+        candidate.score_breakdown["trakt_rating"] = (
+            candidate.score_breakdown.get("trakt_rating") or item.trakt_rating
+        )
+        candidate.score_breakdown["trakt_rating_count"] = (
+            candidate.score_breakdown.get("trakt_rating_count")
+            or item.trakt_rating_count
+        )
+        candidate.score_breakdown["hydrated_from_item"] = 1.0
+
+    return candidates

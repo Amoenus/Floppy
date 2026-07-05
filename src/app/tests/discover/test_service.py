@@ -24,9 +24,12 @@ from app.discover.provider_candidates import (
 )
 from app.discover.entry_candidates import _entries_to_candidates
 from app.discover.row_cache_schema import ROW_CACHE_ACTIVITY_VERSION_META_KEY
+from types import SimpleNamespace
+
 from app.discover.service import (
     MAX_ITEMS_PER_ROW,
     _apply_comfort_confidence,
+    _apply_top_picks_source_quotas,
     _apply_wildcard_novelty,
     _build_comfort_debug_payload,
     _clear_out_next_candidates,
@@ -40,6 +43,8 @@ from app.discover.service import (
 from app.models import (
     Anime,
     CreditRoleType,
+    DiscoverFeedback,
+    DiscoverFeedbackType,
     Episode,
     Item,
     ItemPersonCredit,
@@ -2779,8 +2784,11 @@ class DiscoverServiceTests(TestCase):
             self.assertIn("rewatch_bonus", candidate.score_breakdown)
             self.assertIn("inactivity_norm", candidate.score_breakdown)
             self.assertIn("tag_signal_mode", candidate.score_breakdown)
+            self.assertEqual(candidate.score_breakdown["pool_source"], "planning")
+        # No watch history means no anchors, so related is never fetched;
+        # taste discovery runs once on the top profile genres.
         mock_related.assert_not_called()
-        mock_genre_discovery.assert_not_called()
+        mock_genre_discovery.assert_called_once()
 
     @patch("app.discover.service.TMDB_ADAPTER.genre_discovery")
     @patch("app.discover.service.TMDB_ADAPTER.related")
@@ -2815,7 +2823,18 @@ class DiscoverServiceTests(TestCase):
             ),
         ]
         mock_related.return_value = []
-        mock_genre_discovery.return_value = []
+        mock_genre_discovery.return_value = [
+            CandidateItem(
+                media_type=MediaTypes.MOVIE.value,
+                source="tmdb",
+                media_id="future-provider-pick",
+                title="Future Provider Pick",
+                genres=["Comedy"],
+                release_date=(today + timedelta(days=30)).isoformat(),
+                popularity=90.0,
+                rating=8.5,
+            ),
+        ]
 
         profile_payload = {
             "genre_affinity": {"comedy": 1.0},
@@ -2828,9 +2847,9 @@ class DiscoverServiceTests(TestCase):
             profile_payload,
         )
 
+        # Upcoming titles are dropped from planning AND provider sources.
         self.assertEqual([item.media_id for item in candidates], ["released-pick"])
-        mock_related.assert_not_called()
-        mock_genre_discovery.assert_not_called()
+        mock_genre_discovery.assert_called_once()
 
     def test_movie_top_picks_use_planning_age_not_watch_history_defaults(self):
         item = Item.objects.create(
@@ -6211,6 +6230,405 @@ class DiscoverServiceTests(TestCase):
             {"genres": 1},
         )
         self.assertEqual(entry["primary_reason_kind"], "long_unseen_favorite")
+
+    def _provider_candidate(self, media_id, title, *, pool_source=None, **overrides):
+        payload = {
+            "media_type": MediaTypes.MOVIE.value,
+            "source": Sources.TMDB.value,
+            "media_id": media_id,
+            "title": title,
+            "genres": ["Animation", "Comedy"],
+            "release_date": "2019-06-01",
+            "popularity": 70.0,
+            "rating": 7.5,
+            "rating_count": 4000,
+            "row_key": "top_picks_for_you",
+        }
+        payload.update(overrides)
+        candidate = CandidateItem(**payload)
+        if pool_source:
+            candidate.score_breakdown["pool_source"] = pool_source
+        return candidate
+
+    @patch("app.discover.service.TMDB_ADAPTER.genre_discovery")
+    @patch("app.discover.service.TMDB_ADAPTER.related")
+    @patch("app.discover.service._select_top_picks_anchors")
+    @patch("app.discover.service._planning_candidates")
+    def test_top_picks_blends_provider_sources_with_quotas(
+        self,
+        mock_planning,
+        mock_anchors,
+        mock_related,
+        mock_genre_discovery,
+    ):
+        mock_planning.return_value = [
+            self._movie_comfort_candidate(
+                f"plan-{index}",
+                f"Planning {index}",
+                row_key="top_picks_for_you",
+                score_breakdown={"planning_entry": 1.0},
+            )
+            for index in range(10)
+        ]
+        anchor_item = SimpleNamespace(media_id="anchor-1", title="Anchor Favorite")
+        mock_anchors.return_value = [SimpleNamespace(item=anchor_item)]
+        mock_related.return_value = [
+            self._provider_candidate(f"related-{index}", f"Related {index}")
+            for index in range(6)
+        ]
+        mock_genre_discovery.return_value = [
+            self._provider_candidate(f"discovery-{index}", f"Discovery {index}")
+            for index in range(6)
+        ]
+
+        profile = self._movie_comfort_disney_profile()
+        candidates = _top_picks_candidates(
+            self.user,
+            MediaTypes.MOVIE.value,
+            "top_picks_for_you",
+            profile,
+        )
+
+        visible = candidates[:12]
+        planning_visible = [
+            c
+            for c in visible
+            if c.score_breakdown.get("pool_source") == "planning"
+        ]
+        provider_visible = [
+            c
+            for c in visible
+            if c.score_breakdown.get("pool_source") != "planning"
+        ]
+        self.assertLessEqual(len(planning_visible), 6)
+        self.assertGreaterEqual(len(provider_visible), 4)
+        for candidate in provider_visible:
+            self.assertIn(
+                candidate.score_breakdown["pool_source"],
+                {"similar_to_favorite", "taste_discovery"},
+            )
+            self.assertTrue(candidate.source_reason)
+        related_visible = [
+            c
+            for c in candidates
+            if c.score_breakdown.get("pool_source") == "similar_to_favorite"
+        ]
+        self.assertTrue(
+            all(
+                "Anchor Favorite" in (c.source_reason or "")
+                for c in related_visible
+            ),
+        )
+        self.assertTrue(
+            all(
+                c.score_breakdown.get("source_quota_action")
+                for c in candidates
+            ),
+        )
+
+    def test_apply_top_picks_source_quotas_relaxes_when_provider_thin(self):
+        candidates = [
+            self._provider_candidate(
+                f"plan-{index}",
+                f"Plan {index}",
+                pool_source="planning",
+            )
+            for index in range(14)
+        ]
+        candidates.append(
+            self._provider_candidate(
+                "prov-1",
+                "Provider One",
+                pool_source="similar_to_favorite",
+            ),
+        )
+
+        _apply_top_picks_source_quotas(candidates)
+
+        visible = candidates[:12]
+        provider_visible = [
+            c
+            for c in visible
+            if c.score_breakdown.get("pool_source") != "planning"
+        ]
+        self.assertEqual(len(provider_visible), 1)
+        self.assertEqual(len(visible), 12)
+        self.assertTrue(
+            any(
+                c.score_breakdown.get("source_quota_action") == "relaxed_fill"
+                for c in visible
+            ),
+        )
+
+    @patch("app.discover.service.TMDB_ADAPTER.genre_discovery")
+    @patch("app.discover.service.TMDB_ADAPTER.related")
+    @patch("app.discover.service._select_top_picks_anchors")
+    @patch("app.discover.service._planning_candidates")
+    def test_top_picks_excludes_watched_and_hidden_provider_candidates(
+        self,
+        mock_planning,
+        mock_anchors,
+        mock_related,
+        mock_genre_discovery,
+    ):
+        watched_item = self._create_movie_item("prov-watched", "Watched Provider")
+        self._create_movie_watches(watched_item, [200])
+        hidden_item = self._create_movie_item("prov-hidden", "Hidden Provider")
+        DiscoverFeedback.objects.create(
+            user=self.user,
+            item=hidden_item,
+            feedback_type=DiscoverFeedbackType.NOT_INTERESTED.value,
+        )
+
+        mock_planning.return_value = []
+        anchor_item = SimpleNamespace(media_id="anchor-1", title="Anchor Favorite")
+        mock_anchors.return_value = [SimpleNamespace(item=anchor_item)]
+        mock_related.return_value = [
+            self._provider_candidate("prov-watched", "Watched Provider"),
+            self._provider_candidate("prov-hidden", "Hidden Provider"),
+            self._provider_candidate("prov-fresh", "Fresh Provider"),
+        ]
+        mock_genre_discovery.return_value = []
+
+        candidates = _top_picks_candidates(
+            self.user,
+            MediaTypes.MOVIE.value,
+            "top_picks_for_you",
+            self._movie_comfort_disney_profile(),
+        )
+
+        media_ids = [candidate.media_id for candidate in candidates]
+        self.assertIn("prov-fresh", media_ids)
+        self.assertNotIn("prov-watched", media_ids)
+        self.assertNotIn("prov-hidden", media_ids)
+
+    def test_hydrate_movie_candidates_from_items(self):
+        from app.discover.entry_candidates import (
+            _hydrate_movie_candidates_from_items,
+        )
+
+        item = self._create_movie_item(
+            "hydrate-known",
+            "Known Movie",
+            provider_keywords=["Family", "Adventure"],
+            provider_certification="PG",
+            provider_collection_name="Known Collection",
+            runtime_minutes=104,
+            provider_popularity=88.0,
+            provider_rating=7.7,
+            provider_rating_count=9000,
+        )
+        known = CandidateItem(
+            media_type=MediaTypes.MOVIE.value,
+            source=Sources.TMDB.value,
+            media_id="hydrate-known",
+            title="Known Movie",
+            genres=["Animation"],
+            row_key="top_picks_for_you",
+        )
+        unknown = CandidateItem(
+            media_type=MediaTypes.MOVIE.value,
+            source=Sources.TMDB.value,
+            media_id="hydrate-unknown",
+            title="Unknown Movie",
+            genres=["Animation"],
+            release_date="1994-06-01",
+            row_key="top_picks_for_you",
+        )
+
+        _hydrate_movie_candidates_from_items([known, unknown])
+
+        self.assertEqual(known.score_breakdown["hydrated_from_item"], 1.0)
+        self.assertIn("family", known.keywords)
+        self.assertTrue(known.studios)
+        self.assertEqual(known.certification, "PG")
+        self.assertEqual(known.runtime_bucket, "90_109")
+        self.assertTrue(known.release_decade)
+        self.assertEqual(known.collection_name, "Known Collection")
+        self.assertEqual(
+            known.score_breakdown["provider_rating"],
+            7.7,
+        )
+        self.assertEqual(unknown.score_breakdown["hydrated_from_item"], 0.0)
+        self.assertEqual(unknown.release_decade, "1990s")
+
+    def test_top_picks_sparse_provider_fairness_and_genre_floor(self):
+        enriched = self._movie_comfort_candidate(
+            "fair-planning",
+            "Enriched Planning",
+            row_key="top_picks_for_you",
+            score_breakdown={"planning_entry": 1.0, "pool_source": "planning"},
+        )
+        # Anchor-sourced ("because you watched X") candidates get NO special
+        # exemption from the genre-fit floor: a weak-fit anchor guess is
+        # filtered exactly like a weak-fit discovery guess.
+        sparse_anchor_weak = self._provider_candidate(
+            "fair-anchor-weak",
+            "Sparse Weak Anchor Pick",
+            pool_source="similar_to_favorite",
+            genres=["Western"],
+            release_decade="1970s",
+        )
+        sparse_anchor_fit = self._provider_candidate(
+            "fair-anchor-fit",
+            "Sparse Fitting Anchor Pick",
+            pool_source="similar_to_favorite",
+            genres=["Animation", "Comedy"],
+            release_decade="2010s",
+        )
+        sparse_discovery_weak = self._provider_candidate(
+            "fair-discovery-weak",
+            "Sparse Weak Discovery",
+            pool_source="taste_discovery",
+            genres=["Western"],
+            release_decade="1970s",
+        )
+        sparse_discovery_fit = self._provider_candidate(
+            "fair-discovery-fit",
+            "Sparse Fitting Discovery",
+            pool_source="taste_discovery",
+            genres=["Animation", "Comedy"],
+            release_decade="2010s",
+        )
+
+        reranked = _apply_comfort_confidence(
+            [
+                enriched,
+                sparse_anchor_weak,
+                sparse_anchor_fit,
+                sparse_discovery_weak,
+                sparse_discovery_fit,
+            ],
+            self._movie_comfort_disney_profile(),
+            use_movie_rewatch_model=True,
+            user=self.user,
+        )
+
+        media_ids = [candidate.media_id for candidate in reranked]
+        self.assertIn("fair-anchor-fit", media_ids)
+        self.assertIn("fair-discovery-fit", media_ids)
+        self.assertNotIn("fair-anchor-weak", media_ids)
+        self.assertNotIn("fair-discovery-weak", media_ids)
+        self.assertEqual(
+            sparse_anchor_weak.score_breakdown.get(
+                "filtered_provider_weak_genre_fit",
+            ),
+            1.0,
+        )
+        self.assertEqual(
+            sparse_discovery_weak.score_breakdown.get(
+                "filtered_provider_weak_genre_fit",
+            ),
+            1.0,
+        )
+        anchor_result = next(c for c in reranked if c.media_id == "fair-anchor-fit")
+        enriched_result = next(c for c in reranked if c.media_id == "fair-planning")
+        self.assertAlmostEqual(
+            anchor_result.score_breakdown["coverage_renorm_factor"],
+            1.0 / 0.55,
+            places=4,
+        )
+        self.assertEqual(
+            enriched_result.score_breakdown["coverage_renorm_factor"],
+            1.0,
+        )
+
+    def test_top_picks_discovery_requires_target_genre_to_be_primary(self):
+        # Comedy was the query target, but this candidate's own primary
+        # (first-listed) TMDB genre is Action — Comedy only trails as a
+        # footnote co-tag. Must be filtered even though "comedy" appears
+        # somewhere in its genre list (this is the Naruto-class mismatch).
+        secondary_mismatch = self._provider_candidate(
+            "genre-mismatch",
+            "Action Anime With Comedy Footnote",
+            pool_source="taste_discovery",
+            genres=["Action", "Adventure", "Comedy"],
+            score_breakdown={
+                "pool_source": "taste_discovery",
+                "taste_discovery_target_genres": ["comedy", "family"],
+            },
+        )
+        genuine_match = self._provider_candidate(
+            "genre-match",
+            "Genuine Comedy Pick",
+            pool_source="taste_discovery",
+            genres=["Comedy", "Family"],
+            score_breakdown={
+                "pool_source": "taste_discovery",
+                "taste_discovery_target_genres": ["comedy", "family"],
+            },
+        )
+
+        reranked = _apply_comfort_confidence(
+            [secondary_mismatch, genuine_match],
+            self._movie_comfort_disney_profile(),
+            use_movie_rewatch_model=True,
+            user=self.user,
+        )
+
+        media_ids = [candidate.media_id for candidate in reranked]
+        self.assertNotIn("genre-mismatch", media_ids)
+        self.assertIn("genre-match", media_ids)
+        self.assertEqual(
+            secondary_mismatch.score_breakdown.get(
+                "filtered_provider_secondary_genre_mismatch",
+            ),
+            1.0,
+        )
+
+    def test_top_picks_debug_template_renders_pool_fields(self):
+        from app.discover.comfort_scoring import _build_comfort_debug_payload
+
+        candidates = [
+            self._provider_candidate(
+                "tmpl-provider",
+                "Template Provider",
+                pool_source="similar_to_favorite",
+                source_reason="Because you watched Anchor Favorite",
+            ),
+        ]
+        reranked = _apply_comfort_confidence(
+            candidates,
+            self._movie_comfort_disney_profile(),
+            use_movie_rewatch_model=True,
+            user=self.user,
+        )
+        _apply_top_picks_source_quotas(reranked)
+        row = RowResult(
+            key="top_picks_for_you",
+            title="Top Picks For You",
+            mission="Personal Taste Match",
+            why="New-to-you movies tailored to your taste.",
+            source="local",
+            items=[],
+            debug_payload=_build_comfort_debug_payload(reranked, top_n=1),
+        )
+
+        content = render_to_string(
+            "app/components/discover_row.html",
+            {
+                "row": row,
+                "discover_debug": True,
+                "show_more": False,
+                "selected_media_type": MediaTypes.MOVIE.value,
+                "user": self.user,
+            },
+        )
+
+        for label in (
+            "pool similar_to_favorite",
+            "hydrated",
+            "coverage",
+            "src-quota",
+            "personal-align",
+            "reason-kind",
+            "rating-src",
+            "absence-boost",
+            "avoidance",
+            "Pool mix",
+        ):
+            self.assertIn(label, content)
+        self.assertIn("Because you watched Anchor Favorite", content)
 
     def test_movie_comfort_debug_payload_exposes_absence_and_rotation_fields(self):
         from app.discover.comfort_scoring import _build_movie_comfort_debug_payload

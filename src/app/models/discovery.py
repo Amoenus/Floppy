@@ -246,6 +246,7 @@ class DiscoverTasteProfile(models.Model):
     genre_affinity = models.JSONField(default=dict, blank=True)
     recent_genre_affinity = models.JSONField(default=dict, blank=True)
     phase_genre_affinity = models.JSONField(default=dict, blank=True)
+    genre_primacy_ratio = models.JSONField(default=dict, blank=True)
     tag_affinity = models.JSONField(default=dict, blank=True)
     recent_tag_affinity = models.JSONField(default=dict, blank=True)
     phase_tag_affinity = models.JSONField(default=dict, blank=True)

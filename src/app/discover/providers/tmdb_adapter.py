@@ -27,6 +27,11 @@ UPCOMING_TTL = 60 * 60 * 24
 RELATED_TTL = 60 * 60 * 24
 GENRE_DISCOVERY_TTL = 60 * 60 * 24
 GENRE_MAP_TTL = 60 * 60 * 24
+# TMDB list endpoints return ~20 results per page; multiple pages widen the
+# candidate pool so the scoring gauntlet has real competition to rank,
+# instead of near-guaranteeing whatever page 1 happens to contain.
+RELATED_MAX_PAGES = 2
+GENRE_DISCOVERY_MAX_PAGES = 2
 
 
 class TMDbDiscoverAdapter:
@@ -63,6 +68,41 @@ class TMDbDiscoverAdapter:
                 )
                 return payload
             raise
+
+    def _paginated_raw_results(
+        self,
+        endpoint: str,
+        params: dict,
+        *,
+        ttl_seconds: int,
+        max_pages: int,
+        limit: int,
+    ) -> list[dict]:
+        """Fetch and merge multiple pages of a TMDB list endpoint, deduped by id."""
+        merged: list[dict] = []
+        seen_ids: set = set()
+        total_pages: int | None = None
+        for page in range(1, max_pages + 1):
+            if total_pages is not None and page > total_pages:
+                break
+            payload = self._cache_request(
+                endpoint,
+                {**params, "page": page},
+                ttl_seconds=ttl_seconds,
+            )
+            results = payload.get("results") or []
+            if not results:
+                break
+            for item in results:
+                item_id = item.get("id")
+                if item_id in seen_ids:
+                    continue
+                seen_ids.add(item_id)
+                merged.append(item)
+            total_pages = payload.get("total_pages")
+            if len(merged) >= limit:
+                break
+        return merged[:limit]
 
     def _poster_url(self, path: str | None) -> str:
         if path:
@@ -211,16 +251,38 @@ class TMDbDiscoverAdapter:
             return []
 
         if media_type == MediaTypes.MOVIE.value:
-            endpoint = f"/movie/{media_id}/similar"
+            # /similar (content-tag matching) and /recommendations
+            # (collaborative filtering) are independent signals; merging both
+            # widens the pool with two different kinds of "related" evidence
+            # instead of just more of the same one.
+            endpoints = [
+                f"/movie/{media_id}/similar",
+                f"/movie/{media_id}/recommendations",
+            ]
         elif media_type == MediaTypes.TV.value:
-            endpoint = f"/tv/{media_id}/recommendations"
+            endpoints = [f"/tv/{media_id}/recommendations"]
         else:
             return []
 
-        payload = self._cache_request(endpoint, {}, ttl_seconds=RELATED_TTL)
+        raw_results: list[dict] = []
+        seen_ids: set = set()
+        for endpoint in endpoints:
+            for item in self._paginated_raw_results(
+                endpoint,
+                {},
+                ttl_seconds=RELATED_TTL,
+                max_pages=RELATED_MAX_PAGES,
+                limit=limit,
+            ):
+                item_id = item.get("id")
+                if item_id in seen_ids:
+                    continue
+                seen_ids.add(item_id)
+                raw_results.append(item)
+
         return self._normalize_results(
             media_type,
-            payload.get("results", [])[:limit],
+            raw_results[:limit],
             row_key="related",
         )
 
@@ -247,14 +309,16 @@ class TMDbDiscoverAdapter:
         if genre_ids:
             params["with_genres"] = ",".join(genre_ids[:3])
 
-        payload = self._cache_request(
+        raw_results = self._paginated_raw_results(
             f"/discover/{media_type}",
             params,
             ttl_seconds=GENRE_DISCOVERY_TTL,
+            max_pages=GENRE_DISCOVERY_MAX_PAGES,
+            limit=limit,
         )
         return self._normalize_results(
             media_type,
-            payload.get("results", [])[:limit],
+            raw_results,
             row_key="genre_discovery",
         )
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from django.db.models import Q
+from django.db.models import Count, Q
 
 from app.discover import cache_repo
 from app.discover.adapters import TMDB_ADAPTER, TRAKT_ADAPTER
@@ -13,7 +13,10 @@ from app.discover.filters import (
 )
 from app.discover.schemas import CandidateItem
 from app.discover.scoring import score_candidates
-from app.discover.service_helpers import MAX_ITEMS_PER_ROW, _model_for_media_type
+from app.discover.service_helpers import (
+    MAX_ITEMS_PER_ROW,
+    _model_for_media_type,
+)
 from app.models import MediaTypes, Status
 
 TRAKT_POPULAR_PAGE_SIZE = 100
@@ -241,6 +244,85 @@ def _select_recent_anchors(user, media_type: str, *, max_anchors: int = 3):
     return selected
 
 
+def _select_top_picks_anchors(user, media_type: str, *, max_anchors: int = 5):
+    """Anchor titles for similar-to-favorite sourcing.
+
+    Blends all-time favorites (top explicit scores, queried globally — most
+    entries are unrated, so a recency window rarely contains real ratings),
+    household staples (global rewatch counts), and current phase (recent
+    endorsed completions). A recent one-off completion is not evidence of a
+    favorite worth anchoring similar-to queries on. Stable anchors keep the
+    24h-cached related queries stable.
+    """
+    model = _model_for_media_type(media_type)
+    if not model:
+        return []
+
+    selected = []
+    seen_ids: set[int] = set()
+
+    def take(ordered, count):
+        taken = 0
+        for entry in ordered:
+            if len(selected) >= max_anchors or taken >= count:
+                return
+            if not entry.item_id or entry.item_id in seen_ids:
+                continue
+            selected.append(entry)
+            seen_ids.add(entry.item_id)
+            taken += 1
+
+    top_scored = list(
+        model.objects.filter(user=user, score__gte=8)
+        .select_related("item")
+        .order_by("-score", "-end_date", "-created_at")[: max_anchors * 2],
+    )
+
+    rewatched_item_ids = [
+        row["item_id"]
+        for row in model.objects.filter(
+            user=user,
+            status=Status.COMPLETED.value,
+        )
+        .values("item_id")
+        .annotate(watch_count=Count("id"))
+        .filter(watch_count__gte=2)
+        .order_by("-watch_count")[: max_anchors * 2]
+        if row.get("item_id")
+    ]
+    rewatch_entries_by_item = {}
+    for entry in model.objects.filter(
+        user=user,
+        item_id__in=rewatched_item_ids,
+        status=Status.COMPLETED.value,
+    ).select_related("item"):
+        rewatch_entries_by_item.setdefault(entry.item_id, entry)
+    by_rewatch = [
+        rewatch_entries_by_item[item_id]
+        for item_id in rewatched_item_ids
+        if item_id in rewatch_entries_by_item
+    ]
+
+    recent = list(
+        model.objects.filter(user=user, status=Status.COMPLETED.value)
+        .select_related("item")
+        .order_by("-end_date", "-progressed_at", "-created_at")[: max_anchors * 8],
+    )
+    rewatched_id_set = set(rewatched_item_ids)
+    endorsed_recent = [
+        entry
+        for entry in recent
+        if (entry.score is not None and float(entry.score) >= 7.0)
+        or entry.item_id in rewatched_id_set
+    ]
+
+    take(top_scored, 2)
+    take(by_rewatch, 2)
+    take(endorsed_recent, max_anchors)
+    take(recent, max_anchors)
+    return selected
+
+
 def _related_candidates_for_anchors(
     anchors,
     media_type: str,
@@ -271,11 +353,18 @@ def _top_profile_genres(profile_payload: dict, *, limit: int = 3) -> list[str]:
     if not genre_affinity:
         return []
 
+    # Discount genres that only ever ride along with a dominant genre (e.g.
+    # "Comedy" trailing "Animation" on nearly every animated-family title)
+    # rather than being independently sought — genre_primacy_ratio is the
+    # fraction of a genre's affinity weight earned by leading (being the
+    # first-listed TMDB genre) rather than trailing as a co-tag.
+    primacy_ratio = profile_payload.get("genre_primacy_ratio") or {}
+
     return [
         genre
         for genre, _ in sorted(
             genre_affinity.items(),
-            key=lambda item: item[1],
+            key=lambda item: item[1] * primacy_ratio.get(item[0], 0.0),
             reverse=True,
         )[:limit]
     ]
