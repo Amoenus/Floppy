@@ -2,48 +2,48 @@
 {% load user_tags %}
 <div class="bg-[#2a2f35] rounded-lg overflow-hidden shadow-lg"
      x-show="!$store.epLayout || $store.epLayout !== 'list'">
-  <div class="flex flex-col md:flex-row">
-    <div x-data="{
-           revealed: false,
-           hovering: false,
-           epWatched: {{ episode.history|yesno:'true,false' }},
-           blurActive: {% if not public_view|default:False and user.is_authenticated %}{{ user.obfuscate_episodes|yesno:'true,false' }}{% else %}false{% endif %},
-           syncBlurState(active) {
-             this.blurActive = active;
-             if (active) this.revealed = false;
-           },
-           init() {
-             this.handleEpisodeBlurChange = (event) => {
-               this.syncBlurState(event.detail.active);
-             };
-             window.addEventListener('episode-blur-changed', this.handleEpisodeBlurChange);
+  <div class="flex flex-col md:flex-row"
+       x-data="{
+         revealed: false,
+         hovering: false,
+         epWatched: {{ episode.history|yesno:'true,false' }},
+         blurActive: {% if not public_view|default:False and user.is_authenticated %}{{ user.obfuscate_episodes|yesno:'true,false' }}{% else %}false{% endif %},
+         syncBlurState(active) {
+           this.blurActive = active;
+           if (active) this.revealed = false;
+         },
+         init() {
+           this.handleEpisodeBlurChange = (event) => {
+             this.syncBlurState(event.detail.active);
+           };
+           window.addEventListener('episode-blur-changed', this.handleEpisodeBlurChange);
 
-             if (typeof window.__episodeBlurActive === 'boolean') {
-               this.syncBlurState(window.__episodeBlurActive);
-             } else {
-               window.__episodeBlurActive = this.blurActive;
-             }
-           },
-           destroy() {
-             if (this.handleEpisodeBlurChange) {
-               window.removeEventListener('episode-blur-changed', this.handleEpisodeBlurChange);
-             }
-           },
-           toggleBlur() {
-             const nextActive = !this.blurActive;
-             window.__episodeBlurActive = nextActive;
-             window.dispatchEvent(new CustomEvent('episode-blur-changed', {
-               detail: { active: nextActive }
-             }));
-             fetch('{% url 'toggle_obfuscate_episodes' %}', {
-               method: 'POST',
-               headers: { 'X-CSRFToken': '{{ csrf_token }}' },
-               body: new URLSearchParams(),
-               redirect: 'manual'
-             });
+           if (typeof window.__episodeBlurActive === 'boolean') {
+             this.syncBlurState(window.__episodeBlurActive);
+           } else {
+             window.__episodeBlurActive = this.blurActive;
            }
-         }"
-         @mouseenter="hovering = true"
+         },
+         destroy() {
+           if (this.handleEpisodeBlurChange) {
+             window.removeEventListener('episode-blur-changed', this.handleEpisodeBlurChange);
+           }
+         },
+         toggleBlur() {
+           const nextActive = !this.blurActive;
+           window.__episodeBlurActive = nextActive;
+           window.dispatchEvent(new CustomEvent('episode-blur-changed', {
+             detail: { active: nextActive }
+           }));
+           fetch('{% url 'toggle_obfuscate_episodes' %}', {
+             method: 'POST',
+             headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+             body: new URLSearchParams(),
+             redirect: 'manual'
+           });
+         }
+       }">
+    <div @mouseenter="hovering = true"
          @mouseleave="hovering = false"
          class="relative shrink-0 self-start overflow-hidden">
       {% if ep_detail_url %}<a href="{{ ep_detail_url }}" class="block">{% endif %}
@@ -106,9 +106,11 @@
           {% endif %}
         </div>
         {% if episode.overview %}
-        <div class="{% if episode.history or episode.collection_entry and episode.collection_entry.resolution %}md:h-[calc(2*1.5rem)]{% else %}md:h-[calc(3*1.5rem)]{% endif %} md:overflow-y-auto px-4">
+        <div class="{% if episode.history or episode.collection_entry and episode.collection_entry.resolution %}md:h-[calc(2*1.5rem)]{% else %}md:h-[calc(3*1.5rem)]{% endif %} px-4"
+             :class="(blurActive && !epWatched && !revealed) ? 'md:overflow-visible' : 'md:overflow-y-auto'">
           {% if ep_detail_url %}<a href="{{ ep_detail_url }}" class="block">{% endif %}
-          <p class="text-sm text-gray-300 leading-relaxed text-pretty">{{ episode.overview }}</p>
+          <p class="text-sm text-gray-300 leading-relaxed text-pretty"
+             :style="{ filter: (blurActive && !epWatched && !revealed) ? 'blur(6px)' : '', transition: 'filter 0.4s ease' }">{{ episode.overview }}</p>
           {% if ep_detail_url %}</a>{% endif %}
         </div>
         {% endif %}
