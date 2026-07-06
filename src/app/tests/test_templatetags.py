@@ -8,6 +8,7 @@ from django.test.client import RequestFactory
 from django.urls import reverse
 from django.utils import timezone
 
+from app import config
 from app.models import Album, Artist, Item, MediaTypes, Sources, Studio
 from app.templatetags import app_tags
 from users.models import DateFormatChoices, TimeFormatChoices
@@ -172,19 +173,26 @@ class AppTagsTests(TestCase):
             # Check that it returns a non-empty string
             self.assertTrue(isinstance(result, str))
 
-    def test_sample_search(self):
-        """Test the sample_search filter."""
+    def test_browse_url(self):
+        """Test the browse_url filter."""
+        expected_media_type = {
+            MediaTypes.SEASON.value: MediaTypes.TV.value,
+            MediaTypes.EPISODE.value: MediaTypes.TV.value,
+            MediaTypes.COMIC_ISSUE.value: MediaTypes.COMIC.value,
+        }
+
         # Test all media types
         for media_type in MediaTypes.values:
-            if media_type in (MediaTypes.SEASON.value, MediaTypes.EPISODE.value):
-                # Skip season and episode for sample_search
-                continue
+            result = app_tags.browse_url(media_type)
 
-            result = app_tags.sample_search(media_type)
+            self.assertIn("/discover", result)
+            self.assertNotIn("q=", result)
 
-            self.assertIn("/search", result)
-            self.assertIn(f"media_type={media_type}", result)
-            self.assertIn("q=", result)
+            mapped_media_type = expected_media_type.get(media_type, media_type)
+            if mapped_media_type in config.DISCOVER_ALLOWED_MEDIA_TYPES:
+                self.assertIn(f"media_type={mapped_media_type}", result)
+            else:
+                self.assertIn("media_type=all", result)
 
     def test_media_color(self):
         """Test the media_color filter."""

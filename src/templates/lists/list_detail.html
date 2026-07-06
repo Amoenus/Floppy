@@ -662,7 +662,7 @@
               {% if can_edit %}
                 <p class="text-gray-400 mb-6">Start adding your favorite media to build your collection</p>
                 <div class="pt-4 flex flex-col sm:flex-row gap-3 justify-center">
-                  <a href="{{ 'tv'|sample_search }}" class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors">Browse Media</a>
+                  <a href="{{ 'all'|browse_url }}" class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors">Browse Media</a>
                   {% if custom_list.can_recommend %}
                     <a href="{% url 'recommend_item' custom_list.id %}"
                        class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md transition-colors">Recommend Item</a>
@@ -689,7 +689,7 @@
             {% if can_edit %}
               <p class="text-gray-400 mb-6">Start adding your favorite media to build your collection</p>
               <div class="pt-4 flex flex-col sm:flex-row gap-3 justify-center">
-                <a href="{{ 'tv'|sample_search }}" class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors">Browse Media</a>
+                <a href="{{ 'all'|browse_url }}" class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors">Browse Media</a>
                 {% if custom_list.can_recommend %}
                   <a href="{% url 'recommend_item' custom_list.id %}"
                      class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md transition-colors">Recommend Item</a>

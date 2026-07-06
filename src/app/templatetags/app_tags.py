@@ -313,9 +313,9 @@ def media_past_verb(media_type):
 
 
 @register.filter
-def sample_search(media_type):
-    """Return a sample search URL for the given media type using GET parameters."""
-    return config.get_sample_search_url(media_type)
+def browse_url(media_type):
+    """Return a Discover URL filtered to the given media type."""
+    return config.get_browse_url(media_type)
 
 
 @register.filter

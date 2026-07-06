@@ -67,7 +67,6 @@ MEDIA_TYPE_CONFIG = {
     MediaTypes.TV.value: {
         "sources": [Sources.TMDB, Sources.TVDB],
         "default_source": Sources.TMDB,
-        "sample_query": "Breaking Bad",
         "unicode_icon": "📺",
         "verb": ("watch", "watched"),
         "text_color": COLORS["emerald"]["text"],
@@ -103,7 +102,6 @@ MEDIA_TYPE_CONFIG = {
     MediaTypes.MOVIE.value: {
         "sources": [Sources.TMDB],
         "default_source": Sources.TMDB,
-        "sample_query": "The Shawshank Redemption",
         "unicode_icon": "🎬",
         "verb": ("watch", "watched"),
         "text_color": COLORS["orange"]["text"],
@@ -123,7 +121,6 @@ MEDIA_TYPE_CONFIG = {
     MediaTypes.ANIME.value: {
         "sources": [Sources.MAL, Sources.TMDB, Sources.TVDB],
         "default_source": Sources.MAL,
-        "sample_query": "Perfect Blue",
         "unicode_icon": "🎭",
         "verb": ("watch", "watched"),
         "text_color": COLORS["blue"]["text"],
@@ -138,7 +135,6 @@ MEDIA_TYPE_CONFIG = {
     MediaTypes.MANGA.value: {
         "sources": [Sources.MAL, Sources.MANGAUPDATES],
         "default_source": Sources.MAL,
-        "sample_query": "Berserk",
         "unicode_icon": "📚",
         "verb": ("read", "read"),
         "text_color": COLORS["red"]["text"],
@@ -156,7 +152,6 @@ MEDIA_TYPE_CONFIG = {
     MediaTypes.GAME.value: {
         "sources": [Sources.IGDB],
         "default_source": Sources.IGDB,
-        "sample_query": "Half-Life",
         "unicode_icon": "🎮",
         "verb": ("play", "played"),
         "text_color": COLORS["yellow"]["text"],
@@ -178,7 +173,6 @@ MEDIA_TYPE_CONFIG = {
     MediaTypes.BOOK.value: {
         "sources": [Sources.HARDCOVER, Sources.OPENLIBRARY],
         "default_source": Sources.HARDCOVER,
-        "sample_query": "The Great Gatsby",
         "unicode_icon": "📖",
         "verb": ("read", "read"),
         "text_color": COLORS["fuchsia"]["text"],
@@ -192,7 +186,6 @@ MEDIA_TYPE_CONFIG = {
     MediaTypes.COMIC.value: {
         "sources": [Sources.COMICVINE],
         "default_source": Sources.COMICVINE,
-        "sample_query": "Batman",
         "unicode_icon": "📕",
         "verb": ("read", "read"),
         "text_color": COLORS["cyan"]["text"],
@@ -207,7 +200,6 @@ MEDIA_TYPE_CONFIG = {
     MediaTypes.COMIC_ISSUE.value: {
         "sources": [Sources.COMICVINE],
         "default_source": Sources.COMICVINE,
-        "sample_query": "Batman #1",
         "unicode_icon": "📄",
         "verb": ("read", "read"),
         "text_color": COLORS["cyan"]["text"],
@@ -223,7 +215,6 @@ MEDIA_TYPE_CONFIG = {
     MediaTypes.BOARDGAME.value: {
         "sources": [Sources.BGG],
         "default_source": Sources.BGG,
-        "sample_query": "Catan",
         "unicode_icon": "🎲",
         "verb": ("play", "played"),
         "text_color": COLORS["lime"]["text"],
@@ -240,7 +231,6 @@ MEDIA_TYPE_CONFIG = {
     MediaTypes.MUSIC.value: {
         "sources": [Sources.MUSICBRAINZ],
         "default_source": Sources.MUSICBRAINZ,
-        "sample_query": "Bohemian Rhapsody",
         "unicode_icon": "🎵",
         "verb": ("listen", "listened"),
         "text_color": "text-rose-400",
@@ -255,7 +245,6 @@ MEDIA_TYPE_CONFIG = {
     MediaTypes.PODCAST.value: {
         "sources": [Sources.POCKETCASTS, Sources.GPODDER],
         "default_source": Sources.POCKETCASTS,
-        "sample_query": "The Daily",
         "unicode_icon": "🎙️",
         "verb": ("listen", "listened"),
         "text_color": COLORS["purple"]["text"],
@@ -441,9 +430,18 @@ def get_default_source_name(media_type):
     return get_property(media_type, "default_source")
 
 
-def get_sample_query(media_type):
-    """Get the sample search query."""
-    return get_property(media_type, "sample_query")
+DISCOVER_ALLOWED_MEDIA_TYPES = {
+    MediaTypes.MOVIE.value,
+    MediaTypes.TV.value,
+    MediaTypes.ANIME.value,
+    MediaTypes.MUSIC.value,
+    MediaTypes.PODCAST.value,
+    MediaTypes.BOOK.value,
+    MediaTypes.COMIC.value,
+    MediaTypes.MANGA.value,
+    MediaTypes.GAME.value,
+    MediaTypes.BOARDGAME.value,
+}
 
 
 def supports_collection_auto_fetch(media_type):
@@ -457,15 +455,18 @@ def get_collection_field_config(media_type):
     return COLLECTION_FIELD_BY_TYPE.get(media_type, COLLECTION_FIELD_CONFIG["video"])
 
 
-def get_sample_search_url(media_type):
-    """Get the full sample search URL."""
-    if media_type == MediaTypes.SEASON.value:
+def get_browse_url(media_type):
+    """Get a Discover URL filtered to the given media type."""
+    if media_type in (MediaTypes.SEASON.value, MediaTypes.EPISODE.value):
         media_type = MediaTypes.TV.value
+    elif media_type == MediaTypes.COMIC_ISSUE.value:
+        media_type = MediaTypes.COMIC.value
 
-    query = get_sample_query(media_type)
+    if media_type not in DISCOVER_ALLOWED_MEDIA_TYPES:
+        media_type = "all"
 
-    base_url = reverse("search")
-    query_params = {"media_type": media_type, "q": query}
+    base_url = reverse("discover")
+    query_params = {"media_type": media_type}
     return f"{base_url}?{urlencode(query_params)}"
 
 
