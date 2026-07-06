@@ -374,7 +374,7 @@
           {% with aggregated_score=media|safe_attr:"aggregated_score" %}
             {% with formatted_score=media|safe_attr:"formatted_score" %}
               {% with rating_value=aggregated_score|default_if_none:formatted_score %}
-            <div class="flex items-center gap-2 min-w-0">
+            <div class="media-card-title-row flex items-center gap-2 min-w-0">
               {% if recommend_mode %}
                 <h3 class="media-card-title font-medium text-white line-clamp-1 text-sm leading-tight min-w-0"
                     title="{% if resolved_media_type == MediaTypes.SEASON.value %}{{ season_card_title_override|default:resolved_season_card_title }}{% else %}{{ resolved_item_title|default:title }}{% endif %}">{% if resolved_media_type == MediaTypes.SEASON.value %}{{ season_card_title_override|default:resolved_season_card_title }}{% else %}{{ resolved_item_title|default:title }}{% endif %}</h3>
