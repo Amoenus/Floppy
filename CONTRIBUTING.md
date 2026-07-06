@@ -103,7 +103,7 @@ Never skip validation for migrations, models, auth, permissions, webhooks, Celer
 
 - Python 3.12. Ruff configured in `pyproject.toml` (88-char line limit, migrations excluded).
 - Templates: djlint config in `pyproject.toml`. CSS: Stylelint config in `.stylelintrc`.
-- Tailwind output is committed at `src/static/css/main.css`. Run `tailwindcss -i ./static/css/input.css -o ./static/css/main.css` after any template or class changes.
+- Tailwind output is committed at `src/static/css/main.css`. Run `npx @tailwindcss/cli -i ./src/static/css/input.css -o ./src/static/css/main.css` after any template or class changes — this uses the version pinned in `package.json`, so it always matches the committed output. Do not use a bare/global `tailwindcss` binary or unpinned `npx`; a version mismatch regenerates the file with a different (larger) utility set and produces spurious diffs.
 - Commit messages: short imperative title, optional 1–3 bullet body, then issue lines.
 - Do not mix behavior changes, refactors, and tests in a single PR unless the scope clearly demands it.
 

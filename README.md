@@ -408,7 +408,7 @@ If you want to contribute or customize the app locally:
    ```
 
    ```bash
-   tailwindcss -i ./static/css/input.css -o ./static/css/main.css --watch
+   npx @tailwindcss/cli -i ./static/css/input.css -o ./static/css/main.css --watch
    ```
 
 Visit `http://localhost:8000` to use your local instance.

@@ -4958,6 +4958,11 @@
       row-gap: calc(var(--spacing) * 0);
     }
   }
+  .md\:overflow-visible {
+    @media (width >= 48rem) {
+      overflow: visible;
+    }
+  }
   .md\:overflow-y-auto {
     @media (width >= 48rem) {
       overflow-y: auto;
