@@ -1845,6 +1845,10 @@ def media_list(request, media_type):
                 self.updated_at = tracker.updated_at
                 self.release_datetime = getattr(tracker, "first_published", None)
 
+                # Reuse the home music card subtitle slot to show the author
+                self.home_music_card = True
+                self.card_subtitle_text = tracker.show.author or ""
+
                 # Create a mock Item for compatibility with media components
                 # Use the show's podcast_uuid as media_id for routing
                 self.item, _ = Item.objects.get_or_create(
