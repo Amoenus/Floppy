@@ -980,6 +980,75 @@ class PlexWebhookTests(TestCase):
         mock_find.assert_called()
         mock_tmdb_search.assert_not_called()
 
+    @patch("app.providers.tmdb.search")
+    @patch(
+        "app.providers.tmdb.find",
+        return_value={"tv_episode_results": [], "tv_results": []},
+    )
+    @patch("app.providers.tmdb.tv_with_seasons")
+    def test_tv_episode_falls_back_to_title_search_when_find_returns_empty(
+        self,
+        mock_tv_with_seasons,
+        mock_find,
+        mock_tmdb_search,
+    ):
+        """A scrobble should still create history when TVDB/IMDB find lookups return
+        no results but title search resolves the show.
+
+        Regression test for issue #301: the show correctly appeared in "Now
+        Playing" (which already used title-search fallback for the live
+        playback card) but never landed in History because
+        `BaseWebhookProcessor._process_tv` looked up the TMDB ID without
+        enabling title-search fallback, and bailed out before ever reaching
+        `tv_with_seasons`.
+        """
+        mock_tmdb_search.return_value = {
+            "results": [{"media_id": 88396}],
+        }
+        mock_tv_with_seasons.return_value = {
+            "tvdb_id": "10965383",
+            "title": "The Way Home",
+            "image": "",
+            "season/3": {
+                "image": "",
+                "episodes": [{"episode_number": 1, "runtime": 42}],
+            },
+            "related": {"seasons": [{"season_number": 3}]},
+        }
+
+        payload = {
+            "event": "media.scrobble",
+            "Account": {"title": "testuser"},
+            "Metadata": {
+                "type": "episode",
+                "grandparentTitle": "The Way Home",
+                "title": "New Beginnings",
+                "index": 1,
+                "parentIndex": 3,
+                "Guid": [
+                    {"id": "imdb://tt42819447"},
+                    {"id": "tvdb://10965383"},
+                ],
+            },
+        }
+
+        response = self.client.post(
+            self.url,
+            data={"payload": json.dumps(payload)},
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        episode = Episode.objects.get(
+            item__media_id="88396",
+            item__season_number=3,
+            item__episode_number=1,
+        )
+        self.assertIsNotNone(episode.end_date)
+        mock_tmdb_search.assert_called()
+        self.assertEqual(str(mock_tv_with_seasons.call_args_list[0].args[0]), "88396")
+
     @patch("app.providers.tmdb.find")
     @patch("app.providers.tmdb.tv_with_seasons")
     def test_tv_episode_tmdb_episode_id_collision_prefers_find_resolved_show(

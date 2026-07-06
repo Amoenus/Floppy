@@ -134,7 +134,12 @@ class BaseWebhookProcessor:
                 if self._handle_anime(mal_id, mal_episode_number, payload, user):
                     return
 
-        media_id, found_season, found_episode = self._find_tv_media_id(ids)
+        series_title = self._extract_series_title(payload)
+        media_id, found_season, found_episode = self._find_tv_media_id(
+            ids,
+            series_title=series_title,
+            allow_title_fallback=True,
+        )
         if not media_id:
             logger.warning("No matching TMDB ID found for TV show")
             return
