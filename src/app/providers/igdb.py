@@ -367,14 +367,15 @@ def game(media_id):
             "Non-numeric IDs cannot be looked up directly on IGDB."
         )
         raise ValueError(message)
-    cache_key = f"{Sources.IGDB.value}_{MediaTypes.GAME.value}_{media_id}"
+    cache_key = f"{Sources.IGDB.value}_{MediaTypes.GAME.value}_v2_{media_id}"
     data = cache.get(cache_key)
     if data is None:
         access_token = get_access_token()
         url = f"{base_url}/games"
         data = (
             "fields name,cover.image_id,artworks.image_id,screenshots.image_id,"
-            "url,summary,game_type,first_release_date,total_rating,total_rating_count,"
+            "url,summary,game_type,first_release_date,"
+            "rating,rating_count,aggregated_rating,aggregated_rating_count,"
             "genres.name,themes.name,platforms.name,"
             "involved_companies.company.id,involved_companies.company.name,"
             "involved_companies.company.logo.image_id,"
@@ -436,7 +437,9 @@ def game(media_id):
             "synopsis": response.get("summary", "No synopsis available."),
             "genres": get_list(response, "genres"),
             "score": get_score(response),
-            "score_count": response.get("total_rating_count"),
+            "score_count": response.get("aggregated_rating_count"),
+            "igdb_user_rating": get_user_rating(response),
+            "igdb_user_rating_count": response.get("rating_count"),
             "details": {
                 "format": get_game_type(response["game_type"]),
                 "release_date": get_start_date(response),
@@ -804,10 +807,20 @@ def get_companies(response):
 
 
 def get_score(response):
-    """Return the score of the game."""
-    # when no score, total_rating is not present in the response
+    """Return the critic score of the game (IGDB aggregated_rating)."""
+    # when no score, aggregated_rating is not present in the response
     try:
-        score = response["total_rating"]  # returns e.g 92.70730625238252
+        score = response["aggregated_rating"]  # returns e.g 92.70730625238252
+        return round(score / 10, 1)
+    except KeyError:
+        return None
+
+
+def get_user_rating(response):
+    """Return the user rating of the game (IGDB rating)."""
+    # when no rating, rating is not present in the response
+    try:
+        score = response["rating"]  # returns e.g 92.70730625238252
         return round(score / 10, 1)
     except KeyError:
         return None

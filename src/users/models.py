@@ -62,6 +62,19 @@ class MediaSortChoices(models.TextChoices):
     TIME_LEFT = "time_left", "Time Left"
 
 
+GAME_LIKE_MEDIA_TYPES = {MediaTypes.GAME.value, MediaTypes.BOARDGAME.value}
+
+
+def relabel_end_date_sort_choice(media_type, choices):
+    """Swap the END_DATE sort choice label to 'Last Played' for game-like media types."""
+    if media_type not in GAME_LIKE_MEDIA_TYPES:
+        return choices
+    return [
+        (value, "Last Played") if value == MediaSortChoices.END_DATE else (value, label)
+        for value, label in choices
+    ]
+
+
 class MediaStatusChoices(models.TextChoices):
     """Choices for media list status options."""
 
@@ -896,6 +909,11 @@ class User(AbstractUser):
     home_show_media_type_headers = models.BooleanField(
         default=False,
         help_text="Show a media-type header (icon + name) above each group of home screen rows",
+    )
+    home_screen_media_type_order = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="User's preferred order of media-type sections on the Home screen",
     )
     auto_pause_in_progress_enabled = models.BooleanField(
         default=False,

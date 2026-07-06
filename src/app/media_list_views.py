@@ -52,7 +52,11 @@ from app.search_views import _mark_grouped_anime_route
 from app.release_years import prefill_display_release_years
 from app.templatetags import app_tags
 from app.tv_sort import _sort_tv_media_by_time_left
-from users.models import MediaSortChoices, MediaStatusChoices
+from users.models import (
+    MediaSortChoices,
+    MediaStatusChoices,
+    relabel_end_date_sort_choice,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -217,6 +221,23 @@ def _extract_item_platforms_with_collection(item, collection_platforms_by_item_i
         if explicit_platforms:
             return sorted(explicit_platforms, key=lambda value: value.lower())
     return _extract_item_platforms(item)
+
+
+def _resolve_display_platform(item, collection_platforms_by_item_id, active_platform_filter):
+    """Resolve a single display platform: collection data > active filter > first IGDB platform."""
+    if not item:
+        return ""
+    if collection_platforms_by_item_id:
+        collected = collection_platforms_by_item_id.get(item.id, set())
+        if collected:
+            return sorted(collected, key=lambda value: value.lower())[0]
+    item_platforms = _extract_item_platforms(item)
+    if active_platform_filter:
+        normalized_filter = _normalize_filter_value(active_platform_filter)
+        for platform in item_platforms:
+            if _normalize_filter_value(platform) == normalized_filter:
+                return platform
+    return item_platforms[0] if item_platforms else ""
 
 
 def build_filter_data_from_items(
@@ -499,6 +520,10 @@ def media_list(request, media_type):
         for value, label in sorted_media_sort_choices
         if value not in _sort_type_guards or _sort_type_guards[value](media_type)
     ]
+    sorted_media_sort_choices = relabel_end_date_sort_choice(
+        media_type,
+        sorted_media_sort_choices,
+    )
 
     supports_untracked_status_filter = media_type not in {
         MediaTypes.MUSIC.value,
@@ -1655,6 +1680,28 @@ def media_list(request, media_type):
         # prefill so the page renders with one episode-runtime query.
         prefill_episode_runtime_index(media_page.object_list)
     prefill_display_release_years(media_page.object_list)
+
+    if media_type == MediaTypes.GAME.value:
+        if not collection_platforms_by_item_id:
+            _page_item_ids = {
+                media.item_id
+                for media in media_page.object_list
+                if getattr(media, "item_id", None)
+            }
+            if _page_item_ids:
+                for item_id, collection_platform in CollectionEntry.objects.filter(
+                    user=request.user,
+                    item_id__in=_page_item_ids,
+                ).values_list("item_id", "resolution"):
+                    platform_value = str(collection_platform or "").strip()
+                    if platform_value:
+                        collection_platforms_by_item_id[item_id].add(platform_value)
+        for media in media_page.object_list:
+            media.display_platform = _resolve_display_platform(
+                getattr(media, "item", None),
+                collection_platforms_by_item_id,
+                platform_filter,
+            )
 
     if media_type in author_media_types:
         annotate_media_authors(media_page.object_list)

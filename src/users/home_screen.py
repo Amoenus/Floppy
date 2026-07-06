@@ -38,6 +38,7 @@ from users.models import (
     ListDetailSortChoices,
     MediaSortChoices,
     MediaStatusChoices,
+    relabel_end_date_sort_choice,
 )
 
 RECENTLY_UNRATED_DAYS = 7
@@ -348,7 +349,11 @@ def get_home_configurable_media_types(user) -> list[str]:
     types = list(user.get_enabled_media_types())
     if MediaTypes.SEASON.value not in types:
         types.append(MediaTypes.SEASON.value)
-    return types
+
+    preferred_order = getattr(user, "home_screen_media_type_order", None) or []
+    ordered = [media_type for media_type in preferred_order if media_type in types]
+    remaining = [media_type for media_type in types if media_type not in ordered]
+    return ordered + remaining
 
 
 def get_allowed_sort_choices(media_type: str, row_type: str) -> list[dict]:
@@ -391,6 +396,8 @@ def get_allowed_sort_choices(media_type: str, row_type: str) -> list[dict]:
                 (HomeSortChoices.EPISODES_LEFT, "Episodes Left"),
             ],
         )
+
+    sort_choices = relabel_end_date_sort_choice(media_type, sort_choices)
 
     deduped: list[dict] = []
     seen = set()
@@ -1248,6 +1255,7 @@ def save_home_screen_configuration(user, raw_payload: str) -> None:
     allowed_media_types = set(get_home_configurable_media_types(user))
     replacement_rows: list[HomeScreenRow] = []
     seen_recent_rows: set[str] = set()
+    media_type_order: list[str] = []
 
     for section in parsed_payload:
         if not isinstance(section, dict):
@@ -1255,6 +1263,7 @@ def save_home_screen_configuration(user, raw_payload: str) -> None:
         media_type = str(section.get("media_type") or "").strip()
         if media_type not in allowed_media_types:
             raise HomeScreenValidationError(f"Unsupported media type '{media_type}'.")
+        media_type_order.append(media_type)
         rows = section.get("rows")
         if not isinstance(rows, list):
             raise HomeScreenValidationError(f"Rows payload for {media_type} must be a list.")
@@ -1274,6 +1283,8 @@ def save_home_screen_configuration(user, raw_payload: str) -> None:
     with transaction.atomic():
         HomeScreenRow.objects.filter(user=user, media_type__in=allowed_media_types).delete()
         HomeScreenRow.objects.bulk_create(replacement_rows)
+        user.home_screen_media_type_order = media_type_order
+        user.save(update_fields=["home_screen_media_type_order"])
 
 
 def search_home_screen_lists(user, query: str, media_type: str) -> list[dict]:

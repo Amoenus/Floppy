@@ -89,6 +89,16 @@ class Item(CalendarTriggerMixin, models.Model):
         blank=True,
         help_text="Rating count from Trakt metadata",
     )
+    igdb_user_rating = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Pure user rating value from IGDB metadata",
+    )
+    igdb_user_rating_count = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="User rating count from IGDB metadata",
+    )
     trakt_popularity_score = models.FloatField(
         null=True,
         blank=True,

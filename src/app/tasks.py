@@ -74,6 +74,18 @@ from app.tasks_genre import (  # noqa: E402
     populate_genre_data_for_items,
     reconcile_genre_backfill,
 )
+from app.tasks_igdb_ratings import (  # noqa: E402
+    IGDB_RATINGS_BACKFILL_ITEMS_QUEUE_KEY,
+    IGDB_RATINGS_BACKFILL_ITEMS_SCHEDULED_KEY,
+    IGDB_RATINGS_BACKFILL_QUEUE_TTL,
+    IGDB_RATINGS_BACKFILL_VERSION,
+    _igdb_rating_items_queryset,
+    count_igdb_rating_backfill_items,
+    enqueue_igdb_rating_backfill_items,
+    populate_igdb_rating_backfill_queue,
+    populate_igdb_rating_data_for_items,
+    reconcile_igdb_rating_backfill,
+)
 from app.tasks_credits import (  # noqa: E402
     CREDITS_BACKFILL_ITEMS_QUEUE_KEY,
     CREDITS_BACKFILL_ITEMS_SCHEDULED_KEY,
