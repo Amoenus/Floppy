@@ -185,7 +185,7 @@ class ImportTrakt(TestCase):
             "show": {"title": "Watchlist Show", "ids": {"tmdb": 54321}},
         }
 
-        mock_make_request.return_value = [watchlist_entry]
+        mock_make_request.side_effect = [[watchlist_entry], []]
         mock_get_metadata.return_value = {
             "title": "Watchlist Show",
             "image": "show_image.jpg",
@@ -209,7 +209,7 @@ class ImportTrakt(TestCase):
             "rating": 8,
         }
 
-        mock_make_request.return_value = [rating_entry]
+        mock_make_request.side_effect = [[rating_entry], []]
         mock_get_metadata.return_value = {
             "title": "Rated Movie",
             "image": "movie_image.jpg",
@@ -276,8 +276,10 @@ class ImportTrakt(TestCase):
                     "movie": {"title": "Public Movie", "ids": {"tmdb": 999}},
                     "watched_at": "2023-01-01T00:00:00.000Z",
                 },
-            ],
-            [],  # Empty comments
+            ],  # history
+            [],  # watchlist — empty
+            [],  # ratings — empty
+            [],  # comments — empty
         ]
 
         mock_make_request.return_value = []
@@ -303,15 +305,18 @@ class ImportTrakt(TestCase):
     ):
         """Test full import flow with OAuth token."""
         mock_get_paginated.side_effect = [
-            [],  # process_dropped — no dropped shows
+            [],  # process_dropped — progress_watched, no dropped shows
+            [],  # process_dropped — progress_watched_reset, no dropped shows
             [
                 {
                     "type": "movie",
                     "movie": {"title": "OAuth Movie", "ids": {"tmdb": 888}},
                     "watched_at": "2023-01-01T00:00:00.000Z",
                 },
-            ],
-            [],  # Empty comments
+            ],  # history
+            [],  # watchlist — empty
+            [],  # ratings — empty
+            [],  # comments — empty
         ]
 
         mock_make_request.return_value = []
@@ -390,10 +395,14 @@ class ImportTrakt(TestCase):
 
         mock_get_metadata.side_effect = mock_metadata_side_effect
         mock_get_paginated.side_effect = [
-            [episode_entry],
-            [],
-            [episode_entry],
-            [],
+            [episode_entry],  # history (1st import)
+            [],  # watchlist
+            [],  # ratings
+            [],  # comments
+            [episode_entry],  # history (2nd import)
+            [],  # watchlist
+            [],  # ratings
+            [],  # comments
         ]
         mock_make_request.return_value = []
 
@@ -455,7 +464,7 @@ class ImportTrakt(TestCase):
             "episode": {"season": 1, "number": 1, "title": "Pilot"},
             "rating": 8,
         }
-        mock_make_request.return_value = [rating_entry]
+        mock_make_request.side_effect = [[rating_entry], []]
 
         trakt_importer = TraktImporter("testuser", self.user, "new")
         trakt_importer.process_ratings()
@@ -475,7 +484,7 @@ class ImportTrakt(TestCase):
             "episode": {"season": 1, "number": 1, "title": "Pilot"},
             "rating": 7,
         }
-        mock_make_request.return_value = [rating_entry]
+        mock_make_request.side_effect = [[rating_entry], []]
 
         trakt_importer = TraktImporter("testuser", self.user, "new")
         # Should not raise; simply skips because no matching Season exists
@@ -610,28 +619,31 @@ class ImportTrakt(TestCase):
         _, _, ep2 = self._make_tv_season_episode(TMDB_ID, 1, 2)
         _, _, ep3 = self._make_tv_season_episode(TMDB_ID, 1, 3)
 
-        mock_make_request.return_value = [
-            {
-                "rated_at": "2024-01-01T00:00:00.000Z",
-                "type": "episode",
-                "show": {"title": "Test Show", "ids": {"tmdb": TMDB_ID}},
-                "episode": {"season": 1, "number": 1, "title": "Pilot"},
-                "rating": 7,
-            },
-            {
-                "rated_at": "2024-01-01T00:00:00.000Z",
-                "type": "episode",
-                "show": {"title": "Test Show", "ids": {"tmdb": TMDB_ID}},
-                "episode": {"season": 1, "number": 2, "title": "Episode 2"},
-                "rating": 8,
-            },
-            {
-                "rated_at": "2024-01-01T00:00:00.000Z",
-                "type": "episode",
-                "show": {"title": "Test Show", "ids": {"tmdb": TMDB_ID}},
-                "episode": {"season": 1, "number": 3, "title": "Episode 3"},
-                "rating": 9,
-            },
+        mock_make_request.side_effect = [
+            [
+                {
+                    "rated_at": "2024-01-01T00:00:00.000Z",
+                    "type": "episode",
+                    "show": {"title": "Test Show", "ids": {"tmdb": TMDB_ID}},
+                    "episode": {"season": 1, "number": 1, "title": "Pilot"},
+                    "rating": 7,
+                },
+                {
+                    "rated_at": "2024-01-01T00:00:00.000Z",
+                    "type": "episode",
+                    "show": {"title": "Test Show", "ids": {"tmdb": TMDB_ID}},
+                    "episode": {"season": 1, "number": 2, "title": "Episode 2"},
+                    "rating": 8,
+                },
+                {
+                    "rated_at": "2024-01-01T00:00:00.000Z",
+                    "type": "episode",
+                    "show": {"title": "Test Show", "ids": {"tmdb": TMDB_ID}},
+                    "episode": {"season": 1, "number": 3, "title": "Episode 3"},
+                    "rating": 9,
+                },
+            ],
+            [],
         ]
 
         TraktImporter("testuser", self.user, "new").process_ratings()
@@ -649,14 +661,17 @@ class ImportTrakt(TestCase):
         TMDB_ID = 55501
         _, _, episode_obj = self._make_tv_season_episode(TMDB_ID, 1, 1, initial_score="5.0")
 
-        mock_make_request.return_value = [
-            {
-                "rated_at": "2024-01-01T00:00:00.000Z",
-                "type": "episode",
-                "show": {"title": "Test Show", "ids": {"tmdb": TMDB_ID}},
-                "episode": {"season": 1, "number": 1, "title": "Pilot"},
-                "rating": 9,
-            }
+        mock_make_request.side_effect = [
+            [
+                {
+                    "rated_at": "2024-01-01T00:00:00.000Z",
+                    "type": "episode",
+                    "show": {"title": "Test Show", "ids": {"tmdb": TMDB_ID}},
+                    "episode": {"season": 1, "number": 1, "title": "Pilot"},
+                    "rating": 9,
+                },
+            ],
+            [],
         ]
 
         TraktImporter("testuser", self.user, "new").process_ratings()
@@ -693,14 +708,17 @@ class ImportTrakt(TestCase):
         )
         # Intentionally no Episode row created
 
-        mock_make_request.return_value = [
-            {
-                "rated_at": "2024-01-01T00:00:00.000Z",
-                "type": "episode",
-                "show": {"title": "Test Show", "ids": {"tmdb": TMDB_ID}},
-                "episode": {"season": 1, "number": 1, "title": "Pilot"},
-                "rating": 8,
-            }
+        mock_make_request.side_effect = [
+            [
+                {
+                    "rated_at": "2024-01-01T00:00:00.000Z",
+                    "type": "episode",
+                    "show": {"title": "Test Show", "ids": {"tmdb": TMDB_ID}},
+                    "episode": {"season": 1, "number": 1, "title": "Pilot"},
+                    "rating": 8,
+                },
+            ],
+            [],
         ]
 
         # Should not raise; no Episode created
@@ -710,14 +728,17 @@ class ImportTrakt(TestCase):
     @patch("integrations.imports.trakt.TraktImporter._make_api_request")
     def test_episode_rating_no_tmdb_id(self, mock_make_request):
         """Episode rating is silently skipped when the show has no TMDB ID."""
-        mock_make_request.return_value = [
-            {
-                "rated_at": "2024-01-01T00:00:00.000Z",
-                "type": "episode",
-                "show": {"title": "No-ID Show", "ids": {"tmdb": None}},
-                "episode": {"season": 1, "number": 1, "title": "Pilot"},
-                "rating": 8,
-            }
+        mock_make_request.side_effect = [
+            [
+                {
+                    "rated_at": "2024-01-01T00:00:00.000Z",
+                    "type": "episode",
+                    "show": {"title": "No-ID Show", "ids": {"tmdb": None}},
+                    "episode": {"season": 1, "number": 1, "title": "Pilot"},
+                    "rating": 8,
+                },
+            ],
+            [],
         ]
 
         # Should not raise; no DB writes
@@ -732,20 +753,23 @@ class ImportTrakt(TestCase):
         _, _, episode_obj = self._make_tv_season_episode(TMDB_ID, 1, 1)
 
         mock_get_metadata.return_value = {"title": "Rated Movie", "image": "img.jpg"}
-        mock_make_request.return_value = [
-            {
-                "rated_at": "2024-01-01T00:00:00.000Z",
-                "type": "movie",
-                "movie": {"title": "Rated Movie", "ids": {"tmdb": 77777}},
-                "rating": 7,
-            },
-            {
-                "rated_at": "2024-01-01T00:00:00.000Z",
-                "type": "episode",
-                "show": {"title": "Test Show", "ids": {"tmdb": TMDB_ID}},
-                "episode": {"season": 1, "number": 1, "title": "Pilot"},
-                "rating": 9,
-            },
+        mock_make_request.side_effect = [
+            [
+                {
+                    "rated_at": "2024-01-01T00:00:00.000Z",
+                    "type": "movie",
+                    "movie": {"title": "Rated Movie", "ids": {"tmdb": 77777}},
+                    "rating": 7,
+                },
+                {
+                    "rated_at": "2024-01-01T00:00:00.000Z",
+                    "type": "episode",
+                    "show": {"title": "Test Show", "ids": {"tmdb": TMDB_ID}},
+                    "episode": {"season": 1, "number": 1, "title": "Pilot"},
+                    "rating": 9,
+                },
+            ],
+            [],
         ]
 
         trakt_importer = TraktImporter("testuser", self.user, "new")
@@ -760,10 +784,9 @@ class ImportTrakt(TestCase):
         self.assertEqual(float(episode_obj.score), 9.0)
 
     @patch("integrations.imports.trakt.TraktImporter._get_paginated_data")
-    @patch("integrations.imports.trakt.TraktImporter._make_api_request")
     @patch("integrations.imports.trakt.TraktImporter._get_metadata")
     def test_episode_rating_survives_full_import_flow(
-        self, mock_get_metadata, mock_make_request, mock_get_paginated
+        self, mock_get_metadata, mock_get_paginated
     ):
         """Episode ratings are applied when running the full import_data() pipeline."""
         from integrations.imports.trakt import importer
@@ -771,12 +794,12 @@ class ImportTrakt(TestCase):
         TMDB_ID = 55504
         _, _, episode_obj = self._make_tv_season_episode(TMDB_ID, 1, 1)
 
-        # process_history + process_comments use paginated data; empty here
-        mock_get_paginated.return_value = []
-        # process_watchlist and process_ratings both call _make_api_request
-        mock_make_request.side_effect = [
-            [],  # watchlist call — empty
-            [    # ratings call — one episode entry
+        # process_history, process_watchlist, process_ratings, process_comments
+        # all use paginated data (public import skips process_dropped)
+        mock_get_paginated.side_effect = [
+            [],  # history — empty
+            [],  # watchlist — empty
+            [    # ratings — one episode entry
                 {
                     "rated_at": "2024-01-01T00:00:00.000Z",
                     "type": "episode",
@@ -785,6 +808,7 @@ class ImportTrakt(TestCase):
                     "rating": 8,
                 }
             ],
+            [],  # comments — empty
         ]
         mock_get_metadata.return_value = {"title": "Test Show", "image": "img.jpg"}
 
@@ -795,10 +819,9 @@ class ImportTrakt(TestCase):
         self.assertEqual(float(episode_obj.score), 8.0)
 
     @patch("integrations.imports.trakt.TraktImporter._get_paginated_data")
-    @patch("integrations.imports.trakt.TraktImporter._make_api_request")
     @patch("integrations.imports.trakt.TraktImporter._get_metadata")
     def test_episode_rating_applied_on_first_ever_import(
-        self, mock_get_metadata, mock_make_request, mock_get_paginated
+        self, mock_get_metadata, mock_get_paginated
     ):
         """Ratings land correctly when history and ratings are imported in the same run.
 
@@ -855,16 +878,13 @@ class ImportTrakt(TestCase):
             return None
 
         mock_get_metadata.side_effect = metadata_side_effect
-        # process_history uses _get_paginated_data; history returns one episode watch
-        # process_comments uses _get_paginated_data; empty
+        # process_history, process_watchlist, process_ratings, process_comments
+        # all use paginated data (public import skips process_dropped)
         mock_get_paginated.side_effect = [
             [episode_entry],  # history
+            [],               # watchlist — empty
+            [rating_entry],   # ratings — one episode entry
             [],               # comments
-        ]
-        # process_watchlist and process_ratings use _make_api_request
-        mock_make_request.side_effect = [
-            [],             # watchlist — empty
-            [rating_entry], # ratings — one episode entry
         ]
 
         importer(None, self.user, "new", "public_user")
@@ -909,10 +929,9 @@ class ImportTrakt(TestCase):
         self.assertEqual(len(trakt_importer.dropped_tmdb_ids), 0)
 
     @patch("integrations.imports.trakt.TraktImporter._get_paginated_data")
-    @patch("integrations.imports.trakt.TraktImporter._make_api_request")
     @patch("integrations.imports.trakt.TraktImporter._get_metadata")
     def test_dropped_show_status_on_first_import(
-        self, mock_get_metadata, mock_make_request, mock_get_paginated
+        self, mock_get_metadata, mock_get_paginated
     ):
         """A show that is both watched and dropped lands in DB with status Dropped."""
         from integrations.imports.trakt import importer
@@ -948,12 +967,14 @@ class ImportTrakt(TestCase):
 
         mock_get_metadata.side_effect = metadata_side_effect
         mock_get_paginated.side_effect = [
-            # process_dropped — show is hidden/dropped
+            # process_dropped — progress_watched: show is hidden/dropped
             [{"type": "show", "show": {"title": "Dropped Show", "ids": {"tmdb": TMDB_ID}}}],
+            [],  # process_dropped — progress_watched_reset
             [episode_entry],  # process_history
-            [],               # process_comments
+            [],  # process_watchlist
+            [],  # process_ratings
+            [],  # process_comments
         ]
-        mock_make_request.side_effect = [[], []]  # watchlist, ratings
 
         encrypted_token = helpers.encrypt("test_token")
         importer(encrypted_token, self.user, "new", "oauth_user")
@@ -963,10 +984,9 @@ class ImportTrakt(TestCase):
         self.assertEqual(tv_obj.status, Status.DROPPED.value)
 
     @patch("integrations.imports.trakt.TraktImporter._get_paginated_data")
-    @patch("integrations.imports.trakt.TraktImporter._make_api_request")
     @patch("integrations.imports.trakt.TraktImporter._get_metadata")
     def test_dropped_show_updates_existing_tv(
-        self, mock_get_metadata, mock_make_request, mock_get_paginated
+        self, mock_get_metadata, mock_get_paginated
     ):
         """A recurring import updates an existing IN_PROGRESS TV show to Dropped."""
         from integrations.imports.trakt import importer
@@ -1014,12 +1034,14 @@ class ImportTrakt(TestCase):
 
         mock_get_metadata.side_effect = metadata_side_effect
         mock_get_paginated.side_effect = [
-            # process_dropped — show is now dropped
+            # process_dropped — progress_watched: show is now dropped
             [{"type": "show", "show": {"title": "Ongoing Show", "ids": {"tmdb": TMDB_ID}}}],
+            [],  # process_dropped — progress_watched_reset
             [episode_entry],  # process_history
-            [],               # process_comments
+            [],  # process_watchlist
+            [],  # process_ratings
+            [],  # process_comments
         ]
-        mock_make_request.side_effect = [[], []]  # watchlist, ratings
 
         encrypted_token = helpers.encrypt("test_token")
         importer(encrypted_token, self.user, "new", "oauth_user")
