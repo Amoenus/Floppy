@@ -250,7 +250,7 @@ def ensure_item_metadata(
     fallback_release_date: str | None = None,
 ) -> HydratedItemResult:
     """Get or create an Item with the same metadata quality used for tracked saves."""
-    season_numbers = [season_number] if season_number is not None else None
+    season_numbers = [season_number]
     metadata = services.get_media_metadata(
         media_type,
         media_id,
