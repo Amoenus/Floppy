@@ -609,8 +609,7 @@
 
   .search-result-card,
   .search-result-card-square {
-    /* text-xs (0.75rem) at the same 1.4286 ratio as desktop text-sm */
-    --card-title-line: 1.0714rem;
+    --card-title-line: 1rem;
   }
 
   .media-card-body>*+* {

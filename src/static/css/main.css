@@ -5722,7 +5722,7 @@
     text-align: left !important;
   }
   .search-result-card, .search-result-card-square {
-    --card-title-line: 1.0714rem;
+    --card-title-line: 1rem;
   }
   .media-card-body>*+* {
     margin-top: calc(var(--spacing) * 0.25);
