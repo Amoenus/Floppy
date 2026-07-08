@@ -23,6 +23,7 @@ from users.models import (
     ActivityHistoryViewChoices,
     DateFormatChoices,
     DurationFormatChoices,
+    GenreSortChoices,
     RatingScaleChoices,
     StatisticsCompareChoices,
     TopTalentSortChoices,
@@ -519,6 +520,7 @@ def statistics(request):
 
         top_talent = statistics_data.get("top_talent", {})
         active_top_talent_sort = getattr(request.user, "top_talent_sort_by", "plays")
+        active_genre_sort = getattr(request.user, "genre_sort_by", "time")
         featured_person, person_media_strip = stats_cast_crew.get_featured_repeat_player_with_strip(
             request.user,
             start_date,
@@ -543,15 +545,21 @@ def statistics(request):
             comparison_end_date=comparison_end_date,
         )
         era_spotlight = stats_cast_crew.get_era_spotlight(
-            request.user,
-            start_date,
-            end_date,
+            statistics_data.get("movie_consumption", {}),
+            statistics_data.get("tv_consumption", {}),
+            statistics_data.get("anime_consumption", {}),
+            statistics_data.get("game_consumption", {}),
+            statistics_data.get("music_consumption", {}),
+            sort_by=active_genre_sort,
         )
         top_genres_combined = stats_cast_crew.get_top_genres_combined(
             statistics_data.get("movie_consumption", {}),
             statistics_data.get("tv_consumption", {}),
+            statistics_data.get("anime_consumption", {}),
+            statistics_data.get("game_consumption", {}),
+            statistics_data.get("music_consumption", {}),
+            sort_by=active_genre_sort,
         )
-        collection_mix = stats_cast_crew.get_collection_mix(request.user)
 
         top_rated_by_type = statistics_data.get("top_rated_by_type", {})
         top_rated_movie = top_rated_by_type.get("movie", [])
@@ -621,7 +629,7 @@ def statistics(request):
             "studio_footprint": studio_footprint,
             "era_spotlight": era_spotlight,
             "top_genres_combined": top_genres_combined,
-            "collection_mix": collection_mix,
+            "genre_sort_by": active_genre_sort,
             "status_distribution": statistics_data["status_distribution"],
             "status_pie_chart_data": statistics_data["status_pie_chart_data"],
             "hours_per_media_type": statistics_data["hours_per_media_type"],
@@ -761,7 +769,7 @@ def statistics(request):
             "studio_footprint": {"studios": [], "delta": None},
             "era_spotlight": [],
             "top_genres_combined": [],
-            "collection_mix": {"formats": [], "total": 0},
+            "genre_sort_by": getattr(request.user, "genre_sort_by", "time"),
             "status_distribution": empty_statistics_data["status_distribution"],
             "status_pie_chart_data": empty_statistics_data["status_pie_chart_data"],
             "hours_per_media_type": empty_statistics_data["hours_per_media_type"],
@@ -1066,6 +1074,80 @@ def update_top_talent_sort(request):
             "strip_html": strip_html,
             "selected_person_key": selected_person_key,
             "pct_of_library": pct_of_library,
+        },
+    )
+
+
+@require_POST
+def update_genre_sort(request):
+    """Autosave the Taste Signals sort preference and refresh Top Genres + Era Spotlight."""
+    sort_by = request.POST.get("sort_by")
+    range_name = request.POST.get("range_name")
+    start_date_str = request.POST.get("start_date")
+    end_date_str = request.POST.get("end_date")
+
+    valid_sort_values = list(GenreSortChoices.values)
+    if sort_by not in valid_sort_values:
+        return JsonResponse(
+            {
+                "error": "Invalid sort_by",
+                "valid_values": valid_sort_values,
+            },
+            status=400,
+        )
+
+    request.user.update_preference("genre_sort_by", sort_by)
+
+    start_date, end_date = _resolve_statistics_range_inputs(
+        range_name,
+        start_date_str,
+        end_date_str,
+    )
+    statistics_data = statistics_cache.get_statistics_data(
+        request.user,
+        start_date,
+        end_date,
+        range_name=range_name,
+    )
+    top_genres_combined = stats_cast_crew.get_top_genres_combined(
+        statistics_data.get("movie_consumption", {}),
+        statistics_data.get("tv_consumption", {}),
+        statistics_data.get("anime_consumption", {}),
+        statistics_data.get("game_consumption", {}),
+        statistics_data.get("music_consumption", {}),
+        sort_by=sort_by,
+    )
+    era_spotlight = stats_cast_crew.get_era_spotlight(
+        statistics_data.get("movie_consumption", {}),
+        statistics_data.get("tv_consumption", {}),
+        statistics_data.get("anime_consumption", {}),
+        statistics_data.get("game_consumption", {}),
+        statistics_data.get("music_consumption", {}),
+        sort_by=sort_by,
+    )
+    genres_html = render_to_string(
+        "app/components/taste_signals_genres.html",
+        {
+            "top_genres_combined": top_genres_combined,
+            "genre_sort_by": sort_by,
+        },
+        request=request,
+    )
+    decades_html = render_to_string(
+        "app/components/taste_signals_decades.html",
+        {
+            "era_spotlight": era_spotlight,
+            "genre_sort_by": sort_by,
+        },
+        request=request,
+    )
+
+    return JsonResponse(
+        {
+            "success": True,
+            "sort_by": sort_by,
+            "genres_html": genres_html,
+            "decades_html": decades_html,
         },
     )
 

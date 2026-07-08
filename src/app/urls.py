@@ -171,6 +171,11 @@ urlpatterns = [
         views.update_top_talent_sort,
         name="update_top_talent_sort",
     ),
+    path(
+        "statistics/genre-sort",
+        views.update_genre_sort,
+        name="update_genre_sort",
+    ),
     path("history", views.history, name="history"),
     path("api/history-genres/", views.history_genres, name="history_genres"),
     path(

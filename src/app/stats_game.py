@@ -504,6 +504,53 @@ def _compute_game_top_genres(play_details, limit=STATISTICS_TOP_N):
     return items
 
 
+def _compute_game_top_decades(play_details, limit=STATISTICS_TOP_N):
+    """Compute top release-year decades from game play details.
+
+    Args:
+        play_details: List of (game_entry, datetime, runtime_minutes) tuples
+        limit: Number of decades to return
+
+    Returns:
+        list of decade dicts with label, minutes, plays, formatted_duration
+    """
+    from app.helpers import minutes_to_hhmm
+
+    decade_stats = defaultdict(lambda: {"minutes": 0, "game_ids": set(), "label": ""})
+
+    for game, dt, runtime in play_details:
+        minutes = runtime or 0
+
+        release_datetime = getattr(getattr(game, "item", None), "release_datetime", None)
+        if not release_datetime:
+            continue
+
+        decade_label = f"{(release_datetime.year // 10) * 10}s"
+        decade_stats[decade_label]["minutes"] += minutes
+        decade_stats[decade_label]["label"] = decade_label
+
+        game_id = None
+        if hasattr(game, "item") and game.item:
+            game_id = game.item_id
+        elif hasattr(game, "id"):
+            game_id = game.id
+        if game_id is not None:
+            decade_stats[decade_label]["game_ids"].add(game_id)
+
+    items = sorted(
+        decade_stats.values(),
+        key=lambda x: (len(x["game_ids"]), x["minutes"]),
+        reverse=True,
+    )[:limit]
+
+    for item in items:
+        item["formatted_duration"] = minutes_to_hhmm(item["minutes"])
+        item["plays"] = len(item["game_ids"])
+        item.pop("game_ids", None)
+
+    return items
+
+
 def _compute_game_top_daily_average(game_data, limit=STATISTICS_TOP_N):
     """Compute top games by daily average time spent.
 
@@ -701,6 +748,9 @@ def get_game_consumption_stats(user_media, start_date, end_date, minutes_per_typ
     # Compute top genres using stored genres, fall back to cached metadata only
     top_genres = _compute_game_top_genres(play_details, limit=STATISTICS_TOP_N)
 
+    # Compute top release-year decades
+    top_decades = _compute_game_top_decades(play_details, limit=STATISTICS_TOP_N)
+
     # Compute top daily average games
     top_daily_average_games = _compute_game_top_daily_average(game_data, limit=STATISTICS_TOP_N)
 
@@ -715,6 +765,7 @@ def get_game_consumption_stats(user_media, start_date, end_date, minutes_per_typ
         "charts": charts,
         "has_data": has_data,
         "top_genres": top_genres,
+        "top_decades": top_decades,
         "top_daily_average_games": top_daily_average_games,
         "platform_breakdown": platform_breakdown,
     }

@@ -1423,19 +1423,15 @@
           </div>
         </div>
 
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 items-start">
-          <div class="bg-[#2a2f35] rounded-lg p-4 sm:p-6">
+        <div class="grid grid-cols-1 lg:grid-cols-5 gap-3 sm:gap-4 items-start">
+          <div class="bg-[#2a2f35] rounded-lg p-4 sm:p-6 lg:col-span-2 overflow-hidden">
             <div class="flex flex-col space-y-1 mb-4">
               <h2 class="text-xl font-semibold text-white">Studio Footprint</h2>
               <p class="text-sm text-gray-400">Studios that appear most often in your library.</p>
             </div>
             {% include "app/components/studio_footprint.html" %}
           </div>
-          <div class="bg-[#2a2f35] rounded-lg p-4 sm:p-6">
-            <div class="flex flex-col space-y-1 mb-4">
-              <h2 class="text-xl font-semibold text-white">Taste Signals</h2>
-              <p class="text-sm text-gray-400">What your library says about your taste.</p>
-            </div>
+          <div class="bg-[#2a2f35] rounded-lg p-4 sm:p-6 lg:col-span-3 overflow-hidden">
             {% include "app/components/taste_signals.html" %}
           </div>
         </div>

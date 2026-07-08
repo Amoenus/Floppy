@@ -220,6 +220,13 @@ class TopTalentSortChoices(models.TextChoices):
     TITLES = "titles", "Titles"
 
 
+class GenreSortChoices(models.TextChoices):
+    """Choices for sorting the Taste Signals Top Genres panel on statistics."""
+
+    TIME = "time", "Time"
+    PLAYS = "plays", "Plays"
+
+
 class StatisticsCompareChoices(models.TextChoices):
     """Choices for the default comparison mode on the statistics page."""
 
@@ -875,6 +882,12 @@ class User(AbstractUser):
         choices=TopTalentSortChoices.choices,
         help_text="Sort metric for top cast/crew/studio cards on the Statistics page",
     )
+    genre_sort_by = models.CharField(
+        max_length=20,
+        default=GenreSortChoices.TIME,
+        choices=GenreSortChoices.choices,
+        help_text="Sort metric for the Top Genres panel on the Statistics page",
+    )
 
     activity_history_view = models.CharField(
         max_length=20,
@@ -1118,6 +1131,10 @@ class User(AbstractUser):
             models.CheckConstraint(
                 name="top_talent_sort_by_valid",
                 condition=models.Q(top_talent_sort_by__in=TopTalentSortChoices.values),
+            ),
+            models.CheckConstraint(
+                name="genre_sort_by_valid",
+                condition=models.Q(genre_sort_by__in=GenreSortChoices.values),
             ),
             models.CheckConstraint(
                 name="list_detail_sort_valid",

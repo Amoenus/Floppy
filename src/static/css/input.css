@@ -300,6 +300,21 @@
   /* Gap between list items - replaces Tailwind space-y-3 */
 }
 
+/*
+ * Compact variant of .statistics-card-scroll for text-only rows with no
+ * thumbnail/icon (e.g. Studio Footprint, Taste Signals genre/decade rows).
+ * Those rows are ~20px tall (text-sm line height), so 275px would show
+ * far more than 5 before scrolling — this is tuned for that row height
+ * instead: 5 * 20px + 4 * 12px gaps = 148px, rounded up for breathing room.
+ */
+.statistics-card-scroll-compact {
+  max-height: 160px;
+}
+
+.statistics-card-scroll-compact> :not([hidden])~ :not([hidden]) {
+  margin-top: 12px;
+}
+
 .search-result-card {
   position: relative;
   display: flex;

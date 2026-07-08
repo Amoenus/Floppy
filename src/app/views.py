@@ -213,6 +213,7 @@ from app.statistics_views import (
     refresh_statistics,
     select_featured_person,
     statistics,
+    update_genre_sort,
     update_top_talent_sort,
     update_statistics_compare_mode,
     update_statistics_preferences,

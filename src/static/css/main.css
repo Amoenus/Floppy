@@ -1314,13 +1314,6 @@
       margin-block-end: calc(calc(var(--spacing) * 2) * calc(1 - var(--tw-space-y-reverse)));
     }
   }
-  .space-y-2\.5 {
-    :where(& > :not(:last-child)) {
-      --tw-space-y-reverse: 0;
-      margin-block-start: calc(calc(var(--spacing) * 2.5) * var(--tw-space-y-reverse));
-      margin-block-end: calc(calc(var(--spacing) * 2.5) * calc(1 - var(--tw-space-y-reverse)));
-    }
-  }
   .space-y-3 {
     :where(& > :not(:last-child)) {
       --tw-space-y-reverse: 0;
@@ -4444,6 +4437,16 @@
       width: calc(var(--spacing) * 11);
     }
   }
+  .sm\:w-20 {
+    @media (width >= 40rem) {
+      width: calc(var(--spacing) * 20);
+    }
+  }
+  .sm\:w-24 {
+    @media (width >= 40rem) {
+      width: calc(var(--spacing) * 24);
+    }
+  }
   .sm\:w-36 {
     @media (width >= 40rem) {
       width: calc(var(--spacing) * 36);
@@ -5474,6 +5477,12 @@
   max-height: 275px;
 }
 .statistics-card-scroll> :not([hidden])~ :not([hidden]) {
+  margin-top: 12px;
+}
+.statistics-card-scroll-compact {
+  max-height: 160px;
+}
+.statistics-card-scroll-compact> :not([hidden])~ :not([hidden]) {
   margin-top: 12px;
 }
 .search-result-card {

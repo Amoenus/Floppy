@@ -2,8 +2,16 @@
   Studio Footprint — wraps studio_footprint_grid.html in an x-ref so the media-type
   filter refresh in role_leaders.html can swap it in place without a page reload.
 
+  The "Top Studios" sub-header mirrors the icon+label headers on Taste Signals'
+  Top Genres / Era Spotlight panels so the row grids in both cards start at the
+  same vertical offset and line up.
+
   Required context: studio_footprint (from stats_cast_crew.get_studio_footprint).
 {% endcomment %}
+<div class="flex items-center gap-2 mb-3">
+  {% include "app/icons/camera.svg" with classes="w-4 h-4 text-indigo-400" %}
+  <span class="text-sm font-semibold text-white">Top Studios</span>
+</div>
 <div x-ref="studioFootprintGrid">
   {% include "app/components/studio_footprint_grid.html" %}
 </div>

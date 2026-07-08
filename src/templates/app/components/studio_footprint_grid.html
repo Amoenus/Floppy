@@ -20,15 +20,6 @@
       </div>
     {% endfor %}
   </div>
-  {% if studio_footprint.delta %}
-    <p class="text-xs text-gray-500 mt-4">
-      {% if studio_footprint.delta.is_positive %}
-        +{{ studio_footprint.delta.pct }}% more studio appearances vs last year
-      {% else %}
-        {{ studio_footprint.delta.pct }}% fewer studio appearances vs last year
-      {% endif %}
-    </p>
-  {% endif %}
 {% else %}
   <p class="text-sm text-gray-500 text-center py-8">No studio data available for this range.</p>
 {% endif %}
