@@ -91,6 +91,17 @@ class MyAnimeListImporter:
             if error.response.status_code == requests.codes.not_found:
                 msg = f"User {self.username} not found."
                 raise MediaImportError(msg) from error
+            if error.response.status_code == requests.codes.forbidden:
+                logger.warning(
+                    "MyAnimeList %s list is private for user %s, skipping.",
+                    media_type,
+                    self.username,
+                )
+                self.warnings.append(
+                    f"Your MyAnimeList {media_type} list is private and could not "
+                    "be imported. Make it public on MyAnimeList to import it.",
+                )
+                return
             raise
 
         for content in response["data"]:
