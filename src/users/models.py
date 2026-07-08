@@ -888,6 +888,12 @@ class User(AbstractUser):
         choices=GenreSortChoices.choices,
         help_text="Sort metric for the Top Genres panel on the Statistics page",
     )
+    studio_sort_by = models.CharField(
+        max_length=20,
+        default=GenreSortChoices.PLAYS,
+        choices=GenreSortChoices.choices,
+        help_text="Sort metric for the Studio Footprint card on the Statistics page",
+    )
 
     activity_history_view = models.CharField(
         max_length=20,
@@ -1135,6 +1141,10 @@ class User(AbstractUser):
             models.CheckConstraint(
                 name="genre_sort_by_valid",
                 condition=models.Q(genre_sort_by__in=GenreSortChoices.values),
+            ),
+            models.CheckConstraint(
+                name="studio_sort_by_valid",
+                condition=models.Q(studio_sort_by__in=GenreSortChoices.values),
             ),
             models.CheckConstraint(
                 name="list_detail_sort_valid",

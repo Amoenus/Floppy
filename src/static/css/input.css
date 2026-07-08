@@ -302,13 +302,14 @@
 
 /*
  * Compact variant of .statistics-card-scroll for text-only rows with no
- * thumbnail/icon (e.g. Studio Footprint, Taste Signals genre/decade rows).
- * Those rows are ~20px tall (text-sm line height), so 275px would show
- * far more than 5 before scrolling — this is tuned for that row height
- * instead: 5 * 20px + 4 * 12px gaps = 148px, rounded up for breathing room.
+ * thumbnail/icon (e.g. Taste Signals genre/decade rows). Those rows are
+ * ~20px tall (text-sm line height), so 275px would show far more than 5
+ * before scrolling — this is tuned for that row height instead: 5 * 20px
+ * + 4 * 12px gaps = 148px exactly, matching Studio Footprint's unscrolled
+ * 5-row height (space-y-3, no cap) so the two cards line up.
  */
 .statistics-card-scroll-compact {
-  max-height: 160px;
+  max-height: 148px;
 }
 
 .statistics-card-scroll-compact> :not([hidden])~ :not([hidden]) {

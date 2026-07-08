@@ -422,8 +422,9 @@ def get_studio_footprint(
     comparison_end_date=None,
     limit=STUDIO_FOOTPRINT_LIMIT,
     media_type=None,
+    sort_by="plays",
 ):
-    """Reshape `top_talent.by_sort.plays.top_studios` into a percentage footprint.
+    """Reshape `top_talent.by_sort.{sort_by}.top_studios` into a percentage footprint.
 
     Percentages are computed against the full studio list (so they reflect true
     library share) but only the top `limit` studios are returned, keeping the
@@ -437,17 +438,19 @@ def get_studio_footprint(
         return {"studios": [], "delta": None}
 
     by_sort = top_talent.get("by_sort") or {}
+    bucket = sort_by if sort_by in by_sort else "plays"
     studios = (
-        (by_sort.get("plays") or {}).get("top_studios")
+        (by_sort.get(bucket) or {}).get("top_studios")
         or top_talent.get("top_studios")
         or []
     )
     if not studios:
         return {"studios": [], "delta": None}
 
-    total_plays = sum(studio.get("plays", 0) for studio in studios) or 1
+    metric_key = "watched_minutes" if sort_by == "time" else "plays"
+    total_metric = sum(studio.get(metric_key, 0) for studio in studios) or 1
     studio_rows = [
-        {**studio, "pct": round((studio.get("plays", 0) / total_plays) * 100, 1)}
+        {**studio, "pct": round((studio.get(metric_key, 0) / total_metric) * 100, 1)}
         for studio in studios[:limit]
     ]
 

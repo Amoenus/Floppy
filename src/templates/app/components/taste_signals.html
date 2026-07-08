@@ -14,23 +14,33 @@
        currentRangeName: '{{ selected_range_name|default:""|escapejs }}',
        currentStartDate: '{{ start_date_str|default:""|escapejs }}',
        currentEndDate: '{{ end_date_str|default:""|escapejs }}',
+       selectedMediaType: 'all',
        init() {
          this.selectedLabel = this.selectedSort === 'plays' ? 'Plays' : 'Time';
+         this.selectedMediaType = new URLSearchParams(window.location.search).get('media-type') || 'all';
+         window.addEventListener('stats-media-type-changed', () => {
+           this.selectedMediaType = new URLSearchParams(window.location.search).get('media-type') || 'all';
+           this.refresh();
+         });
+         // The initial server render is always the unfiltered all-types aggregate —
+         // if the page loaded with a media-type already in the URL (reload,
+         // bookmark, browser history), fetch the filtered panels immediately
+         // instead of waiting for the user to re-toggle the selector.
+         if (this.selectedMediaType !== 'all') {
+           this.refresh();
+         }
        },
-       async setSort(sortBy, label) {
-         if (this.loading || this.selectedSort === sortBy) {
-           this.open = false;
+       async refresh() {
+         if (this.loading) {
            return;
          }
          const previousSort = this.selectedSort;
          const previousLabel = this.selectedLabel;
-         this.selectedSort = sortBy;
-         this.selectedLabel = label;
          this.open = false;
          this.loading = true;
          try {
            const body = new URLSearchParams();
-           body.set('sort_by', sortBy);
+           body.set('sort_by', this.selectedSort);
            if (this.currentRangeName) {
              body.set('range_name', this.currentRangeName);
            }
@@ -39,6 +49,9 @@
            }
            if (this.currentEndDate) {
              body.set('end_date', this.currentEndDate);
+           }
+           if (this.selectedMediaType && this.selectedMediaType !== 'all') {
+             body.set('media_type', this.selectedMediaType);
            }
            const response = await fetch('{% url 'update_genre_sort' %}', {
              method: 'POST',
@@ -66,6 +79,15 @@
          } finally {
            this.loading = false;
          }
+       },
+       async setSort(sortBy, label) {
+         if (this.loading || this.selectedSort === sortBy) {
+           this.open = false;
+           return;
+         }
+         this.selectedSort = sortBy;
+         this.selectedLabel = label;
+         await this.refresh();
        }
      }">
   <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">

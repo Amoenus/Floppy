@@ -4437,11 +4437,6 @@
       width: calc(var(--spacing) * 11);
     }
   }
-  .sm\:w-20 {
-    @media (width >= 40rem) {
-      width: calc(var(--spacing) * 20);
-    }
-  }
   .sm\:w-24 {
     @media (width >= 40rem) {
       width: calc(var(--spacing) * 24);
@@ -5480,7 +5475,7 @@
   margin-top: 12px;
 }
 .statistics-card-scroll-compact {
-  max-height: 160px;
+  max-height: 148px;
 }
 .statistics-card-scroll-compact> :not([hidden])~ :not([hidden]) {
   margin-top: 12px;
