@@ -118,6 +118,38 @@ def run_retryable_db_operation(
             attempt += 1
 
 
+def _describe_conflicting_row(manager, defaults: dict) -> str:
+    """Best-effort diagnostic lookup of the row holding a conflicting unique key.
+
+    For logging only. Never raises — this must not affect the
+    swallow-and-continue behavior callers depend on.
+
+    We don't know the model's unique-constraint field set generically (this
+    helper is shared across many models/lookups), so we probe using the
+    scalar (non-dict/list) values present in `defaults` — these are exactly
+    the values that failed to be written, and for the known failure mode
+    (e.g. ItemProviderLink's `unique_provider_lookup` constraint on
+    provider_media_id) they are sufficient to find the pre-existing
+    conflicting row belonging to a different parent object.
+    """
+    try:
+        model_field_names = {f.name for f in manager.model._meta.get_fields()}
+        probe = {
+            key: value
+            for key, value in defaults.items()
+            if key in model_field_names and not isinstance(value, dict | list)
+        }
+        if not probe:
+            return "unknown (no probeable scalar fields in defaults)"
+        rows = list(manager.filter(**probe)[:3])
+    except Exception:  # noqa: BLE001 - diagnostic path must never raise
+        return "unknown (probe query failed)"
+
+    if not rows:
+        return "unknown (no existing row matches the attempted defaults)"
+    return "; ".join(f"pk={row.pk} {row!r}" for row in rows)
+
+
 def update_or_create_race_safe(manager, *, defaults: dict, **lookup):
     """update_or_create with retry/fallback for SQLite IntegrityError scenarios.
 
@@ -141,14 +173,18 @@ def update_or_create_race_safe(manager, *, defaults: dict, **lookup):
     try:
         with transaction.atomic():
             return manager.update_or_create(**lookup, defaults=defaults)
-    except IntegrityError:
+    except IntegrityError as error:
         try:
             return manager.get(**lookup), False
         except manager.model.DoesNotExist:
             logger.warning(
-                "Persistent IntegrityError for %s with lookup %r — "
-                "conflict with a different constraint key; skipping.",
+                "Persistent IntegrityError for %s with lookup %r and "
+                "defaults %r — conflict with a different constraint key; "
+                "skipping. DB error: %s. Conflicting row(s): %s",
                 manager.model.__name__,
                 lookup,
+                defaults,
+                error,
+                _describe_conflicting_row(manager, defaults),
             )
             return None, False

@@ -1119,20 +1119,21 @@ class BaseWebhookProcessor:
                     "image": tv_metadata["image"],
                 },
             )
+        # `external_ids` describes the EPISODE that triggered this webhook
+        # event, not the show. TVDB/IMDB assign distinct IDs per episode, so
+        # episode-level values must never be written as the show's provider
+        # link (issue #326). Only `tv_metadata.get("tvdb_id")` (the show-level
+        # id, cross-referenced by TMDB itself) is valid here.
+        tv_provider_external_ids = {
+            **(tv_metadata.get("provider_external_ids") or {}),
+            "tmdb_id": str(media_id),
+        }
+        show_level_tvdb_id = tv_metadata.get("tvdb_id")
+        if show_level_tvdb_id:
+            tv_provider_external_ids["tvdb_id"] = show_level_tvdb_id
         metadata_resolution.upsert_provider_links(
             tv_item,
-            tv_metadata
-            | {
-                "provider_external_ids": {
-                    **(tv_metadata.get("provider_external_ids") or {}),
-                    "tmdb_id": str(media_id),
-                    "tvdb_id": (
-                        external_ids.get("tvdb_id")
-                        or tv_metadata.get("tvdb_id")
-                    ),
-                    "imdb_id": external_ids.get("imdb_id"),
-                },
-            },
+            tv_metadata | {"provider_external_ids": tv_provider_external_ids},
             provider=Sources.TMDB.value,
             provider_media_type=MediaTypes.TV.value,
         )
@@ -1199,6 +1200,13 @@ class BaseWebhookProcessor:
         if season_item.provider_metadata_status != desired_provider_metadata_status:
             season_item.provider_metadata_status = desired_provider_metadata_status
             season_item.save(update_fields=["provider_metadata_status"])
+        # No webhook source exposes a season-scoped TVDB/IMDB id — only
+        # per-episode ids are available in the payload, and tv_metadata's
+        # tvdb_id is show-level, not season-level. Attaching either to the
+        # Season item's provider link corrupts ItemProviderLink's unique
+        # constraint over time as different episodes are played (issue #326).
+        # Only tmdb_id (season-identifying via media_id + season_number) is
+        # safe to write here.
         metadata_resolution.upsert_provider_links(
             season_item,
             season_metadata
@@ -1206,11 +1214,6 @@ class BaseWebhookProcessor:
                 "provider_external_ids": {
                     **(season_metadata.get("provider_external_ids") or {}),
                     "tmdb_id": str(media_id),
-                    "tvdb_id": (
-                        external_ids.get("tvdb_id")
-                        or tv_metadata.get("tvdb_id")
-                    ),
-                    "imdb_id": external_ids.get("imdb_id"),
                 },
             },
             provider=Sources.TMDB.value,

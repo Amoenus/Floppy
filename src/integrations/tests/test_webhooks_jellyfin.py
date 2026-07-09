@@ -6,7 +6,18 @@ from django.test import Client, TestCase
 from django.urls import reverse
 
 from app import live_playback
-from app.models import TV, Anime, Episode, Item, ItemProviderLink, MediaTypes, Movie, Season, Sources, Status
+from app.models import (
+    TV,
+    Anime,
+    Episode,
+    Item,
+    ItemProviderLink,
+    MediaTypes,
+    Movie,
+    Season,
+    Sources,
+    Status,
+)
 from integrations.webhooks.jellyfin import JellyfinWebhookProcessor
 
 
@@ -421,7 +432,8 @@ class JellyfinWebhookTests(TestCase):
         self, mock_find, mock_tv_with_seasons,
     ):
         """Webhook scrobble lands on an existing TVDB-tracked show rather than
-        creating a duplicate TMDB-sourced item."""
+        creating a duplicate TMDB-sourced item.
+        """
         tvdb_show_id = "76669"
         tmdb_show_id = "1668"
 
@@ -502,6 +514,225 @@ class JellyfinWebhookTests(TestCase):
             related_season__item=season_item,
         )
         self.assertIsNotNone(episode.end_date)
+
+    @patch("app.providers.tmdb.tv_with_seasons")
+    @patch("app.providers.tmdb.find")
+    def test_tv_and_season_provider_links_ignore_episode_level_ids(
+        self, mock_find, mock_tv_with_seasons,
+    ):
+        """TV/Season provider links must use the validated show-level tvdb_id.
+
+        Never the per-episode tvdb/imdb ids from the webhook payload
+        (issue #326).
+        """
+        tmdb_show_id = "1668"
+        show_level_tvdb_id = "76669"
+        episode_tvdb_id = "303821"
+        episode_imdb_id = "tt0583459"
+
+        mock_find.return_value = {
+            "tv_episode_results": [
+                {"show_id": int(tmdb_show_id), "season_number": 1, "episode_number": 1},
+            ],
+            "tv_results": [],
+        }
+        mock_tv_with_seasons.return_value = {
+            "media_id": tmdb_show_id,
+            "title": "Friends",
+            "image": "https://example.com/friends.jpg",
+            "tvdb_id": show_level_tvdb_id,
+            "season/1": {
+                "season_number": 1,
+                "season_title": "Season 1",
+                "synopsis": "",
+                "image": "https://example.com/friends-s1.jpg",
+                "max_progress": 24,
+                "episodes": [
+                    {
+                        "episode_number": 1,
+                        "runtime": 22,
+                        "air_date": None,
+                        "still_path": None,
+                        "name": "The Pilot",
+                        "overview": "",
+                    },
+                ],
+                "details": {"episodes": 24},
+                "providers": {},
+            },
+        }
+
+        payload = {
+            "Event": "Stop",
+            "Item": {
+                "Type": "Episode",
+                "Name": "The Pilot",
+                "SeriesName": "Friends",
+                "ParentIndexNumber": 1,
+                "IndexNumber": 1,
+                "ProviderIds": {"Tvdb": episode_tvdb_id, "Imdb": episode_imdb_id},
+                "UserData": {"Played": True},
+            },
+        }
+
+        response = self.client.post(
+            self.url,
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+
+        tv_item = Item.objects.get(
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            media_id=tmdb_show_id,
+        )
+        tv_tvdb_link = ItemProviderLink.objects.get(
+            item=tv_item,
+            provider=Sources.TVDB.value,
+            provider_media_type=MediaTypes.TV.value,
+        )
+        self.assertEqual(tv_tvdb_link.provider_media_id, show_level_tvdb_id)
+        self.assertNotEqual(tv_tvdb_link.provider_media_id, episode_tvdb_id)
+        self.assertNotEqual(
+            tv_item.provider_external_ids.get("imdb_id"),
+            episode_imdb_id,
+        )
+
+        season_item = Item.objects.get(
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            media_id=tmdb_show_id,
+            season_number=1,
+        )
+        self.assertFalse(
+            ItemProviderLink.objects.filter(
+                item=season_item,
+                provider=Sources.TVDB.value,
+                provider_media_type=MediaTypes.SEASON.value,
+            ).exists(),
+        )
+        self.assertNotEqual(
+            season_item.provider_external_ids.get("imdb_id"),
+            episode_imdb_id,
+        )
+
+    @patch("app.providers.tmdb.tv_with_seasons")
+    @patch("app.providers.tmdb.find")
+    def test_second_episode_of_tracked_season_does_not_duplicate_season_item(
+        self, mock_find, mock_tv_with_seasons,
+    ):
+        """A second played episode of a tracked season must reuse that season.
+
+        Even with a different per-episode TVDB/IMDB id (as Jellyfin reports),
+        it must not corrupt or duplicate the Season item (issue #326).
+        """
+        tmdb_show_id = "1668"
+        show_level_tvdb_id = "76669"
+
+        def find_side_effect(ext_id, ext_type):  # noqa: ARG001
+            episode_number = 1 if ext_id == "303821" else 2
+            return {
+                "tv_episode_results": [
+                    {
+                        "show_id": int(tmdb_show_id),
+                        "season_number": 1,
+                        "episode_number": episode_number,
+                    },
+                ],
+                "tv_results": [],
+            }
+
+        mock_find.side_effect = find_side_effect
+        mock_tv_with_seasons.return_value = {
+            "media_id": tmdb_show_id,
+            "title": "Friends",
+            "image": "https://example.com/friends.jpg",
+            "tvdb_id": show_level_tvdb_id,
+            "season/1": {
+                "season_number": 1,
+                "season_title": "Season 1",
+                "synopsis": "",
+                "image": "https://example.com/friends-s1.jpg",
+                "max_progress": 24,
+                "episodes": [
+                    {
+                        "episode_number": 1,
+                        "runtime": 22,
+                        "air_date": None,
+                        "still_path": None,
+                        "name": "The Pilot",
+                        "overview": "",
+                    },
+                    {
+                        "episode_number": 2,
+                        "runtime": 22,
+                        "air_date": None,
+                        "still_path": None,
+                        "name": "The One with the Sonogram at the End",
+                        "overview": "",
+                    },
+                ],
+                "details": {"episodes": 24},
+                "providers": {},
+            },
+        }
+
+        def make_payload(episode_number, name, tvdb_id, imdb_id):
+            return {
+                "Event": "Stop",
+                "Item": {
+                    "Type": "Episode",
+                    "Name": name,
+                    "SeriesName": "Friends",
+                    "ParentIndexNumber": 1,
+                    "IndexNumber": episode_number,
+                    "ProviderIds": {"Tvdb": tvdb_id, "Imdb": imdb_id},
+                    "UserData": {"Played": True},
+                },
+            }
+
+        with self.assertNoLogs("app.db_retry", level="WARNING"):
+            response_1 = self.client.post(
+                self.url,
+                data=json.dumps(
+                    make_payload(1, "The Pilot", "303821", "tt0583459"),
+                ),
+                content_type="application/json",
+            )
+            response_2 = self.client.post(
+                self.url,
+                data=json.dumps(
+                    make_payload(
+                        2,
+                        "The One with the Sonogram at the End",
+                        "303822",
+                        "tt0583460",
+                    ),
+                ),
+                content_type="application/json",
+            )
+
+        self.assertEqual(response_1.status_code, 200)
+        self.assertEqual(response_2.status_code, 200)
+
+        self.assertEqual(
+            Item.objects.filter(
+                media_type=MediaTypes.SEASON.value,
+                media_id=tmdb_show_id,
+                season_number=1,
+            ).count(),
+            1,
+        )
+        season_item = Item.objects.get(
+            media_type=MediaTypes.SEASON.value,
+            media_id=tmdb_show_id,
+            season_number=1,
+        )
+        self.assertEqual(
+            Episode.objects.filter(related_season__item=season_item).count(),
+            2,
+        )
 
     def test_repeated_watch(self):
         """Test webhook handles repeated watches."""
