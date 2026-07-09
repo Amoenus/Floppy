@@ -65,8 +65,10 @@
     </div>
     {% include "app/components/home_groups.html" %}
     {% if defer_remaining_groups %}
-      {# Remaining groups hydrate asynchronously so first paint only pays
-         for the first group's rows. #}
+      {% comment %}
+        Remaining groups hydrate asynchronously so first paint only pays
+        for the first group's rows.
+      {% endcomment %}
       <div hx-get="{% url 'home_rest_fragment' %}"
            hx-trigger="load"
            hx-swap="outerHTML"

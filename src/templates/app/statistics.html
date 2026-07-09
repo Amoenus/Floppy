@@ -1395,9 +1395,11 @@
       </div>
     {% endif %}
 
-      {# Talent / studio / taste section loads asynchronously so the page
-         shell renders without the featured-player and comparison
-         aggregation cost. The fragment swaps in via HTMX on load. #}
+      {% comment %}
+        Talent / studio / taste section loads asynchronously so the page
+        shell renders without the featured-player and comparison
+        aggregation cost. The fragment swaps in via HTMX on load.
+      {% endcomment %}
       <div id="talent-section"
            hx-get="{% url 'statistics_talent_fragment' %}?range_name={{ selected_range_name|default_if_none:''|urlencode }}&start-date={{ start_date_str|urlencode }}&end-date={{ end_date_str|urlencode }}&compare={{ selected_compare_mode|urlencode }}"
            hx-trigger="load"
