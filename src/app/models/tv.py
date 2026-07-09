@@ -500,9 +500,10 @@ class Season(Media):
     def progress(self):
         """Return the current episode number of the season.
 
-        For rewatching: only considers it a rewatch if ALL episodes up to that point
-        have been watched at least that many times. Otherwise uses max episode number
-        to ignore errant repeats.
+        For rewatching: only considers it a rewatch if a strict majority of watched
+        episodes have reached the same repeat count. This tolerates a minority of
+        skipped/out-of-order episodes during a genuine rewatch pass (issue #327),
+        while still ignoring a single errant repeat during normal watching.
         """
         stats = self._get_episode_stats()
         episode_counts = stats["episode_counts"]
@@ -510,32 +511,28 @@ class Season(Media):
             return 0
 
         if self.status == Status.IN_PROGRESS.value:
-            # Check for systematic rewatching: only consider it a rewatch if ALL episodes
-            # up to that point have been watched at least that many times.
-            # This prevents errant repeats (single episode watched twice) from skewing progress.
-            sorted_episode_nums = sorted(episode_counts.keys())
-            max_rewatch_level = 0
-            max_rewatch_progress = 0
+            total_episodes = len(episode_counts)
+            majority_threshold = total_episodes / 2
 
-            # Check each possible rewatch level (2, 3, ...)
-            # Level 1 is just normal watching, so we start at 2
-            for rewatch_level in range(2, max(episode_counts.values()) + 1):
-                # Find the highest episode number where all episodes up to it have at least this many watches
-                consistent_up_to = 0
-                for ep_num in sorted_episode_nums:
-                    if episode_counts[ep_num] >= rewatch_level:
-                        consistent_up_to = ep_num
-                    else:
-                        # Can't be a consistent rewatch beyond this point
-                        break
+            # Find the highest repeat level reached by a strict majority of
+            # episodes. Vote counts are monotonically non-increasing as the
+            # level rises, so the last level clearing the bar is the deepest
+            # confirmed rewatch pass.
+            best_level = 1
+            for level in range(2, max(episode_counts.values()) + 1):
+                votes = sum(1 for count in episode_counts.values() if count >= level)
+                if votes > majority_threshold:
+                    best_level = level
 
-                if consistent_up_to > max_rewatch_progress:
-                    max_rewatch_level = rewatch_level
-                    max_rewatch_progress = consistent_up_to
-
-            # If we found a consistent rewatch pattern, use it
-            if max_rewatch_level > 1 and max_rewatch_progress > 0:
-                return max_rewatch_progress
+            if best_level > 1:
+                # Report the highest episode number that reached this level,
+                # tolerating any episodes that didn't (the minority gaps).
+                qualifying = [
+                    ep_num
+                    for ep_num, count in episode_counts.items()
+                    if count >= best_level
+                ]
+                return max(qualifying)
 
         # Otherwise, use the maximum episode number watched (at least once)
         # This handles normal watching and errant repeats
