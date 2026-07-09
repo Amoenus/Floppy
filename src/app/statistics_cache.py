@@ -386,6 +386,15 @@ def _get_history_version(user_id: int) -> str:
     return version
 
 
+def get_history_version(user_id: int) -> str:
+    """Public accessor for the per-user history version token.
+
+    Any tracked-media change (and the statistics refresh button) bumps this
+    value, so cache keys embedding it self-invalidate without extra wiring.
+    """
+    return _get_history_version(user_id)
+
+
 def _set_history_version(user_id: int, value: str | None = None) -> str:
     version = value or timezone.now().isoformat()
     cache.set(_history_version_key(user_id), version, timeout=STATISTICS_DAY_CACHE_TIMEOUT)

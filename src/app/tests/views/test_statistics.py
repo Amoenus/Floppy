@@ -1641,7 +1641,7 @@ class StatisticsViewTests(TestCase):
         ItemStudioCredit.objects.create(item=item, studio=studio)
 
         statistics_cache.invalidate_statistics_cache(self.user.id)
-        response = self.client.get(reverse("statistics"))
+        response = self.client.get(reverse("statistics_talent_fragment"))
 
         self.assertEqual(response.status_code, 200)
         top_talent = response.context.get("top_talent", {})
@@ -1746,7 +1746,7 @@ class StatisticsViewTests(TestCase):
         self.user.top_talent_sort_by = "plays"
         self.user.save(update_fields=["top_talent_sort_by"])
         statistics_cache.invalidate_statistics_cache(self.user.id)
-        response = self.client.get(reverse("statistics") + "?start-date=all&end-date=all")
+        response = self.client.get(reverse("statistics_talent_fragment") + "?start-date=all&end-date=all")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
             response.context["top_talent"]["top_actors"][0]["name"],
@@ -1756,7 +1756,7 @@ class StatisticsViewTests(TestCase):
         self.user.top_talent_sort_by = "time"
         self.user.save(update_fields=["top_talent_sort_by"])
         statistics_cache.invalidate_statistics_cache(self.user.id)
-        response = self.client.get(reverse("statistics") + "?start-date=all&end-date=all")
+        response = self.client.get(reverse("statistics_talent_fragment") + "?start-date=all&end-date=all")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
             response.context["top_talent"]["top_actors"][0]["name"],
@@ -1766,7 +1766,7 @@ class StatisticsViewTests(TestCase):
         self.user.top_talent_sort_by = "titles"
         self.user.save(update_fields=["top_talent_sort_by"])
         statistics_cache.invalidate_statistics_cache(self.user.id)
-        response = self.client.get(reverse("statistics") + "?start-date=all&end-date=all")
+        response = self.client.get(reverse("statistics_talent_fragment") + "?start-date=all&end-date=all")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
             response.context["top_talent"]["top_actors"][0]["name"],
@@ -1853,7 +1853,7 @@ class StatisticsViewTests(TestCase):
             )
 
         statistics_cache.invalidate_statistics_cache(self.user.id)
-        response = self.client.get(reverse("statistics") + "?start-date=all&end-date=all")
+        response = self.client.get(reverse("statistics_talent_fragment") + "?start-date=all&end-date=all")
 
         self.assertEqual(response.status_code, 200)
         top_talent = response.context["top_talent"]
@@ -2161,7 +2161,7 @@ class StatisticsViewTests(TestCase):
 
         mock_enqueue.reset_mock()
         statistics_cache.invalidate_statistics_cache(self.user.id)
-        response = self.client.get(reverse("statistics") + "?start-date=all&end-date=all")
+        response = self.client.get(reverse("statistics_talent_fragment") + "?start-date=all&end-date=all")
 
         self.assertEqual(response.status_code, 200)
         mock_enqueue.assert_called_once()
@@ -2259,7 +2259,7 @@ class StatisticsViewTests(TestCase):
         self._mark_tmdb_credits_current(show_item, season_item, episode_item)
 
         statistics_cache.invalidate_statistics_cache(self.user.id)
-        response = self.client.get(reverse("statistics") + "?start-date=all&end-date=all")
+        response = self.client.get(reverse("statistics_talent_fragment") + "?start-date=all&end-date=all")
 
         self.assertEqual(response.status_code, 200)
         top_talent = response.context["top_talent"]
@@ -2375,7 +2375,7 @@ class StatisticsViewTests(TestCase):
         self._mark_tmdb_credits_current(show_item, season_item, first_episode_item, second_episode_item)
 
         statistics_cache.invalidate_statistics_cache(self.user.id)
-        response = self.client.get(reverse("statistics") + "?start-date=all&end-date=all")
+        response = self.client.get(reverse("statistics_talent_fragment") + "?start-date=all&end-date=all")
 
         self.assertEqual(response.status_code, 200)
         by_name = {
@@ -2646,7 +2646,7 @@ class StatisticsViewTests(TestCase):
         )
 
         statistics_cache.invalidate_statistics_cache(self.user.id)
-        response = self.client.get(reverse("statistics") + "?start-date=all&end-date=all")
+        response = self.client.get(reverse("statistics_talent_fragment") + "?start-date=all&end-date=all")
 
         self.assertEqual(response.status_code, 200)
         top_talent = response.context["top_talent"]
@@ -2935,3 +2935,48 @@ class StatisticsViewTests(TestCase):
         self.assertFalse(stats_data["tv_consumption"]["has_data"])
         self.assertEqual(stats_data["hours_per_media_type"]["anime"], "0h 24min")
         self.assertEqual(stats_data["top_played"]["anime"][0]["media"].item.title, "Cached Genre Anime Show")
+
+
+class StatisticsTalentFragmentTests(TestCase):
+    """The talent section is served as a cached HTMX fragment."""
+
+    def setUp(self):
+        self.credentials = {"username": "talentfrag", "password": "12345"}
+        self.user = get_user_model().objects.create_user(**self.credentials)
+        self.client.login(**self.credentials)
+
+    def test_statistics_shell_defers_talent_section(self):
+        """The main page renders an hx-get placeholder, not the section."""
+        response = self.client.get(reverse("statistics"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="talent-section"')
+        self.assertContains(response, reverse("statistics_talent_fragment"))
+        self.assertNotIn("top_talent", response.context)
+
+    def test_fragment_context_is_cached_per_user(self):
+        """A second fragment request must not recompute the featured player."""
+        url = reverse("statistics_talent_fragment") + "?start-date=all&end-date=all"
+        first = self.client.get(url)
+        self.assertEqual(first.status_code, 200)
+
+        with patch(
+            "app.stats_cast_crew.get_featured_repeat_player_with_strip",
+        ) as mock_featured:
+            second = self.client.get(url)
+        self.assertEqual(second.status_code, 200)
+        mock_featured.assert_not_called()
+
+    def test_history_change_invalidates_fragment_cache(self):
+        """Bumping the history version forces a fragment rebuild."""
+        url = reverse("statistics_talent_fragment") + "?start-date=all&end-date=all"
+        self.client.get(url)
+
+        statistics_cache._set_history_version(self.user.id)
+
+        with patch(
+            "app.stats_cast_crew.get_featured_repeat_player_with_strip",
+            return_value=(None, []),
+        ) as mock_featured:
+            response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        mock_featured.assert_called_once()

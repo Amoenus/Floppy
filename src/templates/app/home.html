@@ -63,21 +63,27 @@
         {% include "app/components/active_playback_card.html" %}
       {% endif %}
     </div>
-    {% for group in home_groups %}
-      <section class="space-y-4">
-        {% if user.home_show_media_type_headers %}
-          <div class="flex items-center gap-2 border-b border-[#39404b] pb-3">
-            <span class="text-indigo-400">{{ group.icon_svg|safe }}</span>
-            <h2 class="text-3xl font-semibold text-gray-100">{{ group.label }}</h2>
+    {% include "app/components/home_groups.html" %}
+    {% if defer_remaining_groups %}
+      {# Remaining groups hydrate asynchronously so first paint only pays
+         for the first group's rows. #}
+      <div hx-get="{% url 'home_rest_fragment' %}"
+           hx-trigger="load"
+           hx-swap="outerHTML"
+           class="space-y-4 sm:space-y-8">
+        <section class="space-y-4 animate-pulse" aria-hidden="true">
+          <div class="h-6 w-40 bg-gray-700 rounded"></div>
+          <div class="flex gap-4 overflow-hidden">
+            <div class="w-44 h-64 shrink-0 bg-[#2a2f35] rounded-lg"></div>
+            <div class="w-44 h-64 shrink-0 bg-[#2a2f35] rounded-lg"></div>
+            <div class="w-44 h-64 shrink-0 bg-[#2a2f35] rounded-lg"></div>
+            <div class="w-44 h-64 shrink-0 bg-[#2a2f35] rounded-lg"></div>
           </div>
-        {% endif %}
-        <div class="space-y-3">
-          {% for row in group.rows %}
-            {% include "app/components/_scrollable_row.html" with row=row %}
-          {% endfor %}
-        </div>
-      </section>
-    {% empty %}
+        </section>
+      </div>
+    {% endif %}
+    {% include "app/components/home_artwork_poller.html" with poll_row_ids=artwork_poll_row_ids initial=True %}
+    {% if not home_groups %}
       <div class="flex flex-col items-center justify-center py-16 sm:py-32 px-3 sm:px-4 bg-[#2a2f35] rounded-lg">
         <div class="bg-[#39404b] rounded-full p-4 w-16 h-16 mx-auto mb-4 flex items-center justify-center">
           {% include "app/icons/pulse.svg" with classes="w-8 h-8 text-gray-400" %}
@@ -91,7 +97,7 @@
              class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors">Open Home Screen Settings</a>
         </div>
       </div>
-    {% endfor %}
+    {% endif %}
   </div>
 {% endblock content %}
 

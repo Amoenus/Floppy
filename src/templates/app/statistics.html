@@ -1395,44 +1395,27 @@
       </div>
     {% endif %}
 
-      {% if featured_person or role_leaders.columns or studio_footprint.studios %}
-      <div class="mb-4 sm:mb-8 space-y-4 sm:space-y-4"
+      {# Talent / studio / taste section loads asynchronously so the page
+         shell renders without the featured-player and comparison
+         aggregation cost. The fragment swaps in via HTMX on load. #}
+      <div id="talent-section"
+           hx-get="{% url 'statistics_talent_fragment' %}?range_name={{ selected_range_name|default_if_none:''|urlencode }}&start-date={{ start_date_str|urlencode }}&end-date={{ end_date_str|urlencode }}&compare={{ selected_compare_mode|urlencode }}"
+           hx-trigger="load"
+           hx-swap="outerHTML"
+           class="mb-4 sm:mb-8 space-y-4 sm:space-y-4"
            style="margin-top: 1rem;"
            x-show="['all','tv','movie','anime','game'].includes(selectedMediaType)">
         <div class="grid grid-cols-1 lg:grid-cols-5 gap-3 sm:gap-4 items-start">
-          <div class="bg-[#2a2f35] rounded-lg p-4 sm:p-6 lg:col-span-2 overflow-hidden" id="featured-repeat-player">
-            <div class="flex flex-col space-y-1 mb-4">
-              <h2 class="text-xl font-semibold text-white">Featured Repeat Player</h2>
-              <p class="text-sm text-gray-400">The most recurring talent in your library.</p>
-            </div>
-            <div x-ref="featuredPlayer">
-              {% include "app/components/featured_repeat_player_content.html" %}
-            </div>
-            <div x-ref="featuredPlayerFooter">
-              {% include "app/components/featured_repeat_player_footer.html" %}
-            </div>
+          <div class="bg-[#2a2f35] rounded-lg p-4 sm:p-6 lg:col-span-2 overflow-hidden animate-pulse">
+            <div class="h-6 w-48 bg-gray-700 rounded mb-4"></div>
+            <div class="h-40 bg-gray-700/60 rounded"></div>
           </div>
-          <div class="bg-[#2a2f35] rounded-lg p-4 sm:p-6 lg:col-span-3 overflow-hidden">
-            {% include "app/components/role_leaders.html" %}
-          </div>
-        </div>
-
-        <div class="bg-[#2a2f35] rounded-lg p-4 sm:p-6" id="person-media-strip">
-          <div x-ref="personStrip">
-            {% include "app/components/person_media_strip_row.html" %}
-          </div>
-        </div>
-
-        <div class="grid grid-cols-1 lg:grid-cols-5 gap-3 sm:gap-4 items-start">
-          <div class="bg-[#2a2f35] rounded-lg p-4 sm:p-6 lg:col-span-2 overflow-hidden">
-            {% include "app/components/studio_footprint.html" %}
-          </div>
-          <div class="bg-[#2a2f35] rounded-lg p-4 sm:p-6 lg:col-span-3 overflow-hidden">
-            {% include "app/components/taste_signals.html" %}
+          <div class="bg-[#2a2f35] rounded-lg p-4 sm:p-6 lg:col-span-3 overflow-hidden animate-pulse">
+            <div class="h-6 w-40 bg-gray-700 rounded mb-4"></div>
+            <div class="h-40 bg-gray-700/60 rounded"></div>
           </div>
         </div>
       </div>
-      {% endif %}
 
       {% if tv_consumption.has_data %}
         <div x-show="isMediaTypeVisible('tv')">

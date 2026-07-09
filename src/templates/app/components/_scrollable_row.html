@@ -23,13 +23,13 @@
 <div x-data="{ open: localStorage.getItem('{{ collapse_key }}') !== '{{ collapse_default|default:'false' }}' }"
      x-init="$watch('open', v => localStorage.setItem('{{ collapse_key }}', v))">
 {% endif %}
-{% if row.poll_for_covers %}
-<div id="home-music-row-artwork-{{ row.row_id }}"
-     hx-get="{% url 'home_row_artwork_refresh' row.row_id %}"
-     hx-trigger="load delay:1s, every 30s"
-     hx-sync="this:abort"
-     hx-target="this"
-     hx-swap="outerHTML">
+{% comment %}
+  Artwork polling is coalesced into a single shared poller (see
+  home_artwork_poller.html); rows just carry a stable id so the poller's
+  out-of-band swaps can target them.
+{% endcomment %}
+{% if row.poll_for_covers or force_artwork_anchor %}
+<div id="home-music-row-artwork-{{ row.row_id }}"{% if oob_swap %} hx-swap-oob="outerHTML"{% endif %}>
 {% else %}
 <div>
 {% endif %}
