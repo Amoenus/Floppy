@@ -162,7 +162,7 @@ def get_tracking_media_type(
         )
     ):
         return MediaTypes.TV.value
-    return identity_media_type or media_type
+    return media_type
 
 
 def get_library_media_type(

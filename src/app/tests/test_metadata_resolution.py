@@ -35,6 +35,53 @@ class MetadataResolutionTests(TestCase):
 
         self.assertEqual(provider, Sources.TMDB.value)
 
+    def test_get_tracking_media_type_keeps_season_and_episode_distinct_from_tv(self):
+        """A season/episode route must not collapse to "tv" via identity_media_type.
+
+        Regression test for GitHub issue #323: TVDB (and grouped-anime routes)
+        always tag season/episode metadata with identity_media_type="tv" to
+        describe the parent show's identity. get_tracking_media_type used to
+        blanket-fallback to identity_media_type whenever it was truthy, which
+        resolved "season"/"episode" routes to the TV model/form instead of
+        Season/Episode - dropping the season_number field from the track form
+        entirely and causing "mark season as Planning" to fail.
+        """
+        self.assertEqual(
+            metadata_resolution.get_tracking_media_type(
+                MediaTypes.SEASON.value,
+                source=Sources.TVDB.value,
+                identity_media_type=MediaTypes.TV.value,
+            ),
+            MediaTypes.SEASON.value,
+        )
+        self.assertEqual(
+            metadata_resolution.get_tracking_media_type(
+                MediaTypes.EPISODE.value,
+                source=Sources.TVDB.value,
+                identity_media_type=MediaTypes.TV.value,
+            ),
+            MediaTypes.EPISODE.value,
+        )
+
+    def test_get_tracking_media_type_still_groups_anime_into_tv(self):
+        """The one legitimate override - grouped anime - should still work."""
+        self.assertEqual(
+            metadata_resolution.get_tracking_media_type(
+                MediaTypes.ANIME.value,
+                source=Sources.TVDB.value,
+                identity_media_type=MediaTypes.TV.value,
+            ),
+            MediaTypes.TV.value,
+        )
+        self.assertEqual(
+            metadata_resolution.get_tracking_media_type(
+                MediaTypes.ANIME.value,
+                source=Sources.MAL.value,
+                identity_media_type=None,
+            ),
+            MediaTypes.ANIME.value,
+        )
+
     @override_settings(TVDB_API_KEY="test-tvdb-key")
     @patch("app.services.metadata_resolution.services.get_media_metadata")
     def test_resolve_detail_metadata_uses_provider_override_without_changing_tracking(
