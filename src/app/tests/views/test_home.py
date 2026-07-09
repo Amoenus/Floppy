@@ -607,28 +607,22 @@ class HomeViewTests(TestCase):
             end_date=timezone.now(),
         )
 
-        now_ts = int(timezone.now().timestamp())
-        live_playback.set_user_playback_state(
-            self.user.id,
-            {
-                "event_type": "media.play",
-                "media_type": MediaTypes.EPISODE.value,
-                "media_id": "playback-show",
-                "source": Sources.TMDB.value,
-                "rating_key": "rk-backdrop-fallback",
-                "title": "Playback Episode",
-                "series_title": "Playback Show",
-                "episode_title": "Playback Episode",
-                "season_number": 1,
-                "episode_number": 2,
-                "view_offset_seconds": 180,
-                "duration_seconds": 1800,
-                "status": live_playback.PLAYBACK_STATUS_PLAYING,
-                "updated_at_ts": now_ts,
-                "expires_at_ts": now_ts + 600,
-                "pause_expires_at_ts": None,
-                "scrobble_expires_at_ts": None,
-            },
+        # Image resolution now happens when the webhook event is applied
+        # (in the Celery worker), so drive the state through the event API.
+        live_playback.apply_playback_event(
+            user_id=self.user.id,
+            event_type="media.play",
+            playback_media_type=MediaTypes.EPISODE.value,
+            media_id="playback-show",
+            source=Sources.TMDB.value,
+            rating_key="rk-backdrop-fallback",
+            title="Playback Episode",
+            series_title="Playback Show",
+            episode_title="Playback Episode",
+            season_number=1,
+            episode_number=2,
+            view_offset_seconds=180,
+            duration_seconds=1800,
         )
 
         response = self.client.get(reverse("home"))

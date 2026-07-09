@@ -956,6 +956,19 @@ HEALTHCHECK_CELERY_PING_TIMEOUT = config(
     cast=int,
 )
 
+# The container healthcheck polls /health/ constantly; the celery broadcast
+# ping always waits its full timeout (~1s), pinning a gunicorn thread per
+# probe. The probe uses this fast subset; /health/full/ runs every check.
+HEALTH_CHECK = {
+    "SUBSETS": {
+        "liveness": [
+            "CacheBackend",
+            "RedisHealthCheck",
+            "DatabaseHeartBeatCheck",
+        ],
+    },
+}
+
 # Third party settings
 
 DEBUG_TOOLBAR_CONFIG = {
@@ -1052,6 +1065,12 @@ CELERY_TASK_ROUTES = {
     # Webhook scrobbles must land right after a play finishes, so they run on the
     # interactive worker at top priority — never behind imports or backfills.
     "Process media server webhook": {
+        "queue": "interactive",
+        "priority": CELERY_TASK_PRIORITY_INTERACTIVE,
+    },
+    # Fill-in artwork resolution for the home-page playback card; keeps the
+    # HTTP request path free of provider calls.
+    "Resolve live playback image": {
         "queue": "interactive",
         "priority": CELERY_TASK_PRIORITY_INTERACTIVE,
     },

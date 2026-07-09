@@ -1,9 +1,11 @@
+from datetime import datetime
 from unittest.mock import call, patch
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.test import TestCase
+from django.utils import timezone
 
 from app import statistics_cache
 from app.models import Item, MediaTypes, Sources
@@ -727,3 +729,74 @@ class NormalizeHistoryHighlightImagesTests(TestCase):
 
         self.assertEqual(highlights["first_play"]["image"], BACKDROP_URL)
         mock_backdrop.assert_not_called()
+
+
+class RequestPathDayBuildTests(TestCase):
+    """Custom-range statistics never build day caches inline in a request."""
+
+    def setUp(self):
+        cache.clear()
+        self.user = get_user_model().objects.create_user(
+            username="stats-daybuild-user",
+            password="secret123",
+        )
+        self.start = timezone.make_aware(datetime(2024, 1, 1))
+        self.end = timezone.make_aware(datetime(2024, 1, 31, 23, 59, 59))
+
+    def tearDown(self):
+        cache.clear()
+
+    @patch("app.tasks.build_statistics_days_task.apply_async")
+    @patch("app.statistics_aggregator.build_stats_for_day")
+    @patch("app.statistics_cache._eager_statistics_mode", return_value=False)
+    def test_minutes_by_type_schedules_background_build(
+        self,
+        _mock_eager,
+        mock_build_day,
+        mock_apply_async,
+    ):
+        result = statistics_cache.get_statistics_minutes_by_type(
+            self.user,
+            self.start,
+            self.end,
+            range_name="Custom",
+        )
+
+        self.assertEqual(result, {})
+        mock_build_day.assert_not_called()
+        mock_apply_async.assert_called_once()
+
+    @patch("app.tasks.build_statistics_days_task.apply_async")
+    @patch("app.statistics_aggregator.build_stats_for_day")
+    @patch("app.statistics_cache._eager_statistics_mode", return_value=False)
+    def test_schedule_is_debounced(
+        self,
+        _mock_eager,
+        mock_build_day,
+        mock_apply_async,
+    ):
+        for _ in range(2):
+            statistics_cache.get_statistics_minutes_by_type(
+                self.user,
+                self.start,
+                self.end,
+                range_name="Custom",
+            )
+
+        mock_build_day.assert_not_called()
+        mock_apply_async.assert_called_once()
+
+    def test_eager_mode_still_builds_inline(self):
+        with patch(
+            "app.statistics_aggregator.build_stats_for_day",
+            return_value={"totals": {"minutes_by_type": {"movie": 60}}},
+        ) as mock_build_day:
+            result = statistics_cache.get_statistics_minutes_by_type(
+                self.user,
+                self.start,
+                self.end,
+                range_name="Custom",
+            )
+
+        self.assertEqual(result, {"movie": 60 * 31})
+        self.assertEqual(mock_build_day.call_count, 31)
