@@ -485,6 +485,7 @@
                    options: [{% for choice in tv_metadata_source_choices %}{ value: '{{ choice.0 }}', label: '{{ choice.1|escapejs }}' }{% if not forloop.last %},{% endif %}{% endfor %}],
                    init() {
                      const match = this.options.find(o => o.value === this.selectedValue);
+                     this.selectedValue = match ? match.value : this.options[0]?.value ?? '';
                      this.selectedLabel = match ? match.label : this.options[0]?.label ?? '';
                    }
                  }"
@@ -538,6 +539,7 @@
                    options: [{% for choice in anime_metadata_source_choices %}{ value: '{{ choice.0 }}', label: '{{ choice.1|escapejs }}' }{% if not forloop.last %},{% endif %}{% endfor %}],
                    init() {
                      const match = this.options.find(o => o.value === this.selectedValue);
+                     this.selectedValue = match ? match.value : this.options[0]?.value ?? '';
                      this.selectedLabel = match ? match.label : this.options[0]?.label ?? '';
                    }
                  }"
