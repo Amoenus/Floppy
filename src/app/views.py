@@ -763,6 +763,7 @@ def episode_details(request, source, media_id, title, season_number, episode_num
     context = {
         "user": request.user,
         "episode": episode_data,
+        "episodes": processed_episodes,
         "episode_metadata": episode_metadata,
         "season_metadata": season_metadata,
         "current_instance": current_season_instance,
