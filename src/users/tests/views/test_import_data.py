@@ -95,6 +95,14 @@ class ImportDataViewTests(TestCase):
         self.assertContains(response, '<option value="public">Public profile</option>', html=False)
         self.assertContains(response, '<option value="private">Private profile (OAuth)</option>', html=False)
 
+    def test_import_data_renders_trakt_collection_csv_upload(self):
+        """The Trakt card should offer a collection-only CSV upload fallback."""
+        response = self.client.get(reverse("import_data"))
+
+        self.assertContains(response, reverse("import_trakt_collection_csv"))
+        self.assertContains(response, "trakt_collection_csv")
+        self.assertContains(response, "Select Collection CSV File")
+
     @patch("users.views.plex.list_sections")
     @patch("users.views.plex.fetch_account")
     def test_import_data_skips_live_plex_checks_during_initial_render(

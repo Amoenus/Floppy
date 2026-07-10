@@ -809,6 +809,28 @@ def import_yamtrack(request):
 
 
 @require_POST
+def import_trakt_collection_csv(request):
+    """View for importing collection ownership from a Trakt collection CSV export."""
+    file = request.FILES.get("trakt_collection_csv")
+
+    if not file:
+        messages.error(request, "Trakt collection CSV file is required.")
+        return redirect("import_data")
+
+    mode = request.POST["mode"]
+    tasks.import_trakt_collection_csv.delay(
+        user_id=request.user.id,
+        file=_read_uploaded_file(file),
+        mode=mode,
+    )
+    messages.info(
+        request,
+        "The task to import collection data from the Trakt CSV file has been queued.",
+    )
+    return redirect("import_data")
+
+
+@require_POST
 def import_hltb(request):
     """View for importing game date from HowLongToBeat."""
     file = request.FILES.get("hltb_csv")

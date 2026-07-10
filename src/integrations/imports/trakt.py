@@ -177,7 +177,106 @@ def importer(token, user, mode, username):
     return trakt_importer.import_data()
 
 
-class TraktImporter:
+class TraktMetadataResolverMixin:
+    """Shared TMDB metadata/Item resolution logic for Trakt-sourced importers.
+
+    Requires the including class to maintain a ``self.warnings`` list.
+    """
+
+    def _get_tmdb_id(self, entry_data):
+        """Extract TMDB ID from entry data."""
+        if (
+            "ids" in entry_data
+            and "tmdb" in entry_data["ids"]
+            and entry_data["ids"]["tmdb"]
+        ):
+            return str(entry_data["ids"]["tmdb"])
+
+        self.warnings.append(
+            f"{entry_data['title']}: No {Sources.TMDB.label} ID found.",
+        )
+        return None
+
+    def _get_metadata(self, media_type, tmdb_id, title, season_number=None):
+        """Get metadata for a media item."""
+        try:
+            kwargs = {}
+            if season_number is not None:
+                kwargs["season_numbers"] = [season_number]
+
+            return services.get_media_metadata(
+                media_type,
+                tmdb_id,
+                Sources.TMDB.value,
+                **kwargs,
+            )
+        except services.ProviderAPIError as error:
+            if error.status_code == requests.codes.not_found:
+                if media_type == MediaTypes.SEASON.value:
+                    title = f"{title} S{season_number}"
+                self.warnings.append(
+                    f"{title}: not found in {Sources.TMDB.label} with ID {tmdb_id}.",
+                )
+                return None
+            raise
+
+    def _get_or_create_item(
+        self,
+        media_type,
+        tmdb_id,
+        metadata,
+        season_number=None,
+        episode_number=None,
+    ):
+        """Get or create an item in the database.
+
+        The same season/episode can legitimately exist under more than one
+        ``library_media_type`` bucket (e.g. grouped anime stored on TV rows, or
+        episodes auto-created when a season is marked complete). A plain
+        ``get_or_create`` keyed only on the identity fields therefore risks
+        ``MultipleObjectsReturned``. Reuse any existing matching item instead of
+        failing or creating a divergent duplicate, preferring the bucket this
+        importer would normally use.
+        """
+        item_kwargs = {
+            "media_id": tmdb_id,
+            "source": Sources.TMDB.value,
+            "media_type": media_type,
+        }
+
+        if season_number is not None:
+            item_kwargs["season_number"] = season_number
+
+        if episode_number is not None:
+            item_kwargs["episode_number"] = episode_number
+
+        desired_bucket = metadata.get("library_media_type") or media_type
+
+        existing = list(app.models.Item.objects.filter(**item_kwargs))
+        if existing:
+            for item in existing:
+                if item.library_media_type == desired_bucket:
+                    return item
+            return existing[0]
+
+        return app.models.Item.objects.create(
+            **item_kwargs,
+            library_media_type=desired_bucket,
+            **app.models.Item.title_fields_from_metadata(metadata),
+            image=metadata["image"],
+        )
+
+    def _get_episode_image(self, episode_number, season_metadata):
+        """Extract episode image URL from season metadata."""
+        for episode in season_metadata["episodes"]:
+            if episode["episode_number"] == episode_number:
+                if episode.get("still_path"):
+                    return f"https://image.tmdb.org/t/p/w500{episode['still_path']}"
+                break
+        return settings.IMG_NONE
+
+
+class TraktImporter(TraktMetadataResolverMixin):
     """Class to handle importing user data from Trakt."""
 
     def __init__(self, username, user, mode, refresh_token=None):
@@ -251,6 +350,7 @@ class TraktImporter:
         self.process_watchlist()
         self.process_ratings()
         self.process_comments()
+        self.process_collection()
 
         helpers.cleanup_existing_media(self.to_delete, self.user)
         helpers.bulk_create_media(self.bulk_media, self.user)
@@ -382,89 +482,6 @@ class TraktImporter:
                     f"{title}: skipped a watch entry due to an unexpected error ({e}).",
                 )
 
-    def _get_tmdb_id(self, entry_data):
-        """Extract TMDB ID from entry data."""
-        if (
-            "ids" in entry_data
-            and "tmdb" in entry_data["ids"]
-            and entry_data["ids"]["tmdb"]
-        ):
-            return str(entry_data["ids"]["tmdb"])
-
-        self.warnings.append(
-            f"{entry_data['title']}: No {Sources.TMDB.label} ID found.",
-        )
-        return None
-
-    def _get_metadata(self, media_type, tmdb_id, title, season_number=None):
-        """Get metadata for a media item."""
-        try:
-            kwargs = {}
-            if season_number is not None:
-                kwargs["season_numbers"] = [season_number]
-
-            return services.get_media_metadata(
-                media_type,
-                tmdb_id,
-                Sources.TMDB.value,
-                **kwargs,
-            )
-        except services.ProviderAPIError as error:
-            if error.status_code == requests.codes.not_found:
-                if media_type == MediaTypes.SEASON.value:
-                    title = f"{title} S{season_number}"
-                self.warnings.append(
-                    f"{title}: not found in {Sources.TMDB.label} with ID {tmdb_id}.",
-                )
-                return None
-            raise
-
-    def _get_or_create_item(
-        self,
-        media_type,
-        tmdb_id,
-        metadata,
-        season_number=None,
-        episode_number=None,
-    ):
-        """Get or create an item in the database.
-
-        The same season/episode can legitimately exist under more than one
-        ``library_media_type`` bucket (e.g. grouped anime stored on TV rows, or
-        episodes auto-created when a season is marked complete). A plain
-        ``get_or_create`` keyed only on the identity fields therefore risks
-        ``MultipleObjectsReturned``. Reuse any existing matching item instead of
-        failing or creating a divergent duplicate, preferring the bucket this
-        importer would normally use.
-        """
-        item_kwargs = {
-            "media_id": tmdb_id,
-            "source": Sources.TMDB.value,
-            "media_type": media_type,
-        }
-
-        if season_number is not None:
-            item_kwargs["season_number"] = season_number
-
-        if episode_number is not None:
-            item_kwargs["episode_number"] = episode_number
-
-        desired_bucket = metadata.get("library_media_type") or media_type
-
-        existing = list(app.models.Item.objects.filter(**item_kwargs))
-        if existing:
-            for item in existing:
-                if item.library_media_type == desired_bucket:
-                    return item
-            return existing[0]
-
-        return app.models.Item.objects.create(
-            **item_kwargs,
-            library_media_type=desired_bucket,
-            **app.models.Item.title_fields_from_metadata(metadata),
-            image=metadata["image"],
-        )
-
     def process_watched_movie(self, entry):
         """Process a single movie watch event."""
         movie = entry["movie"]
@@ -505,15 +522,6 @@ class TraktImporter:
 
         self.media_instances[MediaTypes.MOVIE.value][key].append(movie_obj)
         self.bulk_media[MediaTypes.MOVIE.value].append(movie_obj)
-
-    def _get_episode_image(self, episode_number, season_metadata):
-        """Extract episode image URL from season metadata."""
-        for episode in season_metadata["episodes"]:
-            if episode["episode_number"] == episode_number:
-                if episode.get("still_path"):
-                    return f"https://image.tmdb.org/t/p/w500{episode['still_path']}"
-                break
-        return settings.IMG_NONE
 
     def process_watched_episode(self, entry):
         """Process a single episode watch event."""
@@ -741,6 +749,138 @@ class TraktImporter:
             except Exception as e:
                 msg = f"Error processing comment entry: {entry}"
                 raise MediaImportUnexpectedError(msg) from e
+
+    def process_collection(self):
+        """Import owned-copy (collection) data from Trakt."""
+        # Imported lazily to avoid a circular import: trakt_collection imports
+        # TraktMetadataResolverMixin from this module.
+        from integrations.imports import trakt_collection
+
+        logger.info("Importing collection for user %s", self.username)
+
+        movies_endpoint = f"{self.user_base_url}/collection/movies"
+        collected_movies = self._get_paginated_data(movies_endpoint, "collected movies")
+        for entry in collected_movies:
+            try:
+                self._process_collected_movie(entry, trakt_collection)
+            except Exception as e:
+                logger.exception("Skipping Trakt collection movie entry")
+                title = entry.get("movie", {}).get("title", "Unknown title")
+                self.warnings.append(
+                    f"{title}: skipped a collection entry due to an unexpected "
+                    f"error ({e}).",
+                )
+
+        shows_endpoint = f"{self.user_base_url}/collection/shows"
+        collected_shows = self._get_paginated_data(shows_endpoint, "collected shows")
+        for entry in collected_shows:
+            try:
+                self._process_collected_show(entry, trakt_collection)
+            except Exception as e:
+                logger.exception("Skipping Trakt collection show entry")
+                title = entry.get("show", {}).get("title", "Unknown title")
+                self.warnings.append(
+                    f"{title}: skipped a collection entry due to an unexpected "
+                    f"error ({e}).",
+                )
+
+    def _process_collected_movie(self, entry, trakt_collection):
+        """Process a single Trakt collection movie entry."""
+        movie = entry["movie"]
+        tmdb_id = self._get_tmdb_id(movie)
+        if not tmdb_id:
+            return
+
+        metadata = self._get_metadata(MediaTypes.MOVIE.value, tmdb_id, movie["title"])
+        if not metadata:
+            return
+
+        item = self._get_or_create_item(MediaTypes.MOVIE.value, tmdb_id, metadata)
+        trakt_collection.upsert_collection_entry(
+            self.user,
+            item,
+            mode=self.mode,
+            collected_at=_parse_watched_at(entry.get("collected_at", "")),
+            metadata=entry.get("metadata"),
+        )
+
+    def _process_collected_show(self, entry, trakt_collection):
+        """Process a single Trakt collection show entry, including its episodes."""
+        show = entry["show"]
+        tmdb_id = self._get_tmdb_id(show)
+        if not tmdb_id:
+            return
+
+        tv_metadata = self._get_metadata(MediaTypes.TV.value, tmdb_id, show["title"])
+        if not tv_metadata:
+            return
+        tv_item = self._get_or_create_item(MediaTypes.TV.value, tmdb_id, tv_metadata)
+
+        for season_entry in entry.get("seasons", []):
+            season_number = season_entry["number"]
+            season_metadata = self._get_metadata(
+                MediaTypes.SEASON.value,
+                tmdb_id,
+                show["title"],
+                season_number,
+            )
+            if not season_metadata:
+                continue
+            season_item = self._get_or_create_item(
+                MediaTypes.SEASON.value,
+                tmdb_id,
+                season_metadata,
+                season_number,
+            )
+
+            for episode_entry in season_entry.get("episodes", []):
+                episode_number = episode_entry["number"]
+                episode_exists = any(
+                    ep["episode_number"] == episode_number
+                    for ep in season_metadata["episodes"]
+                )
+                if not episode_exists:
+                    self.warnings.append(
+                        f"{show['title']} S{season_number}E{episode_number}: not "
+                        f"found in {Sources.TMDB.label} with ID {tmdb_id}.",
+                    )
+                    continue
+
+                episode_image = self._get_episode_image(
+                    episode_number,
+                    season_metadata,
+                )
+                episode_metadata = {
+                    "title": tv_metadata["title"],
+                    "original_title": tv_metadata.get("original_title"),
+                    "localized_title": tv_metadata.get("localized_title"),
+                    "image": episode_image,
+                }
+                episode_item = self._get_or_create_item(
+                    MediaTypes.EPISODE.value,
+                    tmdb_id,
+                    episode_metadata,
+                    season_number,
+                    episode_number,
+                )
+                trakt_collection.upsert_collection_entry(
+                    self.user,
+                    episode_item,
+                    mode=self.mode,
+                    collected_at=_parse_watched_at(
+                        episode_entry.get("collected_at", ""),
+                    ),
+                    metadata=episode_entry.get("metadata"),
+                )
+
+            trakt_collection.apply_season_and_show_rollup(
+                self.user,
+                self.mode,
+                tv_item,
+                season_item,
+                tv_metadata,
+                season_metadata,
+            )
 
     def process_dropped(self):
         """Collect TMDB IDs of shows the user has dropped (hidden from progress).

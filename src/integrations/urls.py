@@ -10,6 +10,11 @@ urlpatterns = [
         name="import_trakt_private",
     ),
     path("import/trakt/public", views.import_trakt_public, name="import_trakt_public"),
+    path(
+        "import/trakt/collection-csv",
+        views.import_trakt_collection_csv,
+        name="import_trakt_collection_csv",
+    ),
     path("import/plex/connect", views.plex_connect, name="plex_connect"),
     path("import/plex/callback", views.plex_callback, name="plex_callback"),
     path("import/plex/disconnect", views.plex_disconnect, name="plex_disconnect"),

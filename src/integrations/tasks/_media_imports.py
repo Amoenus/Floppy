@@ -28,6 +28,7 @@ from integrations.imports import (
     steam,
     storyteller,
     trakt,
+    trakt_collection,
     yamtrack,
 )
 from integrations.plex_watchlist import PlexWatchlistSyncService
@@ -154,6 +155,17 @@ def import_yamtrack(file, user_id, mode):
 def import_hltb(file, user_id, mode):
     """Celery task for importing media data from HowLongToBeat."""
     return import_media(hltb.importer, _coerce_uploaded_file(file), user_id, mode)
+
+
+@shared_task(name="Import Trakt collection CSV")
+def import_trakt_collection_csv(file, user_id, mode):
+    """Celery task for importing collection ownership from a Trakt CSV export."""
+    return import_media(
+        trakt_collection.importer,
+        _coerce_uploaded_file(file),
+        user_id,
+        mode,
+    )
 
 
 @shared_task(name="Import from Steam")

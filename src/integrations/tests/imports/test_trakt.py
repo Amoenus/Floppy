@@ -6,6 +6,7 @@ from django.test import TestCase
 
 from app.models import (
     TV,
+    CollectionEntry,
     Episode,
     Item,
     MediaTypes,
@@ -280,6 +281,8 @@ class ImportTrakt(TestCase):
             [],  # watchlist — empty
             [],  # ratings — empty
             [],  # comments — empty
+            [],  # collection movies — empty
+            [],  # collection shows — empty
         ]
 
         mock_make_request.return_value = []
@@ -317,6 +320,8 @@ class ImportTrakt(TestCase):
             [],  # watchlist — empty
             [],  # ratings — empty
             [],  # comments — empty
+            [],  # collection movies — empty
+            [],  # collection shows — empty
         ]
 
         mock_make_request.return_value = []
@@ -399,10 +404,14 @@ class ImportTrakt(TestCase):
             [],  # watchlist
             [],  # ratings
             [],  # comments
+            [],  # collection movies
+            [],  # collection shows
             [episode_entry],  # history (2nd import)
             [],  # watchlist
             [],  # ratings
             [],  # comments
+            [],  # collection movies
+            [],  # collection shows
         ]
         mock_make_request.return_value = []
 
@@ -809,6 +818,8 @@ class ImportTrakt(TestCase):
                 }
             ],
             [],  # comments — empty
+            [],  # collection movies — empty
+            [],  # collection shows — empty
         ]
         mock_get_metadata.return_value = {"title": "Test Show", "image": "img.jpg"}
 
@@ -885,6 +896,8 @@ class ImportTrakt(TestCase):
             [],               # watchlist — empty
             [rating_entry],   # ratings — one episode entry
             [],               # comments
+            [],               # collection movies — empty
+            [],               # collection shows — empty
         ]
 
         importer(None, self.user, "new", "public_user")
@@ -974,6 +987,8 @@ class ImportTrakt(TestCase):
             [],  # process_watchlist
             [],  # process_ratings
             [],  # process_comments
+            [],  # collection movies — empty
+            [],  # collection shows — empty
         ]
 
         encrypted_token = helpers.encrypt("test_token")
@@ -1041,6 +1056,8 @@ class ImportTrakt(TestCase):
             [],  # process_watchlist
             [],  # process_ratings
             [],  # process_comments
+            [],  # collection movies — empty
+            [],  # collection shows — empty
         ]
 
         encrypted_token = helpers.encrypt("test_token")
@@ -1117,4 +1134,161 @@ class ImportTrakt(TestCase):
         self.assertTrue(
             any("skipped a watch entry" in warning for warning in trakt_importer.warnings),
             trakt_importer.warnings,
+        )
+
+    @patch("integrations.imports.trakt.TraktImporter._make_api_request")
+    @patch("integrations.imports.trakt.TraktImporter._get_metadata")
+    def test_process_collection_movie(self, mock_get_metadata, mock_make_request):
+        """Test processing a collected movie entry."""
+        collected_movie = {
+            "collected_at": "2023-01-05T00:00:00.000Z",
+            "movie": {"title": "Owned Movie", "ids": {"tmdb": 999}},
+            "metadata": {
+                "media_type": "bluray",
+                "resolution": "1080p",
+                "hdr": "",
+                "audio": "dts",
+                "audio_channels": "5.1",
+                "3d": False,
+            },
+        }
+        # movies page1, movies page2 (empty, stops loop), shows page1 (empty, stops loop)
+        mock_make_request.side_effect = [[collected_movie], [], []]
+        mock_get_metadata.return_value = {
+            "title": "Owned Movie",
+            "image": "movie_image.jpg",
+        }
+
+        trakt_importer = TraktImporter("testuser", self.user, "new")
+        trakt_importer.process_collection()
+
+        entry = CollectionEntry.objects.get(
+            user=self.user,
+            item__media_id="999",
+            item__media_type=MediaTypes.MOVIE.value,
+        )
+        self.assertEqual(entry.resolution, "1080p")
+        self.assertEqual(entry.audio_codec, "dts")
+        self.assertEqual(entry.audio_channels, "5.1")
+        self.assertEqual(entry.media_type, "bluray")
+        self.assertFalse(entry.is_3d)
+
+    @patch("integrations.imports.trakt.TraktImporter._make_api_request")
+    @patch("integrations.imports.trakt.TraktImporter._get_metadata")
+    def test_process_collection_show_rolls_up_season_and_show(
+        self,
+        mock_get_metadata,
+        mock_make_request,
+    ):
+        """A fully-collected season/show should get season/show-level entries too."""
+        collected_show = {
+            "show": {"title": "Owned Show", "ids": {"tmdb": 4242}},
+            "seasons": [
+                {
+                    "number": 1,
+                    "episodes": [
+                        {
+                            "number": 1,
+                            "collected_at": "2023-01-01T00:00:00.000Z",
+                            "metadata": {"resolution": "1080p"},
+                        },
+                        {
+                            "number": 2,
+                            "collected_at": "2023-01-02T00:00:00.000Z",
+                            "metadata": {"resolution": "1080p"},
+                        },
+                    ],
+                },
+            ],
+        }
+        # movies page1 (empty, stops loop), shows page1, shows page2 (empty, stops loop)
+        mock_make_request.side_effect = [[], [collected_show], []]
+
+        def mock_metadata_side_effect(media_type, _, __, ___=None):
+            if media_type == MediaTypes.TV.value:
+                return {
+                    "title": "Owned Show",
+                    "image": "tv_image.jpg",
+                    "related": {"seasons": [{"season_number": 1}]},
+                }
+            if media_type == MediaTypes.SEASON.value:
+                return {
+                    "title": "Season 1",
+                    "image": "season_image.jpg",
+                    "episodes": [
+                        {"episode_number": 1, "still_path": "/s1.jpg"},
+                        {"episode_number": 2, "still_path": "/s2.jpg"},
+                    ],
+                    "max_progress": 2,
+                }
+            return None
+
+        mock_get_metadata.side_effect = mock_metadata_side_effect
+
+        trakt_importer = TraktImporter("testuser", self.user, "new")
+        trakt_importer.process_collection()
+
+        self.assertEqual(
+            CollectionEntry.objects.filter(
+                user=self.user,
+                item__media_id="4242",
+                item__media_type=MediaTypes.EPISODE.value,
+            ).count(),
+            2,
+        )
+        self.assertTrue(
+            CollectionEntry.objects.filter(
+                user=self.user,
+                item__media_id="4242",
+                item__media_type=MediaTypes.SEASON.value,
+                item__season_number=1,
+            ).exists(),
+        )
+        self.assertTrue(
+            CollectionEntry.objects.filter(
+                user=self.user,
+                item__media_id="4242",
+                item__media_type=MediaTypes.TV.value,
+            ).exists(),
+        )
+
+    @patch("integrations.imports.trakt.TraktImporter._make_api_request")
+    @patch("integrations.imports.trakt.TraktImporter._get_metadata")
+    def test_process_collection_new_mode_does_not_overwrite(
+        self,
+        mock_get_metadata,
+        mock_make_request,
+    ):
+        """"new" mode must not touch an existing collection entry's fields."""
+        item = Item.objects.get_or_create(
+            media_id="999",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            defaults={"title": "Owned Movie"},
+        )[0]
+        existing_entry = CollectionEntry.objects.create(
+            user=self.user,
+            item=item,
+            resolution="4k",
+        )
+
+        collected_movie = {
+            "collected_at": "2023-01-05T00:00:00.000Z",
+            "movie": {"title": "Owned Movie", "ids": {"tmdb": 999}},
+            "metadata": {"resolution": "1080p"},
+        }
+        mock_make_request.side_effect = [[collected_movie], [], []]
+        mock_get_metadata.return_value = {
+            "title": "Owned Movie",
+            "image": "movie_image.jpg",
+        }
+
+        trakt_importer = TraktImporter("testuser", self.user, "new")
+        trakt_importer.process_collection()
+
+        existing_entry.refresh_from_db()
+        self.assertEqual(existing_entry.resolution, "4k")
+        self.assertEqual(
+            CollectionEntry.objects.filter(user=self.user, item=item).count(),
+            1,
         )
