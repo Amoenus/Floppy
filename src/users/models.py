@@ -62,6 +62,19 @@ class MediaSortChoices(models.TextChoices):
     TIME_LEFT = "time_left", "Time Left"
 
 
+GAME_LIKE_MEDIA_TYPES = {MediaTypes.GAME.value, MediaTypes.BOARDGAME.value}
+
+
+def relabel_end_date_sort_choice(media_type, choices):
+    """Swap the END_DATE sort choice label to 'Last Played' for game-like media types."""
+    if media_type not in GAME_LIKE_MEDIA_TYPES:
+        return choices
+    return [
+        (value, "Last Played") if value == MediaSortChoices.END_DATE else (value, label)
+        for value, label in choices
+    ]
+
+
 class MediaStatusChoices(models.TextChoices):
     """Choices for media list status options."""
 
@@ -205,6 +218,13 @@ class TopTalentSortChoices(models.TextChoices):
     PLAYS = "plays", "Plays"
     TIME = "time", "Time"
     TITLES = "titles", "Titles"
+
+
+class GenreSortChoices(models.TextChoices):
+    """Choices for sorting the Taste Signals Top Genres panel on statistics."""
+
+    TIME = "time", "Time"
+    PLAYS = "plays", "Plays"
 
 
 class StatisticsCompareChoices(models.TextChoices):
@@ -862,6 +882,18 @@ class User(AbstractUser):
         choices=TopTalentSortChoices.choices,
         help_text="Sort metric for top cast/crew/studio cards on the Statistics page",
     )
+    genre_sort_by = models.CharField(
+        max_length=20,
+        default=GenreSortChoices.TIME,
+        choices=GenreSortChoices.choices,
+        help_text="Sort metric for the Top Genres panel on the Statistics page",
+    )
+    studio_sort_by = models.CharField(
+        max_length=20,
+        default=GenreSortChoices.PLAYS,
+        choices=GenreSortChoices.choices,
+        help_text="Sort metric for the Studio Footprint card on the Statistics page",
+    )
 
     activity_history_view = models.CharField(
         max_length=20,
@@ -896,6 +928,11 @@ class User(AbstractUser):
     home_show_media_type_headers = models.BooleanField(
         default=False,
         help_text="Show a media-type header (icon + name) above each group of home screen rows",
+    )
+    home_screen_media_type_order = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="User's preferred order of media-type sections on the Home screen",
     )
     auto_pause_in_progress_enabled = models.BooleanField(
         default=False,
@@ -1100,6 +1137,14 @@ class User(AbstractUser):
             models.CheckConstraint(
                 name="top_talent_sort_by_valid",
                 condition=models.Q(top_talent_sort_by__in=TopTalentSortChoices.values),
+            ),
+            models.CheckConstraint(
+                name="genre_sort_by_valid",
+                condition=models.Q(genre_sort_by__in=GenreSortChoices.values),
+            ),
+            models.CheckConstraint(
+                name="studio_sort_by_valid",
+                condition=models.Q(studio_sort_by__in=GenreSortChoices.values),
             ),
             models.CheckConstraint(
                 name="list_detail_sort_valid",

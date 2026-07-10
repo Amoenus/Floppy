@@ -33,6 +33,8 @@ PROVIDER_METADATA_FIELDS = [
     "provider_certification",
     "provider_collection_id",
     "provider_collection_name",
+    "igdb_user_rating",
+    "igdb_user_rating_count",
 ]
 
 
@@ -175,6 +177,8 @@ def extract_item_metadata_values(metadata: dict | None) -> dict[str, object]:
         "provider_collection_name": str(
             payload.get("provider_collection_name") or ""
         ).strip(),
+        "igdb_user_rating": payload.get("igdb_user_rating"),
+        "igdb_user_rating_count": payload.get("igdb_user_rating_count"),
         "release_datetime": helpers.extract_release_datetime(payload),
     }
 

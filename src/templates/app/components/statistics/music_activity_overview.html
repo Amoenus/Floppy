@@ -129,33 +129,8 @@
             </div>
           </div>
 
-          <!-- Top 5 Genres / Decades / Countries -->
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
-            <!-- Top Genres -->
-            <div class="bg-[#39404b] rounded-lg p-3 sm:p-4">
-              <h3 class="text-sm font-medium uppercase tracking-wide text-gray-300 mb-4">Top {{ music_consumption.top_genres|length|default:0 }} Genres</h3>
-              {% if music_consumption.top_genres %}
-                <div class="overflow-y-auto pr-1 statistics-card-scroll">
-                  {% for genre in music_consumption.top_genres %}
-                  <a href="{% url 'history' %}?genre={{ genre.name|urlencode }}&media_type=music{% if start_date_str and start_date_str != 'all' %}&start-date={{ start_date_str }}{% endif %}{% if end_date_str and end_date_str != 'all' %}&end-date={{ end_date_str }}{% endif %}" class="flex items-center space-x-3 hover:bg-[#2a2f35] rounded-md p-1 -m-1 transition-colors cursor-pointer">
-                    <span class="text-gray-500 text-sm font-medium w-4">{{ forloop.counter }}</span>
-                    <div class="w-10 h-10 rounded bg-[#2a2f35] flex items-center justify-center text-gray-300 text-sm font-semibold uppercase">
-                      {{ genre.name|slice:":2" }}
-                    </div>
-                    <div class="flex-1 min-w-0">
-                      <p class="text-sm font-medium text-white truncate">{{ genre.name }}</p>
-                      <p class="text-xs text-gray-500 truncate">{{ genre.formatted_duration }} · {{ genre.plays }} play{{ genre.plays|pluralize }}</p>
-                    </div>
-                  </a>
-                  {% endfor %}
-                </div>
-              {% else %}
-                <div class="flex flex-col items-center justify-center py-8 text-gray-400">
-                  <p class="text-sm">No genre data available.</p>
-                </div>
-              {% endif %}
-            </div>
-
+          <!-- Top Decades / Countries -->
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
             <!-- Top Decades -->
             <div class="bg-[#39404b] rounded-lg p-3 sm:p-4">
               <h3 class="text-sm font-medium uppercase tracking-wide text-gray-300 mb-4">Top {{ music_consumption.top_decades|length|default:0 }} Decades</h3>

@@ -956,6 +956,19 @@ HEALTHCHECK_CELERY_PING_TIMEOUT = config(
     cast=int,
 )
 
+# The container healthcheck polls /health/ constantly; the celery broadcast
+# ping always waits its full timeout (~1s), pinning a gunicorn thread per
+# probe. The probe uses this fast subset; /health/full/ runs every check.
+HEALTH_CHECK = {
+    "SUBSETS": {
+        "liveness": [
+            "CacheBackend",
+            "RedisHealthCheck",
+            "DatabaseHeartBeatCheck",
+        ],
+    },
+}
+
 # Third party settings
 
 DEBUG_TOOLBAR_CONFIG = {
@@ -1042,6 +1055,9 @@ CELERY_TASK_ROUTES = {
     # Long-running scheduled tasks — low priority so beat-catch-up bursts don't
     # starve other celery-queue work.
     "Reload calendar": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
+    # Discover cache rebuilds go to the dedicated discover worker so a post-restart
+    # burst of O(users x tabs) tasks never starves imports or background work.
+    "Refresh Discover Tab Cache": {"queue": "discover"},
     # User-triggered cache rebuilds go to the dedicated interactive worker so they
     # are never blocked behind long-running background tasks.
     "app.tasks.refresh_statistics_cache_task": {"queue": "interactive"},
@@ -1052,6 +1068,21 @@ CELERY_TASK_ROUTES = {
         "queue": "interactive",
         "priority": CELERY_TASK_PRIORITY_INTERACTIVE,
     },
+    # Fill-in artwork resolution for the home-page playback card; keeps the
+    # HTTP request path free of provider calls.
+    "Resolve live playback image": {
+        "queue": "interactive",
+        "priority": CELERY_TASK_PRIORITY_INTERACTIVE,
+    },
+    # Recurring imports are time-sensitive (every 2 h) — bump above generic
+    # background tasks so a backlog of low-priority work doesn't delay them.
+    "Import from Radarr (Recurring)": {"priority": CELERY_TASK_PRIORITY_FOLLOWUP},
+    "Import from Sonarr (Recurring)": {"priority": CELERY_TASK_PRIORITY_FOLLOWUP},
+    "Import from Audiobookshelf (Recurring)": {
+        "priority": CELERY_TASK_PRIORITY_FOLLOWUP,
+    },
+    "Import from Pocket Casts (Recurring)": {"priority": CELERY_TASK_PRIORITY_FOLLOWUP},
+    "Import from GPodder (Recurring)": {"priority": CELERY_TASK_PRIORITY_FOLLOWUP},
 }
 
 

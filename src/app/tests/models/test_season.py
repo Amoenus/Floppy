@@ -111,6 +111,70 @@ class SeasonModel(TestCase):
         self.assertEqual(self.season.completed_episode_count, 2)
         self.assertEqual(self.season.progress, 3)
 
+    def test_progress_first_watch_with_gap(self):
+        """Regression for #327: watching a later episode before a skipped one
+        should report the highest episode number touched, not the gap."""
+        item_ep4 = Item.objects.create(
+            media_id="1668",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="Friends",
+            image="http://example.com/image.jpg",
+            season_number=1,
+            episode_number=4,
+        )
+        Episode.objects.create(
+            item=item_ep4,
+            related_season=self.season,
+            end_date=datetime(2023, 6, 4, 0, 0, tzinfo=UTC),
+        )
+        # setUp already watched ep1 and ep2; episode 3 is skipped entirely.
+        self.assertEqual(self.season.progress, 4)
+
+    def test_progress_rewatch_tolerates_skipped_episode(self):
+        """Regression for #327: a second watchthrough that skips one episode
+        should not get stuck at the skip point."""
+        item_season = Item.objects.create(
+            media_id="9999",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Rewatch Show",
+            image="http://example.com/image.jpg",
+            season_number=1,
+        )
+        season = Season.objects.create(
+            item=item_season,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+
+        for ep_num in range(1, 7):
+            item = Item.objects.create(
+                media_id="9999",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.EPISODE.value,
+                title="Rewatch Show",
+                image="http://example.com/image.jpg",
+                season_number=1,
+                episode_number=ep_num,
+            )
+            Episode.objects.create(
+                item=item,
+                related_season=season,
+                end_date=datetime(2023, 6, ep_num, 0, 0, tzinfo=UTC),
+            )
+            if ep_num != 5:
+                # Second watch for everything except episode 5 (implicit skip).
+                Episode.objects.create(
+                    item=item,
+                    related_season=season,
+                    end_date=datetime(2023, 7, ep_num, 0, 0, tzinfo=UTC),
+                )
+
+        # 5 of 6 episodes reached a second watch, a strict majority, so
+        # progress should advance to 6 rather than freeze at 4.
+        self.assertEqual(season.progress, 6)
+
     def test_season_start_date(self):
         """Test the start_date property of the Season model."""
         self.assertEqual(

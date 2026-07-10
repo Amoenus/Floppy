@@ -23,6 +23,7 @@ from users.models import (
     ActivityHistoryViewChoices,
     DateFormatChoices,
     DurationFormatChoices,
+    GenreSortChoices,
     RatingScaleChoices,
     StatisticsCompareChoices,
     TopTalentSortChoices,
@@ -517,41 +518,9 @@ def statistics(request):
             duration_format=_duration_fmt,
         ).get("all") or {}
 
-        top_talent = statistics_data.get("top_talent", {})
-        active_top_talent_sort = getattr(request.user, "top_talent_sort_by", "plays")
-        featured_person, person_media_strip = stats_cast_crew.get_featured_repeat_player_with_strip(
-            request.user,
-            start_date,
-            end_date,
-            top_talent,
-            total_library_titles=statistics_data.get("media_count", {}).get("total", 0),
-            sort_by=active_top_talent_sort,
-        )
-        person_media_strip_row = stats_cast_crew.build_media_strip_row(
-            person_media_strip,
-            person_name=featured_person.get("name") if featured_person else None,
-            total_titles=featured_person.get("unique_titles") if featured_person else None,
-            sort_by=active_top_talent_sort,
-        )
-        role_leaders = stats_cast_crew.get_role_leaders(top_talent, sort_by=active_top_talent_sort)
-        studio_footprint = stats_cast_crew.get_studio_footprint(
-            request.user,
-            start_date,
-            end_date,
-            top_talent,
-            comparison_start_date=comparison_start_date,
-            comparison_end_date=comparison_end_date,
-        )
-        era_spotlight = stats_cast_crew.get_era_spotlight(
-            request.user,
-            start_date,
-            end_date,
-        )
-        top_genres_combined = stats_cast_crew.get_top_genres_combined(
-            statistics_data.get("movie_consumption", {}),
-            statistics_data.get("tv_consumption", {}),
-        )
-        collection_mix = stats_cast_crew.get_collection_mix(request.user)
+        # The talent/studio/taste section is rendered asynchronously by
+        # statistics_talent_fragment so its featured-player scan and
+        # comparison-window aggregation never block the page shell.
 
         top_rated_by_type = statistics_data.get("top_rated_by_type", {})
         top_rated_movie = top_rated_by_type.get("movie", [])
@@ -613,15 +582,6 @@ def statistics(request):
             "top_rated_comic": top_rated_comic,
             "top_rated_manga": top_rated_manga,
             "top_played": statistics_data["top_played"],
-            "top_talent": top_talent,
-            "featured_person": featured_person,
-            "person_media_strip": person_media_strip,
-            "person_media_strip_row": person_media_strip_row,
-            "role_leaders": role_leaders,
-            "studio_footprint": studio_footprint,
-            "era_spotlight": era_spotlight,
-            "top_genres_combined": top_genres_combined,
-            "collection_mix": collection_mix,
             "status_distribution": statistics_data["status_distribution"],
             "status_pie_chart_data": statistics_data["status_pie_chart_data"],
             "hours_per_media_type": statistics_data["hours_per_media_type"],
@@ -759,9 +719,10 @@ def statistics(request):
             "person_media_strip_row": stats_cast_crew.build_media_strip_row([]),
             "role_leaders": {"columns": []},
             "studio_footprint": {"studios": [], "delta": None},
+            "studio_sort_by": getattr(request.user, "studio_sort_by", "plays"),
             "era_spotlight": [],
             "top_genres_combined": [],
-            "collection_mix": {"formats": [], "total": 0},
+            "genre_sort_by": getattr(request.user, "genre_sort_by", "time"),
             "status_distribution": empty_statistics_data["status_distribution"],
             "status_pie_chart_data": empty_statistics_data["status_pie_chart_data"],
             "hours_per_media_type": empty_statistics_data["hours_per_media_type"],
@@ -781,6 +742,173 @@ def statistics(request):
             "database_error": True,
         }
         return render(request, "app/statistics.html", context)
+
+
+TALENT_FRAGMENT_CACHE_TTL = 300
+
+
+def _talent_fragment_cache_key(user, range_token, compare_mode):
+    history_version = statistics_cache.get_history_version(user.id)
+    top_talent_sort = getattr(user, "top_talent_sort_by", "plays")
+    genre_sort = getattr(user, "genre_sort_by", "time")
+    studio_sort = getattr(user, "studio_sort_by", "plays")
+    return (
+        f"stats_talent_frag_v1_{user.id}_{history_version}_{range_token}_"
+        f"{top_talent_sort}_{studio_sort}_{genre_sort}_{compare_mode}"
+    )
+
+
+def _build_talent_fragment_context(
+    user,
+    range_name,
+    start_date,
+    end_date,
+    start_date_str,
+    end_date_str,
+    comparison_start_date,
+    comparison_end_date,
+):
+    statistics_data = statistics_cache.get_statistics_data(
+        user,
+        start_date,
+        end_date,
+        range_name=range_name,
+    )
+    top_talent = statistics_data.get("top_talent", {})
+    active_top_talent_sort = getattr(user, "top_talent_sort_by", "plays")
+    active_genre_sort = getattr(user, "genre_sort_by", "time")
+    active_studio_sort = getattr(user, "studio_sort_by", "plays")
+
+    featured_person, person_media_strip = stats_cast_crew.get_featured_repeat_player_with_strip(
+        user,
+        start_date,
+        end_date,
+        top_talent,
+        total_library_titles=statistics_data.get("media_count", {}).get("total", 0),
+        sort_by=active_top_talent_sort,
+    )
+    person_media_strip_row = stats_cast_crew.build_media_strip_row(
+        person_media_strip,
+        person_name=featured_person.get("name") if featured_person else None,
+        total_titles=featured_person.get("unique_titles") if featured_person else None,
+        sort_by=active_top_talent_sort,
+    )
+    role_leaders = stats_cast_crew.get_role_leaders(
+        top_talent,
+        sort_by=active_top_talent_sort,
+    )
+    studio_footprint = stats_cast_crew.get_studio_footprint(
+        user,
+        start_date,
+        end_date,
+        top_talent,
+        comparison_start_date=comparison_start_date,
+        comparison_end_date=comparison_end_date,
+        sort_by=active_studio_sort,
+    )
+    era_spotlight = stats_cast_crew.get_era_spotlight(
+        statistics_data.get("movie_consumption", {}),
+        statistics_data.get("tv_consumption", {}),
+        statistics_data.get("anime_consumption", {}),
+        statistics_data.get("game_consumption", {}),
+        statistics_data.get("music_consumption", {}),
+        sort_by=active_genre_sort,
+    )
+    top_genres_combined = stats_cast_crew.get_top_genres_combined(
+        statistics_data.get("movie_consumption", {}),
+        statistics_data.get("tv_consumption", {}),
+        statistics_data.get("anime_consumption", {}),
+        statistics_data.get("game_consumption", {}),
+        statistics_data.get("music_consumption", {}),
+        sort_by=active_genre_sort,
+    )
+
+    return {
+        "top_talent": top_talent,
+        "featured_person": featured_person,
+        "person_media_strip": person_media_strip,
+        "person_media_strip_row": person_media_strip_row,
+        "role_leaders": role_leaders,
+        "studio_footprint": studio_footprint,
+        "studio_sort_by": active_studio_sort,
+        "era_spotlight": era_spotlight,
+        "top_genres_combined": top_genres_combined,
+        "genre_sort_by": active_genre_sort,
+        "selected_range_name": range_name,
+        "start_date_str": start_date_str or "",
+        "end_date_str": end_date_str or "",
+        "media_count": statistics_data.get("media_count", {}),
+    }
+
+
+@require_GET
+def statistics_talent_fragment(request):
+    """Render the talent/studio/taste statistics section as an HTMX fragment.
+
+    Loaded asynchronously from the statistics shell so the featured-player
+    scan and the comparison-window talent re-aggregation never block the
+    page's first paint. The built context is cached; the key embeds the
+    user's history version so any tracked-media change (or the refresh
+    button) invalidates it automatically.
+    """
+    from django.core.cache import cache  # noqa: PLC0415
+
+    range_name = request.GET.get("range_name") or None
+    start_date_str = request.GET.get("start-date") or None
+    end_date_str = request.GET.get("end-date") or None
+    compare_mode_param = request.GET.get("compare") or None
+
+    start_date, end_date = _resolve_statistics_range_inputs(
+        range_name,
+        start_date_str,
+        end_date_str,
+    )
+
+    has_finite_range = start_date is not None and end_date is not None
+    compare_source = (
+        compare_mode_param
+        if compare_mode_param is not None
+        else getattr(
+            request.user,
+            "statistics_compare_mode",
+            StatisticsCompareChoices.PREVIOUS_PERIOD,
+        )
+    )
+    selected_compare_mode = _normalize_statistics_compare_mode(
+        compare_source,
+        finite_range=has_finite_range,
+    )
+    comparison_start_date, comparison_end_date = _resolve_statistics_comparison_range(
+        start_date,
+        end_date,
+        selected_compare_mode,
+    )
+
+    range_token = range_name or f"{start_date_str or 'all'}:{end_date_str or 'all'}"
+    cache_key = _talent_fragment_cache_key(
+        request.user,
+        range_token,
+        selected_compare_mode,
+    )
+    context = cache.get(cache_key)
+    if context is None:
+        context = _build_talent_fragment_context(
+            request.user,
+            range_name,
+            start_date,
+            end_date,
+            start_date_str,
+            end_date_str,
+            comparison_start_date,
+            comparison_end_date,
+        )
+        cache.set(cache_key, context, TALENT_FRAGMENT_CACHE_TTL)
+
+    return render(
+        request,
+        "app/components/statistics/talent_section.html",
+        context,
+    )
 
 
 @require_POST
@@ -1066,6 +1194,172 @@ def update_top_talent_sort(request):
             "strip_html": strip_html,
             "selected_person_key": selected_person_key,
             "pct_of_library": pct_of_library,
+        },
+    )
+
+
+@require_POST
+def update_genre_sort(request):
+    """Autosave the Taste Signals sort preference and refresh Top Genres + Era Spotlight."""
+    sort_by = request.POST.get("sort_by")
+    range_name = request.POST.get("range_name")
+    start_date_str = request.POST.get("start_date")
+    end_date_str = request.POST.get("end_date")
+    media_type = request.POST.get("media_type")
+    if media_type not in {
+        MediaTypes.MOVIE.value,
+        MediaTypes.TV.value,
+        MediaTypes.ANIME.value,
+        MediaTypes.GAME.value,
+    }:
+        media_type = None
+
+    valid_sort_values = list(GenreSortChoices.values)
+    if sort_by not in valid_sort_values:
+        return JsonResponse(
+            {
+                "error": "Invalid sort_by",
+                "valid_values": valid_sort_values,
+            },
+            status=400,
+        )
+
+    request.user.update_preference("genre_sort_by", sort_by)
+
+    start_date, end_date = _resolve_statistics_range_inputs(
+        range_name,
+        start_date_str,
+        end_date_str,
+    )
+    statistics_data = statistics_cache.get_statistics_data(
+        request.user,
+        start_date,
+        end_date,
+        range_name=range_name,
+    )
+    empty_consumption = {}
+    consumption_by_type = {
+        MediaTypes.MOVIE.value: statistics_data.get("movie_consumption", {}),
+        MediaTypes.TV.value: statistics_data.get("tv_consumption", {}),
+        MediaTypes.ANIME.value: statistics_data.get("anime_consumption", {}),
+        MediaTypes.GAME.value: statistics_data.get("game_consumption", {}),
+        MediaTypes.MUSIC.value: statistics_data.get("music_consumption", {}),
+    }
+    if media_type:
+        # Filtered view: only the selected media type contributes rows.
+        for key in consumption_by_type:
+            if key != media_type:
+                consumption_by_type[key] = empty_consumption
+
+    top_genres_combined = stats_cast_crew.get_top_genres_combined(
+        consumption_by_type[MediaTypes.MOVIE.value],
+        consumption_by_type[MediaTypes.TV.value],
+        consumption_by_type[MediaTypes.ANIME.value],
+        consumption_by_type[MediaTypes.GAME.value],
+        consumption_by_type[MediaTypes.MUSIC.value],
+        sort_by=sort_by,
+    )
+    era_spotlight = stats_cast_crew.get_era_spotlight(
+        consumption_by_type[MediaTypes.MOVIE.value],
+        consumption_by_type[MediaTypes.TV.value],
+        consumption_by_type[MediaTypes.ANIME.value],
+        consumption_by_type[MediaTypes.GAME.value],
+        consumption_by_type[MediaTypes.MUSIC.value],
+        sort_by=sort_by,
+    )
+    genres_html = render_to_string(
+        "app/components/taste_signals_genres.html",
+        {
+            "top_genres_combined": top_genres_combined,
+            "genre_sort_by": sort_by,
+        },
+        request=request,
+    )
+    decades_html = render_to_string(
+        "app/components/taste_signals_decades.html",
+        {
+            "era_spotlight": era_spotlight,
+            "genre_sort_by": sort_by,
+        },
+        request=request,
+    )
+
+    return JsonResponse(
+        {
+            "success": True,
+            "sort_by": sort_by,
+            "genres_html": genres_html,
+            "decades_html": decades_html,
+        },
+    )
+
+
+@require_POST
+def update_studio_sort(request):
+    """Autosave the Studio Footprint sort preference and refresh its list."""
+    sort_by = request.POST.get("sort_by")
+    range_name = request.POST.get("range_name")
+    start_date_str = request.POST.get("start_date")
+    end_date_str = request.POST.get("end_date")
+    media_type = request.POST.get("media_type")
+    if media_type not in {
+        MediaTypes.MOVIE.value,
+        MediaTypes.TV.value,
+        MediaTypes.ANIME.value,
+        MediaTypes.GAME.value,
+    }:
+        media_type = None
+
+    valid_sort_values = list(GenreSortChoices.values)
+    if sort_by not in valid_sort_values:
+        return JsonResponse(
+            {
+                "error": "Invalid sort_by",
+                "valid_values": valid_sort_values,
+            },
+            status=400,
+        )
+
+    request.user.update_preference("studio_sort_by", sort_by)
+
+    start_date, end_date = _resolve_statistics_range_inputs(
+        range_name,
+        start_date_str,
+        end_date_str,
+    )
+
+    if media_type:
+        # Filtered variants aren't cached — only the unfiltered per-range payload is.
+        top_talent = _aggregate_top_talent(request.user, start_date, end_date, media_type=media_type)
+    else:
+        top_talent = statistics_cache.get_top_talent_data(
+            request.user,
+            start_date,
+            end_date,
+            range_name=range_name,
+        )
+    studio_footprint = stats_cast_crew.get_studio_footprint(
+        request.user,
+        start_date,
+        end_date,
+        top_talent,
+        media_type=media_type,
+        sort_by=sort_by,
+    )
+    studio_html = render_to_string(
+        "app/components/studio_footprint_grid.html",
+        {
+            "studio_footprint": studio_footprint,
+            "studio_sort_by": sort_by,
+        },
+        request=request,
+    )
+
+    return JsonResponse(
+        {
+            "success": True,
+            "sort_by": sort_by,
+            "studio_html": studio_html,
         },
     )
 

@@ -186,6 +186,7 @@ def _build_prefetch_for_range(user, day_list):
                 "related_season__related_tv__created_at",
                 "related_season__related_tv__item__genres",
                 "related_season__related_tv__item__library_media_type",
+                "related_season__related_tv__item__release_datetime",
             )
             .iterator(chunk_size=2000),
         )
@@ -217,6 +218,7 @@ def _build_prefetch_for_range(user, day_list):
                 "item__source",
                 "item__runtime_minutes",
                 "item__genres",
+                "item__release_datetime",
             )
             .iterator(chunk_size=2000),
         )
@@ -261,6 +263,7 @@ def _build_prefetch_for_range(user, day_list):
                 "score",
                 "progress",
                 "item__genres",
+                "item__release_datetime",
             )
             .iterator(chunk_size=2000),
         )
@@ -447,6 +450,10 @@ def build_stats_for_day(
     tv_genres = defaultdict(lambda: {"minutes": 0, "plays": 0})
     anime_genres = defaultdict(lambda: {"minutes": 0, "plays": 0})
     game_genres = defaultdict(lambda: {"minutes": 0, "plays": 0, "name": "", "game_ids": set()})
+    movie_decades = defaultdict(lambda: {"minutes": 0, "plays": 0, "label": ""})
+    tv_decades = defaultdict(lambda: {"minutes": 0, "plays": 0, "label": ""})
+    anime_decades = defaultdict(lambda: {"minutes": 0, "plays": 0, "label": ""})
+    game_decades = defaultdict(lambda: {"minutes": 0, "label": "", "game_ids": set()})
     reading_genres = {
         MediaTypes.BOOK.value: defaultdict(lambda: {"units": 0, "titles": set(), "name": ""}),
         MediaTypes.COMIC.value: defaultdict(lambda: {"units": 0, "titles": set(), "name": ""}),
@@ -573,6 +580,23 @@ def build_stats_for_day(
             added = True
         return added
 
+    def _add_decade(decade_map, release_datetime, minutes):
+        if not release_datetime or not minutes:
+            return
+        decade_label = f"{(release_datetime.year // 10) * 10}s"
+        decade_map[decade_label]["minutes"] += minutes
+        decade_map[decade_label]["plays"] += 1
+        decade_map[decade_label]["label"] = decade_label
+
+    def _add_game_decade(decade_map, release_datetime, minutes, game_id):
+        if not release_datetime or not minutes:
+            return
+        decade_label = f"{(release_datetime.year // 10) * 10}s"
+        decade_map[decade_label]["minutes"] += minutes
+        decade_map[decade_label]["label"] = decade_label
+        if game_id:
+            decade_map[decade_label]["game_ids"].add(game_id)
+
     if MediaTypes.TV.value in active_media_types or MediaTypes.SEASON.value in active_media_types:
         if prefetch is not None:
             episodes = prefetch.get("episode", {}).get(day, [])
@@ -603,6 +627,7 @@ def build_stats_for_day(
                     "related_season__related_tv__created_at",
                     "related_season__related_tv__item__genres",
                     "related_season__related_tv__item__library_media_type",
+                    "related_season__related_tv__item__release_datetime",
                 )
                 .iterator(chunk_size=1000)
             )
@@ -663,6 +688,13 @@ def build_stats_for_day(
                     missing_genres += 1
                     if tv_item_id:
                         missing_genre_item_ids.add(tv_item_id)
+                if runtime_minutes > 0:
+                    decade_map = anime_decades if ep_type == MediaTypes.ANIME.value else tv_decades
+                    _add_decade(
+                        decade_map,
+                        row.get("related_season__related_tv__item__release_datetime"),
+                        runtime_minutes,
+                    )
             if row.get("item__source") == Sources.TMDB.value:
                 episode_item_id = row.get("item_id")
                 if episode_item_id:
@@ -702,6 +734,7 @@ def build_stats_for_day(
                 "item__source",
                 "item__runtime_minutes",
                 "item__genres",
+                "item__release_datetime",
             ),
             1000,
             "movie",
@@ -747,6 +780,7 @@ def build_stats_for_day(
                         item_id = row.get("item_id")
                         if item_id:
                             missing_genre_item_ids.add(item_id)
+                    _add_decade(movie_decades, row.get("item__release_datetime"), runtime_minutes)
                     _update_top_played(
                         MediaTypes.MOVIE.value,
                         row.get("item_id"),
@@ -854,6 +888,7 @@ def build_stats_for_day(
                 "score",
                 "progress",
                 "item__genres",
+                "item__release_datetime",
             ),
             500,
             "game",
@@ -928,6 +963,12 @@ def build_stats_for_day(
                             for genre in stats._coerce_genre_list(row.get("item__genres")):
                                 key = str(genre).title()
                                 game_genres[key]["game_ids"].add(game_id)
+                        _add_game_decade(
+                            game_decades,
+                            row.get("item__release_datetime"),
+                            total_minutes,
+                            game_id,
+                        )
                     continue
 
             activity_local = stats._localize_datetime(activity_dt)
@@ -959,6 +1000,12 @@ def build_stats_for_day(
                     for genre in stats._coerce_genre_list(row.get("item__genres")):
                         key = str(genre).title()
                         game_genres[key]["game_ids"].add(game_id)
+                _add_game_decade(
+                    game_decades,
+                    row.get("item__release_datetime"),
+                    total_minutes,
+                    game_id,
+                )
 
     if MediaTypes.BOARDGAME.value in active_media_types:
         BoardGame = apps.get_model("app", "BoardGame")
@@ -1433,6 +1480,12 @@ def build_stats_for_day(
             MediaTypes.COMIC.value: {},
             MediaTypes.MANGA.value: {},
         },
+        "decades": {
+            "movie": dict(movie_decades),
+            "tv": dict(tv_decades),
+            "anime": dict(anime_decades),
+            "game": {},
+        },
         "music": {},
         "podcast": {},
         "game": {},
@@ -1472,6 +1525,15 @@ def build_stats_for_day(
             "name": genre,
         }
     day_stats["genres"]["game"] = game_genre_payload
+
+    game_decade_payload = {}
+    for label, payload in game_decades.items():
+        game_decade_payload[label] = {
+            "minutes": payload["minutes"],
+            "game_ids": sorted({str(game_id) for game_id in payload["game_ids"]}),
+            "label": label,
+        }
+    day_stats["decades"]["game"] = game_decade_payload
 
     for reading_type in (MediaTypes.BOOK.value, MediaTypes.COMIC.value, MediaTypes.MANGA.value):
         reading_payload = {}

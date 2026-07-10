@@ -41,6 +41,14 @@ def _show_game_time_to_beat(media_type: str, _current_sort: str, _user: Any) -> 
     return media_type == MediaTypes.GAME.value
 
 
+def _show_igdb_user_rating(media_type: str, _current_sort: str, _user: Any) -> bool:
+    return media_type == MediaTypes.GAME.value
+
+
+def _show_platform(media_type: str, _current_sort: str, _user: Any) -> bool:
+    return media_type == MediaTypes.GAME.value
+
+
 def _show_runtime(media_type: str, _current_sort: str, _user: Any) -> bool:
     return media_type in (
         MediaTypes.MOVIE.value,
@@ -220,6 +228,26 @@ MEDIA_COLUMNS: list[ColumnDef] = [
         table_types=("media",),
         is_visible=_show_popularity,
         default_order=68,
+    ),
+    ColumnDef(
+        key="user_rating",
+        label="User Rating",
+        th_classes="p-2 text-center w-28",
+        td_classes="p-2 text-center",
+        cell_template="app/components/cells/user_rating_cell.html",
+        table_types=("media",),
+        is_visible=_show_igdb_user_rating,
+        default_order=69,
+    ),
+    ColumnDef(
+        key="platform",
+        label="Platform",
+        th_classes="p-2 text-center",
+        td_classes="p-2 text-center",
+        cell_template="app/components/cells/platform_cell.html",
+        table_types=("media",),
+        is_visible=_show_platform,
+        default_order=71,
     ),
     ColumnDef(
         key="last_watched",

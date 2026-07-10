@@ -7,7 +7,9 @@ from django.core.cache import cache
 logger = logging.getLogger(__name__)
 
 
-TIME_LEFT_CACHE_PREFIX = "time_left_sorted_v18"
+# v19: payload changed from a pickled entry list to a compact ordered-ids
+# structure hydrated per page (see media_list_views time_left handling).
+TIME_LEFT_CACHE_PREFIX = "time_left_sorted_v19"
 _REGISTRY_TEMPLATE = f"{TIME_LEFT_CACHE_PREFIX}_registry_{{user_id}}"
 
 MEDIA_LIST_CACHE_PREFIX = "media_list_v1"
@@ -202,6 +204,51 @@ def build_media_list_filter_cache_key(
         cache_variant or "",
     ]
     return "_".join(parts)
+
+
+HOME_ROW_CACHE_PREFIX = "home_row_v1"
+HOME_ROW_CACHE_TTL = 60  # seconds — matches the media-list cache horizon
+_HOME_ROW_REGISTRY_TEMPLATE = f"{HOME_ROW_CACHE_PREFIX}_registry_{{user_id}}"
+
+
+def build_home_row_cache_key(user_id: int, row_id: int, items_limit: int) -> str:
+    """Cache key for one built home-row section."""
+    return f"{HOME_ROW_CACHE_PREFIX}_{user_id}_{row_id}_{items_limit}"
+
+
+def _home_row_registry_key(user_id: int) -> str:
+    return _HOME_ROW_REGISTRY_TEMPLATE.format(user_id=user_id)
+
+
+def register_home_row_cache_key(user_id: int, cache_key: str) -> None:
+    """Track active home-row cache keys so they can be invalidated on save."""
+    registry_key = _home_row_registry_key(user_id)
+    existing: list | None = cache.get(registry_key)
+    keys = set(existing) if existing else set()
+    if cache_key not in keys:
+        keys.add(cache_key)
+        cache.set(registry_key, list(keys), getattr(settings, "CACHE_TIMEOUT", None))
+
+
+def clear_home_row_cache_for_user(user_id: int) -> None:
+    """Invalidate all cached home rows for a user (called on media change)."""
+    registry_key = _home_row_registry_key(user_id)
+    keys: Iterable[str] | None = cache.get(registry_key)
+
+    if not keys:
+        return
+
+    deleted = 0
+    for key in keys:
+        if cache.delete(key):
+            deleted += 1
+    cache.delete(registry_key)
+
+    logger.debug(
+        "Cleared %s home_row cache entries for user %s",
+        deleted,
+        user_id,
+    )
 
 
 def _media_list_registry_key(user_id: int) -> str:

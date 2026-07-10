@@ -29,11 +29,35 @@ from users.models import DateFormatChoices, HomeScreenRow, HomeSortChoices
 class HomeViewTests(TestCase):
     """Test the home view."""
 
+    def _get_all_groups(self, response):
+        """Merge shell groups with the deferred home_rest_fragment groups.
+
+        The home shell renders only the first group; the rest hydrates via
+        HTMX. Tests asserting on full-page content combine both responses.
+        """
+        groups = list(response.context["home_groups"])
+        if response.context.get("defer_remaining_groups"):
+            rest = self.client.get(reverse("home_rest_fragment"))
+            groups.extend(rest.context["home_groups"])
+        return groups
+
+    def _get_hydrated_home(self):
+        """Fetch home and append the deferred fragment's HTML.
+
+        Mirrors what the browser shows once HTMX hydrates the remaining
+        groups, so content assertions can target the full page.
+        """
+        response = self.client.get(reverse("home"))
+        if response.context.get("defer_remaining_groups"):
+            rest = self.client.get(reverse("home_rest_fragment"))
+            response.content = response.content + rest.content
+        return response
+
     def _get_group(self, response, media_type):
         return next(
             (
                 group
-                for group in response.context["home_groups"]
+                for group in self._get_all_groups(response)
                 if group["media_type"] == media_type
             ),
             None,
@@ -113,7 +137,7 @@ class HomeViewTests(TestCase):
 
     def test_home_view(self):
         """Home should render grouped row data for configured libraries."""
-        response = self.client.get(reverse("home"))
+        response = self._get_hydrated_home()
 
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "app/home.html")
@@ -186,7 +210,7 @@ class HomeViewTests(TestCase):
         anime_row.title = "My Anime Queue"
         anime_row.save(update_fields=["title"])
 
-        response = self.client.get(reverse("home"))
+        response = self._get_hydrated_home()
         row = self._get_first_row(response, MediaTypes.ANIME.value)
         self.assertEqual(row["title"], "My Anime Queue")
         self.assertEqual(row["title_main"], "My Anime Queue")
@@ -225,7 +249,7 @@ class HomeViewTests(TestCase):
         }
         movie_row.save(update_fields=["filters"])
 
-        response = self.client.get(reverse("home"))
+        response = self._get_hydrated_home()
 
         self.assertContains(response, "2026-05-12")
 
@@ -245,7 +269,7 @@ class HomeViewTests(TestCase):
             status=Status.IN_PROGRESS.value,
         )
 
-        response = self.client.get(reverse("home"))
+        response = self._get_hydrated_home()
         entry = self._get_media_entry(response, MediaTypes.MOVIE.value, "home-prefill-movie")
 
         self.assertEqual(entry.item.display_release_year, 2024)
@@ -280,7 +304,7 @@ class HomeViewTests(TestCase):
             progress=300,
         )
 
-        response = self.client.get(reverse("home"))
+        response = self._get_hydrated_home()
 
         podcast_row = self._get_first_row(response, MediaTypes.PODCAST.value)
         self.assertEqual(podcast_row["card_width_class"], "w-44")
@@ -518,7 +542,7 @@ class HomeViewTests(TestCase):
             end_date=timezone.now(),
         )
 
-        response = self.client.get(reverse("home"))
+        response = self._get_hydrated_home()
 
         fallback_season = self._get_media_entry(
             response,
@@ -541,7 +565,7 @@ class HomeViewTests(TestCase):
         )
         season_item.save(update_fields=["provider_metadata_status"])
 
-        response = self.client.get(reverse("home"))
+        response = self._get_hydrated_home()
 
         flagged_season = self._get_media_entry(
             response,
@@ -607,28 +631,22 @@ class HomeViewTests(TestCase):
             end_date=timezone.now(),
         )
 
-        now_ts = int(timezone.now().timestamp())
-        live_playback.set_user_playback_state(
-            self.user.id,
-            {
-                "event_type": "media.play",
-                "media_type": MediaTypes.EPISODE.value,
-                "media_id": "playback-show",
-                "source": Sources.TMDB.value,
-                "rating_key": "rk-backdrop-fallback",
-                "title": "Playback Episode",
-                "series_title": "Playback Show",
-                "episode_title": "Playback Episode",
-                "season_number": 1,
-                "episode_number": 2,
-                "view_offset_seconds": 180,
-                "duration_seconds": 1800,
-                "status": live_playback.PLAYBACK_STATUS_PLAYING,
-                "updated_at_ts": now_ts,
-                "expires_at_ts": now_ts + 600,
-                "pause_expires_at_ts": None,
-                "scrobble_expires_at_ts": None,
-            },
+        # Image resolution now happens when the webhook event is applied
+        # (in the Celery worker), so drive the state through the event API.
+        live_playback.apply_playback_event(
+            user_id=self.user.id,
+            event_type="media.play",
+            playback_media_type=MediaTypes.EPISODE.value,
+            media_id="playback-show",
+            source=Sources.TMDB.value,
+            rating_key="rk-backdrop-fallback",
+            title="Playback Episode",
+            series_title="Playback Show",
+            episode_title="Playback Episode",
+            season_number=1,
+            episode_number=2,
+            view_offset_seconds=180,
+            duration_seconds=1800,
         )
 
         response = self.client.get(reverse("home"))
@@ -733,3 +751,140 @@ class HomeViewTests(TestCase):
         self.assertContains(response, "data-active-playback-card")
         self.assertContains(response, "Test TV Show")
         self.assertContains(response, "S01E02")
+
+
+class HomeRowCacheTests(TestCase):
+    """Per-row home cache: hits skip entry building, media saves invalidate."""
+
+    def setUp(self):
+        self.credentials = {"username": "rowcache", "password": "12345"}
+        self.user = get_user_model().objects.create_user(**self.credentials)
+        self.client.login(**self.credentials)
+
+        season_item, _ = Item.objects.get_or_create(
+            media_id="9001",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=1,
+            defaults={
+                "title": "Cache Show",
+                "image": "http://example.com/image.jpg",
+            },
+        )
+        season = Season.objects.create(
+            item=season_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        episode_item, _ = Item.objects.get_or_create(
+            media_id="9001",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=1,
+            episode_number=1,
+            defaults={
+                "title": "Cache Show",
+                "image": "http://example.com/image.jpg",
+            },
+        )
+        Episode.objects.create(
+            item=episode_item,
+            related_season=season,
+            end_date=timezone.now(),
+        )
+
+    def test_second_home_request_serves_rows_from_cache(self):
+        from unittest.mock import patch
+
+        first = self.client.get(reverse("home"))
+        self.assertEqual(first.status_code, 200)
+        self.assertTrue(first.context["home_groups"])
+
+        with patch(
+            "users.home_screen._library_query_entries",
+        ) as mock_entries:
+            second = self.client.get(reverse("home"))
+        self.assertEqual(second.status_code, 200)
+        mock_entries.assert_not_called()
+        self.assertTrue(second.context["home_groups"])
+
+    def test_media_save_invalidates_row_cache(self):
+        from unittest.mock import patch
+
+        self.client.get(reverse("home"))  # warm cache
+
+        season = Season.objects.filter(user=self.user).first()
+        episode_item, _ = Item.objects.get_or_create(
+            media_id="9001",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=1,
+            episode_number=2,
+            defaults={
+                "title": "Cache Show",
+                "image": "http://example.com/image.jpg",
+            },
+        )
+        Episode.objects.create(
+            item=episode_item,
+            related_season=season,
+            end_date=timezone.now(),
+        )
+
+        with patch(
+            "users.home_screen._library_query_entries",
+            return_value=[],
+        ) as mock_entries:
+            self.client.get(reverse("home"))
+        mock_entries.assert_called()
+
+
+class HomeArtworkPollTests(TestCase):
+    """Coalesced artwork poll endpoint behavior."""
+
+    def setUp(self):
+        self.credentials = {"username": "artpoll", "password": "12345"}
+        self.user = get_user_model().objects.create_user(**self.credentials)
+        self.client.login(**self.credentials)
+
+    def test_no_ids_renders_inert_poller(self):
+        response = self.client.get(reverse("home_rows_artwork_refresh"))
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'id="home-artwork-poller"', response.content)
+        self.assertNotIn(b"every 30s", response.content)
+
+    def test_rows_return_as_oob_swaps_and_poller_stops_when_covered(self):
+        # A music-family row with artwork present should not keep polling.
+        from users.home_screen import ensure_home_screen_rows
+
+        anime_item = Item.objects.create(
+            media_id="910",
+            source=Sources.MAL.value,
+            media_type=MediaTypes.ANIME.value,
+            title="Poll Anime",
+            image="http://example.com/image.jpg",
+        )
+        Anime.objects.create(
+            item=anime_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+            progress=1,
+        )
+        rows = ensure_home_screen_rows(self.user)
+        anime_row = next(
+            row
+            for row in rows
+            if row.enabled and row.media_type == MediaTypes.ANIME.value
+        )
+
+        response = self.client.get(
+            reverse("home_rows_artwork_refresh") + f"?ids={anime_row.id}",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(
+            f'id="home-music-row-artwork-{anime_row.id}"'.encode(),
+            response.content,
+        )
+        self.assertIn(b'hx-swap-oob="outerHTML"', response.content)
+        # No rows still need covers, so the poller must come back inert.
+        self.assertNotIn(b"every 30s", response.content)

@@ -419,6 +419,10 @@ def _aggregate_statistics_from_days(
     tv_genres = defaultdict(lambda: {"minutes": 0, "plays": 0, "name": ""})
     anime_genres = defaultdict(lambda: {"minutes": 0, "plays": 0, "name": ""})
     game_genres = defaultdict(lambda: {"minutes": 0, "plays": 0, "name": "", "game_ids": set()})
+    movie_decades = defaultdict(lambda: {"minutes": 0, "plays": 0, "label": ""})
+    tv_decades = defaultdict(lambda: {"minutes": 0, "plays": 0, "label": ""})
+    anime_decades = defaultdict(lambda: {"minutes": 0, "plays": 0, "label": ""})
+    game_decades = defaultdict(lambda: {"minutes": 0, "label": "", "game_ids": set()})
     reading_genres = {
         MediaTypes.BOOK.value: defaultdict(lambda: {"units": 0, "titles": 0, "name": ""}),
         MediaTypes.COMIC.value: defaultdict(lambda: {"units": 0, "titles": 0, "name": ""}),
@@ -599,6 +603,27 @@ def _aggregate_statistics_from_days(
                 game_genres[genre]["name"] = payload.get("name") or genre
                 for game_id in payload.get("game_ids", []):
                     game_genres[genre]["game_ids"].add(str(game_id))
+
+            for label, payload in day_stats.get("decades", {}).get("movie", {}).items():
+                movie_decades[label]["minutes"] += payload.get("minutes", 0)
+                movie_decades[label]["plays"] += payload.get("plays", 0)
+                movie_decades[label]["label"] = payload.get("label") or label
+
+            for label, payload in day_stats.get("decades", {}).get("tv", {}).items():
+                tv_decades[label]["minutes"] += payload.get("minutes", 0)
+                tv_decades[label]["plays"] += payload.get("plays", 0)
+                tv_decades[label]["label"] = payload.get("label") or label
+
+            for label, payload in day_stats.get("decades", {}).get("anime", {}).items():
+                anime_decades[label]["minutes"] += payload.get("minutes", 0)
+                anime_decades[label]["plays"] += payload.get("plays", 0)
+                anime_decades[label]["label"] = payload.get("label") or label
+
+            for label, payload in day_stats.get("decades", {}).get("game", {}).items():
+                game_decades[label]["minutes"] += payload.get("minutes", 0)
+                game_decades[label]["label"] = payload.get("label") or label
+                for game_id in payload.get("game_ids", []):
+                    game_decades[label]["game_ids"].add(str(game_id))
 
             for reading_type in (MediaTypes.BOOK.value, MediaTypes.COMIC.value, MediaTypes.MANGA.value):
                 for genre, payload in day_stats.get("genres", {}).get(reading_type, {}).items():
@@ -1006,6 +1031,10 @@ def _aggregate_statistics_from_days(
             {**item, "formatted_duration": helpers.minutes_to_hhmm(item["minutes"])}
             for item in sorted(tv_genres.values(), key=lambda x: (x["minutes"], x["plays"]), reverse=True)[:STATISTICS_TOP_N]
         ],
+        "top_decades": [
+            {**item, "formatted_duration": helpers.minutes_to_hhmm(item["minutes"])}
+            for item in sorted(tv_decades.values(), key=lambda x: (x["minutes"], x["plays"]), reverse=True)[:STATISTICS_TOP_N]
+        ],
     }
 
     movie_consumption = {
@@ -1017,6 +1046,10 @@ def _aggregate_statistics_from_days(
             {**item, "formatted_duration": helpers.minutes_to_hhmm(item["minutes"])}
             for item in sorted(movie_genres.values(), key=lambda x: (x["minutes"], x["plays"]), reverse=True)[:STATISTICS_TOP_N]
         ],
+        "top_decades": [
+            {**item, "formatted_duration": helpers.minutes_to_hhmm(item["minutes"])}
+            for item in sorted(movie_decades.values(), key=lambda x: (x["minutes"], x["plays"]), reverse=True)[:STATISTICS_TOP_N]
+        ],
     }
 
     anime_consumption = {
@@ -1027,6 +1060,10 @@ def _aggregate_statistics_from_days(
         "top_genres": [
             {**item, "formatted_duration": helpers.minutes_to_hhmm(item["minutes"])}
             for item in sorted(anime_genres.values(), key=lambda x: (x["minutes"], x["plays"]), reverse=True)[:STATISTICS_TOP_N]
+        ],
+        "top_decades": [
+            {**item, "formatted_duration": helpers.minutes_to_hhmm(item["minutes"])}
+            for item in sorted(anime_decades.values(), key=lambda x: (x["minutes"], x["plays"]), reverse=True)[:STATISTICS_TOP_N]
         ],
     }
 
@@ -1181,6 +1218,17 @@ def _aggregate_statistics_from_days(
         })
     game_genre_items = sorted(game_genre_items, key=lambda x: (x["minutes"], x["games"]), reverse=True)[:STATISTICS_TOP_N]
 
+    game_decade_items = []
+    for label, payload in game_decades.items():
+        game_decade_items.append({
+            "minutes": payload["minutes"],
+            "games": len(payload["game_ids"]),
+            "plays": len(payload["game_ids"]),
+            "label": label,
+            "formatted_duration": helpers.minutes_to_hhmm(payload["minutes"]),
+        })
+    game_decade_items = sorted(game_decade_items, key=lambda x: (x["minutes"], x["games"]), reverse=True)[:STATISTICS_TOP_N]
+
     top_daily_avg_games = sorted(game_data, key=lambda x: x["daily_average"], reverse=True)[:STATISTICS_TOP_N]
     game_media_map = _fetch_media_objects({(MediaTypes.GAME.value, item["media_id"]) for item in top_daily_avg_games})
     top_daily_avg_payload = []
@@ -1251,6 +1299,7 @@ def _aggregate_statistics_from_days(
         },
         "has_data": bool(game_data) or game_total_hours > 0,
         "top_genres": game_genre_items,
+        "top_decades": game_decade_items,
         "top_daily_average_games": top_daily_avg_payload,
         "platform_breakdown": platform_breakdown,
     }

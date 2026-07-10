@@ -386,6 +386,15 @@ def _get_history_version(user_id: int) -> str:
     return version
 
 
+def get_history_version(user_id: int) -> str:
+    """Public accessor for the per-user history version token.
+
+    Any tracked-media change (and the statistics refresh button) bumps this
+    value, so cache keys embedding it self-invalidate without extra wiring.
+    """
+    return _get_history_version(user_id)
+
+
 def _set_history_version(user_id: int, value: str | None = None) -> str:
     version = value or timezone.now().isoformat()
     cache.set(_history_version_key(user_id), version, timeout=STATISTICS_DAY_CACHE_TIMEOUT)
@@ -885,6 +894,58 @@ def get_person_talent_totals(user, person_source, person_id, start_date=None, en
     return totals
 
 
+def _eager_statistics_mode() -> bool:
+    return bool(
+        getattr(settings, "CELERY_TASK_ALWAYS_EAGER", False)
+        or getattr(settings, "TESTING", False),
+    )
+
+
+def _has_missing_day_caches(user_id, day_list) -> bool:
+    chunk_size = 200
+    for offset in range(0, len(day_list), chunk_size):
+        keys = [
+            _day_cache_key(user_id, day)
+            for day in day_list[offset : offset + chunk_size]
+        ]
+        if len(cache.get_many(keys)) < len(keys):
+            return True
+    return False
+
+
+def _schedule_missing_day_builds(user, day_list, start_date, end_date) -> None:
+    """Queue a background build of missing per-day stat caches.
+
+    Request paths must never build day caches inline (a cold multi-year
+    range means thousands of queries and a multi-second block); instead
+    the missing days are built in Celery and the page self-corrects on a
+    later visit.
+    """
+    if not _has_missing_day_caches(user.id, day_list):
+        return
+
+    start_token = start_date.isoformat() if start_date else "all"
+    end_token = end_date.isoformat() if end_date else "all"
+    guard_key = f"stats:daybuild:{user.id}:{start_token}:{end_token}"
+    if not cache.add(guard_key, True, 60 * 5):
+        return
+
+    try:
+        from app.tasks import build_statistics_days_task  # noqa: PLC0415
+
+        build_statistics_days_task.apply_async(
+            args=[user.id, start_token, end_token],
+            priority=STATISTICS_TASK_PRIORITY_FOLLOWUP,
+        )
+    except Exception:  # pragma: no cover - Celery not available
+        cache.delete(guard_key)
+        logger.debug(
+            "Could not schedule statistics day build for user %s",
+            user.id,
+            exc_info=True,
+        )
+
+
 def get_statistics_minutes_by_type(user, start_date, end_date, range_name=None):
     """Return only minute totals for a statistics range.
 
@@ -901,11 +962,19 @@ def get_statistics_minutes_by_type(user, start_date, end_date, range_name=None):
     day_list = _resolve_day_list(user, start_date, end_date)
     if not day_list:
         return {}
-    return _aggregate_minutes_per_media_type_from_days(
+    if _eager_statistics_mode():
+        return _aggregate_minutes_per_media_type_from_days(
+            user,
+            day_list,
+            build_missing=True,
+        )
+    result = _aggregate_minutes_per_media_type_from_days(
         user,
         day_list,
-        build_missing=True,
+        build_missing=False,
     )
+    _schedule_missing_day_builds(user, day_list, start_date, end_date)
+    return result
 
 
 
@@ -926,26 +995,28 @@ def get_statistics_data(user, start_date, end_date, range_name=None):
     """
     # Only cache predefined ranges
     if range_name is None or range_name not in PREDEFINED_RANGES:
-        # For custom ranges, aggregate per-day caches to avoid range scans
+        # For custom ranges, aggregate per-day caches to avoid range scans.
+        # Missing days are built in the background rather than inline so a
+        # cold multi-year range can't block the request for minutes.
         day_list = _resolve_day_list(user, start_date, end_date)
         if not day_list:
             return _get_empty_statistics_data()
+        build_missing = _eager_statistics_mode()
         data = _aggregate_statistics_from_days(
             user,
             day_list,
             start_date,
             end_date,
-            build_missing=True,
+            build_missing=build_missing,
         )
+        if not build_missing:
+            _schedule_missing_day_builds(user, day_list, start_date, end_date)
         _normalize_hours_per_media_type(data.get("hours_per_media_type"))
         _normalize_history_highlight_images(data.get("history_highlights"))
         _normalize_history_highlights_by_type(data.get("history_highlights_by_type"))
         return data
 
-    eager_mode = bool(
-        getattr(settings, "CELERY_TASK_ALWAYS_EAGER", False)
-        or getattr(settings, "TESTING", False),
-    )
+    eager_mode = _eager_statistics_mode()
 
     cache_entry = cache.get(_cache_key(user.id, range_name))
     if cache_entry:

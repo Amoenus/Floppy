@@ -7,15 +7,19 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from django.conf import settings
+from django.db import IntegrityError, transaction
 
 from app import config
 from app.db_retry import run_retryable_db_operation, update_or_create_race_safe
 from app.models import (
+    Episode,
     Item,
     ItemProviderLink,
     MediaTypes,
     MetadataProviderPreference,
+    Season,
     Sources,
+    Status,
 )
 from app.providers import services
 from integrations import anime_mapping
@@ -162,7 +166,7 @@ def get_tracking_media_type(
         )
     ):
         return MediaTypes.TV.value
-    return identity_media_type or media_type
+    return media_type
 
 
 def get_library_media_type(
@@ -417,6 +421,200 @@ def upsert_provider_links(
             )
 
     return external_ids
+
+
+def get_or_create_tracked_season_item(
+    media_id: str,
+    source: str,
+    season_number: int,
+    *,
+    provider: str = Sources.TMDB.value,
+    library_media_type: str,
+    metadata: dict | None = None,
+    defaults: dict[str, Any] | None = None,
+) -> Item:
+    """Resolve (or create) the canonical Season Item for a show/season.
+
+    Looks up an existing ItemProviderLink first (mirrors
+    `_find_existing_tracked_tv_item`'s pattern for the TV item) so resolution
+    is immune to bucket-heuristic bugs, only falling back to a caller-scoped
+    `get_or_create` when no link exists yet. `library_media_type` must be
+    decided by the caller — this function does not re-derive it, since a
+    centralized global bucket heuristic was the root cause of issue #326.
+
+    After resolving, self-heals: any other Item sharing the same identity but
+    a different `library_media_type` gets merged into (or deleted in favor
+    of) the resolved item, so corruption repairs itself the next time any
+    caller touches that show/season, with no manual command required.
+    """
+    link = (
+        ItemProviderLink.objects.filter(
+            provider=provider,
+            provider_media_type=MediaTypes.SEASON.value,
+            provider_media_id=str(media_id),
+            season_number=season_number,
+        )
+        .select_related("item")
+        .order_by("-updated_at")
+        .first()
+    )
+    if link is not None:
+        item = link.item
+    else:
+        item, _ = Item.objects.get_or_create(
+            media_id=media_id,
+            source=source,
+            media_type=MediaTypes.SEASON.value,
+            season_number=season_number,
+            library_media_type=library_media_type,
+            defaults=defaults or {},
+        )
+
+    if metadata is not None:
+        upsert_provider_links(
+            item,
+            metadata,
+            provider=provider,
+            provider_media_type=MediaTypes.SEASON.value,
+            season_number=season_number,
+        )
+
+    _heal_stray_season_duplicates(
+        item,
+        media_id=media_id,
+        source=source,
+        season_number=season_number,
+    )
+
+    return item
+
+
+def _heal_stray_season_duplicates(
+    canonical_item: Item,
+    *,
+    media_id: str,
+    source: str,
+    season_number: int,
+) -> None:
+    """Merge/delete Item rows sharing canonical_item's identity in another bucket.
+
+    Best-effort — never raises, since this runs inline on normal request
+    paths and must not break them.
+    """
+    try:
+        strays = list(
+            Item.objects.filter(
+                media_id=media_id,
+                source=source,
+                media_type=MediaTypes.SEASON.value,
+                season_number=season_number,
+            )
+            .exclude(pk=canonical_item.pk)
+            .exclude(library_media_type=canonical_item.library_media_type),
+        )
+    except Exception:  # self-heal must never break the caller
+        logger.exception(
+            "Season-item self-heal lookup failed for media_id=%s source=%s "
+            "season=%s",
+            media_id,
+            source,
+            season_number,
+        )
+        return
+
+    for stray in strays:
+        try:
+            _merge_stray_season_item(canonical_item, stray)
+        except Exception:  # self-heal must never break the caller
+            logger.exception(
+                "Failed to merge stray season item pk=%s into canonical "
+                "pk=%s; leaving duplicate in place",
+                stray.pk,
+                canonical_item.pk,
+            )
+
+
+def _merge_stray_season_item(canonical_item: Item, stray_item: Item) -> None:
+    """Fold a stray duplicate Season Item into the canonical one.
+
+    Preserves Season/Episode watch-history data by reconciling it onto the
+    canonical Season before deleting the stray, rather than blindly
+    repointing/deleting (which would CASCADE-delete Episode progress). Every
+    other relation on Item is repointed generically, falling back to delete
+    on conflict — the same pattern already used by the one-off migration
+    `0125_fix_episode_season_library_bucket.py` for the equivalent
+    episode-level problem.
+    """
+    try:
+        with transaction.atomic():
+            for stray_season in Season.objects.filter(item=stray_item):
+                canonical_season = Season.objects.filter(
+                    item=canonical_item,
+                    user_id=stray_season.user_id,
+                ).first()
+                if canonical_season is None:
+                    stray_season.item = canonical_item
+                    stray_season.save(update_fields=["item"])
+                else:
+                    _reconcile_competing_seasons(canonical_season, stray_season)
+                    stray_season.delete()
+
+            for relation in Item._meta.related_objects:
+                related_model = relation.related_model
+                field_name = relation.field.name
+                for obj in related_model.objects.filter(**{field_name: stray_item}):
+                    try:
+                        with transaction.atomic():
+                            setattr(obj, field_name, canonical_item)
+                            obj.save(update_fields=[relation.field.attname])
+                    except IntegrityError:
+                        obj.delete()
+
+            stray_item.delete()
+    except Exception:  # self-heal must never break the caller
+        logger.exception(
+            "Failed to merge stray season item pk=%s into canonical pk=%s; "
+            "leaving duplicate in place",
+            stray_item.pk,
+            canonical_item.pk,
+        )
+
+
+def _reconcile_competing_seasons(canonical_season, stray_season) -> None:
+    """Move Episode progress from stray_season onto canonical_season.
+
+    Preferring whichever side has more complete data per episode, then
+    merges scalar Season fields the same way.
+    """
+    for stray_ep in Episode.objects.filter(related_season=stray_season):
+        stray_episode_number = stray_ep.item.episode_number if stray_ep.item else None
+        existing = Episode.objects.filter(
+            related_season=canonical_season,
+            item__episode_number=stray_episode_number,
+        ).first()
+        if existing is None:
+            stray_ep.related_season = canonical_season
+            stray_ep.save(update_fields=["related_season"])
+        elif stray_ep.end_date and (
+            existing.end_date is None or stray_ep.end_date > existing.end_date
+        ):
+            existing.end_date = stray_ep.end_date
+            existing.dropped = stray_ep.dropped
+            existing.save(update_fields=["end_date", "dropped"])
+            stray_ep.delete()
+        else:
+            stray_ep.delete()
+
+    if (
+        canonical_season.status == Status.PLANNING.value
+        and stray_season.status != Status.PLANNING.value
+    ):
+        canonical_season.status = stray_season.status
+    if canonical_season.score is None and stray_season.score is not None:
+        canonical_season.score = stray_season.score
+    if not canonical_season.notes and stray_season.notes:
+        canonical_season.notes = stray_season.notes
+    canonical_season.save(update_fields=["status", "score", "notes"])
 
 
 def resolve_provider_media_id(

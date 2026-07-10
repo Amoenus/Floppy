@@ -33,6 +33,11 @@ urlpatterns = [
     path(
         "health/",
         login_not_required(MainView.as_view()),
+        {"subset": "liveness"},
+    ),
+    path(
+        "health/full/",
+        login_not_required(MainView.as_view()),
     ),
     path(
         "ping/",

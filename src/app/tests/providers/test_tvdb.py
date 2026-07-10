@@ -121,6 +121,17 @@ class TVDBProviderTests(TestCase):
         self.assertEqual(result["synopsis"], "English overview")
 
     @patch("app.providers.tvdb.tv")
+    def test_tv_with_seasons_falls_back_to_series_metadata_when_season_numbers_missing(
+        self,
+        mock_tv,
+    ):
+        """A falsy season_numbers (None or []) should return series metadata, not crash."""
+        mock_tv.return_value = {"title": "Breaking Bad"}
+
+        self.assertEqual(tvdb.tv_with_seasons("81189", None), {"title": "Breaking Bad"})
+        self.assertEqual(tvdb.tv_with_seasons("81189", []), {"title": "Breaking Bad"})
+
+    @patch("app.providers.tvdb.tv")
     @patch("app.providers.tvdb._request")
     def test_tv_with_seasons_normalizes_specials_episode_rows(
         self,

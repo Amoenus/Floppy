@@ -16,7 +16,7 @@ from app.models import Item, MediaTypes, Sources
 
 logger = logging.getLogger(__name__)
 
-PLAYBACK_CACHE_PREFIX = "active_playback_v1"
+PLAYBACK_CACHE_PREFIX = "active_playback_v2"
 PLAYBACK_CACHE_TIMEOUT_SECONDS = 6 * 60 * 60
 PLAYBACK_HARD_STALE_SECONDS = 4 * 60 * 60
 PLAYBACK_PAUSE_STALE_SECONDS = 45 * 60
@@ -27,6 +27,12 @@ PLAYBACK_STOP_GRACE_SECONDS = 60
 PLAYBACK_STATUS_PLAYING = "playing"
 PLAYBACK_STATUS_PAUSED = "paused"
 PLAYBACK_STATUS_STOPPED = "stopped"
+
+IMAGE_RESOLVE_GUARD_PREFIX = "playback_img_fill"
+IMAGE_RESOLVE_GUARD_SECONDS = 60
+EPISODE_STILL_CACHE_PREFIX = "playback_ep_still"
+EPISODE_STILL_SUCCESS_SECONDS = 60 * 60 * 24 * 7
+EPISODE_STILL_FAILURE_SECONDS = 60 * 60
 
 
 def _cache_key(user_id: int) -> str:
@@ -257,6 +263,22 @@ def apply_playback_event(  # noqa: C901, PLR0912
             state["scrobble_expires_at_ts"] = (
                 now_ts + PLAYBACK_SCROBBLE_FALLBACK_SECONDS
             )
+
+    if _state_matches(
+        existing_state,
+        rating_key=rating_key,
+        media_id=media_id,
+        playback_media_type=playback_media_type,
+    ) and existing_state.get("image"):
+        state["image"] = existing_state["image"]
+        state["image_source"] = existing_state.get("image_source")
+        state["image_resolved_at_ts"] = existing_state.get(
+            "image_resolved_at_ts",
+        )
+    else:
+        # Runs in the webhook Celery worker, so provider calls are
+        # allowed here; the request path only ever reads the result.
+        _attach_resolved_image(state)
 
     set_user_playback_state(user_id, state)
 
@@ -559,17 +581,64 @@ def _resolve_show_media_id(state, state_item, source):
 
 
 def _fetch_episode_still(show_id, season_number, episode_number):
-    """Fetch episode artwork from TMDB episode API."""
+    """Fetch episode artwork from TMDB episode API.
+
+    Results (including failures) are cached so repeated resolution
+    attempts never hammer the provider.
+    """
+    cache_key = (
+        f"{EPISODE_STILL_CACHE_PREFIX}:{show_id}:{season_number}:{episode_number}"
+    )
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    result = (None, "none")
     try:
         from app.providers import tmdb  # noqa: PLC0415
 
         ep_data = tmdb.episode(show_id, season_number, episode_number)
         image = ep_data.get("image")
         if helpers.has_real_image(image):
-            return image, ep_data.get("image_source") or "primary"
+            result = (image, ep_data.get("image_source") or "primary")
     except Exception:  # noqa: BLE001, S110
         pass
-    return None, "none"
+
+    ttl = (
+        EPISODE_STILL_SUCCESS_SECONDS
+        if result[0]
+        else EPISODE_STILL_FAILURE_SECONDS
+    )
+    cache.set(cache_key, result, ttl)
+    return result
+
+
+def _attach_resolved_image(state: dict) -> None:
+    """Resolve artwork for a playback state and store it on the dict.
+
+    May call metadata providers — only invoke from Celery workers,
+    never from the HTTP request path.
+    """
+    try:
+        state_item = _resolve_state_item(state)
+        image, image_source = _resolve_landscape_image(state, state_item)
+    except Exception:  # noqa: BLE001
+        logger.debug("Live playback image resolution failed", exc_info=True)
+        return
+    if image:
+        state["image"] = image
+        state["image_source"] = image_source
+        state["image_resolved_at_ts"] = _now_ts()
+
+
+def resolve_state_image(user_id: int) -> None:
+    """Resolve and persist artwork for the cached playback state."""
+    state = cache.get(_cache_key(user_id))
+    if not state or state.get("image"):
+        return
+    _attach_resolved_image(state)
+    if state.get("image"):
+        set_user_playback_state(user_id, state)
 
 
 def _stored_episode_image_is_inherited(state_item):
@@ -679,7 +748,24 @@ def build_home_playback_card(user) -> dict | None:
         _resolve_progress(state, state_item)
     )
 
-    image, image_source = _resolve_landscape_image(state, state_item)
+    # Request path: never call metadata providers here.  The image is
+    # resolved in the webhook Celery worker (apply_playback_event) and
+    # stored in the cached state; if it is missing, render a stored
+    # fallback and let a background task fill it in for a later poll.
+    image = state.get("image")
+    image_source = state.get("image_source") or "primary"
+    if not image:
+        if state_item and helpers.has_real_image(
+            getattr(state_item, "image", None),
+        ):
+            image, image_source = state_item.image, "primary"
+        else:
+            image, image_source = settings.IMG_NONE, "pending"
+        guard_key = f"{IMAGE_RESOLVE_GUARD_PREFIX}:{user.id}"
+        if cache.add(guard_key, True, IMAGE_RESOLVE_GUARD_SECONDS):
+            from app.tasks import resolve_playback_image  # noqa: PLC0415
+
+            resolve_playback_image.delay(user.id)
 
     status = state.get("status") or PLAYBACK_STATUS_PLAYING
 

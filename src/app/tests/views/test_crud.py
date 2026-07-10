@@ -395,6 +395,70 @@ class CreateMedia(TestCase):
             True,
         )
 
+    @patch("app.providers.services.get_media_metadata")
+    def test_create_tvdb_season_with_tv_identity_media_type(self, metadata_mock):
+        """A TVDB season save must create a Season, not a TV, despite identity_media_type=tv.
+
+        Regression test for GitHub issue #323: TVDB seasons always carry
+        identity_media_type="tv" to describe the parent show. media_save posts
+        that value straight through as a hidden field, and
+        get_tracking_media_type used to collapse "season" into "tv" whenever
+        identity_media_type was truthy, using the wrong form (no season_number
+        field) and the wrong tracking model.
+        """
+        metadata_mock.return_value = {
+            "media_id": "388593",
+            "source": Sources.TVDB.value,
+            "media_type": MediaTypes.SEASON.value,
+            "title": "Horimiya",
+            "season_title": "Season 1",
+            "season_number": 1,
+            "identity_media_type": MediaTypes.TV.value,
+            "library_media_type": MediaTypes.TV.value,
+            "image": "http://example.com/image.jpg",
+            "related": {},
+            "details": {},
+        }
+        tv_item = Item.objects.create(
+            media_id="388593",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Horimiya",
+            image="http://example.com/image.jpg",
+        )
+        TV.objects.create(item=tv_item, user=self.user, status=Status.PLANNING.value)
+        Item.objects.create(
+            media_id="388593",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Horimiya",
+            image="http://example.com/image.jpg",
+            season_number=1,
+        )
+        self.client.post(
+            reverse("media_save"),
+            {
+                "media_id": "388593",
+                "source": Sources.TVDB.value,
+                "media_type": MediaTypes.SEASON.value,
+                "identity_media_type": MediaTypes.TV.value,
+                "library_media_type": MediaTypes.TV.value,
+                "season_number": 1,
+                "status": Status.PLANNING.value,
+            },
+        )
+        self.assertTrue(
+            Season.objects.filter(
+                item__media_id="388593",
+                item__season_number=1,
+                user=self.user,
+            ).exists(),
+        )
+        self.assertEqual(
+            TV.objects.filter(item__media_id="388593", user=self.user).count(),
+            1,
+        )
+
     def test_create_episodes(self):
         """Test the creation of Episode through views."""
         self.client.post(

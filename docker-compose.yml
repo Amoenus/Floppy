@@ -13,6 +13,14 @@ services:
       - SECRET=longstring
       - REDIS_URL=redis://redis:6379
       - ADMIN_ENABLED=False
+      # Keep DEBUG off in production: the debug toolbar slows every request
+      # and disables Django's cached template loader.
+      - DEBUG=False
+      # Web server concurrency: WEB_CONCURRENCY gunicorn worker processes,
+      # each serving GUNICORN_THREADS requests concurrently. The defaults
+      # (2 workers x 4 threads) prevent one slow request from blocking the UI.
+      - WEB_CONCURRENCY=2
+      - GUNICORN_THREADS=4
     volumes:
       - ./db:/yamtrack/db
     ports:

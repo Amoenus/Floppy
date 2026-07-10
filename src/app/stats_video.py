@@ -242,6 +242,56 @@ def _compute_movie_tv_top_genres(play_details, limit=STATISTICS_TOP_N):
     return items
 
 
+def _compute_movie_tv_top_decades(play_details, limit=STATISTICS_TOP_N):
+    """Compute top release-year decades from movie/TV play details.
+
+    Args:
+        play_details: List of (media_entry, datetime, runtime_minutes) tuples
+        limit: Number of decades to return
+
+    Returns:
+        list of decade dicts with label, minutes, plays, formatted_duration
+    """
+    from app.helpers import minutes_to_hhmm  # noqa: PLC0415
+    from app.models import Episode  # noqa: PLC0415
+
+    decade_stats = defaultdict(lambda: {"minutes": 0, "plays": 0, "label": ""})
+
+    for media, dt, runtime in play_details:
+        minutes = runtime or 0
+
+        # For TV episodes, use the parent TV show's release year.
+        media_to_use = media
+        if isinstance(media, Episode):
+            if hasattr(media, "related_season") and media.related_season:
+                if hasattr(media.related_season, "related_tv") and media.related_season.related_tv:
+                    media_to_use = media.related_season.related_tv
+                else:
+                    continue
+            else:
+                continue
+
+        release_datetime = getattr(getattr(media_to_use, "item", None), "release_datetime", None)
+        if not release_datetime:
+            continue
+
+        decade_label = f"{(release_datetime.year // 10) * 10}s"
+        decade_stats[decade_label]["minutes"] += minutes
+        decade_stats[decade_label]["plays"] += 1
+        decade_stats[decade_label]["label"] = decade_label
+
+    items = sorted(
+        decade_stats.values(),
+        key=lambda x: (x["plays"], x["minutes"]),
+        reverse=True,
+    )[:limit]
+
+    for item in items:
+        item["formatted_duration"] = minutes_to_hhmm(item["minutes"])
+
+    return items
+
+
 # ---------------------------------------------------------------------------
 # Per-media-type consumption stats
 # ---------------------------------------------------------------------------
@@ -282,8 +332,9 @@ def get_tv_consumption_stats(user_media, start_date, end_date, minutes_per_type=
     chart_label = "Episode Plays"
     charts = _build_media_charts(episode_datetimes, color, chart_label)
 
-    # Compute top genres
+    # Compute top genres and top decades
     top_genres = _compute_movie_tv_top_genres(play_details, limit=STATISTICS_TOP_N)
+    top_decades = _compute_movie_tv_top_decades(play_details, limit=STATISTICS_TOP_N)
 
     return {
         "hours": hours_breakdown,
@@ -291,6 +342,7 @@ def get_tv_consumption_stats(user_media, start_date, end_date, minutes_per_type=
         "charts": charts,
         "has_data": total_plays > 0,
         "top_genres": top_genres,
+        "top_decades": top_decades,
     }
 
 
@@ -326,8 +378,9 @@ def get_movie_consumption_stats(user_media, start_date, end_date, minutes_per_ty
     chart_label = "Movie Plays"
     charts = _build_media_charts(movie_datetimes, color, chart_label)
 
-    # Compute top genres
+    # Compute top genres and top decades
     top_genres = _compute_movie_tv_top_genres(play_details, limit=STATISTICS_TOP_N)
+    top_decades = _compute_movie_tv_top_decades(play_details, limit=STATISTICS_TOP_N)
 
     return {
         "hours": hours_breakdown,
@@ -335,6 +388,7 @@ def get_movie_consumption_stats(user_media, start_date, end_date, minutes_per_ty
         "charts": charts,
         "has_data": total_plays > 0,
         "top_genres": top_genres,
+        "top_decades": top_decades,
     }
 
 
@@ -384,6 +438,7 @@ def get_anime_consumption_stats(user_media, start_date, end_date, minutes_per_ty
     color = config.get_stats_color(MediaTypes.ANIME.value)
     charts = _build_media_charts(all_datetimes, color, "Anime Plays")
     top_genres = _compute_movie_tv_top_genres(all_play_details, limit=STATISTICS_TOP_N)
+    top_decades = _compute_movie_tv_top_decades(all_play_details, limit=STATISTICS_TOP_N)
 
     return {
         "hours": hours_breakdown,
@@ -391,4 +446,5 @@ def get_anime_consumption_stats(user_media, start_date, end_date, minutes_per_ty
         "charts": charts,
         "has_data": total_plays > 0,
         "top_genres": top_genres,
+        "top_decades": top_decades,
     }

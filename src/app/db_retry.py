@@ -7,7 +7,7 @@ import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from django.db import transaction
+from django.db import models, transaction
 from django.db.utils import IntegrityError, OperationalError
 
 logger = logging.getLogger(__name__)
@@ -118,6 +118,47 @@ def run_retryable_db_operation(
             attempt += 1
 
 
+def _describe_conflicting_row(manager, lookup: dict, defaults: dict) -> str:
+    """Best-effort diagnostic lookup of the row holding a conflicting unique key.
+
+    For logging only. Never raises — this must not affect the
+    swallow-and-continue behavior callers depend on.
+
+    We don't know the model's unique-constraint field set generically (this
+    helper is shared across many models/lookups), so we probe using the
+    scalar (non-dict/list, non-model-instance) values present in `lookup`
+    and `defaults` — these are exactly the values involved in the failed
+    write, and together are sufficient to find the pre-existing row that
+    actually matches the real unique index (using `defaults` alone is too
+    broad — e.g. for ItemProviderLink's `unique_provider_lookup` constraint
+    it would match any row sharing `provider_media_id`, regardless of
+    `season_number` or `provider_media_type`, which both live in `lookup`).
+
+    Model-instance values (e.g. `lookup["item"]`) are deliberately excluded
+    from the probe: a cross-key conflict is, by definition, a row that
+    matches on the *other* fields but differs on exactly that kind of
+    identity field — including it would filter out the very row we're
+    trying to find.
+    """
+    try:
+        model_field_names = {f.name for f in manager.model._meta.get_fields()}
+        probe = {
+            key: value
+            for key, value in {**defaults, **lookup}.items()
+            if key in model_field_names
+            and not isinstance(value, dict | list | models.Model)
+        }
+        if not probe:
+            return "unknown (no probeable scalar fields in lookup/defaults)"
+        rows = list(manager.filter(**probe)[:3])
+    except Exception:  # noqa: BLE001 - diagnostic path must never raise
+        return "unknown (probe query failed)"
+
+    if not rows:
+        return "unknown (no existing row matches the attempted lookup/defaults)"
+    return "; ".join(f"pk={row.pk} {row!r}" for row in rows)
+
+
 def update_or_create_race_safe(manager, *, defaults: dict, **lookup):
     """update_or_create with retry/fallback for SQLite IntegrityError scenarios.
 
@@ -141,14 +182,18 @@ def update_or_create_race_safe(manager, *, defaults: dict, **lookup):
     try:
         with transaction.atomic():
             return manager.update_or_create(**lookup, defaults=defaults)
-    except IntegrityError:
+    except IntegrityError as error:
         try:
             return manager.get(**lookup), False
         except manager.model.DoesNotExist:
             logger.warning(
-                "Persistent IntegrityError for %s with lookup %r — "
-                "conflict with a different constraint key; skipping.",
+                "Persistent IntegrityError for %s with lookup %r and "
+                "defaults %r — conflict with a different constraint key; "
+                "skipping. DB error: %s. Conflicting row(s): %s",
                 manager.model.__name__,
                 lookup,
+                defaults,
+                error,
+                _describe_conflicting_row(manager, lookup, defaults),
             )
             return None, False

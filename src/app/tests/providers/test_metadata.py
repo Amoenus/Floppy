@@ -1523,8 +1523,10 @@ class Metadata(TestCase):
                 "summary": "Test summary",
                 "game_type": 0,
                 "first_release_date": 1431993600,
-                "total_rating": 92.7,
-                "total_rating_count": 123456,
+                "rating": 88.4,
+                "rating_count": 98765,
+                "aggregated_rating": 92.7,
+                "aggregated_rating_count": 123456,
                 "genres": [{"name": "RPG"}],
                 "themes": [
                     {"name": "Action"},
@@ -1556,6 +1558,10 @@ class Metadata(TestCase):
 
         response = igdb.game("1942")
         self.assertEqual(response["title"], "The Witcher 3: Wild Hunt")
+        self.assertEqual(response["score"], 9.3)
+        self.assertEqual(response["score_count"], 123456)
+        self.assertEqual(response["igdb_user_rating"], 8.8)
+        self.assertEqual(response["igdb_user_rating_count"], 98765)
         self.assertEqual(response["details"]["format"], "Main game")
         self.assertEqual(response["details"]["release_date"], "2015-05-19")
         self.assertEqual(response["details"]["companies"], "CD Projekt Red")

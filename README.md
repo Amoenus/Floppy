@@ -271,6 +271,8 @@ The only universally required variable is `SECRET` for Django's secret key. For 
 - `TRAKT_API` / `TRAKT_API_SECRET` - Trakt private-profile OAuth imports
 - `URLS` - your public URL if using a reverse proxy, for example `https://yamtrack.mydomain.com`
 - `ADMIN_ENABLED` - set to `True` to enable the Django admin interface at `/admin/` (see the [Admin Guide](wiki/6.-Admin-and-Operations.md#admin-guide))
+- `WEB_CONCURRENCY` / `GUNICORN_THREADS` - web server concurrency (defaults: 2 worker processes x 4 threads). Total concurrent requests = workers x threads; keep at least 2 workers so one slow request never blocks the whole UI
+- `DEBUG` - leave unset or `False` in production; enabling it slows every request (debug toolbar, no template caching) and is only meant for troubleshooting
 
 For a complete list, see the [Environment Variables documentation](wiki/6.-Admin-and-Operations.md#environment-variables).
 
@@ -296,7 +298,9 @@ HARDCOVER_API=HARDCOVER_API
 COMICVINE_API=COMICVINE_API
 LASTFM_API_KEY=LASTFM_API_KEY
 SECRET=SECRET
-DEBUG=True
+DEBUG=False
+WEB_CONCURRENCY=2
+GUNICORN_THREADS=4
 ```
 
 #### Trakt private profile import (OAuth)

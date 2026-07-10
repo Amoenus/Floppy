@@ -482,25 +482,18 @@ def episode_save(request):
         # Use season poster if available, otherwise fallback to TV show poster
         season_image = season_metadata.get("image") or tv_with_seasons_metadata.get("image")
 
-        item = Item.objects.filter(
-            media_id=media_id,
-            source=source,
-            media_type=MediaTypes.SEASON.value,
-            season_number=season_number,
-        ).first()
-        if item is None:
-            item = Item.objects.create(
-                media_id=media_id,
-                source=source,
-                media_type=MediaTypes.SEASON.value,
-                season_number=season_number,
-                library_media_type=library_media_type or MediaTypes.SEASON.value,
+        item = metadata_resolution.get_or_create_tracked_season_item(
+            media_id,
+            source,
+            season_number,
+            provider=source,
+            library_media_type=library_media_type or MediaTypes.SEASON.value,
+            metadata=None,
+            defaults={
                 **Item.title_fields_from_metadata(tv_with_seasons_metadata),
-                image=season_image,
-            )
-        if library_media_type and item.library_media_type != library_media_type:
-            item.library_media_type = library_media_type
-            item.save(update_fields=["library_media_type"])
+                "image": season_image,
+            },
+        )
         related_season = Season.objects.create(
             item=item,
             user=request.user,
@@ -621,25 +614,18 @@ def episode_drop(request):
         season_metadata = tv_with_seasons_metadata[f"season/{season_number}"]
         season_image = season_metadata.get("image") or tv_with_seasons_metadata.get("image")
 
-        item = Item.objects.filter(
-            media_id=media_id,
-            source=source,
-            media_type=MediaTypes.SEASON.value,
-            season_number=season_number,
-        ).first()
-        if item is None:
-            item = Item.objects.create(
-                media_id=media_id,
-                source=source,
-                media_type=MediaTypes.SEASON.value,
-                season_number=season_number,
-                library_media_type=library_media_type or MediaTypes.SEASON.value,
+        item = metadata_resolution.get_or_create_tracked_season_item(
+            media_id,
+            source,
+            season_number,
+            provider=source,
+            library_media_type=library_media_type or MediaTypes.SEASON.value,
+            metadata=None,
+            defaults={
                 **Item.title_fields_from_metadata(tv_with_seasons_metadata),
-                image=season_image,
-            )
-        if library_media_type and item.library_media_type != library_media_type:
-            item.library_media_type = library_media_type
-            item.save(update_fields=["library_media_type"])
+                "image": season_image,
+            },
+        )
         related_season = Season.objects.create(
             item=item,
             user=request.user,

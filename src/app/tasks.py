@@ -74,6 +74,18 @@ from app.tasks_genre import (  # noqa: E402
     populate_genre_data_for_items,
     reconcile_genre_backfill,
 )
+from app.tasks_igdb_ratings import (  # noqa: E402
+    IGDB_RATINGS_BACKFILL_ITEMS_QUEUE_KEY,
+    IGDB_RATINGS_BACKFILL_ITEMS_SCHEDULED_KEY,
+    IGDB_RATINGS_BACKFILL_QUEUE_TTL,
+    IGDB_RATINGS_BACKFILL_VERSION,
+    _igdb_rating_items_queryset,
+    count_igdb_rating_backfill_items,
+    enqueue_igdb_rating_backfill_items,
+    populate_igdb_rating_backfill_queue,
+    populate_igdb_rating_data_for_items,
+    reconcile_igdb_rating_backfill,
+)
 from app.tasks_credits import (  # noqa: E402
     CREDITS_BACKFILL_ITEMS_QUEUE_KEY,
     CREDITS_BACKFILL_ITEMS_SCHEDULED_KEY,
@@ -325,6 +337,49 @@ def _schedule_discover_refresh_for_movie_items(items: list[Item]) -> None:
                 countdown=DISCOVER_METADATA_REFRESH_COUNTDOWN_SECONDS,
                 priority=BACKGROUND_TASK_PRIORITY,
             )
+
+
+@shared_task(name="Resolve live playback image")
+def resolve_playback_image(user_id: int):
+    """Resolve artwork for a cached live playback state in the background."""
+    from app import live_playback  # noqa: PLC0415
+
+    live_playback.resolve_state_image(user_id)
+
+
+@shared_task(name="Build statistics day caches")
+def build_statistics_days_task(user_id: int, start_token: str, end_token: str):
+    """Build missing per-day statistics caches for an arbitrary date range.
+
+    Scheduled from the statistics request path when a custom range (or a
+    comparison period) has uncached days, so the rebuild happens here
+    instead of blocking the page.
+    """
+    from datetime import datetime  # noqa: PLC0415
+
+    from django.contrib.auth import get_user_model  # noqa: PLC0415
+
+    from app import statistics_cache  # noqa: PLC0415
+
+    user_model = get_user_model()
+    try:
+        user = user_model.objects.get(pk=user_id)
+    except user_model.DoesNotExist:
+        return
+
+    start_date = (
+        datetime.fromisoformat(start_token) if start_token != "all" else None
+    )
+    end_date = datetime.fromisoformat(end_token) if end_token != "all" else None
+
+    day_list = statistics_cache._resolve_day_list(user, start_date, end_date)  # noqa: SLF001
+    if not day_list:
+        return
+    statistics_cache._aggregate_minutes_per_media_type_from_days(  # noqa: SLF001
+        user,
+        day_list,
+        build_missing=True,
+    )
 
 
 @shared_task(name="Refresh item game lengths")

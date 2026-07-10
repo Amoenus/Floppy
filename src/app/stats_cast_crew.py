@@ -1,34 +1,28 @@
 """Cast & Crew statistics for the statistics page.
 
 Featured person spotlight, role leaders, studio footprint, and taste-signal
-rollups (top genres, era spotlight, collection mix). Reshapes data already
-computed by `statistics_talent._aggregate_top_talent()` and
+rollups (top genres, era spotlight). Reshapes data already computed by
+`statistics_talent._aggregate_top_talent()` and
 `stats_video._compute_movie_tv_top_genres()` rather than re-querying from
 scratch.
 """
 
 import logging
 import math
-from collections import Counter, defaultdict
+from collections import defaultdict
 
 from django.conf import settings
-from django.db.models import Count, Q
 
 from app import helpers, statistics_cache
 from app.models import (
-    CollectionEntry,
     CreditRoleType,
     Item,
     ItemPersonCredit,
     MediaTypes,
-    Movie,
     Person,
     PersonGender,
 )
-from app.statistics_talent import (
-    _aggregate_top_talent,
-    _tv_episode_play_rows,
-)
+from app.statistics_talent import _aggregate_top_talent
 
 logger = logging.getLogger(__name__)
 
@@ -428,8 +422,9 @@ def get_studio_footprint(
     comparison_end_date=None,
     limit=STUDIO_FOOTPRINT_LIMIT,
     media_type=None,
+    sort_by="plays",
 ):
-    """Reshape `top_talent.by_sort.plays.top_studios` into a percentage footprint.
+    """Reshape `top_talent.by_sort.{sort_by}.top_studios` into a percentage footprint.
 
     Percentages are computed against the full studio list (so they reflect true
     library share) but only the top `limit` studios are returned, keeping the
@@ -443,17 +438,19 @@ def get_studio_footprint(
         return {"studios": [], "delta": None}
 
     by_sort = top_talent.get("by_sort") or {}
+    bucket = sort_by if sort_by in by_sort else "plays"
     studios = (
-        (by_sort.get("plays") or {}).get("top_studios")
+        (by_sort.get(bucket) or {}).get("top_studios")
         or top_talent.get("top_studios")
         or []
     )
     if not studios:
         return {"studios": [], "delta": None}
 
-    total_plays = sum(studio.get("plays", 0) for studio in studios) or 1
+    metric_key = "watched_minutes" if sort_by == "time" else "plays"
+    total_metric = sum(studio.get(metric_key, 0) for studio in studios) or 1
     studio_rows = [
-        {**studio, "pct": round((studio.get("plays", 0) / total_plays) * 100, 1)}
+        {**studio, "pct": round((studio.get(metric_key, 0) / total_metric) * 100, 1)}
         for studio in studios[:limit]
     ]
 
@@ -470,10 +467,24 @@ def get_studio_footprint(
     return {"studios": studio_rows, "delta": delta}
 
 
-def get_top_genres_combined(movie_consumption, tv_consumption, limit=5):
-    """Merge already-computed movie/TV `top_genres`, weighted by minutes."""
+def get_top_genres_combined(
+    movie_consumption,
+    tv_consumption,
+    anime_consumption=None,
+    game_consumption=None,
+    music_consumption=None,
+    limit=20,
+    sort_by="time",
+):
+    """Merge already-computed per-media-type `top_genres`, ranked by time or plays."""
     merged = defaultdict(lambda: {"name": "", "minutes": 0, "plays": 0})
-    for consumption in (movie_consumption, tv_consumption):
+    for consumption in (
+        movie_consumption,
+        tv_consumption,
+        anime_consumption,
+        game_consumption,
+        music_consumption,
+    ):
         if not isinstance(consumption, dict):
             continue
         for genre in consumption.get("top_genres") or []:
@@ -482,138 +493,71 @@ def get_top_genres_combined(movie_consumption, tv_consumption, limit=5):
                 continue
             merged[name]["name"] = name
             merged[name]["minutes"] += genre.get("minutes", 0)
-            merged[name]["plays"] += genre.get("plays", 0)
+            # Game top_genres uses "games" instead of "plays" for its count field.
+            merged[name]["plays"] += genre.get("plays", genre.get("games", 0))
 
     if not merged:
         return []
 
+    metric_key = "plays" if sort_by == "plays" else "minutes"
+    other_key = "minutes" if sort_by == "plays" else "plays"
     ranked = sorted(
         merged.values(),
-        key=lambda row: (row["minutes"], row["plays"]),
+        key=lambda row: (row[metric_key], row[other_key]),
         reverse=True,
     )[:limit]
-    total_minutes = sum(row["minutes"] for row in ranked) or 1
+    total_metric = sum(row[metric_key] for row in ranked) or 1
     for index, row in enumerate(ranked):
-        row["pct"] = round((row["minutes"] / total_minutes) * 100, 1)
+        row["pct"] = round((row[metric_key] / total_metric) * 100, 1)
         row["formatted_duration"] = helpers.minutes_to_hhmm(row["minutes"])
         row["color"] = GENRE_PALETTE[index % len(GENRE_PALETTE)]
 
     return ranked
 
 
-def _watched_movie_play_counts(user, start_date, end_date):
-    """Return {item_id: play_count} for the user's watched movies in range."""
-    movie_play_counts = Counter()
-    movies_qs = Movie.objects.filter(user=user).filter(
-        Q(end_date__isnull=False) | Q(start_date__isnull=False),
-    )
-    if start_date:
-        movies_qs = movies_qs.filter(
-            Q(end_date__gte=start_date)
-            | (Q(end_date__isnull=True) & Q(start_date__gte=start_date)),
-        )
-    if end_date:
-        movies_qs = movies_qs.filter(
-            Q(end_date__lte=end_date)
-            | (Q(end_date__isnull=True) & Q(start_date__lte=end_date)),
-        )
-    for item_id in movies_qs.values_list("item_id", flat=True).iterator():
-        if item_id:
-            movie_play_counts[item_id] += 1
-    return movie_play_counts
+def get_era_spotlight(
+    movie_consumption,
+    tv_consumption,
+    anime_consumption=None,
+    game_consumption=None,
+    music_consumption=None,
+    limit=20,
+    sort_by="time",
+):
+    """Merge already-computed per-media-type `top_decades`, ranked by time or plays."""
+    merged = defaultdict(lambda: {"label": "", "minutes": 0, "plays": 0})
+    for consumption in (
+        movie_consumption,
+        tv_consumption,
+        anime_consumption,
+        game_consumption,
+        music_consumption,
+    ):
+        if not isinstance(consumption, dict):
+            continue
+        for decade in consumption.get("top_decades") or []:
+            label = decade.get("label")
+            if not label:
+                continue
+            merged[label]["label"] = label
+            merged[label]["minutes"] += decade.get("minutes", 0)
+            merged[label]["plays"] += decade.get("plays", 0)
 
-
-def _watched_tv_play_counts(user, start_date, end_date):
-    """Return {item_id: play_count} for the user's watched TV shows in range."""
-    tv_episode_rows = _tv_episode_play_rows(user, start_date, end_date)
-    tv_play_counts = Counter()
-    for episode_row in tv_episode_rows.episode_play_rows:
-        tv_item_id = episode_row[2]
-        if tv_item_id:
-            tv_play_counts[tv_item_id] += 1
-    return tv_play_counts
-
-
-def get_era_spotlight(user, start_date, end_date, limit=5):
-    """Decade bucketing of watched movie/TV titles, keyed by Item.release_datetime."""
-    movie_play_counts = _watched_movie_play_counts(user, start_date, end_date)
-    tv_play_counts = _watched_tv_play_counts(user, start_date, end_date)
-
-    all_item_ids = set(movie_play_counts.keys()) | set(tv_play_counts.keys())
-    if not all_item_ids:
+    if not merged:
         return []
 
-    decade_stats = defaultdict(
-        lambda: {"decade": 0, "label": "", "plays": 0, "titles": set()},
-    )
-    release_years = Item.objects.filter(id__in=all_item_ids).values_list(
-        "id",
-        "release_datetime__year",
-    )
-    for item_id, release_year in release_years:
-        if not release_year:
-            continue
-        plays = movie_play_counts.get(item_id, 0) + tv_play_counts.get(item_id, 0)
-        if plays <= 0:
-            continue
-        decade = (release_year // 10) * 10
-        decade_stats[decade]["decade"] = decade
-        decade_stats[decade]["label"] = f"{decade}s"
-        decade_stats[decade]["plays"] += plays
-        decade_stats[decade]["titles"].add(item_id)
-
+    metric_key = "plays" if sort_by == "plays" else "minutes"
+    other_key = "minutes" if sort_by == "plays" else "plays"
     ranked = sorted(
-        decade_stats.values(),
-        key=lambda row: row["plays"],
+        merged.values(),
+        key=lambda row: (row[metric_key], row[other_key]),
         reverse=True,
     )[:limit]
-    total_plays = sum(row["plays"] for row in ranked) or 1
-    return [
-        {
-            "decade": row["decade"],
-            "label": row["label"],
-            "plays": row["plays"],
-            "unique_titles": len(row["titles"]),
-            "pct": round((row["plays"] / total_plays) * 100, 1),
-        }
-        for row in ranked
-    ]
+    total_metric = sum(row[metric_key] for row in ranked) or 1
+    for row in ranked:
+        row["pct"] = round((row[metric_key] / total_metric) * 100, 1)
+        row["formatted_duration"] = helpers.minutes_to_hhmm(row["minutes"])
+
+    return ranked
 
 
-def get_collection_mix(user, limit=5):
-    """Group the user's owned video CollectionEntry rows by format (media_type).
-
-    `media_type` here is the free-text physical/digital source field (bluray,
-    dvd, digital, etc.) and is commonly left blank, so blank entries are kept
-    and labeled "Unspecified" rather than excluded — dropping them understated
-    the total and made the card look empty even when a user had a collection.
-    """
-    video_media_types = (
-        MediaTypes.MOVIE.value,
-        MediaTypes.TV.value,
-        MediaTypes.SEASON.value,
-        MediaTypes.EPISODE.value,
-        MediaTypes.ANIME.value,
-    )
-    rows = list(
-        CollectionEntry.objects.filter(
-            user=user,
-            item__media_type__in=video_media_types,
-        )
-        .values("media_type")
-        .annotate(count=Count("id"))
-        .order_by("-count"),
-    )
-    total = sum(row["count"] for row in rows)
-    if not total:
-        return {"formats": [], "total": 0}
-
-    formats = [
-        {
-            "name": row["media_type"] or "Unspecified",
-            "count": row["count"],
-            "pct": round((row["count"] / total) * 100, 1),
-        }
-        for row in rows[:limit]
-    ]
-    return {"formats": formats, "total": total}

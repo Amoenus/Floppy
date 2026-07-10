@@ -52,7 +52,11 @@ from app.search_views import _mark_grouped_anime_route
 from app.release_years import prefill_display_release_years
 from app.templatetags import app_tags
 from app.tv_sort import _sort_tv_media_by_time_left
-from users.models import MediaSortChoices, MediaStatusChoices
+from users.models import (
+    MediaSortChoices,
+    MediaStatusChoices,
+    relabel_end_date_sort_choice,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -109,6 +113,63 @@ def _tracked_media_entries(entries):
         if tracked_media is not None:
             tracked_entries.append(tracked_media)
     return tracked_entries
+
+
+def _serialize_time_left_order(entries):
+    """Compact, cache-friendly representation of a time_left sorted list.
+
+    Stores primary keys plus the display values computed during the sort so
+    cache hits can hydrate a single page without re-sorting the library.
+    """
+    order = []
+    for entry in entries:
+        media = getattr(entry, "media", None)
+        order.append({
+            "media_pk": getattr(media, "pk", None),
+            "item_pk": entry.item_id,
+            "time_left_display": entry.__dict__.get("time_left_display"),
+            "episodes_left_display": entry.__dict__.get("episodes_left_display", 0),
+        })
+    return order
+
+
+def _hydrate_time_left_page(user, order_slice):
+    """Rebuild MediaListEntry objects for one page of a cached sort order."""
+    media_pks = [o["media_pk"] for o in order_slice if o.get("media_pk")]
+    item_pks = [
+        o["item_pk"]
+        for o in order_slice
+        if not o.get("media_pk") and o.get("item_pk")
+    ]
+    media_queryset = TV.objects.filter(user=user, pk__in=media_pks).select_related(
+        "item",
+    )
+    # Same season/episode prefetch profile as get_media_list, so per-page
+    # progress annotation doesn't devolve into per-season queries.
+    media_queryset = BasicMedia.objects._apply_prefetch_related(  # noqa: SLF001
+        media_queryset,
+        MediaTypes.TV.value,
+        list_mode=True,
+    )
+    media_by_pk = {media.pk: media for media in media_queryset}
+    items_by_pk = {item.pk: item for item in Item.objects.filter(pk__in=item_pks)}
+
+    entries = []
+    for order_entry in order_slice:
+        media = media_by_pk.get(order_entry.get("media_pk"))
+        if media is not None:
+            entry = MediaListEntry.from_media(media)
+        else:
+            item = items_by_pk.get(order_entry.get("item_pk"))
+            if item is None:
+                # Row deleted since the order was cached; skip until the
+                # invalidation signal refreshes the cache.
+                continue
+            entry = MediaListEntry(item=item, media=None)
+        entry.time_left_display = order_entry.get("time_left_display")
+        entry.episodes_left_display = order_entry.get("episodes_left_display", 0)
+        entries.append(entry)
+    return entries
 
 
 def _collect_reading_activity_day_keys(entries):
@@ -217,6 +278,23 @@ def _extract_item_platforms_with_collection(item, collection_platforms_by_item_i
         if explicit_platforms:
             return sorted(explicit_platforms, key=lambda value: value.lower())
     return _extract_item_platforms(item)
+
+
+def _resolve_display_platform(item, collection_platforms_by_item_id, active_platform_filter):
+    """Resolve a single display platform: collection data > active filter > first IGDB platform."""
+    if not item:
+        return ""
+    if collection_platforms_by_item_id:
+        collected = collection_platforms_by_item_id.get(item.id, set())
+        if collected:
+            return sorted(collected, key=lambda value: value.lower())[0]
+    item_platforms = _extract_item_platforms(item)
+    if active_platform_filter:
+        normalized_filter = _normalize_filter_value(active_platform_filter)
+        for platform in item_platforms:
+            if _normalize_filter_value(platform) == normalized_filter:
+                return platform
+    return item_platforms[0] if item_platforms else ""
 
 
 def build_filter_data_from_items(
@@ -499,6 +577,10 @@ def media_list(request, media_type):
         for value, label in sorted_media_sort_choices
         if value not in _sort_type_guards or _sort_type_guards[value](media_type)
     ]
+    sorted_media_sort_choices = relabel_end_date_sort_choice(
+        media_type,
+        sorted_media_sort_choices,
+    )
 
     supports_untracked_status_filter = media_type not in {
         MediaTypes.MUSIC.value,
@@ -1126,9 +1208,10 @@ def media_list(request, media_type):
         return filtered_items
 
     # Cache tracker-backed list results and filter summaries separately.
-    _use_media_list_cache = not (
+    _time_left_active = (
         sort_filter == "time_left" and media_type == MediaTypes.TV.value
     )
+    _use_media_list_cache = not _time_left_active
     _include_untracked_entries = status_filter == MEDIA_LIST_NO_STATUS
     _media_list_cache_key = (
         cache_utils.build_media_list_cache_key(
@@ -1180,7 +1263,7 @@ def media_list(request, media_type):
             tag_exclude_filter,
             cache_variant,
         )
-        if _use_media_list_cache
+        if (_use_media_list_cache or _time_left_active)
         else None
     )
     _media_list_cached = cache.get(_media_list_cache_key) if _media_list_cache_key else None
@@ -1189,6 +1272,39 @@ def media_list(request, media_type):
         if _media_list_filter_cache_key
         else None
     )
+
+    # time_left keeps its own sorted-order cache (the sort is the expensive
+    # part). Check it BEFORE building the full media list: on a hit with warm
+    # filter data the whole library scan + Python filtering can be skipped and
+    # the page hydrated from the cached order alone.
+    _time_left_cache_key = None
+    _time_left_cached_order = None
+    if _time_left_active:
+        _time_left_cache_key = cache_utils.build_time_left_cache_key(
+            request.user.id,
+            media_type,
+            status_filter,
+            search_query,
+            direction,
+            rating_filter,
+            progress_filter,
+            collection_filter,
+            genre_filter,
+            year_filter,
+            release_filter,
+            source_filter,
+            language_filter,
+            country_filter,
+            platform_filter,
+            origin_filter,
+            tag_filter,
+            tag_exclude_filter,
+        )
+        _time_left_cached_order = cache.get(_time_left_cache_key)
+        if _time_left_cached_order is not None and filter_data is not None:
+            # Sentinel: skips the list build below; the page is hydrated
+            # from _time_left_cached_order in the time_left branch.
+            _media_list_cached = []
 
     if _media_list_cached is None:
         media_queryset = BasicMedia.objects.get_media_list(
@@ -1561,33 +1677,18 @@ def media_list(request, media_type):
             )
 
     # Handle time_left sorting for TV shows
-    if sort_filter == "time_left" and media_type == MediaTypes.TV.value:
-        # Cache sorted results for 5 minutes to avoid expensive re-sorts
-        cache_key = cache_utils.build_time_left_cache_key(
-            request.user.id,
-            media_type,
-            status_filter,
-            search_query,
-            direction,
-            rating_filter,
-            progress_filter,
-            collection_filter,
-            genre_filter,
-            year_filter,
-            release_filter,
-            source_filter,
-            language_filter,
-            country_filter,
-            platform_filter,
-            origin_filter,
-            tag_filter,
-            tag_exclude_filter,
-        )
-        cached_results = cache.get(cache_key)
-
-        if cached_results is not None:
+    if _time_left_active:
+        items_per_page = 32
+        if _time_left_cached_order is not None:
+            # Cached sort order: paginate the compact order and hydrate only
+            # this page's rows — no library-wide sort or annotation.
             logger.debug(f"DEBUG: Using cached time_left sort (page {page})")
-            media_list = cached_results
+            paginator = Paginator(_time_left_cached_order, items_per_page)
+            media_page = paginator.get_page(page)
+            media_page.object_list = _hydrate_time_left_page(
+                request.user,
+                media_page.object_list,
+            )
         else:
             logger.debug(f"DEBUG: Starting time_left sort for page {page} (no cache)")
 
@@ -1599,48 +1700,31 @@ def media_list(request, media_type):
                 _tracked_media_entries(media_list),
                 media_type,
             )
-            logger.debug("DEBUG: Annotated max_progress for all media")
 
             prefill_episode_runtime_index(media_list)
 
             # Apply time_left sorting
             media_list = _sort_tv_media_by_time_left(media_list, direction)
-            logger.debug("DEBUG: Applied time_left sorting")
 
-            # Cache for 5 minutes (300 seconds)
-            cache.set(cache_key, media_list, 300)
-            cache_utils.register_time_left_cache_key(request.user.id, cache_key)
+            # Cache the compact sort order for 5 minutes (300 seconds)
+            cache.set(
+                _time_left_cache_key,
+                _serialize_time_left_order(media_list),
+                300,
+            )
+            cache_utils.register_time_left_cache_key(
+                request.user.id,
+                _time_left_cache_key,
+            )
 
-        # Paginate the sorted list
-        items_per_page = 32
-        paginator = Paginator(media_list, items_per_page)
-        media_page = paginator.get_page(page)
+            paginator = Paginator(media_list, items_per_page)
+            media_page = paginator.get_page(page)
 
         BasicMedia.objects.annotate_max_progress(
             _tracked_media_entries(media_page.object_list),
             media_type,
         )
         prefill_episode_runtime_index(media_page.object_list)
-
-        logger.debug(f"DEBUG: Paginated to page {page} of {paginator.num_pages} pages")
-        logger.debug(f"DEBUG: This page has {len(media_page)} items")
-
-        # Log the first few items on this page to see what's being displayed
-        logger.debug(f"DEBUG: First 5 items on page {page}:")
-        for i, media in enumerate(media_page[:5]):
-            max_progress = getattr(media, "max_progress", None)
-            progress_value = getattr(media, "progress", None)
-            episodes_left = (
-                max_progress - progress_value
-                if max_progress is not None and progress_value is not None
-                else 0
-            )
-            logger.debug(f"  {i+1}. {media.item.title} - Episodes left: {episodes_left}, Status: {getattr(media, 'status', 'Unknown')}")
-
-        # Additional debug info for pagination issues
-        logger.debug(f"DEBUG: Page {page} pagination info - has_next: {media_page.has_next()}, next_page: {media_page.next_page_number() if media_page.has_next() else 'None'}")
-        if hasattr(media_page, "has_previous") and media_page.has_previous():
-            logger.debug(f"DEBUG: Page {page} has previous page: {media_page.previous_page_number()}")
     else:
         # Paginate results normally
         items_per_page = 32
@@ -1655,6 +1739,28 @@ def media_list(request, media_type):
         # prefill so the page renders with one episode-runtime query.
         prefill_episode_runtime_index(media_page.object_list)
     prefill_display_release_years(media_page.object_list)
+
+    if media_type == MediaTypes.GAME.value:
+        if not collection_platforms_by_item_id:
+            _page_item_ids = {
+                media.item_id
+                for media in media_page.object_list
+                if getattr(media, "item_id", None)
+            }
+            if _page_item_ids:
+                for item_id, collection_platform in CollectionEntry.objects.filter(
+                    user=request.user,
+                    item_id__in=_page_item_ids,
+                ).values_list("item_id", "resolution"):
+                    platform_value = str(collection_platform or "").strip()
+                    if platform_value:
+                        collection_platforms_by_item_id[item_id].add(platform_value)
+        for media in media_page.object_list:
+            media.display_platform = _resolve_display_platform(
+                getattr(media, "item", None),
+                collection_platforms_by_item_id,
+                platform_filter,
+            )
 
     if media_type in author_media_types:
         annotate_media_authors(media_page.object_list)

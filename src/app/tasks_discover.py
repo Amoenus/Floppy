@@ -115,6 +115,14 @@ def refresh_discover_tab_cache(
     }
 
 
+# Maximum discover tab tasks enqueued in a single startup warmup. After a
+# Redis restart all freshness locks are gone, so without this cap every user ×
+# every media type would be enqueued at once, burying the celery queue.
+# Users whose tabs are not pre-warmed receive them on first page load via the
+# request-time warmup path (maybe_schedule_user_warmup).
+STARTUP_WARMUP_TASK_LIMIT = 50
+
+
 @shared_task(name="Warm Discover Startup Tabs")
 def warm_discover_startup_tabs(user_ids: list[int] | None = None):
     """Warm the default Discover tab cache for users after app startup."""
@@ -129,6 +137,8 @@ def warm_discover_startup_tabs(user_ids: list[int] | None = None):
     scheduled = 0
     users_count = 0
     for user in users.iterator(chunk_size=200):
+        if scheduled >= STARTUP_WARMUP_TASK_LIMIT:
+            break
         users_count += 1
         scheduled += schedule_user_tab_warmup(
             user,

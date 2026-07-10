@@ -11,13 +11,17 @@ logger = logging.getLogger(__name__)
 
 
 def _is_celery_worker_process() -> bool:
-    """Return whether the current process is a Celery worker or beat."""
-    return any(
-        "celery" in lowered_arg
-        and ("worker" in lowered_arg or "beat" in lowered_arg)
-        for arg in sys.argv
-        for lowered_arg in [arg.lower()]
-    )
+    """Return whether the current process is a Celery worker or beat.
+
+    Real invocations split "celery" and "worker"/"beat" across separate argv
+    tokens (e.g. ["celery", "-A", "config", "worker", ...]), so this checks
+    across the whole argv list rather than requiring both substrings in a
+    single token.
+    """
+    lowered_args = [arg.lower() for arg in sys.argv]
+    has_celery = any("celery" in arg for arg in lowered_args)
+    has_worker_or_beat = any(arg in {"worker", "beat"} for arg in lowered_args)
+    return has_celery and has_worker_or_beat
 
 
 def _is_runserver_parent_process() -> bool:
@@ -80,6 +84,7 @@ class AppConfig(AppConfig):
             self._schedule_imdb_game_person_profile_backfill()
             self._schedule_genre_backfill_reconcile()
             self._schedule_trakt_popularity_reconcile()
+            self._schedule_igdb_rating_backfill_reconcile()
 
     def _add_startup_cache_key(self, cache_key: str) -> bool:
         """Return whether a once-per-day startup task can be scheduled."""
@@ -202,6 +207,44 @@ class AppConfig(AppConfig):
             )
         except Exception as error:  # noqa: BLE001
             logger.warning("Failed to schedule genre backfill reconcile: %s", error)
+
+    def _schedule_igdb_rating_backfill_reconcile(self):
+        """Schedule a one-time backfill of IGDB critic/user ratings for existing games.
+
+        Games tracked before the IGDB rating/aggregated_rating field split have stale
+        or missing igdb_user_rating data that would otherwise only refresh when their
+        detail page happens to be visited. Runs once per strategy version.
+        """
+        try:
+            from app.tasks_igdb_ratings import (  # noqa: PLC0415
+                IGDB_RATINGS_BACKFILL_VERSION,
+                reconcile_igdb_rating_backfill,
+            )
+
+            version_key = f"igdb_ratings_backfilled_v{IGDB_RATINGS_BACKFILL_VERSION}"
+            status = cache.get(version_key)
+
+            if status in {"done", "pending"}:
+                return
+
+            cache.set(version_key, "pending", timeout=300)
+
+            try:
+                reconcile_igdb_rating_backfill.apply_async(
+                    kwargs={"strategy_version": IGDB_RATINGS_BACKFILL_VERSION},
+                    countdown=30,
+                    priority=getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 1),
+                )
+            except Exception:
+                cache.delete(version_key)
+                raise
+
+            logger.info(
+                "Scheduled IGDB ratings backfill reconcile (version=%s)",
+                IGDB_RATINGS_BACKFILL_VERSION,
+            )
+        except Exception as error:  # noqa: BLE001
+            logger.warning("Failed to schedule IGDB ratings backfill reconcile: %s", error)
 
     def _schedule_trakt_popularity_reconcile(self):
         """Schedule Trakt popularity reconciliation on startup.

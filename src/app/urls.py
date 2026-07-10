@@ -171,6 +171,21 @@ urlpatterns = [
         views.update_top_talent_sort,
         name="update_top_talent_sort",
     ),
+    path(
+        "statistics/genre-sort",
+        views.update_genre_sort,
+        name="update_genre_sort",
+    ),
+    path(
+        "statistics/studio-sort",
+        views.update_studio_sort,
+        name="update_studio_sort",
+    ),
+    path(
+        "statistics/fragments/talent",
+        views.statistics_talent_fragment,
+        name="statistics_talent_fragment",
+    ),
     path("history", views.history, name="history"),
     path("api/history-genres/", views.history_genres, name="history_genres"),
     path(
@@ -208,6 +223,12 @@ urlpatterns = [
         views.home_row_artwork_refresh,
         name="home_row_artwork_refresh",
     ),
+    path(
+        "home/rows/artwork/",
+        views.home_rows_artwork_refresh,
+        name="home_rows_artwork_refresh",
+    ),
+    path("home/rest/", views.home_rest_fragment, name="home_rest_fragment"),
     path(
         "music/artist/<int:artist_id>/update-score/",
         views.update_artist_score,

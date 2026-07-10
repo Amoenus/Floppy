@@ -1,5 +1,6 @@
 import logging
 from datetime import timedelta
+from types import SimpleNamespace
 
 import requests
 from django.conf import settings
@@ -771,6 +772,10 @@ def get_tvdb_episode_image_map(tvdb_id, season_number, *, tmdb_media_id=None):
     except (TypeError, ValueError):
         normalized_season_number = season_number
 
+    error_cache_key = f"tvdb_ep_images_error:{tvdb_id}:{season_number}"
+    if cache.get(error_cache_key) is not None:
+        return {}
+
     try:
         season_payloads = tvdb.tv_with_seasons(
             str(tvdb_id),
@@ -799,6 +804,9 @@ def get_tvdb_episode_image_map(tvdb_id, season_number, *, tmdb_media_id=None):
                 "season_number": season_number,
             },
         )
+        # Negative-cache the empty map so repeated artwork resolution
+        # doesn't re-hit a failing TVDB endpoint on every attempt.
+        cache.set(error_cache_key, {}, EPISODE_ERROR_NOT_FOUND_SECONDS)
         return {}
 
     season_payload = season_payloads.get(f"season/{normalized_season_number}")
@@ -1992,12 +2000,32 @@ def find_next_episode(episode_number, episodes_metadata):
     return episodes_metadata[current_episode_index + 1]["episode_number"]
 
 
+EPISODE_ERROR_CACHE_KEY = "__error_status__"
+EPISODE_ERROR_NOT_FOUND_SECONDS = 60 * 60
+EPISODE_ERROR_TRANSIENT_SECONDS = 60 * 5
+
+
+def _raise_cached_episode_error(status_code):
+    """Re-raise a negative-cached episode lookup without hitting the API."""
+    synthetic = SimpleNamespace(
+        response=SimpleNamespace(status_code=status_code, headers={}),
+    )
+    raise services.ProviderAPIError(
+        Sources.TMDB.value,
+        synthetic,
+        "cached episode lookup failure",
+    )
+
+
 def episode(media_id, season_number, episode_number):
     """Return the metadata for the selected episode from The Movie Database."""
     cache_key = (
         f"{Sources.TMDB.value}_{MediaTypes.EPISODE.value}_{media_id}_{season_number}_{episode_number}"
     )
     data = cache.get(cache_key)
+
+    if isinstance(data, dict) and EPISODE_ERROR_CACHE_KEY in data:
+        _raise_cached_episode_error(data[EPISODE_ERROR_CACHE_KEY])
 
     if data is None:
         url = f"{base_url}/tv/{media_id}/season/{season_number}/episode/{episode_number}"
@@ -2014,6 +2042,22 @@ def episode(media_id, season_number, episode_number):
                 params=params,
             )
         except requests.exceptions.HTTPError as error:
+            # Negative-cache failures so a missing episode (polled every
+            # few seconds by the live playback card) doesn't re-block on
+            # the network each time.
+            status_code = getattr(error.response, "status_code", None)
+            if status_code in (requests.codes.not_found, requests.codes.gone):
+                cache.set(
+                    cache_key,
+                    {EPISODE_ERROR_CACHE_KEY: status_code},
+                    EPISODE_ERROR_NOT_FOUND_SECONDS,
+                )
+            elif status_code is not None and status_code >= requests.codes.server_error:
+                cache.set(
+                    cache_key,
+                    {EPISODE_ERROR_CACHE_KEY: status_code},
+                    EPISODE_ERROR_TRANSIENT_SECONDS,
+                )
             handle_error(error)
 
         tv_metadata = tv_with_seasons(media_id, [season_number])

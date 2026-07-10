@@ -892,6 +892,8 @@ def tv(media_id, *, routed_media_type=MediaTypes.TV.value):
 
 def tv_with_seasons(media_id, season_numbers, *, routed_media_type=MediaTypes.TV.value):
     """Return a TVDB series payload enriched with selected seasons."""
+    if not season_numbers:
+        return tv(media_id, routed_media_type=routed_media_type)
     normalized_numbers = []
     for season_number in season_numbers:
         try:

@@ -16,22 +16,29 @@
       {% csrf_token %}
       <input type="hidden" name="home_screen_sections" x-ref="payloadInput">
 
-      <div class="space-y-1">
+      <div class="space-y-1" data-home-section-list>
         <template x-for="section in sections" :key="section.media_type">
-          <section>
-            <button type="button"
-                    class="flex w-full items-center justify-between gap-3 rounded-md border border-gray-600 bg-[#272c31] px-3 py-2 text-left text-gray-200 text-sm transition-colors hover:bg-[#313842] cursor-pointer"
-                    @click="section.expanded = !section.expanded">
-              <div class="flex h-5 w-5 shrink-0 items-center justify-center text-gray-300"
-                   x-html="section.icon_svg"></div>
-              <div class="min-w-0 flex-1">
-                <h3 class="font-medium text-gray-200" x-text="section.label"></h3>
-              </div>
-              <div class="shrink-0 text-gray-400">
-                <span x-show="!section.expanded">{% include "app/icons/chevron-down.svg" with classes="w-4 h-4" %}</span>
-                <span x-show="section.expanded">{% include "app/icons/chevron-up.svg" with classes="w-4 h-4" %}</span>
-              </div>
-            </button>
+          <section :data-section-media-type="section.media_type">
+            <div class="flex w-full items-center gap-3 rounded-md border border-gray-600 bg-[#272c31] px-3 py-2 text-gray-200 text-sm transition-colors hover:bg-[#313842]">
+              <button type="button"
+                      class="drag-handle hidden shrink-0 items-center justify-center text-gray-400 transition-colors hover:text-white cursor-grab active:cursor-grabbing lg:inline-flex"
+                      @click.stop>
+                {% include "app/icons/drag-handle.svg" with classes="h-4 w-4" %}
+              </button>
+              <button type="button"
+                      class="flex flex-1 items-center justify-between gap-3 text-left cursor-pointer"
+                      @click="section.expanded = !section.expanded">
+                <div class="flex h-5 w-5 shrink-0 items-center justify-center text-gray-300"
+                     x-html="section.icon_svg"></div>
+                <div class="min-w-0 flex-1">
+                  <h3 class="font-medium text-gray-200" x-text="section.label"></h3>
+                </div>
+                <div class="shrink-0 text-gray-400">
+                  <span x-show="!section.expanded">{% include "app/icons/chevron-down.svg" with classes="w-4 h-4" %}</span>
+                  <span x-show="section.expanded">{% include "app/icons/chevron-up.svg" with classes="w-4 h-4" %}</span>
+                </div>
+              </button>
+            </div>
 
             <div x-show="section.expanded"
                  x-cloak
@@ -690,6 +697,22 @@
               })
             );
           });
+
+          const sectionList = this.$el.querySelector('[data-home-section-list]');
+          if (sectionList) {
+            this.sortables.push(
+              Sortable.create(sectionList, {
+                animation: 150,
+                handle: '.drag-handle',
+                onEnd: () => {
+                  const orderedTypes = Array.from(sectionList.querySelectorAll('[data-section-media-type]')).map(node => node.dataset.sectionMediaType);
+                  this.sections = orderedTypes
+                    .map(mediaType => this.sections.find(section => section.media_type === mediaType))
+                    .filter(Boolean);
+                }
+              })
+            );
+          }
         }
       };
     }

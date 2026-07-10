@@ -229,3 +229,111 @@ class TVTimeLeftSortTests(TestCase):
 
         self.assertEqual(restored.item.title, "Test Show")
         self.assertEqual(restored.status, tv.status)
+
+
+class TVTimeLeftCachedOrderTests(TestCase):
+    """The time_left sort order cache must be consulted before list building."""
+
+    def setUp(self):
+        password = get_random_string(16)
+        self.credentials = {"username": "tlcache", "password": password}
+        self.user = get_user_model().objects.create_user(**self.credentials)
+        self.client.login(**self.credentials)
+
+        for idx in range(1, 4):
+            tv_item = Item.objects.create(
+                media_id=f"tl-{idx}",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.TV.value,
+                title=f"Cached Sort Show {idx}",
+                image="http://example.com/show.jpg",
+            )
+            tv = TV.objects.create(
+                item=tv_item,
+                user=self.user,
+                status=Status.IN_PROGRESS.value,
+            )
+            season_item = Item.objects.create(
+                media_id=f"tl-{idx}",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.SEASON.value,
+                title=f"Cached Sort Show {idx}",
+                image="http://example.com/season.jpg",
+                season_number=1,
+            )
+            season = Season.objects.create(
+                item=season_item,
+                user=self.user,
+                related_tv=tv,
+                status=Status.IN_PROGRESS.value,
+            )
+            episode_item = Item.objects.create(
+                media_id=f"tl-{idx}",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.EPISODE.value,
+                title=f"Cached Sort Show {idx}",
+                image="http://example.com/e1.jpg",
+                season_number=1,
+                episode_number=1,
+                runtime_minutes=30,
+            )
+            Episode.objects.create(
+                item=episode_item,
+                related_season=season,
+                end_date=timezone.now(),
+            )
+
+    def _list_url(self, page=None):
+        from django.urls import reverse
+
+        url = reverse("medialist", args=["tv"]) + "?sort=time_left&direction=asc"
+        if page:
+            url += f"&page={page}"
+        return url
+
+    def test_warm_cache_skips_resort_and_keeps_order(self):
+        """Page requests with a warm order cache never re-run the sort."""
+        from unittest.mock import patch
+
+        first = self.client.get(self._list_url())
+        self.assertEqual(first.status_code, 200)
+        first_titles = [
+            entry.item.title for entry in first.context["media_list"].object_list
+        ]
+
+        with patch(
+            "app.media_list_views._sort_tv_media_by_time_left",
+        ) as mock_sort:
+            second = self.client.get(self._list_url())
+        self.assertEqual(second.status_code, 200)
+        mock_sort.assert_not_called()
+
+        second_titles = [
+            entry.item.title for entry in second.context["media_list"].object_list
+        ]
+        self.assertEqual(first_titles, second_titles)
+
+    def test_episode_save_invalidates_cached_order(self):
+        """Episode changes clear the order cache so the next request re-sorts."""
+        from unittest.mock import patch
+
+        self.client.get(self._list_url())  # warm the cache
+
+        season = Season.objects.filter(user=self.user).first()
+        episode_item = Item.objects.filter(
+            media_type=MediaTypes.EPISODE.value,
+            media_id=season.item.media_id,
+        ).first()
+        Episode.objects.create(
+            item=episode_item,
+            related_season=season,
+            end_date=timezone.now(),
+        )
+
+        with patch(
+            "app.media_list_views._sort_tv_media_by_time_left",
+            side_effect=lambda media_list, direction: media_list,
+        ) as mock_sort:
+            response = self.client.get(self._list_url())
+        self.assertEqual(response.status_code, 200)
+        mock_sort.assert_called_once()

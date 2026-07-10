@@ -18,6 +18,14 @@ services:
       - DB_PASSWORD=yamtrack
       - DB_PORT=5432
       - ADMIN_ENABLED=False
+      # Keep DEBUG off in production: the debug toolbar slows every request
+      # and disables Django's cached template loader.
+      - DEBUG=False
+      # Web server concurrency: WEB_CONCURRENCY gunicorn worker processes,
+      # each serving GUNICORN_THREADS requests concurrently. The defaults
+      # (2 workers x 4 threads) prevent one slow request from blocking the UI.
+      - WEB_CONCURRENCY=2
+      - GUNICORN_THREADS=4
     ports:
       - "8000:8000"
 

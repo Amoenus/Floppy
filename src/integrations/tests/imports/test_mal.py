@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import requests
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -100,6 +101,26 @@ class ImportMAL(TestCase):
             self.user,
             "new",
         )
+
+    @patch("integrations.imports.mal.MyAnimeListImporter._get_whole_response")
+    def test_private_manga_list_is_skipped_with_warning(self, mock_get_response):
+        """A private manga list is skipped with a warning, anime still imports."""
+        with Path(mock_path / "import_mal_anime.json").open() as file:
+            anime_response = json.load(file)
+
+        forbidden_response = MagicMock()
+        forbidden_response.status_code = requests.codes.forbidden
+        forbidden_error = requests.exceptions.HTTPError(response=forbidden_response)
+
+        mock_get_response.side_effect = [anime_response, forbidden_error]
+
+        imported_counts, warnings = mal.importer("bloodthirstiness", self.user, "new")
+
+        self.assertEqual(Anime.objects.filter(user=self.user).count(), 6)
+        self.assertEqual(Manga.objects.filter(user=self.user).count(), 0)
+        self.assertNotIn(MediaTypes.MANGA.value, imported_counts)
+        self.assertIn("manga", warnings)
+        self.assertIn("private", warnings)
 
     @patch("app.models.media.Media.process_status")
     @patch("integrations.webhooks.anime_mappings.fetch_mapping_data")
