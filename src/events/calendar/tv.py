@@ -11,8 +11,8 @@ from django.utils import timezone
 from simple_history.utils import bulk_create_with_history, bulk_update_with_history
 
 from app import cache_utils
-from app.models import TV, Item, MediaTypes, Season, Status
-from app.providers import services, tmdb
+from app.models import TV, Item, MediaTypes, Season, Sources, Status
+from app.providers import services, tmdb, tvdb
 from events.models import Event
 
 from .helpers import date_parser
@@ -70,10 +70,15 @@ def process_tv(tv_item, events_bulk, tv_metadata=None):
         logger.exception("Error processing %s", tv_item)
 
 
+def _tv_provider(source):
+    """Return the metadata provider module for a TV item's source."""
+    return tvdb if source == Sources.TVDB.value else tmdb
+
+
 def get_seasons_to_process(tv_item, tv_metadata=None):
     """Identify which seasons of a TV show need to be processed."""
     if tv_metadata is None:
-        tv_metadata = tmdb.tv(tv_item.media_id)
+        tv_metadata = _tv_provider(tv_item.source).tv(tv_item.media_id)
 
     if not tv_metadata.get("related", {}).get("seasons"):
         logger.warning("No seasons found for TV show: %s", tv_item)
@@ -98,11 +103,22 @@ def get_seasons_to_process(tv_item, tv_metadata=None):
     ).select_related("item")
 
     seasons_with_events = {event.item.season_number for event in existing_season_events}
+    # Seasons whose events can still change: future air dates (including the
+    # year-9999 unknown-date sentinel) or the datetime.min unknown-date
+    # fallback. TMDB refreshes these via next_episode_season, but sources
+    # without that field (TVDB) rely on this to keep ongoing seasons current.
+    now = timezone.now()
+    seasons_with_refreshable_events = {
+        event.item.season_number
+        for event in existing_season_events
+        if event.datetime >= now or event.datetime.year == 1
+    }
     seasons_to_process = [
         season_num
         for season_num in season_numbers
         if season_num not in seasons_with_events
         or (next_episode_season and season_num >= next_episode_season)
+        or season_num in seasons_with_refreshable_events
     ]
 
     if not seasons_to_process:
@@ -120,7 +136,7 @@ def get_seasons_to_process(tv_item, tv_metadata=None):
 
 def process_tv_seasons(tv_item, seasons_to_process, events_bulk):
     """Process specific seasons of a TV show."""
-    process_seasons_data = tmdb.tv_with_seasons(
+    process_seasons_data = _tv_provider(tv_item.source).tv_with_seasons(
         tv_item.media_id,
         seasons_to_process,
     )
