@@ -75,7 +75,7 @@
                  @keydown.escape.window="open = false">
               <button @click="open = !open"
                       class="flex items-center space-x-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-md transition-colors duration-200 cursor-pointer">
-                <span class="text-sm font-medium">{{ episode_title }}</span>
+                <span class="text-sm font-medium">{{ episode.display_episode_number|default:episode_number }}. {{ episode_title }}</span>
                 <div class="w-4 h-4" :class="{ 'rotate-180': open }">{% include "app/icons/chevron-down.svg" %}</div>
               </button>
               <div x-show="open"
