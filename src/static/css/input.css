@@ -230,8 +230,10 @@
   bottom: 0;
   left: 0;
   right: 0;
-  /* Extend gradient to 200% of content height to reach higher into card */
-  height: 200%;
+  /* Extend gradient a fixed distance above the content so square (1:1)
+     and 2:3 cards darken the same amount; a percentage of body height
+     covered far more of the shorter square cards on hover. */
+  height: calc(100% + 3rem);
   pointer-events: none;
   z-index: -1;
   background-image: linear-gradient(to bottom,
@@ -316,6 +318,14 @@
   margin-top: 12px;
 }
 
+.search-result-card,
+.search-result-card-square {
+  transition-duration: 150ms;
+  /* One title line: text-sm (0.875rem) at Tailwind's 1.4286 ratio. The
+     mobile block overrides this to match its text-xs font override. */
+  --card-title-line: 1.25rem;
+}
+
 .search-result-card {
   position: relative;
   display: flex;
@@ -350,17 +360,57 @@
   aspect-ratio: unset !important;
 }
 
+.search-result-card .media-card-title-row {
+  overflow: clip;
+  align-items: flex-start;
+  max-height: var(--card-title-line);
+  transition: max-height 0.2s ease;
+}
+
+.search-result-card:hover .media-card-title-row {
+  max-height: calc(3 * var(--card-title-line));
+}
+
 .search-result-card .media-card-title,
 .search-result-card .search-result-title {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   overflow: hidden;
-}
-
-.search-result-card:hover .media-card-title,
-.search-result-card:hover .search-result-title {
   -webkit-line-clamp: 3;
   line-clamp: 3;
+  line-height: var(--card-title-line);
+  position: relative;
+  transition: color 0.2s ease;
+}
+
+.search-result-card .media-card-title[title] {
+  color: transparent;
+}
+
+.search-result-card .media-card-title[title]::before {
+  content: attr(title);
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #fff;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+.search-result-card:hover .media-card-title[title] {
+  color: #fff;
+}
+
+.search-result-card:hover .media-card-title[title]:hover {
+  color: var(--color-indigo-400, #818cf8);
+}
+
+.search-result-card:hover .media-card-title[title]::before {
+  opacity: 0;
 }
 
 .search-result-card .media-card-body {
@@ -369,29 +419,25 @@
   left: 0;
   right: 0;
   z-index: 10;
-  transform: translateY(var(--year-height, 1.25rem));
-  transition: transform 0.2s ease;
 }
 
 .search-result-card .media-card-year {
+  max-height: 0;
+  margin-top: 0;
+  overflow: hidden;
   opacity: 0;
-  transition: opacity 0.1s ease;
-}
-
-.search-result-card:hover .media-card-body {
-  transform: translateY(0);
+  transition: max-height 0.2s ease, margin-top 0.2s ease, opacity 0.2s ease;
 }
 
 .search-result-card:hover .media-card-year {
+  max-height: 2lh;
+  margin-top: 0.25rem;
   opacity: 1;
-  transition: opacity 0.2s ease;
-}
-
-.search-result-card.media-card-subtitle-always .media-card-body {
-  transform: translateY(0);
 }
 
 .search-result-card.media-card-subtitle-always .media-card-year {
+  max-height: none;
+  margin-top: 0.25rem;
   opacity: 1;
 }
 
@@ -431,17 +477,57 @@
   aspect-ratio: unset !important;
 }
 
+.search-result-card-square .media-card-title-row {
+  overflow: clip;
+  align-items: flex-start;
+  max-height: var(--card-title-line);
+  transition: max-height 0.2s ease;
+}
+
+.search-result-card-square:hover .media-card-title-row {
+  max-height: calc(3 * var(--card-title-line));
+}
+
 .search-result-card-square .media-card-title,
 .search-result-card-square .search-result-title {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   overflow: hidden;
-}
-
-.search-result-card-square:hover .media-card-title,
-.search-result-card-square:hover .search-result-title {
   -webkit-line-clamp: 3;
   line-clamp: 3;
+  line-height: var(--card-title-line);
+  position: relative;
+  transition: color 0.2s ease;
+}
+
+.search-result-card-square .media-card-title[title] {
+  color: transparent;
+}
+
+.search-result-card-square .media-card-title[title]::before {
+  content: attr(title);
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #fff;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+.search-result-card-square:hover .media-card-title[title] {
+  color: #fff;
+}
+
+.search-result-card-square:hover .media-card-title[title]:hover {
+  color: var(--color-indigo-400, #818cf8);
+}
+
+.search-result-card-square:hover .media-card-title[title]::before {
+  opacity: 0;
 }
 
 .search-result-card-square .media-card-body {
@@ -450,30 +536,38 @@
   left: 0;
   right: 0;
   z-index: 10;
-  transform: translateY(var(--year-height, 1.25rem));
-  transition: transform 0.2s ease;
 }
 
 .search-result-card-square .media-card-year {
+  max-height: 0;
+  margin-top: 0;
+  overflow: hidden;
   opacity: 0;
-  transition: opacity 0.1s ease;
-}
-
-.search-result-card-square:hover .media-card-body {
-  transform: translateY(0);
+  transition: max-height 0.2s ease, margin-top 0.2s ease, opacity 0.2s ease;
 }
 
 .search-result-card-square:hover .media-card-year {
+  max-height: 2lh;
+  margin-top: 0.25rem;
   opacity: 1;
-  transition: opacity 0.2s ease;
-}
-
-.search-result-card-square.media-card-subtitle-always .media-card-body {
-  transform: translateY(0);
 }
 
 .search-result-card-square.media-card-subtitle-always .media-card-year {
+  max-height: none;
+  margin-top: 0.25rem;
   opacity: 1;
+}
+
+@supports (interpolate-size: allow-keywords) {
+  .search-result-card .media-card-year,
+  .search-result-card-square .media-card-year {
+    interpolate-size: allow-keywords;
+  }
+
+  .search-result-card:hover .media-card-year,
+  .search-result-card-square:hover .media-card-year {
+    max-height: max-content;
+  }
 }
 
 .stat-scroll-safe.stat-tooltip-safe {
@@ -518,11 +612,20 @@
     justify-content: flex-start;
   }
 
+  .media-card-body>.media-card-title-row {
+    align-items: flex-start;
+  }
+
   .media-card-title {
     padding-top: 0;
     font-weight: 600;
     font-size: var(--text-xs);
     text-align: left !important;
+  }
+
+  .search-result-card,
+  .search-result-card-square {
+    --card-title-line: 1rem;
   }
 
   .media-card-body>*+* {
