@@ -734,6 +734,130 @@ class JellyfinWebhookTests(TestCase):
             2,
         )
 
+    @patch("app.providers.tmdb.tv_with_seasons")
+    @patch("app.providers.tmdb.find")
+    def test_webhook_heals_preexisting_stray_season_item_and_avoids_conflict(
+        self, mock_find, mock_tv_with_seasons,
+    ):
+        """Reproduces the GitHub issue #326 follow-up report exactly.
+
+        A pre-existing orphaned stray Season Item (different
+        library_media_type bucket, no tracking data of its own) already sits
+        in the DB for the same show/season as the real, tracked one. A
+        webhook call must land on the real item, self-heal the stray away,
+        and must NOT log a "Persistent IntegrityError" warning for the
+        primary TMDB provider link — the exact symptom from the follow-up
+        comment on issue #326.
+        """
+        tmdb_show_id = "1405"
+
+        tv_item = Item.objects.create(
+            media_id=tmdb_show_id,
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Dexter",
+            image="https://example.com/dexter.jpg",
+        )
+        TV.objects.create(item=tv_item, user=self.user, status=Status.IN_PROGRESS.value)
+
+        canonical_season_item = Item.objects.create(
+            media_id=tmdb_show_id,
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=3,
+            library_media_type=MediaTypes.SEASON.value,
+            title="Dexter",
+            image="",
+        )
+        ItemProviderLink.objects.create(
+            item=canonical_season_item,
+            provider=Sources.TMDB.value,
+            provider_media_type=MediaTypes.SEASON.value,
+            provider_media_id=tmdb_show_id,
+            season_number=3,
+        )
+        # Orphaned stray from the earlier corruption — no Season/Episode data.
+        Item.objects.create(
+            media_id=tmdb_show_id,
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=3,
+            library_media_type=MediaTypes.ANIME.value,
+            title="Dexter",
+            image="",
+        )
+
+        mock_find.return_value = {
+            "tv_episode_results": [
+                {"show_id": int(tmdb_show_id), "season_number": 3, "episode_number": 8},
+            ],
+            "tv_results": [],
+        }
+        mock_tv_with_seasons.return_value = {
+            "media_id": tmdb_show_id,
+            "title": "Dexter",
+            "image": "https://example.com/dexter.jpg",
+            "tvdb_id": "385787",
+            "season/3": {
+                "season_number": 3,
+                "season_title": "Season 3",
+                "synopsis": "",
+                "image": "https://example.com/dexter-s3.jpg",
+                "max_progress": 12,
+                "episodes": [
+                    {
+                        "episode_number": 8,
+                        "runtime": 51,
+                        "air_date": None,
+                        "still_path": None,
+                        "name": "Go Your Own Way",
+                        "overview": "",
+                    },
+                ],
+                "details": {"episodes": 12},
+                "providers": {},
+            },
+        }
+
+        payload = {
+            "Event": "Stop",
+            "Item": {
+                "Type": "Episode",
+                "Name": "Go Your Own Way",
+                "SeriesName": "Dexter",
+                "ParentIndexNumber": 3,
+                "IndexNumber": 8,
+                "ProviderIds": {"Tvdb": "385783", "Imdb": "tt1242117"},
+                "UserData": {"Played": True},
+            },
+        }
+
+        with self.assertNoLogs("app.db_retry", level="WARNING"):
+            response = self.client.post(
+                self.url,
+                data=json.dumps(payload),
+                content_type="application/json",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            Item.objects.filter(
+                media_id=tmdb_show_id,
+                media_type=MediaTypes.SEASON.value,
+                season_number=3,
+            ).count(),
+            1,
+        )
+        self.assertTrue(
+            Item.objects.filter(pk=canonical_season_item.pk).exists(),
+        )
+        episode = Episode.objects.get(
+            item__media_id=tmdb_show_id,
+            item__season_number=3,
+            item__episode_number=8,
+        )
+        self.assertIsNotNone(episode.end_date)
+
     def test_repeated_watch(self):
         """Test webhook handles repeated watches."""
         payload = {

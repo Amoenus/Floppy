@@ -1160,28 +1160,53 @@ class BaseWebhookProcessor:
 
         # If the user is already tracking this show via the anime pathway (TMDB-based
         # anime, separate from MAL anime), keep scrobbles in that same bucket so that
-        # anime-scoped Season Items stay separate from TV-scoped ones.  This also
-        # prevents MultipleObjectsReturned when both anime and TV Season Items exist.
-        uses_anime_tracking = app.models.Item.objects.filter(
-            media_id=media_id,
-            source=Sources.TMDB.value,
-            media_type=MediaTypes.SEASON.value,
-            library_media_type=MediaTypes.ANIME.value,
-        ).exists()
-        # Use the post-save normalised value ('season') not '' so the lookup hits
-        # existing Season Items that were created via Item.save() normalisation.
-        season_library_media_type = (
-            MediaTypes.ANIME.value
-            if uses_anime_tracking
-            else MediaTypes.SEASON.value
-        )
+        # anime-scoped Season Items stay separate from TV-scoped ones.
+        #
+        # Decide the bucket from tv_item itself first — it's a single,
+        # already-resolved row for this show, not a global/sticky check (see
+        # issue #326: a DB-wide "does any anime-bucket Item exist for this
+        # media_id" check would permanently mis-route every future call for
+        # this show once any Item anywhere flipped it true). Only fall back
+        # to a user-scoped check for the rare case of un-normalised legacy
+        # data (library_media_type == "").
+        if metadata_resolution.item_uses_grouped_anime(tv_item):
+            season_library_media_type = MediaTypes.ANIME.value
+        elif tv_item.library_media_type == MediaTypes.TV.value:
+            season_library_media_type = MediaTypes.SEASON.value
+        else:
+            uses_anime_tracking = app.models.Item.objects.filter(
+                media_id=media_id,
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.SEASON.value,
+                library_media_type=MediaTypes.ANIME.value,
+                season__user=user,
+            ).exists()
+            season_library_media_type = (
+                MediaTypes.ANIME.value
+                if uses_anime_tracking
+                else MediaTypes.SEASON.value
+            )
 
-        season_item, _ = app.models.Item.objects.get_or_create(
-            media_id=tv_item.media_id,
-            source=tv_item.source,
-            media_type=MediaTypes.SEASON.value,
-            season_number=season_number,
+        # No webhook source exposes a season-scoped TVDB/IMDB id — only
+        # per-episode ids are available in the payload, and tv_metadata's
+        # tvdb_id is show-level, not season-level. Attaching either to the
+        # Season item's provider link corrupts ItemProviderLink's unique
+        # constraint over time as different episodes are played (issue #326).
+        # Only tmdb_id (season-identifying via media_id + season_number) is
+        # safe to write here.
+        season_item = metadata_resolution.get_or_create_tracked_season_item(
+            tv_item.media_id,
+            tv_item.source,
+            season_number,
+            provider=Sources.TMDB.value,
             library_media_type=season_library_media_type,
+            metadata=season_metadata
+            | {
+                "provider_external_ids": {
+                    **(season_metadata.get("provider_external_ids") or {}),
+                    "tmdb_id": str(media_id),
+                },
+            },
             defaults={
                 "title": tv_metadata["title"],
                 "image": season_image,
@@ -1200,26 +1225,6 @@ class BaseWebhookProcessor:
         if season_item.provider_metadata_status != desired_provider_metadata_status:
             season_item.provider_metadata_status = desired_provider_metadata_status
             season_item.save(update_fields=["provider_metadata_status"])
-        # No webhook source exposes a season-scoped TVDB/IMDB id — only
-        # per-episode ids are available in the payload, and tv_metadata's
-        # tvdb_id is show-level, not season-level. Attaching either to the
-        # Season item's provider link corrupts ItemProviderLink's unique
-        # constraint over time as different episodes are played (issue #326).
-        # Only tmdb_id (season-identifying via media_id + season_number) is
-        # safe to write here.
-        metadata_resolution.upsert_provider_links(
-            season_item,
-            season_metadata
-            | {
-                "provider_external_ids": {
-                    **(season_metadata.get("provider_external_ids") or {}),
-                    "tmdb_id": str(media_id),
-                },
-            },
-            provider=Sources.TMDB.value,
-            provider_media_type=MediaTypes.SEASON.value,
-            season_number=season_number,
-        )
 
         season_instance, season_created = app.models.Season.objects.get_or_create(
             item=season_item,

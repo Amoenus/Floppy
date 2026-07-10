@@ -2044,14 +2044,18 @@ class PlexWebhookTests(TestCase):
         as anime (TMDB-based, library_media_type='anime').  The Season Item created by
         the scrobble must carry library_media_type='anime' so it appears on the anime
         season page rather than the TV season page."""
-        # Pre-create a Season Item with library_media_type='anime' to simulate the user
-        # having previously tracked this show via the anime URL pathway.
+        # Pre-create a TV Item with library_media_type='anime' to simulate the user
+        # having previously tracked this show via the grouped-anime pathway (the bucket
+        # signal lives on the TV item, matching item_uses_grouped_anime elsewhere in
+        # the codebase — a Season-level anime Item alone is not a reliable signal,
+        # see issue #326).
         # TVDB-first resolution maps tvdb://303821 → show TMDB ID 1668 (Friends),
         # so pre-created items must use 1668 to be found by the scrobble handler.
         show_item, _ = Item.objects.get_or_create(
             media_id="1668",
             source="tmdb",
             media_type=MediaTypes.TV.value,
+            library_media_type=MediaTypes.ANIME.value,
             defaults={"title": "Friends", "image": ""},
         )
         Item.objects.get_or_create(
@@ -2117,10 +2121,17 @@ class PlexWebhookTests(TestCase):
     def test_scrobble_does_not_crash_when_both_anime_and_tv_season_items_exist(
         self,
     ):
-        """When a show has both TV-typed and anime-typed Season Items (user tracked
-        it via both pathways), a scrobble must not raise MultipleObjectsReturned and
-        should land in the anime bucket since anime Items exist."""
+        """A scrobble must not raise MultipleObjectsReturned when a stray
+        anime-typed Season Item already exists alongside the real season-typed
+        one for a show that isn't actually anime-tracked (TV item has no
+        anime flag) — this is the exact corrupted-duplicate shape from issue
+        #326. The scrobble must land in the bucket that matches the show's
+        real TV-level tracking (season), and self-healing should clean up the
+        orphaned stray anime-typed Item rather than leave two Season Items
+        around."""
         # TVDB-first resolution → show tracked under correct show TMDB ID 1668.
+        # No library_media_type='anime' on the TV item — this show is NOT
+        # actually anime-tracked.
         Item.objects.get_or_create(
             media_id="1668",
             source="tmdb",
@@ -2135,6 +2146,7 @@ class PlexWebhookTests(TestCase):
             library_media_type=MediaTypes.SEASON.value,
             defaults={"title": "Friends", "image": ""},
         )
+        # Orphaned stray — no Season/Episode tracking data attached.
         Item.objects.get_or_create(
             media_id="1668",
             source="tmdb",
@@ -2165,13 +2177,30 @@ class PlexWebhookTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
 
-        # Anime-typed Season Items exist, so the scrobble lands in the anime bucket.
+        # The scrobble lands under the season-bucket Season Item, matching the
+        # show's real (non-anime) TV-level tracking. Episode Items normally
+        # get library_media_type='episode' (not 'season') — see get_episode_item.
         episode = Episode.objects.get(
             item__media_id="1668",
             item__season_number=1,
             item__episode_number=2,
         )
-        self.assertEqual(episode.item.library_media_type, MediaTypes.ANIME.value)
+        self.assertEqual(episode.item.library_media_type, MediaTypes.EPISODE.value)
+        self.assertEqual(
+            episode.related_season.item.library_media_type,
+            MediaTypes.SEASON.value,
+        )
+
+        # The orphaned stray anime-typed Season Item was self-healed away.
+        self.assertFalse(
+            Item.objects.filter(
+                media_id="1668",
+                source="tmdb",
+                media_type=MediaTypes.SEASON.value,
+                season_number=1,
+                library_media_type=MediaTypes.ANIME.value,
+            ).exists(),
+        )
 
 
 class LivePlaybackScrobbleClearingTests(TestCase):

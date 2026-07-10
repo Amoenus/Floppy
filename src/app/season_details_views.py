@@ -39,6 +39,7 @@ from app.models import (
     Status,
 )
 from app.providers import manual, services, tmdb
+from app.services import metadata_resolution
 from app.services import trakt_popularity as trakt_popularity_service
 from app.tag_views import (
     _build_detail_tag_sections,
@@ -285,12 +286,17 @@ def season_details(
                 else ""
             ),
         }
-        season_item, _ = Item.objects.get_or_create(
-            media_id=media_id,
-            source=source,
-            media_type=MediaTypes.SEASON.value,
-            library_media_type=parent_media_type if parent_media_type == MediaTypes.ANIME.value else "",
-            season_number=season_number,
+        season_item = metadata_resolution.get_or_create_tracked_season_item(
+            media_id,
+            source,
+            season_number,
+            provider=source,
+            library_media_type=(
+                parent_media_type
+                if parent_media_type == MediaTypes.ANIME.value
+                else MediaTypes.SEASON.value
+            ),
+            metadata=None,
             defaults=season_defaults,
         )
     elif render_secondary_only and season_metadata_missing and season_number > 0:

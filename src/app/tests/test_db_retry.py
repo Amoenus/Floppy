@@ -119,20 +119,60 @@ class DescribeConflictingRowTests(TestCase):
     """Tests for the _describe_conflicting_row diagnostic helper."""
 
     def test_returns_unknown_when_defaults_not_probeable(self):
-        """Non-scalar-only defaults yield an explicit unknown result."""
+        """Non-scalar-only lookup/defaults yield an explicit unknown result."""
         result = _describe_conflicting_row(
             ItemProviderLink.objects,
+            {},
             {"metadata": {"foo": "bar"}},
         )
         self.assertEqual(
             result,
-            "unknown (no probeable scalar fields in defaults)",
+            "unknown (no probeable scalar fields in lookup/defaults)",
         )
 
     def test_never_raises_on_bad_input(self):
-        """An invalid field name in defaults must not propagate an error."""
+        """An invalid field name in lookup/defaults must not propagate."""
         result = _describe_conflicting_row(
             ItemProviderLink.objects,
+            {},
             {"not_a_real_field": object()},
         )
         self.assertIsInstance(result, str)
+
+    def test_lookup_fields_narrow_the_probe(self):
+        """The probe must use lookup fields, not just defaults.
+
+        A `defaults`-only probe would match a row sharing provider_media_id
+        regardless of season_number, producing a false-positive "conflicting
+        row" (issue #326 follow-up: the original diagnostic listed an
+        unrelated season-2 row alongside the real season-3 conflict).
+        """
+        item = Item.objects.create(
+            media_id="1",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Show A",
+            season_number=2,
+        )
+        ItemProviderLink.objects.create(
+            item=item,
+            provider=Sources.TVDB.value,
+            provider_media_type=MediaTypes.SEASON.value,
+            season_number=2,
+            provider_media_id="303821",
+        )
+
+        result = _describe_conflicting_row(
+            ItemProviderLink.objects,
+            {
+                "provider": Sources.TVDB.value,
+                "provider_media_type": MediaTypes.SEASON.value,
+                "season_number": 3,
+            },
+            {"provider_media_id": "303821"},
+        )
+
+        self.assertEqual(
+            result,
+            "unknown (no existing row matches the attempted lookup/defaults)",
+        )

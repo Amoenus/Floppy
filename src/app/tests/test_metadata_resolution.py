@@ -1,15 +1,21 @@
+from datetime import timedelta
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.db.utils import OperationalError
 from django.test import TestCase, override_settings
+from django.utils import timezone
 
 from app.models import (
+    TV,
+    Episode,
     Item,
     ItemProviderLink,
     MediaTypes,
     MetadataProviderPreference,
+    Season,
     Sources,
+    Status,
 )
 from app.services import metadata_resolution
 
@@ -576,3 +582,320 @@ class MetadataResolutionTests(TestCase):
             )
 
         self.assertEqual(mock_update_or_create.call_count, 6)
+
+
+class GetOrCreateTrackedSeasonItemTests(TestCase):
+    """Regression tests for issue #326: duplicate Season Items.
+
+    Covers get_or_create_tracked_season_item's provider-link-first
+    resolution and its self-healing of stray duplicate Season Items that
+    differ only in library_media_type.
+    """
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="dexter-watcher",
+            password="pw12345",
+        )
+        self.tv_item = Item.objects.create(
+            media_id="1405",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Dexter",
+            image="https://example.com/dexter.jpg",
+        )
+        self.tv_instance = TV.objects.create(
+            item=self.tv_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+
+    def test_resolves_via_existing_provider_link_regardless_of_bucket(self):
+        """An existing ItemProviderLink wins over any caller-supplied bucket."""
+        canonical = Item.objects.create(
+            media_id="1405",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=3,
+            library_media_type=MediaTypes.SEASON.value,
+            title="Dexter",
+            image="",
+        )
+        ItemProviderLink.objects.create(
+            item=canonical,
+            provider=Sources.TMDB.value,
+            provider_media_type=MediaTypes.SEASON.value,
+            provider_media_id="1405",
+            season_number=3,
+        )
+
+        resolved = metadata_resolution.get_or_create_tracked_season_item(
+            "1405",
+            Sources.TMDB.value,
+            3,
+            # Deliberately wrong bucket — the provider link must still win.
+            library_media_type=MediaTypes.ANIME.value,
+        )
+
+        self.assertEqual(resolved.pk, canonical.pk)
+        self.assertFalse(
+            Item.objects.filter(
+                media_id="1405",
+                media_type=MediaTypes.SEASON.value,
+                season_number=3,
+                library_media_type=MediaTypes.ANIME.value,
+            ).exists(),
+        )
+
+    def test_falls_back_to_bucket_scoped_lookup_when_no_link(self):
+        """With no provider link yet, resolution is scoped by the caller's bucket."""
+        season_bucket_item = Item.objects.create(
+            media_id="1405",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=3,
+            library_media_type=MediaTypes.SEASON.value,
+            title="Dexter",
+            image="",
+        )
+        anime_bucket_item = Item.objects.create(
+            media_id="1405",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=3,
+            library_media_type=MediaTypes.ANIME.value,
+            title="Dexter",
+            image="",
+        )
+
+        resolved = metadata_resolution.get_or_create_tracked_season_item(
+            "1405",
+            Sources.TMDB.value,
+            3,
+            library_media_type=MediaTypes.SEASON.value,
+        )
+
+        self.assertEqual(resolved.pk, season_bucket_item.pk)
+        # The mismatched-bucket sibling is self-healed away (it was orphaned).
+        self.assertFalse(Item.objects.filter(pk=anime_bucket_item.pk).exists())
+
+    def test_dexter_reproduction_heals_orphaned_stray_and_prevents_conflict(self):
+        """Reproduces the exact issue #326 shape.
+
+        A canonical Item with a real provider link and tracking data, plus
+        an orphaned stray Item in a different bucket. Resolution must return
+        the canonical item, delete the stray, and a subsequent
+        provider-link write must not raise/log a persistent-conflict
+        warning.
+        """
+        canonical = Item.objects.create(
+            media_id="1405",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=3,
+            library_media_type=MediaTypes.SEASON.value,
+            title="Dexter",
+            image="",
+        )
+        ItemProviderLink.objects.create(
+            item=canonical,
+            provider=Sources.TMDB.value,
+            provider_media_type=MediaTypes.SEASON.value,
+            provider_media_id="1405",
+            season_number=3,
+        )
+        Season.objects.create(
+            item=canonical,
+            user=self.user,
+            related_tv=self.tv_instance,
+            status=Status.IN_PROGRESS.value,
+        )
+        stray = Item.objects.create(
+            media_id="1405",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=3,
+            library_media_type=MediaTypes.ANIME.value,
+            title="Dexter",
+            image="",
+        )
+
+        with self.assertNoLogs("app.db_retry", level="WARNING"):
+            resolved = metadata_resolution.get_or_create_tracked_season_item(
+                "1405",
+                Sources.TMDB.value,
+                3,
+                library_media_type=MediaTypes.SEASON.value,
+                metadata={
+                    "media_id": "1405",
+                    "provider_external_ids": {"tmdb_id": "1405"},
+                },
+            )
+
+        self.assertEqual(resolved.pk, canonical.pk)
+        self.assertFalse(Item.objects.filter(pk=stray.pk).exists())
+        self.assertEqual(
+            Item.objects.filter(
+                media_id="1405",
+                media_type=MediaTypes.SEASON.value,
+                season_number=3,
+            ).count(),
+            1,
+        )
+
+    def test_merge_with_progress_preserves_episode_data(self):
+        """A stray's tracking data must be preserved, not lost, on merge.
+
+        Its Season/Episode data must be migrated onto the canonical Season
+        before the stray is removed — no watch history should be lost.
+        """
+        canonical = Item.objects.create(
+            media_id="1405",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=3,
+            library_media_type=MediaTypes.SEASON.value,
+            title="Dexter",
+            image="",
+        )
+        ItemProviderLink.objects.create(
+            item=canonical,
+            provider=Sources.TMDB.value,
+            provider_media_type=MediaTypes.SEASON.value,
+            provider_media_id="1405",
+            season_number=3,
+        )
+        canonical_season = Season.objects.create(
+            item=canonical,
+            user=self.user,
+            related_tv=self.tv_instance,
+            status=Status.IN_PROGRESS.value,
+        )
+        canonical_ep1_item = Item.objects.create(
+            media_id="1405",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=3,
+            episode_number=1,
+            library_media_type=MediaTypes.EPISODE.value,
+            title="Dexter",
+            image="",
+        )
+        Episode.objects.create(
+            item=canonical_ep1_item,
+            related_season=canonical_season,
+            end_date=timezone.now() - timedelta(days=2),
+        )
+
+        stray = Item.objects.create(
+            media_id="1405",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=3,
+            library_media_type=MediaTypes.ANIME.value,
+            title="Dexter",
+            image="",
+        )
+        stray_season = Season.objects.create(
+            item=stray,
+            user=self.user,
+            related_tv=self.tv_instance,
+            status=Status.IN_PROGRESS.value,
+        )
+        # Episode 1 on the stray has a MORE RECENT end_date — should win.
+        stray_ep1_item = Item.objects.create(
+            media_id="1405",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=3,
+            episode_number=1,
+            library_media_type=MediaTypes.ANIME.value,
+            title="Dexter",
+            image="",
+        )
+        newer_end_date = timezone.now()
+        Episode.objects.create(
+            item=stray_ep1_item,
+            related_season=stray_season,
+            end_date=newer_end_date,
+        )
+        # Episode 2 only exists on the stray — must be preserved via repoint.
+        stray_ep2_item = Item.objects.create(
+            media_id="1405",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=3,
+            episode_number=2,
+            library_media_type=MediaTypes.ANIME.value,
+            title="Dexter",
+            image="",
+        )
+        Episode.objects.create(
+            item=stray_ep2_item,
+            related_season=stray_season,
+            end_date=timezone.now() - timedelta(days=1),
+        )
+
+        resolved = metadata_resolution.get_or_create_tracked_season_item(
+            "1405",
+            Sources.TMDB.value,
+            3,
+            library_media_type=MediaTypes.SEASON.value,
+        )
+
+        self.assertEqual(resolved.pk, canonical.pk)
+        self.assertFalse(Item.objects.filter(pk=stray.pk).exists())
+        self.assertFalse(Season.objects.filter(pk=stray_season.pk).exists())
+
+        canonical_season.refresh_from_db()
+        episodes = Episode.objects.filter(related_season=canonical_season)
+        self.assertEqual(episodes.count(), 2)
+        ep1 = episodes.get(item__episode_number=1)
+        self.assertEqual(ep1.end_date, newer_end_date)
+        self.assertTrue(episodes.filter(item__episode_number=2).exists())
+
+    def test_never_raises_when_merge_hits_unexpected_error(self):
+        """A failure mid-merge must not propagate.
+
+        The canonical item is still returned and the duplicate is left in
+        place for next time.
+        """
+        canonical = Item.objects.create(
+            media_id="1405",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=3,
+            library_media_type=MediaTypes.SEASON.value,
+            title="Dexter",
+            image="",
+        )
+        ItemProviderLink.objects.create(
+            item=canonical,
+            provider=Sources.TMDB.value,
+            provider_media_type=MediaTypes.SEASON.value,
+            provider_media_id="1405",
+            season_number=3,
+        )
+        Item.objects.create(
+            media_id="1405",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=3,
+            library_media_type=MediaTypes.ANIME.value,
+            title="Dexter",
+            image="",
+        )
+
+        with patch.object(
+            metadata_resolution,
+            "_merge_stray_season_item",
+            side_effect=RuntimeError("boom"),
+        ):
+            resolved = metadata_resolution.get_or_create_tracked_season_item(
+                "1405",
+                Sources.TMDB.value,
+                3,
+                library_media_type=MediaTypes.SEASON.value,
+            )
+
+        self.assertEqual(resolved.pk, canonical.pk)
