@@ -118,6 +118,8 @@ Important:
 
 **For SQLite (simple setup):**
 
+This single stack runs the app and Redis together — paste it into a Portainer Stack (or an Unraid stack via the Portainer plugin) and deploy, or save it as `docker-compose.yml` and run `docker compose up -d`. Either way, it's a complete, working setup on its own; you only need to edit the placeholder values.
+
 ```yaml
 services:
   yamtrack:
@@ -127,9 +129,22 @@ services:
     depends_on:
       - redis
     environment:
-      - SECRET=your-secret-key-here-change-this
+      - ALLOWED_HOSTS=yamtrack.yourdomain.com,your.lan.ip.address
+      - DEBUG=False
+      - GUNICORN_THREADS=4
+      - IGDB_ID=your_igdb_client_id
+      - IGDB_SECRET=your_igdb_client_secret
+      - LASTFM_API_KEY=your_lastfm_api_key
+      - MAL_API=your_mal_client_id
+      - PGID=1000
+      - PUID=1000
       - REDIS_URL=redis://redis:6379
-      - TZ=America/New_York
+      - REGISTRATION=True
+      - SECRET=your_django_secret_key
+      - TMDB_API=your_tmdb_api_key
+      - TVDB_API_KEY=your_tvdb_api_key
+      - TZ=America/Chicago
+      - WEB_CONCURRENCY=2
     volumes:
       - ./db:/yamtrack/db
     ports:
@@ -139,6 +154,12 @@ services:
     image: redis:8-alpine
     container_name: yamtrack-redis
     restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
     volumes:
       - redis_data:/data
 
@@ -146,15 +167,13 @@ volumes:
   redis_data:
 ```
 
+Leave `REGISTRATION=True` for your first run so you can create an account, then set it back to `False` and redeploy the stack once you're the only user who needs one — this keeps randos from signing up if your instance is reachable from the internet.
+
+Only the vars above need values you provide; everything else (metadata language/NSFW toggles, build/version info, etc.) ships with sane defaults. See [Environment Variables](#environment-variables) below for the full optional list.
+
 If you use SQLite, you must persist `/yamtrack/db`. Without that mount, recreating the container also recreates an empty database.
 
-Save this as `docker-compose.yml` and run:
-
-```bash
-docker compose up -d
-```
-
-Then visit `http://localhost:8000` and create your first account.
+Then visit `http://localhost:8000` and log in with the account you created.
 
 **For PostgreSQL (production setup):**
 
@@ -206,7 +225,7 @@ For PostgreSQL, use `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, and `DB_PORT
 
 ### Docker Run
 
-If you prefer a simple one-liner without Docker Compose:
+If you don't have Portainer, paste this into a terminal and you're up and running — no compose file needed:
 
 ```bash
 docker network create yamtrack-net
@@ -216,33 +235,50 @@ docker run -d \
   --network yamtrack-net \
   --restart unless-stopped \
   -v yamtrack-redis-data:/data \
-  redis:8-alpine
+  redis:8-alpine \
+  redis-server --appendonly yes
 
 docker run -d \
   --name yamtrack \
   --network yamtrack-net \
   --restart unless-stopped \
-  -e TZ=America/New_York \
-  -e SECRET=your-secret-key-here-change-this \
+  -e ALLOWED_HOSTS=yamtrack.yourdomain.com,your.lan.ip.address \
+  -e DEBUG=False \
+  -e GUNICORN_THREADS=4 \
+  -e IGDB_ID=your_igdb_client_id \
+  -e IGDB_SECRET=your_igdb_client_secret \
+  -e LASTFM_API_KEY=your_lastfm_api_key \
+  -e MAL_API=your_mal_client_id \
+  -e PGID=1000 \
+  -e PUID=1000 \
   -e REDIS_URL=redis://yamtrack-redis:6379 \
+  -e REGISTRATION=True \
+  -e SECRET=your_django_secret_key \
+  -e TMDB_API=your_tmdb_api_key \
+  -e TVDB_API_KEY=your_tvdb_api_key \
+  -e TZ=America/Chicago \
+  -e WEB_CONCURRENCY=2 \
   -v yamtrack-db:/yamtrack/db \
   -p 8000:8000 \
   ghcr.io/dannyvfilms/yamtrack:latest
 ```
 
-This setup uses named volumes (`yamtrack-db` and `yamtrack-redis-data`) and a shared network (`yamtrack-net`). For more options, use Docker Compose.
+Leave `REGISTRATION=True` for your first run so you can create an account, then set it back to `False` (`docker rm -f yamtrack` and re-run with the updated value, or use `docker update`/recreate) once you're the only user who needs one.
+
+This setup uses named volumes (`yamtrack-db` and `yamtrack-redis-data`) and a shared network (`yamtrack-net`). Only the vars above need values you provide — see [Environment Variables](#environment-variables) for the full optional list. For more options, use Docker Compose.
 
 ### Portainer
 
-Portainer users should prefer **Stacks** over **Containers -> Add container**. Stacks let you paste the working compose file directly and avoid missing required volumes or env vars.
+Portainer users should prefer **Stacks** over **Containers -> Add container**. Stacks let you paste the working compose file directly and avoid missing required volumes or env vars. This is also the recommended path for **Unraid**: rather than installing the app from a Community Applications template and standing up Redis separately, paste one compose file into a stack (via the Portainer plugin) and both containers come up together as a single unit.
 
 **Recommended: Portainer Stacks**
 
 1. In Portainer, go to **Stacks** -> **Add Stack**
 2. Name it `yamtrack`
 3. Paste one of the compose configurations above
-4. Update the `SECRET` environment variable with a secure random string
+4. Update the `SECRET` environment variable with a secure random string, and fill in whichever metadata API keys you have
 5. Deploy the stack
+6. Create your account while `REGISTRATION=True`, then set it to `False` and redeploy
 
 **If you use Containers -> Add container anyway**
 
@@ -273,6 +309,8 @@ The only universally required variable is `SECRET` for Django's secret key. For 
 - `ADMIN_ENABLED` - set to `True` to enable the Django admin interface at `/admin/` (see the [Admin Guide](wiki/6.-Admin-and-Operations.md#admin-guide))
 - `WEB_CONCURRENCY` / `GUNICORN_THREADS` - web server concurrency (defaults: 2 worker processes x 4 threads). Total concurrent requests = workers x threads; keep at least 2 workers so one slow request never blocks the whole UI
 - `DEBUG` - leave unset or `False` in production; enabling it slows every request (debug toolbar, no template caching) and is only meant for troubleshooting
+- `REGISTRATION` - set to `True` to allow new signups (needed for your first account), then set to `False` afterward to stop strangers from registering if your instance is reachable from the internet
+- `ALLOWED_HOSTS` / `PUID` / `PGID` - `ALLOWED_HOSTS` is a comma-separated list of hostnames/IPs Django will accept requests for; `PUID` / `PGID` set the file-ownership user/group inside the container (match your host user, e.g. Unraid's `99`/`100`, if you hit permission errors)
 
 For a complete list, see the [Environment Variables documentation](wiki/6.-Admin-and-Operations.md#environment-variables).
 
