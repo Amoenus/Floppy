@@ -37,10 +37,14 @@ from app.history_entry_builders import (
 from app.models import (
     Album,
     AlbumTracker,
+    Anime,
     BoardGame,
+    Book,
+    Comic,
     Episode,
     Game,
     Item,
+    Manga,
     MediaTypes,
     Movie,
     Music,
@@ -164,6 +168,54 @@ def build_history_day(user, day_key, logging_style_override=None):
         repeat_attr = getattr(movie, "repeats", None)
         entry["play_count"] = annotated or repeat_attr or 1
         entries.append(entry)
+
+    # Reading (books, comics, manga) and flat anime — single tracking records
+    # anchored on their completion/activity day, mirroring movies. These appear
+    # in both logging styles since they have no per-session/repeat semantics.
+    for media_type_value, model in (
+        (MediaTypes.BOOK.value, Book),
+        (MediaTypes.COMIC.value, Comic),
+        (MediaTypes.MANGA.value, Manga),
+        (MediaTypes.ANIME.value, Anime),
+    ):
+        records = (
+            model.objects.filter(user=user)
+            .filter(
+                models.Q(end_date__gte=day_start, end_date__lt=day_end)
+                | (
+                    models.Q(end_date__isnull=True)
+                    & models.Q(start_date__gte=day_start, start_date__lt=day_end)
+                ),
+            )
+            .select_related("item")
+        )
+        for record in records:
+            item = getattr(record, "item", None)
+            if not item:
+                continue
+            played_at_local = _localize_datetime(record.end_date or record.start_date)
+            if not played_at_local:
+                continue
+            entry = {
+                "media_type": media_type_value,
+                "item": _serialize_item(item),
+                "poster": item.image or settings.IMG_NONE,
+                "title": item.title,
+                "display_title": item.title,
+                "status": record.status,
+                "episode_label": None,
+                "episode_code": None,
+                "played_at_local": played_at_local,
+                "runtime_minutes": 0,
+                "runtime_display": None,
+                "instance_id": record.id,
+                "entry_key": f"{media_type_value}-{record.id}",
+            }
+            _attach_entry_score(entry, record)
+            genres = _resolve_genres(item)
+            if genres:
+                entry["genres"] = genres
+            entries.append(entry)
 
     # Music (HistoricalMusic for the day)
     HistoricalMusic = apps.get_model("app", "HistoricalMusic")

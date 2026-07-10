@@ -147,6 +147,22 @@ def update_episode_score(request, season_id, episode_number):
         request.user,
     )
 
+    # `episodes.update()` runs a raw SQL UPDATE and does not emit post_save, so
+    # the Episode signal that refreshes the history cache never fires. Invalidate
+    # the affected history day(s) here so the rating shows on the History page.
+    day_keys = [
+        history_cache.history_day_key(end_date)
+        for end_date in episodes.values_list("end_date", flat=True)
+    ]
+    day_keys = [day_key for day_key in day_keys if day_key]
+    if day_keys:
+        history_cache.invalidate_history_days(
+            request.user.id,
+            day_keys=day_keys,
+            logging_styles=("sessions", "repeats"),
+            reason="episode_score_change",
+        )
+
     return JsonResponse(
         {
             "success": True,

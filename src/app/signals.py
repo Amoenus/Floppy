@@ -637,10 +637,12 @@ def refresh_statistics_cache_on_anime_change(sender, instance, **kwargs):  # noq
     """
     user_id = getattr(instance, "user_id", None)
     day_keys = _collect_reading_statistics_day_keys(instance)
+    history_day_keys = _collect_reading_history_day_keys(instance)
     _handle_media_cache_change(
         user_id,
         MediaTypes.ANIME.value,
         reason="anime_change",
+        history_specs=[(history_day_keys, ("sessions", "repeats"))],
         statistics_day_values=day_keys,
     )
 
@@ -659,6 +661,18 @@ def _collect_reading_statistics_day_keys(instance):
     return day_keys
 
 
+def _collect_reading_history_day_keys(instance):
+    """Return the history day key(s) where a reading/anime card appears.
+
+    The day builder anchors these single-record types on their end_date (falling
+    back to start_date), so only that one day's cached card needs rebuilding.
+    """
+    activity_key = history_cache.history_day_key(
+        getattr(instance, "end_date", None) or getattr(instance, "start_date", None),
+    )
+    return [activity_key] if activity_key else []
+
+
 @receiver([post_save, post_delete], sender=Manga)
 def refresh_statistics_cache_on_manga_change(sender, instance, **kwargs):  # noqa: ARG001
     """Schedule statistics cache refresh when manga activity changes.
@@ -668,10 +682,12 @@ def refresh_statistics_cache_on_manga_change(sender, instance, **kwargs):  # noq
     """
     user_id = getattr(instance, "user_id", None)
     day_keys = _collect_reading_statistics_day_keys(instance)
+    history_day_keys = _collect_reading_history_day_keys(instance)
     _handle_media_cache_change(
         user_id,
         MediaTypes.MANGA.value,
         reason="manga_change",
+        history_specs=[(history_day_keys, ("sessions", "repeats"))],
         statistics_day_values=day_keys,
     )
 
@@ -685,10 +701,12 @@ def refresh_statistics_cache_on_book_change(sender, instance, **kwargs):  # noqa
     """
     user_id = getattr(instance, "user_id", None)
     day_keys = _collect_reading_statistics_day_keys(instance)
+    history_day_keys = _collect_reading_history_day_keys(instance)
     _handle_media_cache_change(
         user_id,
         MediaTypes.BOOK.value,
         reason="book_change",
+        history_specs=[(history_day_keys, ("sessions", "repeats"))],
         statistics_day_values=day_keys,
     )
 
@@ -702,10 +720,12 @@ def refresh_statistics_cache_on_comic_change(sender, instance, **kwargs):  # noq
     """
     user_id = getattr(instance, "user_id", None)
     day_keys = _collect_reading_statistics_day_keys(instance)
+    history_day_keys = _collect_reading_history_day_keys(instance)
     _handle_media_cache_change(
         user_id,
         MediaTypes.COMIC.value,
         reason="comic_change",
+        history_specs=[(history_day_keys, ("sessions", "repeats"))],
         statistics_day_values=day_keys,
     )
 

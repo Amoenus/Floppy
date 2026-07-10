@@ -100,6 +100,7 @@ from app.history_entry_builders import (  # noqa: F401
 from app.models import (
     CREDITS_BACKFILL_VERSION,
     AlbumTracker,
+    Anime,
     BoardGame,
     Book,
     Comic,
@@ -344,11 +345,23 @@ def _build_reading_entries(
     person_id_filter,
     genre_filters,
     reading_media_types,
+    process_all=False,
 ):
-    """Build history entries for books, comics, and manga."""
+    """Build history entries for books, comics, manga, and flat anime.
+
+    These are single-record media types anchored on their completion/activity
+    day. They join the general timeline (``process_all``), a matching media-type
+    filter, or — for the reading types only — an author/person filter.
+    """
     has_person_filter = bool(person_source_filter and person_id_filter)
     has_reading_media_type_filter = media_type_filter in reading_media_types
-    if not (has_person_filter or has_reading_media_type_filter):
+    has_anime_filter = media_type_filter == MediaTypes.ANIME.value
+    if not (
+        process_all
+        or has_person_filter
+        or has_reading_media_type_filter
+        or has_anime_filter
+    ):
         return []
 
     credited_reading_item_ids = None
@@ -362,14 +375,19 @@ def _build_reading_entries(
             ).values_list("item_id", flat=True),
         )
 
+    # Anime is not an authored reading type, so it is excluded from person/author
+    # filtering but included in the general timeline and its own media-type filter.
     reading_model_map = {
         MediaTypes.BOOK.value: Book,
         MediaTypes.COMIC.value: Comic,
         MediaTypes.MANGA.value: Manga,
+        MediaTypes.ANIME.value: Anime,
     }
     entries = []
     for reading_media_type, model in reading_model_map.items():
         if media_type_filter and media_type_filter != reading_media_type:
+            continue
+        if reading_media_type == MediaTypes.ANIME.value and has_person_filter and not media_type_filter:
             continue
         queryset = model.objects.filter(
             user=user,
@@ -861,6 +879,7 @@ def build_history_days(user, filters=None, date_filters=None, logging_style_over
         "books": 0,
         "comics": 0,
         "manga": 0,
+        "anime": 0,
     }
 
     # Parse date filters
@@ -1207,7 +1226,7 @@ def build_history_days(user, filters=None, date_filters=None, logging_style_over
     for entry in _build_reading_entries(
         user, filters, start_date, end_date, media_type_filter,
         target_media_id, target_source, person_source_filter, person_id_filter,
-        genre_filters, reading_media_types,
+        genre_filters, reading_media_types, process_all=process_all,
     ):
         entries.append(entry)
         mt = entry["media_type"]
@@ -1217,6 +1236,8 @@ def build_history_days(user, filters=None, date_filters=None, logging_style_over
             entry_counts["comics"] += 1
         elif mt == MediaTypes.MANGA.value:
             entry_counts["manga"] += 1
+        elif mt == MediaTypes.ANIME.value:
+            entry_counts["anime"] += 1
 
     if process_all or has_music_filter or media_type_filter == MediaTypes.MUSIC.value:
         music_entry_list, music_history_records_scanned, music_album_day_groups = (
