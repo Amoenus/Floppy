@@ -16,7 +16,7 @@ from simple_history.models import HistoricalRecords
 
 import app
 from app import providers
-from app.models.choices import MediaTypes, Status
+from app.models.choices import MediaTypes, Sources, Status
 from app.models.item import Item
 from app.models.manager import MediaManager
 
@@ -679,6 +679,87 @@ class Anime(Media):
     tracker = FieldTracker()
     objects = ActiveAnimeManager()
     all_objects = models.Manager()
+
+    def save(self, *args, **kwargs):
+        """Save, then auto-migrate a completed flat MAL anime to episode tracking.
+
+        A flat MAL anime has no per-episode watch records, so completing it would
+        otherwise leave its (provider-mapped) episode list showing unwatched. When
+        it becomes COMPLETED we convert it into grouped TV-style tracking, which
+        creates real Episode records for every watched episode.
+        """
+        is_create = self._state.adding
+        status_changed = self.tracker.has_changed("status")
+        super().save(*args, **kwargs)
+
+        became_completed = self.status == Status.COMPLETED.value and (
+            status_changed or is_create
+        )
+        if (
+            became_completed
+            and self.migrated_to_item_id is None
+            and self.item.source == Sources.MAL.value
+            and self.item.media_type == MediaTypes.ANIME.value
+        ):
+            self._auto_migrate_completed_flat_anime()
+
+    def _auto_migrate_completed_flat_anime(self):
+        """Best-effort migration of a completed flat MAL anime; never fatal."""
+        try:
+            self._migrate_completed_flat_anime()
+        except Exception:
+            logger.warning(
+                "Auto-migrate crashed for MAL anime %s",
+                getattr(self.item, "media_id", None), exc_info=True,
+            )
+
+    def _migrate_completed_flat_anime(self):
+        from app.services import anime_migration, metadata_resolution
+        from integrations import anime_mapping
+
+        providers_to_try = []
+        default_source = (
+            metadata_resolution.metadata_default_source(
+                self.user, MediaTypes.ANIME.value,
+            )
+            if self.user_id
+            else None
+        )
+        for provider in (default_source, Sources.TVDB.value, Sources.TMDB.value):
+            if (
+                provider in metadata_resolution.GROUPED_ANIME_PROVIDERS
+                and metadata_resolution.provider_is_enabled(provider)
+                and provider not in providers_to_try
+            ):
+                providers_to_try.append(provider)
+
+        for provider in providers_to_try:
+            if not anime_mapping.resolve_provider_series_id(
+                self.item.media_id, provider,
+            ):
+                continue
+            try:
+                anime_migration.migrate_flat_anime_to_grouped(
+                    self.user, self.item, provider,
+                )
+            except anime_migration.AnimeMigrationError as error:
+                logger.info(
+                    "Auto-migrate skipped for MAL anime %s via %s: %s",
+                    self.item.media_id, provider, error,
+                )
+                continue
+            except Exception:
+                logger.warning(
+                    "Auto-migrate failed for MAL anime %s via %s",
+                    self.item.media_id, provider, exc_info=True,
+                )
+                return
+            else:
+                logger.info(
+                    "Auto-migrated completed flat MAL anime %s to grouped %s tracking",
+                    self.item.media_id, provider,
+                )
+                return
 
 
 class Movie(Media):
