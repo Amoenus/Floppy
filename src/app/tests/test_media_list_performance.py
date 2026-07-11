@@ -17,7 +17,7 @@ from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.db import connection, reset_queries
-from django.test import RequestFactory, TestCase
+from django.test import RequestFactory, TestCase, tag
 from django.test.utils import override_settings
 
 from app.models import (
@@ -84,6 +84,7 @@ def _bulk_create_movie_items_and_entries(
     return created_items
 
 
+@tag("slow", "benchmark")
 class FullViewWallClockTests(TestCase):
     """Measure total wall-clock time for the full media_list view.
 
@@ -193,6 +194,7 @@ class FullViewWallClockTests(TestCase):
         print("  Genre='Action' applied via SQL; fewer rows materialized in Python.")
 
 
+@tag("slow", "benchmark")
 class CacheLookupOverheadTests(TestCase):
     """Track cache.get usage during media list filter data building.
 
@@ -271,6 +273,7 @@ class CacheLookupOverheadTests(TestCase):
             print("  DB fields populated -> cache lookups avoided!")
 
 
+@tag("slow", "benchmark")
 class CollectionFilterN1Tests(TestCase):
     """Collection filter should use bulk lookups, not per-item queries."""
 
@@ -316,6 +319,7 @@ class CollectionFilterN1Tests(TestCase):
         )
 
 
+@tag("slow", "benchmark")
 class DuplicateAggregationTests(TestCase):
     """Measure _aggregate_duplicate_data overhead."""
 
@@ -363,6 +367,7 @@ class DuplicateAggregationTests(TestCase):
         print("  for duplicates, even when there are none.")
 
 
+@tag("slow", "benchmark")
 class MaterializationWasteTests(TestCase):
     """Show that list() loads ALL items even though only 32 are displayed."""
 

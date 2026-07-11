@@ -144,7 +144,7 @@ Also validate when:
 - the user asked for validation
 - the change affects multiple routes, components, or packages
 
-Prefer targeted tests first, then `ruff check src`, then broader test runs only when risk justifies it.
+Prefer targeted tests first (`scripts/test.sh <dotted.label>`), then `ruff check src`, then the fast suite (`scripts/test.sh`) only when risk justifies it. See the Testing section.
 
 Prefer the cheapest useful check:
 
@@ -330,11 +330,19 @@ Conflict-resolution steps:
 - If a local watcher, shell alias, or editor task still writes `src/static/css/tailwind.css`, repoint it to `src/static/css/main.css`.
 
 ## Testing
+
+Run tests through `scripts/test.sh`, in this priority order:
+
+1. **Targeted (default while iterating):** `scripts/test.sh <dotted.label> [...]` — run only the tests for what you touched, e.g. `scripts/test.sh app.tests.views.test_media_details` or a whole app label like `scripts/test.sh lists`.
+2. **Fast suite (default before finishing):** `scripts/test.sh` — the whole suite minus tests tagged `slow` (benchmarks and Playwright integration). Output is bounded (`--buffer` suppresses stdout of passing tests) and no `playwright install` is needed.
+3. **Full suite (CI / rarely needed locally):** `scripts/test.sh --full` — everything, including benchmarks and Playwright. Takes 20+ minutes and produces huge output. Only run it when the user asks or the risk clearly justifies it; CI runs it on every PR anyway.
+
+Notes:
 - Quick confidence: `ruff check src`
 - Migration sync confidence: `cd src && python manage.py check_migration_hygiene --strict`
 - Upstream sync replay: `scripts/replay_upgrade_matrix.sh --from-tag <previous_release_tag> --to-ref latest --db sqlite,postgres --with-drift-scenarios`
-- When the change justifies it: `coverage run src/manage.py test app users integrations lists events --parallel`
-- `playwright install` is only needed for integration tests that import Playwright (`src/app/tests/test_integration.py`, `src/lists/tests/test_integration.py`).
+- Tag vocabulary: `slow` is the exclusion tag used by the fast suite; `benchmark` and `playwright` are sub-selectors (`scripts/test.sh --slow` runs only tagged tests). Any new benchmark/performance or Playwright test **must** be decorated with `@tag("slow", ...)`.
+- `playwright install` is only needed when actually running Playwright-tagged tests (`scripts/test.sh --full` / `--slow`); the fast suite excludes them.
 - `src/manage.py` sets `DJANGO_SETTINGS_MODULE=config.test_settings` for tests.
 - `config.test_settings` uses fakeredis and sets `CELERY_TASK_ALWAYS_EAGER=True`.
 

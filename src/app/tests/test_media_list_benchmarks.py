@@ -13,7 +13,7 @@ import time
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.db import connection
-from django.test import TestCase
+from django.test import TestCase, tag
 from django.test.utils import CaptureQueriesContext
 
 from app.models import MediaTypes
@@ -26,6 +26,7 @@ from app.tests.test_query_counts import (
 )
 
 
+@tag("slow", "benchmark")
 class MediaListBenchmarkTests(TestCase):
     """Capture cold/warm benchmark metrics for representative media-list routes."""
 

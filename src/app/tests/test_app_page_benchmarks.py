@@ -9,7 +9,7 @@ import time
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.db import connection
-from django.test import TestCase
+from django.test import TestCase, tag
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
@@ -26,6 +26,7 @@ from users.models import HomeScreenRowTypeChoices
 logging.disable(logging.DEBUG)
 
 
+@tag("slow", "benchmark")
 class AppPageBenchmarkTests(TestCase):
     """Print cold and warm timings for home, home-row, list, and heavy library pages."""
 

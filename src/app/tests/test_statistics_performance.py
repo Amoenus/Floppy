@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.db import connection
-from django.test import TestCase, TransactionTestCase, override_settings
+from django.test import TestCase, TransactionTestCase, override_settings, tag
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
@@ -33,6 +33,7 @@ from app.models import (
 logging.disable(logging.DEBUG)
 
 
+@tag("slow", "benchmark")
 class StatisticsPerformanceBenchmarks(TestCase):
     """Print warmed-cache `/statistics` metrics for local benchmarking."""
 
@@ -151,6 +152,7 @@ class StatisticsPerformanceBenchmarks(TestCase):
 
 
 @override_settings(CELERY_TASK_ALWAYS_EAGER=False)
+@tag("slow", "benchmark")
 class StatisticsColdRebuildBenchmark(TransactionTestCase):
     """Time an "All Time" rebuild from scratch after every per-day cache entry is wiped.
 
