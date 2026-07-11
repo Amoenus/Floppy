@@ -3,9 +3,11 @@ import re
 
 from django.contrib.auth import get_user_model
 from django.contrib.staticfiles.testing import StaticLiveServerTestCase
+from django.test import tag
 from playwright.sync_api import expect, sync_playwright
 
 
+@tag("slow", "playwright")
 class IntegrationTest(StaticLiveServerTestCase):
     """Integration tests for the application."""
 

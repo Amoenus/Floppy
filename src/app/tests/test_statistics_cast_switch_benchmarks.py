@@ -10,7 +10,7 @@ from datetime import timedelta
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.db import connection
-from django.test import TestCase
+from django.test import TestCase, tag
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
@@ -31,6 +31,7 @@ from app.models import (
 logging.disable(logging.INFO)
 
 
+@tag("slow", "benchmark")
 class StatisticsCastSwitchBenchmarkTests(TestCase):
     """Capture cast-switch timings before/after backend optimizations."""
 

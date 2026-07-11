@@ -13,6 +13,7 @@ import unittest
 
 from django.contrib.auth import get_user_model
 from django.contrib.staticfiles.testing import StaticLiveServerTestCase
+from django.test import tag
 
 from app.models import Item, MediaTypes
 from app.tests.test_query_counts import (
@@ -29,6 +30,7 @@ except ImportError:  # pragma: no cover - optional benchmark dependency
     sync_playwright = None
 
 
+@tag("slow", "benchmark", "playwright")
 class MediaListBrowserBenchmarkTests(StaticLiveServerTestCase):
     """Measure navigation cost and follow-up release-year requests in a browser."""
 
