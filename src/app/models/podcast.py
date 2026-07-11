@@ -173,6 +173,31 @@ class Podcast(Media):
         minutes = (self.progress or 0) // 60
         return f"{minutes}m"
 
+    @property
+    def progress_percentage(self):
+        """Return percent listened through the current episode (0-100), or None.
+
+        Podcasts are tracked per episode, so this is the playback position within
+        a single episode relative to its runtime. Prefers the episode's precise 
+        duration and falls back to the item runtime; returns None when the 
+        position or a runtime is unavailable.
+        """
+        if not self.played_up_to_seconds:
+            return None
+
+        total_seconds = None
+        episode = self.episode
+        if episode and episode.duration:
+            total_seconds = episode.duration
+        elif self.item and self.item.runtime_minutes:
+            total_seconds = self.item.runtime_minutes * 60
+
+        if not total_seconds:
+            return None
+
+        percentage = round(self.played_up_to_seconds / total_seconds * 100)
+        return max(0, min(percentage, 100))
+
 
 class PodcastShowTracker(models.Model):
     """Model for tracking podcast shows in user's library.
