@@ -156,26 +156,19 @@ class AppConfig(AppConfig):
             logger.warning("Failed to schedule history day coverage warmup: %s", error)
 
     def _schedule_imdb_game_person_profile_backfill(self):
-        """Schedule IMDB person profile repair when gender/image data is missing."""
+        """Schedule IMDB person profile repair when gender/image data is missing.
+
+        The missing-profile count check itself runs inside the Celery task
+        (not here) so no DB query happens during ``ready()``, which executes
+        pre-fork in the Gunicorn master under ``preload_app``.
+        """
         try:
-            from app.services import imdb_game_credits  # noqa: PLC0415
-
-            missing_count = imdb_game_credits.count_people_missing_profiles()
-            if missing_count <= 0:
-                return
-
             tasks_imdb = import_module("app.tasks_imdb")
-            # Use the long-lived refresh task name here instead of the newer
-            # dedicated profile-backfill task so older shared workers on the
-            # same broker can still execute the repair path.
-            tasks_imdb.refresh_imdb_game_credits_from_datasets.apply_async(
+            tasks_imdb.schedule_imdb_game_person_profile_backfill_if_needed.apply_async(
                 countdown=0,
                 priority=getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 1),
             )
-            logger.info(
-                "Scheduled IMDB person profile repair via refresh task for %s people on startup",
-                missing_count,
-            )
+            logger.info("Scheduled IMDB person profile backfill check on startup")
         except Exception as error:  # noqa: BLE001
             logger.warning("Failed to schedule IMDB person profile backfill: %s", error)
 

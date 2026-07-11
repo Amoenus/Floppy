@@ -64,13 +64,14 @@ class AppStartupTests(TestCase):
         mock_genre.assert_not_called()
         mock_trakt.assert_not_called()
 
-    @patch("app.services.imdb_game_credits.count_people_missing_profiles", return_value=12)
-    @patch("app.tasks_imdb.refresh_imdb_game_credits_from_datasets.apply_async")
+    @patch("app.tasks_imdb.schedule_imdb_game_person_profile_backfill_if_needed.apply_async")
     def test_schedule_imdb_game_person_profile_backfill_uses_background_priority(
         self,
         mock_apply_async,
-        _mock_missing_count,
     ):
+        # The missing-profile count check must not run in AppConfig.ready(),
+        # since preload_app executes it pre-fork in the Gunicorn master
+        # (issue #335); it belongs inside the Celery task instead.
         config = YamtrackAppConfig("app", import_module("app"))
 
         config._schedule_imdb_game_person_profile_backfill()
@@ -80,16 +81,33 @@ class AppStartupTests(TestCase):
             priority=settings.CELERY_TASK_PRIORITY_BACKGROUND,
         )
 
-    @patch("app.services.imdb_game_credits.count_people_missing_profiles", return_value=0)
+    @patch("app.services.imdb_game_credits.count_people_missing_profiles", return_value=12)
     @patch("app.tasks_imdb.refresh_imdb_game_credits_from_datasets.apply_async")
-    def test_schedule_imdb_game_person_profile_backfill_skips_when_nothing_missing(
+    def test_schedule_imdb_game_person_profile_backfill_task_queues_refresh_when_missing(
         self,
         mock_apply_async,
         _mock_missing_count,
     ):
-        config = YamtrackAppConfig("app", import_module("app"))
+        from app.tasks_imdb import (
+            schedule_imdb_game_person_profile_backfill_if_needed,
+        )
 
-        config._schedule_imdb_game_person_profile_backfill()
+        schedule_imdb_game_person_profile_backfill_if_needed()
+
+        mock_apply_async.assert_called_once_with()
+
+    @patch("app.services.imdb_game_credits.count_people_missing_profiles", return_value=0)
+    @patch("app.tasks_imdb.refresh_imdb_game_credits_from_datasets.apply_async")
+    def test_schedule_imdb_game_person_profile_backfill_task_skips_when_nothing_missing(
+        self,
+        mock_apply_async,
+        _mock_missing_count,
+    ):
+        from app.tasks_imdb import (
+            schedule_imdb_game_person_profile_backfill_if_needed,
+        )
+
+        schedule_imdb_game_person_profile_backfill_if_needed()
 
         mock_apply_async.assert_not_called()
 

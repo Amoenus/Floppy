@@ -63,6 +63,22 @@ def backfill_imdb_game_person_profiles():
     return {"profiles_backfilled": profiles_backfilled}
 
 
+@shared_task(name="Schedule IMDB game person profile backfill if needed")
+def schedule_imdb_game_person_profile_backfill_if_needed():
+    """Queue the credits refresh only if profiles are actually missing.
+
+    Runs the DB count check in a Celery worker rather than in
+    ``AppConfig.ready()``, which executes in the Gunicorn master process
+    before workers fork (see ``preload_app`` in ``config/gunicorn.py``).
+    """
+    from app.services import imdb_game_credits  # noqa: PLC0415
+
+    if imdb_game_credits.count_people_missing_profiles() <= 0:
+        return
+
+    refresh_imdb_game_credits_from_datasets.apply_async()
+
+
 def _resolved_game_items():
     from app.models import Item, MediaTypes, Sources  # noqa: PLC0415
     from app.services.imdb_game_credits import (
