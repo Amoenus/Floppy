@@ -2162,9 +2162,16 @@ def _build_row_section(
     prefill_display_release_years(section_entries)
     loaded_count = min(len(entries), batch_start + len(section_entries))
     title_main, title_detail = home_row_header_title_parts(row, user)
+
+    def _entry_missing_cover(entry):
+        if getattr(entry, "use_podcast_show", False) and getattr(entry, "podcast_show", None):
+            image = entry.podcast_show.image
+        else:
+            image = entry.item.image
+        return not image or image == settings.IMG_NONE
+
     poll_for_covers = media_type in SQUARE_HOME_MEDIA_TYPES and any(
-        not e.item.image or e.item.image == settings.IMG_NONE
-        for e in section_entries
+        _entry_missing_cover(e) for e in section_entries
     )
     return {
         "row_id": row.id,
