@@ -8,13 +8,13 @@ from django.urls import reverse
 from django.utils import timezone
 from django_celery_beat.models import IntervalSchedule, PeriodicTask
 
-from app.models import Item, MediaTypes, Movie, Sources, Status, TV
+from app.models import TV, Item, MediaTypes, Movie, Sources, Status
 from integrations import plex as plex_api
 from integrations.models import PlexAccount, PlexWatchlistSyncItem
 from integrations.plex_watchlist import (
-    PlexWatchlistSyncService,
     WATCHLIST_SYNC_INTERVAL_MINUTES,
     WATCHLIST_TASK_NAME,
+    PlexWatchlistSyncService,
 )
 
 

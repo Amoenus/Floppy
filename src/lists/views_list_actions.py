@@ -24,19 +24,19 @@ from app.discover import tab_cache as discover_tab_cache
 from app.models import Item, MediaTypes
 from app.providers import services
 from app.services import metadata_resolution
-from lists.forms import CustomListForm
 from lists import smart_rules
+from lists.forms import CustomListForm
 from lists.models import (
     CustomList,
     CustomListItem,
     ListActivity,
     ListActivityType,
 )
-from users.models import ListDetailSortChoices
 from lists.views_helpers import (
     _list_item_title_fields_from_metadata,
     _maybe_backfill_episode_title,
 )
+from users.models import ListDetailSortChoices
 
 logger = logging.getLogger(__name__)
 

@@ -11,6 +11,7 @@ from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.utils.text import slugify
 
+from app.log_safety import exception_summary
 from app.models import (
     Album,
     AlbumTracker,
@@ -23,14 +24,13 @@ from app.models import (
     Status,
     Track,
 )
-from app.log_safety import exception_summary
 from app.providers import musicbrainz
 from app.services.music import (
     get_artist_hero_image,
     prefetch_album_covers,
     refresh_album_cover_art,
-    sync_music_item_genres_from_album,
     sync_artist_discography,
+    sync_music_item_genres_from_album,
 )
 
 logger = logging.getLogger(__name__)
@@ -947,7 +947,7 @@ def _update_music_entry(
             user=event.user,
             defaults=defaults,
         )
-        
+
         # Log when a new track is being tracked (different tracks always get logged)
         if created:
             logger.debug(

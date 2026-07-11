@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from django.core.management.base import BaseCommand
 
-from app.discover.providers.trakt_adapter import TraktDiscoverAdapter
 from app.discover.providers.tmdb_adapter import TMDbDiscoverAdapter
+from app.discover.providers.trakt_adapter import TraktDiscoverAdapter
 
 
 class Command(BaseCommand):

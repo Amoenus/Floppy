@@ -1,7 +1,7 @@
 import hashlib
 import secrets
 from datetime import timedelta
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 from celery import states
 from celery.result import AsyncResult

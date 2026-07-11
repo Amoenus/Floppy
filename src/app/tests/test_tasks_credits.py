@@ -8,6 +8,7 @@ from django.utils import timezone
 from app import tasks
 from app.models import (
     CREDITS_BACKFILL_VERSION,
+    TV,
     CreditRoleType,
     Episode,
     Item,
@@ -23,7 +24,6 @@ from app.models import (
     Sources,
     Status,
     Studio,
-    TV,
 )
 
 

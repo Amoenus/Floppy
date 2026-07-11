@@ -24,9 +24,23 @@ from app import helpers as app_helpers
 from app.log_safety import exception_summary
 from integrations import exports, gpodder_api, lastfm_api, pocketcasts_api, tasks
 from integrations import plex as plex_api
+from integrations.gpodder_api import GPodderAuthError, GPodderClientError
 from integrations.imports import anilist, helpers, simkl, trakt
+from integrations.imports.audiobookshelf import (
+    AudiobookshelfAuthError,
+    AudiobookshelfClient,
+)
 from integrations.imports.radarr import RadarrClient
 from integrations.imports.sonarr import SonarrClient
+from integrations.imports.storyteller import (
+    StorytellerClient,
+    StorytellerClientError,
+)
+from integrations.lastfm_api import (
+    LastFMAPIError,
+    LastFMClientError,
+    LastFMRateLimitError,
+)
 from integrations.models import (
     AudiobookshelfAccount,
     GPodderAccount,
@@ -37,15 +51,11 @@ from integrations.models import (
     SonarrAccount,
     StorytellerAccount,
 )
-from integrations.lastfm_api import LastFMAPIError, LastFMClientError, LastFMRateLimitError
-from integrations.plex_watchlist import WATCHLIST_SYNC_INTERVAL_MINUTES, WATCHLIST_TASK_NAME
-from integrations.gpodder_api import GPodderAuthError, GPodderClientError
-from integrations.pocketcasts_api import PocketCastsAuthError
-from integrations.imports.audiobookshelf import AudiobookshelfAuthError, AudiobookshelfClient
-from integrations.imports.storyteller import (
-    StorytellerClient,
-    StorytellerClientError,
+from integrations.plex_watchlist import (
+    WATCHLIST_SYNC_INTERVAL_MINUTES,
+    WATCHLIST_TASK_NAME,
 )
+from integrations.pocketcasts_api import PocketCastsAuthError
 from integrations.webhooks import emby, jellyfin
 from integrations.webhooks import jellyseerr as jellyseerr_webhooks
 from integrations.webhooks import plex as plex_webhooks
@@ -1496,7 +1506,7 @@ def lastfm_connect(request):
         logger.error("Last.fm username validation failed: %s", e)
         messages.error(
             request,
-            f"Invalid Last.fm username or user not found. Please check your username and ensure your scrobbles are public.",
+            "Invalid Last.fm username or user not found. Please check your username and ensure your scrobbles are public.",
         )
         return redirect("import_data")
     except LastFMRateLimitError as e:

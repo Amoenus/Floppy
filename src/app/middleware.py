@@ -11,7 +11,10 @@ from django.urls import reverse
 from app.db_retry import is_retryable_error
 from app.discover import tab_cache as discover_tab_cache
 from app.error_views import format_exception_traceback, render_error_page
-from app.interactive_requests import mark_interactive_request, should_mark_interactive_request
+from app.interactive_requests import (
+    mark_interactive_request,
+    should_mark_interactive_request,
+)
 from app.models import Sources
 from app.providers import services
 

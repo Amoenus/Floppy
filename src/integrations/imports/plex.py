@@ -2,12 +2,10 @@
 
 import logging
 import re
-import urllib3
-
 from collections import defaultdict
-
 from datetime import UTC, datetime
 
+import urllib3
 from django.conf import settings
 from django.utils import timezone
 
@@ -579,12 +577,11 @@ class PlexHistoryImporter:
                     self._record_movie_entry(metadata, ids)
             else:
                 self._record_movie_entry(metadata, ids)
-        else:
-            if not self._record_episode_entry(metadata, ids):
-                # Fallback: if episode recording failed (e.g. missing season/episode numbers),
-                # try recording as a movie. This handles cases like Anime Specials (Movies)
-                # that are in TV libraries but lack standard S/E numbering.
-                self._record_movie_entry(metadata, ids)
+        elif not self._record_episode_entry(metadata, ids):
+            # Fallback: if episode recording failed (e.g. missing season/episode numbers),
+            # try recording as a movie. This handles cases like Anime Specials (Movies)
+            # that are in TV libraries but lack standard S/E numbering.
+            self._record_movie_entry(metadata, ids)
 
     def _process_music_entry(self, metadata: dict):
         """Replay music history entries through the webhook processor."""
@@ -1196,7 +1193,7 @@ class PlexHistoryImporter:
                         guids = [{"id": single_guid}]
 
                 external_ids = plex_api.extract_external_ids_from_guids(guids)
-                
+
                 # Normalize rating
                 title = item.get("title") or "Unknown"
                 normalized_rating = self._normalize_rating(user_rating, title)
@@ -2297,9 +2294,9 @@ class PlexHistoryImporter:
                                 Sources.TMDB.value,
                                 season_numbers=sorted(season_numbers),
                             )
-                        
+
                         # If title has year in parenthesis like "Show (YYYY)", try stripping it
-                        clean_title = re.sub(r'\s*\(\d{4}\)$', '', series_title[:500])
+                        clean_title = re.sub(r"\s*\(\d{4}\)$", "", series_title[:500])
                         if clean_title != series_title:
                             logger.info("Retrying Plex TV title fallback search with normalized title")
                             search_results = services.search(

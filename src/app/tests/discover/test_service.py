@@ -1,4 +1,5 @@
 from datetime import timedelta
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.conf import settings
@@ -9,9 +10,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from app.discover import cache_repo, tab_cache
-from app.discover.providers.trakt_adapter import TraktDiscoverAdapter
-from app.discover.registry import ALL_MEDIA_KEY
-from app.discover.schemas import CandidateItem, RowDefinition, RowResult
+from app.discover.entry_candidates import _entries_to_candidates
 from app.discover.match_signals import (
     _comfort_match_signal,
     _row_match_signal,
@@ -22,10 +21,10 @@ from app.discover.provider_candidates import (
     _musicbrainz_coming_soon_recording_candidates,
     _provider_row_candidates,
 )
-from app.discover.entry_candidates import _entries_to_candidates
+from app.discover.providers.trakt_adapter import TraktDiscoverAdapter
+from app.discover.registry import ALL_MEDIA_KEY
 from app.discover.row_cache_schema import ROW_CACHE_ACTIVITY_VERSION_META_KEY
-from types import SimpleNamespace
-
+from app.discover.schemas import CandidateItem, RowDefinition, RowResult
 from app.discover.service import (
     MAX_ITEMS_PER_ROW,
     _apply_comfort_confidence,
@@ -41,6 +40,7 @@ from app.discover.service import (
     get_discover_rows,
 )
 from app.models import (
+    TV,
     Anime,
     CreditRoleType,
     DiscoverFeedback,
@@ -56,7 +56,6 @@ from app.models import (
     Sources,
     Status,
     Studio,
-    TV,
 )
 from events.models import Event
 

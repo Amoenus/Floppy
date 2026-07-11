@@ -9,6 +9,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from app.models import (
+    TV,
     CollectionEntry,
     Episode,
     Game,
@@ -18,7 +19,6 @@ from app.models import (
     Season,
     Sources,
     Status,
-    TV,
 )
 from lists.models import CustomList
 from users import home_screen

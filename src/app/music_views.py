@@ -15,6 +15,7 @@ from app.discover import tab_cache as discover_tab_cache
 from app.forms import BulkEpisodeTrackForm
 from app.log_safety import exception_summary
 from app.models import (
+    TV,
     Album,
     Artist,
     CollectionEntry,
@@ -24,7 +25,6 @@ from app.models import (
     Season,
     Sources,
     Status,
-    TV,
     Track,
 )
 from app.services import bulk_music_tracking

@@ -442,8 +442,9 @@ def _resolve_state_item(state: dict):
 
 def _slugify_title(title: str, media_id: str | None = None) -> str:
     """Slugify a title, matching the template ``slug`` filter behaviour."""
-    from unidecode import unidecode  # noqa: PLC0415
     from urllib.parse import quote  # noqa: PLC0415
+
+    from unidecode import unidecode  # noqa: PLC0415
 
     cleaned = slugify(title)
     if not cleaned:

@@ -4,7 +4,15 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
 
-from app.models import Item, MediaTypes, Podcast, PodcastEpisode, PodcastShow, Sources, Status
+from app.models import (
+    Item,
+    MediaTypes,
+    Podcast,
+    PodcastEpisode,
+    PodcastShow,
+    Sources,
+    Status,
+)
 from integrations.imports import gpodder as gpodder_import
 from integrations.imports.helpers import MediaImportError, encrypt
 from integrations.models import GPodderAccount

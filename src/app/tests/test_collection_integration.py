@@ -3,6 +3,7 @@ from django.test import TestCase
 
 from app.helpers import is_item_collected
 from app.models import (
+    TV,
     Anime,
     Book,
     CollectionEntry,
@@ -15,7 +16,6 @@ from app.models import (
     Music,
     Sources,
     Status,
-    TV,
 )
 
 

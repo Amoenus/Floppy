@@ -1,10 +1,9 @@
+import requests
 from django.contrib.auth.decorators import login_not_required
 from django.core.exceptions import PermissionDenied, SuspiciousOperation
 from django.http import Http404, HttpResponse
 from django.urls import path
 from django.views.decorators.csrf import csrf_protect
-
-import requests
 
 from app.models import Sources
 from app.providers import services

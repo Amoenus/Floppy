@@ -7,10 +7,10 @@ from app import signals, tasks
 from app.models import (
     CREDITS_BACKFILL_VERSION,
     CreditRoleType,
-    ItemPersonCredit,
-    MetadataBackfillField,
     Item,
+    ItemPersonCredit,
     MediaTypes,
+    MetadataBackfillField,
     MetadataBackfillState,
     Person,
     PersonGender,

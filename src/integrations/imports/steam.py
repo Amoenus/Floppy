@@ -75,7 +75,7 @@ class SteamImporter:
         if self.to_update:
             app.models.Game.objects.bulk_update(
                 self.to_update,
-                fields=['progress', 'status']
+                fields=["progress", "status"]
             )
             logger.info(
                 "Updated %d existing games for user %s",
@@ -87,7 +87,7 @@ class SteamImporter:
         if self.to_update_meta:
             app.models.Item.objects.bulk_update(
                 self.to_update_meta,
-                fields=['title', 'image']
+                fields=["title", "image"]
             )
             logger.info(
                 "Updated metadata for %d items for user %s",
@@ -208,7 +208,7 @@ class SteamImporter:
                     if existing.status not in {Status.COMPLETED.value, Status.DROPPED.value}:
                         existing.status = self._determine_game_status(playtime_forever, playtime_2weeks)
                     self.to_update.append(existing)
-                
+
                 item = existing.item
                 item.title = igdb_game["title"]
                 item.image = igdb_game["image"]

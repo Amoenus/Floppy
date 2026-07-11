@@ -1,8 +1,9 @@
+from unittest.mock import patch
+
 from django.contrib.auth import get_user_model
 from django.contrib.messages import get_messages
 from django.test import TestCase, override_settings
 from django.urls import reverse
-from unittest.mock import patch
 
 from app.models import MediaTypes
 from users.models import AnimeLibraryModeChoices, MetadataSourceDefaultChoices

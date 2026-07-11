@@ -1,7 +1,7 @@
-import json
 import datetime
-from unittest.mock import patch
+import json
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
@@ -9,24 +9,24 @@ from django.urls import reverse
 from django.utils import timezone
 
 from app.models import (
-    Album,
-    Artist,
-    Game,
     TV,
+    Album,
     Anime,
+    Artist,
     Book,
     Comic,
     ComicIssue,
     Episode,
+    Game,
     Item,
     Manga,
     MediaTypes,
-    Music,
     Movie,
-    Track,
+    Music,
     Season,
     Sources,
     Status,
+    Track,
 )
 
 
@@ -681,7 +681,7 @@ class CreateMedia(TestCase):
         self.assertContains(response, 'id="detail-activity-subtitle-slot-game-game-123-igdb"', html=False)
         self.assertContains(response, "Progress: 3h 25min")
         self.assertContains(response, "April 13, 2026 - May 12, 2026")
-        self.assertContains(response, 'data-track-action-root', html=False)
+        self.assertContains(response, "data-track-action-root", html=False)
         trigger = json.loads(response["HX-Trigger"])
         self.assertEqual(trigger["closeModal"]["formId"], "track-form-test")
         self.assertEqual(trigger["showToast"]["type"], "success")
@@ -1041,7 +1041,7 @@ class EditMedia(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'data-track-action-root', html=False)
+        self.assertContains(response, "data-track-action-root", html=False)
         self.assertContains(response, 'id="track-action-movie-10494"', html=False)
         self.assertContains(response, f'id="detail-score-chip-{movie.id}"', html=False)
         self.assertContains(response, "Edit rating")
@@ -1262,7 +1262,7 @@ class EditMedia(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'data-track-action-root', html=False)
+        self.assertContains(response, "data-track-action-root", html=False)
         self.assertContains(response, "trackOpen: true", html=False)
         self.assertContains(response, "track-form-test")
         self.assertContains(response, "data-track-modal-root", html=False)

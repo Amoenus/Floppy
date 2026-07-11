@@ -6,11 +6,11 @@ import time
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
-from decimal import Decimal, ROUND_DOWN, InvalidOperation
+from decimal import ROUND_DOWN, Decimal, InvalidOperation
 
 from django.conf import settings
+from django.contrib.auth.decorators import login_not_required, login_required
 from django.core.cache import cache
-from django.contrib.auth.decorators import login_required, login_not_required
 from django.core.paginator import Paginator
 from django.db.models import F, Min
 from django.http import HttpResponse, HttpResponseBadRequest
@@ -20,14 +20,13 @@ from django.urls import reverse
 from django.utils import formats, timezone
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
-from app import cache_utils, helpers
+from app import cache_utils, helpers, history_cache
 from app.columns import (
     resolve_column_config,
     resolve_columns,
     resolve_default_column_config,
     sanitize_column_prefs,
 )
-from app import history_cache
 from app.log_safety import safe_url
 from app.models import (
     TV,
@@ -45,11 +44,11 @@ from app.models import (
     Sources,
     Status,
     Tag,
-    prefill_episode_runtime_index,
     Track,
+    prefill_episode_runtime_index,
 )
-from app.search_views import _mark_grouped_anime_route
 from app.release_years import prefill_display_release_years
+from app.search_views import _mark_grouped_anime_route
 from app.templatetags import app_tags
 from app.tv_sort import _sort_tv_media_by_time_left
 from users.models import (
@@ -496,31 +495,7 @@ def media_list(request, media_type):
         else route_media_type
     )
 
-    if sort_filter == "time_left" and effective_media_type != MediaTypes.TV.value:
-        sort_filter = "title"  # Default fallback
-        # Update the user's preference to the fallback
-        request.user.update_preference(f"{route_media_type}_sort", "title")
-        # Reset direction to the default for the fallback sort
-        direction_param = None
-    elif sort_filter == "runtime" and effective_media_type not in runtime_media_types:
-        sort_filter = "title"  # Default fallback
-        # Update the user's preference to the fallback
-        request.user.update_preference(f"{route_media_type}_sort", "title")
-        # Reset direction to the default for the fallback sort
-        direction_param = None
-    elif sort_filter == "time_to_beat" and effective_media_type != MediaTypes.GAME.value:
-        sort_filter = "title"  # Default fallback
-        # Update the user's preference to the fallback
-        request.user.update_preference(f"{route_media_type}_sort", "title")
-        # Reset direction to the default for the fallback sort
-        direction_param = None
-    elif sort_filter == "plays" and effective_media_type not in plays_media_types:
-        sort_filter = "title"  # Default fallback
-        # Update the user's preference to the fallback
-        request.user.update_preference(f"{route_media_type}_sort", "title")
-        # Reset direction to the default for the fallback sort
-        direction_param = None
-    elif sort_filter == "time_watched" and effective_media_type not in runtime_media_types:
+    if sort_filter == "time_left" and effective_media_type != MediaTypes.TV.value or sort_filter == "runtime" and effective_media_type not in runtime_media_types or sort_filter == "time_to_beat" and effective_media_type != MediaTypes.GAME.value or sort_filter == "plays" and effective_media_type not in plays_media_types or sort_filter == "time_watched" and effective_media_type not in runtime_media_types:
         sort_filter = "title"  # Default fallback
         # Update the user's preference to the fallback
         request.user.update_preference(f"{route_media_type}_sort", "title")
@@ -536,11 +511,7 @@ def media_list(request, media_type):
         request.user.update_preference(f"{route_media_type}_sort", "title")
         # Reset direction to the default for the fallback sort
         direction_param = None
-    elif sort_filter == "critic_rating" and effective_media_type not in critic_rating_media_types:
-        sort_filter = "title"
-        request.user.update_preference(f"{route_media_type}_sort", "title")
-        direction_param = None
-    elif sort_filter == "popularity" and effective_media_type not in popularity_media_types:
+    elif sort_filter == "critic_rating" and effective_media_type not in critic_rating_media_types or sort_filter == "popularity" and effective_media_type not in popularity_media_types:
         sort_filter = "title"
         request.user.update_preference(f"{route_media_type}_sort", "title")
         direction_param = None
@@ -618,7 +589,7 @@ def media_list(request, media_type):
     valid_rating_filters = {"all", "rated", "not_rated"}
     if rating_filter not in valid_rating_filters:
         rating_filter = "all"
-    
+
     collection_filter = request.GET.get("collection", "all")
     valid_collection_filters = {"all", "collected", "not_collected"}
     if collection_filter not in valid_collection_filters:
@@ -699,7 +670,7 @@ def media_list(request, media_type):
         if filter_value == "all":
             return media_items
 
-        from app.models import Item, CollectionEntry, MediaTypes
+        from app.models import CollectionEntry, Item, MediaTypes
 
         collected_item_ids = frozenset(
             CollectionEntry.objects.filter(user=user).values_list("item_id", flat=True),
@@ -736,9 +707,7 @@ def media_list(request, media_type):
             if not has_collection and media_type in tv_anime_types:
                 has_collection = show_has_episode_collection(media)
 
-            if filter_value == "collected" and has_collection:
-                filtered_items.append(media)
-            elif filter_value == "not_collected" and not has_collection:
+            if filter_value == "collected" and has_collection or filter_value == "not_collected" and not has_collection:
                 filtered_items.append(media)
 
         return filtered_items
@@ -2015,7 +1984,7 @@ def media_list(request, media_type):
         }
 
     if media_type == MediaTypes.MUSIC.value:
-        from app.models import Artist, ArtistTracker, AlbumTracker
+        from app.models import AlbumTracker, Artist, ArtistTracker
 
         music_subview = request.GET.get("subview", "artists")
         if music_subview not in {"artists", "albums", "tracks"}:
@@ -2530,40 +2499,26 @@ def update_table_columns(request, media_type):
     hidden = [value for value in parsed_hidden if isinstance(value, str)] if isinstance(parsed_hidden, list) else []
 
     current_sort = request.POST.get("sort") or getattr(request.user, f"{media_type}_sort", MediaSortChoices.SCORE)
-    if current_sort == "time_left" and media_type != MediaTypes.TV.value:
-        current_sort = "title"
-    elif current_sort == "runtime" and media_type not in {
+    if current_sort == "time_left" and media_type != MediaTypes.TV.value or current_sort == "runtime" and media_type not in {
         MediaTypes.MOVIE.value,
         MediaTypes.TV.value,
         MediaTypes.ANIME.value,
-    }:
-        current_sort = "title"
-    elif current_sort == "time_to_beat" and media_type != MediaTypes.GAME.value:
-        current_sort = "title"
-    elif current_sort == "plays" and media_type not in {
+    } or current_sort == "time_to_beat" and media_type != MediaTypes.GAME.value or current_sort == "plays" and media_type not in {
         MediaTypes.MOVIE.value,
         MediaTypes.TV.value,
         MediaTypes.ANIME.value,
-    }:
-        current_sort = "title"
-    elif current_sort == "time_watched" and media_type not in {
+    } or current_sort == "time_watched" and media_type not in {
         MediaTypes.MOVIE.value,
         MediaTypes.TV.value,
         MediaTypes.ANIME.value,
-    }:
-        current_sort = "title"
-    elif current_sort == "next_episode_air_date" and media_type not in {
+    } or current_sort == "next_episode_air_date" and media_type not in {
         MediaTypes.TV.value,
         MediaTypes.SEASON.value,
         MediaTypes.ANIME.value,
-    }:
-        current_sort = "title"
-    elif current_sort == "critic_rating" and media_type in {
+    } or current_sort == "critic_rating" and media_type in {
         MediaTypes.MUSIC.value,
         MediaTypes.PODCAST.value,
-    }:
-        current_sort = "title"
-    elif current_sort == "popularity" and media_type not in {
+    } or current_sort == "popularity" and media_type not in {
         MediaTypes.MOVIE.value,
         MediaTypes.TV.value,
         MediaTypes.ANIME.value,

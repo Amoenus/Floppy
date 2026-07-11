@@ -985,7 +985,7 @@ class ListDetailViewTests(TestCase):
             ],
         )
         self.assertContains(response, 'id="list-table-body"')
-        self.assertContains(response, 'min-w-10 w-10 h-10 object-cover rounded-md')
+        self.assertContains(response, "min-w-10 w-10 h-10 object-cover rounded-md")
         self.assertContains(response, 'id="media-column-config-data"')
 
     @patch.object(get_user_model(), "update_preference")

@@ -1,10 +1,10 @@
 """Last.fm API client for fetching user scrobbles."""
 
-from dataclasses import dataclass
 import hashlib
 import logging
 import random
 import time
+from dataclasses import dataclass
 from typing import Any
 
 import requests

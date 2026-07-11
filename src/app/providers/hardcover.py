@@ -557,7 +557,7 @@ def process_series_data(featured_series):
 
     if series_id:
         series_items = get_series_details(series_id)
-        
+
         if series_items:
             # Note: The Hardcover API currently doesn't expose the Series object directly via GraphQL
             # for the series_id returned in featured_book_series, nor does book_series link to it.
@@ -569,7 +569,7 @@ def process_series_data(featured_series):
                 pos = item.get("position")
                 if pos is None:
                     continue
-                
+
                 book_data = item.get("book")
                 if not book_data:
                     continue
@@ -585,7 +585,7 @@ def process_series_data(featured_series):
 
                 # Use ratings_count as a proxy for "most representative" edition
                 ratings = book_data.get("ratings_count", 0) or 0
-                
+
                 if pos not in best_by_position:
                     best_by_position[pos] = item
                 else:
@@ -601,7 +601,7 @@ def process_series_data(featured_series):
             for pos in sorted_positions[:limit_books]:
                 item = best_by_position[pos]
                 book_data = item.get("book")
-                
+
                 series_books.append(
                     {
                         "media_id": book_data["id"],

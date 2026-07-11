@@ -2,11 +2,12 @@
 
 import calendar
 import heapq
-import random as _random
 import itertools
 import logging
+import random as _random
 from collections import Counter, defaultdict
-from datetime import date as date_type, datetime, timedelta
+from datetime import date as date_type
+from datetime import datetime, timedelta
 
 from django.apps import apps
 from django.core.cache import cache
@@ -16,11 +17,11 @@ from django.utils import timezone
 from app import config, helpers
 from app import statistics as stats
 from app.models import Item, MediaTypes, Status
-from app.templatetags import app_tags
-from app.statistics_talent import (
-    STATISTICS_TOP_N,
-    STATISTICS_TOP_RATED_OVERALL,
-    _aggregate_top_talent,
+from app.statistics_day_builder import (
+    _day_boundary_datetime,
+    _day_cache_key,
+    _normalize_day_value,
+    build_stats_for_day,
 )
 from app.statistics_highlights import (
     _get_history_day_payload,
@@ -29,12 +30,12 @@ from app.statistics_highlights import (
     _get_today_release_entry,
     _select_history_entry_for_day,
 )
-from app.statistics_day_builder import (
-    _day_boundary_datetime,
-    _day_cache_key,
-    _normalize_day_value,
-    build_stats_for_day,
+from app.statistics_talent import (
+    STATISTICS_TOP_N,
+    STATISTICS_TOP_RATED_OVERALL,
+    _aggregate_top_talent,
 )
+from app.templatetags import app_tags
 
 logger = logging.getLogger(__name__)
 
@@ -823,10 +824,8 @@ def _aggregate_statistics_from_days(
             score_value = float(score)
             score_value_scaled = score_value / 2 if score_scale_max == 5 else score_value
             binned = int(score_value_scaled)
-            if binned < 0:
-                binned = 0
-            if binned > score_scale_max:
-                binned = score_scale_max
+            binned = max(binned, 0)
+            binned = min(binned, score_scale_max)
             score_counts[binned] += 1
             total_scored += 1
             total_score_sum += score_value_scaled
@@ -960,7 +959,9 @@ def _aggregate_statistics_from_days(
         end_date = _day_boundary_datetime(day_list[-1], end_of_day=True)
 
     activity_counts_by_date = {day: activity_counts.get(day, 0) for day in day_list}
-    from users.models import WeekStartDayChoices  # noqa: PLC0415 - avoid circular import
+    from users.models import (
+        WeekStartDayChoices,  # noqa: PLC0415 - avoid circular import
+    )
     week_start_sunday = user.week_start_day == WeekStartDayChoices.SUNDAY
     activity_data = _build_activity_data(
         activity_counts_by_date,

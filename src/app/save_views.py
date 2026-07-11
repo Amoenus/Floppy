@@ -122,7 +122,7 @@ def media_save(request):
                             pass
                 else:
                     # For comics and manga, need to get max_progress from events
-                    from app.models import Manga, Comic
+                    from app.models import Comic, Manga
                     model_class = Manga if media_type == MediaTypes.MANGA.value else Comic
                     media_list = list(model_class.objects.filter(user=request.user, item=item).select_related("item"))
                     if media_list:

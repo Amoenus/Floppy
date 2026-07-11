@@ -23,11 +23,11 @@ from app.models import (
     Season,
     Status,
 )
-from lists.models import CustomList, CustomListItem
 from integrations import exports
 from integrations.imports import (
     yamtrack,
 )
+from lists.models import CustomList, CustomListItem
 
 mock_path = Path(__file__).resolve().parent.parent / "mock_data"
 app_mock_path = (

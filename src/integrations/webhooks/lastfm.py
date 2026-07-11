@@ -7,7 +7,6 @@ from django.utils import timezone
 
 from app.models import MediaTypes, Music
 from app.services import music_scrobble
-
 from integrations import lastfm_api
 
 logger = logging.getLogger(__name__)

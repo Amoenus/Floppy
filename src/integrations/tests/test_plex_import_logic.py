@@ -2,11 +2,12 @@ import logging
 from unittest import mock
 from unittest.mock import patch
 
-from django.test import TestCase
 from django.contrib.auth import get_user_model
+from django.test import TestCase
 from django.utils import timezone
 
 from app.models import (
+    TV,
     Anime,
     Episode,
     Item,
@@ -16,7 +17,6 @@ from app.models import (
     Season,
     Sources,
     Status,
-    TV,
 )
 from app.providers import services
 from integrations import tasks

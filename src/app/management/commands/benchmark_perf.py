@@ -14,7 +14,6 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import connection, reset_queries
 from django.test import Client
 
-
 ENDPOINTS = [
     ("GET", "/settings/home-screen"),
     ("GET", "/"),

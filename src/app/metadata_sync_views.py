@@ -1,7 +1,7 @@
 import logging
-import requests
 from collections import defaultdict
 
+import requests
 from django.apps import apps
 from django.conf import settings
 from django.contrib import messages
@@ -20,7 +20,15 @@ from app import (
     helpers,
     metadata_utils,
 )
-from app.models import CollectionEntry, Episode, Item, MediaTypes, MetadataProviderPreference, Sources
+from app.log_safety import exception_summary, safe_url
+from app.models import (
+    CollectionEntry,
+    Episode,
+    Item,
+    MediaTypes,
+    MetadataProviderPreference,
+    Sources,
+)
 from app.providers import services, tmdb
 from app.services import (
     anime_migration,
@@ -29,7 +37,6 @@ from app.services import (
 )
 from app.services import game_lengths as game_length_services
 from app.services import trakt_popularity as trakt_popularity_service
-from app.log_safety import exception_summary, safe_url
 from integrations import anime_mapping
 
 logger = logging.getLogger(__name__)
@@ -1343,7 +1350,9 @@ def sync_metadata(request, source, media_type, media_id, season_number=None):
             # block already throttles rapid refreshes on the same item with a
             # visible message; that's the right layer for rate-limiting, not a
             # silent global gate here.
-            from app.tasks_imdb import refresh_imdb_game_credits_from_datasets  # noqa: PLC0415
+            from app.tasks_imdb import (
+                refresh_imdb_game_credits_from_datasets,  # noqa: PLC0415
+            )
 
             refresh_imdb_game_credits_from_datasets.apply_async(countdown=2)
 
@@ -1551,11 +1560,7 @@ def _sync_plex_rating(request, item, media_type):
 
                     # Check if this matches our item
                     matches = False
-                    if item.source == "tmdb" and external_ids.get("tmdb_id") == str(item.media_id):
-                        matches = True
-                    elif item.source == "imdb" and external_ids.get("imdb_id") == item.media_id:
-                        matches = True
-                    elif item.source == "tvdb" and external_ids.get("tvdb_id") == str(item.media_id):
+                    if item.source == "tmdb" and external_ids.get("tmdb_id") == str(item.media_id) or item.source == "imdb" and external_ids.get("imdb_id") == item.media_id or item.source == "tvdb" and external_ids.get("tvdb_id") == str(item.media_id):
                         matches = True
 
                     if matches:

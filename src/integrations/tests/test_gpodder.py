@@ -5,8 +5,7 @@ from django.core.cache import cache
 from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 from django.utils import timezone
-from django_celery_beat.models import CrontabSchedule
-from django_celery_beat.models import PeriodicTask
+from django_celery_beat.models import CrontabSchedule, PeriodicTask
 
 from integrations import gpodder_api, tasks
 from integrations.imports import helpers

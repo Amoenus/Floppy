@@ -2,13 +2,13 @@ import logging
 from decimal import Decimal, InvalidOperation
 
 from django.apps import apps
+from django.contrib.auth.decorators import login_required
 from django.db.models import Q
 from django.db.models.functions import TruncDate
 from django.http import HttpResponse, HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.template.loader import render_to_string
 from django.views.decorators.http import require_POST
-from django.contrib.auth.decorators import login_required
 
 from app import history_cache
 from app.models import Album, BasicMedia, Episode, Season

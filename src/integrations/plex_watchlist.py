@@ -8,7 +8,7 @@ from django.db import IntegrityError
 from django.utils import timezone
 
 from app.mixins import disable_fetch_releases
-from app.models import Item, MediaTypes, Movie, Sources, Status, TV
+from app.models import TV, Item, MediaTypes, Movie, Sources, Status
 from app.providers import services, tmdb
 from integrations import plex as plex_api
 from integrations.imports.helpers import MediaImportError

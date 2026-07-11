@@ -65,8 +65,7 @@ def recommend_item_page(request, list_id):
         initial_page = int(request.GET.get("page", 1))
     except (TypeError, ValueError):
         initial_page = 1
-    if initial_page < 1:
-        initial_page = 1
+    initial_page = max(initial_page, 1)
 
     context = {
         "custom_list": custom_list,

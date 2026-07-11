@@ -7,11 +7,11 @@ from django.conf import settings
 from django.urls import reverse
 from django.utils.dateparse import parse_datetime
 from django_celery_beat.models import PeriodicTask
+from simple_history.utils import bulk_update_with_history
 
 import app
 from app import helpers as app_helpers
 from app.models import MediaTypes, Sources, Status
-from simple_history.utils import bulk_update_with_history
 from app.providers import services
 from integrations.imports import helpers
 from integrations.imports.helpers import MediaImportError, MediaImportUnexpectedError

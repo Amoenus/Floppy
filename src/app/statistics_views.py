@@ -16,8 +16,8 @@ from django.views.decorators.http import require_GET, require_POST
 from app import config, statistics_cache, stats_cast_crew
 from app import statistics as stats
 from app.models import MediaTypes
-from app.statistics_talent import _aggregate_top_talent
 from app.providers import tvdb
+from app.statistics_talent import _aggregate_top_talent
 from app.templatetags import app_tags
 from users.models import (
     ActivityHistoryViewChoices,

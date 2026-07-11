@@ -3,7 +3,7 @@ from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
-from app.models import Item, MediaTypes, Season, Sources, Status, TV
+from app.models import TV, Item, MediaTypes, Season, Sources, Status
 
 # Patch the provider lookup used by app.models.tv (imported there as `providers`).
 METADATA_PATH = "app.providers.services.get_media_metadata"

@@ -6,8 +6,8 @@ import re
 import time
 from collections import Counter, defaultdict
 from dataclasses import dataclass
-from decimal import ROUND_DOWN, Decimal, InvalidOperation
 from datetime import UTC, date, timedelta
+from decimal import ROUND_DOWN, Decimal, InvalidOperation
 from pathlib import Path
 from urllib.parse import quote, urlencode, urlparse
 from uuid import uuid4
@@ -30,9 +30,9 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.templatetags.static import static
 from django.urls import reverse
-from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils import formats, timezone
 from django.utils.dateparse import parse_date
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.text import slugify
 from django.utils.timezone import datetime
 from django.views.decorators.cache import never_cache
@@ -40,8 +40,8 @@ from django.views.decorators.http import require_GET, require_http_methods, requ
 
 from app import (
     cache_utils,
-    credits,
     config,
+    credits,
     custom_metadata,
     discover,
     helpers,
@@ -51,13 +51,24 @@ from app import (
     metadata_utils,
     statistics_cache,
 )
-from app.db_retry import run_retryable_db_operation
-from app.discover import tab_cache as discover_tab_cache
-from app.columns import (
-    resolve_column_config,
-    resolve_columns,
-    resolve_default_column_config,
-    sanitize_column_prefs,
+
+# history_cache is imported above
+from app import (
+    statistics as stats,
+)
+from app.activity_builders import (
+    DETAIL_EPISODES_PER_PAGE,
+    _annotate_home_card_images,
+    _build_detail_activity_state,
+    _build_detail_activity_subtitle,
+    _detail_episode_number_for_pagination,
+    _detail_episode_page_label,
+    _format_detail_activity_duration,
+    _get_game_lengths_refresh_lock,
+    _normalize_detail_episode_actions,
+    _paginate_detail_episodes,
+    _queue_game_lengths_refresh,
+    _should_queue_game_lengths_refresh,
 )
 from app.collection_views import (
     _build_collection_episode_audit_entries,
@@ -78,6 +89,25 @@ from app.collection_views import (
     collection_status_api,
     collection_update,
 )
+from app.columns import (
+    resolve_column_config,
+    resolve_columns,
+    resolve_default_column_config,
+    sanitize_column_prefs,
+)
+from app.db_retry import run_retryable_db_operation
+from app.detail_builders import (
+    _apply_cached_hltb_link,
+    _build_detail_link_entry,
+    _build_detail_link_sections,
+    _build_game_length_card,
+    _build_game_lengths_context,
+    _build_trakt_popularity_context,
+    _format_game_length_minutes,
+    _format_game_length_seconds,
+    _normalize_detail_link_brand_key,
+)
+from app.discover import tab_cache as discover_tab_cache
 from app.discover_views import (
     DISCOVER_ALLOWED_MEDIA_TYPES,
     DISCOVER_FAST_LOCAL_PLANNING_MEDIA_TYPES,
@@ -105,6 +135,13 @@ from app.discover_views import (
     discover_toggle_hidden,
     refresh_discover,
 )
+from app.forms import (
+    BulkEpisodeTrackForm,
+    CollectionEntryForm,
+    EpisodeForm,
+    ManualItemForm,
+    get_form_class,
+)
 from app.history_views import (
     _build_anniversary_history_days,
     _build_release_history_days,
@@ -116,6 +153,75 @@ from app.history_views import (
     history,
     history_genres,
     history_modal,
+)
+from app.log_safety import exception_summary, safe_url
+from app.media_details_views import _get_tv_runtime_display_fallback, media_details
+from app.media_list_views import (
+    MEDIA_LIST_NO_STATUS,
+    MEDIA_LIST_NO_STATUS_LABEL,
+    MEDIA_RATING_CHOICES,
+    RECENTLY_NOT_RATED_DAYS,
+    RECENTLY_NOT_RATED_KEY,
+    RECENTLY_NOT_RATED_LABEL,
+    MediaListEntry,
+    _collect_reading_activity_day_keys,
+    _tracked_media_entries,
+    media_list,
+    update_table_columns,
+)
+from app.metadata_sync_views import (
+    _build_flat_anime_episode_preview,
+    _build_local_tv_with_seasons_metadata,
+    _build_missing_season_metadata,
+    _get_local_show_item,
+    _resolve_current_display_metadata_payload,
+    _save_provider_metadata_status,
+    migrate_grouped_anime,
+    sync_metadata,
+    update_item_image,
+    update_manual_item_metadata,
+    update_metadata_provider_preference,
+)
+from app.models import (
+    TV,
+    Album,
+    Anime,
+    Artist,
+    BasicMedia,
+    Book,
+    CollectionEntry,
+    Comic,
+    CreditRoleType,
+    DiscoverFeedback,
+    DiscoverFeedbackType,
+    Episode,
+    Game,
+    Item,
+    ItemPersonCredit,
+    ItemTag,
+    Manga,
+    MediaTypes,
+    MetadataProviderPreference,
+    Movie,
+    Music,
+    Person,
+    PodcastShow,
+    ProviderMetadataStatus,
+    Season,
+    Sources,
+    Status,
+    Studio,
+    Tag,
+    Track,
+)
+from app.music_album_views import (
+    album_delete,
+    album_save,
+    album_track_modal,
+    delete_all_album_plays_view,
+    delete_all_artist_plays_view,
+    song_save,
+    sync_album_metadata_view,
 )
 from app.music_views import (
     _build_music_album_activity_subtitle,
@@ -150,49 +256,55 @@ from app.podcast_views import (
     podcast_show_save,
     podcast_show_track_modal,
 )
-from app.track_modal_views import (
-    _DummyPodcastWrapper,
-    _bulk_episode_form_initial_data,
-    _episode_domain_template_payload,
-    _render_podcast_show_track_modal,
-    _render_standard_track_modal,
-    _track_modal_field_groups,
-    _track_modal_release_date_shortcut,
-    _track_modal_release_runtime_minutes,
-    track_modal,
+from app.providers import (
+    comicvine,
+    hardcover,
+    igdb,
+    mangaupdates,
+    manual,
+    openlibrary,
+    services,
+    tmdb,
 )
-from app.tag_views import (
-    _build_detail_tag_sections,
-    _detail_request_url,
-    _parse_detail_tag_preview_genres,
-    _render_tag_modal_response,
-    _resolve_detail_tag_genres,
-    _user_tags_for_item,
-    tag_create,
-    tag_delete,
-    tag_item_toggle,
-    tags_modal,
+from app.save_views import (
+    episode_bulk_save,
+    episode_drop,
+    episode_save,
+    media_delete,
+    media_save,
 )
-from app.metadata_sync_views import (
-    _build_flat_anime_episode_preview,
-    _build_local_tv_with_seasons_metadata,
-    _build_missing_season_metadata,
-    _get_local_show_item,
-    _resolve_current_display_metadata_payload,
-    _save_provider_metadata_status,
-    migrate_grouped_anime,
-    sync_metadata,
-    update_item_image,
-    update_manual_item_metadata,
-    update_metadata_provider_preference,
+from app.score_views import (
+    _collect_music_history_day_keys_for_album_ids,
+    _collect_music_history_day_keys_for_artist,
+    update_album_score,
+    update_artist_score,
+    update_episode_score,
+    update_media_score,
+    update_track_score,
 )
+from app.search_views import _mark_grouped_anime_route, media_search
+from app.season_details_views import season_details
+from app.services import (
+    anime_migration,
+    bulk_episode_tracking,
+    bulk_music_tracking,
+    metadata_resolution,
+)
+from app.services import game_lengths as game_length_services
+from app.services import music as sync_services
+from app.services import trakt_popularity as trakt_popularity_service
+from app.services.tracking_hydration import (
+    ensure_item_metadata,
+    ensure_item_metadata_from_discover_seed,
+)
+from app.signals import suppress_media_cache_change_signals
 from app.statistics_views import (
+    _STATISTICS_HOURS_DISPLAY_RE,
     STATISTICS_CARD_LAST_YEAR_LABELS,
     STATISTICS_COMPARE_LABELS,
     STATISTICS_COMPARE_LAST_YEAR,
     STATISTICS_COMPARE_NONE,
     STATISTICS_COMPARE_PREVIOUS_PERIOD,
-    _STATISTICS_HOURS_DISPLAY_RE,
     _adjust_month_delta,
     _build_hours_per_media_type_comparison,
     _dates_close,
@@ -215,155 +327,50 @@ from app.statistics_views import (
     statistics,
     statistics_talent_fragment,
     update_genre_sort,
-    update_studio_sort,
-    update_top_talent_sort,
     update_statistics_compare_mode,
     update_statistics_preferences,
+    update_studio_sort,
+    update_top_talent_sort,
 )
-
-# history_cache is imported above
-from app import (
-    statistics as stats,
-)
-from app.forms import (
-    BulkEpisodeTrackForm,
-    CollectionEntryForm,
-    EpisodeForm,
-    ManualItemForm,
-    get_form_class,
-)
-from app.log_safety import exception_summary, safe_url
-from app.models import (
-    TV,
-    Album,
-    Anime,
-    Artist,
-    BasicMedia,
-    Book,
-    CollectionEntry,
-    Comic,
-    CreditRoleType,
-    DiscoverFeedback,
-    DiscoverFeedbackType,
-    Episode,
-    Game,
-    Item,
-    MetadataProviderPreference,
-    ItemPersonCredit,
-    ItemTag,
-    Manga,
-    MediaTypes,
-    ProviderMetadataStatus,
-    Movie,
-    Music,
-    Person,
-    PodcastShow,
-    Season,
-    Sources,
-    Status,
-    Tag,
-    Studio,
-    Track,
-)
-from app.providers import (
-    comicvine,
-    hardcover,
-    igdb,
-    mangaupdates,
-    manual,
-    openlibrary,
-    services,
-    tmdb,
-)
-from app.services import game_lengths as game_length_services
-from app.services import (
-    anime_migration,
-    bulk_episode_tracking,
-    bulk_music_tracking,
-    metadata_resolution,
-)
-from app.services import music as sync_services
-from app.services import trakt_popularity as trakt_popularity_service
-from app.services.tracking_hydration import (
-    ensure_item_metadata,
-    ensure_item_metadata_from_discover_seed,
-)
-from app.save_views import (
-    episode_bulk_save,
-    episode_drop,
-    episode_save,
-    media_delete,
-    media_save,
-)
-from app.score_views import (
-    _collect_music_history_day_keys_for_album_ids,
-    _collect_music_history_day_keys_for_artist,
-    update_album_score,
-    update_artist_score,
-    update_episode_score,
-    update_media_score,
-    update_track_score,
-)
-from app.activity_builders import (
-    DETAIL_EPISODES_PER_PAGE,
-    _annotate_home_card_images,
-    _build_detail_activity_state,
-    _build_detail_activity_subtitle,
-    _detail_episode_number_for_pagination,
-    _detail_episode_page_label,
-    _format_detail_activity_duration,
-    _get_game_lengths_refresh_lock,
-    _normalize_detail_episode_actions,
-    _paginate_detail_episodes,
-    _queue_game_lengths_refresh,
-    _should_queue_game_lengths_refresh,
-)
-from app.detail_builders import (
-    _apply_cached_hltb_link,
-    _build_detail_link_entry,
-    _build_detail_link_sections,
-    _build_game_length_card,
-    _build_game_lengths_context,
-    _build_trakt_popularity_context,
-    _format_game_length_minutes,
-    _format_game_length_seconds,
-    _normalize_detail_link_brand_key,
+from app.tag_views import (
+    _build_detail_tag_sections,
+    _detail_request_url,
+    _parse_detail_tag_preview_genres,
+    _render_tag_modal_response,
+    _resolve_detail_tag_genres,
+    _user_tags_for_item,
+    tag_create,
+    tag_delete,
+    tag_item_toggle,
+    tags_modal,
 )
 from app.templatetags import app_tags
-from app.signals import suppress_media_cache_change_signals
-from app.tv_sort import _sort_tv_media_by_time_left
-from app.search_views import media_search, _mark_grouped_anime_route
-from app.view_constants import DETAIL_SECONDARY_FRAGMENT, LOCAL_ONLY_MISSING_SEASON_BANNER
-from app.season_details_views import season_details
-from app.media_details_views import media_details, _get_tv_runtime_display_fallback
-from app.media_list_views import (
-    MediaListEntry,
-    _collect_reading_activity_day_keys,
-    _tracked_media_entries,
-    media_list,
-    update_table_columns,
-    MEDIA_RATING_CHOICES,
-    MEDIA_LIST_NO_STATUS,
-    MEDIA_LIST_NO_STATUS_LABEL,
-    RECENTLY_NOT_RATED_KEY,
-    RECENTLY_NOT_RATED_LABEL,
-    RECENTLY_NOT_RATED_DAYS,
+from app.track_modal_views import (
+    _bulk_episode_form_initial_data,
+    _DummyPodcastWrapper,
+    _episode_domain_template_payload,
+    _render_podcast_show_track_modal,
+    _render_standard_track_modal,
+    _track_modal_field_groups,
+    _track_modal_release_date_shortcut,
+    _track_modal_release_runtime_minutes,
+    track_modal,
 )
-from app.music_album_views import (
-    album_delete,
-    album_save,
-    album_track_modal,
-    delete_all_album_plays_view,
-    delete_all_artist_plays_view,
-    song_save,
-    sync_album_metadata_view,
+from app.tv_sort import _sort_tv_media_by_time_left
+from app.view_constants import (
+    DETAIL_SECONDARY_FRAGMENT,
+    LOCAL_ONLY_MISSING_SEASON_BANNER,
 )
 from integrations import anime_mapping
 from integrations.models import CollectionSourceState
 from lists.models import CustomList
 from users.home_screen import build_home_page_groups
-from users.models import HomeSortChoices, MediaSortChoices, MediaStatusChoices
-from users.models import TopTalentSortChoices
+from users.models import (
+    HomeSortChoices,
+    MediaSortChoices,
+    MediaStatusChoices,
+    TopTalentSortChoices,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -1483,7 +1490,7 @@ def cache_status(request):
         refresh_lock_key = history_cache._refresh_lock_key(request.user.id, logging_style)
         refresh_lock = history_cache._clean_refresh_lock(refresh_lock_key)
         lock_has_day_keys = isinstance(refresh_lock, dict) and bool(refresh_lock.get("day_keys"))
-        
+
         # Also check dedupe_key if lock has day_keys (for page_days refreshes)
         dedupe_key = None
         if lock_has_day_keys and isinstance(refresh_lock, dict):

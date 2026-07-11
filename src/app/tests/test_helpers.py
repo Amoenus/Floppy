@@ -13,7 +13,6 @@ from app.helpers import (
     normalize_navigation_url,
     redirect_back,
 )
-
 from app.models import Game, Item, MediaTypes, Movie, Sources, Status
 
 

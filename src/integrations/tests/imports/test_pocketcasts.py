@@ -15,9 +15,9 @@ from app.models import (
     Sources,
     Status,
 )
+from integrations import pocketcasts_api
 from integrations.imports.helpers import MediaImportError
 from integrations.imports.pocketcasts import PocketCastsImporter
-from integrations import pocketcasts_api
 from integrations.models import PocketCastsAccount
 
 

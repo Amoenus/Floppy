@@ -14,10 +14,6 @@ from django.utils import timezone
 from app import statistics as stats
 from app.metadata_utils import ANIME_SUPPLEMENT_GENRE, genre_list_has_name
 from app.models import MediaTypes, Sources
-from app.statistics_talent import (
-    _resolve_missing_credit_item_ids,
-    _safe_runtime_minutes,
-)
 
 # Partial-init safe: all of these are defined in statistics_cache before the
 # re-export block, so they exist on the partial module object when this module
@@ -27,6 +23,10 @@ from app.statistics_cache import (
     _day_cache_key,
     _get_history_version,
     _normalize_day_value,
+)
+from app.statistics_talent import (
+    _resolve_missing_credit_item_ids,
+    _safe_runtime_minutes,
 )
 
 logger = logging.getLogger(__name__)

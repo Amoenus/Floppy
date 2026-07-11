@@ -4,12 +4,12 @@ import calendar
 import heapq
 import itertools
 import logging
-import re
 import random
+import re
 import time
-from types import SimpleNamespace
 from collections import Counter, defaultdict
 from datetime import date, datetime, timedelta
+from types import SimpleNamespace
 
 from dateutil.relativedelta import relativedelta
 from django.apps import apps
@@ -17,24 +17,25 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.db.models import Max, Min, Q
-from django.db.models.functions import ExtractDay, ExtractMonth
-from django.db.models.functions import TruncDate
+from django.db.models.functions import ExtractDay, ExtractMonth, TruncDate
 from django.utils import timezone
 
-from app import config, credits as credit_helpers, helpers
+from app import config, helpers, history_cache
+from app import credits as credit_helpers
 from app import statistics as stats
-from app import history_cache
-from app.statistics_talent import (
-    STATISTICS_TOP_N,
-    STATISTICS_TOP_RATED_OVERALL,
-    _aggregate_top_talent,
-    _build_person_talent_context,
-    _is_director_credit,
-    _is_writer_credit,
-    _resolve_missing_credit_item_ids,
-    _safe_runtime_minutes,
-    _tv_episode_play_rows,
-    get_person_talent_totals as _compute_person_talent_totals,
+from app.models import (
+    CREDITS_BACKFILL_VERSION,
+    CreditRoleType,
+    Episode,
+    Item,
+    ItemPersonCredit,
+    ItemStudioCredit,
+    MediaTypes,
+    Movie,
+    Person,
+    PersonGender,
+    Sources,
+    Status,
 )
 from app.statistics_highlights import (
     _cached_horizontal_backdrop,
@@ -49,19 +50,19 @@ from app.statistics_highlights import (
     _normalize_history_highlights_by_type,
     _select_history_entry_for_day,
 )
-from app.models import (
-    CREDITS_BACKFILL_VERSION,
-    CreditRoleType,
-    Episode,
-    Item,
-    ItemPersonCredit,
-    ItemStudioCredit,
-    MediaTypes,
-    Movie,
-    Person,
-    PersonGender,
-    Sources,
-    Status,
+from app.statistics_talent import (
+    STATISTICS_TOP_N,
+    STATISTICS_TOP_RATED_OVERALL,
+    _aggregate_top_talent,
+    _build_person_talent_context,
+    _is_director_credit,
+    _is_writer_credit,
+    _resolve_missing_credit_item_ids,
+    _safe_runtime_minutes,
+    _tv_episode_play_rows,
+)
+from app.statistics_talent import (
+    get_person_talent_totals as _compute_person_talent_totals,
 )
 from app.templatetags import app_tags
 
@@ -1103,13 +1104,6 @@ def get_statistics_data(user, start_date, end_date, range_name=None):
 
 
 # Re-exports — keep all public symbols importable from this module.
-from app.statistics_day_builder import (  # noqa: E402
-    _day_bounds,
-    _day_boundary_datetime,
-    _iter_day_range,
-    _overlap_day_filter,
-    build_stats_for_day,
-)
 from app.statistics_aggregator import (  # noqa: E402
     _aggregate_minutes_per_media_type_from_days,
     _aggregate_statistics_from_days,
@@ -1122,16 +1116,23 @@ from app.statistics_aggregator import (  # noqa: E402
     _fetch_media_objects,
     _parse_activity_dt,
 )
+from app.statistics_day_builder import (  # noqa: E402
+    _day_boundary_datetime,
+    _day_bounds,
+    _iter_day_range,
+    _overlap_day_filter,
+    build_stats_for_day,
+)
 from app.statistics_refresh import (  # noqa: E402
     _build_predefined_range_from_day_caches,
     _get_activity_bounds,
     _get_predefined_range_dates,
     _get_sparse_activity_days,
     _has_covering_range_cache,
-    invalidate_all_statistics_days,
     _range_cache_covers_days,
     _range_day_bounds,
     _resolve_day_list,
+    invalidate_all_statistics_days,
     invalidate_statistics_cache,
     refresh_statistics_cache,
     schedule_all_ranges_refresh,

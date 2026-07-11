@@ -31,8 +31,37 @@ logger = logging.getLogger(__name__)
 # existing callers (import paths, test patches on "app.tasks.*", apps.py
 # dynamic imports) continue to work without any call-site changes.
 # ---------------------------------------------------------------------------
-from app.tasks_bulk_plays import bulk_episode_plays_task, bulk_music_plays_task  # noqa: E402
-from app.tasks_imdb import refresh_imdb_game_credits_from_datasets  # noqa: E402
+from app.tasks_backfill_state import (  # noqa: E402
+    GENRE_BACKFILL_VERSION,
+    METADATA_BACKFILL_BASE_DELAY_SECONDS,
+    METADATA_BACKFILL_MAX_ATTEMPTS,
+    METADATA_BACKFILL_MAX_DELAY_SECONDS,
+    _add_user_day_key,
+    _apply_backfill_state_filters,
+    _backfill_delay_seconds,
+    _collect_backfill_day_keys,
+    _filter_backfill_item_ids,
+    _normalize_item_ids,
+    _record_backfill_failure,
+    _record_backfill_success,
+    _schedule_metadata_statistics_refresh,
+)
+from app.tasks_bulk_plays import (  # noqa: E402
+    bulk_episode_plays_task,
+    bulk_music_plays_task,
+)
+from app.tasks_credits import (  # noqa: E402
+    CREDITS_BACKFILL_ITEMS_QUEUE_KEY,
+    CREDITS_BACKFILL_ITEMS_SCHEDULED_KEY,
+    CREDITS_BACKFILL_QUEUE_TTL,
+    CREDITS_BACKFILL_SOURCES,
+    _missing_credits_item_ids,
+    _next_credits_backfill_item_ids,
+    _populate_credits_for_items,
+    enqueue_credits_backfill_items,
+    populate_credits_backfill_queue,
+    populate_credits_data_for_items,
+)
 from app.tasks_discover import (  # noqa: E402
     refresh_discover_profiles,
     refresh_discover_rows,
@@ -41,23 +70,9 @@ from app.tasks_discover import (  # noqa: E402
     warm_discover_startup_tabs,
     warm_history_day_cache_coverage,
 )
-from app.tasks_episode import populate_episode_runtime_data, populate_episode_runtime_queue  # noqa: E402
-from app.tasks_music import (  # noqa: E402
-    enrich_albums_task,
-    enrich_music_library_task,
-    fast_runtime_backfill_task,
-    populate_album_tracks_batch,
-    prefetch_album_covers_batch,
-)
-from app.tasks_trakt import (  # noqa: E402
-    TRAKT_POPULARITY_BACKFILL_ITEMS_QUEUE_KEY,
-    TRAKT_POPULARITY_BACKFILL_ITEMS_SCHEDULED_KEY,
-    TRAKT_POPULARITY_BACKFILL_QUEUE_TTL,
-    enqueue_trakt_popularity_backfill_items,
-    populate_trakt_episode_ratings_for_season,
-    populate_trakt_popularity_backfill_queue,
-    populate_trakt_popularity_data_for_items,
-    reconcile_trakt_popularity,
+from app.tasks_episode import (  # noqa: E402
+    populate_episode_runtime_data,
+    populate_episode_runtime_queue,
 )
 from app.tasks_genre import (  # noqa: E402
     GENRE_BACKFILL_ITEMS_QUEUE_KEY,
@@ -86,17 +101,19 @@ from app.tasks_igdb_ratings import (  # noqa: E402
     populate_igdb_rating_data_for_items,
     reconcile_igdb_rating_backfill,
 )
-from app.tasks_credits import (  # noqa: E402
-    CREDITS_BACKFILL_ITEMS_QUEUE_KEY,
-    CREDITS_BACKFILL_ITEMS_SCHEDULED_KEY,
-    CREDITS_BACKFILL_QUEUE_TTL,
-    CREDITS_BACKFILL_SOURCES,
-    _missing_credits_item_ids,
-    _next_credits_backfill_item_ids,
-    _populate_credits_for_items,
-    enqueue_credits_backfill_items,
-    populate_credits_backfill_queue,
-    populate_credits_data_for_items,
+from app.tasks_imdb import refresh_imdb_game_credits_from_datasets  # noqa: E402
+from app.tasks_metadata_cache import (  # noqa: E402
+    _clear_item_metadata_cache,
+    _exception_with_details,
+    _fetch_item_metadata,
+    _metadata_cache_keys_for_item,
+)
+from app.tasks_music import (  # noqa: E402
+    enrich_albums_task,
+    enrich_music_library_task,
+    fast_runtime_backfill_task,
+    populate_album_tracks_batch,
+    prefetch_album_covers_batch,
 )
 from app.tasks_runtime import (  # noqa: E402
     RUNTIME_BACKFILL_EPISODES_LOCK_PREFIX,
@@ -120,26 +137,15 @@ from app.tasks_runtime import (  # noqa: E402
     populate_runtime_data_continuous,
     populate_runtime_data_for_items,
 )
-from app.tasks_metadata_cache import (  # noqa: E402
-    _clear_item_metadata_cache,
-    _exception_with_details,
-    _fetch_item_metadata,
-    _metadata_cache_keys_for_item,
-)
-from app.tasks_backfill_state import (  # noqa: E402
-    GENRE_BACKFILL_VERSION,
-    METADATA_BACKFILL_BASE_DELAY_SECONDS,
-    METADATA_BACKFILL_MAX_DELAY_SECONDS,
-    METADATA_BACKFILL_MAX_ATTEMPTS,
-    _add_user_day_key,
-    _apply_backfill_state_filters,
-    _backfill_delay_seconds,
-    _collect_backfill_day_keys,
-    _filter_backfill_item_ids,
-    _normalize_item_ids,
-    _record_backfill_failure,
-    _record_backfill_success,
-    _schedule_metadata_statistics_refresh,
+from app.tasks_trakt import (  # noqa: E402
+    TRAKT_POPULARITY_BACKFILL_ITEMS_QUEUE_KEY,
+    TRAKT_POPULARITY_BACKFILL_ITEMS_SCHEDULED_KEY,
+    TRAKT_POPULARITY_BACKFILL_QUEUE_TTL,
+    enqueue_trakt_popularity_backfill_items,
+    populate_trakt_episode_ratings_for_season,
+    populate_trakt_popularity_backfill_queue,
+    populate_trakt_popularity_data_for_items,
+    reconcile_trakt_popularity,
 )
 
 RELEASE_BACKFILL_SOURCES = (

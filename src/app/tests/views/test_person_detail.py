@@ -8,9 +8,11 @@ from django.utils import timezone
 
 from app.models import (
     CREDITS_BACKFILL_VERSION,
+    TV,
     Book,
     Comic,
     CreditRoleType,
+    Episode,
     Item,
     ItemPersonCredit,
     ItemStudioCredit,
@@ -19,14 +21,12 @@ from app.models import (
     MetadataBackfillField,
     MetadataBackfillState,
     Movie,
-    Episode,
     Person,
     PersonGender,
     Season,
     Sources,
     Status,
     Studio,
-    TV,
 )
 from users.models import DateFormatChoices
 

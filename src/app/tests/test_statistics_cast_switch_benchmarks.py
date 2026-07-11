@@ -15,6 +15,7 @@ from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
 
+from app import statistics_cache
 from app.models import (
     CreditRoleType,
     Item,
@@ -26,7 +27,6 @@ from app.models import (
     Sources,
     Status,
 )
-from app import statistics_cache
 
 logging.disable(logging.INFO)
 

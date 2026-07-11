@@ -17,7 +17,18 @@ from django.urls import reverse
 from django.utils import timezone
 
 from app import statistics_cache
-from app.models import Album, Artist, Book, Game, Item, MediaTypes, Movie, Music, Sources, Status
+from app.models import (
+    Album,
+    Artist,
+    Book,
+    Game,
+    Item,
+    MediaTypes,
+    Movie,
+    Music,
+    Sources,
+    Status,
+)
 
 logging.disable(logging.DEBUG)
 

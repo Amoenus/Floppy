@@ -2199,8 +2199,9 @@ def _cached_row_section(
     Empty rows are cached with a sentinel so their (potentially expensive)
     smart-rule scans are also skipped on warm loads.
     """
-    from app import cache_utils  # noqa: PLC0415 - avoid circular import
     from django.core.cache import cache  # noqa: PLC0415
+
+    from app import cache_utils  # noqa: PLC0415 - avoid circular import
 
     cache_key = cache_utils.build_home_row_cache_key(user.id, row.id, items_limit)
     cached = None if refresh else cache.get(cache_key)

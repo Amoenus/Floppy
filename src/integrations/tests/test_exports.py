@@ -9,9 +9,9 @@ from django.urls import reverse
 
 from app.mixins import disable_fetch_releases
 from app.models import (
-    Anime,
     Album,
     AlbumTracker,
+    Anime,
     Artist,
     ArtistTracker,
     Book,

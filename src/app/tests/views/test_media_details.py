@@ -465,7 +465,7 @@ class MediaDetailsViewTests(TestCase):
         self.assertIn(reverse("sync_metadata", kwargs={"source": Sources.TMDB.value, "media_type": MediaTypes.MOVIE.value, "media_id": "238"}), content)
         self.assertNotIn('hx-post="', content)
         self.assertNotIn('<h2 class="text-xl font-bold mb-4">Actions</h2>', content)
-        self.assertNotIn('mt-4 p-3 rounded-lg w-full flex items-center', content)
+        self.assertNotIn("mt-4 p-3 rounded-lg w-full flex items-center", content)
         self.assertIn("mobilePreviewText", content)
         self.assertIn("fullSynopsisText:", content)
         self.assertIn(

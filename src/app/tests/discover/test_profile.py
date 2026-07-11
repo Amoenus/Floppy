@@ -1,13 +1,14 @@
 from datetime import timedelta
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
-from unittest.mock import patch
 
 from app.discover import cache_repo
 from app.discover.profile import compute_taste_profile, get_or_compute_taste_profile
 from app.models import (
+    TV,
     Anime,
     CreditRoleType,
     DiscoverFeedback,
@@ -22,7 +23,6 @@ from app.models import (
     Sources,
     Status,
     Studio,
-    TV,
     Tag,
 )
 

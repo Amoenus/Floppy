@@ -11,17 +11,16 @@ from django.dispatch import receiver
 from django_celery_results.models import TaskResult
 
 from app import credits as credit_helpers
-from app import history_cache
-from app import statistics_cache
+from app import history_cache, statistics_cache
 from app.discover import tab_cache as discover_tab_cache
 from app.models import (
     TV,
     Anime,
     BoardGame,
     Book,
+    CollectionEntry,
     Comic,
     ComicIssue,
-    CollectionEntry,
     DiscoverFeedback,
     DiscoverFeedbackType,
     Episode,
@@ -813,19 +812,19 @@ def schedule_runtime_backfill_on_item_save(
     runtime_updated = (
         update_fields is None or "runtime_minutes" in update_fields
     ) and instance.media_type == MediaTypes.EPISODE.value
-    
+
     # Invalidate time_left cache for all users tracking this show/season when runtime changes
     if runtime_updated:
         from app.cache_utils import clear_time_left_cache_for_user
         from app.models import BasicMedia
-        
+
         # Get all users who track this show or season
         tracking_users = BasicMedia.objects.filter(
             item__media_id=instance.media_id,
             item__source=instance.source,
             item__media_type__in=[MediaTypes.TV.value, MediaTypes.SEASON.value],
         ).values_list("user_id", flat=True).distinct()
-        
+
         from app.cache_utils import (
             clear_home_row_cache_for_user,
             clear_media_list_cache_for_user,
@@ -839,7 +838,7 @@ def schedule_runtime_backfill_on_item_save(
                 user_id,
                 instance,
             )
-    
+
     if instance.runtime_minutes is not None and instance.runtime_minutes != 999999:
         MetadataBackfillState.objects.filter(
             item=instance,
