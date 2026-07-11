@@ -262,9 +262,7 @@ def normalize_rule_payload(payload, owner):
         normalized_media_types.append(value)
 
     status = str(_payload_get(payload, "status", "all") or "all").strip()
-    if not status or status.lower() == "all" or status == "All":
-        status = "all"
-    elif status not in Status.values:
+    if not status or status.lower() == "all" or status == "All" or status not in Status.values:
         status = "all"
 
     rating = str(_payload_get(payload, "rating", "all") or "all").strip().lower()

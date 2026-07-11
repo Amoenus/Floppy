@@ -12,8 +12,8 @@ from app.mixins import disable_fetch_releases
 from integrations.imports import (
     anilist,
     audiobookshelf,
-    gpodder,
     goodreads,
+    gpodder,
     hardcover,
     helpers,
     hltb,

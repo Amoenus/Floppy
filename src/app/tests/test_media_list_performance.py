@@ -155,7 +155,7 @@ class FullViewWallClockTests(TestCase):
             ms, _ = self._time_view(f"  {size} items", size)
             results.append((size, ms))
 
-        print(f"\n[PERF] Scaling summary:")
+        print("\n[PERF] Scaling summary:")
         for size, ms in results:
             ratio = ms / results[0][1] if results[0][1] > 0 else 0
             print(f"  {size:>5} items: {ms:>8.0f}ms ({ratio:.1f}x vs 100)")
@@ -186,11 +186,11 @@ class FullViewWallClockTests(TestCase):
             queries = connection.queries[:]
 
         sql_ms = sum(float(q["time"]) for q in queries) * 1000
-        print(f"\n[PERF] Full view (1000 items, genre='Action'):")
+        print("\n[PERF] Full view (1000 items, genre='Action'):")
         print(f"  Total wall-clock: {elapsed_ms:.0f}ms")
         print(f"  SQL time: {sql_ms:.0f}ms ({len(queries)} queries)")
         print(f"  Python time: {elapsed_ms - sql_ms:.0f}ms")
-        print(f"  Genre='Action' applied via SQL; fewer rows materialized in Python.")
+        print("  Genre='Action' applied via SQL; fewer rows materialized in Python.")
 
 
 class CacheLookupOverheadTests(TestCase):
@@ -232,7 +232,7 @@ class CacheLookupOverheadTests(TestCase):
             response = media_list(request, MediaTypes.MOVIE.value)
             elapsed_ms = (time.perf_counter() - start) * 1000
 
-        print(f"\n[PERF] Cache lookups (500 items, no DB metadata):")
+        print("\n[PERF] Cache lookups (500 items, no DB metadata):")
         print(f"  cache.get() calls: {cache_call_count[0]}")
         print(f"  Wall-clock: {elapsed_ms:.0f}ms")
         self.assertLess(
@@ -264,11 +264,11 @@ class CacheLookupOverheadTests(TestCase):
             response = media_list(request, MediaTypes.MOVIE.value)
             elapsed_ms = (time.perf_counter() - start) * 1000
 
-        print(f"\n[PERF] Cache lookups (500 items, WITH DB metadata):")
+        print("\n[PERF] Cache lookups (500 items, WITH DB metadata):")
         print(f"  cache.get() calls: {cache_call_count[0]}")
         print(f"  Wall-clock: {elapsed_ms:.0f}ms")
         if cache_call_count[0] < 50:
-            print(f"  DB fields populated -> cache lookups avoided!")
+            print("  DB fields populated -> cache lookups avoided!")
 
 
 class CollectionFilterN1Tests(TestCase):
@@ -305,7 +305,7 @@ class CollectionFilterN1Tests(TestCase):
             q for q in queries
             if "app_collectionentry" in q["sql"].lower()
         ]
-        print(f"\n[PERF] Collection filter (50 movies, 'not_collected'):")
+        print("\n[PERF] Collection filter (50 movies, 'not_collected'):")
         print(f"  Total SQL queries: {len(queries)}")
         print(f"  CollectionEntry queries: {len(collection_queries)}")
         print(f"  Wall-clock: {elapsed_ms:.0f}ms")
@@ -353,14 +353,14 @@ class DuplicateAggregationTests(TestCase):
             if "app_movie" in q["sql"] and "row_number" not in q["sql"]
             and "events_event" not in q["sql"]
         ]
-        print(f"\n[PERF] Aggregation overhead (500 items, no duplicates):")
+        print("\n[PERF] Aggregation overhead (500 items, no duplicates):")
         print(f"  Total SELECT queries: {len(select_queries)}")
         print(f"  Aggregation re-fetch queries: {len(agg_queries)}")
         for i, q in enumerate(agg_queries):
             ms = float(q["time"]) * 1000
             print(f"    Q{i + 1} ({ms:.1f}ms): {q['sql'][:100]}...")
         print(f"  This query re-loads all {len(result)} items just to check")
-        print(f"  for duplicates, even when there are none.")
+        print("  for duplicates, even when there are none.")
 
 
 class MaterializationWasteTests(TestCase):
@@ -398,13 +398,13 @@ class MaterializationWasteTests(TestCase):
             queries = connection.queries[:]
 
         sql_ms = sum(float(q["time"]) for q in queries) * 1000
-        print(f"\n[PERF] Materialization waste (1000 items, page 1 of 32):")
+        print("\n[PERF] Materialization waste (1000 items, page 1 of 32):")
         print(f"  Wall-clock:   {elapsed_ms:.0f}ms")
         print(f"  SQL time:     {sql_ms:.0f}ms")
         print(f"  Python time:  {elapsed_ms - sql_ms:.0f}ms")
-        print(f"  Items loaded: 1000")
-        print(f"  Items shown:  32 (page 1)")
+        print("  Items loaded: 1000")
+        print("  Items shown:  32 (page 1)")
         print(f"  Waste ratio:  {1000 / 32:.0f}x")
-        print(f"  All 1000 items go through: build_filter_data_from_items,")
-        print(f"  apply_latest_status_filter, and all Python filter functions")
-        print(f"  before pagination reduces to 32.")
+        print("  All 1000 items go through: build_filter_data_from_items,")
+        print("  apply_latest_status_filter, and all Python filter functions")
+        print("  before pagination reduces to 32.")

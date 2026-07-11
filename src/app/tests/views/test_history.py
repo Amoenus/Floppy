@@ -9,6 +9,7 @@ from django.utils import timezone
 from app import history_cache
 from app.models import (
     CREDITS_BACKFILL_VERSION,
+    TV,
     Album,
     Artist,
     Book,
@@ -17,14 +18,14 @@ from app.models import (
     Episode,
     Game,
     Item,
-    ItemStudioCredit,
     ItemPersonCredit,
+    ItemStudioCredit,
     Manga,
     MediaTypes,
     MetadataBackfillField,
     MetadataBackfillState,
-    Music,
     Movie,
+    Music,
     Person,
     PersonGender,
     Season,
@@ -32,7 +33,6 @@ from app.models import (
     Status,
     Studio,
     Track,
-    TV,
 )
 
 

@@ -1,7 +1,8 @@
-import re
-from datetime import datetime, time as datetime_time, timedelta
-from decimal import Decimal, InvalidOperation
 import math
+import re
+from datetime import datetime, timedelta
+from datetime import time as datetime_time
+from decimal import Decimal, InvalidOperation
 
 from django import forms
 from django.conf import settings
@@ -383,7 +384,7 @@ class MangaForm(MediaForm):
         """Initialize the form."""
         max_progress = kwargs.pop("max_progress", None)
         super().__init__(*args, **kwargs)
-        
+
         # Adjust progress field for percentage mode
         if self.user and self.user.book_comic_manga_progress_percentage:
             self.fields["progress"].label = "Progress (%)"
@@ -488,7 +489,7 @@ class BookForm(MediaForm):
         """Initialize the form."""
         max_progress = kwargs.pop("max_progress", None)
         super().__init__(*args, **kwargs)
-        
+
         # Adjust progress field for percentage mode
         if self.user and self.user.book_comic_manga_progress_percentage:
             self.fields["progress"].label = "Progress (%)"
@@ -517,7 +518,7 @@ class ComicForm(MediaForm):
         """Initialize the form."""
         max_progress = kwargs.pop("max_progress", None)
         super().__init__(*args, **kwargs)
-        
+
         # Adjust progress field for percentage mode
         if self.user and self.user.book_comic_manga_progress_percentage:
             self.fields["progress"].label = "Progress (%)"

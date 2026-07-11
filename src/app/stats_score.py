@@ -274,8 +274,7 @@ def get_score_distribution(user_media):
                 )
 
             binned_score = int(score_value_scaled)
-            if binned_score > score_scale_max:
-                binned_score = score_scale_max
+            binned_score = min(binned_score, score_scale_max)
             score_counts[binned_score] += 1
             total_scored += 1
             total_score_sum += score_value_scaled

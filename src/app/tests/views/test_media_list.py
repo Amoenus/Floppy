@@ -10,26 +10,26 @@ from django.utils import timezone
 
 from app import cache_utils
 from app.models import (
+    TV,
     Album,
     Anime,
     Artist,
     ArtistTracker,
     BasicMedia,
     Book,
+    CollectionEntry,
     Comic,
     ComicIssue,
-    CollectionEntry,
     Episode,
     Game,
     Item,
     Manga,
     MediaTypes,
-    Music,
     Movie,
+    Music,
     Season,
     Sources,
     Status,
-    TV,
 )
 from app.templatetags import app_tags
 from events.models import Event

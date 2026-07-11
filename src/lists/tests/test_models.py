@@ -8,15 +8,15 @@ from django.test import TestCase
 from django.utils import timezone
 
 from app.models import (
+    TV,
     CollectionEntry,
     Game,
     Item,
     MediaTypes,
-    Music,
     Movie,
+    Music,
     Sources,
     Status,
-    TV,
 )
 from lists import smart_rules
 from lists.models import CustomList, CustomListItem

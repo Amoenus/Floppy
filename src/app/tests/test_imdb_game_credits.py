@@ -13,8 +13,8 @@ from app.models import (
     MetadataBackfillState,
     Person,
     PersonGender,
-    Studio,
     Sources,
+    Studio,
 )
 from app.providers import services
 from app.services import imdb_game_credits

@@ -1,5 +1,5 @@
-from datetime import date, datetime, timedelta
 import re
+from datetime import date, datetime, timedelta
 from unittest.mock import call, patch
 
 from dateutil.relativedelta import relativedelta
@@ -12,26 +12,28 @@ from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
 
-from app import history_cache, statistics as stats, statistics_cache
+from app import history_cache, statistics_cache
+from app import statistics as stats
 from app.models import (
+    CREDITS_BACKFILL_VERSION,
+    TV,
     Album,
     Anime,
     Artist,
     Book,
     Comic,
-    CREDITS_BACKFILL_VERSION,
     CreditRoleType,
     Episode,
     Game,
     Item,
     ItemPersonCredit,
     ItemStudioCredit,
-    Music,
+    Manga,
     MediaTypes,
     MetadataBackfillField,
     MetadataBackfillState,
     Movie,
-    Manga,
+    Music,
     Person,
     PersonGender,
     Podcast,
@@ -39,7 +41,6 @@ from app.models import (
     Sources,
     Status,
     Studio,
-    TV,
 )
 from users.templatetags.user_tags import user_date_format
 

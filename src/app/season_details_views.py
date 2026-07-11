@@ -3,8 +3,8 @@ import logging
 import time
 
 from django.conf import settings
-from django.db import IntegrityError, transaction
 from django.contrib.auth.decorators import login_not_required
+from django.db import IntegrityError, transaction
 from django.shortcuts import render
 from django.utils import timezone
 from django.views.decorators.http import require_GET
@@ -46,7 +46,10 @@ from app.tag_views import (
     _detail_request_url,
     _resolve_detail_tag_genres,
 )
-from app.view_constants import DETAIL_SECONDARY_FRAGMENT, LOCAL_ONLY_MISSING_SEASON_BANNER
+from app.view_constants import (
+    DETAIL_SECONDARY_FRAGMENT,
+    LOCAL_ONLY_MISSING_SEASON_BANNER,
+)
 from lists.models import CustomList
 
 logger = logging.getLogger(__name__)
@@ -420,7 +423,10 @@ def season_details(
                 batch_size=100,
             )
             # Invalidate time_left + media_list cache for all users
-            from app.cache_utils import clear_time_left_cache_for_user, clear_media_list_cache_for_user
+            from app.cache_utils import (
+                clear_media_list_cache_for_user,
+                clear_time_left_cache_for_user,
+            )
             # Get all users who track this show
             tracking_users = BasicMedia.objects.filter(
                 item__media_id=media_id,
@@ -444,7 +450,9 @@ def season_details(
                 trakt_rating__isnull=True,
             ).exists()
         ):
-            from app.tasks_trakt import populate_trakt_episode_ratings_for_season  # noqa: PLC0415
+            from app.tasks_trakt import (
+                populate_trakt_episode_ratings_for_season,  # noqa: PLC0415
+            )
             populate_trakt_episode_ratings_for_season.delay(
                 str(media_id), source, season_number
             )
@@ -601,7 +609,9 @@ def season_details(
             get_season_collection_metadata,
             get_season_collection_stats,
         )
-        from app.models import Item as ItemModel  # Use alias to avoid any potential shadowing
+        from app.models import (
+            Item as ItemModel,  # Use alias to avoid any potential shadowing
+        )
 
         # season_item is already scoped by library_media_type at the top of this view
         try:
@@ -633,7 +643,9 @@ def season_details(
                     plex_account = getattr(request.user, "plex_account", None)
                     if plex_account and plex_account.plex_token:
                         try:
-                            from integrations.tasks import fetch_collection_metadata_for_item
+                            from integrations.tasks import (
+                                fetch_collection_metadata_for_item,
+                            )
                             # Trigger background task to fetch collection data for the show
                             result = fetch_collection_metadata_for_item.delay(
                                 user_id=request.user.id,

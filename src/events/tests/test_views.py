@@ -9,7 +9,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from app import models as app_models
-from app.models import Item, MediaTypes, Movie, Season, Sources, Status, TV
+from app.models import TV, Item, MediaTypes, Movie, Season, Sources, Status
 from events.models import Event
 
 

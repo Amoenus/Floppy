@@ -131,6 +131,7 @@ def _resolve_tvdb_id_via_imdb(
     will persist the corrected ID automatically.
     """
     import re  # noqa: PLC0415
+
     from app.providers import tvdb  # noqa: PLC0415
 
     imdb_link = ((tmdb_metadata or {}).get("external_links") or {}).get("IMDb", "")

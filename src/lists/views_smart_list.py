@@ -17,13 +17,16 @@ from django.shortcuts import render
 from django.urls import reverse
 
 from app import helpers
-from app.columns import resolve_column_config, resolve_columns, resolve_default_column_config
+from app.columns import (
+    resolve_column_config,
+    resolve_columns,
+    resolve_default_column_config,
+)
 from app.models import Item, MediaTypes
 from app.release_years import prefill_display_release_years
-from lists.forms import CustomListForm
 from lists import smart_rules
+from lists.forms import CustomListForm
 from lists.models import CustomList, CustomListItem
-from users.models import ListDetailSortChoices, MediaStatusChoices
 from lists.views_helpers import (
     _adapt_list_items_for_table,
     _attach_media_with_aggregation,
@@ -37,6 +40,7 @@ from lists.views_helpers import (
     _resolve_list_sort_direction,
     _resolve_list_table_media_type,
 )
+from users.models import ListDetailSortChoices, MediaStatusChoices
 
 logger = logging.getLogger(__name__)
 

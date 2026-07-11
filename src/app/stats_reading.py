@@ -391,8 +391,7 @@ def get_reading_consumption_stats(user_media, start_date, end_date, media_type):
 
     for item_id, entries in grouped_entries.items():
         total_item_units = sum((entry.progress or 0) for entry in entries)
-        if total_item_units <= 0:
-            total_item_units = 0
+        total_item_units = max(0, total_item_units)
 
         latest_entry = max(
             entries,

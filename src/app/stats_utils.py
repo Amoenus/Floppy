@@ -272,8 +272,7 @@ def _get_entry_play_dates(entry):
         if start_local and end_local:
             start_date = start_local.date()
             end_date = end_local.date()
-            if end_date < start_date:
-                end_date = start_date
+            end_date = max(end_date, start_date)
             current = start_date
             while current <= end_date:
                 dates.add(current)

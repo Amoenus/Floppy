@@ -276,7 +276,7 @@ class GetHorizontalHistoryImageTests(TestCase):
     @patch("lists.models.CustomList._get_tmdb_backdrop")
     def test_tv_show_uses_redis_cache_without_network_call(self, mock_backdrop):
         item = _tv_item_dict()  # Breaking Bad, media_id=1396
-        cache.set(f"tmdb_backdrop_tv_1396", BACKDROP_URL, 60)
+        cache.set("tmdb_backdrop_tv_1396", BACKDROP_URL, 60)
 
         result = statistics_cache._get_horizontal_history_image(item, PORTRAIT_POSTER)
 

@@ -1197,27 +1197,7 @@ def get_discover_rows(
 
             if cached_payload:
                 row = RowResult.from_dict(cached_payload)
-                if row.source != row_definition.source:
-                    row = _build_and_cache_row(
-                        user,
-                        media_type,
-                        row_definition,
-                        profile_payload,
-                        seen_identities=seen_identities,
-                        defer_artwork=defer_artwork,
-                        show_more=show_more,
-                    )
-                elif not _is_row_cache_compatible(media_type, row_definition, cached_payload):
-                    row = _build_and_cache_row(
-                        user,
-                        media_type,
-                        row_definition,
-                        profile_payload,
-                        seen_identities=seen_identities,
-                        defer_artwork=defer_artwork,
-                        show_more=show_more,
-                    )
-                elif not _row_cache_matches_activity_version(user.id, media_type, cached_payload):
+                if row.source != row_definition.source or not _is_row_cache_compatible(media_type, row_definition, cached_payload) or not _row_cache_matches_activity_version(user.id, media_type, cached_payload):
                     row = _build_and_cache_row(
                         user,
                         media_type,

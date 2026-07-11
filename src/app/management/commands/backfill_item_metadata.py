@@ -1,6 +1,7 @@
 """Management command to backfill metadata fields for existing Items."""
 from django.core.management.base import BaseCommand
 from django.utils import timezone
+
 from app import metadata_utils
 from app.models import Item
 from app.providers import services
@@ -9,44 +10,44 @@ from app.providers import services
 class Command(BaseCommand):
     """Backfill metadata fields for existing Items."""
 
-    help = 'Backfill metadata fields for existing Items that have never been fetched'
+    help = "Backfill metadata fields for existing Items that have never been fetched"
 
     def add_arguments(self, parser):
         """Add command line arguments."""
         parser.add_argument(
-            '--limit',
+            "--limit",
             type=int,
             default=None,
-            help='Limit number of items to process (for testing)'
+            help="Limit number of items to process (for testing)"
         )
         parser.add_argument(
-            '--media-type',
+            "--media-type",
             type=str,
             default=None,
             help='Only process specific media type (e.g., "tv", "movie", "anime")'
         )
         parser.add_argument(
-            '--force',
-            action='store_true',
-            help='Force re-fetch metadata even if already fetched before'
+            "--force",
+            action="store_true",
+            help="Force re-fetch metadata even if already fetched before"
         )
 
     def handle(self, *args, **options):
         """Execute the command."""
         # Filter items that have never had metadata fetched
         # (metadata_fetched_at is NULL means we've never tried)
-        if options['force']:
+        if options["force"]:
             queryset = Item.objects.all()
             self.stdout.write("Force mode: Re-fetching metadata for ALL items")
         else:
             queryset = Item.objects.filter(metadata_fetched_at__isnull=True)
             self.stdout.write("Only fetching metadata for items never checked before")
 
-        if options['media_type']:
-            queryset = queryset.filter(media_type=options['media_type'])
+        if options["media_type"]:
+            queryset = queryset.filter(media_type=options["media_type"])
 
-        if options['limit']:
-            queryset = queryset[:options['limit']]
+        if options["limit"]:
+            queryset = queryset[:options["limit"]]
 
         total = queryset.count()
         self.stdout.write(f"Backfilling metadata for {total} items...")

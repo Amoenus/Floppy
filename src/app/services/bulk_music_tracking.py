@@ -26,15 +26,15 @@ from app.models import (
     Status,
     Track,
 )
-from app.signals import (
-    flush_media_change_side_effects,
-    suppress_media_change_side_effects,
-)
 from app.services import music as music_services
 from app.services.bulk_episode_tracking import (
     coerce_episode_datetime,
     distribute_target_timestamps,
     distribute_timestamps,
+)
+from app.signals import (
+    flush_media_change_side_effects,
+    suppress_media_change_side_effects,
 )
 
 logger = logging.getLogger(__name__)

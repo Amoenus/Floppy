@@ -22,7 +22,8 @@ from app.models import (
     Sources,
     Status,
 )
-from integrations import gpodder_api, models as integration_models, podcast_rss
+from integrations import gpodder_api, podcast_rss
+from integrations import models as integration_models
 from integrations.imports.helpers import MediaImportError, decrypt
 
 logger = logging.getLogger(__name__)

@@ -401,29 +401,6 @@ def get_status_color(status):
 # Re-exports from extracted submodules — keeps all callers using
 # `from app import statistics as stats` fully transparent.
 # ---------------------------------------------------------------------------
-from app.stats_utils import (  # noqa: E402,F401
-    MEDIA_TYPE_HOURS_ORDER,
-    _CombinedMediaBucket,
-    _CombinedValuesResult,
-    _coerce_genre_list,
-    _format_hours_minutes,
-    _format_long_units,
-    _get_activity_datetime,
-    _get_entry_play_dates,
-    _infer_user_from_user_media,
-    _is_media_in_date_range,
-    _iter_media_list,
-    _localize_datetime,
-    parse_runtime_to_minutes,
-)
-from app.stats_charts import (  # noqa: E402,F401
-    _build_completed_length_distribution_chart,
-    _build_media_charts,
-    _build_release_year_chart,
-    _build_single_series_chart,
-    _compute_metric_breakdown,
-    _format_hour_label,
-)
 from app.stats_activity import (  # noqa: E402,F401
     _convert_chart_to_day_minutes,
     calculate_day_of_week_stats,
@@ -437,46 +414,15 @@ from app.stats_activity import (  # noqa: E402,F401
     get_timeline,
     time_line_sort_key,
 )
-from app.stats_time import (  # noqa: E402,F401
-    _calculate_anime_time,
-    _calculate_episode_time_from_cache,
-    _calculate_episode_time_from_data,
-    _calculate_game_time_in_range,
-    _calculate_movie_time,
-    _calculate_music_time,
-    _calculate_tv_time,
-    _get_anime_runtime_from_cache,
-    _get_media_metadata_for_statistics,
-    _get_media_runtime_from_cache,
-    _get_music_runtime_minutes,
-    _get_season_metadata,
-    _get_season_metadata_with_episodes,
-    _is_episode_in_range,
-    calculate_minutes_per_media_type,
-    get_hours_per_media_type,
+from app.stats_charts import (  # noqa: E402,F401
+    _build_completed_length_distribution_chart,
+    _build_media_charts,
+    _build_release_year_chart,
+    _build_single_series_chart,
+    _compute_metric_breakdown,
+    _format_hour_label,
 )
-from app.stats_score import (  # noqa: E402,F401
-    _annotate_top_rated_media,
-    get_score_distribution,
-)
-from app.stats_podcast import (  # noqa: E402,F401
-    _collect_podcast_play_data,
-    _compute_podcast_top_lists,
-    _get_podcast_history_data,
-    _get_podcast_runtime_minutes,
-    get_podcast_consumption_stats,
-)
-from app.stats_reading import (  # noqa: E402,F401
-    _build_reading_top_authors,
-    _build_weighted_media_charts,
-    _extract_cached_item_authors,
-    _extract_item_authors,
-    _fetch_reading_items_with_authors,
-    _format_reading_unit,
-    _normalize_item_author_names,
-    _reading_entry_in_range,
-    get_reading_consumption_stats,
-)
+from app.stats_daily_hours import get_daily_hours_by_media_type  # noqa: E402,F401
 from app.stats_game import (  # noqa: E402,F401
     DAILY_AVERAGE_BANDS,
     _build_daily_average_band_top_games,
@@ -501,6 +447,62 @@ from app.stats_music import (  # noqa: E402,F401
     _parse_release_date_str,
     get_music_consumption_stats,
 )
+from app.stats_podcast import (  # noqa: E402,F401
+    _collect_podcast_play_data,
+    _compute_podcast_top_lists,
+    _get_podcast_history_data,
+    _get_podcast_runtime_minutes,
+    get_podcast_consumption_stats,
+)
+from app.stats_reading import (  # noqa: E402,F401
+    _build_reading_top_authors,
+    _build_weighted_media_charts,
+    _extract_cached_item_authors,
+    _extract_item_authors,
+    _fetch_reading_items_with_authors,
+    _format_reading_unit,
+    _normalize_item_author_names,
+    _reading_entry_in_range,
+    get_reading_consumption_stats,
+)
+from app.stats_score import (  # noqa: E402,F401
+    _annotate_top_rated_media,
+    get_score_distribution,
+)
+from app.stats_time import (  # noqa: E402,F401
+    _calculate_anime_time,
+    _calculate_episode_time_from_cache,
+    _calculate_episode_time_from_data,
+    _calculate_game_time_in_range,
+    _calculate_movie_time,
+    _calculate_music_time,
+    _calculate_tv_time,
+    _get_anime_runtime_from_cache,
+    _get_media_metadata_for_statistics,
+    _get_media_runtime_from_cache,
+    _get_music_runtime_minutes,
+    _get_season_metadata,
+    _get_season_metadata_with_episodes,
+    _is_episode_in_range,
+    calculate_minutes_per_media_type,
+    get_hours_per_media_type,
+)
+from app.stats_top_played import get_top_played_media  # noqa: E402,F401
+from app.stats_utils import (  # noqa: E402,F401
+    MEDIA_TYPE_HOURS_ORDER,
+    _coerce_genre_list,
+    _CombinedMediaBucket,
+    _CombinedValuesResult,
+    _format_hours_minutes,
+    _format_long_units,
+    _get_activity_datetime,
+    _get_entry_play_dates,
+    _infer_user_from_user_media,
+    _is_media_in_date_range,
+    _iter_media_list,
+    _localize_datetime,
+    parse_runtime_to_minutes,
+)
 from app.stats_video import (  # noqa: E402,F401
     _collect_episode_datetimes,
     _collect_movie_datetimes,
@@ -511,5 +513,3 @@ from app.stats_video import (  # noqa: E402,F401
     get_movie_consumption_stats,
     get_tv_consumption_stats,
 )
-from app.stats_daily_hours import get_daily_hours_by_media_type  # noqa: E402,F401
-from app.stats_top_played import get_top_played_media  # noqa: E402,F401

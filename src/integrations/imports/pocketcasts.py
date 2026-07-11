@@ -236,7 +236,7 @@ class PocketCastsImporter:
         self._sync_window_start = None
         self._sync_window_end = None
         self._existing_history_items = None
-        
+
         # Track existing podcasts to calculate deltas
         # Use Sources.POCKETCASTS.value for consistency with lookup keys
         self.existing_podcasts = {}
@@ -811,7 +811,7 @@ class PocketCastsImporter:
             inferred_podcasts: Optional list of (end_time, buffer_seconds) tuples
         """
         intervals = []
-        
+
         # Add scrobbled items (music, etc.) as blocked intervals
         for end_date, duration, _, is_scrobbled in existing_history_items:
             if not is_scrobbled or not end_date:
@@ -826,7 +826,7 @@ class PocketCastsImporter:
             start = max(start, sync_window_start)
             end = min(end_date, sync_window_end)
             intervals.append((start, end))
-        
+
         # Add previously inferred podcast completions as blocked intervals
         # This prevents multiple podcasts from overlapping
         if inferred_podcasts:
@@ -843,7 +843,7 @@ class PocketCastsImporter:
                 start = max(start, sync_window_start)
                 end = min(end, sync_window_end)
                 intervals.append((start, end))
-        
+
         return self._merge_intervals(intervals)
 
     def _has_gap_of_length(self, duration_seconds, sync_window_start, sync_window_end, blocked_intervals):
@@ -853,15 +853,14 @@ class PocketCastsImporter:
         """
         # Use capped duration for gap checking (same as fitting logic)
         check_duration = min(duration_seconds, 300)  # Max 5 minute buffer
-        
+
         if check_duration <= 0:
             return True
         cursor = sync_window_start
         for start, end in blocked_intervals:
             if (start - cursor).total_seconds() >= check_duration:
                 return True
-            if end > cursor:
-                cursor = end
+            cursor = max(cursor, end)
         return (sync_window_end - cursor).total_seconds() >= check_duration
 
     def _compute_gaps(self, sync_window_start, sync_window_end, blocked_intervals):
@@ -870,8 +869,7 @@ class PocketCastsImporter:
         for start, end in blocked_intervals:
             if start > cursor:
                 gaps.append((cursor, start))
-            if end > cursor:
-                cursor = end
+            cursor = max(cursor, end)
         if cursor < sync_window_end:
             gaps.append((cursor, sync_window_end))
         return gaps
@@ -887,11 +885,11 @@ class PocketCastsImporter:
         making this more flexible. For anchored cases, it's the remaining time.
         """
         max_end = sync_window_end
-        
+
         # For placement purposes, use a reasonable buffer (not full duration for long podcasts)
         # This prevents "can't fit 4 hours in 2 hour window" from triggering fallback
         placement_buffer = min(duration_seconds, 300)  # Max 5 minute buffer for fitting
-        
+
         min_end = sync_window_start + timedelta(seconds=placement_buffer)
         if min_end > max_end:
             # Even the minimum buffer doesn't fit - just place at window end
@@ -929,21 +927,21 @@ class PocketCastsImporter:
 
         gaps = self._compute_gaps(sync_window_start, sync_window_end, blocked_intervals)
         hash_int = self._stable_hash_int(episode_uuid)
-        
+
         if gaps:
             # Select a gap using hash (prefer larger gaps by weighting)
             # Sort gaps by size descending for better distribution
             sorted_gaps = sorted(gaps, key=lambda g: (g[1] - g[0]).total_seconds(), reverse=True)
             gap_start, gap_end = sorted_gaps[hash_int % len(sorted_gaps)]
             gap_seconds = int((gap_end - gap_start).total_seconds())
-            
+
             if gap_seconds <= 0:
                 return gap_start
-            
+
             # Boundary avoidance: don't land within 60s of gap boundaries
             # This prevents stacking at sync_window_start or sync_window_end
             buffer = min(60, gap_seconds // 4)  # At most 25% of gap, max 60 seconds
-            
+
             if gap_seconds > buffer * 2:
                 # Enough room for buffers on both ends
                 effective_gap = gap_seconds - (buffer * 2)
@@ -951,7 +949,7 @@ class PocketCastsImporter:
             else:
                 # Small gap: just use middle or hash distribution
                 offset_seconds = hash_int % gap_seconds
-            
+
             return gap_start + timedelta(seconds=offset_seconds)
 
         # No gaps: distribute across entire window with boundary avoidance
@@ -961,7 +959,7 @@ class PocketCastsImporter:
             offset_seconds = buffer + (hash_int % effective_window)
         else:
             offset_seconds = hash_int % max(1, window_seconds)
-        
+
         return sync_window_start + timedelta(seconds=offset_seconds)
 
     def _log_completion_inference(
@@ -1099,8 +1097,7 @@ class PocketCastsImporter:
             progress_seconds = last_progress_minutes * 60
             remaining_seconds = max(0, duration_seconds - progress_seconds)
             anchor_time = previous_sync_at or sync_window_start
-            if last_in_progress_date >= anchor_time:
-                anchor_time = last_in_progress_date
+            anchor_time = max(last_in_progress_date, anchor_time)
             base_completion_time = anchor_time + timedelta(seconds=remaining_seconds)
             placement_duration_seconds = remaining_seconds
         else:
@@ -1753,12 +1750,12 @@ class PocketCastsImporter:
                 item_update_fields.append("release_datetime")
             if item_update_fields:
                 item.save(update_fields=item_update_fields)
-            
+
             # Fallback lookup: if dict lookup failed, try querying by Item directly
             # This handles cases where episode UUID changed due to duplicate episode merging
             # or where existing_podcasts dict was built with stale UUIDs
             if not existing_podcast:
-                existing_podcast = Podcast.objects.filter(item=item, user=self.user).order_by('-created_at').first()
+                existing_podcast = Podcast.objects.filter(item=item, user=self.user).order_by("-created_at").first()
                 if existing_podcast:
                     # Cache it in the dict for future lookups in this import
                     self.existing_podcasts[(episode_uuid, Sources.POCKETCASTS.value)] = existing_podcast
@@ -1784,7 +1781,7 @@ class PocketCastsImporter:
                     incoming_uuid,
                     existing_podcast.id if existing_podcast else None,
                 )
-            
+
             # Extract progress data
             playing_status = episode_data.get("playingStatus", 0)  # 2=in-progress, 3=completed
             played_up_to = episode_data.get("playedUpTo", 0)  # in seconds
@@ -1816,7 +1813,7 @@ class PocketCastsImporter:
                         episode_uuid,
                     )
                 return
-            
+
             # Calculate progress delta and determine status
             if existing_podcast:
                 old_played_up_to = existing_podcast.played_up_to_seconds
@@ -1989,7 +1986,7 @@ class PocketCastsImporter:
                     user=self.user,
                     status=Status.COMPLETED.value
                 ).exclude(end_date__isnull=True).exists()
-                
+
                 if existing_completed:
                     logger.debug(
                         "Skipping episode %s - already has completed Podcast entry(ies) for Item %s, "
@@ -1998,7 +1995,7 @@ class PocketCastsImporter:
                         item.id
                     )
                     return
-                
+
                 # Create new
                 podcast = Podcast(
                     item=item,
@@ -2105,7 +2102,7 @@ class PocketCastsImporter:
         """
         if delta_seconds <= 0:
             return
-        
+
         # Check for duplicate history entry by comparing end_date (actual play completion time)
         # instead of history_date (when the history record was created)
         latest_history = podcast.history.filter(end_date__isnull=False).order_by("-end_date").first()

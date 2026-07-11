@@ -1183,18 +1183,18 @@ class StatisticsTests(TestCase):
             status=Status.IN_PROGRESS.value,
         )
 
-        user_media = {'game': FakeQuerySet([first_session, second_session, other_game])}
+        user_media = {"game": FakeQuerySet([first_session, second_session, other_game])}
 
         result = statistics.get_top_played_media(user_media, start_date, end_date)
 
-        self.assertIn('game', result)
-        self.assertEqual(len(result['game']), 2)
+        self.assertIn("game", result)
+        self.assertEqual(len(result["game"]), 2)
 
-        top_game = result['game'][0]
-        self.assertIs(top_game['media'], second_session)
-        self.assertEqual(top_game['play_count'], 2)
-        self.assertEqual(top_game['total_time_minutes'], 180)
-        self.assertEqual(top_game['formatted_duration'], minutes_to_hhmm(180))
+        top_game = result["game"][0]
+        self.assertIs(top_game["media"], second_session)
+        self.assertEqual(top_game["play_count"], 2)
+        self.assertEqual(top_game["total_time_minutes"], 180)
+        self.assertEqual(top_game["formatted_duration"], minutes_to_hhmm(180))
 
 
 class GameDailyAverageTests(TestCase):

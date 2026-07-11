@@ -290,8 +290,7 @@ def get_cached_history_page(user, page_number: int = 1, logging_style_override=N
         page_number = int(page_number)
     except (TypeError, ValueError):
         page_number = 1
-    if page_number < 1:
-        page_number = 1
+    page_number = max(page_number, 1)
 
     start_index = (page_number - 1) * HISTORY_DAYS_PER_PAGE
     end_index = start_index + HISTORY_DAYS_PER_PAGE

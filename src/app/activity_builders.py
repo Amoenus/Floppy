@@ -401,8 +401,7 @@ def _paginate_detail_episodes(
         requested_page = int(request.GET.get(page_param, 1))
     except (TypeError, ValueError):
         requested_page = 1
-    if requested_page < 1:
-        requested_page = 1
+    requested_page = max(requested_page, 1)
 
     try:
         page_obj = paginator.page(requested_page)

@@ -2,8 +2,8 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.signals import user_logged_in
 from django.db import connection
-from django.db.utils import OperationalError, ProgrammingError
 from django.db.models.signals import post_migrate
+from django.db.utils import OperationalError, ProgrammingError
 from django.dispatch import receiver
 
 from users.demo import ensure_demo_user

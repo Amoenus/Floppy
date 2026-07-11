@@ -6,15 +6,19 @@ from django.core.cache import cache
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
-from app.interactive_requests import INTERACTIVE_REQUEST_CACHE_KEY, INTERACTIVE_REQUEST_TTL_SECONDS
 from app import tasks
+from app.interactive_requests import (
+    INTERACTIVE_REQUEST_CACHE_KEY,
+    INTERACTIVE_REQUEST_TTL_SECONDS,
+)
 from app.models import (
-    BasicMedia,
     CREDITS_BACKFILL_VERSION,
+    TV,
+    BasicMedia,
     Episode,
     Item,
-    ItemProviderLink,
     ItemPersonCredit,
+    ItemProviderLink,
     ItemStudioCredit,
     MediaTypes,
     MetadataBackfillField,
@@ -25,7 +29,6 @@ from app.models import (
     Sources,
     Status,
     Studio,
-    TV,
 )
 from app.services import game_lengths as game_length_services
 from events.models import Event

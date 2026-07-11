@@ -10,10 +10,18 @@ from django.db import IntegrityError
 from django.utils.dateparse import parse_datetime
 
 import app
-from app.log_safety import mapping_keys
 from app import config
 from app import forms as app_forms
-from app.models import Album, AlbumTracker, Artist, ArtistTracker, MediaTypes, Sources, Status
+from app.log_safety import mapping_keys
+from app.models import (
+    Album,
+    AlbumTracker,
+    Artist,
+    ArtistTracker,
+    MediaTypes,
+    Sources,
+    Status,
+)
 from app.providers import services
 from app.templatetags import app_tags
 from integrations.imports import helpers

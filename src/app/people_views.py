@@ -18,8 +18,8 @@ from app.models import (
     Sources,
     Studio,
 )
-from users.models import MediaSortChoices
 from app.providers import comicvine, hardcover, igdb, mangaupdates, openlibrary, tmdb
+from users.models import MediaSortChoices
 
 logger = __import__("logging").getLogger(__name__)
 

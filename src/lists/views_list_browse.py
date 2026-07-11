@@ -22,7 +22,6 @@ from app import helpers
 from integrations.models import TraktAccount
 from lists.forms import CustomListForm
 from lists.models import CustomList, CustomListItem
-from users.models import ListSortChoices
 from lists.views_helpers import (
     _build_list_url_template,
     _get_completed_item_ids,
@@ -30,6 +29,7 @@ from lists.views_helpers import (
     _order_expression,
     _resolve_list_sort_direction,
 )
+from users.models import ListSortChoices
 
 logger = logging.getLogger(__name__)
 

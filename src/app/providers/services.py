@@ -13,8 +13,7 @@ from redis import ConnectionPool
 from requests.adapters import HTTPAdapter
 from requests_ratelimiter import LimiterAdapter, LimiterSession
 
-from app import helpers
-from app import config
+from app import config, helpers
 from app.log_safety import exception_summary, mapping_keys
 from app.models import Item, MediaTypes, Sources
 from app.providers import (
@@ -28,8 +27,8 @@ from app.providers import (
     musicbrainz,
     openlibrary,
     pocketcasts,
-    tvdb,
     tmdb,
+    tvdb,
 )
 
 logger = logging.getLogger(__name__)

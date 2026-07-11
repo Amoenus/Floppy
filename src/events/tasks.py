@@ -87,7 +87,10 @@ def reload_calendar(user_id=None, item_ids=None, user=None, items_to_process=Non
         # Backfill metadata for items that have never been fetched
         # Use aggressive batch size to complete initial backfill quickly
         try:
-            from app.tasks import backfill_item_metadata_task, count_release_backfill_items
+            from app.tasks import (
+                backfill_item_metadata_task,
+                count_release_backfill_items,
+            )
 
             remaining_metadata_count = Item.objects.filter(metadata_fetched_at__isnull=True).count()
             remaining_release_count = count_release_backfill_items()

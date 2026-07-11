@@ -365,18 +365,18 @@ def fetch_section_all_items(
         Tuple of (items list, total count)
     """
     import time
-    
+
     page_size = size or settings.PLEX_HISTORY_PAGE_SIZE
     params = {
         "X-Plex-Token": token,
         "X-Plex-Container-Start": start,
         "X-Plex-Container-Size": page_size,
     }
-    
+
     # Ensure section_key is numeric (section ID) or use it as-is if it's already a path
     if not section_key.startswith("/"):
         section_key = f"/library/sections/{section_key}"
-    
+
     last_exc = None
     for attempt in range(max_retries):
         try:
@@ -410,7 +410,7 @@ def fetch_section_all_items(
                     exc,
                 )
                 raise PlexClientError(f"Failed after {max_retries} attempts: {exc}") from exc
-    
+
     if last_exc:
         raise PlexClientError(str(last_exc)) from last_exc
 
@@ -651,37 +651,37 @@ def extract_external_ids_from_guids(guids: list[dict[str, Any] | str]) -> dict[s
         Dictionary with keys: 'tmdb_id', 'imdb_id', 'tvdb_id', 'plex_guid' (if found)
     """
     import re
-    
+
     external_ids = {}
-    
+
     for guid in guids:
         guid_value = guid.get("id") if isinstance(guid, dict) else guid
         if not guid_value:
             continue
-            
+
         guid_lower = guid_value.lower()
 
         if guid_lower.startswith("plex://") and "plex_guid" not in external_ids:
             external_ids["plex_guid"] = guid_value.split("plex://", 1)[1]
-        
+
         # Extract TMDB ID
         if "tmdb" in guid_lower or "themoviedb" in guid_lower:
             match = re.search(r"\d+", guid_value)
             if match and "tmdb_id" not in external_ids:
                 external_ids["tmdb_id"] = match.group(0)
-        
+
         # Extract IMDB ID (changed from elif to if so all IDs can be extracted)
         if "imdb" in guid_lower:
             match = re.search(r"tt\d+", guid_value)
             if match and "imdb_id" not in external_ids:
                 external_ids["imdb_id"] = match.group(0)
-        
+
         # Extract TVDB ID (changed from elif to if so all IDs can be extracted)
         if "tvdb" in guid_lower:
             match = re.search(r"\d+", guid_value)
             if match and "tvdb_id" not in external_ids:
                 external_ids["tvdb_id"] = match.group(0)
-    
+
     return external_ids
 
 

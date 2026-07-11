@@ -8,14 +8,14 @@ from django.apps import apps
 from django.conf import settings
 from django.contrib.auth.decorators import login_not_required
 from django.core.cache import cache
-from django.utils import timezone
 from django.shortcuts import render
+from django.utils import timezone
 from django.views.decorators.http import require_GET
 
 from app import (
     config,
-    custom_metadata,
     credits,
+    custom_metadata,
     helpers,
     metadata_utils,
     statistics_cache,
@@ -458,7 +458,8 @@ def media_details(
 
             # Get all episodes for this show, ordered by published date (newest first)
             # Use Coalesce to handle None published dates (put them at the end)
-            from datetime import datetime, timezone as dt_timezone
+            from datetime import datetime
+            from datetime import timezone as dt_timezone
 
             from django.db.models import DateTimeField, Value
             from django.db.models.functions import Coalesce
@@ -925,7 +926,7 @@ def media_details(
             if media_metadata.get("series_position") is not None and item.series_position != media_metadata["series_position"]:
                 item.series_position = media_metadata["series_position"]
                 update_fields.append("series_position")
-            
+
             if update_fields:
                 _best_effort_detail_db_work(
                     lambda: item.save(update_fields=update_fields),
@@ -1652,7 +1653,10 @@ def media_details(
         and not public_view
         and media_type != MediaTypes.PODCAST.value
     ):
-        from app.helpers import get_item_collection_entries, get_tv_show_collection_stats
+        from app.helpers import (
+            get_item_collection_entries,
+            get_tv_show_collection_stats,
+        )
 
         try:
             item = detail_item or Item.objects.get(**detail_item_lookup)

@@ -19,9 +19,9 @@ from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
 from app.models import (
+    TV,
     Anime,
     CollectionEntry,
-    TV,
     Episode,
     Game,
     Item,

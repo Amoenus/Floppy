@@ -583,7 +583,7 @@ def _musicbrainz_coming_soon_recording_candidates(
     start_date = timezone.localdate().isoformat()
     end_date = (timezone.localdate() + timedelta(days=PROVIDER_COMING_SOON_WINDOW_DAYS)).isoformat()
     params = {
-        "query": f'firstreleasedate:[{start_date} TO {end_date}]',
+        "query": f"firstreleasedate:[{start_date} TO {end_date}]",
         "limit": min(max(limit, 1), 100),
         "offset": 0,
         "fmt": "json",

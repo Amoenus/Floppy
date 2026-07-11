@@ -10,7 +10,17 @@ from django.utils import timezone
 
 from app import history_cache, tasks
 from app.log_safety import stable_hmac
-from app.models import Album, Artist, Item, MediaTypes, Movie, Music, Sources, Status, Track
+from app.models import (
+    Album,
+    Artist,
+    Item,
+    MediaTypes,
+    Movie,
+    Music,
+    Sources,
+    Status,
+    Track,
+)
 
 
 class HistoryMonthCacheTests(TestCase):

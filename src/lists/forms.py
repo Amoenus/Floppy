@@ -5,7 +5,6 @@ from django_select2 import forms as s2forms
 
 from lists.models import CustomList
 
-
 RESERVED_PUBLIC_SLUGS = {"create", "edit", "delete"}
 
 

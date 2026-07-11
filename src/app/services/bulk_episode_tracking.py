@@ -32,11 +32,11 @@ from app.models import (
     Status,
 )
 from app.providers import services
+from app.services.tracking_hydration import ensure_item_metadata
 from app.signals import (
     flush_media_change_side_effects,
     suppress_media_change_side_effects,
 )
-from app.services.tracking_hydration import ensure_item_metadata
 
 
 @dataclass(slots=True)
@@ -186,15 +186,13 @@ def distribute_target_timestamps(
     ]
     for index in range(1, total_count):
         minimum = fitted[index - 1] + timedelta(seconds=1)
-        if fitted[index] < minimum:
-            fitted[index] = minimum
+        fitted[index] = max(fitted[index], minimum)
 
     if fitted[-1] > end_dt:
         fitted[-1] = end_dt
         for index in range(total_count - 2, -1, -1):
             latest_allowed = fitted[index + 1] - timedelta(seconds=1)
-            if fitted[index] > latest_allowed:
-                fitted[index] = latest_allowed
+            fitted[index] = min(fitted[index], latest_allowed)
         if fitted[0] < start_dt:
             return distribute_timestamps(
                 start_dt,

@@ -15,14 +15,6 @@ from django.utils import timezone
 from app import statistics as stats
 from app.models import MediaTypes
 from app.statistics_aggregator import _aggregate_statistics_from_days
-from app.statistics_day_builder import (
-    _build_prefetch_for_range,
-    _day_cache_key,
-    _iter_day_range,
-    _normalize_day_value,
-    build_stats_for_day,
-)
-from app.statistics_highlights import _normalize_history_highlight_images
 
 # Controlled circular: all of these are defined in statistics_cache before the
 # re-export block, so they are available on the partial module object when this
@@ -53,6 +45,14 @@ from app.statistics_cache import (
     _store_dirty_days,
     cache_statistics_data,
 )
+from app.statistics_day_builder import (
+    _build_prefetch_for_range,
+    _day_cache_key,
+    _iter_day_range,
+    _normalize_day_value,
+    build_stats_for_day,
+)
+from app.statistics_highlights import _normalize_history_highlight_images
 
 logger = logging.getLogger(__name__)
 

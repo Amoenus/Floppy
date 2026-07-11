@@ -12,14 +12,19 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET
 
 from app import helpers
-from app.columns import resolve_column_config, resolve_columns, resolve_default_column_config
+from app.columns import (
+    resolve_column_config,
+    resolve_columns,
+    resolve_default_column_config,
+)
 from app.models import MediaManager, MediaTypes
-from app.providers import services  # noqa: F401 — kept so legacy test patches on lists.views.services still work
+from app.providers import (
+    services,  # noqa: F401 — kept so legacy test patches on lists.views.services still work
+)
 from app.release_years import prefill_display_release_years
-from lists.forms import CustomListForm
 from lists import tasks as list_tasks
+from lists.forms import CustomListForm
 from lists.models import CustomList, CustomListItem
-from users.models import ListDetailSortChoices, MediaStatusChoices
 from lists.views_helpers import (
     _adapt_list_items_for_table,
     _attach_media_with_aggregation,
@@ -35,6 +40,7 @@ from lists.views_helpers import (
     _resolve_list_table_media_type,
 )
 from lists.views_smart_list import _smart_list_detail_response
+from users.models import ListDetailSortChoices, MediaStatusChoices
 
 logger = logging.getLogger(__name__)
 

@@ -6,7 +6,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from app import history_cache
-from app.models import Episode, Item, MediaTypes, Season, Sources, TV
+from app.models import TV, Episode, Item, MediaTypes, Season, Sources
 
 
 class UpdateEpisodeScoreInvalidationTests(TestCase):

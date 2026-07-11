@@ -862,7 +862,17 @@ def history_genres(request):
     """Return sorted list of unique genres from the user's tracked items."""
     from django.http import JsonResponse
 
-    from app.models import Book, BoardGame, Comic, Episode, Game, Manga, Movie, Music, Podcast
+    from app.models import (
+        BoardGame,
+        Book,
+        Comic,
+        Episode,
+        Game,
+        Manga,
+        Movie,
+        Music,
+        Podcast,
+    )
 
     def _is_valid_genre(value) -> bool:
         s = str(value).strip()

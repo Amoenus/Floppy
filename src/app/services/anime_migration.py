@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from django.utils import timezone
 
 from app.models import (
+    TV,
     Anime,
     Episode,
     Item,
@@ -14,7 +15,6 @@ from app.models import (
     MetadataProviderPreference,
     Season,
     Status,
-    TV,
 )
 from app.providers import services
 from app.services.bulk_episode_tracking import distribute_timestamps

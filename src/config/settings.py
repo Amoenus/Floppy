@@ -11,6 +11,7 @@ from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
 from celery.schedules import crontab
+from debug_toolbar.settings import PANELS_DEFAULTS
 from decouple import (
     Config,
     Csv,
@@ -20,7 +21,6 @@ from decouple import (
     config,
     undefined,
 )
-from debug_toolbar.settings import PANELS_DEFAULTS
 from django.core.cache import CacheKeyWarning
 from django.db.backends.signals import connection_created
 

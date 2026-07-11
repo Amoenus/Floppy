@@ -92,9 +92,7 @@ def runtime_bucket_label(runtime_minutes) -> str:
 def release_decade_label(release_value) -> str:
     """Return decade label like 1990s from a date-ish value."""
     year = None
-    if isinstance(release_value, datetime):
-        year = release_value.year
-    elif isinstance(release_value, date):
+    if isinstance(release_value, datetime) or isinstance(release_value, date):
         year = release_value.year
     else:
         text = str(release_value or "").strip()

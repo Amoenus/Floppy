@@ -344,7 +344,7 @@ def needs_refresh(
 
 def tracked_items_queryset(*, media_types: list[str] | tuple[str, ...] | None = None):
     """Return tracked items eligible for Trakt popularity enrichment."""
-    from app.models import Anime, Movie, TV
+    from app.models import TV, Anime, Movie
 
     supported_media_types = tuple(media_types or sorted(SUPPORTED_ROUTE_MEDIA_TYPES))
     tracked_filter = (

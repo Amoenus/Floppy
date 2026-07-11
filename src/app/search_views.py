@@ -6,7 +6,6 @@ from django.shortcuts import render
 from django.views.decorators.http import require_GET
 
 from app import helpers
-from app.services import metadata_resolution
 from app.log_safety import exception_summary
 from app.models import (
     Album,
@@ -23,6 +22,7 @@ from app.models import (
     Track,
 )
 from app.providers import services
+from app.services import metadata_resolution
 from users.models import MediaStatusChoices
 
 logger = logging.getLogger(__name__)

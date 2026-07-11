@@ -697,7 +697,7 @@ class HomeViewTests(TestCase):
         self.assertContains(initial_response, 'hx-trigger="home-row-load-more"', html=False)
         self.assertContains(
             initial_response,
-            'hx-vals=\'js:{offset: Number(event.target.dataset.loadedCount || 0)}\'',
+            "hx-vals=\'js:{offset: Number(event.target.dataset.loadedCount || 0)}\'",
             html=False,
         )
 

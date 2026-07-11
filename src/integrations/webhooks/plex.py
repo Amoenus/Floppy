@@ -91,7 +91,7 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
                 music_entry.status,
                 music_entry.progress,
             )
-            
+
             # Queue collection metadata update for music
             if music_entry.item:
                 logger.debug(
@@ -102,7 +102,7 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
                 logger.warning(
                     "Cannot queue collection metadata update: music_entry has no item"
                 )
-            
+
             return music_entry
 
         # Handle rating events separately
@@ -338,7 +338,7 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
             mapping_keys(payload),
             mapping_keys(payload.get("Metadata")),
         )
-        
+
         metadata = payload.get("Metadata", {})
         # Try different possible field names for user rating (preserve 0 values)
         user_rating = None
@@ -355,14 +355,14 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
                 user_rating = value
                 rating_source = source
                 break
-        
+
         logger.debug("Rating payload metadata keys: %s", list(metadata.keys()))
         logger.debug(
             "Plex rating payload contains user_rating=%s source=%s",
             user_rating is not None,
             rating_source,
         )
-        
+
         if user_rating is None:
             logger.warning(
                 "No userRating found in Plex rating payload. "
@@ -385,9 +385,9 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
 
         title = self._get_media_title(payload)
         media_type = self._get_media_type(payload)
-        
+
         logger.debug("Plex rating payload media_type=%s", media_type)
-        
+
         if not media_type:
             logger.warning("Ignoring rating for unsupported media type. Payload type: %s", metadata.get("type"))
             return None
@@ -1088,7 +1088,7 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
 
         # Get server URI - try multiple methods, prioritizing known-good sources
         plex_uri = None
-        
+
         # Method 1: Try to get from Server info in payload (most reliable from webhook)
         server_info = payload.get("Server", {})
         if server_info:

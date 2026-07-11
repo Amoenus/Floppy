@@ -7,7 +7,6 @@ from django.urls import reverse
 from app.models import TV, Episode, Item, MediaTypes, Movie, Season, Status
 from integrations.webhooks.kodi import KodiWebhookProcessor
 
-
 TV_EPISODE_PAYLOAD = {
     "event": "end",
     "mediaType": "episode",

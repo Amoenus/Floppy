@@ -103,30 +103,30 @@ def get_top_played_media(user_media, start_date, end_date):
                 activity = media.end_date or media.start_date or media.created_at
                 if item_key not in aggregated_games:
                     aggregated_games[item_key] = {
-                        'media': media,
-                        'total_time_minutes': total_time_minutes,
-                        'formatted_duration': None,  # populated after aggregation
-                        'episode_count': 0,
-                        'last_activity': activity,
-                        'play_count': 1,
-                        '_media_activity': activity,
+                        "media": media,
+                        "total_time_minutes": total_time_minutes,
+                        "formatted_duration": None,  # populated after aggregation
+                        "episode_count": 0,
+                        "last_activity": activity,
+                        "play_count": 1,
+                        "_media_activity": activity,
                     }
                 else:
                     entry = aggregated_games[item_key]
-                    entry['total_time_minutes'] += total_time_minutes
-                    entry['play_count'] += 1
+                    entry["total_time_minutes"] += total_time_minutes
+                    entry["play_count"] += 1
 
-                    if activity and (entry['last_activity'] is None or activity > entry['last_activity']):
-                        entry['last_activity'] = activity
+                    if activity and (entry["last_activity"] is None or activity > entry["last_activity"]):
+                        entry["last_activity"] = activity
 
-                    current_media_activity = entry.get('_media_activity')
+                    current_media_activity = entry.get("_media_activity")
                     if activity and (current_media_activity is None or activity > current_media_activity):
-                        entry['media'] = media
-                        entry['_media_activity'] = activity
+                        entry["media"] = media
+                        entry["_media_activity"] = activity
 
             for entry in aggregated_games.values():
-                entry['formatted_duration'] = minutes_to_hhmm(entry['total_time_minutes'])
-                entry.pop('_media_activity', None)
+                entry["formatted_duration"] = minutes_to_hhmm(entry["total_time_minutes"])
+                entry.pop("_media_activity", None)
                 media_with_progress.append(entry)
         else:
             for media in _iter_media_list(media_list):

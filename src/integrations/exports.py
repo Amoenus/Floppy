@@ -8,7 +8,15 @@ from django.conf import settings
 from django.db.models import Field, Prefetch
 
 from app import helpers
-from app.models import AlbumTracker, ArtistTracker, Episode, Item, MediaTypes, Season, Sources
+from app.models import (
+    AlbumTracker,
+    ArtistTracker,
+    Episode,
+    Item,
+    MediaTypes,
+    Season,
+    Sources,
+)
 from lists.models import CustomList
 
 logger = logging.getLogger(__name__)
