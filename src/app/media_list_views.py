@@ -1988,6 +1988,8 @@ def media_list(request, media_type):
             "media_type_plural": app_tags.media_type_readable_plural(media_type).lower(),
             "current_layout": layout,
             "layout_class": ".media-grid" if layout == "grid" else ".media-table",
+            "media_list_url": reverse("medialist", args=[media_type]),
+            "filter_hx_target": (".media-grid" if layout == "grid" else ".media-table") if media_page else "#empty_list",
             "current_sort": sort_filter,
             "current_direction": direction,
             "current_status": status_filter,

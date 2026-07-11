@@ -1587,7 +1587,7 @@ def _media_lookup_for_items(
             item_id__in=[item.id for item in type_items],
         ).select_related("item")
         if actual_media_type == MediaTypes.PODCAST.value:
-            queryset = queryset.select_related("show")
+            queryset = queryset.select_related("show", "episode")
         if actual_media_type == MediaTypes.MUSIC.value:
             queryset = queryset.select_related("album")
         queryset = BasicMedia.objects._apply_prefetch_related(queryset, actual_media_type)

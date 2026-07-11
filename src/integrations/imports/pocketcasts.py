@@ -1375,7 +1375,7 @@ class PocketCastsImporter:
             "published":     metadata_ep.get("published", ""),
             "url":           metadata_ep.get("url", ""),
             "fileType":      metadata_ep.get("file_type", ""),
-            "duration":      metadata_ep.get("duration") or play_state.get("duration", 0),  # noqa: E501
+            "duration":      play_state.get("duration") or metadata_ep.get("duration", 0),  # noqa: E501
             "episodeType":   metadata_ep.get("type", "full"),
             "episodeSeason": metadata_ep.get("season"),
             "episodeNumber": metadata_ep.get("number"),

@@ -208,7 +208,16 @@
           {% if media and user.progress_bar %}
             {% with bar_status=media.aggregated_status|default:media.status %}
               {% if bar_status == Status.IN_PROGRESS.value or bar_status == Status.PAUSED.value %}
-                {% if resolved_media_type != MediaTypes.MOVIE.value and media.max_progress and media.progress %}
+                {% if resolved_media_type == MediaTypes.PODCAST.value %}
+                  {% with progress_percent=media|safe_attr:"progress_percentage" %}
+                    {% if progress_percent is not None %}
+                      <div class="media-card-progress-bar absolute bottom-0 left-0 right-0 h-1 bg-gray-900/60 z-20">
+                        <div class="h-full {% if bar_status == Status.PAUSED.value %}bg-indigo-500/40{% else %}bg-indigo-500{% endif %} transition-[width] duration-300 ease-out"
+                             style="width: {{ progress_percent }}%"></div>
+                      </div>
+                    {% endif %}
+                  {% endwith %}
+                {% elif resolved_media_type != MediaTypes.MOVIE.value and media.max_progress and media.progress %}
                   {% widthratio media.progress media.max_progress 100 as progress_percent %}
                   {# Any overshoot (progress > max) renders as a full bar — the card's overflow-hidden clips it. #}
                   <div class="media-card-progress-bar absolute bottom-0 left-0 right-0 h-1 bg-gray-900/60 z-20">
@@ -486,7 +495,16 @@
               {% elif show_episode_identity|default:False and item.season_number != None and item.episode_number != None %}
                 <p class="media-card-year text-xs text-gray-400 mt-1">S{{ item.season_number|stringformat:"02d" }} E{{ item.episode_number|stringformat:"02d" }}</p>
               {% elif use_podcast_show|default:False and podcast_show %}
-                <p class="media-card-year text-xs text-gray-400 mt-1 line-clamp-1">{{ podcast_show.title }}</p>
+                <p class="media-card-year text-xs text-gray-400 mt-1 line-clamp-1">
+                  {{ podcast_show.title }}
+                  {% with podcast_status=media.aggregated_status|default:media.status podcast_percent=media|safe_attr:"progress_percentage" %}
+                    {% if podcast_percent is not None %}
+                      {% if podcast_status == Status.IN_PROGRESS.value or podcast_status == Status.PAUSED.value %}
+                        <span class="ml-1 text-gray-400">• {{ podcast_percent }}%</span>
+                      {% endif %}
+                    {% endif %}
+                  {% endwith %}
+                </p>
               {% elif subtitle_override or subtitle_match_percent == 0 or subtitle_match_percent %}
                 <p class="media-card-year text-xs text-gray-400 mt-1">
                   {% if subtitle_override %}
