@@ -82,6 +82,7 @@ class CustomList(models.Model):
     SOURCE_CHOICES = [
         ("local", "Local"),
         ("trakt", "Trakt"),
+        ("mdblist", "MDBList"),
     ]
 
     VISIBILITY_CHOICES = [

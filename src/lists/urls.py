@@ -6,6 +6,7 @@ from lists import (
     views_add_reorder,
     views_list_actions,
     views_list_browse,
+    views_mdblist,
     views_recommendations,
     views_trakt,
 )
@@ -84,6 +85,26 @@ urlpatterns = [
         "lists/import/trakt/callback",
         views_trakt.trakt_lists_callback,
         name="trakt_lists_callback",
+    ),
+    path(
+        "lists/import/mdblist/connect",
+        views_mdblist.mdblist_connect,
+        name="mdblist_connect",
+    ),
+    path(
+        "lists/import/mdblist/disconnect",
+        views_mdblist.mdblist_disconnect,
+        name="mdblist_disconnect",
+    ),
+    path(
+        "lists/import/mdblist/sync",
+        views_mdblist.mdblist_sync_now,
+        name="mdblist_sync_now",
+    ),
+    path(
+        "lists/import/mdblist/url",
+        views_mdblist.mdblist_import_url,
+        name="mdblist_import_url",
     ),
     path("list_item_toggle", views_list_actions.list_item_toggle, name="list_item_toggle"),
     # Recommendation URLs

@@ -19,7 +19,7 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET
 
 from app import helpers
-from integrations.models import TraktAccount
+from integrations.models import MDBListAccount, TraktAccount
 from lists.forms import CustomListForm
 from lists.models import CustomList, CustomListItem
 from lists.views_helpers import (
@@ -291,6 +291,7 @@ def lists(request):
     )
     trakt_redirect_uri = request.build_absolute_uri(reverse("trakt_lists_callback"))
     trakt_account = TraktAccount.objects.filter(user=request.user).first()
+    mdblist_account = MDBListAccount.objects.filter(user=request.user).first()
 
     response = render(
         request,
@@ -306,6 +307,7 @@ def lists(request):
             "trakt_redirect_uri": trakt_redirect_uri,
             "trakt_account": trakt_account,
             "trakt_has_credentials": bool(trakt_account and trakt_account.is_configured),
+            "mdblist_account": mdblist_account,
             "cache_buster": cache_buster,
             "list_url_template": _build_list_url_template(request),
         },

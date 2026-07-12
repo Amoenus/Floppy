@@ -3,6 +3,7 @@ import logging
 from celery import shared_task
 from django.contrib.auth import get_user_model
 
+from lists.imports import mdblist as mdblist_lists
 from lists.imports import trakt as trakt_lists
 
 logger = logging.getLogger(__name__)
@@ -62,6 +63,46 @@ def schedule_smart_list_sync(custom_list, debounce_seconds=60):
         return False
     sync_smart_list_task.delay(custom_list.id)
     return True
+
+
+@shared_task(name="Import MDBList Lists")
+def import_mdblist_lists_task(user_id):
+    """Celery task syncing all of a user's MDBList lists (also runs on a schedule)."""
+    user = User.objects.get(pk=user_id)
+    account = getattr(user, "mdblist_account", None)
+    if not account or account.connection_broken:
+        logger.info(
+            "Skipping MDBList sync for user %s (no account or connection broken)",
+            user.username,
+        )
+        return
+    try:
+        mdblist_lists.import_mdblist_lists(user)
+    except Exception as error:
+        logger.error(
+            "Failed to sync MDBList lists for user %s: %s",
+            user.username,
+            error,
+            exc_info=True,
+        )
+        raise
+
+
+@shared_task(name="Import MDBList List")
+def import_mdblist_list_by_reference_task(user_id, reference):
+    """Celery task importing a single MDBList list by URL or ID."""
+    user = User.objects.get(pk=user_id)
+    try:
+        mdblist_lists.import_mdblist_list_by_reference(user, reference)
+    except Exception as error:
+        logger.error(
+            "Failed to import MDBList list %s for user %s: %s",
+            reference,
+            user.username,
+            error,
+            exc_info=True,
+        )
+        raise
 
 
 @shared_task(name="Import Trakt Lists")

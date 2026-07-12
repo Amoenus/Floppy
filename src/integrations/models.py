@@ -463,6 +463,45 @@ class SonarrAccount(models.Model):
         return bool(self.base_url and self.api_key) and not self.connection_broken
 
 
+class MDBListAccount(models.Model):
+    """Store MDBList connection settings and sync state for a user."""
+
+    SYNC_FREQUENCY_CHOICES = [
+        ("6h", "Every 6 hours"),
+        ("12h", "Every 12 hours"),
+        ("24h", "Every 24 hours"),
+        ("weekly", "Weekly"),
+    ]
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="mdblist_account",
+    )
+    api_key = models.TextField(help_text="Encrypted MDBList API key")
+    sync_frequency = models.CharField(
+        max_length=10,
+        choices=SYNC_FREQUENCY_CHOICES,
+        default="24h",
+    )
+    connection_broken = models.BooleanField(default=False)
+    last_error_message = models.TextField(blank=True, default="")
+    last_sync_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Model options."""
+
+        verbose_name = "MDBList account"
+        verbose_name_plural = "MDBList accounts"
+
+    @property
+    def is_connected(self):
+        """Return True when the account appears connected."""
+        return bool(self.api_key) and not self.connection_broken
+
+
 class CollectionSourceState(models.Model):
     """Track source-specific collection metadata freshness for each user+item."""
 
