@@ -155,6 +155,8 @@ def _sync_owner_smart_lists_for_items(owner, items):
 @receiver([post_save, post_delete], sender=Podcast)
 def sync_smart_lists_on_media_change(sender, instance, **kwargs):  # noqa: ARG001
     """Incrementally update smart-list memberships when owner media rows change."""
+    if kwargs.get("raw"):
+        return
     if media_change_side_effects_suppressed():
         return
     _sync_owner_smart_lists_for_items(
@@ -166,6 +168,8 @@ def sync_smart_lists_on_media_change(sender, instance, **kwargs):  # noqa: ARG00
 @receiver([post_save, post_delete], sender=CollectionEntry)
 def sync_smart_lists_on_collection_change(sender, instance, **kwargs):  # noqa: ARG001
     """Incrementally update smart lists when collection ownership changes."""
+    if kwargs.get("raw"):
+        return
     owner = getattr(instance, "user", None)
     item = getattr(instance, "item", None)
     if not owner or not item:
@@ -190,6 +194,8 @@ def sync_smart_lists_on_collection_change(sender, instance, **kwargs):  # noqa: 
 @receiver([post_save, post_delete], sender=CollectionEntry)
 def clear_media_list_cache_on_collection_change(sender, instance, **kwargs):  # noqa: ARG001
     """Invalidate media-list caches when collection metadata changes."""
+    if kwargs.get("raw"):
+        return
     user_id = getattr(instance, "user_id", None)
     if not user_id:
         return
@@ -208,6 +214,8 @@ def clear_media_list_cache_on_collection_change(sender, instance, **kwargs):  # 
 @receiver([post_save, post_delete], sender=ItemTag)
 def sync_smart_lists_on_item_tag_change(sender, instance, **kwargs):  # noqa: ARG001
     """Incrementally update smart lists when a tag is applied to or removed from an item."""
+    if kwargs.get("raw"):
+        return
     owner = getattr(getattr(instance, "tag", None), "user", None)
     item = getattr(instance, "item", None)
     if not owner or not item:
@@ -342,6 +350,8 @@ def _invalidate_discover_from_item_tag(instance) -> None:
 @receiver(post_save, sender=Podcast)
 def clear_discover_feedback_on_media_save(sender, instance, **kwargs):  # noqa: ARG001
     """Clear hidden Discover feedback when a user explicitly tracks an item."""
+    if kwargs.get("raw"):
+        return
     if media_change_side_effects_suppressed():
         return
     user_id = getattr(instance, "user_id", None)
@@ -427,12 +437,16 @@ def _discover_user_ids_for_credit_item(item) -> tuple[set[int], str | None]:
 @receiver([post_save, post_delete], sender=ItemTag)
 def refresh_discover_cache_on_item_tag_change(sender, instance, **kwargs):  # noqa: ARG001
     """Refresh Discover when item tags change, since they affect taste profiles."""
+    if kwargs.get("raw"):
+        return
     _invalidate_discover_from_item_tag(instance)
 
 
 @receiver([post_save, post_delete], sender=ItemPersonCredit)
 def refresh_discover_cache_on_item_person_credit_change(sender, instance, **kwargs):  # noqa: ARG001
     """Refresh Discover when credited people change on tracked movie/TV items."""
+    if kwargs.get("raw"):
+        return
     if media_change_side_effects_suppressed():
         return
     item = getattr(instance, "item", None)
@@ -448,6 +462,8 @@ def refresh_discover_cache_on_item_person_credit_change(sender, instance, **kwar
 @receiver([post_save, post_delete], sender=Episode)
 def refresh_history_cache_on_episode_change(sender, instance, **kwargs):  # noqa: ARG001
     """Schedule history cache refresh when episode activity changes."""
+    if kwargs.get("raw"):
+        return
     user_id = getattr(getattr(instance, "related_season", None), "user_id", None)
     day_key = history_cache.history_day_key(getattr(instance, "end_date", None))
     _handle_media_cache_change(
@@ -462,6 +478,8 @@ def refresh_history_cache_on_episode_change(sender, instance, **kwargs):  # noqa
 @receiver([post_save, post_delete], sender=Movie)
 def refresh_history_cache_on_movie_change(sender, instance, **kwargs):  # noqa: ARG001
     """Schedule history cache refresh when movie activity changes."""
+    if kwargs.get("raw"):
+        return
     user_id = getattr(instance, "user_id", None)
     activity_dt = getattr(instance, "end_date", None) or getattr(instance, "start_date", None)
     day_key = history_cache.history_day_key(activity_dt)
@@ -499,6 +517,8 @@ def _schedule_credits_backfill_if_needed(item_id):
 @receiver(post_save, sender=Episode)
 def schedule_credits_backfill_on_episode_play(sender, instance, **kwargs):  # noqa: ARG001
     """Queue credits backfill for episode and related show when an episode play is saved."""
+    if kwargs.get("raw"):
+        return
     if media_change_side_effects_suppressed():
         return
     if not getattr(instance, "end_date", None):
@@ -516,6 +536,8 @@ def schedule_credits_backfill_on_episode_play(sender, instance, **kwargs):  # no
 @receiver(post_save, sender=Movie)
 def schedule_credits_backfill_on_movie_play(sender, instance, **kwargs):  # noqa: ARG001
     """Queue credits backfill for TMDB movies when a play is saved."""
+    if kwargs.get("raw"):
+        return
     if media_change_side_effects_suppressed():
         return
     if not (getattr(instance, "end_date", None) or getattr(instance, "start_date", None)):
@@ -530,6 +552,8 @@ def refresh_history_cache_on_music_change(sender, instance, **kwargs):  # noqa: 
     We schedule a refresh but don't delete the cache immediately,
     so users can see the old data with a notification while refresh happens.
     """
+    if kwargs.get("raw"):
+        return
     user_id = getattr(instance, "user_id", None)
     day_key = history_cache.history_day_key(getattr(instance, "end_date", None))
     _handle_media_cache_change(
@@ -548,6 +572,8 @@ def refresh_history_cache_on_podcast_change(sender, instance, **kwargs):  # noqa
     We schedule a refresh but don't delete the cache immediately,
     so users can see the old data with a notification while refresh happens.
     """
+    if kwargs.get("raw"):
+        return
     user_id = getattr(instance, "user_id", None)
     day_key = history_cache.history_day_key(getattr(instance, "end_date", None))
     _handle_media_cache_change(
@@ -566,6 +592,8 @@ def refresh_statistics_cache_on_tv_change(sender, instance, **kwargs):  # noqa: 
     We schedule a refresh but don't delete the cache immediately,
     so users can see the old data with a notification while refresh happens.
     """
+    if kwargs.get("raw"):
+        return
     _handle_media_cache_change(
         getattr(instance, "user_id", None),
         MediaTypes.TV.value,
@@ -600,6 +628,8 @@ def refresh_statistics_cache_on_season_change(sender, instance, **kwargs):  # no
     We schedule a refresh but don't delete the cache immediately,
     so users can see the old data with a notification while refresh happens.
     """
+    if kwargs.get("raw"):
+        return
     _handle_media_cache_change(
         getattr(instance, "user_id", None),
         MediaTypes.SEASON.value,
@@ -634,6 +664,8 @@ def refresh_statistics_cache_on_anime_change(sender, instance, **kwargs):  # noq
     We schedule a refresh but don't delete the cache immediately,
     so users can see the old data with a notification while refresh happens.
     """
+    if kwargs.get("raw"):
+        return
     user_id = getattr(instance, "user_id", None)
     day_keys = _collect_reading_statistics_day_keys(instance)
     history_day_keys = _collect_reading_history_day_keys(instance)
@@ -679,6 +711,8 @@ def refresh_statistics_cache_on_manga_change(sender, instance, **kwargs):  # noq
     We schedule a refresh but don't delete the cache immediately,
     so users can see the old data with a notification while refresh happens.
     """
+    if kwargs.get("raw"):
+        return
     user_id = getattr(instance, "user_id", None)
     day_keys = _collect_reading_statistics_day_keys(instance)
     history_day_keys = _collect_reading_history_day_keys(instance)
@@ -698,6 +732,8 @@ def refresh_statistics_cache_on_book_change(sender, instance, **kwargs):  # noqa
     We schedule a refresh but don't delete the cache immediately,
     so users can see the old data with a notification while refresh happens.
     """
+    if kwargs.get("raw"):
+        return
     user_id = getattr(instance, "user_id", None)
     day_keys = _collect_reading_statistics_day_keys(instance)
     history_day_keys = _collect_reading_history_day_keys(instance)
@@ -717,6 +753,8 @@ def refresh_statistics_cache_on_comic_change(sender, instance, **kwargs):  # noq
     We schedule a refresh but don't delete the cache immediately,
     so users can see the old data with a notification while refresh happens.
     """
+    if kwargs.get("raw"):
+        return
     user_id = getattr(instance, "user_id", None)
     day_keys = _collect_reading_statistics_day_keys(instance)
     history_day_keys = _collect_reading_history_day_keys(instance)
@@ -732,6 +770,8 @@ def refresh_statistics_cache_on_comic_change(sender, instance, **kwargs):  # noq
 @receiver([post_save, post_delete], sender=ComicIssue)
 def refresh_statistics_cache_on_comic_issue_change(sender, instance, **kwargs):  # noqa: ARG001
     """Schedule statistics cache refresh when comic issue activity changes."""
+    if kwargs.get("raw"):
+        return
     user_id = getattr(instance, "user_id", None)
     day_keys = _collect_reading_statistics_day_keys(instance)
     _handle_media_cache_change(
@@ -749,6 +789,8 @@ def refresh_statistics_cache_on_game_change(sender, instance, **kwargs):  # noqa
     We schedule a refresh but don't delete the cache immediately,
     so users can see the old data with a notification while refresh happens.
     """
+    if kwargs.get("raw"):
+        return
     user_id = getattr(instance, "user_id", None)
     start_dt = getattr(instance, "start_date", None) or getattr(instance, "end_date", None)
     end_dt = getattr(instance, "end_date", None) or getattr(instance, "start_date", None)
@@ -776,6 +818,8 @@ def refresh_statistics_cache_on_boardgame_change(sender, instance, **kwargs):  #
     We schedule a refresh but don't delete the cache immediately,
     so users can see the old data with a notification while refresh happens.
     """
+    if kwargs.get("raw"):
+        return
     user_id = getattr(instance, "user_id", None)
     start_dt = getattr(instance, "start_date", None) or getattr(instance, "end_date", None)
     end_dt = getattr(instance, "end_date", None) or getattr(instance, "start_date", None)
@@ -808,6 +852,9 @@ def schedule_runtime_backfill_on_item_save(
     
     Also invalidates time_left cache when episode runtime changes.
     """
+    if kwargs.get("raw"):
+        return
+
     # Check if runtime_minutes was actually updated (not just saving the same value)
     runtime_updated = (
         update_fields is None or "runtime_minutes" in update_fields

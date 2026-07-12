@@ -295,6 +295,7 @@ if DB_HOST:
             "PASSWORD": config("DB_PASSWORD", default=secret("DB_PASSWORD_FILE")),
             "PORT": config("DB_PORT"),
             "OPTIONS": db_options,
+            "CONN_HEALTH_CHECKS": True,
         },
     }
 
