@@ -5,6 +5,7 @@ import logging
 import re
 import secrets
 from datetime import datetime, timedelta
+from urllib.parse import unquote
 
 import requests
 from django.conf import settings
@@ -25,7 +26,7 @@ from app.log_safety import exception_summary
 from integrations import exports, gpodder_api, lastfm_api, pocketcasts_api, tasks
 from integrations import plex as plex_api
 from integrations.gpodder_api import GPodderAuthError, GPodderClientError
-from integrations.imports import anilist, helpers, simkl, trakt
+from integrations.imports import anilist, helpers, simkl, stremio, trakt
 from integrations.imports.audiobookshelf import (
     AudiobookshelfAuthError,
     AudiobookshelfClient,
@@ -50,6 +51,7 @@ from integrations.models import (
     RadarrAccount,
     SonarrAccount,
     StorytellerAccount,
+    StremioAccount,
 )
 from integrations.plex_watchlist import (
     WATCHLIST_SYNC_INTERVAL_MINUTES,
@@ -1268,6 +1270,116 @@ def import_storyteller(request):
     return redirect("import_data")
 
 
+STREMIO_RECURRING_TASK_NAME = "Import from Stremio (Recurring)"
+
+
+def _ensure_stremio_schedule(user):
+    """Create the recurring Stremio import schedule if missing."""
+    from django_celery_beat.models import CrontabSchedule, PeriodicTask
+
+    existing_task = PeriodicTask.objects.filter(
+        task=STREMIO_RECURRING_TASK_NAME,
+        kwargs__contains=f'"user_id": {user.id}',
+        enabled=True,
+    ).first()
+    if existing_task:
+        return
+
+    crontab, _ = CrontabSchedule.objects.get_or_create(
+        minute=0,
+        hour="*/2",
+        day_of_week="*",
+        day_of_month="*",
+        month_of_year="*",
+        timezone=timezone.get_default_timezone(),
+    )
+    PeriodicTask.objects.create(
+        name=f"Import from Stremio for {user.username} (every 2 hours)",
+        task=STREMIO_RECURRING_TASK_NAME,
+        crontab=crontab,
+        kwargs=json.dumps({"user_id": user.id}),
+        start_time=timezone.now(),
+        enabled=True,
+    )
+
+
+@require_POST
+def stremio_connect(request):
+    """Connect a Stremio account using email/password or a pasted auth key."""
+    email = request.POST.get("email", "").strip()
+    password = request.POST.get("password", "").strip()
+    auth_key = request.POST.get("auth_key", "").strip()
+
+    if not auth_key and not (email and password):
+        messages.error(request, "Enter your Stremio email and password, or an auth key.")
+        return redirect("import_data")
+
+    try:
+        if not auth_key:
+            auth_key = stremio.login(email, password)
+        else:
+            # Validate a pasted auth key before storing it.
+            stremio.get_user(auth_key)
+    except helpers.MediaImportError as error:
+        logger.error("Stremio login failed: %s", error)
+        messages.error(
+            request,
+            "Could not connect to Stremio. Check your credentials; for accounts created "
+            "via Facebook login, paste an auth key instead or set a password first. "
+            f"({error})",
+        )
+        return redirect("import_data")
+    except Exception as error:  # noqa: BLE001
+        logger.exception("Failed to connect to Stremio")
+        messages.error(request, f"Failed to connect to Stremio: {error}")
+        return redirect("import_data")
+
+    StremioAccount.objects.update_or_create(
+        user=request.user,
+        defaults={
+            "auth_key": helpers.encrypt(auth_key),
+            "email": helpers.encrypt(email) if email else "",
+            "connection_broken": False,
+            "last_error_message": "",
+        },
+    )
+    tasks.import_stremio.delay(user_id=request.user.id, mode="new")
+    _ensure_stremio_schedule(request.user)
+    messages.success(
+        request,
+        "Connected to Stremio. Initial import queued; your library will sync every 2 hours.",
+    )
+    return redirect("import_data")
+
+
+@require_POST
+def stremio_disconnect(request):
+    """Disconnect the Stremio integration."""
+    from django_celery_beat.models import PeriodicTask
+
+    PeriodicTask.objects.filter(
+        task=STREMIO_RECURRING_TASK_NAME,
+        kwargs__contains=f'"user_id": {request.user.id}',
+    ).delete()
+    StremioAccount.objects.filter(user=request.user).delete()
+    messages.info(request, "Disconnected Stremio.")
+    return redirect("import_data")
+
+
+@require_POST
+def import_stremio(request):
+    """Queue a Stremio import and ensure the recurring schedule exists."""
+    account = getattr(request.user, "stremio_account", None)
+    if not account:
+        messages.error(request, "Connect Stremio before importing.")
+        return redirect("import_data")
+
+    tasks.import_stremio.delay(user_id=request.user.id, mode="new")
+    _ensure_stremio_schedule(request.user)
+    messages.info(request, "Stremio import queued.")
+    return redirect("import_data")
+
+
 @require_POST
 def pocketcasts_connect(request):
     """Connect Pocket Casts account using email and password."""
@@ -1984,3 +2096,68 @@ def kodi_webhook(request, token):
 
     tasks.process_webhook.delay("kodi", payload, user.id)
     return HttpResponse(status=200)
+
+
+STREMIO_ADDON_MANIFEST = {
+    "id": "org.yamtrack.scrobbler",
+    "version": "1.0.0",
+    "name": "Yamtrack Scrobbler",
+    "description": (
+        "Marks movies and episodes as in progress on Yamtrack when playback "
+        "starts in Stremio."
+    ),
+    "resources": ["subtitles"],
+    "types": ["movie", "series"],
+    "idPrefixes": ["tt"],
+    "catalogs": [],
+}
+STREMIO_SCROBBLE_THROTTLE_SECONDS = 1800
+
+
+def _stremio_addon_response(payload, status=200):
+    """Build a JSON response with the CORS headers Stremio requires."""
+    response = JsonResponse(payload, status=status)
+    response["Access-Control-Allow-Origin"] = "*"
+    return response
+
+
+@login_not_required
+@csrf_exempt
+@require_GET
+def stremio_addon_manifest(request, token):  # noqa: ARG001
+    """Serve the Stremio addon manifest for a user's install URL."""
+    try:
+        users.models.User.objects.get(token=token)
+    except ObjectDoesNotExist:
+        logger.warning("Invalid token on Stremio addon manifest request")
+        return _stremio_addon_response({"error": "Invalid token"}, status=401)
+
+    return _stremio_addon_response(STREMIO_ADDON_MANIFEST)
+
+
+@login_not_required
+@csrf_exempt
+@require_GET
+def stremio_addon_subtitles(request, token, media_type, media_id):  # noqa: ARG001
+    """Record a playback-start scrobble from a Stremio subtitles request."""
+    from django.core.cache import cache
+
+    try:
+        user = users.models.User.objects.get(token=token)
+    except ObjectDoesNotExist:
+        logger.warning("Invalid token on Stremio addon subtitles request")
+        return _stremio_addon_response({"error": "Invalid token"}, status=401)
+
+    media_id = unquote(media_id)
+
+    # Stremio re-requests subtitles on seeks and quality changes; only the
+    # first request per item in the window records a scrobble.
+    throttle_key = f"stremio_scrobble_{user.id}_{media_id}"
+    if cache.add(throttle_key, "1", timeout=STREMIO_SCROBBLE_THROTTLE_SECONDS):
+        tasks.process_webhook.delay(
+            "stremio",
+            {"id": media_id, "type": media_type},
+            user.id,
+        )
+
+    return _stremio_addon_response({"subtitles": []})

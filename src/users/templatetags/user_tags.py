@@ -69,6 +69,10 @@ SOURCES_CONFIG = {
         "name": "Storyteller",
         "logo": static("img/storyteller-logo.svg"),
     },
+    "stremio": {
+        "name": "Stremio",
+        "logo": static("img/stremio-logo.svg"),
+    },
     "pocketcasts": {
         "name": "Pocket Casts",
         "logo": static("img/pocketcasts-logo.svg"),

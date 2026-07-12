@@ -987,6 +987,7 @@ def import_data(request):
     lastfm_account = getattr(user, "lastfm_account", None)
     radarr_account = getattr(user, "radarr_account", None)
     sonarr_account = getattr(user, "sonarr_account", None)
+    stremio_account = getattr(user, "stremio_account", None)
 
     # Get Last.fm periodic task status
     lastfm_periodic_task = None
@@ -1034,6 +1035,7 @@ def import_data(request):
         "lastfm_account": lastfm_account,
         "radarr_account": radarr_account,
         "sonarr_account": sonarr_account,
+        "stremio_account": stremio_account,
         "lastfm_periodic_task": lastfm_periodic_task,
         "lastfm_poll_interval": lastfm_poll_interval,
         "lastfm_history_status_label": lastfm_history_status_label,

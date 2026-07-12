@@ -94,6 +94,13 @@
           Kodi
         </button>
         <button type="button"
+                @click="activeIntegration = 'stremio'"
+                :aria-pressed="activeIntegration === 'stremio'"
+                class="px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer"
+                :class="activeIntegration === 'stremio' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[#2a2f35] text-gray-300 border-gray-600 hover:border-indigo-500 hover:text-white'">
+          Stremio
+        </button>
+        <button type="button"
                 @click="activeIntegration = 'jellyseerr'"
                 :aria-pressed="activeIntegration === 'jellyseerr'"
                 class="px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer"
@@ -525,6 +532,41 @@
           <li>Leave the username and password fields blank.</li>
           <li>Enable the following events: <strong>Start</strong>, <strong>Stopped</strong>, and <strong>Finished</strong>.</li>
           <li>An item is marked watched when playback reaches 80% or Kodi reports a <em>Finished</em> event.</li>
+        </ol>
+      </div>
+    </div>
+
+    {# Stremio #}
+    <div class="bg-[#39404b] p-5 rounded-lg mb-6"
+         x-show="activeIntegration === 'all' || activeIntegration === 'stremio'"
+         x-transition.opacity.duration.150ms>
+      <div class="flex items-center mb-3">
+        {% include "app/icons/server.svg" with classes="w-5 h-5 text-indigo-400 mr-2" %}
+        <h3 class="text-base font-medium">Stremio Integration</h3>
+      </div>
+      <p class="text-gray-400 mb-4 text-sm">
+        Install the Yamtrack Scrobbler addon in Stremio to mark movies and episodes as in progress the moment playback starts.
+        Pair it with the Stremio import on the <a href="{% url 'import_data' %}" class="text-indigo-400 hover:underline">Import page</a>, which syncs watched state from your Stremio library every 2 hours.
+      </p>
+      <div class="bg-[#262a2f] p-4 rounded-md">
+        <h4 class="text-sm font-medium mb-3">Setup Instructions</h4>
+        {% url 'stremio_addon_manifest' request.user.token as stremio_addon_path %}
+        {% absolute_app_url stremio_addon_path as stremio_addon_url %}
+        <ol class="list-decimal list-inside space-y-2 text-sm text-gray-300">
+          <li>
+            Copy your personal addon URL:
+            {# djlint:off #}
+            <div class="mt-2 inline-flex items-center gap-2 w-[calc(100%-30px)]">
+              <input readonly id="stremio-addon-url" class="w-full bg-[#262a2f] rounded-md text-gray-400 text-sm border-0 focus:ring-0 outline-none font-mono" type="text" value="{{ stremio_addon_url }}">
+              <span class="flex items-center cursor-pointer group" title="Copy" data-copy-target="#stremio-addon-url">
+                {% include "app/icons/copy.svg" with classes="w-5 h-5 text-gray-400 group-hover:text-indigo-400 transition-colors" %}
+              </span>
+            </div>
+            {# djlint:on #}
+          </li>
+          <li>In Stremio, open <strong>Addons</strong>, paste the URL into the search box at the top, and click <strong>Install</strong>.</li>
+          <li>Yamtrack must be reachable from your Stremio device over <strong>HTTPS</strong> (plain HTTP only works for localhost).</li>
+          <li>Playback start marks the item in progress; the recurring library import marks items watched.</li>
         </ol>
       </div>
     </div>

@@ -581,6 +581,42 @@ class StorytellerAccount(models.Model):
         return bool(self.server_url and self.auth_token) and not self.connection_broken
 
 
+class StremioAccount(models.Model):
+    """Store Stremio API credentials and sync state for a user."""
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="stremio_account",
+    )
+    auth_key = models.TextField(help_text="Encrypted Stremio auth key")
+    email = models.TextField(
+        blank=True,
+        default="",
+        help_text="Encrypted Stremio account email (display only)",
+    )
+    last_sync_at = models.DateTimeField(null=True, blank=True)
+    connection_broken = models.BooleanField(default=False)
+    last_error_message = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Model options."""
+
+        verbose_name = "Stremio account"
+        verbose_name_plural = "Stremio accounts"
+
+    def __str__(self):
+        """Readable representation."""
+        return f"StremioAccount({self.user.username})"
+
+    @property
+    def is_connected(self):
+        """Return True when the account appears connected."""
+        return bool(self.auth_key) and not self.connection_broken
+
+
 class TraktAccount(models.Model):
     """Store Trakt API client credentials for a user."""
 

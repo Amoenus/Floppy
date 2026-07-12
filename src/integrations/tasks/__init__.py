@@ -50,6 +50,8 @@ from integrations.tasks._media_imports import (
     import_steam,
     import_storyteller,
     import_storyteller_recurring,
+    import_stremio,
+    import_stremio_recurring,
     import_trakt,
     import_trakt_collection_csv,
     import_yamtrack,

@@ -27,6 +27,7 @@ from integrations.imports import (
     sonarr,
     steam,
     storyteller,
+    stremio,
     trakt,
     trakt_collection,
     yamtrack,
@@ -300,6 +301,18 @@ def import_storyteller(user_id, mode="new"):
 def import_storyteller_recurring(user_id):
     """Recurring import task for Storyteller."""
     return import_media(storyteller.importer, None, user_id, "new")
+
+
+@shared_task(name="Import from Stremio")
+def import_stremio(user_id, mode="new"):
+    """Celery task for importing library watch state from Stremio."""
+    return import_media(stremio.importer, None, user_id, mode)
+
+
+@shared_task(name="Import from Stremio (Recurring)")
+def import_stremio_recurring(user_id):
+    """Recurring import task for Stremio."""
+    return import_media(stremio.importer, None, user_id, "new")
 
 
 @shared_task(name="Import from Pocket Casts")

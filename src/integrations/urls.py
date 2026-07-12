@@ -1,4 +1,4 @@
-from django.urls import path
+from django.urls import path, re_path
 
 from integrations import views
 
@@ -67,6 +67,9 @@ urlpatterns = [
         name="storyteller_disconnect",
     ),
     path("import/storyteller", views.import_storyteller, name="import_storyteller"),
+    path("import/stremio/connect", views.stremio_connect, name="stremio_connect"),
+    path("import/stremio/disconnect", views.stremio_disconnect, name="stremio_disconnect"),
+    path("import/stremio", views.import_stremio, name="import_stremio"),
     path("import/pocketcasts/connect", views.pocketcasts_connect, name="pocketcasts_connect"),
     path("import/pocketcasts/disconnect", views.pocketcasts_disconnect, name="pocketcasts_disconnect"),
     path("import/pocketcasts", views.import_pocketcasts, name="import_pocketcasts"),
@@ -103,5 +106,16 @@ urlpatterns = [
         "webhook/kodi/<str:token>",
         views.kodi_webhook,
         name="kodi_webhook",
+    ),
+    path(
+        "stremio-addon/<str:token>/manifest.json",
+        views.stremio_addon_manifest,
+        name="stremio_addon_manifest",
+    ),
+    re_path(
+        r"^stremio-addon/(?P<token>[^/]+)/subtitles/"
+        r"(?P<media_type>movie|series)/(?P<media_id>[^/]+?)(?:/[^/]*)?\.json$",
+        views.stremio_addon_subtitles,
+        name="stremio_addon_subtitles",
     ),
 ]

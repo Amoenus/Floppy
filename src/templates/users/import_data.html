@@ -583,6 +583,89 @@
           {% endif %}
         </div>
 
+        {# Stremio #}
+        <div class="bg-[#39404b] p-4 rounded-lg space-y-3"
+             x-show="sourceSupports(['screen'])"
+             x-transition.opacity.duration.150ms>
+          <div class="flex items-center justify-between">
+            <div class="flex items-center">{% source_display "stremio" %}</div>
+            {% if stremio_account and stremio_account.is_connected %}
+              <form method="post" action="{% url 'stremio_disconnect' %}">
+                {% csrf_token %}
+                <button type="submit"
+                        class="px-2 py-1 text-xs rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/20 transition-colors cursor-pointer">
+                  Connected
+                </button>
+              </form>
+            {% else %}
+              <span class="px-2 py-1 text-xs rounded bg-gray-500/20 text-gray-300 border border-gray-600/50">Disconnected</span>
+            {% endif %}
+          </div>
+          {% if stremio_account %}
+            <p class="text-sm text-gray-400">Sync watched movies and episodes from your Stremio library every 2 hours.</p>
+            {% if stremio_account.last_sync_at %}
+              <div class="text-sm text-gray-400">Last sync: {{ stremio_account.last_sync_at|user_datetime_format:user }}</div>
+            {% endif %}
+            {% if stremio_account.last_error_message %}
+              <div class="text-xs text-amber-200 bg-amber-500/10 border border-amber-400/30 rounded p-2">
+                <strong>Error:</strong> {{ stremio_account.last_error_message }}
+              </div>
+            {% endif %}
+            <div class="flex gap-2">
+              <form method="post" action="{% url 'import_stremio' %}">
+                {% csrf_token %}
+                <button type="submit"
+                        class="px-4 py-2 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer">
+                  Sync Now
+                </button>
+              </form>
+              <form method="post" action="{% url 'stremio_disconnect' %}">
+                {% csrf_token %}
+                <button type="submit"
+                        class="px-4 py-2 text-sm rounded-md bg-slate-500/10 text-slate-200 border border-slate-400/30 hover:bg-slate-500/20 transition-colors cursor-pointer">
+                  Disconnect
+                </button>
+              </form>
+            </div>
+          {% else %}
+            <div x-data="{ useAuthKey: false }" class="space-y-3">
+              <p class="text-sm text-gray-400">
+                Connect with your Stremio email and password. Only an API key is stored; your password is never saved.
+              </p>
+              <form method="post" action="{% url 'stremio_connect' %}" class="space-y-3">
+                {% csrf_token %}
+                <div x-show="!useAuthKey" class="space-y-3">
+                  <input name="email"
+                         placeholder="Stremio email"
+                         class="w-full py-2 px-3 bg-[#2a2f35] rounded-md text-white text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+                         type="email">
+                  <input name="password"
+                         placeholder="Stremio password"
+                         class="w-full py-2 px-3 bg-[#2a2f35] rounded-md text-white text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+                         type="password">
+                </div>
+                <div x-show="useAuthKey" class="space-y-2">
+                  <input name="auth_key"
+                         placeholder="Stremio auth key"
+                         class="w-full py-2 px-3 bg-[#2a2f35] rounded-md text-white text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+                         type="password">
+                  <p class="text-xs text-gray-500">
+                    Find it in Stremio Web local storage. Required for accounts created with Facebook login.
+                  </p>
+                </div>
+                <button type="submit"
+                        class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
+                  Connect Stremio
+                </button>
+              </form>
+              <button type="button"
+                      class="text-xs text-indigo-300 hover:text-indigo-200 cursor-pointer"
+                      x-text="useAuthKey ? 'Use email and password instead' : 'Use an auth key instead'"
+                      @click="useAuthKey = !useAuthKey"></button>
+            </div>
+          {% endif %}
+        </div>
+
         {# Audiobookshelf #}
         <div class="bg-[#39404b] p-4 rounded-lg space-y-3"
              x-show="sourceSupports(['books', 'podcasts'])"
