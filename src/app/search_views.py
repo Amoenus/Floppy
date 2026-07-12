@@ -23,9 +23,13 @@ from app.models import (
 )
 from app.providers import services
 from app.services import metadata_resolution
+from app.templatetags.app_tags import media_url, music_album_url, music_artist_url
 from users.models import MediaStatusChoices
 
 logger = logging.getLogger(__name__)
+
+# Minimum characters before the search bar fires autocomplete suggestions.
+MIN_SUGGESTION_QUERY_LENGTH = 2
 
 
 def _mark_grouped_anime_route(media_items):
@@ -38,6 +42,71 @@ def _mark_grouped_anime_route(media_items):
     return media_items
 
 
+def _norm(text):
+    return str(text or "").strip().casefold()
+
+
+def _title_fields(item_obj):
+    if isinstance(item_obj, dict):
+        return (
+            item_obj.get("title"),
+            item_obj.get("original_title"),
+            item_obj.get("localized_title"),
+        )
+    return (
+        getattr(item_obj, "title", None),
+        getattr(item_obj, "original_title", None),
+        getattr(item_obj, "localized_title", None),
+    )
+
+
+def _display_title_for_user(item_obj, user):
+    if hasattr(item_obj, "get_display_title"):
+        return item_obj.get_display_title(user=user)
+
+    title, original_title, localized_title = _title_fields(item_obj)
+    title = str(title or "").strip()
+    original_title = str(original_title or "").strip() or None
+    localized_title = str(localized_title or "").strip() or None
+
+    if not localized_title and title:
+        localized_title = title
+
+    preference = getattr(user, "title_display_preference", "localized")
+    if preference == "original":
+        return original_title or localized_title or title
+    return localized_title or original_title or title
+
+
+def _matched_title(item_obj, search_query, user):
+    normalized_query = _norm(search_query)
+    if not normalized_query:
+        return None
+
+    display_title = _display_title_for_user(item_obj, user)
+    display_norm = _norm(display_title)
+
+    title, original_title, localized_title = _title_fields(item_obj)
+    candidates = []
+    for candidate in (title, localized_title, original_title):
+        text = str(candidate or "").strip()
+        if text and text not in candidates:
+            candidates.append(text)
+
+    # Prefer exact, then prefix, then contains.
+    for predicate in (
+        lambda value: _norm(value) == normalized_query,
+        lambda value: _norm(value).startswith(normalized_query),
+        lambda value: normalized_query in _norm(value),
+    ):
+        for candidate in candidates:
+            if _norm(candidate) == display_norm:
+                continue
+            if predicate(candidate):
+                return candidate
+    return None
+
+
 @require_GET
 def media_search(request):
     """Return the media search page."""
@@ -48,67 +117,6 @@ def media_search(request):
     query = request.GET["q"]
     page = int(request.GET.get("page", 1))
     layout = request.GET.get("layout", "grid")
-
-    def _norm(text):
-        return str(text or "").strip().casefold()
-
-    def _title_fields(item_obj):
-        if isinstance(item_obj, dict):
-            return (
-                item_obj.get("title"),
-                item_obj.get("original_title"),
-                item_obj.get("localized_title"),
-            )
-        return (
-            getattr(item_obj, "title", None),
-            getattr(item_obj, "original_title", None),
-            getattr(item_obj, "localized_title", None),
-        )
-
-    def _display_title_for_user(item_obj):
-        if hasattr(item_obj, "get_display_title"):
-            return item_obj.get_display_title(user=request.user)
-
-        title, original_title, localized_title = _title_fields(item_obj)
-        title = str(title or "").strip()
-        original_title = str(original_title or "").strip() or None
-        localized_title = str(localized_title or "").strip() or None
-
-        if not localized_title and title:
-            localized_title = title
-
-        preference = getattr(request.user, "title_display_preference", "localized")
-        if preference == "original":
-            return original_title or localized_title or title
-        return localized_title or original_title or title
-
-    def _matched_title(item_obj, search_query):
-        normalized_query = _norm(search_query)
-        if not normalized_query:
-            return None
-
-        display_title = _display_title_for_user(item_obj)
-        display_norm = _norm(display_title)
-
-        title, original_title, localized_title = _title_fields(item_obj)
-        candidates = []
-        for candidate in (title, localized_title, original_title):
-            text = str(candidate or "").strip()
-            if text and text not in candidates:
-                candidates.append(text)
-
-        # Prefer exact, then prefix, then contains.
-        for predicate in (
-            lambda value: _norm(value) == normalized_query,
-            lambda value: _norm(value).startswith(normalized_query),
-            lambda value: normalized_query in _norm(value),
-        ):
-            for candidate in candidates:
-                if _norm(candidate) == display_norm:
-                    continue
-                if predicate(candidate):
-                    return candidate
-        return None
 
     local_results = []
     local_results_total = 0
@@ -164,7 +172,7 @@ def media_search(request):
                     {
                         "item": media.item,
                         "media": media,
-                        "matched_title": _matched_title(media.item, query),
+                        "matched_title": _matched_title(media.item, query, request.user),
                     }
                     for media in adapted_media
                 ]
@@ -254,7 +262,7 @@ def media_search(request):
                     {
                         "item": media.item,
                         "media": media,
-                        "matched_title": _matched_title(media.item, query),
+                        "matched_title": _matched_title(media.item, query, request.user),
                     }
                     for media in local_media
                 ]
@@ -303,7 +311,7 @@ def media_search(request):
             section_name="search",
         )
         for result in data["results"]:
-            result["matched_title"] = _matched_title(result.get("item"), query)
+            result["matched_title"] = _matched_title(result.get("item"), query, request.user)
 
     context = {
         "user": request.user,
@@ -319,3 +327,184 @@ def media_search(request):
     }
 
     return render(request, "app/search.html", context)
+
+
+def _safe_url(builder, target):
+    """Return a detail URL for a suggestion, or None if it can't be built."""
+    try:
+        url = builder(target)
+    except Exception:  # pragma: no cover - defensive against reverse failures
+        return None
+    return url or None
+
+
+def get_saved_suggestions(user, media_type, query, limit=8):
+    """Return compact autocomplete suggestions from the user's saved library.
+
+    Saved items only, scoped to ``media_type``. Each suggestion is a dict of
+    ``{title, subtitle, image, url}``. Mirrors the local-results queries used by
+    :func:`media_search` but capped small and side-effect free for typeahead.
+    """
+    suggestions = []
+
+    if media_type == MediaTypes.PODCAST.value:
+        show_trackers = (
+            PodcastShowTracker.objects.filter(user=user)
+            .exclude(show__title__isnull=True)
+            .exclude(show__title__exact="")
+            .filter(show__title__icontains=query)
+            .select_related("show")
+            .order_by("show__title")[:limit]
+        )
+        for tracker in show_trackers:
+            show = tracker.show
+            url = _safe_url(
+                media_url,
+                {
+                    "media_type": MediaTypes.PODCAST.value,
+                    "source": Sources.POCKETCASTS.value,
+                    "media_id": show.podcast_uuid,
+                    "title": show.title,
+                },
+            )
+            if url:
+                suggestions.append({
+                    "title": show.title,
+                    "subtitle": None,
+                    "image": show.image or None,
+                    "url": url,
+                })
+        return suggestions
+
+    if media_type == MediaTypes.MUSIC.value:
+        artist_trackers = (
+            ArtistTracker.objects.filter(user=user)
+            .exclude(artist__name__isnull=True)
+            .exclude(artist__name__exact="")
+            .filter(artist__name__icontains=query)
+            .select_related("artist")
+            .order_by("artist__name")[:limit]
+        )
+        for tracker in artist_trackers:
+            url = _safe_url(music_artist_url, tracker.artist)
+            if url:
+                suggestions.append({
+                    "title": tracker.artist.name,
+                    "subtitle": "Artist",
+                    "image": getattr(tracker.artist, "image", None) or None,
+                    "url": url,
+                })
+
+        album_trackers = (
+            AlbumTracker.objects.filter(user=user)
+            .exclude(album__title__isnull=True)
+            .exclude(album__title__exact="")
+            .filter(
+                Q(album__title__icontains=query)
+                | Q(album__artist__name__icontains=query),
+            )
+            .select_related("album", "album__artist")
+            .order_by("album__title")[:limit]
+        )
+        for tracker in album_trackers:
+            url = _safe_url(music_album_url, tracker.album)
+            if url:
+                album_artist = getattr(tracker.album, "artist", None)
+                artist_name = getattr(album_artist, "name", None)
+                suggestions.append({
+                    "title": tracker.album.title,
+                    "subtitle": artist_name or "Album",
+                    "image": getattr(tracker.album, "image", None) or None,
+                    "url": url,
+                })
+        return suggestions[:limit]
+
+    local_queryset = BasicMedia.objects.get_media_list(
+        user,
+        media_type,
+        MediaStatusChoices.ALL,
+        "title",
+        search=query,
+        direction="asc",
+    )
+    local_media = list(local_queryset)
+
+    anime_mode = getattr(user, "anime_library_mode", MediaTypes.ANIME.value)
+    if media_type == MediaTypes.TV.value and anime_mode == MediaTypes.ANIME.value:
+        local_media = [
+            media
+            for media in local_media
+            if getattr(getattr(media, "item", None), "library_media_type", None)
+            != MediaTypes.ANIME.value
+        ]
+    elif media_type == MediaTypes.ANIME.value and anime_mode in {
+        MediaTypes.ANIME.value,
+        "both",
+    }:
+        grouped = [
+            media
+            for media in BasicMedia.objects.get_media_list(
+                user,
+                MediaTypes.TV.value,
+                MediaStatusChoices.ALL,
+                "title",
+                search=query,
+                direction="asc",
+            )
+            if getattr(getattr(media, "item", None), "library_media_type", None)
+            == MediaTypes.ANIME.value
+        ]
+        _mark_grouped_anime_route(grouped)
+        local_media.extend(grouped)
+        local_media.sort(
+            key=lambda media: getattr(
+                getattr(media, "item", None),
+                "title",
+                "",
+            ).lower(),
+        )
+
+    for media in local_media[:limit]:
+        item = getattr(media, "item", None)
+        if item is None:
+            continue
+        url = _safe_url(media_url, item)
+        if not url:
+            continue
+        suggestions.append({
+            "title": _display_title_for_user(item, user),
+            "subtitle": _matched_title(item, query, user),
+            "image": getattr(item, "image", None) or None,
+            "url": url,
+        })
+    return suggestions
+
+
+@require_GET
+def search_suggestions(request):
+    """Return the autocomplete dropdown fragment for the global search bar."""
+    query = request.GET.get("q", "").strip()
+    media_type = request.GET.get("media_type", "")
+
+    if (
+        not request.user.is_authenticated
+        or len(query) < MIN_SUGGESTION_QUERY_LENGTH
+        or media_type not in {choice.value for choice in MediaTypes}
+    ):
+        return render(request, "app/components/search_suggestions.html")
+
+    try:
+        suggestions = get_saved_suggestions(request.user, media_type, query)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.debug("Suggestion search failed: %s", exception_summary(exc))
+        suggestions = []
+
+    return render(
+        request,
+        "app/components/search_suggestions.html",
+        {
+            "suggestions": suggestions,
+            "query": query,
+            "media_type": media_type,
+        },
+    )
