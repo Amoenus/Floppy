@@ -1450,6 +1450,7 @@ class User(AbstractUser):
             "kitsu": ["Import from Kitsu"],
             "yamtrack": ["Import from Yamtrack"],
             "hltb": ["Import from HowLongToBeat"],
+            "grouvee": ["Import from Grouvee"],
             "steam": ["Import from Steam"],
             "imdb": ["Import from IMDB"],
             "goodreads": [

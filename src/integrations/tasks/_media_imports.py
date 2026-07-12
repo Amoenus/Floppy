@@ -14,6 +14,7 @@ from integrations.imports import (
     audiobookshelf,
     goodreads,
     gpodder,
+    grouvee,
     hardcover,
     helpers,
     hltb,
@@ -156,6 +157,12 @@ def import_yamtrack(file, user_id, mode):
 def import_hltb(file, user_id, mode):
     """Celery task for importing media data from HowLongToBeat."""
     return import_media(hltb.importer, _coerce_uploaded_file(file), user_id, mode)
+
+
+@shared_task(name="Import from Grouvee")
+def import_grouvee(file, user_id, mode):
+    """Celery task for importing game data from a Grouvee JSON export."""
+    return import_media(grouvee.importer, _coerce_uploaded_file(file), user_id, mode)
 
 
 @shared_task(name="Import Trakt collection CSV")

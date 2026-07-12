@@ -45,6 +45,10 @@ SOURCES_CONFIG = {
         "name": "HowLongToBeat",
         "logo": static("img/hltb-logo.png"),
     },
+    "grouvee": {
+        "name": "Grouvee",
+        "logo": static("img/grouvee_logo.png"),
+    },
     "imdb": {
         "name": "IMDB",
         "logo": static("img/imdb-logo.png"),

@@ -33,6 +33,7 @@ from integrations.tasks._media_imports import (
     import_goodreads_legacy,
     import_gpodder,
     import_gpodder_recurring,
+    import_grouvee,
     import_hardcover,
     import_hltb,
     import_imdb,

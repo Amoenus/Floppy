@@ -341,6 +341,29 @@ class UserGetImportTasksTests(TestCase):
         self.assertEqual(import_tasks["results"][0]["source"], "myanimelist")
         self.assertEqual(import_tasks["results"][0]["status"], "FAILURE")
 
+    @patch("users.helpers.process_task_result")
+    def test_get_import_tasks_results_includes_grouvee(self, mock_process_task_result):
+        """Test get_import_tasks surfaces Grouvee task results."""
+        mock_task = MagicMock()
+        mock_task.summary = "Imported 3 games"
+        mock_task.errors = []
+        mock_task.mode = "new"
+        mock_process_task_result.return_value = mock_task
+
+        TaskResult.objects.create(
+            task_id="grouvee-task",
+            task_name="Import from Grouvee",
+            task_kwargs=(f"{{'user_id': {self.user.id}}}"),
+            status="SUCCESS",
+            date_done=timezone.now(),
+            result="{}",
+        )
+
+        import_tasks = self.user.get_import_tasks()
+
+        self.assertEqual(len(import_tasks["results"]), 1)
+        self.assertEqual(import_tasks["results"][0]["source"], "grouvee")
+
     @patch("users.helpers.get_next_run_info")
     def test_get_import_tasks_schedules(self, mock_get_next_run_info):
         """Test get_import_tasks returns correct scheduled tasks."""

@@ -45,6 +45,7 @@ urlpatterns = [
     path("import/kitsu", views.import_kitsu, name="import_kitsu"),
     path("import/yamtrack", views.import_yamtrack, name="import_yamtrack"),
     path("import/hltb", views.import_hltb, name="import_hltb"),
+    path("import/grouvee", views.import_grouvee, name="import_grouvee"),
     path("import/steam", views.import_steam, name="import_steam"),
     path("import/radarr/connect", views.radarr_connect, name="radarr_connect"),
     path("import/radarr/disconnect", views.radarr_disconnect, name="radarr_disconnect"),

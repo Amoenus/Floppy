@@ -865,6 +865,28 @@ def import_hltb(request):
 
 
 @require_POST
+def import_grouvee(request):
+    """View for importing game data from a Grouvee JSON export."""
+    file = request.FILES.get("grouvee_json")
+
+    if not file:
+        messages.error(request, "Grouvee JSON file is required.")
+        return redirect("import_data")
+
+    mode = request.POST["mode"]
+    tasks.import_grouvee.delay(
+        user_id=request.user.id,
+        file=_read_uploaded_file(file),
+        mode=mode,
+    )
+    messages.info(
+        request,
+        "The task to import media from Grouvee JSON file has been queued.",
+    )
+    return redirect("import_data")
+
+
+@require_POST
 def import_steam(request):
     """View for importing game data from Steam."""
     steam_id = request.POST.get("user")
