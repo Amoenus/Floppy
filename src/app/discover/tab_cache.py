@@ -1101,7 +1101,7 @@ def get_tab_rows(
                 )
         return rows
 
-    schedule_tab_refresh(
+    refresh_scheduled = schedule_tab_refresh(
         user.id,
         media_type,
         show_more=show_more,
@@ -1109,7 +1109,16 @@ def get_tab_rows(
         countdown=DISCOVER_PRIORITY_REFRESH_COUNTDOWN,
         priority=DISCOVER_TASK_PRIORITY_INTERACTIVE,
     )
-    if not allow_inline_bootstrap:
+    # Mirror the stale path: when a refresh task is queued (or one is
+    # already in flight holding the lock), let the page render its
+    # "Building Discover rows" state and fill in via polling instead of
+    # paying the multi-second build inline (and doubly, since the task
+    # will rebuild anyway).
+    if not refresh_scheduled:
+        lock_key = _refresh_lock_key(user.id, media_type, show_more=show_more)
+        refresh_lock = _cache_get(lock_key)
+        refresh_scheduled = bool(refresh_lock) and not _lock_is_stale(refresh_lock)
+    if not allow_inline_bootstrap or refresh_scheduled:
         return []
 
     rows = get_discover_rows(
