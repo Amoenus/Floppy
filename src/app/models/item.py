@@ -277,6 +277,14 @@ class Item(CalendarTriggerMixin, models.Model):
                 fields=["trakt_popularity_rank"],
                 name="app_item_trakt_pop_rank_idx",
             ),
+            # Episode/season-scoped lookups (runtime index, MAX(episode),
+            # season ratings) filter by media_id+media_type; the unique
+            # constraints above are partial indexes SQLite can't use for
+            # them, so without this they full-scan the table.
+            models.Index(
+                fields=["media_id", "media_type", "source"],
+                name="app_item_media_lookup_idx",
+            ),
         ]
         ordering = ["media_id"]
 
