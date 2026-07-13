@@ -282,7 +282,11 @@ from app.score_views import (
     update_media_score,
     update_track_score,
 )
-from app.search_views import _mark_grouped_anime_route, media_search
+from app.search_views import (
+    _mark_grouped_anime_route,
+    media_search,
+    search_suggestions,
+)
 from app.season_details_views import season_details
 from app.services import (
     anime_migration,
