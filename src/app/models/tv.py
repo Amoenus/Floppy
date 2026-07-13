@@ -51,7 +51,21 @@ class TV(Media):
         completed_on_create = is_create and self.status == Status.COMPLETED.value
         if (not is_create and self.tracker.has_changed("status")) or completed_on_create:
             if self.status == Status.COMPLETED.value:
-                self._completed()
+                try:
+                    self._completed()
+                except (
+                    providers.services.ProviderAPIError,
+                    RequestException,
+                    KeyError,
+                    TypeError,
+                    ValueError,
+                ) as error:
+                    logger.warning(
+                        "Skipping completion fan-out due to missing metadata"
+                        " for %s: %s",
+                        self.item.media_id,
+                        error,
+                    )
 
             elif self.status == Status.DROPPED.value:
                 self._mark_in_progress_seasons_as_dropped()
@@ -458,22 +472,37 @@ class Season(Media):
         completed_on_create = is_create and self.status == Status.COMPLETED.value
         if (not is_create and self.tracker.has_changed("status")) or completed_on_create:
             if self.status == Status.COMPLETED.value:
-                season_metadata = providers.services.get_media_metadata(
-                    MediaTypes.SEASON.value,
-                    self.item.media_id,
-                    self.item.source,
-                    [self.item.season_number],
-                )
-                episodes_to_create = self.get_remaining_eps(season_metadata)
-                if episodes_to_create:
-                    bulk_create_with_history(
-                        episodes_to_create,
-                        Episode,
+                try:
+                    season_metadata = providers.services.get_media_metadata(
+                        MediaTypes.SEASON.value,
+                        self.item.media_id,
+                        self.item.source,
+                        [self.item.season_number],
                     )
+                    episodes_to_create = self.get_remaining_eps(season_metadata)
+                    if episodes_to_create:
+                        bulk_create_with_history(
+                            episodes_to_create,
+                            Episode,
+                        )
 
-                self.related_tv._handle_completed_season(
-                    self.item.season_number,
-                )
+                    self.related_tv._handle_completed_season(
+                        self.item.season_number,
+                    )
+                except (
+                    providers.services.ProviderAPIError,
+                    RequestException,
+                    KeyError,
+                    TypeError,
+                    ValueError,
+                ) as error:
+                    logger.warning(
+                        "Skipping season completion fan-out due to missing"
+                        " metadata for %s S%s: %s",
+                        self.item.media_id,
+                        self.item.season_number,
+                        error,
+                    )
 
             elif (
                 self.status == Status.DROPPED.value

@@ -1317,17 +1317,19 @@ class MediaManager(models.Manager):
             for media in media_list:
                 if media.item.source != Sources.MANUAL.value:
                     continue
-                manual_item_ids.add(media.item.id)
                 details = custom_metadata.build_manual_detail_payload(media.item)
-                media.max_progress = custom_metadata.manual_max_progress(
+                manual_value = custom_metadata.manual_max_progress(
                     media.item,
                     details,
                     fallback_max_progress=getattr(media, "max_progress", None),
                 )
-            if all(
-                media.item.source == Sources.MANUAL.value
-                for media in media_list
-            ):
+                # Items without a manual max_progress fall through to the
+                # events-derived annotation below.
+                if manual_value is None:
+                    continue
+                media.max_progress = manual_value
+                manual_item_ids.add(media.item.id)
+            if all(media.item.id in manual_item_ids for media in media_list):
                 return
         else:
             manual_item_ids = set()

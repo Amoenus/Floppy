@@ -1611,6 +1611,8 @@ def get_companies_full(companies):
 def get_score(score):
     """Return the score for the media with one decimal place."""
     # when unknown score, value from response is 0.0
+    if score is None:
+        return None
 
     return round(score, 1)
 
