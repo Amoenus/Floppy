@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections import defaultdict
 from dataclasses import dataclass
@@ -694,7 +695,27 @@ def build_filter_field_data(
     media_type: str,
     precomputed_tags: list[str] | None = None,
 ) -> list[dict]:
-    """Return template-friendly filter field definitions for a media type."""
+    """Return template-friendly filter field definitions for a media type.
+
+    build_rule_filter_data scans the user's whole library for this media
+    type to aggregate facet options (~1.5s each on large libraries), and
+    the Home Screen settings page needs one per enabled media type — so
+    the payload is cached and registered for invalidation on media save.
+    """
+    from django.core.cache import cache  # noqa: PLC0415
+
+    from app import cache_utils  # noqa: PLC0415 - avoid circular import
+
+    tags_fingerprint = hashlib.md5(  # noqa: S324 - cache key, not security
+        "\x1f".join(precomputed_tags or ()).encode(),
+    ).hexdigest()[:12]
+    cache_key = (
+        f"home_filter_fields_v1_{user.id}_{media_type}_{tags_fingerprint}"
+    )
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     filter_data = smart_rules.build_rule_filter_data(
         user,
         [media_type],
@@ -842,6 +863,9 @@ def build_filter_field_data(
             continue
         if field.get("visible", True):
             visible_fields.append(field)
+
+    cache.set(cache_key, visible_fields, getattr(settings, "CACHE_TIMEOUT", None))
+    cache_utils.register_media_list_cache_key(user.id, cache_key)
     return visible_fields
 
 
