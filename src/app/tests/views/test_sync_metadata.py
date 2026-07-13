@@ -8,6 +8,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from app.models import Item, MediaTypes, Sources
+from app.providers import tmdb
 
 User = get_user_model()
 
@@ -18,7 +19,7 @@ class SyncMetadataViewTests(TestCase):
         self.user = User.objects.create_user(**self.credentials)
         self.client.login(**self.credentials)
 
-    @patch("app.views._sync_plex_rating")
+    @patch("app.metadata_sync_views._sync_plex_rating")
     @patch("app.views.Item.fetch_releases")
     @patch("app.views.game_length_services.refresh_game_lengths")
     @patch("app.views.services.get_media_metadata")
@@ -67,7 +68,7 @@ class SyncMetadataViewTests(TestCase):
         mock_fetch_releases.assert_called_once()
         mock_sync_plex_rating.assert_called_once()
 
-    @patch("app.views._sync_plex_rating")
+    @patch("app.metadata_sync_views._sync_plex_rating")
     @patch("app.views.Item.fetch_releases")
     @patch("app.views.trakt_popularity_service.refresh_trakt_popularity")
     @patch("app.views.services.get_media_metadata")
@@ -110,7 +111,7 @@ class SyncMetadataViewTests(TestCase):
         mock_fetch_releases.assert_called_once()
         mock_sync_plex_rating.assert_called_once()
 
-    @patch("app.views._sync_plex_rating")
+    @patch("app.metadata_sync_views._sync_plex_rating")
     @patch("app.views.Item.fetch_releases")
     @patch("app.views.credits.sync_item_credits_from_metadata")
     @patch("app.views.trakt_popularity_service.refresh_trakt_popularity")
@@ -163,7 +164,15 @@ class SyncMetadataViewTests(TestCase):
 
         self.assertEqual(response.status_code, 302)
         self.assertEqual(item.genres, ["Comedy", "Anime"])
-        mock_upsert_provider_links.assert_called_once()
+        # A second upsert may fire for the user's preferred provider; the
+        # source-provider upsert is the one this test cares about.
+        mock_upsert_provider_links.assert_any_call(
+            item,
+            mock_get_media_metadata.return_value,
+            provider=Sources.TMDB.value,
+            provider_media_type=MediaTypes.TV.value,
+            season_number=None,
+        )
         mock_refresh_trakt_popularity.assert_called_once()
         mock_sync_item_credits.assert_called_once()
         mock_fetch_releases.assert_called_once()
@@ -246,7 +255,7 @@ class SyncMetadataViewTests(TestCase):
         self,
         mock_get_media_metadata,
     ):
-        cache_key = f"{Sources.TMDB.value}_{MediaTypes.SEASON.value}_294737_1"
+        cache_key = tmdb._season_cache_key("294737", 1)
         cached_payload = {"title": "Cached Season"}
         cache.set(cache_key, cached_payload, timeout=600)
         mock_get_media_metadata.side_effect = requests.exceptions.ConnectionError(

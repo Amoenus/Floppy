@@ -652,7 +652,7 @@ class CreateMedia(TestCase):
     def test_create_game_htmx_returns_activity_subtitle_update(self, ensure_item_metadata_mock):
         """HTMX game saves should refresh the shared activity subtitle in place."""
         item = Item.objects.create(
-            media_id="game-123",
+            media_id="123",
             source=Sources.IGDB.value,
             media_type=MediaTypes.GAME.value,
             title="Tracked Game",
@@ -666,7 +666,7 @@ class CreateMedia(TestCase):
             f"{reverse('media_save')}?next=/details/igdb/game/123/tracked-game",
             {
                 "track_form_id": "track-form-test",
-                "media_id": "game-123",
+                "media_id": "123",
                 "source": Sources.IGDB.value,
                 "media_type": MediaTypes.GAME.value,
                 "status": Status.PLANNING.value,
@@ -678,7 +678,7 @@ class CreateMedia(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'id="detail-activity-subtitle-slot-game-game-123-igdb"', html=False)
+        self.assertContains(response, 'id="detail-activity-subtitle-slot-game-123-igdb"', html=False)
         self.assertContains(response, "Progress: 3h 25min")
         self.assertContains(response, "April 13, 2026 - May 12, 2026")
         self.assertContains(response, "data-track-action-root", html=False)
@@ -688,7 +688,7 @@ class CreateMedia(TestCase):
         self.assertIn("Added", trigger["showToast"]["message"])
         self.assertTrue(
             Game.objects.filter(
-                item__media_id="game-123",
+                item__media_id="123",
                 user=self.user,
                 progress=205,
                 status=Status.PLANNING.value,
@@ -928,6 +928,9 @@ class CreateMedia(TestCase):
             if media_type == "tv_with_seasons":
                 self.assertEqual(season_numbers, [1])
                 return tv_with_seasons_metadata
+            if media_type == MediaTypes.SEASON.value:
+                self.assertEqual(season_numbers, [1])
+                return tv_with_seasons_metadata["season/1"]
             if media_type == MediaTypes.TV.value:
                 return tv_metadata
             error_message = f"Unexpected metadata request: {media_type}"

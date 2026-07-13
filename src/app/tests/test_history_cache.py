@@ -59,8 +59,8 @@ class HistoryMonthCacheTests(TestCase):
         index_days = history_cache.build_history_index(self.user, self.logging_style)
         return [day_key for day_key in index_days if day_key.startswith(month_prefix)]
 
-    @patch("app.history_cache.schedule_history_day_cache_coverage")
-    @patch("app.history_cache.schedule_history_refresh")
+    @patch("app.history_cache_reader.schedule_history_day_cache_coverage")
+    @patch("app.history_cache_reader.schedule_history_refresh")
     def test_history_view_repairs_cold_month_inline_without_scheduling_refresh(
         self,
         mock_schedule_history_refresh,
@@ -91,8 +91,8 @@ class HistoryMonthCacheTests(TestCase):
             countdown=15,
         )
 
-    @patch("app.history_cache.schedule_history_day_cache_coverage")
-    @patch("app.history_cache.schedule_history_refresh")
+    @patch("app.history_cache_reader.schedule_history_day_cache_coverage")
+    @patch("app.history_cache_reader.schedule_history_refresh")
     def test_history_view_repairs_partial_month_miss_inline_without_refreshing(
         self,
         mock_schedule_history_refresh,

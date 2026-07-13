@@ -928,10 +928,15 @@ class NextEpisodeUrlTests(TestCase):
             image="http://example.com/tv-s1.jpg",
             season_number=1,
         )
-        Season.objects.create(
+        # Create as PLANNING then flip via update() so the fixture does not
+        # trigger the completed-on-create fan-out (which fetches metadata).
+        season = Season.objects.create(
             item=season_item,
             user=self.user,
             related_tv=tv,
+            status=Status.PLANNING.value,
+        )
+        Season.objects.filter(pk=season.pk).update(
             status=Status.COMPLETED.value,
         )
         return tv_item, tv

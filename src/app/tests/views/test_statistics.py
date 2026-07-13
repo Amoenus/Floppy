@@ -246,7 +246,7 @@ class StatisticsViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.context["tvdb_enabled"])
-        self.assertContains(response, "Anime Genre (via TVDB)")
+        self.assertContains(response, "Choose how TV shows tagged as Anime via TVDB appear.")
 
     @patch("app.statistics_views.tvdb.enabled", return_value=False)
     def test_statistics_view_hides_anime_genre_preference_without_tvdb(self, _mock_tvdb_enabled):
@@ -258,7 +258,7 @@ class StatisticsViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.context["tvdb_enabled"])
-        self.assertNotContains(response, "Anime Genre (via TVDB)")
+        self.assertNotContains(response, "Choose how TV shows tagged as Anime via TVDB appear.")
 
     def test_statistics_view_uses_canonical_music_detail_links(self):
         """Music statistics cards should link through shared artist/album details routes."""
@@ -881,14 +881,10 @@ class StatisticsViewTests(TestCase):
         self.assertEqual(score_distribution["average_score"], 4.0)
         self.assertEqual(score_distribution["labels"], [str(score) for score in range(6)])
 
-        response_body = response.content.decode()
-        self.assertRegex(
-            response_body,
-            re.compile(
-                r"Average Rating.*?4(?:\.0+)?\s*<span[^>]*>/\s*5</span>",
-                re.DOTALL,
-            ),
-        )
+        # The average value renders client-side via Alpine; the server HTML
+        # carries the label and the user-scaled denominator.
+        self.assertContains(response, "Average Rating")
+        self.assertContains(response, "/ 5</span>", html=False)
 
     @patch("app.providers.services.get_media_metadata")
     def test_statistics_view_passes_reading_top_genres_for_book_comic_manga(self, mock_get_metadata):
@@ -2165,11 +2161,16 @@ class StatisticsViewTests(TestCase):
         response = self.client.get(reverse("statistics_talent_fragment") + "?start-date=all&end-date=all")
 
         self.assertEqual(response.status_code, 200)
-        mock_enqueue.assert_called_once()
-        enqueue_args, enqueue_kwargs = mock_enqueue.call_args
-        scheduled_ids = sorted(enqueue_args[0])
-        self.assertIn(episode_item_two.id, scheduled_ids)
-        self.assertEqual(enqueue_kwargs, {"countdown": 3})
+        # The fragment may enqueue more than one backfill batch; find the one
+        # that schedules the stale episode item.
+        self.assertTrue(mock_enqueue.called)
+        matching_calls = [
+            call
+            for call in mock_enqueue.call_args_list
+            if episode_item_two.id in call.args[0]
+        ]
+        self.assertTrue(matching_calls)
+        self.assertEqual(matching_calls[0].kwargs, {"countdown": 3})
         top_actors = response.context["top_talent"]["top_actors"]
         by_name = {entry["name"]: entry for entry in top_actors}
         self.assertIn("Episode Specific Actor", by_name)

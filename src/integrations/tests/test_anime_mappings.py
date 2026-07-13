@@ -84,18 +84,25 @@ class AnimeMappingsWebhookPayloadTests(TestCase):
         self.user = get_user_model().objects.create_superuser(**self.credentials)
 
     @patch("integrations.webhooks.base.BaseWebhookProcessor._handle_anime")
-    @patch("integrations.webhooks.base.tvdb_provider.episode")
+    @patch("app.providers.tmdb.tv_with_seasons")
+    @patch("app.providers.tmdb.find")
     def test_jellyfin_bleach_payload_uses_tvdb_mapping(
         self,
-        mock_tvdb_episode,
+        mock_tmdb_find,
+        mock_tv_with_seasons,
         mock_handle_anime,
     ):
         """Test Jellyfin TVDB payload maps Bleach S17E14 to MAL episode 1."""
-        mock_tvdb_episode.return_value = {
-            "episode_id": 999,
-            "series_id": 74796,
-            "season_number": 17,
-            "episode_number": 14,
+        # The TMDB find API resolves the episode-level TVDB id to the show.
+        mock_tmdb_find.return_value = {
+            "tv_episode_results": [
+                {"show_id": 30984, "season_number": 17, "episode_number": 14},
+            ],
+        }
+        mock_tv_with_seasons.return_value = {
+            "media_id": "30984",
+            "title": "Bleach",
+            "tvdb_id": 74796,
         }
         payload = {
             "Event": "Stop",
@@ -119,7 +126,7 @@ class AnimeMappingsWebhookPayloadTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        mock_tvdb_episode.assert_called_once_with(999)
+        mock_tmdb_find.assert_called_with("999", "tvdb_id")
         mock_handle_anime.assert_called_once_with(53998, 1, payload, self.user)
 
     @patch("integrations.webhooks.base.BaseWebhookProcessor._handle_anime")

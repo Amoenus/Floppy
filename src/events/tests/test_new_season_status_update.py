@@ -137,6 +137,12 @@ class NewSeasonStatusUpdateTests(TestCase):
         mock_clear_time_left_cache,
     ):
         """New-season detection should reopen the TV show without auto-starting the season."""
+        # Reopening only happens for seasons with future events (#1348), so the
+        # new season's air dates must be in the future.
+        future_air_dates = [
+            (timezone.now() + timezone.timedelta(days=days)).strftime("%Y-%m-%d")
+            for days in (7, 14)
+        ]
         season_metadata = {
             "season/2": {
                 "image": "http://example.com/season2.jpg",
@@ -144,12 +150,12 @@ class NewSeasonStatusUpdateTests(TestCase):
                 "episodes": [
                     {
                         "episode_number": 1,
-                        "air_date": "2024-01-15",
+                        "air_date": future_air_dates[0],
                         "still_path": "/ep1.jpg",
                     },
                     {
                         "episode_number": 2,
-                        "air_date": "2024-01-22",
+                        "air_date": future_air_dates[1],
                         "still_path": "/ep2.jpg",
                     },
                 ],

@@ -262,7 +262,7 @@ class MediaManagerTests(TestCase):
 
         self.assertTrue(hasattr(prefetched_queryset, "_prefetch_related_lookups"))
         prefetch_lookups = prefetched_queryset._prefetch_related_lookups
-        self.assertEqual(len(prefetch_lookups), 2)
+        self.assertEqual(len(prefetch_lookups), 3)
 
         queryset = Season.objects.filter(user=self.user.id)
         prefetched_queryset = manager._apply_prefetch_related(
@@ -485,8 +485,8 @@ class MediaManagerTests(TestCase):
             sort_filter="score",
         )
 
-        self.assertEqual(media_list.first(), self.anime)
-        self.assertEqual(media_list.last(), anime2)
+        self.assertEqual(media_list[0], self.anime)
+        self.assertEqual(media_list[-1], anime2)
 
     def test_get_media_types_to_process(self):
         """Test the _get_media_types_to_process method."""

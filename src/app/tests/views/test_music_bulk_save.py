@@ -121,7 +121,9 @@ class MusicBulkSaveViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 204)
-        self.assertEqual(response["HX-Redirect"], return_url)
+        # Bulk saves now dispatch a background task and close the modal
+        # instead of redirecting.
+        self.assertIn("closeModal", response["HX-Trigger"])
         self.assertTrue(ArtistTracker.objects.filter(user=self.user, artist=artist).exists())
         self.assertTrue(AlbumTracker.objects.filter(user=self.user, album=album).exists())
 
@@ -201,7 +203,9 @@ class MusicBulkSaveViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 204)
-        self.assertEqual(response["HX-Redirect"], return_url)
+        # Bulk saves now dispatch a background task and close the modal
+        # instead of redirecting.
+        self.assertIn("closeModal", response["HX-Trigger"])
         self.assertTrue(ArtistTracker.objects.filter(user=self.user, artist=artist).exists())
         self.assertTrue(AlbumTracker.objects.filter(user=self.user, album=first_album).exists())
         self.assertTrue(AlbumTracker.objects.filter(user=self.user, album=second_album).exists())
@@ -223,7 +227,7 @@ class MusicBulkSaveViewTests(TestCase):
         self.assertLess(plays[0].end_date, plays[1].end_date)
         self.assertLess(plays[1].end_date, plays[2].end_date)
 
-    def test_artist_bulk_save_falls_back_to_even_distribution_for_missing_release_dates(self):
+    def test_artist_bulk_save_biases_plays_toward_known_release_dates(self):
         artist = Artist.objects.create(name="Fallback Artist")
         dated_album = Album.objects.create(
             title="Dated Album",
@@ -282,7 +286,9 @@ class MusicBulkSaveViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 204)
-        self.assertEqual(response["HX-Redirect"], return_url)
+        # Bulk saves now dispatch a background task and close the modal
+        # instead of redirecting.
+        self.assertIn("closeModal", response["HX-Trigger"])
 
         plays = list(
             Music.objects.filter(user=self.user, album__artist=artist)
@@ -297,9 +303,11 @@ class MusicBulkSaveViewTests(TestCase):
                 (undated_album.id, third_track.id),
             ],
         )
+        # Timestamps are biased toward known release dates: the dated track
+        # anchors the start of the range, undated tracks cluster at the end.
         self.assertEqual(
             [play.end_date.date().isoformat() for play in plays],
-            ["2024-03-01", "2024-03-02", "2024-03-03"],
+            ["2024-03-01", "2024-03-03", "2024-03-03"],
         )
 
     @patch("app.services.bulk_music_tracking.flush_media_change_side_effects")

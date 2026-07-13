@@ -33,7 +33,7 @@ class ServiceWorkerViewTests(TestCase):
         self.assertEqual(response["Expires"], "0")
 
         body = response.content.decode()
-        self.assertIn('const CACHE_NAME = "yamtrack-v4";', body)
+        self.assertIn('const CACHE_NAME = "yamtrack-v5";', body)
         self.assertIn("const isSameOrigin = url.origin === self.location.origin;", body)
         self.assertIn('const isHtmxRequest = request.headers.get("HX-Request") === "true";', body)
         self.assertIn('!url.pathname.startsWith("/static/")', body)

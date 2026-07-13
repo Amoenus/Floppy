@@ -208,7 +208,7 @@ class EpisodeStatusTests(TestCase):
             episode_number=2,
         )
 
-        with patch("app.models.bulk_update_with_history") as mock_bulk_update:
+        with patch("app.models.tv.bulk_update_with_history") as mock_bulk_update:
             Episode.objects.create(
                 item=ep_item2,
                 related_season=self.season,

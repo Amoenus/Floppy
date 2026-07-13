@@ -156,8 +156,39 @@ class JellyfinWebhookTests(TestCase):
         self.assertEqual(movie.status, Status.COMPLETED.value)
         self.assertEqual(movie.progress, 1)
 
-    def test_anime_episode_mark_played(self):
+    @patch("integrations.webhooks.anime_mappings.fetch_mapping_data")
+    @patch("app.providers.mal.anime")
+    @patch("app.providers.tmdb.tv_with_seasons")
+    @patch("app.providers.tmdb.find")
+    def test_anime_episode_mark_played(
+        self,
+        mock_find,
+        mock_tv_with_seasons,
+        mock_mal_anime,
+        mock_fetch_mapping_data,
+    ):
         """Test webhook handles anime episode mark played event."""
+        mock_find.return_value = {
+            "tv_episode_results": [
+                {"show_id": 209867, "season_number": 1, "episode_number": 1},
+            ],
+            "tv_results": [],
+        }
+        mock_tv_with_seasons.return_value = {
+            "media_id": "209867",
+            "title": "Frieren: Beyond Journey's End",
+            "tvdb_id": 424536,
+            "season/1": {"episodes": [{"episode_number": 1}]},
+        }
+        mock_fetch_mapping_data.return_value = {
+            "tvdb_show:424536:s1": {"mal:52991": {"1-28": "1-28"}},
+        }
+        mock_mal_anime.return_value = {
+            "media_id": "52991",
+            "title": "Sousou no Frieren",
+            "image": "https://example.com/frieren.jpg",
+            "max_progress": 28,
+        }
         payload = {
             "Event": "Stop",
             "Item": {
@@ -190,7 +221,7 @@ class JellyfinWebhookTests(TestCase):
         self.assertEqual(anime.status, Status.IN_PROGRESS.value)
         self.assertEqual(anime.progress, 1)
 
-    @patch("integrations.webhooks.base.anime_mapping.load_mapping_data")
+    @patch("integrations.webhooks.anime_mappings.fetch_mapping_data")
     @patch("app.providers.mal.anime")
     @patch("app.providers.tmdb.tv_with_seasons")
     @patch("app.providers.tmdb.find")
@@ -218,20 +249,27 @@ class JellyfinWebhookTests(TestCase):
             "tvdb_id": "402474",
             "season/2": {"episodes": [{"episode_number": 11}]},
         }
+        # AniBridge v3 only carries the (wrong for this grouped show) TVDB
+        # season mapping; the correct TMDB-season mapping is a stored
+        # provider link, which the webhook must prefer.
         mock_load_mapping_data.return_value = {
-            "hells-paradise-tvdb": {
-                "tvdb_id": "402474",
-                "tvdb_season": 2,
-                "tvdb_epoffset": -13,
-                "mal_id": "46569",
-            },
-            "hells-paradise-tmdb": {
-                "tmdb_show_id": "12345",
-                "tmdb_season": 2,
-                "tmdb_epoffset": 0,
-                "mal_id": "60067",
-            },
+            "tvdb_show:402474:s2": {"mal:46569": {"1-12": "1-12"}},
         }
+        grouped_item = Item.objects.create(
+            media_id="60067",
+            source=Sources.MAL.value,
+            media_type=MediaTypes.ANIME.value,
+            title="Hell's Paradise 2nd Season",
+            image="https://example.com/hells-paradise-s2.jpg",
+        )
+        ItemProviderLink.objects.create(
+            item=grouped_item,
+            provider=Sources.TMDB.value,
+            provider_media_type=MediaTypes.TV.value,
+            provider_media_id="12345",
+            season_number=2,
+            episode_offset=0,
+        )
 
         def mal_side_effect(media_id):
             if str(media_id) == "60067":
@@ -284,7 +322,7 @@ class JellyfinWebhookTests(TestCase):
         )
 
     @patch("integrations.webhooks.base.BaseWebhookProcessor._handle_tv_episode")
-    @patch("integrations.webhooks.base.anime_mapping.load_mapping_data")
+    @patch("integrations.webhooks.anime_mappings.fetch_mapping_data")
     @patch("app.providers.mal.anime")
     @patch("app.providers.tmdb.tv_with_seasons")
     @patch("app.providers.tmdb.find")
@@ -313,13 +351,10 @@ class JellyfinWebhookTests(TestCase):
             "tvdb_id": "402474",
             "season/2": {"episodes": [{"episode_number": 11}]},
         }
+        # Season 2 mapping only covers episodes 14+, so episode 11 cannot be
+        # mapped to a valid MAL episode.
         mock_load_mapping_data.return_value = {
-            "hells-paradise-tvdb": {
-                "tvdb_id": "402474",
-                "tvdb_season": 2,
-                "tvdb_epoffset": -13,
-                "mal_id": "46569",
-            },
+            "tvdb_show:402474:s2": {"mal:46569": {"14-25": "1-12"}},
         }
         mock_mal_anime.return_value = {
             "media_id": "46569",

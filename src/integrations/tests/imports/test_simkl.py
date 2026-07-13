@@ -3,6 +3,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
@@ -35,6 +36,9 @@ class ImportSimkl(TestCase):
 
     def setUp(self):
         """Create user for the tests."""
+        # History-day caches are keyed by user pk, which TestCase rollbacks
+        # reuse across tests — clear to avoid stale entries leaking in.
+        cache.clear()
         credentials = {"username": "test", "password": "12345"}
         self.user = get_user_model().objects.create_user(**credentials)
         self.importer = simkl.SimklImporter(

@@ -43,7 +43,10 @@ class HomeScreenViewTests(TestCase):
         enabled_set = set(enabled_media_types)
         update_fields = []
         for media_type in MediaTypes.values:
-            if media_type == MediaTypes.EPISODE.value:
+            if media_type in (
+                MediaTypes.EPISODE.value,
+                MediaTypes.COMIC_ISSUE.value,
+            ):
                 continue
             field_name = f"{media_type}_enabled"
             setattr(self.user, field_name, media_type in enabled_set)
@@ -59,7 +62,11 @@ class HomeScreenViewTests(TestCase):
         self.assertTemplateUsed(response, "users/home_screen.html")
 
         sections = json.loads(response.context["home_screen_sections_json"])
-        self.assertEqual([section["media_type"] for section in sections], ["tv", "movie"])
+        # Season stays configurable even when its library type is disabled.
+        self.assertEqual(
+            [section["media_type"] for section in sections],
+            ["tv", "movie", "season"],
+        )
         self.assertContains(response, "Home Screen")
         self.assertContains(response, "sections: JSON.parse(")
         self.assertContains(response, "directionChoices: JSON.parse(")
@@ -325,7 +332,9 @@ class HomeScreenViewTests(TestCase):
             ["Home Active Season 1"],
         )
         stale_season.refresh_from_db()
-        self.assertEqual(stale_season.status, Status.COMPLETED.value)
+        # Rewatch protection: an in-progress season is never auto-promoted to
+        # Completed in the DB; Home only derives the status for display.
+        self.assertEqual(stale_season.status, Status.IN_PROGRESS.value)
 
     def test_library_row_status_all_includes_collected_untracked_items(self):
         self._set_enabled_media_types(MediaTypes.MOVIE.value)

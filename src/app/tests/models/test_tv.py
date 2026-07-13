@@ -353,12 +353,18 @@ class TVSpecialActivityTests(TestCase):
             image="http://example.com/season1.jpg",
             season_number=1,
         )
+        # Create as PLANNING then flip via update() so the fixture does not
+        # trigger the completed-on-create fan-out (which fetches metadata).
         season_one = Season.objects.create(
             item=season_one_item,
             user=self.user,
             related_tv=self.tv,
+            status=Status.PLANNING.value,
+        )
+        Season.objects.filter(pk=season_one.pk).update(
             status=Status.COMPLETED.value,
         )
+        season_one.refresh_from_db()
         regular_episode = Episode(
             item=Item.objects.create(
                 media_id="114410",
@@ -385,8 +391,12 @@ class TVSpecialActivityTests(TestCase):
             item=special_item,
             user=self.user,
             related_tv=self.tv,
+            status=Status.PLANNING.value,
+        )
+        Season.objects.filter(pk=specials.pk).update(
             status=Status.COMPLETED.value,
         )
+        specials.refresh_from_db()
         special_episode = Episode(
             item=Item.objects.create(
                 media_id="114410",

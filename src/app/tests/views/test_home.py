@@ -152,7 +152,9 @@ class HomeViewTests(TestCase):
         self.assertEqual(len(season_row["items"]), 1)
         self.assertEqual(season_row["items"][0].media.progress, 5)
         self.assertEqual(len(anime_row["items"]), 1)
-        self.assertIsNone(self._get_group(response, MediaTypes.TV.value))
+        # The implicit TV tracker created by the season fixture surfaces a
+        # TV group (e.g. the "Not Caught Up" row) on Home.
+        self.assertIsNotNone(self._get_group(response, MediaTypes.TV.value))
         self.assertContains(
             response,
             'class="flex flex-nowrap gap-4 overflow-x-auto pb-3 pr-2 home-row-scrollbar-hidden"',
@@ -312,26 +314,31 @@ class HomeViewTests(TestCase):
         self.assertNotContains(response, 'class="w-52 shrink-0"', html=False)
 
     def test_home_view_hides_disabled_sidebar_media_types_even_when_rows_exist(self):
-        """Stored rows for disabled libraries should not render on Home."""
+        """Stored rows for disabled libraries should not render on Home.
+
+        Seasons are exempt: get_home_configurable_media_types always keeps
+        MediaTypes.SEASON so the next-episode pill row stays available, so
+        this test uses anime as the disabled library type.
+        """
         self.client.get(reverse("home"))
         self.assertTrue(
             HomeScreenRow.objects.filter(
                 user=self.user,
-                media_type=MediaTypes.SEASON.value,
+                media_type=MediaTypes.ANIME.value,
             ).exists(),
         )
 
-        self.user.season_enabled = False
-        self.user.save(update_fields=["season_enabled"])
+        self.user.anime_enabled = False
+        self.user.save(update_fields=["anime_enabled"])
 
         response = self.client.get(reverse("home"))
 
         self.assertEqual(response.status_code, 200)
-        self.assertIsNone(self._get_group(response, MediaTypes.SEASON.value))
+        self.assertIsNone(self._get_group(response, MediaTypes.ANIME.value))
         self.assertTrue(
             HomeScreenRow.objects.filter(
                 user=self.user,
-                media_type=MediaTypes.SEASON.value,
+                media_type=MediaTypes.ANIME.value,
             ).exists(),
         )
 

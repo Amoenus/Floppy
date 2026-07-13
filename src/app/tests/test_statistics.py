@@ -841,7 +841,7 @@ class StatisticsTests(TestCase):
         months = result["months"]
         self.assertIsInstance(months, list)
 
-    @patch("app.statistics.BasicMedia.objects.get_historical_models")
+    @patch("app.stats_activity.BasicMedia.objects.get_historical_models")
     @patch("app.statistics.apps.get_model")
     def test_get_filtered_historical_data(self, mock_get_model, mock_get_hist_models):
         """Test the get_filtered_historical_data function."""
@@ -1338,7 +1338,9 @@ class ConsumptionStatisticsTests(TestCase):
 
     def test_consumption_stats_aggregation(self):
         """TV/movie consumption helpers should return expected totals and chart data."""
-        with patch("app.statistics._get_media_metadata_for_statistics") as metadata_mock:
+        with patch(
+            "app.stats_time._get_media_metadata_for_statistics",
+        ) as metadata_mock:
             metadata_mock.return_value = {"runtime": "2h"}
             user_media, _ = statistics.get_user_media(
                 self.user,

@@ -694,6 +694,8 @@ class UserGetImportTasksTests(TestCase):
         backend_result = MagicMock()
         backend_result.status = "SUCCESS"
         backend_result.result = "Imported 3 movies."
+        backend_result.traceback = None
+        backend_result.date_done = None
         mock_async_result.return_value = backend_result
 
         task_result = TaskResult.objects.create(

@@ -437,7 +437,7 @@ class PlexWatchlistViewTests(TestCase):
 
         self.assertContains(response, "Import Watchlist Data Only")
         self.assertContains(response, "Disable Watchlist Sync")
-        self.assertContains(response, "Every 15 minutes")
+        self.assertContains(response, "every 15 minutes")
         self.assertContains(response, "Watchlist Sync")
 
     @patch("users.views.plex.fetch_account")

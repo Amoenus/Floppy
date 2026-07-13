@@ -139,10 +139,9 @@ class EpisodeBulkSaveViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 204)
-        self.assertEqual(
-            response["HX-Redirect"],
-            "/details/pocketcasts/podcast/show-uuid-1/podcast-show",
-        )
+        # Bulk saves now dispatch a background task and close the modal
+        # instead of redirecting.
+        self.assertIn("closeModal", response["HX-Trigger"])
         self.assertTrue(
             PodcastShowTracker.objects.filter(user=self.user, show=show).exists(),
         )
@@ -222,7 +221,9 @@ class EpisodeBulkSaveViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 204)
-        self.assertEqual(response["HX-Redirect"], self.return_url)
+        # Bulk saves now dispatch a background task and close the modal
+        # instead of redirecting.
+        self.assertIn("closeModal", response["HX-Trigger"])
         self.assertTrue(
             TV.objects.filter(user=self.user, item__media_id="1396").exists(),
         )
@@ -844,9 +845,9 @@ class EpisodeBulkSaveViewTests(TestCase):
             },
         )
 
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Start date is required.")
-        self.assertContains(response, "End date is required.")
+        # Missing dates are rejected with an error toast before dispatch.
+        self.assertEqual(response.status_code, 422)
+        self.assertIn("Start and end dates are required.", response["HX-Trigger"])
         self.assertEqual(
             Episode.objects.filter(related_season__user=self.user).count(),
             0,
@@ -925,7 +926,7 @@ class EpisodeBulkSaveViewTests(TestCase):
 
     @patch("app.views.metadata_resolution.resolve_detail_metadata")
     @patch("app.providers.services.get_media_metadata")
-    def test_air_date_mode_rejects_missing_air_dates(
+    def test_air_date_mode_falls_back_when_air_dates_missing(
         self,
         mock_get_metadata,
         mock_resolve_detail_metadata,
@@ -977,14 +978,13 @@ class EpisodeBulkSaveViewTests(TestCase):
             },
         )
 
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(
-            response,
-            "One or more selected episodes are missing air dates.",
-        )
+        self.assertEqual(response.status_code, 204)
+        self.assertIn("closeModal", response["HX-Trigger"])
+        # Missing air dates now fall back to distributing the plays across
+        # the selected date range instead of rejecting the request.
         self.assertEqual(
             Episode.objects.filter(related_season__user=self.user).count(),
-            0,
+            2,
         )
 
     @patch("app.views.metadata_resolution.resolve_detail_metadata")
@@ -1079,7 +1079,9 @@ class EpisodeBulkSaveViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 204)
-        self.assertIn("/details/tvdb/anime/9350138/", response["HX-Redirect"])
+        # Bulk saves now dispatch a background task and close the modal
+        # instead of redirecting; grouped tracking is asserted below.
+        self.assertIn("closeModal", response["HX-Trigger"])
         self.assertTrue(
             TV.objects.filter(
                 user=self.user,

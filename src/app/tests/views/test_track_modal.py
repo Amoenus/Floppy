@@ -263,10 +263,9 @@ class TrackModalViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         content = response.content.decode()
-        self.assertIn('@click="', content)
-        self.assertIn("if (modalState && modalState.createTrackOpen)", content)
-        self.assertIn("if (modalState && modalState.editTrackOpen)", content)
-        self.assertIn("if (modalState && modalState.trackOpen)", content)
+        # The shared helper resolves the wrapper's Alpine state key (trackOpen,
+        # createTrackOpen, or editTrackOpen) from the surrounding x-show.
+        self.assertIn('@click="closeTrackModal($el)"', content)
         self.assertNotContains(response, 'onclick="closeTrackModal(this)"', html=False)
 
     def test_track_modal_view_uses_stored_discover_hidden_state(self):

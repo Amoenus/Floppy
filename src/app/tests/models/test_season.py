@@ -523,7 +523,7 @@ class SeasonStatusTests(TestCase):
             ],
         )
 
-        with patch("app.models.bulk_create_with_history") as mock_bulk_create:
+        with patch("app.models.tv.bulk_create_with_history") as mock_bulk_create:
             self.season.status = Status.COMPLETED.value
             self.season.save()
 
