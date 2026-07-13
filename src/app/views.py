@@ -517,6 +517,34 @@ def _queue_missing_cover_prefetch(user):
                 cache.delete(cache_key)
 
 
+def _artwork_cover_fingerprint(user):
+    """Cheap fingerprint of the user's missing-cover state.
+
+    The artwork poller only exists to pick up cover-art writes (Artist,
+    Album, PodcastShow images), which don't fire user-scoped row-cache
+    invalidation. Three indexed counts are enough to detect "a cover
+    arrived since the last poll" without rebuilding any rows.
+    """
+    from app.models import AlbumTracker, ArtistTracker, PodcastShowTracker
+
+    missing_artist = (
+        ArtistTracker.objects.filter(user=user)
+        .filter(Q(artist__image="") | Q(artist__image=settings.IMG_NONE))
+        .count()
+    )
+    missing_album = (
+        AlbumTracker.objects.filter(user=user)
+        .filter(Q(album__image="") | Q(album__image=settings.IMG_NONE))
+        .count()
+    )
+    missing_show = (
+        PodcastShowTracker.objects.filter(user=user)
+        .filter(Q(show__image="") | Q(show__image=settings.IMG_NONE))
+        .count()
+    )
+    return (missing_artist, missing_album, missing_show)
+
+
 @require_GET
 @login_required
 def home_rows_artwork_refresh(request):
@@ -527,6 +555,11 @@ def home_rows_artwork_refresh(request):
     since cover updates don't fire user-scoped invalidation signals),
     returns each row as an out-of-band swap, and re-renders the poller —
     which self-terminates once no row still needs covers.
+
+    Rebuilding the rows materializes the user's whole music/podcast
+    library (multi-second on large libraries), so when the missing-cover
+    fingerprint is unchanged since the last poll the rebuild is skipped
+    and only the poller is re-armed.
     """
     raw_ids = request.GET.get("ids", "")
     row_ids = {int(part) for part in raw_ids.split(",") if part.strip().isdigit()}
@@ -535,6 +568,19 @@ def home_rows_artwork_refresh(request):
             request,
             "app/components/home_artwork_poller.html",
             {"poll_row_ids": []},
+        )
+
+    cover_state = _artwork_cover_fingerprint(request.user)
+    cover_state_key = f"home_artwork_cover_state_{request.user.id}"
+    if cache.get(cover_state_key) == cover_state:
+        # No cover changed since the last poll: keep polling (and keep
+        # retrying prefetch, it has its own cooldown) without paying the
+        # row rebuild.
+        _queue_missing_cover_prefetch(request.user)
+        return render(
+            request,
+            "app/components/home_artwork_poller.html",
+            {"poll_row_ids": sorted(row_ids)},
         )
 
     home_groups = build_home_page_groups(
@@ -577,6 +623,7 @@ def home_rows_artwork_refresh(request):
         },
         request=request,
     )
+    cache.set(cover_state_key, cover_state, 60 * 60)
     return HttpResponse(poller + "".join(row_fragments))
 
 
