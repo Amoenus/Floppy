@@ -17,8 +17,15 @@ from django.test import Client
 ENDPOINTS = [
     ("GET", "/settings/home-screen"),
     ("GET", "/"),
+    ("GET", "/home/rest/"),
     ("GET", "/medialist/tv"),
     ("GET", "/medialist/season"),
+    ("GET", "/medialist/anime"),
+    ("GET", "/statistics"),
+    ("GET", "/history"),
+    ("GET", "/discover"),
+    ("GET", "/calendar"),
+    ("GET", "/lists"),
     ("GET", "/health/"),
 ]
 
