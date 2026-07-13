@@ -51,6 +51,7 @@ TV_LIST_DEFAULT_SORT_MAX_QUERIES = 24   # pinned after Fix 1+2+3 (was 2642 in pr
 TV_LIST_TIME_LEFT_SORT_MAX_QUERIES = 26  # pinned after Fix 4 bulk runtime load (was ~400+ per-season queries)
 MOVIE_LIST_DEFAULT_SORT_MAX_QUERIES = 14
 ANIME_LIST_DEFAULT_SORT_MAX_QUERIES = 20
+ANIME_LIST_GROUPED_MAX_QUERIES = 18  # grouped (TV-backed) anime adds no per-show runtime queries (24 when broken)
 MANGA_LIST_DEFAULT_SORT_MAX_QUERIES = 14
 MANGA_LIST_NO_STATUS_MAX_QUERIES = 18
 GAME_LIST_DEFAULT_SORT_MAX_QUERIES = 18
@@ -58,15 +59,21 @@ HOME_ROW_FRAGMENT_MAX_QUERIES = 120
 CUSTOM_LIST_DETAIL_MAX_QUERIES = 30
 
 
-def seed_tv_library(user, show_count=SHOW_COUNT):
+def seed_tv_library(
+    user,
+    show_count=SHOW_COUNT,
+    media_id_prefix="qc_show",
+    library_media_type="",
+):
     """Create TV shows with seasons and episode items carrying runtimes."""
     air_date = datetime(2020, 1, 1, tzinfo=UTC)
     for show_index in range(show_count):
-        media_id = f"qc_show_{show_index}"
+        media_id = f"{media_id_prefix}_{show_index}"
         tv_item = Item.objects.create(
             media_id=media_id,
             source=Sources.TMDB.value,
             media_type=MediaTypes.TV.value,
+            library_media_type=library_media_type,
             title=f"Query Count Show {show_index}",
             image="https://example.com/show.jpg",
             release_datetime=air_date,
@@ -81,6 +88,7 @@ def seed_tv_library(user, show_count=SHOW_COUNT):
                 media_id=media_id,
                 source=Sources.TMDB.value,
                 media_type=MediaTypes.SEASON.value,
+                library_media_type=library_media_type,
                 season_number=season_number,
                 title=f"Query Count Show {show_index}",
                 image="https://example.com/season.jpg",
@@ -98,6 +106,7 @@ def seed_tv_library(user, show_count=SHOW_COUNT):
                     media_id=media_id,
                     source=Sources.TMDB.value,
                     media_type=MediaTypes.EPISODE.value,
+                    library_media_type=library_media_type,
                     season_number=season_number,
                     episode_number=episode_number,
                     title=f"Query Count Show {show_index}",
@@ -341,6 +350,25 @@ class QueryCountTests(TestCase):
             "/medialist/anime",
             ANIME_LIST_DEFAULT_SORT_MAX_QUERIES,
             "anime list default sort",
+        )
+
+    def test_anime_list_grouped_anime_query_budget(self):
+        """Grouped (TV-backed) anime entries render without per-show runtime queries.
+
+        Regression pin: prefill_episode_runtime_index must hydrate the wrapped
+        media object, not the MediaListEntry wrapper — otherwise every grouped
+        show issues its own episode-runtime query at template render time.
+        """
+        seed_tv_library(
+            self.user,
+            show_count=6,
+            media_id_prefix="qc_grouped_anime",
+            library_media_type=MediaTypes.ANIME.value,
+        )
+        self._assert_query_budget(
+            "/medialist/anime",
+            ANIME_LIST_GROUPED_MAX_QUERIES,
+            "anime list with grouped anime",
         )
 
     def test_manga_list_default_sort_query_budget(self):

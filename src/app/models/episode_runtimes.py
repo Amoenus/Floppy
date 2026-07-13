@@ -65,10 +65,15 @@ def prefill_episode_runtime_index(media_list):
     Sets media._episode_runtime_index on every TV/anime entry (an empty dict
     counts as prefilled) so total_runtime_minutes never queries per season.
     Entries that already carry an index are left untouched.
+
+    List-entry wrappers (e.g. MediaListEntry) are unwrapped via their .media
+    attribute: runtime properties evaluate on the wrapped model, so the index
+    must live there, not on the wrapper.
     """
     targets = []
     show_keys = set()
-    for media in media_list:
+    for entry in media_list:
+        media = getattr(entry, "media", None) or entry
         item = getattr(media, "item", None)
         if item is None or getattr(media, "_episode_runtime_index", None) is not None:
             continue
