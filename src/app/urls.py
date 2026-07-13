@@ -21,6 +21,11 @@ urlpatterns = [
     ),
     path("search", views.media_search, name="search"),
     path(
+        "search/suggestions",
+        views.search_suggestions,
+        name="search_suggestions",
+    ),
+    path(
         "details/music/artist/<int:artist_id>/<slug:artist_slug>/",
         views.music_artist_details,
         name="music_artist_details",
