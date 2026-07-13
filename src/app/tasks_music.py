@@ -1042,3 +1042,47 @@ def prefetch_album_covers_batch(artist_ids: list[int], limit_per_artist: int | N
         except Exception as exc:  # pragma: no cover - defensive
             logger.debug("Cover batch prefetch failed for artist %s: %s", artist_id, exception_summary(exc))
     return {"artists": len(artist_ids), "covers_updated": updated}
+
+
+@shared_task(name="app.tasks.prefetch_artist_images_batch")
+def prefetch_artist_images_batch(artist_ids: list[int]):
+    """Backfill missing photos for a batch of artists (band members, related bands).
+
+    Tries an album-cover-derived hero image first, then falls back to the
+    Wikipedia image MusicBrainz links to. Sets IMG_NONE when nothing is found
+    so pollers know to stop retrying.
+    """
+    from app.models import Artist
+    from app.providers import musicbrainz
+    from app.services.music import get_artist_hero_image
+
+    updated = 0
+    for artist_id in artist_ids:
+        artist = Artist.objects.filter(id=artist_id).first()
+        if not artist:
+            continue
+        if artist.image and artist.image != settings.IMG_NONE:
+            continue
+
+        try:
+            hero = get_artist_hero_image(artist)
+            if hero and hero != settings.IMG_NONE:
+                artist.image = hero
+                artist.save(update_fields=["image"])
+                updated += 1
+                continue
+
+            wiki_image = None
+            if artist.musicbrainz_id:
+                mb_data = musicbrainz.get_artist(artist.musicbrainz_id)
+                wiki_image = mb_data.get("image")
+
+            if wiki_image:
+                artist.image = wiki_image
+                updated += 1
+            else:
+                artist.image = settings.IMG_NONE
+            artist.save(update_fields=["image"])
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.debug("Artist image prefetch failed for artist %s: %s", artist_id, exception_summary(exc))
+    return {"artists": len(artist_ids), "images_updated": updated}

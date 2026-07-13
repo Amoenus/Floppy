@@ -20,6 +20,7 @@ from app.models import (
     AlbumTracker,
     Anime,
     Artist,
+    ArtistMember,
     ArtistTracker,
     BoardGame,
     Book,
@@ -795,6 +796,137 @@ class MediaDetailsViewTests(TestCase):
             response,
             f'hx-get="{reverse("artist_track_modal", args=[artist.id])}?instance_id=',
             html=False,
+        )
+
+    @patch("app.services.music.needs_discography_sync", return_value=False)
+    @patch("app.services.music_scrobble.dedupe_artist_albums")
+    @patch("app.providers.musicbrainz.get_artist")
+    def test_music_artist_details_renders_band_members(
+        self,
+        mock_get_artist,
+        _mock_dedupe_artist_albums,
+        _mock_needs_discography_sync,
+    ):
+        band = Artist.objects.create(
+            name="Test Band",
+            musicbrainz_id="band-mbid",
+            discography_synced_at=timezone.now(),
+        )
+        member = Artist.objects.create(
+            name="Test Member",
+            musicbrainz_id="member-mbid",
+        )
+        other_band = Artist.objects.create(
+            name="Other Band",
+            musicbrainz_id="other-band-mbid",
+            discography_synced_at=timezone.now(),
+        )
+        ArtistMember.objects.create(
+            band=band,
+            member=member,
+            role="guitar",
+            is_current=True,
+        )
+        ArtistMember.objects.create(
+            band=other_band,
+            member=band,
+            role="vocals",
+            is_current=False,
+        )
+        mock_get_artist.return_value = {
+            "type": "Group",
+            "country": "US",
+            "genres": [],
+            "tags": [],
+            "rating": None,
+            "rating_count": 0,
+            "bio": "",
+            "image": "",
+            "members": [],
+        }
+
+        response = self.client.get(
+            reverse(
+                "music_artist_details",
+                kwargs={
+                    "artist_id": band.id,
+                    "artist_slug": "test-band",
+                },
+            ),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Members")
+        self.assertContains(response, "Test Member")
+        self.assertContains(response, "guitar")
+        self.assertContains(response, "Also In")
+        self.assertContains(response, "Other Band")
+        self.assertContains(response, "Former")
+        # Members/Also In use the shared .media-card grid styling, not
+        # the earlier bespoke circular-avatar markup.
+        self.assertContains(response, 'class="media-card')
+        self.assertContains(response, "aspect-[2/3]")
+        # Related artists start with no image, so the async photo-refresh
+        # poll should be wired up on the container.
+        self.assertContains(
+            response,
+            reverse("prefetch_artist_relation_images", args=[band.id]),
+        )
+        self.assertContains(response, "Refreshing photos")
+
+    @patch("app.services.music.needs_discography_sync", return_value=False)
+    @patch("app.services.music_scrobble.dedupe_artist_albums")
+    @patch("app.providers.musicbrainz.get_artist")
+    def test_music_artist_details_no_poll_when_relation_images_present(
+        self,
+        mock_get_artist,
+        _mock_dedupe_artist_albums,
+        _mock_needs_discography_sync,
+    ):
+        band = Artist.objects.create(
+            name="Test Band",
+            musicbrainz_id="band-mbid-2",
+            discography_synced_at=timezone.now(),
+        )
+        member = Artist.objects.create(
+            name="Test Member",
+            musicbrainz_id="member-mbid-2",
+            image="http://example.com/member.jpg",
+        )
+        ArtistMember.objects.create(
+            band=band,
+            member=member,
+            role="drums",
+            is_current=True,
+        )
+        mock_get_artist.return_value = {
+            "type": "Group",
+            "country": "US",
+            "genres": [],
+            "tags": [],
+            "rating": None,
+            "rating_count": 0,
+            "bio": "",
+            "image": "",
+            "members": [],
+        }
+
+        response = self.client.get(
+            reverse(
+                "music_artist_details",
+                kwargs={
+                    "artist_id": band.id,
+                    "artist_slug": "test-band",
+                },
+            ),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "http://example.com/member.jpg")
+        self.assertContains(response, "media-card-poster")
+        self.assertNotContains(
+            response,
+            reverse("prefetch_artist_relation_images", args=[band.id]),
         )
 
     @patch("app.services.music_scrobble.is_incomplete_album", return_value=False)

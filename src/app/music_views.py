@@ -257,6 +257,88 @@ def _music_bulk_redirect_url(request, *, artist=None, album=None):
     return reverse("medialist", args=[MediaTypes.MUSIC.value])
 
 
+def _build_artist_relations(user, artist):
+    """Return normalized band-member / also-in relation lists for an artist.
+
+    Each relation is a dict with `artist`, `role`, `is_current`, and `tracker`
+    (the viewing user's ArtistTracker for that related artist, or None) so a
+    single card template can render both "Members" and "Also In" sections.
+    """
+    from app.models import ArtistTracker
+
+    band_memberships = list(
+        artist.members.select_related("member").order_by("-is_current", "member__name"),
+    )
+    band_of_memberships = list(
+        artist.bands.select_related("band").order_by("-is_current", "band__name"),
+    )
+
+    related_artists = {membership.member for membership in band_memberships}
+    related_artists.update(membership.band for membership in band_of_memberships)
+    related_artist_ids = [related_artist.id for related_artist in related_artists]
+
+    trackers_by_artist_id = {}
+    if related_artist_ids:
+        trackers_by_artist_id = {
+            tracker.artist_id: tracker
+            for tracker in ArtistTracker.objects.filter(
+                user=user,
+                artist_id__in=related_artist_ids,
+            )
+        }
+
+    def _to_relations(memberships, attr):
+        relations = []
+        for membership in memberships:
+            related_artist = getattr(membership, attr)
+            relations.append({
+                "artist": related_artist,
+                "role": membership.role,
+                "is_current": membership.is_current,
+                "tracker": trackers_by_artist_id.get(related_artist.id),
+            })
+        return relations
+
+    band_members = _to_relations(band_memberships, "member")
+    member_of_bands = _to_relations(band_of_memberships, "band")
+
+    missing_relation_image_count = sum(
+        1
+        for related_artist in related_artists
+        if not related_artist.image or related_artist.image == settings.IMG_NONE
+    )
+
+    return band_members, member_of_bands, missing_relation_image_count
+
+
+def _queue_artist_relation_image_prefetch(artist, band_members, member_of_bands):
+    """Debounced enqueue of the async photo backfill for missing relation images."""
+    from app.tasks import prefetch_artist_images_batch
+
+    missing_ids = [
+        relation["artist"].id
+        for relation in band_members + member_of_bands
+        if not relation["artist"].image or relation["artist"].image == settings.IMG_NONE
+    ]
+    if not missing_ids:
+        return
+
+    cache_key = f"music:artist-image-prefetch:{artist.id}"
+    try:
+        if cache.add(cache_key, True, 60 * 10):
+            try:
+                prefetch_artist_images_batch.delay(missing_ids)
+            except Exception as queue_exc:  # pragma: no cover - defensive
+                cache.delete(cache_key)
+                raise queue_exc
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.debug(
+            "Artist relation image prefetch queue failed for artist %s: %s",
+            artist.id,
+            exception_summary(exc),
+        )
+
+
 def _render_music_artist_details(request, artist):
     """Render a music artist through the shared media details template."""
     from app import views as view_barrel
@@ -469,12 +551,13 @@ def _render_music_artist_details(request, artist):
         except Exception as exc:
             logger.debug("Failed to sync artist members from MusicBrainz: %s", exc)
 
-    band_members = list(
-        artist.members.select_related("member").order_by("-is_current", "member__name"),
+    band_members, member_of_bands, missing_relation_image_count = _build_artist_relations(
+        request.user,
+        artist,
     )
-    member_of_bands = list(
-        artist.bands.select_related("band").order_by("-is_current", "band__name"),
-    )
+    poll_for_relation_images = missing_relation_image_count > 0
+    if poll_for_relation_images:
+        _queue_artist_relation_image_prefetch(artist, band_members, member_of_bands)
 
     genre_chips = []
     if genres:
@@ -538,6 +621,8 @@ def _render_music_artist_details(request, artist):
         "discography_groups": discography_groups,
         "band_members": band_members,
         "member_of_bands": member_of_bands,
+        "missing_relation_image_count": missing_relation_image_count,
+        "poll_for_relation_images": poll_for_relation_images,
         "collection_stats": collection_stats,
         "music_artist_metadata": artist_metadata,
         "music_artist_rating": {
@@ -1153,6 +1238,41 @@ def prefetch_artist_covers(request, artist_id):
             "artist": artist,
             "missing_cover_count": missing_cover_count,
             "poll_for_covers": poll_for_covers,
+            "user": request.user,
+        },
+    )
+
+
+@require_GET
+def prefetch_artist_relation_images(request, artist_id):
+    """HTMX endpoint to asynchronously fetch band-member/related-artist photos.
+
+    This runs after the artist page loads to avoid blocking the initial render.
+    Returns the updated members/also-in grid HTML.
+    """
+    artist = get_object_or_404(Artist, id=artist_id)
+
+    band_members, member_of_bands, missing_relation_image_count = _build_artist_relations(
+        request.user,
+        artist,
+    )
+
+    poll_for_relation_images = missing_relation_image_count > 0
+    if poll_for_relation_images:
+        _queue_artist_relation_image_prefetch(artist, band_members, member_of_bands)
+        poll_for_relation_images = bool(
+            cache.get(f"music:artist-image-prefetch:{artist.id}"),
+        )
+
+    return render(
+        request,
+        "app/components/artist_relations_container.html",
+        {
+            "artist": artist,
+            "band_members": band_members,
+            "member_of_bands": member_of_bands,
+            "missing_relation_image_count": missing_relation_image_count,
+            "poll_for_relation_images": poll_for_relation_images,
             "user": request.user,
         },
     )
