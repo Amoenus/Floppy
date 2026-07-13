@@ -306,65 +306,7 @@
       {% include "app/components/detail_notes_section.html" %}
     {% endif %}
 
-    {# Members - band lineup, only shown for groups with known members #}
-    {% if band_members %}
-      <section class="mb-8">
-        <h2 class="text-xl font-bold mb-4">Members</h2>
-        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-          {% for membership in band_members %}
-            <a href="{{ membership.member|music_artist_url }}"
-               class="bg-[#2a2f35] hover:bg-[#39404b] rounded-lg p-3 text-center transition duration-300">
-              {% if membership.member.image and membership.member.image != IMG_NONE %}
-                <img alt="{{ membership.member.name }}"
-                     class="w-16 h-16 mx-auto rounded-full object-cover bg-[#1f2329]"
-                     src="{{ membership.member.image }}">
-              {% else %}
-                <div class="w-16 h-16 mx-auto rounded-full bg-[#1f2329] flex items-center justify-center">
-                  {% icon 'music' is_active=False extra_classes="w-8 h-8 text-gray-500" %}
-                </div>
-              {% endif %}
-              <p class="text-sm text-gray-200 mt-2 truncate">{{ membership.member.name }}</p>
-              {% if membership.role %}
-                <p class="text-xs text-gray-400 truncate">{{ membership.role }}</p>
-              {% endif %}
-              {% if not membership.is_current %}
-                <span class="inline-block mt-1 px-2 py-0.5 bg-gray-600 text-gray-300 rounded-full text-xs">Former</span>
-              {% endif %}
-            </a>
-          {% endfor %}
-        </div>
-      </section>
-    {% endif %}
-
-    {# Also In - other bands this artist is/was a member of #}
-    {% if member_of_bands %}
-      <section class="mb-8">
-        <h2 class="text-xl font-bold mb-4">Also In</h2>
-        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-          {% for membership in member_of_bands %}
-            <a href="{{ membership.band|music_artist_url }}"
-               class="bg-[#2a2f35] hover:bg-[#39404b] rounded-lg p-3 text-center transition duration-300">
-              {% if membership.band.image and membership.band.image != IMG_NONE %}
-                <img alt="{{ membership.band.name }}"
-                     class="w-16 h-16 mx-auto rounded-full object-cover bg-[#1f2329]"
-                     src="{{ membership.band.image }}">
-              {% else %}
-                <div class="w-16 h-16 mx-auto rounded-full bg-[#1f2329] flex items-center justify-center">
-                  {% icon 'music' is_active=False extra_classes="w-8 h-8 text-gray-500" %}
-                </div>
-              {% endif %}
-              <p class="text-sm text-gray-200 mt-2 truncate">{{ membership.band.name }}</p>
-              {% if membership.role %}
-                <p class="text-xs text-gray-400 truncate">{{ membership.role }}</p>
-              {% endif %}
-              {% if not membership.is_current %}
-                <span class="inline-block mt-1 px-2 py-0.5 bg-gray-600 text-gray-300 rounded-full text-xs">Former</span>
-              {% endif %}
-            </a>
-          {% endfor %}
-        </div>
-      </section>
-    {% endif %}
+    {% include "app/components/artist_relations_container.html" with artist=artist band_members=band_members member_of_bands=member_of_bands missing_relation_image_count=missing_relation_image_count poll_for_relation_images=poll_for_relation_images user=user only %}
 
     <section class="mb-8">
       <h2 class="text-xl font-bold mb-4">Discography</h2>

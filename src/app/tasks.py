@@ -114,6 +114,7 @@ from app.tasks_music import (  # noqa: E402
     fast_runtime_backfill_task,
     populate_album_tracks_batch,
     prefetch_album_covers_batch,
+    prefetch_artist_images_batch,
 )
 from app.tasks_runtime import (  # noqa: E402
     RUNTIME_BACKFILL_EPISODES_LOCK_PREFIX,
