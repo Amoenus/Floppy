@@ -25,4 +25,9 @@ urlpatterns = [
         fork_views.CollectionEntryView.as_view(),
         name="api_collection_entry",
     ),
+    re_path(
+        r"^tasks/(?P<task_id>[\w-]+)/?$",
+        fork_views.TaskStatusView.as_view(),
+        name="api_task_status",
+    ),
 ]

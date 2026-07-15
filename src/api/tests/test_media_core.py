@@ -1180,7 +1180,7 @@ class MediaCoreTests(YamtrackApiTestCase):
         list_id = self.lists_by_name["favorites"].id
         put_response = self.call_api(
             "put",
-            "api_media_lists",
+            "api_media_list_detail",
             args=("invalid", "tmdb", 501, list_id),
             payload={},
             headers=self.auth_headers,
@@ -1189,7 +1189,7 @@ class MediaCoreTests(YamtrackApiTestCase):
 
         delete_response = self.call_api(
             "delete",
-            "api_media_lists",
+            "api_media_list_detail",
             args=("invalid", "tmdb", 501, list_id),
             headers=self.auth_headers,
         )
@@ -1202,7 +1202,7 @@ class MediaCoreTests(YamtrackApiTestCase):
 
         response = self.call_api(
             "delete",
-            "api_media_lists",
+            "api_media_list_detail",
             args=(
                 MediaTypes.MOVIE.value,
                 movie_item.source,
@@ -1227,7 +1227,7 @@ class MediaCoreTests(YamtrackApiTestCase):
         list_id = self.lists_by_name["favorites"].id
         response = self.call_api(
             "delete",
-            "api_media_lists",
+            "api_media_list_detail",
             args=(MediaTypes.MOVIE.value, "tmdb", 999999, list_id),
             headers=self.auth_headers,
         )
@@ -1239,7 +1239,7 @@ class MediaCoreTests(YamtrackApiTestCase):
         movie_item = self.items_by_type[MediaTypes.MOVIE.value][0]
         response = self.call_api(
             "delete",
-            "api_media_lists",
+            "api_media_list_detail",
             args=(
                 MediaTypes.MOVIE.value,
                 movie_item.source,
@@ -1258,7 +1258,7 @@ class MediaCoreTests(YamtrackApiTestCase):
 
         response = self.call_api(
             "put",
-            "api_media_lists",
+            "api_media_list_detail",
             args=(
                 MediaTypes.MOVIE.value,
                 movie_item.source,
@@ -1288,7 +1288,7 @@ class MediaCoreTests(YamtrackApiTestCase):
         list_id = self.lists_by_name["favorites"].id
         response = self.call_api(
             "put",
-            "api_media_lists",
+            "api_media_list_detail",
             args=(MediaTypes.MOVIE.value, "tmdb", 999999, list_id),
             payload={},
             headers=self.auth_headers,
@@ -1301,7 +1301,7 @@ class MediaCoreTests(YamtrackApiTestCase):
         movie_item = self.items_by_type[MediaTypes.MOVIE.value][1]
         response = self.call_api(
             "put",
-            "api_media_lists",
+            "api_media_list_detail",
             args=(
                 MediaTypes.MOVIE.value,
                 movie_item.source,
