@@ -17,14 +17,28 @@ accesslog = "-"
 errorlog = "-"
 
 
+def pre_fork(server, worker):  # noqa: ARG001
+    """Close database pools in the master before workers are forked.
+
+    Psycopg pools own background threads and must not be inherited by the
+    preloaded workers; inherited pools eventually exhaust their slots (#341).
+    """
+    from django.db import connections  # noqa: PLC0415
+
+    connections.close_all()
+    for connection in connections.all():
+        close_pool = getattr(connection, "close_pool", None)
+        if close_pool is not None:
+            close_pool()
+
+
 def post_fork(server, worker):  # noqa: ARG001
     """Drop connections inherited from the preloaded master process.
 
     ``preload_app`` runs ``django.setup()`` (and every ``AppConfig.ready()``)
-    once in the master before forking. Without this, forked workers share the
-    master's already-open DB/cache connections instead of opening their own,
-    which caused login sessions to silently fail to persist once more than
-    one worker/thread was in play (issue #335).
+    once in the master before forking. ``pre_fork`` closes any process-local
+    database pool before the fork; this hook remains as a final guard against
+    inherited connections (issue #335).
     """
     from django.db import connections  # noqa: PLC0415
 
