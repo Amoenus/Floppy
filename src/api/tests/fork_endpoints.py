@@ -115,6 +115,10 @@ def get_fork_endpoint_cases() -> list[EndpointCase]:
         ),
         EndpointCase("post", "api_user_notification_test", payload={}),
         EndpointCase("post", "api_user_token_regenerate", payload={}),
+        EndpointCase("get", "api_imports_activity"),
+        EndpointCase("post", "api_import_dispatch", args=("mal",), payload={}),
+        EndpointCase("get", "api_export_csv"),
+        EndpointCase("get", "api_export_template"),
         EndpointCase(
             "post",
             "api_media_episode_watch",

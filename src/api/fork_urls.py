@@ -5,6 +5,7 @@ from django.urls import re_path
 from . import (
     fork_views,
     fork_views_discover,
+    fork_views_integrations,
     fork_views_lists,
     fork_views_metadata,
     fork_views_music,
@@ -278,5 +279,25 @@ urlpatterns = [
         r"^user/token/regenerate/?$",
         fork_views_users.UserTokenRegenerateView.as_view(),
         name="api_user_token_regenerate",
+    ),
+    re_path(
+        r"^imports/activity/?$",
+        fork_views_integrations.ImportActivityView.as_view(),
+        name="api_imports_activity",
+    ),
+    re_path(
+        r"^imports/(?P<service>[\w-]+)/?$",
+        fork_views_integrations.ImportDispatchView.as_view(),
+        name="api_import_dispatch",
+    ),
+    re_path(
+        r"^export/csv/?$",
+        fork_views_integrations.ExportCsvView.as_view(),
+        name="api_export_csv",
+    ),
+    re_path(
+        r"^export/template/?$",
+        fork_views_integrations.ExportTemplateView.as_view(),
+        name="api_export_template",
     ),
 ]
