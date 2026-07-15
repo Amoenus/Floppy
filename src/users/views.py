@@ -518,6 +518,17 @@ def sidebar(request):
                 setattr(request.user, enabled_field, is_enabled)
                 fields_to_update.append(enabled_field)
 
+        submitted_order = request.POST.get("sidebar_media_type_order", "").split(",")
+        sidebar_media_type_order = list(
+            dict.fromkeys(media_type for media_type in submitted_order if media_type in media_types),
+        )
+        sidebar_media_type_order += [
+            media_type for media_type in media_types if media_type not in sidebar_media_type_order
+        ]
+        if request.user.sidebar_media_type_order != sidebar_media_type_order:
+            request.user.sidebar_media_type_order = sidebar_media_type_order
+            fields_to_update.append("sidebar_media_type_order")
+
         if fields_to_update:
             request.user.save(update_fields=fields_to_update)
             messages.success(request, "Settings updated successfully.")
@@ -526,8 +537,11 @@ def sidebar(request):
 
         return redirect("sidebar")
 
+    preferred_order = request.user.sidebar_media_type_order or []
+    ordered_media_types = [media_type for media_type in preferred_order if media_type in media_types]
     context = {
-        "media_types": media_types,
+        "media_types": ordered_media_types
+        + [media_type for media_type in media_types if media_type not in ordered_media_types],
     }
     return render(request, "users/sidebar.html", context)
 

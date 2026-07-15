@@ -709,9 +709,13 @@ def get_sidebar_media_types(user):
     """Return available media types for sidebar navigation based on user preferences."""
     # Handle anonymous users by returning all media types
     if not user or not user.is_authenticated:
-        enabled_types = [mt for mt in MediaTypes.values if mt != MediaTypes.EPISODE.value]
+        enabled_types = [
+            mt
+            for mt in MediaTypes.values
+            if mt not in (MediaTypes.EPISODE.value, MediaTypes.COMIC_ISSUE.value)
+        ]
     else:
-        enabled_types = user.get_enabled_media_types()
+        enabled_types = user.get_sidebar_media_types()
 
     # Format the types for sidebar
     return [

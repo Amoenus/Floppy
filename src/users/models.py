@@ -944,6 +944,11 @@ class User(AbstractUser):
         blank=True,
         help_text="User's preferred order of media-type sections on the Home screen",
     )
+    sidebar_media_type_order = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="User's preferred order of media types in the sidebar",
+    )
     auto_pause_in_progress_enabled = models.BooleanField(
         default=False,
         help_text="Automatically pause stale in-progress items",
@@ -1414,6 +1419,17 @@ class User(AbstractUser):
                 enabled_types.append(media_type)
 
         return enabled_types
+
+    def get_sidebar_media_types(self):
+        """Return enabled media types in the user's preferred sidebar order."""
+        enabled_types = [
+            media_type
+            for media_type in self.get_enabled_media_types()
+            if media_type != MediaTypes.COMIC_ISSUE.value
+        ]
+        preferred_order = self.sidebar_media_type_order or []
+        ordered = [media_type for media_type in preferred_order if media_type in enabled_types]
+        return ordered + [media_type for media_type in enabled_types if media_type not in ordered]
 
     def get_active_media_types(self):
         """Return a list of active media type values based on user preferences."""

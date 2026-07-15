@@ -6,6 +6,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from app.models import MediaTypes
+from app.templatetags.app_tags import get_sidebar_media_types
 from users.models import AnimeLibraryModeChoices, MetadataSourceDefaultChoices
 
 
@@ -58,6 +59,38 @@ class SidebarViewTests(TestCase):
         self.user.refresh_from_db()
         self.assertTrue(self.user.tv_enabled)
         self.assertFalse(self.user.movie_enabled)
+
+    def test_sidebar_post_updates_media_type_order(self):
+        """Sidebar media type order should persist independently of enabled types."""
+        self.user.tv_enabled = True
+        self.user.movie_enabled = True
+        self.user.anime_enabled = True
+        self.user.save(update_fields=["tv_enabled", "movie_enabled", "anime_enabled"])
+
+        response = self.client.post(
+            reverse("sidebar"),
+            {
+                "media_types_checkboxes": [
+                    MediaTypes.TV.value,
+                    MediaTypes.MOVIE.value,
+                    MediaTypes.ANIME.value,
+                ],
+                "sidebar_media_type_order": ",".join(
+                    [MediaTypes.ANIME.value, MediaTypes.TV.value, MediaTypes.MOVIE.value],
+                ),
+            },
+        )
+
+        self.assertRedirects(response, reverse("sidebar"))
+        self.user.refresh_from_db()
+        self.assertEqual(
+            self.user.get_sidebar_media_types()[:3],
+            [MediaTypes.ANIME.value, MediaTypes.TV.value, MediaTypes.MOVIE.value],
+        )
+        self.assertEqual(
+            [item["media_type"] for item in get_sidebar_media_types(self.user)][:3],
+            [MediaTypes.ANIME.value, MediaTypes.TV.value, MediaTypes.MOVIE.value],
+        )
 
     def test_sidebar_post_update_preferences(self):
         """Test POST request to update preferences."""

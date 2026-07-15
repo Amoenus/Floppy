@@ -50,12 +50,19 @@
         </div>
         <p class="text-gray-400 mb-4 text-sm">
           Control which media types are visible throughout the app (sidebar, search, calendar, notifications).
+          Drag cards by their handles to set their sidebar order.
         </p>
 
-        <div class="grid gap-3 md:grid-cols-3">
+        <input type="hidden" name="sidebar_media_type_order" value="{{ media_types|join:',' }}" data-sidebar-order-input>
+        <div class="grid gap-3 md:grid-cols-3" data-sidebar-order-list>
           {% for media_type in media_types %}
-            <div class="flex items-center justify-between p-3 bg-[#39404b] rounded-md">
+            <div class="flex items-center justify-between p-3 bg-[#39404b] rounded-md" data-sidebar-media-type="{{ media_type }}">
               <div class="flex items-center text-gray-400">
+                <button type="button"
+                        class="sidebar-drag-handle cursor-grab touch-none mr-2 text-gray-500 hover:text-gray-300"
+                        aria-label="Reorder {{ media_type|media_type_readable_plural }}">
+                  {% include "app/icons/drag-handle.svg" with classes="w-4 h-4" %}
+                </button>
                 {% icon media_type is_active=False %}
                 <span class="text-gray-200 text-sm ml-2">{{ media_type|media_type_readable_plural }}</span>
               </div>
@@ -85,3 +92,38 @@
     </form>
   </div>
 {% endblock settings_content %}
+
+{% block js %}
+  <script>
+    (() => {
+      const list = document.querySelector('[data-sidebar-order-list]');
+      const orderInput = document.querySelector('[data-sidebar-order-input]');
+      if (!list || !orderInput) return;
+
+      const updateOrder = () => {
+        orderInput.value = Array.from(list.querySelectorAll('[data-sidebar-media-type]'))
+          .map(card => card.dataset.sidebarMediaType)
+          .join(',');
+      };
+
+      const initialize = () => {
+        if (typeof Sortable === 'undefined') return;
+        Sortable.create(list, {
+          animation: 150,
+          handle: '.sidebar-drag-handle',
+          onEnd: updateOrder
+        });
+      };
+
+      if (typeof Sortable !== 'undefined') {
+        initialize();
+        return;
+      }
+
+      const script = document.createElement('script');
+      script.src = 'https://cdn.jsdelivr.net/npm/sortablejs@1.15.3/Sortable.min.js';
+      script.addEventListener('load', initialize, { once: true });
+      document.head.appendChild(script);
+    })();
+  </script>
+{% endblock js %}
