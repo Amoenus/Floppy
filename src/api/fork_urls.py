@@ -2,7 +2,7 @@
 # urlpatterns with a single line to keep the upstream file mergeable.
 from django.urls import re_path
 
-from . import fork_views, fork_views_tracking
+from . import fork_views, fork_views_metadata, fork_views_tracking
 
 urlpatterns = [
     re_path(
@@ -14,6 +14,26 @@ urlpatterns = [
         r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/(?P<season_number>\d+)/episodes/(?P<episode_number>\d+)/drop/?$",
         fork_views_tracking.MediaEpisodeDropView.as_view(),
         name="api_media_episode_drop",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/(?P<season_number>\d+)/episodes/(?P<episode_number>\d+)/score/?$",
+        fork_views_metadata.MediaEpisodeScoreView.as_view(),
+        name="api_media_episode_score",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/provider-preference/?$",
+        fork_views_metadata.MediaProviderPreferenceView.as_view(),
+        name="api_media_provider_preference",
+    ),
+    re_path(
+        r"^metadata/items/(?P<item_id>\d+)/image/?$",
+        fork_views_metadata.ItemImageView.as_view(),
+        name="api_item_image",
+    ),
+    re_path(
+        r"^metadata/items/(?P<item_id>\d+)/?$",
+        fork_views_metadata.ItemMetadataView.as_view(),
+        name="api_item_metadata",
     ),
     re_path(
         r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/tags/?$",

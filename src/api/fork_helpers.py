@@ -81,3 +81,5 @@ def install_fork_media_types():
         helpers.MEDIA_MODIFIABLE_FIELDS.setdefault(media_type, set(_MODIFIABLE_FIELDS))
     for media_type, sources in FORK_VALID_SOURCES.items():
         helpers.VALID_SOURCES.setdefault(media_type, list(sources))
+    # The fork's Episode model adds score/dropped; allow PATCHing them.
+    helpers.MEDIA_MODIFIABLE_FIELDS[MediaTypes.EPISODE.value] |= {"score", "dropped"}
