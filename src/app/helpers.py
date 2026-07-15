@@ -18,10 +18,12 @@ from app.models import (
     Book,
     CollectionEntry,
     Comic,
+    ComicIssue,
     Game,
     Manga,
     MediaTypes,
     Movie,
+    Music,
     Status,
 )
 
@@ -34,6 +36,9 @@ MODEL_MAP = {
     MediaTypes.BOOK.value: Book,
     MediaTypes.COMIC.value: Comic,
     MediaTypes.BOARDGAME.value: BoardGame,
+    # Fork media types that support manual-source items
+    MediaTypes.MUSIC.value: Music,
+    MediaTypes.COMIC_ISSUE.value: ComicIssue,
 }
 
 _DEFAULT_IMAGE_SENTINEL = object()

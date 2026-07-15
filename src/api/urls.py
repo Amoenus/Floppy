@@ -165,3 +165,8 @@ urlpatterns = [
     ),
     re_path(r"^statistics/?$", views.StatisticsView.as_view(), name="api_statistics"),
 ]
+
+# FORK: fork-only endpoints (progress, collection, ...) live in fork_urls.py.
+from . import fork_urls  # noqa: E402
+
+urlpatterns += fork_urls.urlpatterns
