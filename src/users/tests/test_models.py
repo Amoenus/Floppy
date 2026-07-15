@@ -9,9 +9,29 @@ from django_celery_results.models import TaskResult
 
 from users.models import (
     HomeSortChoices,
+    MediaSortChoices,
     MediaTypes,
     QuickWatchDateChoices,
+    relabel_end_date_sort_choice,
 )
+
+
+class EndDateSortLabelTests(TestCase):
+    def test_relabels_end_date_for_media_type(self):
+        choices = [(MediaSortChoices.END_DATE, "Last Watched")]
+
+        for media_type, label in {
+            MediaTypes.BOOK.value: "Last Read",
+            MediaTypes.COMIC.value: "Last Read",
+            MediaTypes.MANGA.value: "Last Read",
+            MediaTypes.MUSIC.value: "Last Listened",
+            MediaTypes.PODCAST.value: "Last Listened",
+        }.items():
+            with self.subTest(media_type=media_type):
+                self.assertEqual(
+                    relabel_end_date_sort_choice(media_type, choices),
+                    [(MediaSortChoices.END_DATE, label)],
+                )
 
 
 class UserUpdatePreferenceTests(TestCase):
