@@ -774,6 +774,12 @@ class MediaListViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "toggleSort('time_to_beat')")
 
+    def test_game_sort_dropdown_includes_platform_option(self):
+        response = self.client.get(reverse("medialist", args=[MediaTypes.GAME.value]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "toggleSort('platform')")
+
     def test_movie_sort_dropdown_includes_runtime_option(self):
         response = self.client.get(reverse("medialist", args=[MediaTypes.MOVIE.value]))
 
@@ -2060,6 +2066,45 @@ class MediaListViewTests(TestCase):
         )
         self.assertContains(response, "2h 00min")
         self.assertContains(response, "3h 00min")
+
+    def test_game_sort_by_platform_prefers_collection_platform_over_item_platform(self):
+        collection_item = Item.objects.create(
+            media_id="game-platform-sort-collection",
+            source=Sources.IGDB.value,
+            media_type=MediaTypes.GAME.value,
+            title="Collection Platform",
+            image="http://example.com/game.jpg",
+            platforms=["Xbox Series X|S", "PlayStation 5"],
+        )
+        fallback_item = Item.objects.create(
+            media_id="game-platform-sort-fallback",
+            source=Sources.IGDB.value,
+            media_type=MediaTypes.GAME.value,
+            title="Fallback Platform",
+            image="http://example.com/game.jpg",
+            platforms=["Nintendo Switch", "PlayStation 5"],
+        )
+        Game.objects.create(item=collection_item, user=self.user, status=Status.PLANNING.value)
+        Game.objects.create(item=fallback_item, user=self.user, status=Status.PLANNING.value)
+        CollectionEntry.objects.create(
+            user=self.user,
+            item=collection_item,
+            resolution="PlayStation 5",
+        )
+
+        response = self.client.get(
+            reverse("medialist", args=[MediaTypes.GAME.value])
+            + "?layout=grid&sort=platform&direction=asc",
+        )
+
+        self.assertEqual(response.context["current_sort"], "platform")
+        self.assertEqual(response.context["current_direction"], "asc")
+        self.assertEqual(
+            [media.item.title for media in response.context["media_list"].object_list[:2]],
+            ["Fallback Platform", "Collection Platform"],
+        )
+        self.assertContains(response, "Nintendo Switch")
+        self.assertContains(response, "PlayStation 5")
 
     def test_game_platform_filter_uses_latest_aggregated_status(self):
         """Status filtering should honor latest aggregated status for duplicate sessions."""

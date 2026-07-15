@@ -495,7 +495,7 @@ def media_list(request, media_type):
         else route_media_type
     )
 
-    if sort_filter == "time_left" and effective_media_type != MediaTypes.TV.value or sort_filter == "runtime" and effective_media_type not in runtime_media_types or sort_filter == "time_to_beat" and effective_media_type != MediaTypes.GAME.value or sort_filter == "plays" and effective_media_type not in plays_media_types or sort_filter == "time_watched" and effective_media_type not in runtime_media_types:
+    if sort_filter == "time_left" and effective_media_type != MediaTypes.TV.value or sort_filter == "runtime" and effective_media_type not in runtime_media_types or sort_filter == "time_to_beat" and effective_media_type != MediaTypes.GAME.value or sort_filter == "platform" and effective_media_type != MediaTypes.GAME.value or sort_filter == "plays" and effective_media_type not in plays_media_types or sort_filter == "time_watched" and effective_media_type not in runtime_media_types:
         sort_filter = "title"  # Default fallback
         # Update the user's preference to the fallback
         request.user.update_preference(f"{route_media_type}_sort", "title")
@@ -539,6 +539,7 @@ def media_list(request, media_type):
         "runtime": lambda mt: mt in runtime_media_types,
         "popularity": lambda mt: mt in popularity_media_types,
         "time_to_beat": lambda mt: mt == MediaTypes.GAME.value,
+        "platform": lambda mt: mt == MediaTypes.GAME.value,
         "plays": lambda mt: mt in plays_media_types,
         "time_watched": lambda mt: mt in runtime_media_types,
         "next_episode_air_date": lambda mt: mt in next_episode_air_date_media_types,
@@ -867,6 +868,33 @@ def media_list(request, media_type):
         )
         return [media for media, _minutes in with_time_to_beat] + without_time_to_beat
 
+    def sort_media_items_by_platform(media_items, sort_direction):
+        with_platform = []
+        without_platform = []
+
+        for media in media_items:
+            platform = _resolve_display_platform(
+                getattr(media, "item", None),
+                collection_platforms_by_item_id,
+                platform_filter,
+            )
+            if platform:
+                with_platform.append((media, platform))
+            else:
+                without_platform.append(media)
+
+        with_platform.sort(
+            key=lambda entry: (
+                entry[1].lower(),
+                getattr(getattr(entry[0], "item", None), "title", "").lower(),
+            ),
+            reverse=sort_direction == "desc",
+        )
+        without_platform.sort(
+            key=lambda media: getattr(getattr(media, "item", None), "title", "").lower(),
+        )
+        return [media for media, _platform in with_platform] + without_platform
+
     def _runtime_sort_value(media):
         return getattr(media, "total_runtime_minutes", None)
 
@@ -997,7 +1025,7 @@ def media_list(request, media_type):
     # Get media list with filters applied
     query_sort_filter = (
         "title"
-        if sort_filter in {"author", "runtime", "time_to_beat", "time_watched"}
+        if sort_filter in {"author", "runtime", "time_to_beat", "platform", "time_watched"}
         else sort_filter
     )
 
@@ -1180,7 +1208,9 @@ def media_list(request, media_type):
     _time_left_active = (
         sort_filter == "time_left" and media_type == MediaTypes.TV.value
     )
-    _use_media_list_cache = not _time_left_active
+    # Platform ordering is resolved from collection entries after the base query,
+    # so cache only the database-backed sort orders.
+    _use_media_list_cache = not _time_left_active and sort_filter != "platform"
     _include_untracked_entries = status_filter == MEDIA_LIST_NO_STATUS
     _media_list_cache_key = (
         cache_utils.build_media_list_cache_key(
@@ -1333,7 +1363,7 @@ def media_list(request, media_type):
         if (
             status_filter == MEDIA_LIST_NO_STATUS
             and media_type != MediaTypes.ANIME.value
-            and sort_filter not in {"author", "runtime", "plays", "time_watched", "time_to_beat", "time_left"}
+            and sort_filter not in {"author", "runtime", "plays", "time_watched", "time_to_beat", "platform", "time_left"}
         ):
             _reverse = direction == "desc"
             _none_sentinel = -math.inf if _reverse else math.inf
@@ -1477,6 +1507,21 @@ def media_list(request, media_type):
             media_list = sort_media_items_by_time_watched(media_list, direction)
         if sort_filter == "time_to_beat" and media_type == MediaTypes.GAME.value:
             media_list = sort_media_items_by_game_time_to_beat(media_list, direction)
+        if sort_filter == "platform" and media_type == MediaTypes.GAME.value:
+            item_ids = {
+                media.item_id
+                for media in media_list
+                if getattr(media, "item_id", None)
+            }
+            if item_ids:
+                for item_id, collection_platform in CollectionEntry.objects.filter(
+                    user=request.user,
+                    item_id__in=item_ids,
+                ).values_list("item_id", "resolution"):
+                    platform_value = str(collection_platform or "").strip()
+                    if platform_value:
+                        collection_platforms_by_item_id[item_id].add(platform_value)
+            media_list = sort_media_items_by_platform(media_list, direction)
         if media_type == MediaTypes.ANIME.value and any(
             getattr(getattr(media, "item", None), "media_type", None) == MediaTypes.TV.value
             for media in media_list
@@ -2503,7 +2548,7 @@ def update_table_columns(request, media_type):
         MediaTypes.MOVIE.value,
         MediaTypes.TV.value,
         MediaTypes.ANIME.value,
-    } or current_sort == "time_to_beat" and media_type != MediaTypes.GAME.value or current_sort == "plays" and media_type not in {
+    } or current_sort == "time_to_beat" and media_type != MediaTypes.GAME.value or current_sort == "platform" and media_type != MediaTypes.GAME.value or current_sort == "plays" and media_type not in {
         MediaTypes.MOVIE.value,
         MediaTypes.TV.value,
         MediaTypes.ANIME.value,

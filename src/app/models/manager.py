@@ -102,6 +102,7 @@ class MediaManager(models.Manager):
             "next_episode_air_date",
             "time_left",
             "time_to_beat",
+            "platform",
         ):
             return "asc"
         return "desc"
@@ -1835,4 +1836,3 @@ class MediaManager(models.Manager):
             params["user"] = user
 
         return params
-
