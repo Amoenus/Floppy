@@ -1136,13 +1136,9 @@
         {% for value, label in sort_choices %}
           {% if value != 'critic_rating' or supports_critic_rating_sort %}
             {% if value != 'author' or filter_data.show_authors %}
-              <button hx-get="{{ filter_hx_endpoint }}"
-                      hx-target="{{ filter_hx_target }}"
-                      hx-include="#filter-form"
-                      hx-indicator="#loading-indicator"
-                      class="block w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
+              <button class="block w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
                       :class="sort === '{{ value }}' ? 'bg-indigo-600 text-white font-medium' : 'text-gray-300 hover:bg-[#454d5a] hover:text-white'"
-                      @click="toggleSort('{{ value }}'); open = false"
+                      @click="toggleSort('{{ value }}'); open = false; document.getElementById('filter-form').elements.sort.value = sort; document.getElementById('filter-form').elements.direction.value = direction; window.location.href = '{{ filter_hx_endpoint }}?' + new URLSearchParams(new FormData(document.getElementById('filter-form'))).toString()"
                       type="button">{{ label }}</button>
             {% endif %}
           {% endif %}
