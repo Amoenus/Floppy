@@ -85,6 +85,17 @@ def get_fork_endpoint_cases() -> list[EndpointCase]:
             payload={},
         ),
         EndpointCase("get", "api_list_activity", args=(1,)),
+        EndpointCase("get", "api_collection_status", args=(1,)),
+        EndpointCase("delete", "api_collection_season", args=(1,)),
+        EndpointCase("get", "api_discover"),
+        EndpointCase("post", "api_discover_refresh", payload={}),
+        EndpointCase("get", "api_discover_hidden"),
+        EndpointCase(
+            "post",
+            "api_discover_hidden",
+            payload={"item_id": 1, "action": "hide"},
+        ),
+        EndpointCase("get", "api_home"),
         EndpointCase(
             "post",
             "api_media_episode_watch",

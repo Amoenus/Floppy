@@ -4,6 +4,7 @@ from django.urls import re_path
 
 from . import (
     fork_views,
+    fork_views_discover,
     fork_views_lists,
     fork_views_metadata,
     fork_views_music,
@@ -216,5 +217,35 @@ urlpatterns = [
         r"^lists/(?P<list_id>\d+)/activity/?$",
         fork_views_lists.ListActivityView.as_view(),
         name="api_list_activity",
+    ),
+    re_path(
+        r"^collection/status/(?P<item_id>\d+)/?$",
+        fork_views_discover.CollectionStatusView.as_view(),
+        name="api_collection_status",
+    ),
+    re_path(
+        r"^collection/seasons/(?P<season_item_id>\d+)/?$",
+        fork_views_discover.CollectionSeasonView.as_view(),
+        name="api_collection_season",
+    ),
+    re_path(
+        r"^discover/?$",
+        fork_views_discover.DiscoverRowsView.as_view(),
+        name="api_discover",
+    ),
+    re_path(
+        r"^discover/refresh/?$",
+        fork_views_discover.DiscoverRefreshView.as_view(),
+        name="api_discover_refresh",
+    ),
+    re_path(
+        r"^discover/hidden/?$",
+        fork_views_discover.DiscoverHiddenView.as_view(),
+        name="api_discover_hidden",
+    ),
+    re_path(
+        r"^home/?$",
+        fork_views_discover.HomeView.as_view(),
+        name="api_home",
     ),
 ]
