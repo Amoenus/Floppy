@@ -10,6 +10,7 @@ from . import (
     fork_views_music,
     fork_views_podcast,
     fork_views_tracking,
+    fork_views_users,
 )
 
 urlpatterns = [
@@ -247,5 +248,35 @@ urlpatterns = [
         r"^home/?$",
         fork_views_discover.HomeView.as_view(),
         name="api_home",
+    ),
+    re_path(
+        r"^user/preferences/?$",
+        fork_views_users.UserPreferencesView.as_view(),
+        name="api_user_preferences",
+    ),
+    re_path(
+        r"^user/sidebar/?$",
+        fork_views_users.UserSidebarView.as_view(),
+        name="api_user_sidebar",
+    ),
+    re_path(
+        r"^user/notifications/?$",
+        fork_views_users.UserNotificationsView.as_view(),
+        name="api_user_notifications",
+    ),
+    re_path(
+        r"^user/notifications/exclusions/?$",
+        fork_views_users.UserNotificationExclusionsView.as_view(),
+        name="api_user_notification_exclusions",
+    ),
+    re_path(
+        r"^user/notifications/test/?$",
+        fork_views_users.UserNotificationTestView.as_view(),
+        name="api_user_notification_test",
+    ),
+    re_path(
+        r"^user/token/regenerate/?$",
+        fork_views_users.UserTokenRegenerateView.as_view(),
+        name="api_user_token_regenerate",
     ),
 ]
