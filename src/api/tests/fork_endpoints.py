@@ -48,6 +48,8 @@ def get_fork_endpoint_cases() -> list[EndpointCase]:
             args=("movie", "tmdb", 1),
             payload={"tag_ids": []},
         ),
+        EndpointCase("get", "api_history"),
+        EndpointCase("delete", "api_history_record", args=("movie", "1")),
         EndpointCase("get", "api_tags"),
         EndpointCase("post", "api_tags", payload={"name": "tag"}),
         EndpointCase("patch", "api_tag_detail", args=(1,), payload={"name": "t"}),

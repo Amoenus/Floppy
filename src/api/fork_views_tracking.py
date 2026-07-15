@@ -9,11 +9,15 @@ from django.utils import timezone
 from rest_framework import views as drf_views
 from rest_framework.response import Response
 
+from app import fork_services_history, history_cache_reader
 from app.fork_services_episode import drop_episode, resolve_or_create_season
 from app.models import Episode, ItemTag, MediaTypes, Season, Tag
 
 from .helpers import (
+    MEDIA_TYPE_MODEL_MAP,
     check_source_type,
+    paginate_data,
+    parse_limit_offset,
     resolve_item_queryset,
     try_parse_datetime_input,
 )
@@ -323,3 +327,108 @@ class MediaTagsView(drf_views.APIView):
             {"results": [_serialize_tag(tag) for tag in applied]},
             status=HTTP.OK,
         )
+
+
+_HISTORY_INT_FILTERS = (
+    "album",
+    "artist",
+    "tv",
+    "season",
+    "season_number",
+    "podcast_show",
+)
+_HISTORY_STR_FILTERS = (
+    "genre",
+    "implied_genre",
+    "media_type",
+    "media_id",
+    "source",
+    "person_source",
+    "person_id",
+)
+
+
+# /api/v1/history/
+class HistoryView(drf_views.APIView):
+    """Day-by-day consumption timeline (mirrors the web history page).
+
+    Supports the web page's filters (media_type, genre, media_id/source,
+    album/artist/tv/season/podcast_show, person) plus start_date/end_date,
+    and paginates over days with limit/offset.
+    """
+
+    def get(self, request):
+        """Return the user's history grouped by day, newest first."""
+        limit, offset, err = parse_limit_offset(request)
+        if err:
+            return err
+
+        filters = {}
+        for param in _HISTORY_INT_FILTERS:
+            value = request.GET.get(param)
+            if value:
+                try:
+                    filters[param] = int(value)
+                except (TypeError, ValueError):
+                    return Response(
+                        {"detail": f"Invalid {param} parameter"},
+                        status=HTTP.BAD_REQUEST,
+                    )
+        for param in _HISTORY_STR_FILTERS:
+            value = request.GET.get(param)
+            if value:
+                filters[param] = value
+
+        logging_style = request.GET.get("logging_style")
+        if logging_style not in (None, "", "sessions", "repeats"):
+            return Response(
+                {"detail": "logging_style must be 'sessions' or 'repeats'"},
+                status=HTTP.BAD_REQUEST,
+            )
+
+        date_filters = {}
+        for param in ("start_date", "end_date"):
+            value = request.GET.get(param)
+            if value:
+                date_filters[param] = value
+
+        history_days = history_cache_reader.get_history_days(
+            request.user,
+            filters=filters or None,
+            date_filters=date_filters or None,
+            logging_style_override=logging_style or None,
+        )
+        return Response(
+            paginate_data(request, history_days, limit, offset),
+            status=HTTP.OK,
+        )
+
+
+# /api/v1/history/[media_type]/[history_id]/
+class HistoryRecordView(drf_views.APIView):
+    """Delete a consumption-history record (mirrors the web history delete)."""
+
+    def delete(self, request, media_type, history_id):
+        """Delete the record; play-per-instance types delete the play itself."""
+        if media_type not in MEDIA_TYPE_MODEL_MAP:
+            return Response(
+                {"detail": "Unsupported media type."},
+                status=HTTP.BAD_REQUEST,
+            )
+        try:
+            fork_services_history.delete_history_record_core(
+                request.user,
+                media_type,
+                history_id,
+            )
+        except fork_services_history.HistoryRecordNotFoundError:
+            return Response(
+                {"detail": "History record not found."},
+                status=HTTP.NOT_FOUND,
+            )
+        except fork_services_history.HistoryDeletionError as e:
+            return Response(
+                {"detail": str(e)},
+                status=HTTP.INTERNAL_SERVER_ERROR,
+            )
+        return Response(status=HTTP.NO_CONTENT)

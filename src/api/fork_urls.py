@@ -21,6 +21,16 @@ urlpatterns = [
         name="api_media_tags",
     ),
     re_path(
+        r"^history/?$",
+        fork_views_tracking.HistoryView.as_view(),
+        name="api_history",
+    ),
+    re_path(
+        r"^history/(?P<media_type>[^/]+)/(?P<history_id>[^/]+)/?$",
+        fork_views_tracking.HistoryRecordView.as_view(),
+        name="api_history_record",
+    ),
+    re_path(
         r"^tags/?$",
         fork_views_tracking.TagsView.as_view(),
         name="api_tags",

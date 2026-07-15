@@ -1,9 +1,10 @@
-# FORK: tests for the tracking parity endpoints — episode watch/drop and
-# tag management.
+# FORK: tests for the tracking parity endpoints — episode watch/drop,
+# tag management, and the history timeline.
+import datetime
 from http import HTTPStatus as HTTP  # noqa: N814
 from unittest.mock import patch
 
-from app.models import Episode, ItemTag, MediaTypes, Sources, Tag
+from app.models import Episode, ItemTag, MediaTypes, Movie, Sources, Tag
 
 from .base import YamtrackApiTestCase
 
@@ -264,3 +265,102 @@ class TagTests(YamtrackApiTestCase):
             headers=self.auth_headers,
         )
         self.assertEqual(response.status_code, HTTP.NOT_FOUND)
+
+
+class HistoryTimelineTests(YamtrackApiTestCase):
+    """GET /history returns the day-grouped consumption timeline."""
+
+    def setUp(self):
+        """Give a movie play a concrete end date so it appears in history."""
+        super().setUp()
+        movie = self.movie_medias[0]
+        movie.end_date = datetime.date(2024, 5, 10)
+        movie.save(update_fields=["end_date"])
+
+    def test_history_returns_days(self):
+        """The timeline contains the movie play grouped under its day."""
+        response = self.call_api("get", "api_history", headers=self.auth_headers)
+        self.assertEqual(response.status_code, HTTP.OK)
+        days = response.json()["results"]
+        self.assertTrue(days)
+        all_entries = [entry for day in days for entry in day["entries"]]
+        self.assertTrue(
+            any(entry["media_type"] == "movie" for entry in all_entries),
+        )
+
+    def test_history_media_type_filter(self):
+        """media_type filters the timeline."""
+        response = self.call_api(
+            "get",
+            "api_history",
+            params={"media_type": "game"},
+            headers=self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.OK)
+        days = response.json()["results"]
+        for day in days:
+            for entry in day["entries"]:
+                self.assertEqual(entry["media_type"], "game")
+
+    def test_history_invalid_int_filter_rejected(self):
+        """Non-integer values for integer filters return 400."""
+        response = self.call_api(
+            "get",
+            "api_history",
+            params={"tv": "abc"},
+            headers=self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.BAD_REQUEST)
+
+
+class HistoryRecordDeleteTests(YamtrackApiTestCase):
+    """DELETE /history/{media_type}/{history_id} removes plays."""
+
+    def test_delete_movie_play_removes_instance(self):
+        """Deleting a movie history record removes the Movie play itself."""
+        movie = self.movie_medias[0]
+        movie.end_date = datetime.date(2024, 5, 10)
+        movie.save(update_fields=["end_date"])
+        record = movie.history.filter(history_user=self.user1).first()
+        self.assertIsNotNone(record)
+
+        response = self.call_api(
+            "delete",
+            "api_history_record",
+            args=("movie", record.history_id),
+            headers=self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.NO_CONTENT)
+        self.assertFalse(Movie.objects.filter(id=movie.id).exists())
+
+    def test_delete_unknown_record_not_found(self):
+        """Unknown history ids return 404."""
+        response = self.call_api(
+            "delete",
+            "api_history_record",
+            args=("movie", "999999"),
+            headers=self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.NOT_FOUND)
+
+    def test_delete_other_users_record_not_found(self):
+        """Another user's record cannot be deleted."""
+        movie = self.movie_medias[0]
+        record = movie.history.filter(history_user=self.user1).first()
+        response = self.call_api(
+            "delete",
+            "api_history_record",
+            args=("movie", record.history_id),
+            headers=self.auth_headers2,
+        )
+        self.assertEqual(response.status_code, HTTP.NOT_FOUND)
+
+    def test_delete_invalid_media_type_rejected(self):
+        """Unsupported media types return 400."""
+        response = self.call_api(
+            "delete",
+            "api_history_record",
+            args=("invalid", "1"),
+            headers=self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.BAD_REQUEST)
