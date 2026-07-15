@@ -1,5 +1,5 @@
 {% if media.display_authors %}
-  <span class="block truncate" title="{{ media.display_authors|join:', ' }}">
+  <span class="block max-w-md truncate" title="{{ media.display_authors|join:', ' }}">
     {{ media.display_authors|join:", " }}
   </span>
 {% else %}
