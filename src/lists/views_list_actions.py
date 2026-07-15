@@ -324,7 +324,14 @@ def list_item_toggle(request):
         return HttpResponse(status=403)
 
     if custom_list.items.filter(id=item.id).exists():
-        CustomListItem.objects.filter(custom_list=custom_list, item=item).delete()
+        # Instance-level delete so CustomListItem.delete() renumbers the
+        # per-list list_item_id sequence (queryset delete would bypass it).
+        custom_list_item = CustomListItem.objects.filter(
+            custom_list=custom_list,
+            item=item,
+        ).first()
+        if custom_list_item is not None:
+            custom_list_item.delete()
         logger.info("%s removed from %s.", item, custom_list)
         has_item = False
         ListActivity.objects.create(

@@ -918,8 +918,13 @@ def search_by_id(media_type, query, source=None):
     return helpers.format_search_response(1, 1, 1, [result])
 
 
-def search(media_type, query, page, source=None):
+def search(media_type, query, page, source=None, limit=None, offset=None, user=None):
     """Search for media based on the query and return the results."""
+    if source == Sources.MANUAL.value:
+        return manual.search(
+            media_type, query, page=page, limit=limit, offset=offset, user=user,
+        )
+
     source = _resolve_search_source(media_type, source)
 
     # Attempt direct ID lookup on page 1 only

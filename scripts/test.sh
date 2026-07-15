@@ -14,7 +14,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-APPS=(app users integrations lists events)
+APPS=(app users integrations lists events api)
 COMMON=(--parallel --buffer)
 
 case "${1:-}" in

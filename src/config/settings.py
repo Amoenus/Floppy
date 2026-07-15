@@ -195,7 +195,22 @@ INSTALLED_APPS = [
     "allauth.account",
     "allauth.socialaccount",
     "django.contrib.humanize",
+    "rest_framework",
+    "api",
+    "drf_spectacular",
 ]
+
+REST_FRAMEWORK = {
+    "DEFAULT_PERMISSION_CLASSES": [
+        "rest_framework.permissions.IsAuthenticated",
+    ],
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "api.authentication.BearerAuthentication",
+        "api.authentication.APIKeyAuthentication",
+    ],
+    "DEFAULT_RENDERER_CLASSES": ("rest_framework.renderers.JSONRenderer",),
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+}
 
 if ENABLE_DEBUG_TOOLBAR:
     INSTALLED_APPS.append("debug_toolbar")
@@ -225,6 +240,8 @@ MIDDLEWARE = [
     "allauth.account.middleware.AccountMiddleware",
     "app.middleware.ProviderAPIErrorMiddleware",
     "app.middleware.ErrorCaptureMiddleware",
+    # Convert HTML error responses for API requests into JSON responses
+    "api.middleware.ApiJsonErrorMiddleware",
 ]
 
 if ENABLE_DEBUG_TOOLBAR:

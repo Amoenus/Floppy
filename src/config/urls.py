@@ -16,6 +16,7 @@ from django.contrib.auth.decorators import login_not_required
 from django.http import JsonResponse
 from django.urls import include, path, re_path
 from django.views.static import serve
+from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from health_check.views import MainView
 
 handler400 = "app.error_views.bad_request"
@@ -24,6 +25,13 @@ handler404 = "app.error_views.page_not_found"
 handler500 = "app.error_views.server_error"
 
 urlpatterns = [
+    path("api/v1/", include("api.urls")),
+    path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
+    path(
+        "api/docs/",
+        SpectacularSwaggerView.as_view(url_name="schema"),
+        name="swagger-ui",
+    ),
     path("", include("app.urls")),
     path("", include("integrations.urls")),
     path("", include("users.urls")),

@@ -10,7 +10,31 @@ from django.shortcuts import redirect
 from django.utils.encoding import iri_to_uri
 from django.utils.http import url_has_allowed_host_and_scheme
 
-from app.models import BasicMedia, CollectionEntry, MediaTypes, Status
+from app.models import (
+    TV,
+    Anime,
+    BasicMedia,
+    BoardGame,
+    Book,
+    CollectionEntry,
+    Comic,
+    Game,
+    Manga,
+    MediaTypes,
+    Movie,
+    Status,
+)
+
+MODEL_MAP = {
+    MediaTypes.TV.value: TV,
+    MediaTypes.MOVIE.value: Movie,
+    MediaTypes.ANIME.value: Anime,
+    MediaTypes.MANGA.value: Manga,
+    MediaTypes.GAME.value: Game,
+    MediaTypes.BOOK.value: Book,
+    MediaTypes.COMIC.value: Comic,
+    MediaTypes.BOARDGAME.value: BoardGame,
+}
 
 _DEFAULT_IMAGE_SENTINEL = object()
 _ENCODED_NAVIGATION_SEPARATOR_PATTERNS = (
