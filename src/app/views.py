@@ -244,6 +244,7 @@ from app.music_views import (
     music_album_details,
     music_artist_details,
     prefetch_artist_covers,
+    prefetch_artist_relation_images,
     sync_artist_discography_view,
 )
 from app.people_views import person_detail, studio_detail

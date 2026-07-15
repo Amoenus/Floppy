@@ -240,6 +240,8 @@ def fetch_watchlist(
 ) -> tuple[list[dict[str, Any]], int]:
     """Fetch a page of Plex Discover watchlist items."""
     params = {
+        "includeCollections": 1,
+        "includeExternalMedia": 1,
         "X-Plex-Container-Start": start,
         "X-Plex-Container-Size": size,
     }
