@@ -24,4 +24,32 @@ def get_fork_endpoint_cases() -> list[EndpointCase]:
         EndpointCase("patch", "api_collection_entry", args=(1,), payload={}),
         EndpointCase("delete", "api_collection_entry", args=(1,)),
         EndpointCase("get", "api_task_status", args=("some-task-id",)),
+        EndpointCase(
+            "post",
+            "api_media_episode_watch",
+            args=("tv", "tmdb", 1, 1, 1),
+            payload={},
+        ),
+        EndpointCase(
+            "delete",
+            "api_media_episode_watch",
+            args=("tv", "tmdb", 1, 1, 1),
+        ),
+        EndpointCase(
+            "post",
+            "api_media_episode_drop",
+            args=("tv", "tmdb", 1, 1, 1),
+            payload={},
+        ),
+        EndpointCase("get", "api_media_tags", args=("movie", "tmdb", 1)),
+        EndpointCase(
+            "put",
+            "api_media_tags",
+            args=("movie", "tmdb", 1),
+            payload={"tag_ids": []},
+        ),
+        EndpointCase("get", "api_tags"),
+        EndpointCase("post", "api_tags", payload={"name": "tag"}),
+        EndpointCase("patch", "api_tag_detail", args=(1,), payload={"name": "t"}),
+        EndpointCase("delete", "api_tag_detail", args=(1,)),
     ]
