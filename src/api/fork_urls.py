@@ -4,6 +4,7 @@ from django.urls import re_path
 
 from . import (
     fork_views,
+    fork_views_lists,
     fork_views_metadata,
     fork_views_music,
     fork_views_podcast,
@@ -175,5 +176,45 @@ urlpatterns = [
         r"^podcasts/episodes/plays/?$",
         fork_views_podcast.PodcastEpisodePlayView.as_view(),
         name="api_podcast_episode_play",
+    ),
+    re_path(
+        r"^lists/(?P<list_id>\d+)/smart-rules/?$",
+        fork_views_lists.ListSmartRulesView.as_view(),
+        name="api_list_smart_rules",
+    ),
+    re_path(
+        r"^lists/(?P<list_id>\d+)/smart-sync/?$",
+        fork_views_lists.ListSmartSyncView.as_view(),
+        name="api_list_smart_sync",
+    ),
+    re_path(
+        r"^lists/(?P<list_id>\d+)/collaborators/?$",
+        fork_views_lists.ListCollaboratorsView.as_view(),
+        name="api_list_collaborators",
+    ),
+    re_path(
+        r"^lists/(?P<list_id>\d+)/items/reorder/?$",
+        fork_views_lists.ListItemsReorderView.as_view(),
+        name="api_list_items_reorder",
+    ),
+    re_path(
+        r"^lists/(?P<list_id>\d+)/items/order/?$",
+        fork_views_lists.ListItemsOrderView.as_view(),
+        name="api_list_items_order",
+    ),
+    re_path(
+        r"^lists/(?P<list_id>\d+)/recommendations/?$",
+        fork_views_lists.ListRecommendationsView.as_view(),
+        name="api_list_recommendations",
+    ),
+    re_path(
+        r"^lists/(?P<list_id>\d+)/recommendations/(?P<recommendation_id>\d+)/(?P<decision>approve|deny)/?$",
+        fork_views_lists.ListRecommendationDecisionView.as_view(),
+        name="api_list_recommendation_decision",
+    ),
+    re_path(
+        r"^lists/(?P<list_id>\d+)/activity/?$",
+        fork_views_lists.ListActivityView.as_view(),
+        name="api_list_activity",
     ),
 ]

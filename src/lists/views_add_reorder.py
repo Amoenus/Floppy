@@ -326,18 +326,12 @@ def add_list_item_submit(request, list_id):
     return _redirect_after_submit(redirect("list_detail", custom_list.public_reference))
 
 
-@login_required
-@require_POST
-def reorder_list_item(request, list_id):
-    """Reorder a list item in custom sort mode."""
-    custom_list = get_object_or_404(CustomList, id=list_id)
-    if not custom_list.user_can_edit(request.user):
-        return HttpResponse(status=403)
-
-    item_id = request.POST.get("item_id")
-    action = (request.POST.get("action") or "").strip().lower()
+# FORK: reorder cores shared with the REST API. Return values are HTTP
+# status codes so the thin web/API wrappers stay behavior-identical.
+def apply_reorder_action(custom_list, item_id, action):
+    """Move one item first/back/next/last; returns an HTTP status code."""
     if not item_id or action not in {"first", "back", "next", "last"}:
-        return HttpResponse(status=400)
+        return 400
 
     list_items = list(
         CustomListItem.objects.filter(custom_list=custom_list)
@@ -345,7 +339,7 @@ def reorder_list_item(request, list_id):
         .order_by("date_added", "id"),
     )
     if len(list_items) < 2:
-        return HttpResponse(status=204)
+        return 204
 
     current_index = next(
         (
@@ -356,7 +350,7 @@ def reorder_list_item(request, list_id):
         None,
     )
     if current_index is None:
-        return HttpResponse(status=404)
+        return 404
 
     if action == "first":
         new_index = 0
@@ -368,7 +362,7 @@ def reorder_list_item(request, list_id):
         new_index = len(list_items) - 1
 
     if new_index == current_index:
-        return HttpResponse(status=204)
+        return 204
 
     moved_item = list_items.pop(current_index)
     list_items.insert(new_index, moved_item)
@@ -378,20 +372,13 @@ def reorder_list_item(request, list_id):
         custom_list_item.date_added = base_time + datetime.timedelta(seconds=index)
     CustomListItem.objects.bulk_update(list_items, ["date_added"])
 
-    return HttpResponse(status=204)
+    return 204
 
 
-@login_required
-@require_POST
-def reorder_list_items_all(request, list_id):
-    """Reorder list items by full ordered ID list (drag-and-drop)."""
-    custom_list = get_object_or_404(CustomList, id=list_id)
-    if not custom_list.user_can_edit(request.user):
-        return HttpResponse(status=403)
-
-    item_ids = request.POST.getlist("item_ids[]")
+def apply_full_order(custom_list, item_ids):
+    """Reorder items by an ordered ID list; returns an HTTP status code."""
     if not item_ids:
-        return HttpResponse(status=400)
+        return 400
 
     all_items = list(
         CustomListItem.objects.filter(custom_list=custom_list).order_by("date_added", "id"),
@@ -404,7 +391,7 @@ def reorder_list_items_all(request, list_id):
         i for i, li in enumerate(all_items) if str(li.item_id) in submitted_set
     )
     if not original_positions:
-        return HttpResponse(status=400)
+        return 400
 
     # Place submitted items in their new DnD order at those same positions
     for pos, item_id in zip(original_positions, item_ids):
@@ -416,4 +403,32 @@ def reorder_list_items_all(request, list_id):
         li.date_added = base_time + datetime.timedelta(seconds=index)
     CustomListItem.objects.bulk_update(all_items, ["date_added"])
 
-    return HttpResponse(status=204)
+    return 204
+
+
+@login_required
+@require_POST
+def reorder_list_item(request, list_id):
+    """Reorder a list item in custom sort mode."""
+    custom_list = get_object_or_404(CustomList, id=list_id)
+    if not custom_list.user_can_edit(request.user):
+        return HttpResponse(status=403)
+
+    status = apply_reorder_action(
+        custom_list,
+        request.POST.get("item_id"),
+        (request.POST.get("action") or "").strip().lower(),
+    )
+    return HttpResponse(status=status)
+
+
+@login_required
+@require_POST
+def reorder_list_items_all(request, list_id):
+    """Reorder list items by full ordered ID list (drag-and-drop)."""
+    custom_list = get_object_or_404(CustomList, id=list_id)
+    if not custom_list.user_can_edit(request.user):
+        return HttpResponse(status=403)
+
+    status = apply_full_order(custom_list, request.POST.getlist("item_ids[]"))
+    return HttpResponse(status=status)

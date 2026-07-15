@@ -244,6 +244,46 @@ def recommend_search(request, list_id):
     return render(request, "lists/components/recommend_search_results.html", context)
 
 
+# FORK: item resolution shared with the REST API.
+def get_or_create_recommendation_item(
+    media_id,
+    media_type,
+    source,
+    season_number=None,
+    episode_number=None,
+):
+    """Return the Item for a recommendation, creating it from metadata if new."""
+    try:
+        item = Item.objects.get(
+            media_id=media_id,
+            source=source,
+            media_type=media_type,
+            season_number=season_number,
+            episode_number=episode_number,
+        )
+        _maybe_backfill_episode_title(item, force=True)
+    except Item.DoesNotExist:
+        metadata = services.get_media_metadata(
+            media_type,
+            media_id,
+            source,
+            [season_number] if season_number else None,
+            episode_number,
+        )
+        release_datetime = helpers.extract_release_datetime(metadata)
+        item = Item.objects.create(
+            media_id=media_id,
+            source=source,
+            media_type=media_type,
+            season_number=season_number,
+            episode_number=episode_number,
+            image=metadata["image"],
+            release_datetime=release_datetime,
+            **_list_item_title_fields_from_metadata(media_type, metadata),
+        )
+    return item
+
+
 @login_not_required
 @require_POST
 def submit_recommendation(request, list_id):
@@ -273,34 +313,13 @@ def submit_recommendation(request, list_id):
     episode_number = int(episode_number) if episode_number else None
 
     # Get or create the item
-    try:
-        item = Item.objects.get(
-            media_id=media_id,
-            source=source,
-            media_type=media_type,
-            season_number=season_number,
-            episode_number=episode_number,
-        )
-        _maybe_backfill_episode_title(item, force=True)
-    except Item.DoesNotExist:
-        metadata = services.get_media_metadata(
-            media_type,
-            media_id,
-            source,
-            [season_number] if season_number else None,
-            episode_number,
-        )
-        release_datetime = helpers.extract_release_datetime(metadata)
-        item = Item.objects.create(
-            media_id=media_id,
-            source=source,
-            media_type=media_type,
-            season_number=season_number,
-            episode_number=episode_number,
-            image=metadata["image"],
-            release_datetime=release_datetime,
-            **_list_item_title_fields_from_metadata(media_type, metadata),
-        )
+    item = get_or_create_recommendation_item(
+        media_id,
+        media_type,
+        source,
+        season_number,
+        episode_number,
+    )
 
     discover_tab_cache.mark_active_from_request(
         request,
