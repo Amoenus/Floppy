@@ -2,7 +2,12 @@
 # urlpatterns with a single line to keep the upstream file mergeable.
 from django.urls import re_path
 
-from . import fork_views, fork_views_metadata, fork_views_tracking
+from . import (
+    fork_views,
+    fork_views_metadata,
+    fork_views_music,
+    fork_views_tracking,
+)
 
 urlpatterns = [
     re_path(
@@ -89,5 +94,60 @@ urlpatterns = [
         r"^tasks/(?P<task_id>[\w-]+)/?$",
         fork_views.TaskStatusView.as_view(),
         name="api_task_status",
+    ),
+    re_path(
+        r"^music/artists/?$",
+        fork_views_music.MusicArtistsView.as_view(),
+        name="api_music_artists",
+    ),
+    re_path(
+        r"^music/artists/(?P<artist_id>\d+)/?$",
+        fork_views_music.MusicArtistDetailView.as_view(),
+        name="api_music_artist_detail",
+    ),
+    re_path(
+        r"^music/artists/(?P<artist_id>\d+)/sync-discography/?$",
+        fork_views_music.MusicArtistSyncView.as_view(),
+        name="api_music_artist_sync",
+    ),
+    re_path(
+        r"^music/artists/(?P<artist_id>\d+)/plays/?$",
+        fork_views_music.MusicArtistPlaysView.as_view(),
+        name="api_music_artist_plays",
+    ),
+    re_path(
+        r"^music/albums/?$",
+        fork_views_music.MusicAlbumsView.as_view(),
+        name="api_music_albums",
+    ),
+    re_path(
+        r"^music/albums/(?P<album_id>\d+)/?$",
+        fork_views_music.MusicAlbumDetailView.as_view(),
+        name="api_music_album_detail",
+    ),
+    re_path(
+        r"^music/albums/(?P<album_id>\d+)/tracks/?$",
+        fork_views_music.MusicAlbumTracksView.as_view(),
+        name="api_music_album_tracks",
+    ),
+    re_path(
+        r"^music/albums/(?P<album_id>\d+)/plays/?$",
+        fork_views_music.MusicAlbumPlaysView.as_view(),
+        name="api_music_album_plays",
+    ),
+    re_path(
+        r"^music/songs/plays/?$",
+        fork_views_music.MusicSongPlayView.as_view(),
+        name="api_music_song_play",
+    ),
+    re_path(
+        r"^music/tracks/(?P<music_id>\d+)/score/?$",
+        fork_views_music.MusicTrackScoreView.as_view(),
+        name="api_music_track_score",
+    ),
+    re_path(
+        r"^music/bulk-plays/?$",
+        fork_views_music.MusicBulkPlaysView.as_view(),
+        name="api_music_bulk_plays",
     ),
 ]
