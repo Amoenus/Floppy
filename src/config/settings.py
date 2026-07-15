@@ -275,8 +275,13 @@ USING_SQLITE_DATABASE = not bool(DB_HOST)
 
 if DB_HOST:
     DB_POOL_ENABLED = config("DB_POOL_ENABLED", default=True, cast=bool)
-    DB_POOL_MIN = config("DB_POOL_MIN", default=1, cast=int)
-    DB_POOL_MAX = config("DB_POOL_MAX", default=2, cast=int)
+    DB_POOL_MIN = config("DB_POOL_MIN", default=2, cast=int)
+    # Default should be >= GUNICORN_THREADS (src/config/gunicorn.py) so a
+    # worker's pool never runs out of slots for its own concurrent request
+    # threads; +1 for headroom (e.g. the /health/ probe hitting the pool at
+    # the same time). A too-small pool causes psycopg_pool.PoolTimeout once
+    # concurrent requests in a worker exceed the pool size (issue #341).
+    DB_POOL_MAX = config("DB_POOL_MAX", default=5, cast=int)
     DB_POOL_TIMEOUT = config("DB_POOL_TIMEOUT", default=30, cast=int)
     db_options = {}
     if DB_POOL_ENABLED:
