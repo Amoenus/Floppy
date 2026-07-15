@@ -6,6 +6,7 @@ from . import (
     fork_views,
     fork_views_metadata,
     fork_views_music,
+    fork_views_podcast,
     fork_views_tracking,
 )
 
@@ -149,5 +150,30 @@ urlpatterns = [
         r"^music/bulk-plays/?$",
         fork_views_music.MusicBulkPlaysView.as_view(),
         name="api_music_bulk_plays",
+    ),
+    re_path(
+        r"^podcasts/shows/?$",
+        fork_views_podcast.PodcastShowsView.as_view(),
+        name="api_podcast_shows",
+    ),
+    re_path(
+        r"^podcasts/shows/(?P<show_id>\d+)/?$",
+        fork_views_podcast.PodcastShowDetailView.as_view(),
+        name="api_podcast_show_detail",
+    ),
+    re_path(
+        r"^podcasts/shows/(?P<show_id>\d+)/episodes/?$",
+        fork_views_podcast.PodcastShowEpisodesView.as_view(),
+        name="api_podcast_show_episodes",
+    ),
+    re_path(
+        r"^podcasts/shows/(?P<show_id>\d+)/mark-all-played/?$",
+        fork_views_podcast.PodcastMarkAllPlayedView.as_view(),
+        name="api_podcast_mark_all_played",
+    ),
+    re_path(
+        r"^podcasts/episodes/plays/?$",
+        fork_views_podcast.PodcastEpisodePlayView.as_view(),
+        name="api_podcast_episode_play",
     ),
 ]
