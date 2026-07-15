@@ -36,6 +36,11 @@ urlpatterns = [
         name="api_item_metadata",
     ),
     re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/episodes/bulk/?$",
+        fork_views_tracking.MediaEpisodeBulkView.as_view(),
+        name="api_media_episode_bulk",
+    ),
+    re_path(
         r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/tags/?$",
         fork_views_tracking.MediaTagsView.as_view(),
         name="api_media_tags",

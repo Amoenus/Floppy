@@ -364,3 +364,62 @@ class HistoryRecordDeleteTests(YamtrackApiTestCase):
             headers=self.auth_headers,
         )
         self.assertEqual(response.status_code, HTTP.BAD_REQUEST)
+
+
+class EpisodeBulkTests(YamtrackApiTestCase):
+    """POST episodes/bulk dispatches the bulk plays task."""
+
+    @patch("app.tasks.bulk_episode_plays_task.apply_async")
+    def test_bulk_dispatches_task(self, mock_apply):
+        """A valid range returns 202 with the task id."""
+        mock_apply.return_value.id = "task-123"
+        response = self.call_api(
+            "post",
+            "api_media_episode_bulk",
+            args=("tv", "tmdb", "1001"),
+            payload={
+                "first_season_number": 1,
+                "first_episode_number": 1,
+                "last_season_number": 1,
+                "last_episode_number": 3,
+                "start_date": "2024-01-01",
+                "end_date": "2024-01-03",
+            },
+            headers=self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.ACCEPTED)
+        self.assertEqual(response.json()["task_id"], "task-123")
+        kwargs = mock_apply.call_args.kwargs["kwargs"]
+        self.assertEqual(kwargs["user_id"], self.user1.id)
+        self.assertEqual(kwargs["write_mode"], "add")
+        self.assertEqual(kwargs["distribution_mode"], "even")
+
+    def test_bulk_missing_range_rejected(self):
+        """Missing range fields return 400 without dispatching."""
+        response = self.call_api(
+            "post",
+            "api_media_episode_bulk",
+            args=("tv", "tmdb", "1001"),
+            payload={"start_date": "2024-01-01", "end_date": "2024-01-02"},
+            headers=self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.BAD_REQUEST)
+
+    def test_bulk_invalid_mode_rejected(self):
+        """Unknown write/distribution modes return 400."""
+        response = self.call_api(
+            "post",
+            "api_media_episode_bulk",
+            args=("tv", "tmdb", "1001"),
+            payload={
+                "first_season_number": 1,
+                "first_episode_number": 1,
+                "last_season_number": 1,
+                "last_episode_number": 2,
+                "start_date": "2024-01-01",
+                "end_date": "2024-01-02",
+                "write_mode": "bogus",
+            },
+            headers=self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.BAD_REQUEST)

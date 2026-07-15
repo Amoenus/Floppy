@@ -41,6 +41,12 @@ def get_fork_endpoint_cases() -> list[EndpointCase]:
             args=("tv", "tmdb", 1, 1, 1),
             payload={},
         ),
+        EndpointCase(
+            "post",
+            "api_media_episode_bulk",
+            args=("tv", "tmdb", 1),
+            payload={},
+        ),
         EndpointCase("get", "api_media_tags", args=("movie", "tmdb", 1)),
         EndpointCase(
             "put",

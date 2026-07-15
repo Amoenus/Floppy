@@ -4,6 +4,7 @@
 import logging
 from http import HTTPStatus as HTTP  # noqa: N814
 
+from django.conf import settings
 from django.db.models import Count
 from django.utils import timezone
 from rest_framework import views as drf_views
@@ -12,6 +13,7 @@ from rest_framework.response import Response
 from app import fork_services_history, history_cache_reader
 from app.fork_services_episode import drop_episode, resolve_or_create_season
 from app.models import Episode, ItemTag, MediaTypes, Season, Tag
+from app.tasks import bulk_episode_plays_task
 
 from .helpers import (
     MEDIA_TYPE_MODEL_MAP,
@@ -432,3 +434,80 @@ class HistoryRecordView(drf_views.APIView):
                 status=HTTP.INTERNAL_SERVER_ERROR,
             )
         return Response(status=HTTP.NO_CONTENT)
+
+
+# /api/v1/media/[media_type]/[source]/[media_id]/episodes/bulk/
+class MediaEpisodeBulkView(drf_views.APIView):
+    """Dispatch a bulk episode play range as a background task.
+
+    Mirrors the web episode_bulk_save: the range spans seasons, and the
+    task distributes plays across the start/end dates. Returns 202 with a
+    task_id that can be polled at /api/v1/tasks/{task_id}.
+    """
+
+    def post(self, request, media_type, source, media_id):
+        """Queue the bulk play range for the media."""
+        if media_type != MediaTypes.TV.value:
+            return Response(
+                {"detail": "Episodes are supported only for 'tv' media type."},
+                status=HTTP.BAD_REQUEST,
+            )
+
+        start_date = (str(request.data.get("start_date") or "")).strip()
+        end_date = (str(request.data.get("end_date") or "")).strip()
+        if not start_date or not end_date:
+            return Response(
+                {"detail": "start_date and end_date are required."},
+                status=HTTP.BAD_REQUEST,
+            )
+
+        try:
+            first_season_number = int(request.data["first_season_number"])
+            first_episode_number = int(request.data["first_episode_number"])
+            last_season_number = int(request.data["last_season_number"])
+            last_episode_number = int(request.data["last_episode_number"])
+        except (KeyError, TypeError, ValueError):
+            return Response(
+                {"detail": "Invalid episode range."},
+                status=HTTP.BAD_REQUEST,
+            )
+
+        write_mode = request.data.get("write_mode", "add")
+        distribution_mode = request.data.get("distribution_mode", "even")
+        if write_mode not in ("add", "replace"):
+            return Response(
+                {"detail": "write_mode must be 'add' or 'replace'."},
+                status=HTTP.BAD_REQUEST,
+            )
+        if distribution_mode not in ("even", "air_date"):
+            return Response(
+                {"detail": "distribution_mode must be 'even' or 'air_date'."},
+                status=HTTP.BAD_REQUEST,
+            )
+
+        task = bulk_episode_plays_task.apply_async(
+            kwargs={
+                "user_id": request.user.id,
+                "media_type": media_type,
+                "source": source,
+                "media_id": media_id,
+                "first_season_number": first_season_number,
+                "first_episode_number": first_episode_number,
+                "last_season_number": last_season_number,
+                "last_episode_number": last_episode_number,
+                "write_mode": write_mode,
+                "distribution_mode": distribution_mode,
+                "start_date_str": start_date,
+                "end_date_str": end_date,
+                "identity_media_type": request.data.get("identity_media_type"),
+                "library_media_type": request.data.get("library_media_type"),
+            },
+            priority=settings.CELERY_TASK_PRIORITY_INTERACTIVE,
+        )
+        logger.info(
+            "bulk_episode_plays_task_dispatched task_id=%s user_id=%d media_id=%s",
+            task.id,
+            request.user.id,
+            media_id,
+        )
+        return Response({"task_id": task.id}, status=HTTP.ACCEPTED)
