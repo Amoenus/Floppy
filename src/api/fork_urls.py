@@ -10,6 +10,7 @@ from . import (
     fork_views_metadata,
     fork_views_music,
     fork_views_podcast,
+    fork_views_statistics,
     fork_views_tracking,
     fork_views_users,
 )
@@ -299,5 +300,15 @@ urlpatterns = [
         r"^export/template/?$",
         fork_views_integrations.ExportTemplateView.as_view(),
         name="api_export_template",
+    ),
+    re_path(
+        r"^statistics/overview/?$",
+        fork_views_statistics.StatisticsOverviewView.as_view(),
+        name="api_statistics_overview",
+    ),
+    re_path(
+        r"^statistics/refresh/?$",
+        fork_views_statistics.StatisticsRefreshView.as_view(),
+        name="api_statistics_refresh",
     ),
 ]

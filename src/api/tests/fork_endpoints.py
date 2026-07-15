@@ -119,6 +119,12 @@ def get_fork_endpoint_cases() -> list[EndpointCase]:
         EndpointCase("post", "api_import_dispatch", args=("mal",), payload={}),
         EndpointCase("get", "api_export_csv"),
         EndpointCase("get", "api_export_template"),
+        EndpointCase("get", "api_statistics_overview"),
+        EndpointCase(
+            "post",
+            "api_statistics_refresh",
+            payload={"range_name": "Last 12 Months"},
+        ),
         EndpointCase(
             "post",
             "api_media_episode_watch",
