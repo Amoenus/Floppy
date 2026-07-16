@@ -22,7 +22,7 @@ Configure the server with two environment variables:
 - `YAMTRACK_URL` — base URL of the Yamtrack instance, e.g.
   `https://yamtrack.example.com` (no trailing slash needed).
 - `YAMTRACK_TOKEN` — the user's API token, found under
-  Settings → Advanced in the web UI (the same token used for webhooks and
+  Settings → Integrations in the web UI (the same token used for webhooks and
   the iCal feed). Sent as an `X-API-Key` header.
 
 ## Running
