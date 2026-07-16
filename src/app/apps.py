@@ -29,6 +29,20 @@ def _is_runserver_parent_process() -> bool:
     return "runserver" in sys.argv and os.environ.get("RUN_MAIN") != "true"
 
 
+def _is_management_command_process() -> bool:
+    """Return whether this is a manage.py command other than runserver.
+
+    One-off commands (migrate, check, shell, ...) must not enqueue startup
+    tasks: publishing writes a TaskResult row mid-initialization and opens a
+    Postgres connection pool inside a short-lived process (issue #341).
+    Production gunicorn is launched without a manage.py token, so this never
+    suppresses the preloaded master's scheduling.
+    """
+    if not sys.argv or not sys.argv[0].endswith("manage.py"):
+        return False
+    return "runserver" not in sys.argv
+
+
 class AppConfig(AppConfig):
     """Default app config."""
 
@@ -38,6 +52,11 @@ class AppConfig(AppConfig):
     def ready(self):
         """Import signals when the app is ready."""
         import_module("app.signals")
+        if _is_management_command_process():
+            # One-off manage.py commands (migrate, shell, check, ...) must
+            # not enqueue startup tasks or consume the once-per-day startup
+            # cache keys the serving process needs (issue #341).
+            return
         if not settings.TESTING:
             self._repair_celery_redis_bindings()
         is_celery_worker = _is_celery_worker_process()

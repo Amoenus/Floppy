@@ -86,6 +86,7 @@ class DiscoverWarmupTests(TestCase):
         self.assertNotEqual(inactive_user.id, self.user.id)
 
     @override_settings(TESTING=False, DISCOVER_WARMUP_ON_STARTUP=False)
+    @patch("app.apps.sys.argv", ["gunicorn"])
     @patch("app.apps._is_celery_worker_process", return_value=False)
     def test_app_ready_skips_startup_discover_warmup_when_disabled(
         self,
@@ -104,6 +105,7 @@ class DiscoverWarmupTests(TestCase):
         mock_schedule.assert_not_called()
 
     @override_settings(TESTING=False, DISCOVER_WARMUP_ON_STARTUP=True)
+    @patch("app.apps.sys.argv", ["gunicorn"])
     @patch("app.apps._is_celery_worker_process", return_value=False)
     def test_app_ready_schedules_startup_discover_warmup_when_enabled(
         self,

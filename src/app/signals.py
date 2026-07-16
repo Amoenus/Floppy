@@ -4,6 +4,7 @@ from contextvars import ContextVar
 
 from celery import states
 from celery.signals import before_task_publish
+from django.apps import apps
 from django.conf import settings
 from django.db.models.signals import post_delete, post_save
 from django.db.utils import OperationalError
@@ -98,6 +99,12 @@ def create_task_result_on_publish(
     https://github.com/celery/django-celery-results/issues/286#issuecomment-1279161047
     """
     if "task" not in headers:
+        return
+
+    if not apps.ready:
+        # Publishing from AppConfig.ready() (startup scheduling) must not
+        # write to the database mid-initialization; a missing PENDING row is
+        # already treated as PENDING by its consumers (issue #341).
         return
 
     try:

@@ -18,6 +18,7 @@ class AppStartupTests(TestCase):
         DISCOVER_WARMUP_ON_STARTUP=False,
         RUNTIME_POPULATION_ON_STARTUP=False,
     )
+    @patch("app.apps.sys.argv", ["gunicorn"])
     @patch("app.apps._is_celery_worker_process", return_value=False)
     def test_app_ready_schedules_genre_backfill_reconcile(
         self,
@@ -63,6 +64,62 @@ class AppStartupTests(TestCase):
         mock_imdb.assert_not_called()
         mock_genre.assert_not_called()
         mock_trakt.assert_not_called()
+
+    @override_settings(
+        TESTING=False,
+        DISCOVER_WARMUP_ON_STARTUP=False,
+        RUNTIME_POPULATION_ON_STARTUP=False,
+    )
+    @patch("app.apps.sys.argv", ["manage.py", "migrate", "--noinput"])
+    @patch("app.apps._is_celery_worker_process", return_value=False)
+    def test_app_ready_skips_startup_scheduling_in_management_command(
+        self,
+        _mock_is_celery_worker,
+    ):
+        cache.delete("history_day_coverage_startup_scheduled")
+        config = YamtrackAppConfig("app", import_module("app"))
+
+        with (
+            patch.object(config, "_repair_celery_redis_bindings") as mock_repair,
+            patch.object(
+                config,
+                "_schedule_history_day_coverage_warmup",
+            ) as mock_history,
+            patch.object(
+                config,
+                "_schedule_imdb_game_person_profile_backfill",
+            ) as mock_imdb,
+            patch.object(config, "_schedule_genre_backfill_reconcile") as mock_genre,
+            patch.object(config, "_schedule_trakt_popularity_reconcile") as mock_trakt,
+        ):
+            config.ready()
+
+        mock_repair.assert_not_called()
+        mock_history.assert_not_called()
+        mock_imdb.assert_not_called()
+        mock_genre.assert_not_called()
+        mock_trakt.assert_not_called()
+        # The once-per-day startup cache keys must remain available for the
+        # serving process that starts afterwards.
+        self.assertIsNone(cache.get("history_day_coverage_startup_scheduled"))
+
+    def test_is_management_command_process_detection(self):
+        from app.apps import _is_management_command_process
+
+        cases = [
+            (["manage.py", "migrate", "--noinput"], True),
+            (["manage.py", "check"], True),
+            (["manage.py", "shell"], True),
+            (["/yamtrack/manage.py", "collectstatic"], True),
+            (["manage.py", "runserver"], False),
+            (["manage.py", "runserver", "0.0.0.0:8000"], False),
+            (["gunicorn", "config.wsgi:application"], False),
+            (["celery", "-A", "config", "worker"], False),
+            ([], False),
+        ]
+        for argv, expected in cases:
+            with patch("app.apps.sys.argv", argv):
+                self.assertEqual(_is_management_command_process(), expected, argv)
 
     @patch("app.tasks_imdb.schedule_imdb_game_person_profile_backfill_if_needed.apply_async")
     def test_schedule_imdb_game_person_profile_backfill_uses_background_priority(

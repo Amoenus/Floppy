@@ -2,6 +2,7 @@ from unittest.mock import patch
 
 from django.test import TestCase, override_settings
 from django.utils import timezone
+from django_celery_results.models import TaskResult
 
 from app import signals, tasks
 from app.models import (
@@ -16,6 +17,28 @@ from app.models import (
     PersonGender,
     Sources,
 )
+
+
+class TaskResultOnPublishTests(TestCase):
+    HEADERS = {
+        "task": "app.tasks.example",
+        "id": "00000000-0000-0000-0000-000000000341",
+    }
+
+    def test_creates_pending_task_result_when_apps_ready(self):
+        signals.create_task_result_on_publish(headers=dict(self.HEADERS))
+
+        self.assertTrue(
+            TaskResult.objects.filter(task_id=self.HEADERS["id"]).exists(),
+        )
+
+    def test_skips_task_result_during_app_initialization(self):
+        with patch.object(signals.apps, "ready", new=False):
+            signals.create_task_result_on_publish(headers=dict(self.HEADERS))
+
+        self.assertFalse(
+            TaskResult.objects.filter(task_id=self.HEADERS["id"]).exists(),
+        )
 
 
 class ItemSignalTests(TestCase):
