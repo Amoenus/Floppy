@@ -14,6 +14,8 @@ class EndpointCase:
 
 def get_endpoint_cases() -> list[EndpointCase]:
     """Return a list of every endpoint and supported method."""
+    from . import fork_endpoints  # noqa: PLC0415 — avoids circular import
+
     return [
         EndpointCase("get", "api_calendar"),
         EndpointCase("post", "api_update_calendar"),
@@ -99,11 +101,15 @@ def get_endpoint_cases() -> list[EndpointCase]:
         EndpointCase("get", "api_media_lists", args=("movie", "tmdb", 1)),
         EndpointCase(
             "put",
-            "api_media_lists",
+            "api_media_list_detail",
             args=("movie", "tmdb", 1, 1),
             payload={},
         ),
-        EndpointCase("delete", "api_media_lists", args=("movie", "tmdb", 1, 1)),
+        EndpointCase(
+            "delete",
+            "api_media_list_detail",
+            args=("movie", "tmdb", 1, 1),
+        ),
         EndpointCase(
             "get",
             "api_media_recommendations",
@@ -244,4 +250,6 @@ def get_endpoint_cases() -> list[EndpointCase]:
         EndpointCase("post", "api_media_episode_sync", args=("tv", "tmdb", 1, 1, 1)),
         EndpointCase("get", "api_search_provider", args=("movie",)),
         EndpointCase("get", "api_statistics"),
+        # FORK: fork-only routes live in fork_endpoints.py.
+        *fork_endpoints.get_fork_endpoint_cases(),
     ]

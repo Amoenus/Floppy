@@ -982,31 +982,12 @@ def music_album_details(request, artist_id, artist_slug, album_id, album_slug):
 @require_GET
 def create_artist_from_search(request, musicbrainz_artist_id):
     """Create an Artist from MusicBrainz search and redirect to artist page."""
-    from app.providers import musicbrainz
-    from app.services.music import sync_artist_discography
+    # FORK: creation core shared with the REST API.
+    from app import fork_services_music
 
-    artist = Artist.objects.filter(musicbrainz_id=musicbrainz_artist_id).first()
-
-    if not artist:
-        artist_data = musicbrainz.get_artist(musicbrainz_artist_id)
-
-        artist = Artist.objects.create(
-            name=artist_data.get("name", "Unknown Artist"),
-            sort_name=artist_data.get("sort_name", ""),
-            musicbrainz_id=musicbrainz_artist_id,
-            country=artist_data.get("country", "") or "",
-            genres=[
-                g.get("name")
-                for g in artist_data.get("genres", [])
-                if g.get("name")
-            ]
-            if artist_data.get("genres")
-            else [],
-        )
-        logger.info("Created artist %s from MusicBrainz", artist.name)
-
-        sync_artist_discography(artist)
-
+    artist = fork_services_music.get_or_create_artist_from_musicbrainz(
+        musicbrainz_artist_id,
+    )
     return redirect(_music_artist_detail_url(artist))
 
 

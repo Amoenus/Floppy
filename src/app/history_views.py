@@ -17,7 +17,14 @@ from django.utils import formats, timezone
 from django.utils.dateparse import parse_date
 from django.views.decorators.http import require_GET, require_http_methods
 
-from app import cache_utils, helpers, history_cache, history_processor, statistics_cache
+from app import (
+    cache_utils,
+    fork_services_history,
+    helpers,
+    history_cache,
+    history_processor,
+    statistics_cache,
+)
 from app import statistics as stats
 from app.models import BasicMedia, MediaTypes
 
@@ -110,310 +117,151 @@ def history_modal(
 @require_http_methods(["DELETE"])
 def delete_history_record(request, media_type, history_id):
     """Delete a specific history record."""
+    music_id = request.GET.get("music_id")
+    podcast_id = request.GET.get("podcast_id")
+
+    # FORK: deletion core shared with the REST API.
     try:
-        historical_model = apps.get_model(
-            app_label="app",
-            model_name=f"historical{media_type.lower()}",
+        fork_services_history.delete_history_record_core(
+            request.user,
+            media_type,
+            history_id,
         )
-
-        try:
-            history_record = historical_model.objects.get(
-                history_id=history_id,
-                history_user=request.user,
-            )
-        except historical_model.DoesNotExist:
-            history_record = historical_model.objects.get(
-                history_id=history_id,
-                history_user__isnull=True,
-            )
-            try:
-                BasicMedia.objects.get_media(
-                    request.user,
-                    media_type.lower(),
-                    history_record.id,
-                )
-            except ObjectDoesNotExist:
-                raise historical_model.DoesNotExist(
-                    f"History record {history_id} not found for user {request.user}",
-                )
-
-        media_instance_id = history_record.id
-        start_date = getattr(history_record, "start_date", None)
-        end_date = getattr(history_record, "end_date", None)
-        created_at = getattr(history_record, "created_at", None)
-        media_type_lower = media_type.lower()
-
-        instance_delete_types = {
-            MediaTypes.MOVIE.value,
-            MediaTypes.EPISODE.value,
-            MediaTypes.GAME.value,
-            MediaTypes.BOARDGAME.value,
-        }
-        delete_instance = media_type_lower in instance_delete_types
-
-        logger.info(
-            "Attempting to delete history record %s (media_type=%s, media_instance_id=%s, user=%s)",
-            str(history_id),
-            media_type_lower,
-            media_instance_id,
-            str(request.user),
-        )
-
-        music_id = request.GET.get("music_id")
-        podcast_id = request.GET.get("podcast_id")
-
-        if delete_instance:
-            try:
-                media_instance = BasicMedia.objects.get_media(
-                    request.user,
-                    media_type_lower,
-                    media_instance_id,
-                )
-            except (ObjectDoesNotExist, ValueError, TypeError):
-                logger.exception(
-                    "Media instance %s not found for history record %s (media_type=%s, user=%s)",
-                    str(media_instance_id),
-                    str(history_id),
-                    media_type_lower,
-                    str(request.user),
-                )
-                return HttpResponse("Record not found", status=404)
-
-            related_season = (
-                getattr(media_instance, "related_season", None)
-                if media_type_lower == MediaTypes.EPISODE.value
-                else None
-            )
-
-            try:
-                media_instance.delete()
-            except Exception as e:
-                logger.error(
-                    "Failed to delete media instance %s for history record %s: %s",
-                    str(media_instance_id),
-                    str(history_id),
-                    str(e),
-                    exc_info=True,
-                )
-                return HttpResponse("Failed to delete record", status=500)
-
-            if related_season:
-                related_season._sync_status_after_episode_change()
-                cache_utils.clear_time_left_cache_for_user(related_season.user_id)
-                cache_utils.clear_media_list_cache_for_user(related_season.user_id)
-
-            try:
-                model = apps.get_model(app_label="app", model_name=media_type_lower)
-                verification_query = model.objects.filter(id=media_instance_id)
-                if media_type_lower == MediaTypes.EPISODE.value:
-                    verification_query = verification_query.filter(
-                        related_season__user=request.user,
-                    )
-                else:
-                    verification_query = verification_query.filter(user=request.user)
-
-                if verification_query.exists():
-                    logger.error(
-                        "Deletion verification failed: media instance %s still exists after delete() call",
-                        str(media_instance_id),
-                    )
-                    return HttpResponse("Deletion failed", status=500)
-            except Exception as e:
-                logger.warning(
-                    "Could not verify deletion of media instance %s: %s",
-                    str(media_instance_id),
-                    str(e),
-                )
-        else:
-            try:
-                history_record.delete()
-            except Exception as e:
-                logger.error(
-                    "Failed to delete history record %s: %s",
-                    str(history_id),
-                    str(e),
-                    exc_info=True,
-                )
-                return HttpResponse("Failed to delete record", status=500)
-
-            try:
-                verification_query = historical_model.objects.filter(history_id=history_id)
-                if verification_query.exists():
-                    logger.error(
-                        "Deletion verification failed: history record %s still exists after delete() call",
-                        str(history_id),
-                    )
-                    return HttpResponse("Deletion failed", status=500)
-            except Exception as e:
-                logger.warning(
-                    "Could not verify deletion of history record %s: %s",
-                    str(history_id),
-                    str(e),
-                )
-
-        logger.info(
-            "Successfully deleted %s %s (media_type=%s, media_instance_id=%s)",
-            "media instance" if delete_instance else "history record",
-            str(history_id),
-            media_type_lower,
-            media_instance_id,
-        )
-
-        logging_styles = ("sessions", "repeats")
-        if media_type_lower in ("game", "boardgame"):
-            start_dt = start_date or end_date
-            end_dt = end_date or start_date
-            history_day_keys = history_cache.history_day_keys_for_range(start_dt, end_dt)
-        else:
-            activity_dt = end_date or start_date or created_at
-            history_day_key = history_cache.history_day_key(activity_dt)
-            history_day_keys = [history_day_key] if history_day_key else []
-
-        history_cache.invalidate_history_days(
-            request.user.id,
-            day_keys=history_day_keys,
-            logging_styles=logging_styles,
-            reason="history_delete",
-        )
-        statistics_cache.invalidate_statistics_days(
-            request.user.id,
-            day_values=history_day_keys,
-            reason="history_delete",
-        )
-        statistics_cache.schedule_all_ranges_refresh(request.user.id)
-
-        if music_id and media_type.lower() == "music":
-            from app.models import Music
-            from users.templatetags.user_tags import user_date_format
-
-            try:
-                music = Music.objects.get(id=music_id, user=request.user)
-                remaining_history = list(
-                    music.history.filter(
-                        history_user=request.user,
-                    ).order_by("-end_date"),
-                ) or list(
-                    music.history.filter(
-                        history_user__isnull=True,
-                    ).order_by("-end_date"),
-                )
-
-                remaining_count = len(remaining_history)
-
-                if remaining_count > 0:
-                    last_entry = remaining_history[0]
-                    last_date_formatted = (
-                        user_date_format(last_entry.end_date, request.user)
-                        if last_entry.end_date
-                        else "No date provided"
-                    )
-
-                    if remaining_count == 1:
-                        history_text = f"Last listened: {last_date_formatted}"
-                    else:
-                        history_text = (
-                            f"Last listened: {last_date_formatted} "
-                            f"• Listened {remaining_count} times"
-                        )
-
-                    response = HttpResponse()
-                    response.write(
-                        f'<p id="track-history-{music_id}" hx-swap-oob="true" '
-                        'class="text-xs text-gray-400 mt-2 px-4">'
-                        f"{history_text}</p>",
-                    )
-                    modal_text = (
-                        "Listened once"
-                        if remaining_count == 1
-                        else f"Listened {remaining_count} times"
-                    )
-                    response.write(
-                        f'<p id="modal-listen-count-{music_id}" hx-swap-oob="true" '
-                        'class="text-sm text-gray-400 mt-1">'
-                        f"{modal_text}</p>",
-                    )
-                    return response
-                response = HttpResponse()
-                response.write(
-                    f'<p id="track-history-{music_id}" hx-swap-oob="true" '
-                    'class="text-xs text-gray-400 mt-2 px-4" style="display: none;"></p>',
-                )
-                response.write(
-                    f'<p id="modal-listen-count-{music_id}" hx-swap-oob="true" '
-                    'class="text-sm text-gray-400 mt-1">Not listened yet</p>',
-                )
-                return response
-            except Music.DoesNotExist:
-                pass
-
-        if podcast_id and media_type.lower() == "podcast":
-            from app.models import Podcast
-            from users.templatetags.user_tags import user_date_format
-
-            try:
-                podcast = Podcast.objects.get(id=podcast_id, user=request.user)
-                remaining_history = list(
-                    podcast.history.filter(
-                        history_user=request.user,
-                    ).order_by("-end_date"),
-                ) or list(
-                    podcast.history.filter(
-                        history_user__isnull=True,
-                    ).order_by("-end_date"),
-                )
-
-                remaining_count = len(remaining_history)
-
-                if remaining_count > 0:
-                    last_entry = remaining_history[0]
-                    last_date_formatted = (
-                        user_date_format(last_entry.end_date, request.user)
-                        if last_entry.end_date
-                        else "No date provided"
-                    )
-
-                    if remaining_count == 1:
-                        history_text = f"Last played: {last_date_formatted}"
-                    else:
-                        history_text = (
-                            f"Last played: {last_date_formatted} "
-                            f"• Played {remaining_count} times"
-                        )
-
-                    response = HttpResponse()
-                    modal_text = (
-                        "Played once"
-                        if remaining_count == 1
-                        else f"Played {remaining_count} times"
-                    )
-                    response.write(
-                        f'<p id="modal-listen-count-{podcast_id}" hx-swap-oob="true" '
-                        'class="text-sm text-gray-400 mt-1">'
-                        f"{modal_text}</p>",
-                    )
-                    response["HX-Trigger"] = "history-refresh-start"
-                    return response
-                response = HttpResponse()
-                response.write(
-                    f'<p id="modal-listen-count-{podcast_id}" hx-swap-oob="true" '
-                    'class="text-sm text-gray-400 mt-1">Not played yet</p>',
-                )
-                response["HX-Trigger"] = "history-refresh-start"
-                return response
-            except Podcast.DoesNotExist:
-                pass
-
-        response = HttpResponse()
-        response["HX-Trigger"] = "history-refresh-start"
-        return response
-
-    except historical_model.DoesNotExist:
+    except fork_services_history.HistoryRecordNotFoundError:
         logger.exception(
             "History record %s not found for user %s",
             str(history_id),
             str(request.user),
         )
         return HttpResponse("Record not found", status=404)
+    except fork_services_history.HistoryDeletionError as e:
+        return HttpResponse(str(e), status=500)
+
+    if music_id and media_type.lower() == "music":
+        from app.models import Music
+        from users.templatetags.user_tags import user_date_format
+
+        try:
+            music = Music.objects.get(id=music_id, user=request.user)
+            remaining_history = list(
+                music.history.filter(
+                    history_user=request.user,
+                ).order_by("-end_date"),
+            ) or list(
+                music.history.filter(
+                    history_user__isnull=True,
+                ).order_by("-end_date"),
+            )
+
+            remaining_count = len(remaining_history)
+
+            if remaining_count > 0:
+                last_entry = remaining_history[0]
+                last_date_formatted = (
+                    user_date_format(last_entry.end_date, request.user)
+                    if last_entry.end_date
+                    else "No date provided"
+                )
+
+                if remaining_count == 1:
+                    history_text = f"Last listened: {last_date_formatted}"
+                else:
+                    history_text = (
+                        f"Last listened: {last_date_formatted} "
+                        f"• Listened {remaining_count} times"
+                    )
+
+                response = HttpResponse()
+                response.write(
+                    f'<p id="track-history-{music_id}" hx-swap-oob="true" '
+                    'class="text-xs text-gray-400 mt-2 px-4">'
+                    f"{history_text}</p>",
+                )
+                modal_text = (
+                    "Listened once"
+                    if remaining_count == 1
+                    else f"Listened {remaining_count} times"
+                )
+                response.write(
+                    f'<p id="modal-listen-count-{music_id}" hx-swap-oob="true" '
+                    'class="text-sm text-gray-400 mt-1">'
+                    f"{modal_text}</p>",
+                )
+                return response
+            response = HttpResponse()
+            response.write(
+                f'<p id="track-history-{music_id}" hx-swap-oob="true" '
+                'class="text-xs text-gray-400 mt-2 px-4" style="display: none;"></p>',
+            )
+            response.write(
+                f'<p id="modal-listen-count-{music_id}" hx-swap-oob="true" '
+                'class="text-sm text-gray-400 mt-1">Not listened yet</p>',
+            )
+            return response
+        except Music.DoesNotExist:
+            pass
+
+    if podcast_id and media_type.lower() == "podcast":
+        from app.models import Podcast
+        from users.templatetags.user_tags import user_date_format
+
+        try:
+            podcast = Podcast.objects.get(id=podcast_id, user=request.user)
+            remaining_history = list(
+                podcast.history.filter(
+                    history_user=request.user,
+                ).order_by("-end_date"),
+            ) or list(
+                podcast.history.filter(
+                    history_user__isnull=True,
+                ).order_by("-end_date"),
+            )
+
+            remaining_count = len(remaining_history)
+
+            if remaining_count > 0:
+                last_entry = remaining_history[0]
+                last_date_formatted = (
+                    user_date_format(last_entry.end_date, request.user)
+                    if last_entry.end_date
+                    else "No date provided"
+                )
+
+                if remaining_count == 1:
+                    history_text = f"Last played: {last_date_formatted}"
+                else:
+                    history_text = (
+                        f"Last played: {last_date_formatted} "
+                        f"• Played {remaining_count} times"
+                    )
+
+                response = HttpResponse()
+                modal_text = (
+                    "Played once"
+                    if remaining_count == 1
+                    else f"Played {remaining_count} times"
+                )
+                response.write(
+                    f'<p id="modal-listen-count-{podcast_id}" hx-swap-oob="true" '
+                    'class="text-sm text-gray-400 mt-1">'
+                    f"{modal_text}</p>",
+                )
+                response["HX-Trigger"] = "history-refresh-start"
+                return response
+            response = HttpResponse()
+            response.write(
+                f'<p id="modal-listen-count-{podcast_id}" hx-swap-oob="true" '
+                'class="text-sm text-gray-400 mt-1">Not played yet</p>',
+            )
+            response["HX-Trigger"] = "history-refresh-start"
+            return response
+        except Podcast.DoesNotExist:
+            pass
+
+    response = HttpResponse()
+    response["HX-Trigger"] = "history-refresh-start"
+    return response
+
 
 
 def _build_anniversary_history_days(user, month, day, logging_style=None):

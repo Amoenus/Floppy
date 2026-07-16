@@ -11,7 +11,7 @@ from django.shortcuts import redirect, render
 from django.template.loader import render_to_string
 from django.views.decorators.http import require_POST
 
-from app import cache_utils, helpers
+from app import fork_services_episode, helpers
 from app.activity_builders import _build_detail_activity_state
 from app.discover import tab_cache as discover_tab_cache
 from app.forms import EpisodeForm, get_form_class
@@ -21,9 +21,7 @@ from app.models import (
     Episode,
     Item,
     MediaTypes,
-    Season,
     Sources,
-    Status,
 )
 from app.providers import services
 from app.services import metadata_resolution
@@ -462,64 +460,13 @@ def episode_save(request):
         logger.error("Form validation failed: %s", form.errors)
         return HttpResponseBadRequest("Invalid form data")
 
-    _season_qs = Season.objects.filter(
-        item__media_id=media_id,
-        item__source=source,
-        item__season_number=season_number,
-        item__episode_number=None,
-        user=request.user,
+    related_season = fork_services_episode.resolve_or_create_season(
+        request.user,
+        media_id,
+        source,
+        season_number,
+        library_media_type=library_media_type,
     )
-    related_season = _season_qs.order_by("id").first()
-    if related_season is None:
-        tv_with_seasons_metadata = services.get_media_metadata(
-            "tv_with_seasons",
-            media_id,
-            source,
-            [season_number],
-        )
-        season_metadata = tv_with_seasons_metadata[f"season/{season_number}"]
-
-        # Use season poster if available, otherwise fallback to TV show poster
-        season_image = season_metadata.get("image") or tv_with_seasons_metadata.get("image")
-
-        item = metadata_resolution.get_or_create_tracked_season_item(
-            media_id,
-            source,
-            season_number,
-            provider=source,
-            library_media_type=library_media_type or MediaTypes.SEASON.value,
-            metadata=None,
-            defaults={
-                **Item.title_fields_from_metadata(tv_with_seasons_metadata),
-                "image": season_image,
-            },
-        )
-        related_season = Season.objects.create(
-            item=item,
-            user=request.user,
-            score=None,
-            status=Status.IN_PROGRESS.value,
-            notes="",
-        )
-
-        logger.info("%s did not exist, it was created successfully.", related_season)
-    elif _season_qs.count() > 1:
-        logger.warning(
-            "Multiple Season records for media_id=%s season=%s user=%s — using oldest",
-            media_id,
-            season_number,
-            request.user,
-        )
-
-    if library_media_type and related_season.item.library_media_type != library_media_type:
-        related_season.item.library_media_type = library_media_type
-        related_season.item.save(update_fields=["library_media_type"])
-    if (
-        library_media_type
-        and related_season.related_tv.item.library_media_type != library_media_type
-    ):
-        related_season.related_tv.item.library_media_type = library_media_type
-        related_season.related_tv.item.save(update_fields=["library_media_type"])
 
     related_season.watch(episode_number, form.cleaned_data["end_date"])
 
@@ -596,72 +543,15 @@ def episode_drop(request):
         fallback_media_type=MediaTypes.TV.value,
     )
 
-    _season_qs = Season.objects.filter(
-        item__media_id=media_id,
-        item__source=source,
-        item__season_number=season_number,
-        item__episode_number=None,
-        user=request.user,
+    related_season = fork_services_episode.resolve_or_create_season(
+        request.user,
+        media_id,
+        source,
+        season_number,
+        library_media_type=library_media_type,
     )
-    related_season = _season_qs.order_by("id").first()
-    if related_season is None:
-        tv_with_seasons_metadata = services.get_media_metadata(
-            "tv_with_seasons",
-            media_id,
-            source,
-            [season_number],
-        )
-        season_metadata = tv_with_seasons_metadata[f"season/{season_number}"]
-        season_image = season_metadata.get("image") or tv_with_seasons_metadata.get("image")
 
-        item = metadata_resolution.get_or_create_tracked_season_item(
-            media_id,
-            source,
-            season_number,
-            provider=source,
-            library_media_type=library_media_type or MediaTypes.SEASON.value,
-            metadata=None,
-            defaults={
-                **Item.title_fields_from_metadata(tv_with_seasons_metadata),
-                "image": season_image,
-            },
-        )
-        related_season = Season.objects.create(
-            item=item,
-            user=request.user,
-            score=None,
-            status=Status.IN_PROGRESS.value,
-            notes="",
-        )
-        logger.info("%s did not exist, it was created successfully.", related_season)
-    elif _season_qs.count() > 1:
-        logger.warning(
-            "Multiple Season records for media_id=%s season=%s user=%s — using oldest",
-            media_id,
-            season_number,
-            request.user,
-        )
-
-    if library_media_type and related_season.item.library_media_type != library_media_type:
-        related_season.item.library_media_type = library_media_type
-        related_season.item.save(update_fields=["library_media_type"])
-    if (
-        library_media_type
-        and related_season.related_tv.item.library_media_type != library_media_type
-    ):
-        related_season.related_tv.item.library_media_type = library_media_type
-        related_season.related_tv.item.save(update_fields=["library_media_type"])
-
-    item = related_season.get_episode_item(episode_number)
-    episode_record = Episode.objects.create(
-        related_season=related_season,
-        item=item,
-        end_date=None,
-        dropped=True,
-    )
-    logger.info("%s dropped successfully.", episode_record)
-    cache_utils.clear_time_left_cache_for_user(request.user.id)
-    cache_utils.clear_media_list_cache_for_user(request.user.id)
+    fork_services_episode.drop_episode(related_season, episode_number)
 
     if request.headers.get("HX-Request"):
         episode_history = list(

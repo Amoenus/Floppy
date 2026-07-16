@@ -29,6 +29,7 @@ from events.models import Event
 from lists.models import CustomList, CustomListItem
 from users.models import MediaStatusChoices
 
+from . import fork_helpers  # FORK: history sorting overlay
 from .changes_history_processor import (
     delete_changes_history_entry,
     get_changes_history_entries,
@@ -1368,7 +1369,13 @@ class MediaConsumptionHistoryView(drf_views.APIView):
                 status=HTTP.NOT_FOUND,
             )
 
-        # TODO: missing sorting
+        # FORK: was "TODO: missing sorting"
+        user_medias, sort_err = fork_helpers.sort_history_results(
+            request,
+            list(user_medias),
+        )
+        if sort_err:
+            return sort_err
         paginated_data = paginate_data(
             request,
             user_medias,
@@ -2523,7 +2530,13 @@ class MediaSeasonConsumptionHistoryView(drf_views.APIView):
                 status=HTTP.INTERNAL_SERVER_ERROR,
             )
 
-        # TODO: missing sorting
+        # FORK: was "TODO: missing sorting"
+        user_medias, sort_err = fork_helpers.sort_history_results(
+            request,
+            list(user_medias),
+        )
+        if sort_err:
+            return sort_err
         paginated_data = paginate_data(
             request,
             user_medias,
@@ -3538,7 +3551,13 @@ class MediaEpisodeConsumptionHistoryView(drf_views.APIView):
                 status=HTTP.INTERNAL_SERVER_ERROR,
             )
 
-        # TODO: missing sorting
+        # FORK: was "TODO: missing sorting"
+        user_medias, sort_err = fork_helpers.sort_history_results(
+            request,
+            list(user_medias),
+        )
+        if sort_err:
+            return sort_err
         paginated_data = paginate_data(
             request,
             user_medias,

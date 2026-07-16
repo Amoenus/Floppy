@@ -10,8 +10,7 @@ from django.views.decorators.http import require_GET, require_POST
 
 from app import helpers
 from app.discover import tab_cache as discover_tab_cache
-from app.log_safety import exception_summary
-from app.models import Item, MediaTypes, Sources, Status
+from app.models import Item, MediaTypes
 from app.track_modal_views import _DummyPodcastWrapper, _render_podcast_show_track_modal
 
 logger = logging.getLogger(__name__)
@@ -388,146 +387,26 @@ def podcast_mark_all_played(request, show_id):
     Episodes not yet imported from Pocket Casts are not included — run a Pocket Casts
     import first to fetch the full episode list.
     """
-    import hashlib
-
-    from django.utils import timezone
-
-    import events
-    from app.mixins import disable_fetch_releases
-    from app.models import Podcast, PodcastEpisode, PodcastShow, PodcastShowTracker
-    from integrations import podcast_rss
+    from app.models import PodcastShow
 
     show = get_object_or_404(PodcastShow, id=show_id)
 
-    tracker, _ = PodcastShowTracker.objects.get_or_create(
-        user=request.user,
-        show=show,
-        defaults={"status": Status.IN_PROGRESS.value},
+    # FORK: mark-all-played core shared with the REST API.
+    from app import fork_services_podcast
+
+    created_count = fork_services_podcast.mark_all_episodes_played(
+        request.user,
+        show,
     )
 
-    if show.rss_feed_url:
-        try:
-            episodes_data = podcast_rss.fetch_episodes_from_rss(show.rss_feed_url, limit=None)
-
-            seen_uuids = set(
-                PodcastEpisode.objects.filter(show=show).values_list("episode_uuid", flat=True)
-            )
-            for episode_data in episodes_data:
-                episode_uuid = episode_data.get("guid")
-                if not episode_uuid:
-                    uuid_str = f"{episode_data.get('title', '')}{episode_data.get('published', '')}"
-                    episode_uuid = hashlib.md5(uuid_str.encode()).hexdigest()[:36]
-
-                if episode_uuid in seen_uuids:
-                    continue
-
-                exists = False
-                if episode_data.get("title") and episode_data.get("published"):
-                    exists = PodcastEpisode.objects.filter(
-                        show=show,
-                        title__iexact=episode_data["title"].strip(),
-                        published__date=episode_data["published"].date(),
-                    ).exists()
-
-                if not exists:
-                    try:
-                        PodcastEpisode.objects.create(
-                            show=show,
-                            episode_uuid=episode_uuid,
-                            title=episode_data.get("title", "Unknown Episode"),
-                            published=episode_data.get("published"),
-                            duration=episode_data.get("duration"),
-                            audio_url=episode_data.get("audio_url", ""),
-                            episode_number=episode_data.get("episode_number"),
-                            season_number=episode_data.get("season_number"),
-                        )
-                        seen_uuids.add(episode_uuid)
-                    except Exception:
-                        logger.debug("Skipping duplicate episode UUID %s for show %s", episode_uuid, show.title)
-        except Exception as e:
-            logger.warning(
-                "Failed to fetch full episode list from RSS feed for %s: %s",
-                show.title,
-                exception_summary(e),
-            )
-
-    all_episodes = PodcastEpisode.objects.filter(show=show)
-
-    completed_episodes = set(
-        Podcast.objects.filter(
-            user=request.user,
-            show=show,
-            episode__isnull=False,
-            end_date__isnull=False,
-        ).values_list("episode_id", flat=True),
-    )
-
-    unplayed_episodes = all_episodes.exclude(id__in=completed_episodes)
-
-    if not unplayed_episodes.exists():
+    if created_count == 0:
         messages.info(request, f"All episodes of {show.title} are already marked as played")
-        return redirect("media_details", source=show.source, media_type=MediaTypes.PODCAST.value, media_id=show.podcast_uuid, title=show.slug or show.title)
-
-    created_count = 0
-    items_created = []
-
-    with disable_fetch_releases():
-        for episode in unplayed_episodes:
-            runtime_minutes = episode.duration // 60 if episode.duration else None
-            item_defaults = {
-                "title": episode.title,
-                "image": show.image or settings.IMG_NONE,
-            }
-            if runtime_minutes:
-                item_defaults["runtime_minutes"] = runtime_minutes
-            if episode.published:
-                item_defaults["release_datetime"] = episode.published
-
-            item, item_created = Item.objects.get_or_create(
-                media_id=episode.episode_uuid,
-                source=show.source,
-                media_type=MediaTypes.PODCAST.value,
-                defaults=item_defaults,
-            )
-
-            if not item_created:
-                update_fields = []
-                if runtime_minutes and item.runtime_minutes != runtime_minutes:
-                    item.runtime_minutes = runtime_minutes
-                    update_fields.append("runtime_minutes")
-                if episode.published and item.release_datetime != episode.published:
-                    item.release_datetime = episode.published
-                    update_fields.append("release_datetime")
-                if update_fields:
-                    item.save(update_fields=update_fields)
-
-            if item_created:
-                items_created.append(item)
-
-            end_date = episode.published if episode.published else timezone.now()
-
-            Podcast.objects.create(
-                item=item,
-                user=request.user,
-                show=show,
-                episode=episode,
-                status=Status.COMPLETED.value,
-                end_date=end_date,
-                progress=runtime_minutes if runtime_minutes else 0,
-            )
-            created_count += 1
-
-    if items_created:
-        events.tasks.reload_calendar.apply_async(
-            kwargs={"item_ids": [item.id for item in items_created]},
-            countdown=3,
+    else:
+        episode_word = "episodes" if created_count != 1 else "episode"
+        messages.success(
+            request,
+            f"Marked {created_count} {episode_word} of {show.title} as played",
         )
-
-    episode_word = "episodes" if created_count != 1 else "episode"
-    messages.success(
-        request,
-        f"Marked {created_count} {episode_word} of {show.title} as played",
-    )
 
     return redirect("media_details", source=show.source, media_type=MediaTypes.PODCAST.value, media_id=show.podcast_uuid, title=show.slug or show.title)
 
@@ -565,70 +444,20 @@ def podcast_save(request):
     show = get_object_or_404(PodcastShow, id=show_id)
     episode = get_object_or_404(PodcastEpisode, id=episode_id) if episode_id else None
 
-    runtime_minutes = None
-    if episode and episode.duration:
-        runtime_minutes = episode.duration // 60
+    # FORK: play-recording core shared with the REST API.
+    from app import fork_services_podcast
 
-    item_defaults = {
-        "title": episode.title if episode else "Unknown Episode",
-        "image": show.image or settings.IMG_NONE,
-    }
-    if runtime_minutes:
-        item_defaults["runtime_minutes"] = runtime_minutes
-    if episode and episode.published:
-        item_defaults["release_datetime"] = episode.published
-
-    item, created = Item.objects.get_or_create(
-        media_id=episode_uuid,
-        source=show.source,
-        media_type=MediaTypes.PODCAST.value,
-        defaults=item_defaults,
+    recorded_podcast, duplicate = fork_services_podcast.record_podcast_play(
+        request.user,
+        show,
+        episode=episode,
+        episode_uuid=episode_uuid,
+        end_date=end_date,
     )
-    if not created:
-        update_fields = []
-        if runtime_minutes and item.runtime_minutes != runtime_minutes:
-            item.runtime_minutes = runtime_minutes
-            update_fields.append("runtime_minutes")
-        if episode and episode.published and item.release_datetime != episode.published:
-            item.release_datetime = episode.published
-            update_fields.append("release_datetime")
-        if update_fields:
-            item.save(update_fields=update_fields)
-
-    existing_podcast = Podcast.objects.filter(
-        user=request.user,
-        item=item,
-    ).first()
-
-    if existing_podcast:
-        latest_history = existing_podcast.history.filter(end_date__isnull=False).order_by("-end_date").first()
-        if latest_history and latest_history.end_date and end_date:
-            time_diff = abs((end_date - latest_history.end_date).total_seconds())
-            if time_diff < 300:
-                logger.debug("Skipping duplicate podcast history entry (time difference: %d seconds)", time_diff)
-                messages.info(request, f"Play already recorded for {episode.title if episode else 'episode'}")
-            else:
-                existing_podcast.end_date = end_date
-                if runtime_minutes and existing_podcast.progress != runtime_minutes:
-                    existing_podcast.progress = runtime_minutes
-                existing_podcast.save()
-                messages.success(request, f"Added play for {episode.title if episode else 'episode'}")
-        else:
-            existing_podcast.end_date = end_date
-            if runtime_minutes and existing_podcast.progress != runtime_minutes:
-                existing_podcast.progress = runtime_minutes
-            existing_podcast.save()
-            messages.success(request, f"Added play for {episode.title if episode else 'episode'}")
+    item = recorded_podcast.item
+    if duplicate:
+        messages.info(request, f"Play already recorded for {episode.title if episode else 'episode'}")
     else:
-        Podcast.objects.create(
-            item=item,
-            user=request.user,
-            show=show,
-            episode=episode,
-            status=Status.COMPLETED.value,
-            end_date=end_date,
-            progress=runtime_minutes if runtime_minutes else 0,
-        )
         messages.success(request, f"Added play for {episode.title if episode else 'episode'}")
 
     if request.headers.get("HX-Request"):

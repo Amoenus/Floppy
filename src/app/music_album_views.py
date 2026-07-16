@@ -11,6 +11,7 @@ from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
 from django.views.decorators.http import require_POST
 
+from app import fork_services_music
 from app.discover import tab_cache as discover_tab_cache
 from app.forms import AlbumTrackerForm
 from app.models import (
@@ -18,11 +19,8 @@ from app.models import (
     AlbumTracker,
     Artist,
     CollectionEntry,
-    Item,
     MediaTypes,
     Music,
-    Sources,
-    Status,
     Track,
 )
 from app.music_views import (
@@ -137,63 +135,24 @@ def song_save(request):
     album = get_object_or_404(Album, id=album_id)
     track = get_object_or_404(Track, id=track_id) if track_id else None
 
-    existing_music = Music.objects.filter(
+    existed_before = Music.objects.filter(
         user=request.user,
         album=album,
         track=track,
-    ).first()
+    ).exists()
 
-    runtime_minutes = None
-    if track and track.duration_ms:
-        runtime_minutes = track.duration_ms // 60000  # Convert ms to minutes
+    # FORK: play-recording core shared with the REST API.
+    fork_services_music.record_song_play(
+        request.user,
+        album,
+        track=track,
+        recording_id=recording_id,
+        end_date=end_date,
+    )
 
-    if existing_music:
-        existing_music.end_date = end_date
-        existing_music.save()
-
-        if runtime_minutes and existing_music.item and not existing_music.item.runtime_minutes:
-            existing_music.item.runtime_minutes = runtime_minutes
-            existing_music.item.save(update_fields=["runtime_minutes"])
-
+    if existed_before:
         messages.success(request, f"Added listen for {track.title if track else 'track'}")
     else:
-        item_defaults = {
-            "title": track.title if track else "Unknown Track",
-            "image": album.image or settings.IMG_NONE,
-        }
-        if runtime_minutes:
-            item_defaults["runtime_minutes"] = runtime_minutes
-
-        if recording_id:
-            item, created = Item.objects.get_or_create(
-                media_id=recording_id,
-                source=Sources.MUSICBRAINZ.value,
-                media_type=MediaTypes.MUSIC.value,
-                defaults=item_defaults,
-            )
-            if not created and not item.runtime_minutes and runtime_minutes:
-                item.runtime_minutes = runtime_minutes
-                item.save(update_fields=["runtime_minutes"])
-        else:
-            item, created = Item.objects.get_or_create(
-                media_id=f"track_{track_id}",
-                source=Sources.MUSICBRAINZ.value,
-                media_type=MediaTypes.MUSIC.value,
-                defaults=item_defaults,
-            )
-            if not created and not item.runtime_minutes and runtime_minutes:
-                item.runtime_minutes = runtime_minutes
-                item.save(update_fields=["runtime_minutes"])
-
-        Music.objects.create(
-            item=item,
-            user=request.user,
-            artist=album.artist,
-            album=album,
-            track=track,
-            status=Status.COMPLETED.value,
-            end_date=end_date,
-        )
         messages.success(request, f"Added {track.title if track else 'track'} to your library")
 
     if request.headers.get("HX-Request"):

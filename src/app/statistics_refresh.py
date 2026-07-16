@@ -128,11 +128,9 @@ def invalidate_all_statistics_days(user_id: int, reason: str | None = None) -> i
     except user_model.DoesNotExist:
         return 0
 
-    bounds = _get_activity_bounds(user)
+    start_day, end_day = _get_activity_bounds(user)
     day_keys = []
-    if bounds:
-        start_day = min(bounds)
-        end_day = max(bounds)
+    if start_day is not None and end_day is not None:
         for day in _iter_day_range(start_day, end_day):
             key = _day_cache_key(user_id, day)
             if key:

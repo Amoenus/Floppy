@@ -5,6 +5,7 @@ import logging
 from http import HTTPStatus as HTTP  # noqa: N814
 
 from django.db.models import prefetch_related_objects
+from django_celery_results.models import TaskResult
 from rest_framework import views as drf_views
 from rest_framework.response import Response
 
@@ -225,3 +226,49 @@ class CollectionEntryView(drf_views.APIView):
             )
         entry.delete()
         return Response(status=HTTP.NO_CONTENT)
+
+
+# /api/v1/tasks/[task_id]/
+class TaskStatusView(drf_views.APIView):
+    """Report the status of a Celery task dispatched by an API endpoint.
+
+    Ownership is verified against the stored TaskResult's kwargs (the same
+    user_id convention users.models uses for import activity); tasks that
+    belong to other users 404. Tasks with no stored result yet report PENDING.
+    """
+
+    def get(self, request, task_id):
+        """Return the current state of the task."""
+        record = TaskResult.objects.filter(task_id=task_id).first()
+        if record is None:
+            # No stored result yet: either still queued or unknown. Celery
+            # reports both as PENDING, which leaks nothing about other users.
+            return Response(
+                {"task_id": task_id, "status": "PENDING"},
+                status=HTTP.OK,
+            )
+
+        kwargs_text = record.task_kwargs or ""
+        owner_markers = (
+            f"'user_id': {request.user.id},",
+            f"'user_id': {request.user.id}}}",
+            f'"user_id": {request.user.id},',
+            f'"user_id": {request.user.id}}}',
+        )
+        if not any(marker in kwargs_text for marker in owner_markers):
+            return Response(
+                {"detail": "Task not found."},
+                status=HTTP.NOT_FOUND,
+            )
+
+        return Response(
+            {
+                "task_id": task_id,
+                "task_name": record.task_name,
+                "status": record.status,
+                "date_created": record.date_created,
+                "date_done": record.date_done,
+                "result": record.result,
+            },
+            status=HTTP.OK,
+        )
