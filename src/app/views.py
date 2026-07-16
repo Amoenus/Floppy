@@ -84,6 +84,7 @@ from app.collection_views import (
     collection_add,
     collection_list,
     collection_modal,
+    collection_quick_add,
     collection_remove,
     collection_remove_season,
     collection_status_api,

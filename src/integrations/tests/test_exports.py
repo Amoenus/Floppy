@@ -15,6 +15,7 @@ from app.models import (
     Artist,
     ArtistTracker,
     Book,
+    CollectionEntry,
     Episode,
     Game,
     Item,
@@ -311,3 +312,137 @@ class ExportCSVTest(TestCase):
         self.assertEqual(len(album_rows), 1)
         self.assertEqual(album_rows[0]["media_id"], album.musicbrainz_release_group_id)
         self.assertEqual(album_rows[0]["score"], "10.0")
+
+    def _create_collection_entries(self):
+        """Create two movie copies and a bare episode collection entry."""
+        movie_item, _ = Item.objects.get_or_create(
+            media_id="10494",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            season_number=None,
+            episode_number=None,
+            defaults={"title": "Perfect Blue", "image": "https://image.url"},
+        )
+        episode_item, _ = Item.objects.get_or_create(
+            media_id="1668",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=1,
+            episode_number=1,
+            defaults={"title": "Friends", "image": "https://image.url"},
+        )
+        CollectionEntry.objects.create(
+            user=self.user,
+            item=movie_item,
+            media_type="4K Blu-ray",
+            resolution="4K",
+            hdr="Dolby Vision",
+            audio_codec="Dolby Atmos",
+            audio_channels="7.1",
+            bitrate=8000,
+        )
+        CollectionEntry.objects.create(
+            user=self.user,
+            item=movie_item,
+            media_type="DVD",
+        )
+        episode_entry = CollectionEntry.objects.create(
+            user=self.user,
+            item=episode_item,
+        )
+        collected_at = datetime(2024, 1, 2, 3, 4, 5, tzinfo=UTC)
+        CollectionEntry.objects.filter(id=episode_entry.id).update(
+            collected_at=collected_at,
+        )
+        return collected_at
+
+    def test_export_csv_includes_collection_rows(self):
+        """Collection entries are exported with collection_* columns."""
+        collected_at = self._create_collection_entries()
+
+        response = self.client.get(reverse("export_csv"))
+        self.assertEqual(response.status_code, 200)
+
+        content = b"".join(response.streaming_content).decode("utf-8")
+        reader = csv.DictReader(StringIO(content))
+        header = reader.fieldnames
+        for column in (
+            "collection_format",
+            "collection_resolution",
+            "collection_is_3d",
+            "collection_bitrate",
+            "collection_collected_at",
+        ):
+            self.assertIn(column, header)
+
+        collection_rows = [r for r in reader if r["row_type"] == "collection"]
+        self.assertEqual(len(collection_rows), 3)
+
+        movie_rows = [r for r in collection_rows if r["media_type"] == "movie"]
+        self.assertEqual(len(movie_rows), 2)
+        full_copy = next(
+            r for r in movie_rows if r["collection_format"] == "4K Blu-ray"
+        )
+        self.assertEqual(full_copy["media_id"], "10494")
+        self.assertEqual(full_copy["collection_resolution"], "4K")
+        self.assertEqual(full_copy["collection_hdr"], "Dolby Vision")
+        self.assertEqual(full_copy["collection_audio_codec"], "Dolby Atmos")
+        self.assertEqual(full_copy["collection_audio_channels"], "7.1")
+        self.assertEqual(full_copy["collection_bitrate"], "8000")
+
+        episode_rows = [r for r in collection_rows if r["media_type"] == "episode"]
+        self.assertEqual(len(episode_rows), 1)
+        self.assertEqual(episode_rows[0]["season_number"], "1")
+        self.assertEqual(episode_rows[0]["episode_number"], "1")
+        self.assertEqual(
+            episode_rows[0]["collection_collected_at"],
+            collected_at.isoformat(),
+        )
+
+    def test_export_csv_collection_respects_media_type_filter(self):
+        """Collection rows follow the media_types filter, including children."""
+        self._create_collection_entries()
+
+        response = self.client.get(reverse("export_csv"), {"media_types": ["movie"]})
+        content = b"".join(response.streaming_content).decode("utf-8")
+        rows = [
+            r
+            for r in csv.DictReader(StringIO(content))
+            if r["row_type"] == "collection"
+        ]
+        self.assertEqual({r["media_type"] for r in rows}, {"movie"})
+
+        response = self.client.get(reverse("export_csv"), {"media_types": ["tv"]})
+        content = b"".join(response.streaming_content).decode("utf-8")
+        rows = [
+            r
+            for r in csv.DictReader(StringIO(content))
+            if r["row_type"] == "collection"
+        ]
+        self.assertEqual({r["media_type"] for r in rows}, {"episode"})
+
+    def test_export_csv_exclude_collection(self):
+        """include_collection off removes collection rows."""
+        self._create_collection_entries()
+
+        response = self.client.get(
+            reverse("export_csv"),
+            {"include_collection": "off"},
+        )
+        content = b"".join(response.streaming_content).decode("utf-8")
+        rows = list(csv.DictReader(StringIO(content)))
+        self.assertFalse(any(r["row_type"] == "collection" for r in rows))
+
+    def test_export_csv_collection_only(self):
+        """No media types + lists off + collection on exports only collection rows."""
+        self._create_collection_entries()
+
+        response = self.client.get(
+            reverse("export_csv"),
+            {"include_lists": "off", "include_collection": "on"},
+        )
+        content = b"".join(response.streaming_content).decode("utf-8")
+        rows = list(csv.DictReader(StringIO(content)))
+        self.assertTrue(rows)
+        self.assertEqual({r["row_type"] for r in rows}, {"collection"})
+        self.assertEqual(len(rows), 3)

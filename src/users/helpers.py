@@ -226,9 +226,11 @@ def get_export_next_run_info(periodic_task):
         kwargs = json.loads(periodic_task.kwargs)
         media_types = kwargs.get("media_types")
         include_lists = kwargs.get("include_lists", True)
+        include_collection = kwargs.get("include_collection", True)
     except json.JSONDecodeError:
         media_types = None
         include_lists = True
+        include_collection = True
 
     cron = periodic_task.crontab
     tz = zoneinfo.ZoneInfo(str(cron.timezone))
@@ -254,4 +256,5 @@ def get_export_next_run_info(periodic_task):
         "frequency": frequency,
         "media_types": media_types,
         "include_lists": include_lists,
+        "include_collection": include_collection,
     }

@@ -115,6 +115,44 @@ def collection_add(request):
 
 
 @require_POST
+def collection_quick_add(request, source, media_type, media_id):
+    """Add a bare collection entry in one click, without the details modal.
+
+    Idempotent: if the user already has any entry for the item, nothing is
+    created (extra copies with metadata go through the modal).
+    """
+    season_number = _parse_optional_int(request.POST.get("season_number"))
+    episode_number = _parse_optional_int(request.POST.get("episode_number"))
+    error_response = _validate_collection_numbers(
+        request,
+        media_type,
+        season_number,
+        episode_number,
+    )
+    if error_response:
+        return error_response
+
+    item, _ = _resolve_collection_item(
+        source,
+        media_type,
+        media_id,
+        season_number,
+        episode_number,
+    )
+
+    entry = CollectionEntry.objects.filter(user=request.user, item=item).first()
+    created = False
+    if entry is None:
+        entry = CollectionEntry.objects.create(user=request.user, item=item)
+        created = True
+        messages.success(request, f"Added {item.title} to collection")
+
+    if request.headers.get("HX-Request"):
+        return JsonResponse({"success": True, "created": created, "entry_id": entry.id})
+    return _collection_redirect(request)
+
+
+@require_POST
 def collection_update(request, entry_id):
     """Update collection entry metadata."""
     try:
@@ -469,21 +507,43 @@ def _build_collection_episode_audit_entries(user, item):
     return audit_entries
 
 
-@never_cache
-@require_GET
-def collection_modal(request, source, media_type, media_id):
-    """Return modal HTML for adding and managing collection entries."""
+def _parse_optional_int(value):
+    if value in (None, "", "null"):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
-    def _parse_optional_int(value):
-        if value in (None, "", "null"):
-            return None
-        try:
-            return int(value)
-        except (TypeError, ValueError):
-            return None
 
-    season_number = _parse_optional_int(request.GET.get("season_number"))
-    episode_number = _parse_optional_int(request.GET.get("episode_number"))
+def _validate_collection_numbers(request, media_type, season_number, episode_number):
+    """Return an error response when required season/episode numbers are missing."""
+    if media_type == MediaTypes.SEASON.value and season_number is None:
+        message = "Season number is required"
+    elif media_type == MediaTypes.EPISODE.value and (
+        season_number is None or episode_number is None
+    ):
+        message = "Season and episode numbers are required"
+    else:
+        return None
+    if request.headers.get("HX-Request"):
+        return HttpResponseBadRequest(message)
+    messages.error(request, message)
+    return redirect("home")
+
+
+def _resolve_collection_item(
+    source,
+    media_type,
+    media_id,
+    season_number,
+    episode_number,
+):
+    """Get or create the Item a collection entry attaches to.
+
+    Returns ``(item, metadata)`` where *metadata* is the provider metadata
+    fetched when the item was missing (or for games), else ``None``.
+    """
     tracking_media_type = metadata_resolution.get_tracking_media_type(
         media_type,
         source=source,
@@ -498,18 +558,8 @@ def collection_modal(request, source, media_type, media_id):
         lookup["library_media_type"] = MediaTypes.ANIME.value
 
     if media_type == MediaTypes.SEASON.value:
-        if season_number is None:
-            if request.headers.get("HX-Request"):
-                return HttpResponseBadRequest("Season number is required")
-            messages.error(request, "Season number is required")
-            return redirect("home")
         lookup["season_number"] = season_number
     elif media_type == MediaTypes.EPISODE.value:
-        if season_number is None or episode_number is None:
-            if request.headers.get("HX-Request"):
-                return HttpResponseBadRequest("Season and episode numbers are required")
-            messages.error(request, "Season and episode numbers are required")
-            return redirect("home")
         lookup["season_number"] = season_number
         lookup["episode_number"] = episode_number
 
@@ -569,6 +619,32 @@ def collection_modal(request, source, media_type, media_id):
             **lookup,
             defaults=item_defaults,
         )
+
+    return item, metadata
+
+
+@never_cache
+@require_GET
+def collection_modal(request, source, media_type, media_id):
+    """Return modal HTML for adding and managing collection entries."""
+    season_number = _parse_optional_int(request.GET.get("season_number"))
+    episode_number = _parse_optional_int(request.GET.get("episode_number"))
+    error_response = _validate_collection_numbers(
+        request,
+        media_type,
+        season_number,
+        episode_number,
+    )
+    if error_response:
+        return error_response
+
+    item, metadata = _resolve_collection_item(
+        source,
+        media_type,
+        media_id,
+        season_number,
+        episode_number,
+    )
 
     platform_choices = None
     if media_type == MediaTypes.GAME.value:

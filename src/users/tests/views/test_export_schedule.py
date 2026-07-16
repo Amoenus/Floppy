@@ -38,6 +38,7 @@ class ExportScheduleTests(TestCase):
                 "time": "04:30",
                 "media_types": ["tv", "movie"],
                 "include_lists": "on",
+                "include_collection": "on",
             },
         )
 
@@ -51,6 +52,7 @@ class ExportScheduleTests(TestCase):
         self.assertIn('"user_id"', task.kwargs)
         self.assertIn('"media_types": ["tv", "movie"]', task.kwargs)
         self.assertIn('"include_lists": true', task.kwargs)
+        self.assertIn('"include_collection": true', task.kwargs)
 
     def test_invalid_frequency_redirects_without_schedule(self):
         """Invalid frequency should redirect and avoid schedule creation."""

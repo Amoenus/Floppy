@@ -387,6 +387,11 @@ urlpatterns = [
         name="collection_modal",
     ),
     path(
+        "collection/quick-add/<source:source>/<media_type:media_type>/<path:media_id>/",
+        views.collection_quick_add,
+        name="collection_quick_add",
+    ),
+    path(
         "api/collection-status/<int:item_id>/",
         views.collection_status_api,
         name="collection_status_api",

@@ -11,6 +11,7 @@ from app import helpers
 from app.models import (
     AlbumTracker,
     ArtistTracker,
+    CollectionEntry,
     Episode,
     Item,
     MediaTypes,
@@ -58,7 +59,7 @@ def _get_media_types_to_export(media_types=None):
     return out
 
 
-def generate_rows(user, media_types=None, include_lists=True):
+def generate_rows(user, media_types=None, include_lists=True, include_collection=True):
     """Generate CSV rows.
 
     Parameters
@@ -67,8 +68,13 @@ def generate_rows(user, media_types=None, include_lists=True):
         The user whose data is being exported.
     media_types : list[str] | None
         Restrict export to these media types.  ``None`` means *all*.
+        An empty list exports no media rows but, mirroring lists, still
+        exports all collection entries when *include_collection* is on
+        (enables a collection-only export).
     include_lists : bool
         Whether to include custom lists in the export.
+    include_collection : bool
+        Whether to include collection (owned media) entries in the export.
     """
     pseudo_buffer = Echo()
     writer = csv.writer(pseudo_buffer, quoting=csv.QUOTE_ALL)
@@ -78,10 +84,17 @@ def generate_rows(user, media_types=None, include_lists=True):
         "item": get_model_fields(Item),
         "track": get_track_fields(),
         "list": get_list_fields(),
+        "collection": get_collection_fields(),
     }
 
     # Yield header row
-    yield writer.writerow(["row_type"] + fields["item"] + fields["track"] + fields["list"])
+    yield writer.writerow(
+        ["row_type"]
+        + fields["item"]
+        + fields["track"]
+        + fields["list"]
+        + fields["collection"],
+    )
 
     prefetch_config = {
         MediaTypes.TV.value: Prefetch(
@@ -127,6 +140,7 @@ def generate_rows(user, media_types=None, include_lists=True):
                 + [getattr(media.item, field, "") for field in fields["item"]]
                 + [getattr(media, field, "") for field in fields["track"]]
                 + [""] * len(fields["list"])
+                + [""] * len(fields["collection"])
             )
 
             if media_type == MediaTypes.GAME.value:
@@ -167,6 +181,7 @@ def generate_rows(user, media_types=None, include_lists=True):
                 + [item_vals.get(f, "") for f in fields["item"]]
                 + [track_vals.get(f, "") for f in fields["track"]]
                 + [""] * len(fields["list"])
+                + [""] * len(fields["collection"])
             )
             yield writer.writerow(row)
         logger.debug("Finished streaming music_artists to CSV")
@@ -198,14 +213,20 @@ def generate_rows(user, media_types=None, include_lists=True):
                 + [item_vals.get(f, "") for f in fields["item"]]
                 + [track_vals.get(f, "") for f in fields["track"]]
                 + [""] * len(fields["list"])
+                + [""] * len(fields["collection"])
             )
             yield writer.writerow(row)
         logger.debug("Finished streaming music_albums to CSV")
 
-    if not include_lists:
-        return
+    if include_lists:
+        yield from _generate_list_rows(user, writer, fields)
 
-    # Export custom lists owned by the user
+    if include_collection:
+        yield from _generate_collection_rows(user, writer, fields, media_types)
+
+
+def _generate_list_rows(user, writer, fields):
+    """Yield ``list`` and ``list_item`` rows for the user's custom lists."""
     custom_lists = CustomList.objects.filter(owner=user).order_by("name")
 
     for custom_list in custom_lists:
@@ -228,6 +249,7 @@ def generate_rows(user, media_types=None, include_lists=True):
                 json.dumps(custom_list.smart_filters or {}),
                 "",
             ]
+            + [""] * len(fields["collection"])
         )
         yield writer.writerow(list_row)
 
@@ -256,11 +278,46 @@ def generate_rows(user, media_types=None, include_lists=True):
                     "",
                     list_item.date_added.isoformat() if list_item.date_added else "",
                 ]
+                + [""] * len(fields["collection"])
             )
             yield writer.writerow(list_item_row)
 
 
-def write_backup(user, media_types=None, include_lists=True):
+def _generate_collection_rows(user, writer, fields, media_types):
+    """Yield ``collection`` rows for the user's collection entries.
+
+    When *media_types* is a non-empty list, only entries whose item matches
+    the requested types (plus implicit children) are exported; ``None`` and
+    ``[]`` both export every entry.
+    """
+    logger.debug("Streaming collection entries to CSV")
+    queryset = CollectionEntry.objects.filter(user=user).select_related("item")
+    if media_types:
+        types_to_export = _get_media_types_to_export(media_types)
+        queryset = queryset.filter(item__media_type__in=types_to_export)
+    queryset = queryset.order_by("item__media_type", "collected_at", "pk")
+
+    for entry in queryset.iterator(chunk_size=500):
+        collection_vals = []
+        for attr in COLLECTION_EXPORT_FIELDS.values():
+            value = getattr(entry, attr)
+            if attr == "collected_at":
+                value = value.isoformat() if value else ""
+            elif value is None:
+                value = ""
+            collection_vals.append(value)
+        row = (
+            ["collection"]
+            + [getattr(entry.item, field, "") for field in fields["item"]]
+            + [""] * len(fields["track"])
+            + [""] * len(fields["list"])
+            + collection_vals
+        )
+        yield writer.writerow(row)
+    logger.debug("Finished streaming collection entries to CSV")
+
+
+def write_backup(user, media_types=None, include_lists=True, include_collection=True):
     """Write a CSV backup to the configured backup directory.
 
     Returns the path to the created file.
@@ -278,7 +335,12 @@ def write_backup(user, media_types=None, include_lists=True):
     filepath = backup_dir / filename
 
     with open(filepath, "w", newline="", encoding="utf-8") as f:
-        for row_data in generate_rows(user, media_types=media_types, include_lists=include_lists):
+        for row_data in generate_rows(
+            user,
+            media_types=media_types,
+            include_lists=include_lists,
+            include_collection=include_collection,
+        ):
             f.write(row_data)
 
     logger.info("Backup written to %s for user %s", filepath, user.username)
@@ -341,6 +403,27 @@ def get_list_fields():
         "list_smart_filters",
         "list_item_date_added",
     ]
+
+
+# CSV column name -> CollectionEntry attribute. ``collection_format`` maps to
+# CollectionEntry.media_type, renamed to avoid clashing with the Item
+# media_type column. Plex cache fields and updated_at are deliberately
+# excluded (instance-local state).
+COLLECTION_EXPORT_FIELDS = {
+    "collection_format": "media_type",
+    "collection_resolution": "resolution",
+    "collection_hdr": "hdr",
+    "collection_is_3d": "is_3d",
+    "collection_audio_codec": "audio_codec",
+    "collection_audio_channels": "audio_channels",
+    "collection_bitrate": "bitrate",
+    "collection_collected_at": "collected_at",
+}
+
+
+def get_collection_fields():
+    """Get collection-specific export fields."""
+    return list(COLLECTION_EXPORT_FIELDS)
 
 
 TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/w500/"
@@ -495,8 +578,15 @@ def generate_sample_template():
         "item": get_model_fields(Item),
         "track": get_track_fields(),
         "list": get_list_fields(),
+        "collection": get_collection_fields(),
     }
-    writer.writerow(["row_type"] + fields["item"] + fields["track"] + fields["list"])
+    writer.writerow(
+        ["row_type"]
+        + fields["item"]
+        + fields["track"]
+        + fields["list"]
+        + fields["collection"],
+    )
 
     placeholder_image = settings.IMG_NONE
 
@@ -507,7 +597,8 @@ def generate_sample_template():
             ["media"]
             + [item_vals.get(field, "") for field in fields["item"]]
             + [track_vals.get(field, "") for field in fields["track"]]
-            + [""] * len(fields["list"]),
+            + [""] * len(fields["list"])
+            + [""] * len(fields["collection"]),
         )
 
     def write_list_row(list_vals):
@@ -515,7 +606,8 @@ def generate_sample_template():
             ["list"]
             + [""] * len(fields["item"])
             + [""] * len(fields["track"])
-            + [list_vals.get(field, "") for field in fields["list"]],
+            + [list_vals.get(field, "") for field in fields["list"]]
+            + [""] * len(fields["collection"]),
         )
 
     def write_list_item_row(item_vals, list_vals):
@@ -524,7 +616,22 @@ def generate_sample_template():
             ["list_item"]
             + [item_vals.get(field, "") for field in fields["item"]]
             + [""] * len(fields["track"])
-            + [list_vals.get(field, "") for field in fields["list"]],
+            + [list_vals.get(field, "") for field in fields["list"]]
+            + [""] * len(fields["collection"]),
+        )
+
+    def write_collection_row(item_vals, collection_vals):
+        item_vals = {
+            "source": Sources.MANUAL.value,
+            "image": placeholder_image,
+            **item_vals,
+        }
+        writer.writerow(
+            ["collection"]
+            + [item_vals.get(field, "") for field in fields["item"]]
+            + [""] * len(fields["track"])
+            + [""] * len(fields["list"])
+            + [collection_vals.get(field, "") for field in fields["collection"]],
         )
 
     # Every category gets the same 5-item status/score spread, so each one
@@ -569,6 +676,26 @@ def generate_sample_template():
             write_list_item_row(item_vals, {"list_uid": list_uid, "list_name": list_name})
 
     write_category_list("movie", "tmdb", "Sample Movies", SAMPLE_MOVIES, tmdb_image)
+
+    # One owned copy of the first sample movie, demonstrating the
+    # collection row format.
+    sample_movie_id, sample_movie_title, sample_movie_poster = SAMPLE_MOVIES[0]
+    write_collection_row(
+        {
+            "media_id": sample_movie_id,
+            "source": "tmdb",
+            "media_type": "movie",
+            "title": sample_movie_title,
+            "image": tmdb_image(sample_movie_poster),
+        },
+        {
+            "collection_format": "4K Blu-ray",
+            "collection_resolution": "4K",
+            "collection_hdr": "Dolby Vision",
+            "collection_audio_codec": "Dolby Atmos",
+            "collection_audio_channels": "7.1",
+        },
+    )
     write_category_list("anime", "mal", "Sample Anime", SAMPLE_ANIME, lambda url: url)
     write_category_list("manga", "mal", "Sample Manga", SAMPLE_MANGA, lambda url: url)
     write_category_list("game", "igdb", "Sample Games", SAMPLE_GAMES, lambda url: url)

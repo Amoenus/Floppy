@@ -14,13 +14,17 @@ from app.models import (
     ArtistTracker,
     BoardGame,
     Book,
+    CollectionEntry,
     Comic,
     Episode,
     Game,
+    Item,
     Manga,
+    MediaTypes,
     Movie,
     Podcast,
     Season,
+    Sources,
     Status,
 )
 from integrations import exports
@@ -342,4 +346,130 @@ class ImportSampleTemplate(TestCase):
         self.assertEqual(
             CustomListItem.objects.filter(custom_list=custom_list).count(),
             len(expected_media_types),
+        )
+
+    def test_sample_collection_entry_created(self):
+        """The sample template's collection row should create a collection entry."""
+        entries = CollectionEntry.objects.filter(user=self.user)
+        self.assertEqual(entries.count(), 1)
+        entry = entries.first()
+        self.assertEqual(entry.item.title, "Pulp Fiction")
+        self.assertEqual(entry.media_type, "4K Blu-ray")
+
+
+class ImportYamtrackCollectionRoundTrip(TestCase):
+    """Test that collection entries round-trip through export and import."""
+
+    def setUp(self):
+        """Create an exporting user with collection entries and build the CSV."""
+        self.exporter = get_user_model().objects.create_user(
+            username="exporter",
+            password="12345",
+        )
+        self.importer_user = get_user_model().objects.create_user(
+            username="importer",
+            password="12345",
+        )
+
+        movie_item, _ = Item.objects.get_or_create(
+            media_id="10494",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            season_number=None,
+            episode_number=None,
+            defaults={"title": "Perfect Blue", "image": "https://image.url"},
+        )
+        episode_item, _ = Item.objects.get_or_create(
+            media_id="1668",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=1,
+            episode_number=1,
+            defaults={"title": "Friends", "image": "https://image.url"},
+        )
+
+        CollectionEntry.objects.create(
+            user=self.exporter,
+            item=movie_item,
+            media_type="4K Blu-ray",
+            resolution="4K",
+            hdr="Dolby Vision",
+            audio_codec="Dolby Atmos",
+            audio_channels="7.1",
+            bitrate=8000,
+        )
+        CollectionEntry.objects.create(
+            user=self.exporter,
+            item=movie_item,
+            media_type="DVD",
+        )
+        episode_entry = CollectionEntry.objects.create(
+            user=self.exporter,
+            item=episode_item,
+        )
+        self.episode_collected_at = datetime(2024, 1, 2, 3, 4, 5, tzinfo=UTC)
+        CollectionEntry.objects.filter(id=episode_entry.id).update(
+            collected_at=self.episode_collected_at,
+        )
+
+        self.csv_bytes = "".join(exports.generate_rows(self.exporter)).encode("utf-8")
+
+    def _import(self, mode):
+        return yamtrack.importer(BytesIO(self.csv_bytes), self.importer_user, mode)
+
+    def test_round_trip_new_mode(self):
+        """Collection entries import with all metadata and timestamps intact."""
+        counts, warnings = self._import("new")
+        self.assertEqual(warnings, "")
+        self.assertEqual(counts.get("collection"), 3)
+
+        entries = CollectionEntry.objects.filter(user=self.importer_user)
+        self.assertEqual(entries.count(), 3)
+
+        full_copy = entries.get(media_type="4K Blu-ray")
+        self.assertEqual(full_copy.item.media_id, "10494")
+        self.assertEqual(full_copy.resolution, "4K")
+        self.assertEqual(full_copy.hdr, "Dolby Vision")
+        self.assertEqual(full_copy.audio_codec, "Dolby Atmos")
+        self.assertEqual(full_copy.audio_channels, "7.1")
+        self.assertEqual(full_copy.bitrate, 8000)
+        self.assertFalse(full_copy.is_3d)
+
+        episode_entry = entries.get(item__media_type=MediaTypes.EPISODE.value)
+        self.assertEqual(episode_entry.item.season_number, 1)
+        self.assertEqual(episode_entry.item.episode_number, 1)
+        self.assertEqual(episode_entry.collected_at, self.episode_collected_at)
+
+    def test_reimport_new_mode_skips_identical(self):
+        """Re-importing the same file does not duplicate collection entries."""
+        self._import("new")
+        counts, _ = self._import("new")
+        self.assertNotIn("collection", counts)
+        self.assertEqual(
+            CollectionEntry.objects.filter(user=self.importer_user).count(),
+            3,
+        )
+
+    def test_overwrite_mode_replaces_existing_entries(self):
+        """Overwrite mode replaces divergent entries with the CSV copies."""
+        movie_item = Item.objects.get(
+            media_id="10494",
+            media_type=MediaTypes.MOVIE.value,
+        )
+        CollectionEntry.objects.create(
+            user=self.importer_user,
+            item=movie_item,
+            media_type="VHS",
+        )
+
+        counts, _ = self._import("overwrite")
+        self.assertEqual(counts.get("collection"), 3)
+
+        movie_entries = CollectionEntry.objects.filter(
+            user=self.importer_user,
+            item=movie_item,
+        )
+        self.assertEqual(
+            sorted(movie_entries.values_list("media_type", flat=True)),
+            ["4K Blu-ray", "DVD"],
         )

@@ -151,11 +151,21 @@ class ExportCsvView(drf_views.APIView):
         """Stream the CSV backup.
 
         Query params: media_types (repeatable) to restrict types,
-        include_lists=0 to skip custom lists.
+        include_lists=0 to skip custom lists, include_collection=0 to skip
+        collection entries, only=collection for a collection-only export.
         """
         selected_media_types = request.GET.getlist("media_types")
         include_lists = request.GET.get("include_lists", "1") not in ("0", "false")
+        include_collection = request.GET.get("include_collection", "1") not in (
+            "0",
+            "false",
+        )
         media_types = selected_media_types or None
+
+        if request.GET.get("only") == "collection":
+            media_types = []
+            include_lists = False
+            include_collection = True
 
         now = timezone.localtime()
         response = StreamingHttpResponse(
@@ -163,6 +173,7 @@ class ExportCsvView(drf_views.APIView):
                 request.user,
                 media_types=media_types,
                 include_lists=include_lists,
+                include_collection=include_collection,
             ),
             content_type="text/csv",
             headers={

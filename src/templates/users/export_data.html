@@ -101,7 +101,7 @@
             <h3 class="text-lg font-semibold">Export Content</h3>
           </div>
           <p class="text-gray-400 mb-4 text-sm">
-            Select which media types to include in the export. Uncheck all of them (keeping Custom Lists on) to export only your lists. Uncheck everything, including Custom Lists, to export all data.
+            Select which media types to include in the export. Uncheck all of them (keeping only Custom Lists or Collection on) to export just your lists or collection. Uncheck everything to export all data.
           </p>
 
           <div class="grid gap-3 md:grid-cols-3">
@@ -132,6 +132,22 @@
                 <input class="sr-only peer"
                        type="checkbox"
                        name="include_lists"
+                       value="on"
+                       checked>
+                <div class="w-9 h-5 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-px after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4.5 after:w-4.5 after:transition-all peer-checked:bg-indigo-600">
+                </div>
+              </label>
+            </div>
+
+            <div class="flex items-center justify-between p-3 bg-[#39404b] rounded-md">
+              <div class="flex items-center text-gray-400">
+                {% include "app/icons/save.svg" with classes="w-5 h-5" %}
+                <span class="text-gray-200 text-sm ml-2">Collection</span>
+              </div>
+              <label class="relative inline-flex items-center cursor-pointer">
+                <input class="sr-only peer"
+                       type="checkbox"
+                       name="include_collection"
                        value="on"
                        checked>
                 <div class="w-9 h-5 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-px after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4.5 after:w-4.5 after:transition-all peer-checked:bg-indigo-600">
@@ -184,6 +200,7 @@
                 <div>Media Types: All</div>
               {% endif %}
               <div>Lists: {% if scheduled_backup.include_lists %}Included{% else %}Excluded{% endif %}</div>
+              <div>Collection: {% if scheduled_backup.include_collection %}Included{% else %}Excluded{% endif %}</div>
               <div>Last Backup: {% if scheduled_backup.last_run %}{{ scheduled_backup.last_run|user_datetime_format:user }}{% else %}Never{% endif %}</div>
               <div>Next Backup: {{ scheduled_backup.next_run|user_datetime_format:user }}</div>
             </div>

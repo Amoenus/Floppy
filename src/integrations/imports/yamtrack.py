@@ -18,6 +18,7 @@ from app.models import (
     AlbumTracker,
     Artist,
     ArtistTracker,
+    CollectionEntry,
     MediaTypes,
     Sources,
     Status,
@@ -155,6 +156,11 @@ class YamtrackImporter:
             MediaTypes.TV.value: {},
             MediaTypes.SEASON.value: {},
         }
+        self.collection_count = 0
+        # Item ids whose existing collection entries were already wiped
+        # this run (overwrite mode wipes once per item, then recreates
+        # every CSV copy).
+        self._collection_overwritten_item_ids = set()
 
         logger.info(
             "Initialized Yamtrack CSV importer for user %s with mode %s",
@@ -198,6 +204,8 @@ class YamtrackImporter:
             for media_type, media_list in self.bulk_media.items()
         }
         imported_counts.update(self.music_tracker_counts)
+        if self.collection_count:
+            imported_counts["collection"] = self.collection_count
 
         deduplicated_messages = "\n".join(dict.fromkeys(self.warnings))
         return imported_counts, deduplicated_messages
@@ -236,6 +244,9 @@ class YamtrackImporter:
             return
         if row_type == "list_item":
             self._process_list_item_row(row)
+            return
+        if row_type == "collection":
+            self._process_collection_row(row)
             return
 
         self.warnings.append(f"Skipping unknown row type: {row_type}")
@@ -293,23 +304,13 @@ class YamtrackImporter:
                 episode_number,
             )
 
-        item_lookup = dict(
-            media_id=row["media_id"],
-            source=row["source"],
-            media_type=media_type,
-            library_media_type=library_media_type,
-            season_number=season_number,
-            episode_number=episode_number,
+        item = self._resolve_item(
+            row,
+            media_type,
+            library_media_type,
+            season_number,
+            episode_number,
         )
-        try:
-            item, _ = helpers.retry_on_lock(
-                lambda: app.models.Item.objects.update_or_create(
-                    **item_lookup,
-                    defaults={"title": row["title"], "image": row["image"]},
-                ),
-            )
-        except IntegrityError as exc:
-            item = _find_item_after_integrity_error(item_lookup, exc)
 
         model = apps.get_model(app_label="app", model_name=media_type)
         instance = model(item=item)
@@ -486,23 +487,13 @@ class YamtrackImporter:
                 episode_number,
             )
 
-        list_item_lookup = dict(
-            media_id=row["media_id"],
-            source=row["source"],
-            media_type=media_type,
-            library_media_type=library_media_type,
-            season_number=season_number,
-            episode_number=episode_number,
+        item = self._resolve_item(
+            row,
+            media_type,
+            library_media_type,
+            season_number,
+            episode_number,
         )
-        try:
-            item, _ = helpers.retry_on_lock(
-                lambda: app.models.Item.objects.update_or_create(
-                    **list_item_lookup,
-                    defaults={"title": row["title"], "image": row["image"]},
-                ),
-            )
-        except IntegrityError as exc:
-            item = _find_item_after_integrity_error(list_item_lookup, exc)
 
         list_item, created = CustomListItem.objects.get_or_create(
             custom_list=custom_list,
@@ -516,6 +507,117 @@ class YamtrackImporter:
                 CustomListItem.objects.filter(pk=list_item.pk).update(
                     date_added=parsed_date,
                 )
+
+    def _resolve_item(
+        self,
+        row,
+        media_type,
+        library_media_type,
+        season_number,
+        episode_number,
+    ):
+        """Get or update the Item referenced by a CSV row."""
+        item_lookup = dict(
+            media_id=row["media_id"],
+            source=row["source"],
+            media_type=media_type,
+            library_media_type=library_media_type,
+            season_number=season_number,
+            episode_number=episode_number,
+        )
+        try:
+            item, _ = helpers.retry_on_lock(
+                lambda: app.models.Item.objects.update_or_create(
+                    **item_lookup,
+                    defaults={"title": row["title"], "image": row["image"]},
+                ),
+            )
+        except IntegrityError as exc:
+            item = _find_item_after_integrity_error(item_lookup, exc)
+        return item
+
+    def _process_collection_row(self, row):
+        """Process a collection (owned media) row from the CSV file."""
+        media_type = (row.get("media_type") or "").strip().lower()
+        if not media_type:
+            self.warnings.append("Skipping collection row without media_type.")
+            return
+
+        row["media_type"] = media_type
+        row["source"] = (row.get("source") or "").strip().lower()
+        library_media_type = (row.get("library_media_type") or "").strip().lower()
+
+        season_number = (
+            int(row["season_number"]) if row.get("season_number") else None
+        )
+        episode_number = (
+            int(row["episode_number"]) if row.get("episode_number") else None
+        )
+
+        if row.get("title", "") == "" or row.get("image", "") == "":
+            self._handle_missing_metadata(
+                row,
+                media_type,
+                season_number,
+                episode_number,
+            )
+
+        item = self._resolve_item(
+            row,
+            media_type,
+            library_media_type,
+            season_number,
+            episode_number,
+        )
+
+        entry_fields = {
+            "media_type": (row.get("collection_format") or "").strip(),
+            "resolution": (row.get("collection_resolution") or "").strip(),
+            "hdr": (row.get("collection_hdr") or "").strip(),
+            "is_3d": _parse_bool(row.get("collection_is_3d")),
+            "audio_codec": (row.get("collection_audio_codec") or "").strip(),
+            "audio_channels": (row.get("collection_audio_channels") or "").strip(),
+        }
+        bitrate_raw = (row.get("collection_bitrate") or "").strip()
+        try:
+            entry_fields["bitrate"] = int(bitrate_raw) if bitrate_raw else None
+        except ValueError:
+            self.warnings.append(
+                f"{row.get('title', row['media_id'])}: invalid collection "
+                f"bitrate {bitrate_raw!r}, ignoring.",
+            )
+            entry_fields["bitrate"] = None
+
+        existing = CollectionEntry.objects.filter(user=self.user, item=item)
+        if self.mode == "overwrite":
+            if item.id not in self._collection_overwritten_item_ids:
+                existing.delete()
+                self._collection_overwritten_item_ids.add(item.id)
+        elif any(
+            all(getattr(entry, field) == value for field, value in entry_fields.items())
+            for entry in existing
+        ):
+            # "new" mode: an identical copy already exists, skip.
+            return
+
+        entry = helpers.retry_on_lock(
+            lambda: CollectionEntry.objects.create(
+                user=self.user,
+                item=item,
+                **entry_fields,
+            ),
+        )
+
+        collected_at = parse_datetime(
+            (row.get("collection_collected_at") or "").strip(),
+        )
+        if collected_at:
+            # collected_at is auto_now_add, so it must be set post-create.
+            CollectionEntry.objects.filter(id=entry.id).update(
+                collected_at=collected_at,
+            )
+
+        self.collection_count += 1
 
     def _handle_missing_metadata(self, row, media_type, season_number, episode_number):
         """Handle missing metadata by fetching from provider."""
