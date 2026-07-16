@@ -502,6 +502,56 @@ class MDBListAccount(models.Model):
         return bool(self.api_key) and not self.connection_broken
 
 
+class JellyfinAccount(models.Model):
+    """Store Jellyfin connection settings and push-sync state for a user."""
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="jellyfin_account",
+    )
+    base_url = models.URLField(help_text="Jellyfin server URL")
+    api_key = models.TextField(help_text="Encrypted Jellyfin API key")
+    jellyfin_user_id = models.CharField(max_length=255, blank=True, default="")
+    jellyfin_username = models.CharField(max_length=255, blank=True, default="")
+    push_watched_enabled = models.BooleanField(
+        default=True,
+        help_text="Push Yamtrack 'watched' status to Jellyfin",
+    )
+    push_unwatched_enabled = models.BooleanField(
+        default=False,
+        help_text="Push Yamtrack 'unwatched' status to Jellyfin",
+    )
+    scheduled_push_enabled = models.BooleanField(
+        default=False,
+        help_text="Push watched state to Jellyfin on a recurring schedule",
+    )
+    instant_push_enabled = models.BooleanField(
+        default=False,
+        help_text="Push watched state to Jellyfin right after a webhook event",
+    )
+    connection_broken = models.BooleanField(default=False)
+    last_error_message = models.TextField(blank=True, default="")
+    last_sync_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Model options."""
+
+        verbose_name = "Jellyfin account"
+        verbose_name_plural = "Jellyfin accounts"
+
+    def __str__(self):
+        """Readable representation."""
+        return f"JellyfinAccount({self.user.username})"
+
+    @property
+    def is_connected(self):
+        """Return True when the account appears connected."""
+        return bool(self.base_url and self.api_key) and not self.connection_broken
+
+
 class CollectionSourceState(models.Model):
     """Track source-specific collection metadata freshness for each user+item."""
 

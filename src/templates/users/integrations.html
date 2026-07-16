@@ -233,6 +233,106 @@
       </div>
     </div>
 
+    {# Jellyfin push (Yamtrack -> Jellyfin) #}
+    <div class="bg-[#39404b] p-5 rounded-lg mb-6"
+         x-show="activeIntegration === 'all' || activeIntegration === 'jellyfin'"
+         x-transition.opacity.duration.150ms>
+      <div class="flex items-center justify-between mb-3">
+        <div class="flex items-center">
+          {% include "app/icons/server.svg" with classes="w-5 h-5 text-indigo-400 mr-2" %}
+          <h3 class="text-base font-medium">Yamtrack &rarr; Jellyfin</h3>
+        </div>
+        {% if jellyfin_account and jellyfin_account.is_connected %}
+          <span class="px-2 py-1 text-xs rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">Connected</span>
+        {% else %}
+          <span class="px-2 py-1 text-xs rounded bg-gray-500/20 text-gray-300 border border-gray-600/50">Disconnected</span>
+        {% endif %}
+      </div>
+      <p class="text-gray-400 mb-4 text-sm">Push your Yamtrack watched status onto a Jellyfin server, e.g. after re-adding media or setting up a fresh Jellyfin instance.</p>
+      <div class="bg-[#262a2f] p-4 rounded-md space-y-3">
+        {% if jellyfin_account %}
+          <div class="flex items-center gap-2 text-sm text-gray-400">
+            <span>{{ jellyfin_account.base_url }}</span>
+            {% if jellyfin_account.jellyfin_username %}
+              <span>&bull;</span>
+              <span>{{ jellyfin_account.jellyfin_username }}</span>
+            {% endif %}
+            {% if jellyfin_account.last_sync_at %}
+              <span>&bull;</span>
+              <span>Last sync: {{ jellyfin_account.last_sync_at|user_datetime_format:user }}</span>
+            {% endif %}
+          </div>
+          {% if jellyfin_account.last_error_message %}
+            <div class="text-xs text-amber-200 bg-amber-500/10 border border-amber-400/30 rounded p-2">
+              <strong>Error:</strong> {{ jellyfin_account.last_error_message }}
+            </div>
+          {% endif %}
+          <form method="post" action="{% url 'jellyfin_settings' %}" class="space-y-2">
+            {% csrf_token %}
+            <label class="flex items-center gap-2 text-sm text-gray-300">
+              <input type="checkbox" name="push_watched_enabled" {% if jellyfin_account.push_watched_enabled %}checked{% endif %}>
+              Push watched status to Jellyfin
+            </label>
+            <label class="flex items-center gap-2 text-sm text-gray-300">
+              <input type="checkbox" name="push_unwatched_enabled" {% if jellyfin_account.push_unwatched_enabled %}checked{% endif %}>
+              Push unwatched status to Jellyfin
+            </label>
+            <label class="flex items-center gap-2 text-sm text-gray-300">
+              <input type="checkbox" name="scheduled_push_enabled" {% if jellyfin_account.scheduled_push_enabled %}checked{% endif %}>
+              Sync on a schedule (hourly)
+            </label>
+            <label class="flex items-center gap-2 text-sm text-gray-300">
+              <input type="checkbox" name="instant_push_enabled" {% if jellyfin_account.instant_push_enabled %}checked{% endif %}>
+              Instant push after playback events
+            </label>
+            <button type="submit"
+                    class="px-4 py-2 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer">
+              Save Settings
+            </button>
+          </form>
+          <div class="flex gap-2">
+            <form method="post" action="{% url 'jellyfin_push_now' %}">
+              {% csrf_token %}
+              <button type="submit"
+                      class="px-4 py-2 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer">
+                Sync Now
+              </button>
+            </form>
+            <form method="post" action="{% url 'jellyfin_disconnect' %}">
+              {% csrf_token %}
+              <button type="submit"
+                      class="px-4 py-2 text-sm rounded-md bg-slate-500/10 text-slate-200 border border-slate-400/30 hover:bg-slate-500/20 transition-colors cursor-pointer">
+                Disconnect
+              </button>
+            </form>
+          </div>
+        {% else %}
+          <p class="text-sm text-gray-400">Connect Jellyfin using your server URL and API key. If the key doesn't resolve a user automatically, also provide the exact Jellyfin username.</p>
+          <form method="post" action="{% url 'jellyfin_connect' %}" class="space-y-3">
+            {% csrf_token %}
+            <input name="base_url"
+                   placeholder="https://jellyfin.local:8096"
+                   class="w-full py-2 px-3 bg-[#2a2f35] rounded-md text-white text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+                   type="url"
+                   required>
+            <input name="api_key"
+                   placeholder="Jellyfin API key"
+                   class="w-full py-2 px-3 bg-[#2a2f35] rounded-md text-white text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+                   type="password"
+                   required>
+            <input name="username"
+                   placeholder="Jellyfin username (only needed for server-admin keys)"
+                   class="w-full py-2 px-3 bg-[#2a2f35] rounded-md text-white text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+                   type="text">
+            <button type="submit"
+                    class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
+              Connect Jellyfin
+            </button>
+          </form>
+        {% endif %}
+      </div>
+    </div>
+
     {# Plex #}
     <div class="bg-[#39404b] p-5 rounded-lg mb-6"
          x-show="activeIntegration === 'all' || activeIntegration === 'plex'"

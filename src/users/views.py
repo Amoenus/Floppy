@@ -967,6 +967,8 @@ def integrations(request):
             option["value"] for option in plex_library_options
         ]
 
+    jellyfin_account = getattr(user, "jellyfin_account", None)
+
     return render(
         request,
         "users/integrations.html",
@@ -975,6 +977,7 @@ def integrations(request):
             "plex_webhook_needs_update": plex_webhook_needs_update,
             "plex_library_options_json": json.dumps(plex_library_options),
             "selected_plex_webhook_libraries_json": json.dumps(selected_plex_webhook_libraries),
+            "jellyfin_account": jellyfin_account,
         },
     )
 
@@ -1232,11 +1235,13 @@ def create_export_schedule(request):
     export_time = request.POST.get("time", "03:00")
     selected_media_types = request.POST.getlist("media_types") or request.POST.getlist("media_types_checkboxes")
     include_lists = request.POST.get("include_lists") == "on"
+    include_collection = request.POST.get("include_collection") == "on"
 
     if selected_media_types:
         media_types = selected_media_types
-    elif include_lists:
-        media_types = []  # no media types checked, lists checked -> lists-only export
+    elif include_lists or include_collection:
+        # no media types checked -> lists/collection-only export
+        media_types = []
     else:
         media_types = None  # nothing checked at all -> export everything
 
@@ -1247,6 +1252,7 @@ def create_export_schedule(request):
                 request.user,
                 media_types=media_types,
                 include_lists=include_lists,
+                include_collection=include_collection,
             ),
             content_type="text/csv",
             headers={"Content-Disposition": f'attachment; filename="yamtrack_{now}.csv"'},
@@ -1292,6 +1298,7 @@ def create_export_schedule(request):
     task_kwargs = {
         "user_id": request.user.id,
         "include_lists": include_lists,
+        "include_collection": include_collection,
     }
     if selected_media_types:
         task_kwargs["media_types"] = selected_media_types

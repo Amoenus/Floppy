@@ -56,6 +56,7 @@ from integrations.tasks._media_imports import (
     import_trakt,
     import_trakt_collection_csv,
     import_yamtrack,
+    push_jellyfin_watched,
     sync_plex_watchlist,
 )
 from integrations.tasks._plex_collection import (
@@ -75,11 +76,21 @@ logger = logging.getLogger(__name__)
 
 
 @shared_task(name="Scheduled backup export")
-def scheduled_backup_export(user_id, media_types=None, include_lists=True):
+def scheduled_backup_export(
+    user_id,
+    media_types=None,
+    include_lists=True,
+    include_collection=True,
+):
     """Celery task for exporting a CSV backup to the backup directory."""
     from integrations import exports
 
     User = get_user_model()
     user = User.objects.get(id=user_id)
-    filepath = exports.write_backup(user, media_types=media_types, include_lists=include_lists)
+    filepath = exports.write_backup(
+        user,
+        media_types=media_types,
+        include_lists=include_lists,
+        include_collection=include_collection,
+    )
     return f"Backup saved to {filepath}"

@@ -1,0 +1,110 @@
+"""Thin REST client for pushing watched state to a Jellyfin server."""
+
+import logging
+
+import requests
+
+logger = logging.getLogger(__name__)
+
+LIBRARY_PAGE_SIZE = 500
+
+
+class JellyfinClientError(Exception):
+    """Base Jellyfin API error."""
+
+
+class JellyfinAuthError(JellyfinClientError):
+    """Raised when the Jellyfin API key is invalid or unauthorized."""
+
+
+class JellyfinClient:
+    """Client for the subset of the Jellyfin REST API needed to push watched state."""
+
+    def __init__(self, base_url: str, api_key: str, user_id: str | None = None):
+        self.base_url = base_url.rstrip("/")
+        self.api_key = api_key
+        self.user_id = user_id
+
+    def _headers(self) -> dict[str, str]:
+        return {
+            "X-Emby-Token": self.api_key,
+            "Accept": "application/json",
+        }
+
+    def _request(self, method: str, path: str, **kwargs):
+        try:
+            response = requests.request(
+                method,
+                f"{self.base_url}{path}",
+                headers=self._headers(),
+                timeout=15,
+                **kwargs,
+            )
+        except requests.RequestException as exc:
+            raise JellyfinClientError(f"Could not reach Jellyfin: {exc}") from exc
+
+        if response.status_code == 401:
+            raise JellyfinAuthError("Jellyfin API key is invalid or unauthorized")
+        if response.status_code >= 400:
+            raise JellyfinClientError(
+                f"Jellyfin request failed ({response.status_code}) for {path}",
+            )
+        return response
+
+    def healthcheck(self) -> dict:
+        """Verify the server is reachable and the API key is valid."""
+        return self._request("GET", "/System/Info").json()
+
+    def get_current_user(self) -> dict | None:
+        """Resolve the Jellyfin user tied to this API key, if any."""
+        response = self._request("GET", "/Users/Me")
+        if not response.content:
+            return None
+        return response.json()
+
+    def find_user_by_name(self, username: str) -> dict | None:
+        """Fall back lookup for server-admin API keys that can't resolve Users/Me."""
+        users = self._request("GET", "/Users").json()
+        for user in users:
+            if str(user.get("Name", "")).strip().lower() == username.strip().lower():
+                return user
+        return None
+
+    def iter_library_items(self):
+        """Yield Movie/Episode items with provider ids and play state for the user."""
+        if not self.user_id:
+            raise JellyfinClientError("Jellyfin user id is not set")
+
+        start_index = 0
+        while True:
+            payload = self._request(
+                "GET",
+                f"/Users/{self.user_id}/Items",
+                params={
+                    "Recursive": "true",
+                    "IncludeItemTypes": "Movie,Episode",
+                    "Fields": "ProviderIds",
+                    "StartIndex": start_index,
+                    "Limit": LIBRARY_PAGE_SIZE,
+                },
+            ).json()
+
+            items = payload.get("Items") or []
+            yield from items
+
+            start_index += len(items)
+            total = payload.get("TotalRecordCount", start_index)
+            if not items or start_index >= total:
+                break
+
+    def mark_played(self, item_id: str) -> None:
+        """Mark a Jellyfin item as played for the connected user."""
+        if not self.user_id:
+            raise JellyfinClientError("Jellyfin user id is not set")
+        self._request("POST", f"/Users/{self.user_id}/PlayedItems/{item_id}")
+
+    def mark_unplayed(self, item_id: str) -> None:
+        """Mark a Jellyfin item as unplayed for the connected user."""
+        if not self.user_id:
+            raise JellyfinClientError("Jellyfin user id is not set")
+        self._request("DELETE", f"/Users/{self.user_id}/PlayedItems/{item_id}")

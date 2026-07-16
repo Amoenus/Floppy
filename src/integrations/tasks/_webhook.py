@@ -61,3 +61,10 @@ def process_webhook(provider, payload, user_id):
         raise
     if provider == "plex":
         user.mark_plex_webhook_received()
+
+    if provider == "jellyfin":
+        account = getattr(user, "jellyfin_account", None)
+        if account and account.is_connected and account.instant_push_enabled:
+            from integrations.tasks._media_imports import push_jellyfin_watched
+
+            push_jellyfin_watched.delay(user_id=user.id)

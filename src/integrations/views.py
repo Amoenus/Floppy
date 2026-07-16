@@ -32,6 +32,8 @@ from integrations.imports.audiobookshelf import (
     AudiobookshelfClient,
 )
 from integrations.imports.radarr import RadarrClient
+from integrations.jellyfin_client import JellyfinAuthError, JellyfinClient, JellyfinClientError
+from integrations.jellyfin_sync import JELLYFIN_PUSH_INTERVAL_MINUTES, JELLYFIN_PUSH_TASK_NAME
 from integrations.imports.sonarr import SonarrClient
 from integrations.imports.storyteller import (
     StorytellerClient,
@@ -45,6 +47,7 @@ from integrations.lastfm_api import (
 from integrations.models import (
     AudiobookshelfAccount,
     GPodderAccount,
+    JellyfinAccount,
     LastFMAccount,
     PlexAccount,
     PocketCastsAccount,
@@ -188,6 +191,75 @@ def _disable_plex_watchlist_schedule(user):
     return PeriodicTask.objects.filter(
         _plex_watchlist_task_filter(user.id),
         task=WATCHLIST_TASK_NAME,
+    ).delete()
+
+
+def _ensure_jellyfin_push_schedule(user, jellyfin_account):
+    """Create or enable the per-user Jellyfin watched-state push schedule."""
+    from django_celery_beat.models import IntervalSchedule, PeriodicTask
+
+    next_interval_start = timezone.now() + timedelta(minutes=JELLYFIN_PUSH_INTERVAL_MINUTES)
+    interval, _ = IntervalSchedule.objects.get_or_create(
+        every=JELLYFIN_PUSH_INTERVAL_MINUTES,
+        period=IntervalSchedule.MINUTES,
+    )
+    task_filter = PeriodicTask.objects.filter(
+        _plex_watchlist_task_filter(user.id),
+        task=JELLYFIN_PUSH_TASK_NAME,
+    )
+    existing_task = task_filter.first()
+    if existing_task:
+        was_enabled = existing_task.enabled
+        updated_fields = []
+        desired_name = (
+            f"{JELLYFIN_PUSH_TASK_NAME} for "
+            f"{jellyfin_account.jellyfin_username or user.username} "
+            f"(every {JELLYFIN_PUSH_INTERVAL_MINUTES} minutes)"
+        )
+        desired_kwargs = json.dumps({"user_id": user.id})
+        if existing_task.name != desired_name:
+            existing_task.name = desired_name
+            updated_fields.append("name")
+        if existing_task.interval_id != interval.id:
+            existing_task.interval = interval
+            updated_fields.append("interval")
+        if existing_task.crontab_id is not None:
+            existing_task.crontab = None
+            updated_fields.append("crontab")
+        if existing_task.kwargs != desired_kwargs:
+            existing_task.kwargs = desired_kwargs
+            updated_fields.append("kwargs")
+        if not existing_task.enabled:
+            existing_task.enabled = True
+            updated_fields.append("enabled")
+        if existing_task.start_time is None or not was_enabled:
+            existing_task.start_time = next_interval_start
+            updated_fields.append("start_time")
+        if updated_fields:
+            existing_task.save(update_fields=updated_fields)
+        return existing_task
+
+    return PeriodicTask.objects.create(
+        name=(
+            f"{JELLYFIN_PUSH_TASK_NAME} for "
+            f"{jellyfin_account.jellyfin_username or user.username} "
+            f"(every {JELLYFIN_PUSH_INTERVAL_MINUTES} minutes)"
+        ),
+        task=JELLYFIN_PUSH_TASK_NAME,
+        interval=interval,
+        kwargs=json.dumps({"user_id": user.id}),
+        start_time=next_interval_start,
+        enabled=True,
+    )
+
+
+def _disable_jellyfin_push_schedule(user):
+    """Delete any per-user Jellyfin push periodic tasks."""
+    from django_celery_beat.models import PeriodicTask
+
+    return PeriodicTask.objects.filter(
+        _plex_watchlist_task_filter(user.id),
+        task=JELLYFIN_PUSH_TASK_NAME,
     ).delete()
 
 
@@ -1033,6 +1105,101 @@ def import_sonarr(request):
     _ensure_arr_schedule(request.user, SONARR_RECURRING_TASK_NAME, "Sonarr")
     messages.info(request, "Sonarr import queued.")
     return redirect("import_data")
+
+
+@require_POST
+def jellyfin_connect(request):
+    """Connect a Jellyfin server using base URL + API key."""
+    base_url = request.POST.get("base_url", "").strip()
+    api_key = request.POST.get("api_key", "").strip()
+    username = request.POST.get("username", "").strip()
+    if not base_url or not api_key:
+        messages.error(request, "Jellyfin base URL and API key are required.")
+        return redirect("integrations")
+
+    client = JellyfinClient(base_url, api_key)
+    try:
+        client.healthcheck()
+        current_user = client.get_current_user()
+        if not current_user and username:
+            current_user = client.find_user_by_name(username)
+    except (JellyfinAuthError, JellyfinClientError) as exc:
+        messages.error(request, f"Failed to connect to Jellyfin: {exc}")
+        return redirect("integrations")
+
+    if not current_user or not current_user.get("Id"):
+        messages.error(
+            request,
+            "Could not resolve a Jellyfin user for this API key. "
+            "Provide the exact Jellyfin username.",
+        )
+        return redirect("integrations")
+
+    JellyfinAccount.objects.update_or_create(
+        user=request.user,
+        defaults={
+            "base_url": base_url,
+            "api_key": helpers.encrypt(api_key),
+            "jellyfin_user_id": current_user["Id"],
+            "jellyfin_username": current_user.get("Name", ""),
+            "connection_broken": False,
+            "last_error_message": "",
+        },
+    )
+    messages.success(request, "Connected Jellyfin.")
+    return redirect("integrations")
+
+
+@require_POST
+def jellyfin_disconnect(request):
+    """Disconnect the Jellyfin integration."""
+    _disable_jellyfin_push_schedule(request.user)
+    JellyfinAccount.objects.filter(user=request.user).delete()
+    messages.info(request, "Disconnected Jellyfin.")
+    return redirect("integrations")
+
+
+@require_POST
+def jellyfin_settings(request):
+    """Update Jellyfin push-sync toggles."""
+    account = getattr(request.user, "jellyfin_account", None)
+    if not account:
+        messages.error(request, "Connect Jellyfin before changing sync settings.")
+        return redirect("integrations")
+
+    account.push_watched_enabled = "push_watched_enabled" in request.POST
+    account.push_unwatched_enabled = "push_unwatched_enabled" in request.POST
+    account.scheduled_push_enabled = "scheduled_push_enabled" in request.POST
+    account.instant_push_enabled = "instant_push_enabled" in request.POST
+    account.save(
+        update_fields=[
+            "push_watched_enabled",
+            "push_unwatched_enabled",
+            "scheduled_push_enabled",
+            "instant_push_enabled",
+        ],
+    )
+
+    if account.scheduled_push_enabled:
+        _ensure_jellyfin_push_schedule(request.user, account)
+    else:
+        _disable_jellyfin_push_schedule(request.user)
+
+    messages.success(request, "Jellyfin sync settings updated.")
+    return redirect("integrations")
+
+
+@require_POST
+def jellyfin_push_now(request):
+    """Queue an immediate Jellyfin watched-state push."""
+    account = getattr(request.user, "jellyfin_account", None)
+    if not account:
+        messages.error(request, "Connect Jellyfin before syncing.")
+        return redirect("integrations")
+
+    tasks.push_jellyfin_watched.delay(user_id=request.user.id)
+    messages.info(request, "Jellyfin sync queued.")
+    return redirect("integrations")
 
 
 
@@ -1952,19 +2119,24 @@ def export_csv(request):
     """View for exporting all media data to a CSV file."""
     selected_media_types = request.GET.getlist("media_types")
     include_lists = request.GET.get("include_lists", "on") == "on"
+    include_collection = request.GET.get("include_collection", "on") == "on"
 
     if selected_media_types:
         media_types = selected_media_types
     elif request.GET:
-        # explicit request with no media types checked -> lists-only when lists are included
-        media_types = [] if include_lists else None
+        # explicit request with no media types checked -> lists/collection-only
+        # when either is included
+        media_types = [] if include_lists or include_collection else None
     else:
         media_types = None
 
     now = timezone.localtime()
     response = StreamingHttpResponse(
         streaming_content=exports.generate_rows(
-            request.user, media_types=media_types, include_lists=include_lists,
+            request.user,
+            media_types=media_types,
+            include_lists=include_lists,
+            include_collection=include_collection,
         ),
         content_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="yamtrack_{now}.csv"'},

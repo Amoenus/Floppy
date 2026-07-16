@@ -1,0 +1,218 @@
+from unittest.mock import patch
+
+from django.contrib.auth import get_user_model
+from django.test import TestCase
+from django.utils import timezone
+
+from app.models import TV, Episode, Item, MediaTypes, Movie, Season, Sources, Status
+from integrations import tasks
+from integrations.imports.helpers import MediaImportError, encrypt
+from integrations.jellyfin_sync import JellyfinPushSyncService
+from integrations.models import JellyfinAccount
+
+
+def _jellyfin_movie(item_id, tmdb_id, *, played=False):
+    return {
+        "Id": item_id,
+        "Type": "Movie",
+        "ProviderIds": {"Tmdb": str(tmdb_id)},
+        "UserData": {"Played": played},
+    }
+
+
+def _jellyfin_episode(item_id, tmdb_id, season_number, episode_number, *, played=False):
+    return {
+        "Id": item_id,
+        "Type": "Episode",
+        "ProviderIds": {"Tmdb": str(tmdb_id)},
+        "ParentIndexNumber": season_number,
+        "IndexNumber": episode_number,
+        "UserData": {"Played": played},
+    }
+
+
+class JellyfinPushSyncServiceTests(TestCase):
+    """Cover the Yamtrack -> Jellyfin watched-state push sync."""
+
+    def setUp(self):
+        """Create a user with a connected Jellyfin account and a watched movie."""
+        self.user = get_user_model().objects.create_user(username="jf-user")
+        self.account = JellyfinAccount.objects.create(
+            user=self.user,
+            base_url="https://jellyfin.local:8096",
+            api_key=encrypt("api-key"),
+            jellyfin_user_id="jf-user-1",
+            push_watched_enabled=True,
+            push_unwatched_enabled=False,
+        )
+        self.item = Item.objects.create(
+            media_id="603",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="The Matrix",
+        )
+        self.movie = Movie.objects.create(
+            user=self.user,
+            item=self.item,
+            status=Status.COMPLETED.value,
+        )
+
+    @patch("integrations.jellyfin_sync.JellyfinClient.mark_played")
+    @patch("integrations.jellyfin_sync.JellyfinClient.iter_library_items")
+    def test_pushes_watched_movie_not_yet_played(self, mock_items, mock_mark_played):
+        """A completed Yamtrack movie should mark the matching Jellyfin item played."""
+        mock_items.return_value = iter([_jellyfin_movie("jf-1", "603", played=False)])
+
+        counts, warnings = JellyfinPushSyncService(self.user, self.account).sync()
+
+        mock_mark_played.assert_called_once_with("jf-1")
+        self.assertEqual(counts.get("marked_played"), 1)
+        self.assertEqual(warnings, "")
+
+    @patch("integrations.jellyfin_sync.JellyfinClient.mark_played")
+    @patch("integrations.jellyfin_sync.JellyfinClient.iter_library_items")
+    def test_skips_write_when_already_played(self, mock_items, mock_mark_played):
+        """No write should happen when Jellyfin already reflects the desired state."""
+        mock_items.return_value = iter([_jellyfin_movie("jf-1", "603", played=True)])
+
+        counts, _ = JellyfinPushSyncService(self.user, self.account).sync()
+
+        mock_mark_played.assert_not_called()
+        self.assertEqual(counts.get("skipped_already_synced"), 1)
+
+    @patch("integrations.jellyfin_sync.JellyfinClient.mark_unplayed")
+    @patch("integrations.jellyfin_sync.JellyfinClient.iter_library_items")
+    def test_unwatched_push_disabled_by_default(self, mock_items, mock_mark_unplayed):
+        """push_unwatched defaults off, so played Jellyfin items are left alone."""
+        self.movie.status = Status.IN_PROGRESS.value
+        self.movie.save(update_fields=["status"])
+        mock_items.return_value = iter([_jellyfin_movie("jf-1", "603", played=True)])
+
+        counts, _ = JellyfinPushSyncService(self.user, self.account).sync()
+
+        mock_mark_unplayed.assert_not_called()
+        self.assertEqual(counts.get("skipped_already_synced"), 1)
+
+    @patch("integrations.jellyfin_sync.JellyfinClient.mark_unplayed")
+    @patch("integrations.jellyfin_sync.JellyfinClient.iter_library_items")
+    def test_unwatched_push_when_enabled(self, mock_items, mock_mark_unplayed):
+        """Enabling push_unwatched should clear played state Yamtrack no longer has."""
+        self.account.push_unwatched_enabled = True
+        self.account.save(update_fields=["push_unwatched_enabled"])
+        self.movie.status = Status.IN_PROGRESS.value
+        self.movie.save(update_fields=["status"])
+        mock_items.return_value = iter([_jellyfin_movie("jf-1", "603", played=True)])
+
+        counts, _ = JellyfinPushSyncService(self.user, self.account).sync()
+
+        mock_mark_unplayed.assert_called_once_with("jf-1")
+        self.assertEqual(counts.get("marked_unplayed"), 1)
+
+    @patch("integrations.jellyfin_sync.JellyfinClient.mark_played")
+    @patch("integrations.jellyfin_sync.JellyfinClient.iter_library_items")
+    def test_pushes_watched_episode(self, mock_items, mock_mark_played):
+        """A watched episode should be matched by tmdb id + season/episode number."""
+        tv_item = Item.objects.create(
+            media_id="1668",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Friends",
+        )
+        TV.objects.create(user=self.user, item=tv_item, status=Status.IN_PROGRESS.value)
+        season_item = Item.objects.create(
+            media_id="1668",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=1,
+            title="Friends Season 1",
+        )
+        tv = TV.objects.get(item=tv_item, user=self.user)
+        season = Season.objects.create(
+            user=self.user,
+            item=season_item,
+            related_tv=tv,
+            status=Status.IN_PROGRESS.value,
+        )
+        episode_item = Item.objects.create(
+            media_id="1668",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=1,
+            episode_number=1,
+            title="The Pilot",
+        )
+        Episode.objects.create(
+            item=episode_item,
+            related_season=season,
+            end_date=timezone.now(),
+        )
+        mock_items.return_value = iter(
+            [_jellyfin_episode("jf-ep-1", "1668", 1, 1, played=False)],
+        )
+
+        counts, _ = JellyfinPushSyncService(self.user, self.account).sync()
+
+        mock_mark_played.assert_called_once_with("jf-ep-1")
+        self.assertEqual(counts.get("marked_played"), 1)
+
+    @patch("integrations.jellyfin_sync.JellyfinClient.iter_library_items")
+    def test_no_match_is_counted_and_skipped(self, mock_items):
+        """Movies without a matching Jellyfin provider id are counted, not errored."""
+        mock_items.return_value = iter([])
+
+        counts, _ = JellyfinPushSyncService(self.user, self.account).sync()
+
+        self.assertEqual(counts.get("skipped_no_match"), 1)
+
+    def test_sync_raises_when_not_connected(self):
+        """Sync should refuse to run without a connected account."""
+        self.account.api_key = ""
+        self.account.save(update_fields=["api_key"])
+
+        with self.assertRaises(MediaImportError):
+            JellyfinPushSyncService(self.user, self.account).sync()
+
+
+class PushJellyfinWatchedTaskTests(TestCase):
+    """Cover the push_jellyfin_watched Celery task."""
+
+    def setUp(self):
+        """Create a user with a connected Jellyfin account."""
+        self.user = get_user_model().objects.create_user(username="jf-task-user")
+        self.account = JellyfinAccount.objects.create(
+            user=self.user,
+            base_url="https://jellyfin.local:8096",
+            api_key=encrypt("api-key"),
+            jellyfin_user_id="jf-user-1",
+        )
+
+    def test_task_requires_connected_account(self):
+        """The task should raise when the user has no Jellyfin account."""
+        other_user = get_user_model().objects.create_user(username="jf-no-account")
+
+        with self.assertRaises(MediaImportError):
+            tasks.push_jellyfin_watched(user_id=other_user.id)
+
+    @patch("integrations.tasks._media_imports.JellyfinPushSyncService.sync")
+    def test_task_records_error_on_failure(self, mock_sync):
+        """A sync failure should mark the account broken and record the error."""
+        mock_sync.side_effect = MediaImportError("boom")
+
+        with self.assertRaises(MediaImportError):
+            tasks.push_jellyfin_watched(user_id=self.user.id)
+
+        self.account.refresh_from_db()
+        self.assertTrue(self.account.connection_broken)
+        self.assertEqual(self.account.last_error_message, "boom")
+
+    @patch("integrations.tasks._media_imports.JellyfinPushSyncService.sync")
+    def test_task_records_success(self, mock_sync):
+        """A successful sync should clear errors and stamp last_sync_at."""
+        mock_sync.return_value = ({"marked_played": 1}, "")
+
+        tasks.push_jellyfin_watched(user_id=self.user.id)
+
+        self.account.refresh_from_db()
+        self.assertFalse(self.account.connection_broken)
+        self.assertEqual(self.account.last_error_message, "")
+        self.assertIsNotNone(self.account.last_sync_at)

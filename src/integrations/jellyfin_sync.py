@@ -1,0 +1,161 @@
+"""Push Yamtrack watched/unwatched state to a Jellyfin server."""
+
+import logging
+from collections import defaultdict
+
+from app.models import Episode, Movie, Sources, Status
+from integrations.imports.helpers import MediaImportError, decrypt
+from integrations.jellyfin_client import (
+    JellyfinAuthError,
+    JellyfinClient,
+    JellyfinClientError,
+)
+
+logger = logging.getLogger(__name__)
+
+JELLYFIN_PUSH_INTERVAL_MINUTES = 60
+JELLYFIN_PUSH_TASK_NAME = "Push Watched State to Jellyfin"
+
+_PROVIDER_FIELD_ORDER = ("Tmdb", "Imdb", "Tvdb")
+
+
+def _provider_keys(provider_ids: dict) -> set[tuple[str, str]]:
+    """Return (provider, value) pairs present on a Jellyfin item."""
+    keys = set()
+    for provider in _PROVIDER_FIELD_ORDER:
+        value = provider_ids.get(provider)
+        if value:
+            keys.add((provider, str(value)))
+    return keys
+
+
+class JellyfinPushSyncService:
+    """Push the user's watched/unwatched Movie and Episode state to Jellyfin."""
+
+    def __init__(self, user, account):
+        self.user = user
+        self.account = account
+        self.counts = defaultdict(int)
+
+    def sync(self) -> tuple[dict[str, int], str]:
+        """Push watched state and return counts plus a warning message."""
+        if not self.account or not self.account.is_connected:
+            raise MediaImportError("Jellyfin is not connected for this user.")
+
+        self.counts = defaultdict(int)
+        client = self._build_client()
+
+        movie_index, episode_index = self._build_indexes(client)
+
+        if self.account.push_watched_enabled or self.account.push_unwatched_enabled:
+            self._push_movies(client, movie_index)
+            self._push_episodes(client, episode_index)
+
+        return dict(self.counts), ""
+
+    def _build_client(self) -> JellyfinClient:
+        api_key = decrypt(self.account.api_key)
+        client = JellyfinClient(self.account.base_url, api_key, self.account.jellyfin_user_id or None)
+
+        if not self.account.jellyfin_user_id:
+            try:
+                current_user = client.get_current_user()
+            except (JellyfinAuthError, JellyfinClientError) as exc:
+                raise MediaImportError(f"Could not connect to Jellyfin: {exc}") from exc
+            if not current_user or not current_user.get("Id"):
+                raise MediaImportError(
+                    "Could not resolve a Jellyfin user for this API key.",
+                )
+            client.user_id = current_user["Id"]
+            self.account.jellyfin_user_id = current_user["Id"]
+            self.account.jellyfin_username = current_user.get("Name", "")
+            self.account.save(update_fields=["jellyfin_user_id", "jellyfin_username"])
+
+        return client
+
+    def _build_indexes(self, client: JellyfinClient):
+        """Build lookup indexes of Jellyfin library items keyed by provider id."""
+        movie_index: dict[tuple[str, str], dict] = {}
+        episode_index: dict[tuple[str, str, int, int], dict] = {}
+
+        try:
+            for jf_item in client.iter_library_items():
+                provider_ids = jf_item.get("ProviderIds") or {}
+                item_type = jf_item.get("Type")
+
+                if item_type == "Movie":
+                    for key in _provider_keys(provider_ids):
+                        movie_index[key] = jf_item
+                elif item_type == "Episode":
+                    season_number = jf_item.get("ParentIndexNumber")
+                    episode_number = jf_item.get("IndexNumber")
+                    if season_number is None or episode_number is None:
+                        continue
+                    for provider, value in _provider_keys(provider_ids):
+                        episode_index[(provider, value, season_number, episode_number)] = jf_item
+        except (JellyfinAuthError, JellyfinClientError) as exc:
+            raise MediaImportError(f"Could not read Jellyfin library: {exc}") from exc
+
+        return movie_index, episode_index
+
+    def _lookup(self, index: dict, keys) -> dict | None:
+        for key in keys:
+            match = index.get(key)
+            if match:
+                return match
+        return None
+
+    def _push_movies(self, client: JellyfinClient, movie_index: dict) -> None:
+        movies = Movie.objects.filter(user=self.user).select_related("item")
+        for movie in movies:
+            item = movie.item
+            if item.source != Sources.TMDB.value:
+                continue
+
+            keys = [("Tmdb", item.media_id)]
+            jf_item = self._lookup(movie_index, keys)
+            if not jf_item:
+                self.counts["skipped_no_match"] += 1
+                continue
+
+            self._apply_state(
+                client,
+                jf_item,
+                watched=movie.status == Status.COMPLETED.value,
+            )
+
+    def _push_episodes(self, client: JellyfinClient, episode_index: dict) -> None:
+        episodes = Episode.objects.filter(
+            related_season__user=self.user,
+        ).select_related("item")
+
+        for episode in episodes:
+            item = episode.item
+            if not item or item.source != Sources.TMDB.value:
+                continue
+            if item.season_number is None or item.episode_number is None:
+                continue
+
+            keys = [("Tmdb", item.media_id, item.season_number, item.episode_number)]
+            jf_item = self._lookup(episode_index, keys)
+            if not jf_item:
+                self.counts["skipped_no_match"] += 1
+                continue
+
+            watched = episode.end_date is not None and not episode.dropped
+            self._apply_state(client, jf_item, watched=watched)
+
+    def _apply_state(self, client: JellyfinClient, jf_item: dict, *, watched: bool) -> None:
+        currently_played = bool((jf_item.get("UserData") or {}).get("Played"))
+        jellyfin_id = jf_item.get("Id")
+        if not jellyfin_id:
+            return
+
+        if watched and self.account.push_watched_enabled and not currently_played:
+            client.mark_played(jellyfin_id)
+            self.counts["marked_played"] += 1
+        elif not watched and self.account.push_unwatched_enabled and currently_played:
+            client.mark_unplayed(jellyfin_id)
+            self.counts["marked_unplayed"] += 1
+        else:
+            self.counts["skipped_already_synced"] += 1

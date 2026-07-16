@@ -15,6 +15,7 @@ from django.urls import reverse
 from simple_history.models import HistoricalRecords
 
 from integrations import tasks
+from integrations.models import JellyfinAccount
 
 
 class WebhookViewEnqueueTests(TestCase):
@@ -140,6 +141,54 @@ class ProcessWebhookTaskTests(TestCase):
         with self.assertLogs("integrations.tasks", level="WARNING") as logs:
             tasks.process_webhook("jellyfin", {"Event": "Stop"}, missing_id)
         self.assertIn("missing user", logs.output[0])
+
+    @patch("integrations.tasks.push_jellyfin_watched.delay")
+    @patch("integrations.webhooks.jellyfin.JellyfinWebhookProcessor.process_payload")
+    def test_jellyfin_instant_push_when_enabled(self, _mock_process, mock_push_delay):
+        """A Jellyfin webhook should queue a push-back when instant push is enabled."""
+        JellyfinAccount.objects.create(
+            user=self.user,
+            base_url="https://jellyfin.local:8096",
+            api_key="encrypted",
+            jellyfin_user_id="jf-1",
+            instant_push_enabled=True,
+        )
+
+        tasks.process_webhook("jellyfin", {"Event": "Stop"}, self.user.id)
+
+        mock_push_delay.assert_called_once_with(user_id=self.user.id)
+
+    @patch("integrations.tasks.push_jellyfin_watched.delay")
+    @patch("integrations.webhooks.jellyfin.JellyfinWebhookProcessor.process_payload")
+    def test_jellyfin_instant_push_skipped_when_disabled(
+        self,
+        _mock_process,
+        mock_push_delay,
+    ):
+        """No push-back should be queued when instant push is not enabled."""
+        JellyfinAccount.objects.create(
+            user=self.user,
+            base_url="https://jellyfin.local:8096",
+            api_key="encrypted",
+            jellyfin_user_id="jf-1",
+            instant_push_enabled=False,
+        )
+
+        tasks.process_webhook("jellyfin", {"Event": "Stop"}, self.user.id)
+
+        mock_push_delay.assert_not_called()
+
+    @patch("integrations.tasks.push_jellyfin_watched.delay")
+    @patch("integrations.webhooks.jellyfin.JellyfinWebhookProcessor.process_payload")
+    def test_jellyfin_instant_push_skipped_without_account(
+        self,
+        _mock_process,
+        mock_push_delay,
+    ):
+        """No push-back should be queued when Jellyfin isn't connected."""
+        tasks.process_webhook("jellyfin", {"Event": "Stop"}, self.user.id)
+
+        mock_push_delay.assert_not_called()
 
 
 class WebhookTaskRoutingTests(SimpleTestCase):

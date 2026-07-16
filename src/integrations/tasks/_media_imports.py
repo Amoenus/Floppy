@@ -33,6 +33,7 @@ from integrations.imports import (
     trakt_collection,
     yamtrack,
 )
+from integrations.jellyfin_sync import JELLYFIN_PUSH_TASK_NAME, JellyfinPushSyncService
 from integrations.plex_watchlist import PlexWatchlistSyncService
 from integrations.tasks._import_helpers import (
     GOODREADS_IMPORT_TASK_NAME,
@@ -284,6 +285,32 @@ def sync_plex_watchlist(user_id, mode="watchlist"):  # noqa: ARG001
     return format_watchlist_sync_message(sync_counts, warnings)
 
 
+@shared_task(name=JELLYFIN_PUSH_TASK_NAME)
+def push_jellyfin_watched(user_id):
+    """Celery task for pushing Yamtrack watched state to Jellyfin."""
+    from integrations.models import JellyfinAccount
+
+    user = get_user_model().objects.get(id=user_id)
+    account = getattr(user, "jellyfin_account", None)
+    if not account:
+        raise helpers.MediaImportError("Connect Jellyfin before syncing.")
+
+    try:
+        push_counts, warnings = JellyfinPushSyncService(user, account).sync()
+    except helpers.MediaImportError as exc:
+        JellyfinAccount.objects.filter(user=user).update(
+            connection_broken=True,
+            last_error_message=str(exc),
+        )
+        raise
+
+    JellyfinAccount.objects.filter(user=user).update(
+        last_sync_at=timezone.now(),
+        connection_broken=False,
+        last_error_message="",
+    )
+
+    return format_import_message(push_counts, warnings)
 
 
 @shared_task(name="Import from Audiobookshelf")
