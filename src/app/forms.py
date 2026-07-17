@@ -30,6 +30,7 @@ from app.models import (
     PodcastShowTracker,
     Season,
     Sources,
+    Status,
 )
 
 
@@ -575,17 +576,24 @@ class EpisodeForm(RatingScaleFormMixin, forms.ModelForm):
     source = forms.CharField(widget=forms.HiddenInput(), required=False)
     media_id = forms.CharField(widget=forms.HiddenInput(), required=False)
     season_number = forms.IntegerField(widget=forms.HiddenInput(), required=False)
+    episode_number = forms.IntegerField(widget=forms.HiddenInput(), required=False)
 
     class Meta:
         """Bind form to model."""
 
         model = Episode
-        fields = ("score", "end_date")
+        fields = ("score", "status", "start_date", "end_date", "notes")
         widgets = {
             "score": forms.NumberInput(
                 attrs={"min": 0, "max": 10, "step": 0.1, "placeholder": "0-10"},
             ),
+            "start_date": forms.DateTimeInput(attrs={"type": "datetime-local"})
+            if settings.TRACK_TIME
+            else forms.DateInput(attrs={"type": "date"}),
             "end_date": forms.DateInput(attrs={"type": "date"}),
+            "notes": forms.Textarea(
+                attrs={"placeholder": "Add any notes or comments...", "rows": "5"},
+            ),
         }
 
     def __init__(self, *args, **kwargs):
@@ -593,13 +601,27 @@ class EpisodeForm(RatingScaleFormMixin, forms.ModelForm):
         super().__init__(*args, **kwargs)
 
         if settings.TRACK_TIME:
+            self.fields["start_date"].widget = forms.DateTimeInput(
+                attrs={"type": "datetime-local"},
+            )
             self.fields["end_date"].widget = forms.DateTimeInput(
                 attrs={"type": "datetime-local"},
             )
         else:
+            self.fields["start_date"].widget = forms.DateInput(
+                attrs={"type": "date"},
+            )
             self.fields["end_date"].widget = forms.DateInput(
                 attrs={"type": "date"},
             )
+
+        self.fields["start_date"].required = False
+        self.fields["end_date"].required = False
+        self.fields["status"].required = False
+
+    def clean_status(self):
+        """Keep legacy episode-save clients equivalent to adding a watch."""
+        return self.cleaned_data.get("status") or Status.COMPLETED.value
 
 
 class BulkEpisodeTrackForm(forms.Form):

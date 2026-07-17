@@ -138,13 +138,22 @@
       {% endif %}
 
       {# Action buttons — mirrors media_details.html order-1/order-2 button row #}
-      {% if not public_view and episode and episode.actions_enabled %}
+      {% if not public_view and episode %}
         <div class="order-1 mb-6 flex flex-col gap-3 sm:order-2 sm:flex-row sm:flex-wrap sm:items-center">
           <div class="mt-4 mb-5 flex flex-wrap gap-2">
             {# Hero track button — OOB-addressable so episode_save can flip it in place #}
             <div x-data="{ trackOpen: false }" class="w-full sm:w-auto sm:shrink-0">
               {% include "app/components/detail_episode_hero_track_button.html" with episode=episode source=source media_id=media_id season_number=season_number episode_number=episode_number %}
-              {% include "app/components/fill_track_episode.html" with request=request media=episode episode=episode episode_title=episode_title csrf_token=csrf_token TRACK_TIME=TRACK_TIME user=user only %}
+              <div x-show="trackOpen"
+                   @keydown.escape.window="trackOpen = false"
+                   class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                <div class="modal-max-height overflow-y-auto px-4 md:px-0 relative z-60 w-full"
+                     style="width: min(96vw, 72rem);"
+                     @click.outside="trackOpen = false"
+                     @click.stop>
+                  <div id="episode-track-modal-{{ source }}-{{ media_id }}-{{ season_number }}-{{ episode_number }}"></div>
+                </div>
+              </div>
             </div>
 
             {# Secondary icon buttons — h-11 w-11 rounded-xl, same as season/show page #}

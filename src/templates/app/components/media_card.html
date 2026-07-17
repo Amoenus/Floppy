@@ -668,24 +668,20 @@
           {# Aggregated chips already cover repeats; no extra text block. #}
         </div>
 
-        {% if item.media_type == MediaTypes.EPISODE.value %}
-          {% include "app/components/fill_track_episode.html" with request=request media=item episode=item episode_title=resolved_item_title|default:title csrf_token=csrf_token TRACK_TIME=TRACK_TIME user=user only %}
-        {% else %}
-          {# Track Modal #}
-          <div x-show="trackOpen"
-               @keydown.escape.window="trackOpen = false"
-               class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div class="modal-max-height overflow-y-auto px-4 md:px-0 relative z-60 w-full"
-                 style="width: min(96vw, 72rem);"
-                 @click.outside="trackOpen = false">
-              {% if use_podcast_show|default:False and podcast_show %}
-                <div id="podcast-show-track-modal-{{ podcast_show.id }}-{{ media.id }}"></div>
-              {% else %}
-                <div id="{% component_id 'track' item media.id %}"></div>
-              {% endif %}
-            </div>
+        {# Track Modal #}
+        <div x-show="trackOpen"
+             @keydown.escape.window="trackOpen = false"
+             class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div class="modal-max-height overflow-y-auto px-4 md:px-0 relative z-60 w-full"
+               style="width: min(96vw, 72rem);"
+               @click.outside="trackOpen = false">
+            {% if use_podcast_show|default:False and podcast_show %}
+              <div id="podcast-show-track-modal-{{ podcast_show.id }}-{{ media.id }}"></div>
+            {% else %}
+              <div id="{% component_id 'track' item media.id %}"></div>
+            {% endif %}
           </div>
-        {% endif %}
+        </div>
 
         {# Lists Modal #}
         <div x-show="listsOpen"

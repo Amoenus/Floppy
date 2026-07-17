@@ -13,6 +13,7 @@ from app.models import (
     Anime,
     Artist,
     ArtistTracker,
+    CollectionEntry,
     DiscoverFeedback,
     DiscoverFeedbackType,
     Episode,
@@ -192,6 +193,7 @@ class TrackModalViewTests(TestCase):
             end_date=datetime(2025, 1, 2, 12, 0, tzinfo=UTC),
             score=7,
         )
+        CollectionEntry.objects.create(user=self.user, item=episode_item)
 
         response = self.client.get(
             reverse(
@@ -211,10 +213,17 @@ class TrackModalViewTests(TestCase):
         self.assertEqual(response.context["media"], episode)
         self.assertEqual(
             [field.name for field in response.context["general_fields"]],
-            ["score", "end_date"],
+            ["score", "status", "start_date", "end_date"],
         )
         self.assertContains(response, 'name="score"', html=False)
         self.assertContains(response, 'value="7.0"', html=False)
+        self.assertContains(response, 'name="notes"', html=False)
+        self.assertContains(response, "Collection")
+        self.assertContains(
+            response,
+            '<p class="text-sm tracking-wide text-gray-400">Collected</p>',
+            html=True,
+        )
 
     def test_track_modal_view_renders_release_date_shortcuts_for_existing_media(self):
         """Existing item-backed trackers should expose release-date shortcuts."""

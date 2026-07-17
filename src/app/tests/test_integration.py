@@ -69,7 +69,7 @@ class IntegrationTest(StaticLiveServerTestCase):
         self.page.locator('input[name="end_date"]:visible').first.fill(
             f"{fixed_date.isoformat()}T12:00",
         )
-        self.page.get_by_role("button", name="Add watch").click()
+        self.page.get_by_role("button", name="Add", exact=True).click()
 
         expect(self.page.get_by_role("main")).to_contain_text(
             f"Ended: {fixed_date.strftime(datetime_format)}",
@@ -78,7 +78,7 @@ class IntegrationTest(StaticLiveServerTestCase):
         today = timezone.localtime().strftime(datetime_format)
         self.page.get_by_title("Track Episode").first.click(force=True)
         self.page.locator('input[name="end_date"]:visible').first.fill(f"{today}T12:00")
-        self.page.get_by_role("button", name="Add watch").click()
+        self.page.get_by_role("button", name="Add", exact=True).click()
         expect(self.page.get_by_role("main")).to_contain_text(f"Ended: {today}")
 
     def test_tv_completed(self):

@@ -101,6 +101,7 @@ def drop_episode(related_season, episode_number):
         item=item,
         end_date=None,
         dropped=True,
+        status=Status.DROPPED.value,
     )
     logger.info("%s dropped successfully.", episode_record)
     cache_utils.clear_time_left_cache_for_user(related_season.user_id)

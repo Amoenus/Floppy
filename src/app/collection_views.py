@@ -538,6 +538,7 @@ def _resolve_collection_item(
     media_id,
     season_number,
     episode_number,
+    metadata=None,
 ):
     """Get or create the Item a collection entry attaches to.
 
@@ -564,10 +565,9 @@ def _resolve_collection_item(
         lookup["episode_number"] = episode_number
 
     item = Item.objects.filter(**lookup).first()
-    metadata = None
     needs_metadata = item is None or media_type == MediaTypes.GAME.value
 
-    if needs_metadata:
+    if needs_metadata and metadata is None:
         try:
             metadata = services.get_media_metadata(
                 media_type,
@@ -623,27 +623,24 @@ def _resolve_collection_item(
     return item, metadata
 
 
-@never_cache
-@require_GET
-def collection_modal(request, source, media_type, media_id):
-    """Return modal HTML for adding and managing collection entries."""
-    season_number = _parse_optional_int(request.GET.get("season_number"))
-    episode_number = _parse_optional_int(request.GET.get("episode_number"))
-    error_response = _validate_collection_numbers(
-        request,
-        media_type,
-        season_number,
-        episode_number,
-    )
-    if error_response:
-        return error_response
-
+def build_collection_modal_context(
+    request,
+    source,
+    media_type,
+    media_id,
+    *,
+    season_number=None,
+    episode_number=None,
+    metadata=None,
+):
+    """Build reusable collection form context for modals and modal tabs."""
     item, metadata = _resolve_collection_item(
         source,
         media_type,
         media_id,
         season_number,
         episode_number,
+        metadata,
     )
 
     platform_choices = None
@@ -669,23 +666,52 @@ def collection_modal(request, source, media_type, media_id):
     )
     form.fields["item"].initial = item.id
 
-    return_url = request.GET.get("return_url", "")
+    return_url = (
+        request.GET.get("return_url")
+        or request.GET.get("next")
+        or request.POST.get("return_url", "")
+    )
     collection_fields = getattr(form, "collection_fields", [])
+
+    return {
+        "item": item,
+        "entry": existing_entry,
+        "existing_entries": existing_entries,
+        "visible_existing_entries": visible_existing_entries,
+        "season_audit_entries": season_audit_entries,
+        "episode_audit_entries": episode_audit_entries,
+        "form": form,
+        "return_url": return_url,
+        "collection_fields": collection_fields,
+    }
+
+
+@never_cache
+@require_GET
+def collection_modal(request, source, media_type, media_id):
+    """Return modal HTML for adding and managing collection entries."""
+    season_number = _parse_optional_int(request.GET.get("season_number"))
+    episode_number = _parse_optional_int(request.GET.get("episode_number"))
+    error_response = _validate_collection_numbers(
+        request,
+        media_type,
+        season_number,
+        episode_number,
+    )
+    if error_response:
+        return error_response
 
     response = render(
         request,
         "app/components/collection_modal.html",
-        {
-            "item": item,
-            "entry": existing_entry,
-            "existing_entries": existing_entries,
-            "visible_existing_entries": visible_existing_entries,
-            "season_audit_entries": season_audit_entries,
-            "episode_audit_entries": episode_audit_entries,
-            "form": form,
-            "return_url": return_url,
-            "collection_fields": collection_fields,
-        },
+        build_collection_modal_context(
+            request,
+            source,
+            media_type,
+            media_id,
+            season_number=season_number,
+            episode_number=episode_number,
+        ),
     )
     response["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
     response["Pragma"] = "no-cache"

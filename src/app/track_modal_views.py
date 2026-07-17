@@ -12,6 +12,7 @@ from django.views.decorators.http import require_GET
 
 from app import custom_metadata, helpers
 from app import statistics as stats
+from app.collection_views import build_collection_modal_context
 from app.discover_views import _build_track_modal_discover_tab_context
 from app.forms import BulkEpisodeTrackForm, get_form_class
 from app.models import (
@@ -226,6 +227,7 @@ def _render_standard_track_modal(
     media_type,
     media_id,
     season_number=None,
+    episode_number=None,
     *,
     form_override=None,
     bulk_form_override=None,
@@ -251,16 +253,22 @@ def _render_standard_track_modal(
             media_type,
             source,
             season_number=season_number,
+            episode_number=episode_number,
         )
         media = user_medias.first()
         if media:
             instance_id = media.id
+
+    if media_type == MediaTypes.EPISODE.value and media:
+        season_number = media.item.season_number
+        episode_number = media.item.episode_number
 
     initial_data = {
         "media_id": media_id,
         "source": source,
         "media_type": media_type,
         "season_number": season_number,
+        "episode_number": episode_number,
         "instance_id": instance_id,
     }
     route_identity_media_type = None
@@ -326,6 +334,7 @@ def _render_standard_track_modal(
             media_id,
             source,
             [season_number],
+            episode_number=episode_number,
         )
         base_metadata = metadata
         title = metadata["title"]
@@ -342,6 +351,7 @@ def _render_standard_track_modal(
                 identity_media_type=route_identity_media_type,
             ),
             "season_number": season_number,
+            "episode_number": episode_number,
         }
         if metadata_resolution.is_grouped_anime_route(
             media_type,
@@ -418,6 +428,7 @@ def _render_standard_track_modal(
         "source",
         "media_id",
         "season_number",
+        "episode_number",
         "start_date_cleared",
     }
     metadata_field_names = {"image_url"}
@@ -592,8 +603,12 @@ def _render_standard_track_modal(
         "general_hidden_fields": hidden_fields,
         "general_fields": general_fields,
         "general_submit_formaction": (
-            f"{reverse('media_save')}?next={return_url}"
-            + (f"&home_row_id={home_row_id}" if home_row_id else "")
+            f"{reverse('episode_save')}?next={return_url}"
+            if media_type == MediaTypes.EPISODE.value
+            else (
+                f"{reverse('media_save')}?next={return_url}"
+                + (f"&home_row_id={home_row_id}" if home_row_id else "")
+            )
         ),
         "general_delete_formaction": f"{reverse('media_delete')}?next={return_url}",
         "general_existing_instance": media,
@@ -629,7 +644,20 @@ def _render_standard_track_modal(
             else ""
         ),
         "episode_plays_domain_script_id": f"{track_form_id}-episode-domain",
+        "collection_tab_available": False,
+        "collection_context": None,
     }
+    if media_type == MediaTypes.EPISODE.value and episode_number is not None:
+        context["collection_tab_available"] = True
+        context["collection_context"] = build_collection_modal_context(
+            request,
+            source,
+            media_type,
+            media_id,
+            season_number=season_number,
+            episode_number=episode_number,
+            metadata=base_metadata,
+        )
     context.update(_build_track_modal_discover_tab_context(request.user, metadata_item))
     response = render(
         request,
@@ -773,6 +801,12 @@ def track_modal(
         request.GET.get("standard_modal") == "1"
         or request.POST.get("standard_modal") == "1"
     )
+    episode_number = request.GET.get("episode_number")
+    if episode_number is not None:
+        try:
+            episode_number = int(episode_number)
+        except (TypeError, ValueError):
+            episode_number = None
 
     # Handle podcast shows (identified by podcast_uuid)
     if (
@@ -960,5 +994,6 @@ def track_modal(
         media_type,
         media_id,
         season_number=season_number,
+        episode_number=episode_number,
         track_action_update=track_action_update,
     )

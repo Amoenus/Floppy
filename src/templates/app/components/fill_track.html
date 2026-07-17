@@ -31,6 +31,15 @@
             <span class="font-medium text-xs sm:text-sm">Metadata</span>
           </button>
         {% endif %}
+        {% if collection_tab_available %}
+          <button type="button"
+                  @click="activeTab = 'collection'"
+                  class="flex flex-1 sm:flex-none items-center justify-center sm:justify-start gap-2 sm:gap-3 px-3 py-2 sm:px-4 sm:py-3 w-full rounded-lg text-left transition-colors cursor-pointer"
+                  :class="activeTab === 'collection' ? 'text-white bg-[#2c3136]' : 'text-gray-400 hover:text-white hover:bg-[#23272b]'">
+            {% include "app/icons/circle-check.svg" with classes="w-4 h-4 sm:w-5 sm:h-5 shrink-0" %}
+            <span class="font-medium text-xs sm:text-sm">Collection</span>
+          </button>
+        {% endif %}
         {% if episode_plays_tab_available %}
           <button type="button"
                   @click="activeTab = 'episode-plays'"
@@ -195,6 +204,12 @@
       {% if metadata_tab_available %}
         <section x-show="activeTab === 'metadata'" x-cloak>
           {% include "app/components/media_metadata_panel.html" %}
+        </section>
+      {% endif %}
+
+      {% if collection_tab_available %}
+        <section x-show="activeTab === 'collection'" x-cloak>
+          {% include "app/components/collection_modal.html" with item=collection_context.item entry=collection_context.entry existing_entries=collection_context.existing_entries visible_existing_entries=collection_context.visible_existing_entries season_audit_entries=collection_context.season_audit_entries episode_audit_entries=collection_context.episode_audit_entries form=collection_context.form return_url=collection_context.return_url collection_fields=collection_context.collection_fields collection_tab=True request=request only %}
         </section>
       {% endif %}
 

@@ -90,12 +90,12 @@ class CollectionQuickAddTest(TestCase):
 
     @patch("app.providers.services.get_media_metadata")
     @patch("app.providers.tmdb.process_episodes")
-    def test_season_view_renders_quick_collect_button(
+    def test_season_view_routes_episode_collection_through_tracker(
         self,
         mock_process_episodes,
         mock_get_metadata,
     ):
-        """Episode rows on the season page include the quick-collect button."""
+        """Episode rows expose collection through the shared tracker modal."""
         mock_get_metadata.side_effect = lambda *_args, **_kwargs: {
             "title": "Test TV Show",
             "media_id": "1668",
@@ -139,5 +139,15 @@ class CollectionQuickAddTest(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, self.episode_url)
-        self.assertContains(response, 'title="Add to collection"')
+        track_url = reverse(
+            "track_modal",
+            kwargs={
+                "source": Sources.TMDB.value,
+                "media_type": MediaTypes.EPISODE.value,
+                "media_id": "1668",
+                "season_number": 1,
+            },
+        )
+        self.assertContains(response, track_url)
+        self.assertContains(response, '"is_create": "1"', html=False)
+        self.assertNotContains(response, self.episode_url)

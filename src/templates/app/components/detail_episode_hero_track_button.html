@@ -4,6 +4,10 @@
 <div id="episode-track-button-{{ source }}-{{ media_id }}-{{ season_number }}-{{ episode_number }}"
      {% if track_button_oob %}hx-swap-oob="true"{% endif %}>
   <button type="button"
+          hx-get="{% url 'track_modal' source=source media_type='episode' media_id=media_id season_number=season_number %}"
+          hx-vals='{"return_url": "{{ request.path|urlencode }}", "episode_number": "{{ episode_number }}", "is_create": "1"}'
+          hx-target="#episode-track-modal-{{ source }}-{{ media_id }}-{{ season_number }}-{{ episode_number }}"
+          hx-trigger="click"
           @click="trackOpen = true"
           class="inline-flex w-full items-center justify-center gap-3 rounded-xl px-5 py-3 text-white shadow-sm transition duration-300 cursor-pointer sm:w-auto {% if episode.history %}bg-indigo-600 hover:bg-indigo-700{% else %}bg-gray-600 hover:bg-gray-700{% endif %}">
     {% if episode.history %}

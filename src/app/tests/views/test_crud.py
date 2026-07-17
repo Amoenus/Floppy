@@ -1006,6 +1006,63 @@ class EditMedia(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(Movie.objects.get(item__media_id="10494").score, 10)
 
+    @patch("app.models.providers.services.get_media_metadata")
+    def test_edit_episode_tracking_details(self, metadata_mock):
+        """Episode edits should persist the shared tracker fields."""
+        metadata_mock.return_value = {"season/1": {"episodes": []}}
+        season_item = Item.objects.create(
+            media_id="episode-edit-1",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Episode Edit",
+            image="http://example.com/season.jpg",
+            season_number=1,
+        )
+        season = Season.objects.create(
+            item=season_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        episode_item = Item.objects.create(
+            media_id="episode-edit-1",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="Episode One",
+            image="http://example.com/episode.jpg",
+            season_number=1,
+            episode_number=1,
+        )
+        episode = Episode.objects.create(
+            item=episode_item,
+            related_season=season,
+            end_date=datetime.datetime(2025, 1, 2, tzinfo=datetime.UTC),
+        )
+
+        response = self.client.post(
+            reverse("episode_save"),
+            {
+                "instance_id": episode.id,
+                "media_id": episode_item.media_id,
+                "source": episode_item.source,
+                "media_type": MediaTypes.EPISODE.value,
+                "season_number": 1,
+                "episode_number": 1,
+                "score": 8.5,
+                "status": Status.PAUSED.value,
+                "start_date": "2025-01-01",
+                "notes": "Paused midway",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        episode.refresh_from_db()
+        self.assertEqual(episode.score, 8.5)
+        self.assertEqual(episode.status, Status.PAUSED.value)
+        self.assertEqual(episode.start_date.date().isoformat(), "2025-01-01")
+        self.assertIsNone(episode.end_date)
+        self.assertEqual(episode.notes, "Paused midway")
+        self.assertFalse(episode.dropped)
+
     def test_edit_movie_htmx_returns_inline_detail_update(self):
         """HTMX saves should update the detail tracker in place."""
         item = Item.objects.create(

@@ -638,11 +638,13 @@ class Season(Media):
 
         for ep in episodes:
             ep_num = ep.item.episode_number
-            episode_counts[ep_num] = episode_counts.get(ep_num, 0) + 1
-            if ep_num and ep_num > max_episode_number:
-                max_episode_number = ep_num
             if ep.end_date is not None:
+                episode_counts[ep_num] = episode_counts.get(ep_num, 0) + 1
                 completed_episode_numbers.add(ep_num)
+            if (
+                ep.status in {Status.COMPLETED.value, Status.DROPPED.value}
+            ) and ep_num and ep_num > max_episode_number:
+                max_episode_number = ep_num
 
         cached = {
             "episode_counts": episode_counts,
@@ -774,7 +776,9 @@ class Season(Media):
 
         # What episodes do we have logged?
         episode_numbers = set(
-            self.episodes.values_list("item__episode_number", flat=True),
+            self.episodes.filter(
+                status__in=[Status.COMPLETED.value, Status.DROPPED.value],
+            ).values_list("item__episode_number", flat=True),
         )
         episode_numbers.discard(None)
         max_watched = max(episode_numbers) if episode_numbers else 0
@@ -1132,9 +1136,18 @@ class Season(Media):
 class Episode(models.Model):
     """Model for episodes of a season."""
 
+    tracker = FieldTracker(fields=["status", "dropped"])
     history = HistoricalRecords(
         cascade_delete_history=True,
-        excluded_fields=["item", "related_season", "created_at", "score"],
+        excluded_fields=[
+            "item",
+            "related_season",
+            "created_at",
+            "score",
+            "start_date",
+            "status",
+            "notes",
+        ],
     )
 
     created_at = models.DateTimeField(auto_now_add=True)
@@ -1145,6 +1158,13 @@ class Episode(models.Model):
         related_name="episodes",
     )
     end_date = models.DateTimeField(null=True, blank=True)
+    start_date = models.DateTimeField(null=True, blank=True)
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.COMPLETED.value,
+    )
+    notes = models.TextField(blank=True, default="")
     dropped = models.BooleanField(default=False)
     score = models.DecimalField(
         null=True,
@@ -1173,18 +1193,6 @@ class Episode(models.Model):
         return self.item.__str__()
 
     @property
-    def status(self):
-        """Expose season status for UI components that expect media.status."""
-        if hasattr(self, "_status_override"):
-            return self._status_override
-        related_season = getattr(self, "related_season", None)
-        return related_season.status if related_season else None
-
-    @status.setter
-    def status(self, value):
-        self._status_override = value
-
-    @property
     def progress(self):
         """Expose episode number as progress for list rendering/sorting fallbacks."""
         if hasattr(self, "_progress_override"):
@@ -1209,15 +1217,17 @@ class Episode(models.Model):
         self._max_progress_override = value
 
     @property
-    def start_date(self):
-        return None
-
-    @property
     def progressed_at(self):
         return None
 
     def save(self, *args, **kwargs):
         """Save the episode instance."""
+        if self.tracker.has_changed("status"):
+            self.dropped = self.status == Status.DROPPED.value
+        elif self.tracker.has_changed("dropped"):
+            self.status = (
+                Status.DROPPED.value if self.dropped else Status.COMPLETED.value
+            )
         super().save(*args, **kwargs)
 
         season_number = self.item.season_number

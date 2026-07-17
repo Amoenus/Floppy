@@ -449,13 +449,14 @@ class MediaManager(models.Manager):
         ):
             episode_qs = Episode.objects.select_related("item")
             if list_mode:
-                # Load only the two fields accessed in the list path:
-                # ep.item.episode_number and ep.end_date.  Deferring the
-                # remaining ~30 Item columns cuts Django object instantiation
-                # time proportionally for libraries with many episodes.
+                # Load only the fields accessed in the list path:
+                # ep.item.episode_number, ep.end_date, and ep.status. Deferring
+                # the remaining ~30 Item columns cuts Django object
+                # instantiation time proportionally for large libraries.
                 episode_qs = episode_qs.only(
                     "id",
                     "end_date",
+                    "status",
                     "related_season_id",
                     "item__id",
                     "item__episode_number",

@@ -11,7 +11,7 @@ from django.shortcuts import redirect, render
 from django.template.loader import render_to_string
 from django.views.decorators.http import require_POST
 
-from app import fork_services_episode, helpers
+from app import cache_utils, fork_services_episode, helpers
 from app.activity_builders import _build_detail_activity_state
 from app.discover import tab_cache as discover_tab_cache
 from app.forms import EpisodeForm, get_form_class
@@ -22,6 +22,7 @@ from app.models import (
     Item,
     MediaTypes,
     Sources,
+    Status,
 )
 from app.providers import services
 from app.services import metadata_resolution
@@ -455,20 +456,46 @@ def episode_save(request):
         fallback_media_type=MediaTypes.TV.value,
     )
 
-    form = EpisodeForm(request.POST)
+    instance_id = request.POST.get("instance_id")
+    episode_instance = None
+    if instance_id:
+        episode_instance = BasicMedia.objects.get_media(
+            request.user,
+            MediaTypes.EPISODE.value,
+            instance_id,
+        )
+        media_id = episode_instance.item.media_id
+        source = episode_instance.item.source
+        season_number = episode_instance.item.season_number
+        episode_number = episode_instance.item.episode_number
+
+    form = EpisodeForm(request.POST, instance=episode_instance, user=request.user)
     if not form.is_valid():
         logger.error("Form validation failed: %s", form.errors)
         return HttpResponseBadRequest("Invalid form data")
 
-    related_season = fork_services_episode.resolve_or_create_season(
-        request.user,
-        media_id,
-        source,
-        season_number,
-        library_media_type=library_media_type,
-    )
+    if episode_instance:
+        related_season = episode_instance.related_season
+        episode = form.save(commit=False)
+    else:
+        related_season = fork_services_episode.resolve_or_create_season(
+            request.user,
+            media_id,
+            source,
+            season_number,
+            library_media_type=library_media_type,
+        )
+        episode = form.save(commit=False)
+        episode.related_season = related_season
+        episode.item = related_season.get_episode_item(episode_number)
 
-    related_season.watch(episode_number, form.cleaned_data["end_date"])
+    episode.dropped = episode.status == Status.DROPPED.value
+    episode.save()
+    if hasattr(related_season, "_episode_stats_cache"):
+        delattr(related_season, "_episode_stats_cache")
+    related_season._sync_status_after_episode_change()
+    cache_utils.clear_time_left_cache_for_user(related_season.user_id)
+    cache_utils.clear_media_list_cache_for_user(related_season.user_id)
 
     if request.headers.get("HX-Request"):
         episode_history = list(
@@ -507,7 +534,11 @@ def episode_save(request):
             {
                 "closeModal": {},
                 "showToast": {
-                    "message": f"Added watch for episode {episode_number}.",
+                    "message": (
+                        f"Updated episode {episode_number}."
+                        if instance_id
+                        else f"Added watch for episode {episode_number}."
+                    ),
                     "type": "success",
                 },
             },

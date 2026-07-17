@@ -599,8 +599,21 @@ def _reconcile_competing_seasons(canonical_season, stray_season) -> None:
             existing.end_date is None or stray_ep.end_date > existing.end_date
         ):
             existing.end_date = stray_ep.end_date
+            existing.start_date = stray_ep.start_date
+            existing.status = stray_ep.status
+            existing.notes = stray_ep.notes
+            existing.score = stray_ep.score
             existing.dropped = stray_ep.dropped
-            existing.save(update_fields=["end_date", "dropped"])
+            existing.save(
+                update_fields=[
+                    "end_date",
+                    "start_date",
+                    "status",
+                    "notes",
+                    "score",
+                    "dropped",
+                ],
+            )
             stray_ep.delete()
         else:
             stray_ep.delete()

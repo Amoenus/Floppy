@@ -366,8 +366,7 @@ def get_track_fields():
             if field not in all_fields:
                 all_fields.append(field)
 
-    # Put start_date and end_date next to each other
-    # happens because Episode has end_date but not start_date
+    # Put start_date and end_date next to each other.
     if "start_date" in all_fields and "end_date" in all_fields:
         end_idx = all_fields.index("end_date")
 

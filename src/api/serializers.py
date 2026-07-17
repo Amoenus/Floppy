@@ -373,17 +373,16 @@ class EpisodeSerializer(serializers.ModelSerializer):
                 else None,
                 "tracked": True,
                 "created_at": instance.created_at,
-                # FORK: the fork's Episode model has score and dropped fields
-                # (statuses follow MEDIA_STATUS_MAP: 3=Completed, 4=Dropped).
+                # FORK: episodes expose the same tracking details as other media.
                 "score": float(instance.score)
                 if getattr(instance, "score", None) is not None
                 else None,
-                "status": 4 if getattr(instance, "dropped", False) else 3,
-                "progress": 0 if getattr(instance, "dropped", False) else 1,
+                "status": get_media_status(instance.status),
+                "progress": 1 if instance.end_date else 0,
                 "progressed_at": instance.end_date,
-                "start_date": instance.created_at,
+                "start_date": instance.start_date,
                 "end_date": instance.end_date,
-                "notes": None,
+                "notes": instance.notes,
                 "lists": lists_by_item_id.get(item.id, []),
             }
 
@@ -518,10 +517,7 @@ class HistorySerializer(serializers.Serializer):
         """Transform a user media instance into a watch history entry."""
         # For Episode instances, use simplified structure
         if isinstance(instance, Episode):
-            # FORK: the fork's Episode model has score and dropped fields —
-            # surface them instead of upstream's hardcoded None/watched values
-            # (statuses follow MEDIA_STATUS_MAP: 3=Completed, 4=Dropped).
-            dropped = bool(getattr(instance, "dropped", False))
+            # FORK: episodes expose the same tracking details as other media.
             return {
                 "consumption_id": instance.id,
                 "created": instance.created_at
@@ -530,18 +526,12 @@ class HistorySerializer(serializers.Serializer):
                 "score": float(instance.score)
                 if getattr(instance, "score", None) is not None
                 else None,
-                "progress": 0 if dropped else (1 if bool(instance) else 0),
-                "progressed_at": instance.created_at
-                if hasattr(instance, "created_at")
-                else None,
-                "status": 4 if dropped else (3 if bool(instance) else None),
-                "start_date": instance.created_at
-                if hasattr(instance, "created_at")
-                else None,
-                "end_date": instance.end_date
-                if hasattr(instance, "end_date")
-                else None,
-                "notes": "",
+                "progress": 1 if instance.end_date else 0,
+                "progressed_at": instance.end_date,
+                "status": get_media_status(instance.status),
+                "start_date": instance.start_date,
+                "end_date": instance.end_date,
+                "notes": instance.notes,
             }
         status = StatusField().to_representation(instance)
 
