@@ -45,10 +45,36 @@ class JellyfinClientTests(SimpleTestCase):
     @patch("integrations.jellyfin_client.requests.request")
     def test_server_error_raises_client_error(self, mock_request):
         """A 500 response should raise JellyfinClientError."""
-        mock_request.return_value = MagicMock(status_code=500)
+        mock_request.return_value = MagicMock(status_code=500, text="")
 
         with self.assertRaises(JellyfinClientError):
             self.client.healthcheck()
+
+    @patch("integrations.jellyfin_client.requests.request")
+    def test_error_message_includes_response_body(self, mock_request):
+        """Failure messages should carry a snippet of what Jellyfin answered."""
+        mock_request.return_value = MagicMock(
+            status_code=500,
+            text="Something exploded server-side",
+        )
+
+        with self.assertRaisesRegex(JellyfinClientError, "Something exploded"):
+            self.client.healthcheck()
+
+    @patch("integrations.jellyfin_client.requests.request")
+    def test_get_current_user_returns_none_on_client_error(self, mock_request):
+        """A 400 from /Users/Me (Dashboard API key) should resolve to no user."""
+        mock_request.return_value = MagicMock(status_code=400, text="Bad Request")
+
+        self.assertIsNone(self.client.get_current_user())
+
+    @patch("integrations.jellyfin_client.requests.request")
+    def test_get_current_user_still_raises_auth_error(self, mock_request):
+        """A 401 from /Users/Me means the key is bad and must propagate."""
+        mock_request.return_value = MagicMock(status_code=401)
+
+        with self.assertRaises(JellyfinAuthError):
+            self.client.get_current_user()
 
     @patch("integrations.jellyfin_client.requests.request")
     def test_get_current_user(self, mock_request):

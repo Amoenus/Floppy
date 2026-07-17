@@ -59,6 +59,35 @@ class JellyfinViewTests(TestCase):
         self.assertFalse(JellyfinAccount.objects.filter(user=self.user).exists())
         mock_current_user.assert_not_called()
 
+    @patch("integrations.views.JellyfinClient.find_user_by_name")
+    @patch("integrations.views.JellyfinClient.get_current_user")
+    @patch("integrations.views.JellyfinClient.healthcheck")
+    def test_connect_falls_back_to_username_for_dashboard_keys(
+        self,
+        mock_healthcheck,
+        mock_current_user,
+        mock_find_user,
+    ):
+        """A Dashboard API key (no Users/Me) should resolve via the username."""
+        mock_current_user.return_value = None
+        mock_find_user.return_value = {"Id": "jf-9", "Name": "danny"}
+
+        response = self.client.post(
+            reverse("jellyfin_connect"),
+            {
+                "base_url": "https://jellyfin.local:8096",
+                "api_key": "dashboard-key",
+                "username": "danny",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        account = JellyfinAccount.objects.get(user=self.user)
+        self.assertEqual(account.jellyfin_user_id, "jf-9")
+        self.assertEqual(account.jellyfin_username, "danny")
+        mock_healthcheck.assert_called_once()
+        mock_find_user.assert_called_once_with("danny")
+
     def test_connect_requires_username_fallback_when_me_unresolved(self):
         """Without Users/Me and no username fallback, connect should fail cleanly."""
         with (

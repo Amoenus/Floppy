@@ -46,9 +46,18 @@ class JellyfinClient:
         if response.status_code == 401:
             raise JellyfinAuthError("Jellyfin API key is invalid or unauthorized")
         if response.status_code >= 400:
-            raise JellyfinClientError(
-                f"Jellyfin request failed ({response.status_code}) for {path}",
+            body_snippet = (response.text or "").strip()[:200]
+            logger.warning(
+                "Jellyfin request failed: %s %s -> %s %s",
+                method,
+                path,
+                response.status_code,
+                body_snippet,
             )
+            message = f"Jellyfin request failed ({response.status_code}) for {path}"
+            if body_snippet:
+                message = f"{message}: {body_snippet}"
+            raise JellyfinClientError(message)
         return response
 
     def healthcheck(self) -> dict:
@@ -56,8 +65,18 @@ class JellyfinClient:
         return self._request("GET", "/System/Info").json()
 
     def get_current_user(self) -> dict | None:
-        """Resolve the Jellyfin user tied to this API key, if any."""
-        response = self._request("GET", "/Users/Me")
+        """Resolve the Jellyfin user tied to this API key, if any.
+
+        Dashboard API keys have no user context, so Jellyfin answers
+        /Users/Me with a 4xx; treat that as "no user" rather than an error
+        so callers can fall back to a username lookup.
+        """
+        try:
+            response = self._request("GET", "/Users/Me")
+        except JellyfinAuthError:
+            raise
+        except JellyfinClientError:
+            return None
         if not response.content:
             return None
         return response.json()

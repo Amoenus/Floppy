@@ -1131,7 +1131,8 @@ def jellyfin_connect(request):
         messages.error(
             request,
             "Could not resolve a Jellyfin user for this API key. "
-            "Provide the exact Jellyfin username.",
+            "Dashboard API keys are not tied to a user, so enter the exact "
+            "Jellyfin username in the username field and try again.",
         )
         return redirect("integrations")
 
