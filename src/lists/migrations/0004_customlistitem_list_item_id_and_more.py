@@ -56,6 +56,12 @@ def reverse_populate_list_item_id(apps, schema_editor):
 
 class Migration(migrations.Migration):
 
+    # The backfill can queue deferred PostgreSQL FK trigger events. Commit it
+    # before adding the unique constraint, otherwise PostgreSQL rejects the
+    # ALTER TABLE with "cannot ALTER TABLE ... because it has pending trigger
+    # events" (issue #352).
+    atomic = False
+
     dependencies = [
         ('app', '0051_migrate_simkl_periodoc_tasks'),
         ('lists', '0003_alter_customlist_unique_together_and_more'),
