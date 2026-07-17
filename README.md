@@ -127,7 +127,8 @@ services:
     container_name: yamtrack
     restart: unless-stopped
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     environment:
       - ALLOWED_HOSTS=yamtrack.yourdomain.com,your.lan.ip.address
       - DEBUG=False
@@ -146,7 +147,7 @@ services:
       - TZ=America/Chicago
       - WEB_CONCURRENCY=2
     volumes:
-      - ./db:/yamtrack/db
+      - yamtrack_db:/yamtrack/db
     ports:
       - "8000:8000"
 
@@ -164,6 +165,7 @@ services:
       - redis_data:/data
 
 volumes:
+  yamtrack_db:
   redis_data:
 ```
 
