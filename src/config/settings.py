@@ -394,6 +394,14 @@ CACHES = {
         "KEY_PREFIX": KEY_PREFIX,
         "OPTIONS": {
             "CLIENT_CLASS": "django_redis.client.DefaultClient",
+            # A half-dead Redis (TCP accepts, never replies) must raise
+            # promptly instead of blocking worker threads forever (#341).
+            "SOCKET_CONNECT_TIMEOUT": config(
+                "REDIS_SOCKET_CONNECT_TIMEOUT",
+                default=5,
+                cast=int,
+            ),
+            "SOCKET_TIMEOUT": config("REDIS_SOCKET_TIMEOUT", default=10, cast=int),
         },
     },
 }
