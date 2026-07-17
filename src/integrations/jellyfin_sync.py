@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 JELLYFIN_PUSH_INTERVAL_MINUTES = 60
 JELLYFIN_PUSH_TASK_NAME = "Push Watched State to Jellyfin"
+MAX_UNMATCHED_TITLES_LOGGED = 20
 
 _PROVIDER_FIELD_ORDER = ("Tmdb", "Imdb", "Tvdb")
 
@@ -74,6 +75,7 @@ class JellyfinPushSyncService:
         self.account = account
         self.counts = defaultdict(int)
         self.warnings: list[str] = []
+        self.unmatched_titles: set[str] = set()
 
     def sync(self) -> tuple[dict[str, int], str]:
         """Push watched state and return counts plus a warning message."""
@@ -82,6 +84,7 @@ class JellyfinPushSyncService:
 
         self.counts = defaultdict(int)
         self.warnings = []
+        self.unmatched_titles = set()
         client = self._build_client()
 
         movie_index, episode_index = self._build_indexes(client)
@@ -90,6 +93,7 @@ class JellyfinPushSyncService:
             self._push_movies(client, movie_index)
             self._push_episodes(client, episode_index)
 
+        self._log_unmatched_titles()
         return dict(self.counts), "\n".join(dict.fromkeys(self.warnings))
 
     def _build_client(self) -> JellyfinClient:
@@ -179,6 +183,31 @@ class JellyfinPushSyncService:
                 return match
         return None
 
+    def _record_no_match(self, item, *, title: str | None = None) -> None:
+        """Record a missing item and retain a bounded diagnostic sample."""
+        self.counts["skipped_no_match"] += 1
+        provider = _SOURCE_TO_JELLYFIN_PROVIDER[item.source]
+        title = title or item.title or "Untitled"
+        self.unmatched_titles.add(f"{title} [{provider}:{item.media_id}]")
+
+    def _log_unmatched_titles(self) -> None:
+        """Log a small, stable sample of distinct titles without flooding logs."""
+        if not self.unmatched_titles:
+            return
+
+        titles = sorted(self.unmatched_titles)
+        sample = titles[:MAX_UNMATCHED_TITLES_LOGGED]
+        remainder = len(titles) - len(sample)
+        suffix = f" (+{remainder} more)" if remainder else ""
+        logger.info(
+            "Jellyfin push sync found no matches for %d distinct titles; "
+            "showing %d: %s%s",
+            len(titles),
+            len(sample),
+            ", ".join(sample),
+            suffix,
+        )
+
     def _push_movies(self, client: JellyfinClient, movie_index: dict) -> None:
         movies = Movie.objects.filter(user=self.user).select_related("item")
         for movie in movies:
@@ -191,7 +220,7 @@ class JellyfinPushSyncService:
             keys = [(provider, item.media_id)]
             jf_item = self._lookup(movie_index, keys)
             if not jf_item:
-                self.counts["skipped_no_match"] += 1
+                self._record_no_match(item)
                 continue
 
             self._apply_state(
@@ -203,7 +232,7 @@ class JellyfinPushSyncService:
     def _push_episodes(self, client: JellyfinClient, episode_index: dict) -> None:
         episodes = Episode.objects.filter(
             related_season__user=self.user,
-        ).select_related("item")
+        ).select_related("item", "related_season__related_tv__item")
 
         for episode in episodes:
             item = episode.item
@@ -219,7 +248,10 @@ class JellyfinPushSyncService:
             keys = [(provider, item.media_id, item.season_number, item.episode_number)]
             jf_item = self._lookup(episode_index, keys)
             if not jf_item:
-                self.counts["skipped_no_match"] += 1
+                self._record_no_match(
+                    item,
+                    title=episode.related_season.related_tv.item.title,
+                )
                 continue
 
             watched = episode.end_date is not None and not episode.dropped

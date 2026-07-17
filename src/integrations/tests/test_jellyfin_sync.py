@@ -330,9 +330,25 @@ class JellyfinPushSyncServiceTests(TestCase):
         """Movies without a matching Jellyfin provider id are counted, not errored."""
         mock_items.return_value = iter([])
 
-        counts, _ = JellyfinPushSyncService(self.user, self.account).sync()
+        with self.assertLogs("integrations.jellyfin_sync", level="INFO") as logs:
+            counts, _ = JellyfinPushSyncService(self.user, self.account).sync()
 
         self.assertEqual(counts.get("skipped_no_match"), 1)
+        self.assertIn(
+            "1 distinct titles; showing 1: The Matrix [Tmdb:603]",
+            "\n".join(logs.output),
+        )
+
+    def test_unmatched_title_log_is_bounded(self):
+        """A large stale history should produce one concise diagnostic line."""
+        service = JellyfinPushSyncService(self.user, self.account)
+        service.unmatched_titles = {f"Title {number}" for number in range(21)}
+
+        with self.assertLogs("integrations.jellyfin_sync", level="INFO") as logs:
+            service._log_unmatched_titles()
+
+        self.assertIn("21 distinct titles; showing 20", logs.output[0])
+        self.assertIn("(+1 more)", logs.output[0])
 
     def test_sync_raises_when_not_connected(self):
         """Sync should refuse to run without a connected account."""
