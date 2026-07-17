@@ -90,7 +90,7 @@ class JellyfinClient:
         return None
 
     def iter_library_items(self):
-        """Yield Movie/Episode items with provider ids and play state for the user."""
+        """Yield Movie/Episode/Series items with provider ids and play state."""
         if not self.user_id:
             raise JellyfinClientError("Jellyfin user id is not set")
 
@@ -101,7 +101,7 @@ class JellyfinClient:
                 f"/Users/{self.user_id}/Items",
                 params={
                     "Recursive": "true",
-                    "IncludeItemTypes": "Movie,Episode",
+                    "IncludeItemTypes": "Movie,Episode,Series",
                     "Fields": "ProviderIds",
                     "StartIndex": start_index,
                     "Limit": LIBRARY_PAGE_SIZE,

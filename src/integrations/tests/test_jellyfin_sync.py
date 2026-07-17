@@ -23,29 +23,35 @@ def _jellyfin_movie(item_id, tmdb_id, *, played=False):
     }
 
 
-def _jellyfin_episode(item_id, tmdb_id, season_number, episode_number, *, played=False):
+def _jellyfin_series(series_id, *, tmdb_id=None, tvdb_id=None):
+    provider_ids = {}
+    if tmdb_id is not None:
+        provider_ids["Tmdb"] = str(tmdb_id)
+    if tvdb_id is not None:
+        provider_ids["Tvdb"] = str(tvdb_id)
     return {
-        "Id": item_id,
-        "Type": "Episode",
-        "ProviderIds": {"Tmdb": str(tmdb_id)},
-        "ParentIndexNumber": season_number,
-        "IndexNumber": episode_number,
-        "UserData": {"Played": played},
+        "Id": series_id,
+        "Type": "Series",
+        "ProviderIds": provider_ids,
     }
 
 
-def _jellyfin_episode_tvdb(
+def _jellyfin_episode(
     item_id,
-    tvdb_id,
+    series_id,
     season_number,
     episode_number,
     *,
     played=False,
+    episode_provider_ids=None,
 ):
+    # Real Jellyfin episode items carry episode-level provider ids (e.g. the
+    # TVDB episode id), never the series id — that lives on the Series item.
     return {
         "Id": item_id,
         "Type": "Episode",
-        "ProviderIds": {"Tvdb": str(tvdb_id)},
+        "SeriesId": series_id,
+        "ProviderIds": episode_provider_ids or {},
         "ParentIndexNumber": season_number,
         "IndexNumber": episode_number,
         "UserData": {"Played": played},
@@ -168,7 +174,17 @@ class JellyfinPushSyncServiceTests(TestCase):
             end_date=timezone.now(),
         )
         mock_items.return_value = iter(
-            [_jellyfin_episode("jf-ep-1", "1668", 1, 1, played=False)],
+            [
+                _jellyfin_series("jf-series-1", tmdb_id="1668"),
+                _jellyfin_episode(
+                    "jf-ep-1",
+                    "jf-series-1",
+                    1,
+                    1,
+                    played=False,
+                    episode_provider_ids={"Tvdb": "303821"},
+                ),
+            ],
         )
 
         counts, _ = JellyfinPushSyncService(self.user, self.account).sync()
@@ -219,13 +235,73 @@ class JellyfinPushSyncServiceTests(TestCase):
             end_date=timezone.now(),
         )
         mock_items.return_value = iter(
-            [_jellyfin_episode_tvdb("jf-ep-tvdb-1", "79168", 1, 1, played=False)],
+            [
+                _jellyfin_series("jf-series-tvdb", tvdb_id="79168"),
+                _jellyfin_episode("jf-ep-tvdb-1", "jf-series-tvdb", 1, 1, played=False),
+            ],
         )
 
         counts, _ = JellyfinPushSyncService(self.user, self.account).sync()
 
         mock_mark_played.assert_called_once_with("jf-ep-tvdb-1")
         self.assertEqual(counts.get("marked_played"), 1)
+
+    @patch("integrations.jellyfin_sync.JellyfinClient.iter_library_items")
+    def test_episode_with_unknown_series_is_skipped(self, mock_items):
+        """Episodes whose SeriesId has no Series entry should skip, not crash."""
+        tv_item = Item.objects.create(
+            media_id="1668",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Friends",
+        )
+        tv = TV.objects.create(
+            user=self.user,
+            item=tv_item,
+            status=Status.IN_PROGRESS.value,
+        )
+        season_item = Item.objects.create(
+            media_id="1668",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=1,
+            title="Friends Season 1",
+        )
+        season = Season.objects.create(
+            user=self.user,
+            item=season_item,
+            related_tv=tv,
+            status=Status.IN_PROGRESS.value,
+        )
+        episode_item = Item.objects.create(
+            media_id="1668",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=1,
+            episode_number=1,
+            title="The Pilot",
+        )
+        Episode.objects.create(
+            item=episode_item,
+            related_season=season,
+            end_date=timezone.now(),
+        )
+        mock_items.return_value = iter(
+            [_jellyfin_episode("jf-ep-orphan", "missing-series", 1, 1)],
+        )
+
+        counts, _ = JellyfinPushSyncService(self.user, self.account).sync()
+
+        self.assertEqual(counts.get("skipped_no_match"), 2)
+
+    @patch("integrations.jellyfin_sync.JellyfinClient.iter_library_items")
+    def test_empty_library_appends_warning(self, mock_items):
+        """An empty Jellyfin sweep should warn about library access."""
+        mock_items.return_value = iter([])
+
+        _, warnings = JellyfinPushSyncService(self.user, self.account).sync()
+
+        self.assertIn("no library items", warnings)
 
     @patch("integrations.jellyfin_sync.JellyfinClient.iter_library_items")
     def test_unsupported_source_is_counted_and_skipped(self, mock_items):

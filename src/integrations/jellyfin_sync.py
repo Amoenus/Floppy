@@ -73,6 +73,7 @@ class JellyfinPushSyncService:
         self.user = user
         self.account = account
         self.counts = defaultdict(int)
+        self.warnings: list[str] = []
 
     def sync(self) -> tuple[dict[str, int], str]:
         """Push watched state and return counts plus a warning message."""
@@ -80,6 +81,7 @@ class JellyfinPushSyncService:
             raise MediaImportError("Jellyfin is not connected for this user.")
 
         self.counts = defaultdict(int)
+        self.warnings = []
         client = self._build_client()
 
         movie_index, episode_index = self._build_indexes(client)
@@ -88,7 +90,7 @@ class JellyfinPushSyncService:
             self._push_movies(client, movie_index)
             self._push_episodes(client, episode_index)
 
-        return dict(self.counts), ""
+        return dict(self.counts), "\n".join(dict.fromkeys(self.warnings))
 
     def _build_client(self) -> JellyfinClient:
         api_key = decrypt(self.account.api_key)
@@ -111,27 +113,62 @@ class JellyfinPushSyncService:
         return client
 
     def _build_indexes(self, client: JellyfinClient):
-        """Build lookup indexes of Jellyfin library items keyed by provider id."""
+        """Build lookup indexes of Jellyfin library items keyed by provider id.
+
+        Jellyfin Episode items carry episode-level provider ids (e.g. the TVDB
+        episode id), while Yamtrack matches on the series-level id, so episodes
+        are keyed by their parent Series item's provider ids instead.
+        """
         movie_index: dict[tuple[str, str], dict] = {}
         episode_index: dict[tuple[str, str, int, int], dict] = {}
+        series_provider_keys: dict[str, set[tuple[str, str]]] = {}
+        episodes: list[dict] = []
+        total_items = 0
+        movie_count = 0
 
         try:
             for jf_item in client.iter_library_items():
+                total_items += 1
                 provider_ids = jf_item.get("ProviderIds") or {}
                 item_type = jf_item.get("Type")
 
                 if item_type == "Movie":
+                    movie_count += 1
                     for key in _provider_keys(provider_ids):
                         movie_index[key] = jf_item
+                elif item_type == "Series":
+                    series_id = jf_item.get("Id")
+                    if series_id:
+                        series_provider_keys[series_id] = _provider_keys(provider_ids)
                 elif item_type == "Episode":
-                    season_number = jf_item.get("ParentIndexNumber")
-                    episode_number = jf_item.get("IndexNumber")
-                    if season_number is None or episode_number is None:
-                        continue
-                    for provider, value in _provider_keys(provider_ids):
-                        episode_index[(provider, value, season_number, episode_number)] = jf_item
+                    episodes.append(jf_item)
         except (JellyfinAuthError, JellyfinClientError) as exc:
             raise MediaImportError(f"Could not read Jellyfin library: {exc}") from exc
+
+        indexed_episode_count = 0
+        for jf_item in episodes:
+            season_number = jf_item.get("ParentIndexNumber")
+            episode_number = jf_item.get("IndexNumber")
+            if season_number is None or episode_number is None:
+                continue
+            series_keys = series_provider_keys.get(jf_item.get("SeriesId"))
+            if not series_keys:
+                continue
+            indexed_episode_count += 1
+            for provider, value in series_keys:
+                episode_index[(provider, value, season_number, episode_number)] = jf_item
+
+        logger.info(
+            "Indexed %d Jellyfin movies, %d episodes (%d series) for push sync",
+            movie_count,
+            indexed_episode_count,
+            len(series_provider_keys),
+        )
+        if total_items == 0:
+            self.warnings.append(
+                "Jellyfin returned no library items — check that the API key "
+                "and user have library access.",
+            )
 
         return movie_index, episode_index
 

@@ -113,6 +113,7 @@ class JellyfinClientTests(SimpleTestCase):
         second_params = mock_request.call_args_list[1].kwargs["params"]
         self.assertEqual(first_params["StartIndex"], 0)
         self.assertEqual(second_params["StartIndex"], 2)
+        self.assertEqual(first_params["IncludeItemTypes"], "Movie,Episode,Series")
 
     @patch("integrations.jellyfin_client.requests.request")
     def test_mark_played_posts_to_played_items(self, mock_request):
