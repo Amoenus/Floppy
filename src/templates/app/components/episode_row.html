@@ -144,7 +144,7 @@
   {# Track button #}
   {% if not public_view|default:False %}
     <div class="shrink-0" x-data="{ trackOpen: false }">
-      {% include "app/components/detail_episode_track_button.html" with episode=episode detail_return_url=detail_return_url request=request track_button_oob=False only %}
+      {% include "app/components/detail_episode_track_button.html" with episode=episode detail_return_url=detail_return_url request=request track_button_oob=False target_suffix="-list" only %}
       <div x-show="trackOpen"
            @keydown.escape.window="trackOpen = false"
            class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
@@ -152,7 +152,7 @@
              style="width: min(96vw, 72rem);"
              @click.outside="trackOpen = false"
              @click.stop>
-          <div id="{% component_id 'track' episode %}"></div>
+          <div id="{% component_id 'track' episode %}-list"></div>
         </div>
       </div>
     </div>
