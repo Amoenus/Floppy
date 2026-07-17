@@ -30,22 +30,45 @@ class AddConstraintIfNotExists(migrations.AddConstraint):
 
 
 def populate_list_item_id(apps, schema_editor):
-    """Populate list_item_id for existing custom list items ordered by date_added."""
+    """Populate list_item_id for existing custom list items ordered by date_added.
+
+    Batches writes with bulk_update instead of one save() per row: on large
+    tables the per-row version does thousands of serial round trips with no
+    progress output, which can exceed the entrypoint's migrate timeout and
+    look like a hang (issue #341).
+    """
     CustomListItem = apps.get_model('lists', 'CustomListItem')
+    BATCH_SIZE = 1000
 
-    custom_list_ids = (
-        CustomListItem.objects.values_list('custom_list_id', flat=True)
-        .distinct()
-    )
+    items = CustomListItem.objects.order_by(
+        'custom_list_id',
+        'date_added',
+        'id',
+    ).iterator(chunk_size=BATCH_SIZE)
 
-    for custom_list_id in custom_list_ids:
-        list_items = CustomListItem.objects.filter(custom_list_id=custom_list_id).order_by(
-            'date_added',
-            'id',
-        )
-        for index, list_item in enumerate(list_items):
-            list_item.list_item_id = index
-            list_item.save(update_fields=['list_item_id'])
+    batch = []
+    current_list_id = object()
+    index = 0
+    processed = 0
+
+    for item in items:
+        if item.custom_list_id != current_list_id:
+            current_list_id = item.custom_list_id
+            index = 0
+        item.list_item_id = index
+        index += 1
+        batch.append(item)
+        processed += 1
+
+        if len(batch) >= BATCH_SIZE:
+            CustomListItem.objects.bulk_update(batch, ['list_item_id'], batch_size=BATCH_SIZE)
+            batch = []
+            print(f"  populate_list_item_id: {processed} items processed", flush=True)
+
+    if batch:
+        CustomListItem.objects.bulk_update(batch, ['list_item_id'], batch_size=BATCH_SIZE)
+
+    print(f"  populate_list_item_id: {processed} items processed (done)", flush=True)
 
 
 def reverse_populate_list_item_id(apps, schema_editor):
