@@ -7,7 +7,6 @@ from django.utils import timezone
 
 import events
 from app import history_cache
-from app.log_safety import exception_summary
 from app.mixins import disable_fetch_releases
 from integrations.imports import (
     anilist,
@@ -33,7 +32,11 @@ from integrations.imports import (
     trakt_collection,
     yamtrack,
 )
-from integrations.jellyfin_sync import JELLYFIN_PUSH_TASK_NAME, JellyfinPushSyncService
+from integrations.jellyfin_sync import (
+    JELLYFIN_PUSH_TASK_NAME,
+    JellyfinPushSyncService,
+    format_jellyfin_push_message,
+)
 from integrations.plex_watchlist import PlexWatchlistSyncService
 from integrations.tasks._import_helpers import (
     GOODREADS_IMPORT_TASK_NAME,
@@ -310,7 +313,7 @@ def push_jellyfin_watched(user_id):
         last_error_message="",
     )
 
-    return format_import_message(push_counts, warnings)
+    return format_jellyfin_push_message(push_counts, warnings)
 
 
 @shared_task(name="Import from Audiobookshelf")

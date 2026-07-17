@@ -7,7 +7,10 @@ from django.utils import timezone
 from app.models import TV, Episode, Item, MediaTypes, Movie, Season, Sources, Status
 from integrations import tasks
 from integrations.imports.helpers import MediaImportError, encrypt
-from integrations.jellyfin_sync import JellyfinPushSyncService
+from integrations.jellyfin_sync import (
+    JellyfinPushSyncService,
+    format_jellyfin_push_message,
+)
 from integrations.models import JellyfinAccount
 
 
@@ -25,6 +28,24 @@ def _jellyfin_episode(item_id, tmdb_id, season_number, episode_number, *, played
         "Id": item_id,
         "Type": "Episode",
         "ProviderIds": {"Tmdb": str(tmdb_id)},
+        "ParentIndexNumber": season_number,
+        "IndexNumber": episode_number,
+        "UserData": {"Played": played},
+    }
+
+
+def _jellyfin_episode_tvdb(
+    item_id,
+    tvdb_id,
+    season_number,
+    episode_number,
+    *,
+    played=False,
+):
+    return {
+        "Id": item_id,
+        "Type": "Episode",
+        "ProviderIds": {"Tvdb": str(tvdb_id)},
         "ParentIndexNumber": season_number,
         "IndexNumber": episode_number,
         "UserData": {"Played": played},
@@ -155,6 +176,79 @@ class JellyfinPushSyncServiceTests(TestCase):
         mock_mark_played.assert_called_once_with("jf-ep-1")
         self.assertEqual(counts.get("marked_played"), 1)
 
+    @patch("integrations.jellyfin_sync.JellyfinClient.mark_played")
+    @patch("integrations.jellyfin_sync.JellyfinClient.iter_library_items")
+    def test_pushes_watched_episode_tracked_via_tvdb(
+        self,
+        mock_items,
+        mock_mark_played,
+    ):
+        """Shows tracked with TVDB as the identity provider should still match."""
+        tv_item = Item.objects.create(
+            media_id="79168",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Peep Show",
+        )
+        TV.objects.create(user=self.user, item=tv_item, status=Status.IN_PROGRESS.value)
+        season_item = Item.objects.create(
+            media_id="79168",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=1,
+            title="Peep Show Season 1",
+        )
+        tv = TV.objects.get(item=tv_item, user=self.user)
+        season = Season.objects.create(
+            user=self.user,
+            item=season_item,
+            related_tv=tv,
+            status=Status.IN_PROGRESS.value,
+        )
+        episode_item = Item.objects.create(
+            media_id="79168",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=1,
+            episode_number=1,
+            title="Warring Factions",
+        )
+        Episode.objects.create(
+            item=episode_item,
+            related_season=season,
+            end_date=timezone.now(),
+        )
+        mock_items.return_value = iter(
+            [_jellyfin_episode_tvdb("jf-ep-tvdb-1", "79168", 1, 1, played=False)],
+        )
+
+        counts, _ = JellyfinPushSyncService(self.user, self.account).sync()
+
+        mock_mark_played.assert_called_once_with("jf-ep-tvdb-1")
+        self.assertEqual(counts.get("marked_played"), 1)
+
+    @patch("integrations.jellyfin_sync.JellyfinClient.iter_library_items")
+    def test_unsupported_source_is_counted_and_skipped(self, mock_items):
+        """Items tracked via a source Jellyfin can't expose (e.g. MAL) are skipped."""
+        anime_item = Item.objects.create(
+            media_id="1",
+            source=Sources.MAL.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Anime Movie",
+        )
+        Movie.objects.create(
+            user=self.user,
+            item=anime_item,
+            status=Status.COMPLETED.value,
+        )
+        mock_items.return_value = iter([])
+
+        counts, _ = JellyfinPushSyncService(self.user, self.account).sync()
+
+        self.assertEqual(counts.get("skipped_unsupported_source"), 1)
+        # The setUp movie (TMDB-sourced) has no matching Jellyfin item either.
+        self.assertEqual(counts.get("skipped_no_match"), 1)
+
     @patch("integrations.jellyfin_sync.JellyfinClient.iter_library_items")
     def test_no_match_is_counted_and_skipped(self, mock_items):
         """Movies without a matching Jellyfin provider id are counted, not errored."""
@@ -171,6 +265,36 @@ class JellyfinPushSyncServiceTests(TestCase):
 
         with self.assertRaises(MediaImportError):
             JellyfinPushSyncService(self.user, self.account).sync()
+
+
+class FormatJellyfinPushMessageTests(TestCase):
+    """Cover the push-sync result message formatter."""
+
+    def test_all_zero_counts_reads_as_nothing_to_sync(self):
+        """A run that changed nothing should say so explicitly, not vaguely."""
+        message = format_jellyfin_push_message({})
+        self.assertIn("Nothing to sync", message)
+
+    def test_marked_counts_are_reported(self):
+        """Non-zero marked_played/marked_unplayed counts should be summarized."""
+        message = format_jellyfin_push_message(
+            {"marked_played": 3, "marked_unplayed": 1},
+        )
+        self.assertIn("marked 3 watched", message)
+        self.assertIn("marked 1 unwatched", message)
+
+    def test_skip_reasons_are_reported(self):
+        """Skip counters should surface why items weren't touched."""
+        message = format_jellyfin_push_message(
+            {"skipped_no_match": 2, "skipped_unsupported_source": 1},
+        )
+        self.assertIn("2 had no Jellyfin match", message)
+        self.assertIn("1 use an unsupported metadata source", message)
+
+    def test_warning_text_is_appended(self):
+        """Warning text, when present, should be appended to the message."""
+        message = format_jellyfin_push_message({"marked_played": 1}, "some warning")
+        self.assertIn("some warning", message)
 
 
 class PushJellyfinWatchedTaskTests(TestCase):

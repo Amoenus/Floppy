@@ -18,6 +18,43 @@ JELLYFIN_PUSH_TASK_NAME = "Push Watched State to Jellyfin"
 
 _PROVIDER_FIELD_ORDER = ("Tmdb", "Imdb", "Tvdb")
 
+_SOURCE_TO_JELLYFIN_PROVIDER = {
+    Sources.TMDB.value: "Tmdb",
+    Sources.TVDB.value: "Tvdb",
+    Sources.IMDB.value: "Imdb",
+}
+
+
+def format_jellyfin_push_message(push_counts: dict, warning_text: str = "") -> str:
+    """Format a human-readable result message for a Jellyfin push sync run."""
+    parts = []
+
+    marked_played = push_counts.get("marked_played", 0)
+    if marked_played:
+        parts.append(f"marked {marked_played} watched")
+
+    marked_unplayed = push_counts.get("marked_unplayed", 0)
+    if marked_unplayed:
+        parts.append(f"marked {marked_unplayed} unwatched")
+
+    skipped_no_match = push_counts.get("skipped_no_match", 0)
+    if skipped_no_match:
+        parts.append(f"{skipped_no_match} had no Jellyfin match")
+
+    skipped_unsupported = push_counts.get("skipped_unsupported_source", 0)
+    if skipped_unsupported:
+        parts.append(f"{skipped_unsupported} use an unsupported metadata source")
+
+    if not parts:
+        message = "Nothing to sync — Jellyfin already matched Yamtrack's watched state."
+    else:
+        message = "Jellyfin sync: " + ", ".join(parts) + "."
+
+    if warning_text:
+        message = f"{message}\n{warning_text}"
+
+    return message
+
 
 def _provider_keys(provider_ids: dict) -> set[tuple[str, str]]:
     """Return (provider, value) pairs present on a Jellyfin item."""
@@ -109,10 +146,12 @@ class JellyfinPushSyncService:
         movies = Movie.objects.filter(user=self.user).select_related("item")
         for movie in movies:
             item = movie.item
-            if item.source != Sources.TMDB.value:
+            provider = _SOURCE_TO_JELLYFIN_PROVIDER.get(item.source)
+            if not provider:
+                self.counts["skipped_unsupported_source"] += 1
                 continue
 
-            keys = [("Tmdb", item.media_id)]
+            keys = [(provider, item.media_id)]
             jf_item = self._lookup(movie_index, keys)
             if not jf_item:
                 self.counts["skipped_no_match"] += 1
@@ -131,12 +170,16 @@ class JellyfinPushSyncService:
 
         for episode in episodes:
             item = episode.item
-            if not item or item.source != Sources.TMDB.value:
+            if not item:
+                continue
+            provider = _SOURCE_TO_JELLYFIN_PROVIDER.get(item.source)
+            if not provider:
+                self.counts["skipped_unsupported_source"] += 1
                 continue
             if item.season_number is None or item.episode_number is None:
                 continue
 
-            keys = [("Tmdb", item.media_id, item.season_number, item.episode_number)]
+            keys = [(provider, item.media_id, item.season_number, item.episode_number)]
             jf_item = self._lookup(episode_index, keys)
             if not jf_item:
                 self.counts["skipped_no_match"] += 1
