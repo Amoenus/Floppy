@@ -39,6 +39,7 @@ from integrations.tasks._media_imports import (
     import_imdb,
     import_kitsu,
     import_mal,
+    import_mdblist,
     import_media,
     import_plex,
     import_pocketcasts,

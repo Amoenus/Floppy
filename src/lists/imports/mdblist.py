@@ -9,20 +9,28 @@ visibility survive recurring refreshes.
 import logging
 import re
 
-import requests
 from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
 from app.models import Item, MediaTypes, Sources
-from app.providers import services, tmdb
+from app.providers import services
 from integrations.imports import helpers
+
+# Shared MDBList client helpers live with the full-account importer; keep the
+# old private names so existing call sites and test patch targets still work.
+from integrations.imports.mdblist import (
+    PAGE_SIZE,
+    validate_api_key,  # noqa: F401  (re-exported for views_mdblist)
+)
+from integrations.imports.mdblist import (
+    normalize_items_response as _normalize_items_response,
+)
+from integrations.imports.mdblist import request as _request
+from integrations.imports.mdblist import resolve_tmdb_id as _resolve_tmdb_id
 from lists.models import CustomList, CustomListItem
 
 logger = logging.getLogger(__name__)
-
-MDBLIST_API_BASE_URL = "https://api.mdblist.com"
-PAGE_SIZE = 500
 
 LIST_URL_PATTERN = re.compile(
     r"(?:https?://)?(?:www\.)?mdblist\.com/lists/([^/\s]+)/([^/\s?#]+)",
@@ -32,25 +40,6 @@ MEDIATYPE_MAP = {
     "movie": MediaTypes.MOVIE.value,
     "show": MediaTypes.TV.value,
 }
-
-
-def _request(api_key, path, params=None):
-    """Make an MDBList API request, translating auth failures."""
-    params = {**(params or {}), "apikey": api_key}
-    url = f"{MDBLIST_API_BASE_URL}{path}"
-    try:
-        return services.api_request("MDBLIST", "GET", url, params=params)
-    except requests.exceptions.HTTPError as error:
-        status_code = getattr(error.response, "status_code", None)
-        if status_code in (401, 403):
-            msg = "MDBList API key is invalid or revoked."
-            raise helpers.MediaImportError(msg) from error
-        raise
-
-
-def validate_api_key(api_key):
-    """Validate an MDBList API key and return the account info."""
-    return _request(api_key, "/user")
 
 
 def get_list_info(api_key, list_id):
@@ -114,47 +103,6 @@ def _get_list_items(api_key, list_id):
             break
         offset += PAGE_SIZE
     return all_entries
-
-
-def _normalize_items_response(response):
-    """Flatten flat-array or {"movies": [], "shows": []} item responses."""
-    if isinstance(response, list):
-        return response
-    if isinstance(response, dict):
-        entries = []
-        for key in ("movies", "shows"):
-            group = response.get(key) or []
-            mediatype = "movie" if key == "movies" else "show"
-            for entry in group:
-                entry.setdefault("mediatype", mediatype)
-                entries.append(entry)
-        return entries
-    return []
-
-
-def _resolve_tmdb_id(entry, media_type):
-    """Resolve an MDBList entry to a TMDB id, using /find as fallback."""
-    ids = entry.get("ids") or {}
-    tmdb_id = ids.get("tmdb") or entry.get("tmdb_id")
-    if tmdb_id:
-        return tmdb_id
-
-    key = "movie_results" if media_type == MediaTypes.MOVIE.value else "tv_results"
-    lookups = [(ids.get("imdb") or entry.get("imdb_id"), "imdb_id")]
-    if media_type == MediaTypes.TV.value:
-        lookups.append((ids.get("tvdb") or entry.get("tvdb_id"), "tvdb_id"))
-
-    for external_id, external_source in lookups:
-        if not external_id:
-            continue
-        try:
-            found = tmdb.find(external_id, external_source)
-        except services.ProviderAPIError:
-            continue
-        results = (found or {}).get(key) or []
-        if results:
-            return results[0].get("id")
-    return None
 
 
 def _build_item_from_entry(entry):

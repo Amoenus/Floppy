@@ -20,6 +20,7 @@ from integrations.imports import (
     imdb,
     kitsu,
     mal,
+    mdblist,
     plex,
     pocketcasts,
     radarr,
@@ -125,6 +126,22 @@ def import_trakt(user_id, mode, token=None, username=None):
     Can import using either OAuth (token provided) or public username.
     """
     return import_media(trakt.importer, token, user_id, mode, username)
+
+
+@shared_task(name="Import from MDBList")
+def import_mdblist(user_id, mode, username=None):  # noqa: ARG001
+    """Celery task for importing tracking data from MDBList.
+
+    The API key is decrypted from the user's MDBListAccount at run time so
+    recurring schedules never persist it in PeriodicTask kwargs.
+    """
+    user = get_user_model().objects.get(id=user_id)
+    account = getattr(user, "mdblist_account", None)
+    if account is None:
+        msg = "Connect your MDBList account before importing."
+        raise helpers.MediaImportError(msg)
+    api_key = helpers.decrypt(account.api_key)
+    return import_media(mdblist.importer, api_key, user_id, mode)
 
 
 @shared_task(name="Import from SIMKL")

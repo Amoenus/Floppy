@@ -1485,6 +1485,7 @@ class User(AbstractUser):
                 "Import from GoodReads",
                 "integrations.tasks.import_goodreads",
             ],
+            "mdblist": ["Import from MDBList", "Import MDBList Lists"],
             "plex": ["Import from Plex", "Sync Plex Watchlist"],
             "radarr": ["Import from Radarr", "Import from Radarr (Recurring)"],
             "sonarr": ["Import from Sonarr", "Import from Sonarr (Recurring)"],

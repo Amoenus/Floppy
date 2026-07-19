@@ -186,7 +186,7 @@ class MDBListImportTests(TestCase):
         media_ids = set(resynced.items.values_list("media_id", flat=True))
         self.assertEqual(media_ids, {"101", "102"})
 
-    @patch("lists.imports.mdblist.tmdb.find")
+    @patch("integrations.imports.mdblist.tmdb.find")
     @patch("lists.imports.mdblist._get_metadata")
     @patch("lists.imports.mdblist._get_list_items")
     @patch("lists.imports.mdblist._request")

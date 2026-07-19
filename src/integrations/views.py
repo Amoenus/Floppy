@@ -26,7 +26,7 @@ from app.log_safety import exception_summary
 from integrations import exports, gpodder_api, lastfm_api, pocketcasts_api, tasks
 from integrations import plex as plex_api
 from integrations.gpodder_api import GPodderAuthError, GPodderClientError
-from integrations.imports import anilist, helpers, simkl, stremio, trakt
+from integrations.imports import anilist, helpers, mdblist, simkl, stremio, trakt
 from integrations.imports.audiobookshelf import (
     AudiobookshelfAuthError,
     AudiobookshelfClient,
@@ -49,6 +49,7 @@ from integrations.models import (
     GPodderAccount,
     JellyfinAccount,
     LastFMAccount,
+    MDBListAccount,
     PlexAccount,
     PocketCastsAccount,
     RadarrAccount,
@@ -469,6 +470,51 @@ def import_trakt_public(request):
             frequency=frequency,
             import_time=import_time,
             source="Trakt",
+        )
+    return redirect("import_data")
+
+
+@require_POST
+def import_mdblist(request):
+    """View for importing MDBList tracking data (watched, ratings, etc.)."""
+    mode = request.POST["mode"]
+    frequency = request.POST["frequency"]
+    import_time = request.POST["time"]
+    api_key = request.POST.get("api_key", "").strip()
+
+    account = MDBListAccount.objects.filter(user=request.user).first()
+    if api_key:
+        try:
+            mdblist.validate_api_key(api_key)
+        except helpers.MediaImportError:
+            messages.error(
+                request,
+                "Could not validate the MDBList API key. Check it and try again.",
+            )
+            return redirect("import_data")
+        account, _ = MDBListAccount.objects.update_or_create(
+            user=request.user,
+            defaults={
+                "api_key": helpers.encrypt(api_key),
+                "connection_broken": False,
+                "last_error_message": "",
+            },
+        )
+    elif account is None:
+        messages.error(request, "An MDBList API key is required.")
+        return redirect("import_data")
+
+    if frequency == "once":
+        tasks.import_mdblist.delay(user_id=request.user.id, mode=mode)
+        messages.info(request, "The task to import media from MDBList has been queued.")
+    else:
+        helpers.create_import_schedule(
+            username=request.user.username,
+            request=request,
+            mode=mode,
+            frequency=frequency,
+            import_time=import_time,
+            source="MDBList",
         )
     return redirect("import_data")
 

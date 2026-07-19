@@ -15,6 +15,7 @@ urlpatterns = [
         views.import_trakt_collection_csv,
         name="import_trakt_collection_csv",
     ),
+    path("import/mdblist", views.import_mdblist, name="import_mdblist"),
     path("import/plex/connect", views.plex_connect, name="plex_connect"),
     path("import/plex/callback", views.plex_callback, name="plex_callback"),
     path("import/plex/disconnect", views.plex_disconnect, name="plex_disconnect"),

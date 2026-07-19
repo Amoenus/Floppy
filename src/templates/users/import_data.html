@@ -1276,6 +1276,52 @@
           </form>
         </div>
 
+        {# MDBList #}
+        <div class="bg-[#39404b] p-4 rounded-lg"
+             x-show="sourceSupports(['screen'])"
+             x-transition.opacity.duration.150ms>
+          <div class="flex items-center mb-3">{% source_display "mdblist" %}</div>
+          <p class="text-sm text-gray-400 mb-3">Import watched history, watchlist, ratings, dropped shows and collection. Lists sync separately from the Lists page.</p>
+
+          <form method="post" action="{% url 'import_mdblist' %}">
+            {% csrf_token %}
+            <input type="hidden" name="frequency" x-model="importFrequency">
+            <input type="hidden" name="time" x-model="importTime">
+            <input type="hidden" name="mode" x-model="importMode">
+
+            {% if user.mdblist_account.is_connected %}
+              <p class="text-xs text-gray-400 mb-3">Using your connected MDBList account.</p>
+              <button type="submit"
+                      class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      :class="standardImportsDisabled() ? 'bg-gray-600 text-gray-400 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-700'"
+                      :disabled="standardImportsDisabled()">
+                Import
+              </button>
+            {% else %}
+              <div class="flex w-full">
+                <input placeholder="MDBList API key"
+                       name="api_key"
+                       class="relative w-full py-2 px-3 bg-[#2a2f35] rounded-l-md text-white text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+                       type="password"
+                       required>
+                <button type="submit"
+                        class="px-3 py-2 rounded-r-md transition-colors text-sm border cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                        :class="standardImportsDisabled() ? 'bg-gray-600 text-gray-400 border-gray-600 cursor-not-allowed' : 'bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700'"
+                        :disabled="standardImportsDisabled()">
+                  Import
+                </button>
+              </div>
+              <p class="text-xs text-gray-400 mt-2">
+                Get your API key from
+                <a href="https://mdblist.com/preferences/"
+                   target="_blank"
+                   class="text-indigo-300 underline hover:text-indigo-200">MDBList Preferences</a>.
+                Connecting also enables list sync from the Lists page.
+              </p>
+            {% endif %}
+          </form>
+        </div>
+
         {# Simkl #}
         <div class="bg-[#39404b] p-4 rounded-lg"
              x-show="sourceSupports(['screen', 'anime_manga'])"

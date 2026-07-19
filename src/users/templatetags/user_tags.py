@@ -61,6 +61,10 @@ SOURCES_CONFIG = {
         "name": "Goodreads",
         "logo": static("img/logo-goodreads.svg"),
     },
+    "mdblist": {
+        "name": "MDBList",
+        "logo": static("favicon/apple-touch-icon.png"),
+    },
     "plex": {
         "name": "Plex",
         "logo": static("img/plex-logo.svg"),
