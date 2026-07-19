@@ -1,10 +1,10 @@
-aiohttp==3.13.4
+aiohttp==3.14.1
 apprise==1.9.9
 beautifulsoup4==4.14.3
 celery==5.6.3
 croniter==6.2.2
 defusedxml==0.7.1
-Django==5.2.12
+Django==5.2.16
 django-allauth[socialaccount]==65.15.0
 django-celery-beat==2.9.0
 django-celery-results==2.6.0
@@ -19,7 +19,7 @@ djangorestframework==3.16.1
 drf-spectacular==0.29.0
 gunicorn==25.3.0
 icalendar==7.0.3
-Pillow==12.1.1
+Pillow==12.3.0
 psycopg[binary,pool]==3.3.3
 python-decouple==3.8
 pyotp==2.9.0

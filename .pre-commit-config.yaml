@@ -4,6 +4,12 @@ repos:
     hooks:
       - id: detect-secrets
         args: ["--baseline", ".secrets.baseline"]
+  - repo: https://github.com/pypa/pip-audit
+    rev: v2.10.1
+    hooks:
+      - id: pip-audit
+        args: ["-r", "requirements.txt"]
+        files: ^requirements(-dev)?\.txt$
   - repo: local
     hooks:
       - id: check-migrations
