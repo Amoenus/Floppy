@@ -98,7 +98,7 @@ class SimklImporter:
             user: Django user object to import data for
             mode (str): Import mode ("new" or "overwrite")
         """
-        self.token = helpers.decrypt(token)
+        self.token = helpers.decrypt_or_raise(token)
         self.user = user
         self.mode = mode
         self.warnings = []

@@ -266,7 +266,7 @@ class ProviderAPIError(Exception):
                 provider_label,
                 exception_summary(error),
             )
-            message = f"Could not reach {provider_label}"
+            message = f"Could not reach {provider_label} ({exception_summary(error)})"
         else:
             if response_keys:
                 log_method(

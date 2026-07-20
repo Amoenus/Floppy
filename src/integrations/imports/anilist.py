@@ -111,7 +111,7 @@ class AniListImporter:
         self.warnings = []
 
         if self.token is not None:
-            self.token = helpers.decrypt(self.token)
+            self.token = helpers.decrypt_or_raise(self.token)
 
         # Track existing media for "new" mode
         self.existing_media = helpers.get_existing_media(user)

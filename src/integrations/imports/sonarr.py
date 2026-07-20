@@ -9,7 +9,11 @@ from django.utils import timezone
 
 from app.models import CollectionEntry, Item, MediaTypes, Sources
 from app.providers import services
-from integrations.imports.helpers import MediaImportError, decrypt, retry_on_lock
+from integrations.imports.helpers import (
+    MediaImportError,
+    decrypt_or_raise,
+    retry_on_lock,
+)
 from integrations.models import SonarrAccount
 from integrations.source_sync import (
     remove_collection_source_state,
@@ -78,10 +82,17 @@ class SonarrImporter:
             msg = "Connect Sonarr before importing"
             raise MediaImportError(msg) from error
 
-        self.client = SonarrClient(
-            self.account.base_url,
-            decrypt(self.account.api_key),
-        )
+        try:
+            api_key = decrypt_or_raise(self.account.api_key)
+        except MediaImportError as error:
+            self.account.connection_broken = True
+            self.account.last_error_message = str(error)
+            self.account.save(
+                update_fields=["connection_broken", "last_error_message", "updated_at"],
+            )
+            raise
+
+        self.client = SonarrClient(self.account.base_url, api_key)
         self.warnings = []
 
     def import_data(self):

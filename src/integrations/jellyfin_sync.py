@@ -4,7 +4,7 @@ import logging
 from collections import defaultdict
 
 from app.models import Episode, Movie, Sources, Status
-from integrations.imports.helpers import MediaImportError, decrypt
+from integrations.imports.helpers import MediaImportError, decrypt_or_raise
 from integrations.jellyfin_client import (
     JellyfinAuthError,
     JellyfinClient,
@@ -97,7 +97,7 @@ class JellyfinPushSyncService:
         return dict(self.counts), "\n".join(dict.fromkeys(self.warnings))
 
     def _build_client(self) -> JellyfinClient:
-        api_key = decrypt(self.account.api_key)
+        api_key = decrypt_or_raise(self.account.api_key)
         client = JellyfinClient(self.account.base_url, api_key, self.account.jellyfin_user_id or None)
 
         if not self.account.jellyfin_user_id:
