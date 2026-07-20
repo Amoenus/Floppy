@@ -854,6 +854,100 @@ class MediaCoreTests(YamtrackApiTestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("no valid fields", response.json().get("detail", "").lower())
 
+    def _mock_movie_metadata(self, mock_metadata):
+        """Configure a minimal valid movie metadata mock for PATCH tests."""
+        mock_metadata.return_value = {
+            "media_id": 550,
+            "source": "tmdb",
+            "source_url": "https://www.themoviedb.org/movie/550",
+            "media_type": "movie",
+            "title": "Fight Club",
+            "max_progress": 1,
+            "image": "https://image.tmdb.org/t/p/w500/placeholder.jpg",
+            "synopsis": "A depressed man forms an underground fight club.",
+            "genres": ["Drama"],
+            "score": 8.4,
+            "score_count": 100,
+            "details": {
+                "format": "Movie",
+                "release_date": "1999-10-15",
+                "status": "Released",
+                "runtime": "2h 19m",
+                "studios": ["Fox 2000 Pictures"],
+                "country": "United States of America",
+                "languages": ["English"],
+            },
+            "related": {"recommendations": []},
+        }
+
+    @patch("api.views.services.get_media_metadata")
+    def test_media_detail_patch_accepts_string_status_label(self, mock_metadata):
+        """Media PATCH should accept a human-readable status label."""
+        self._mock_movie_metadata(mock_metadata)
+        movie_item = self.items_by_type[MediaTypes.MOVIE.value][0]
+        response = self.call_api(
+            "patch",
+            "api_media_detail",
+            args=(MediaTypes.MOVIE.value, movie_item.source, movie_item.media_id),
+            payload={"status": "Completed"},
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["consumptions"][0]["status"], 3)
+
+    @patch("api.views.services.get_media_metadata")
+    def test_media_detail_patch_accepts_case_insensitive_status_label(
+        self,
+        mock_metadata,
+    ):
+        """Media PATCH should accept a status label regardless of casing."""
+        self._mock_movie_metadata(mock_metadata)
+        movie_item = self.items_by_type[MediaTypes.MOVIE.value][0]
+        response = self.call_api(
+            "patch",
+            "api_media_detail",
+            args=(MediaTypes.MOVIE.value, movie_item.source, movie_item.media_id),
+            payload={"status": "in progress"},
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["consumptions"][0]["status"], 1)
+
+    @patch("api.views.services.get_media_metadata")
+    def test_media_detail_patch_accepts_numeric_string_status(self, mock_metadata):
+        """Media PATCH should accept a status code sent as a numeric string."""
+        self._mock_movie_metadata(mock_metadata)
+        movie_item = self.items_by_type[MediaTypes.MOVIE.value][0]
+        response = self.call_api(
+            "patch",
+            "api_media_detail",
+            args=(MediaTypes.MOVIE.value, movie_item.source, movie_item.media_id),
+            payload={"status": "3"},
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["consumptions"][0]["status"], 3)
+
+    def test_media_detail_patch_rejects_unknown_status_label(self):
+        """Media PATCH should reject a status label that doesn't match any status."""
+        movie_item = self.items_by_type[MediaTypes.MOVIE.value][0]
+        response = self.call_api(
+            "patch",
+            "api_media_detail",
+            args=(MediaTypes.MOVIE.value, movie_item.source, movie_item.media_id),
+            payload={"status": "not-a-status"},
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("invalid status value", response.json().get("detail", "").lower())
+
     def test_media_changes_history_returns_paginated_payload(self):
         """Changes history endpoint should return change entries."""
         movie_item = self.items_by_type[MediaTypes.MOVIE.value][0]
