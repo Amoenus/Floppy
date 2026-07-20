@@ -313,7 +313,7 @@ class MediaCoreTests(YamtrackApiTestCase):
     @patch("api.views.services.get_media_metadata")
     def test_media_detail_get_returns_expected_shape(self, mock_metadata):
         """Media detail GET should return a complete serialized payload."""
-        # TODO: Use real mock data fixtures instead of hardcoding values
+        # TODO: Use real mock data fixtures instead of hardcoding values  # noqa: FIX002
         tv_item = self.items_by_type[MediaTypes.TV.value][0]
         mock_metadata.return_value = {
             "media_id": 1,
@@ -323,7 +323,7 @@ class MediaCoreTests(YamtrackApiTestCase):
             "title": "Pride",
             "max_progress": 11,
             "image": "https://image.tmdb.org/t/p/w500/rnahKduAA2VZFgrXemu97Fh6OD2.jpg",
-            "synopsis": "Haru Satonaka is the captain of an ice-hockey team, a star athlete who stakes everything on hockey but can only consider love as a game. Aki Murase is a woman who has been waiting for her lover who went abroad two years ago. These two persons start a relationship while frankly admitting to each other that it is only a love game. …The result is the unfolding of a drama of people with their respective pasts and with their pride as individuals.",
+            "synopsis": "Haru Satonaka is the captain of an ice-hockey team, a star athlete who stakes everything on hockey but can only consider love as a game. Aki Murase is a woman who has been waiting for her lover who went abroad two years ago. These two persons start a relationship while frankly admitting to each other that it is only a love game. …The result is the unfolding of a drama of people with their respective pasts and with their pride as individuals.",  # noqa: E501
             "genres": ["Drama"],
             "score": 7.8,
             "score_count": 30,
@@ -443,7 +443,7 @@ class MediaCoreTests(YamtrackApiTestCase):
                         "media_type": "tv",
                         "image": "https://image.tmdb.org/t/p/w500/mxkKDJNZg9z9WHC98qTGALPHlKL.jpg",
                         "media_id": 42893,
-                        "title": "Hotaru no Hikari: It's Only a Little Light in My Life",
+                        "title": "Hotaru no Hikari: It's Only a Little Light in My Life",  # noqa: E501
                     },
                     {
                         "source": "tmdb",
@@ -464,7 +464,7 @@ class MediaCoreTests(YamtrackApiTestCase):
                         "media_type": "tv",
                         "image": "https://image.tmdb.org/t/p/w500/5k7bkqolsaJVCj321gLkuikk2Ax.jpg",
                         "media_id": 232926,
-                        "title": "7th Time Loop: The Villainess Enjoys a Carefree Life Married to Her Worst Enemy!",
+                        "title": "7th Time Loop: The Villainess Enjoys a Carefree Life Married to Her Worst Enemy!",  # noqa: E501
                     },
                     {
                         "source": "tmdb",
@@ -573,7 +573,7 @@ class MediaCoreTests(YamtrackApiTestCase):
     @patch("api.views.services.get_media_metadata")
     def test_media_detail_patch_updates_media_fields(self, mock_metadata):
         """Media detail PATCH should update mutable media fields."""
-        # TODO: Use real mock data fixtures instead of hardcoding values
+        # TODO: Use real mock data fixtures instead of hardcoding values  # noqa: FIX002
         status = 2
         score = 8
         notes = "Great TV show!"
@@ -586,7 +586,7 @@ class MediaCoreTests(YamtrackApiTestCase):
             "title": "Pride",
             "max_progress": 11,
             "image": "https://image.tmdb.org/t/p/w500/rnahKduAA2VZFgrXemu97Fh6OD2.jpg",
-            "synopsis": "Haru Satonaka is the captain of an ice-hockey team, a star athlete who stakes everything on hockey but can only consider love as a game. Aki Murase is a woman who has been waiting for her lover who went abroad two years ago. These two persons start a relationship while frankly admitting to each other that it is only a love game. …The result is the unfolding of a drama of people with their respective pasts and with their pride as individuals.",
+            "synopsis": "Haru Satonaka is the captain of an ice-hockey team, a star athlete who stakes everything on hockey but can only consider love as a game. Aki Murase is a woman who has been waiting for her lover who went abroad two years ago. These two persons start a relationship while frankly admitting to each other that it is only a love game. …The result is the unfolding of a drama of people with their respective pasts and with their pride as individuals.",  # noqa: E501
             "genres": ["Drama"],
             "score": 7.8,
             "score_count": 30,
@@ -706,7 +706,7 @@ class MediaCoreTests(YamtrackApiTestCase):
                         "media_type": "tv",
                         "image": "https://image.tmdb.org/t/p/w500/mxkKDJNZg9z9WHC98qTGALPHlKL.jpg",
                         "media_id": 42893,
-                        "title": "Hotaru no Hikari: It's Only a Little Light in My Life",
+                        "title": "Hotaru no Hikari: It's Only a Little Light in My Life",  # noqa: E501
                     },
                     {
                         "source": "tmdb",
@@ -727,7 +727,7 @@ class MediaCoreTests(YamtrackApiTestCase):
                         "media_type": "tv",
                         "image": "https://image.tmdb.org/t/p/w500/5k7bkqolsaJVCj321gLkuikk2Ax.jpg",
                         "media_id": 232926,
-                        "title": "7th Time Loop: The Villainess Enjoys a Carefree Life Married to Her Worst Enemy!",
+                        "title": "7th Time Loop: The Villainess Enjoys a Carefree Life Married to Her Worst Enemy!",  # noqa: E501
                     },
                     {
                         "source": "tmdb",
@@ -853,6 +853,100 @@ class MediaCoreTests(YamtrackApiTestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertIn("no valid fields", response.json().get("detail", "").lower())
+
+    def _mock_movie_metadata(self, mock_metadata):
+        """Configure a minimal valid movie metadata mock for PATCH tests."""
+        mock_metadata.return_value = {
+            "media_id": 550,
+            "source": "tmdb",
+            "source_url": "https://www.themoviedb.org/movie/550",
+            "media_type": "movie",
+            "title": "Fight Club",
+            "max_progress": 1,
+            "image": "https://image.tmdb.org/t/p/w500/placeholder.jpg",
+            "synopsis": "A depressed man forms an underground fight club.",
+            "genres": ["Drama"],
+            "score": 8.4,
+            "score_count": 100,
+            "details": {
+                "format": "Movie",
+                "release_date": "1999-10-15",
+                "status": "Released",
+                "runtime": "2h 19m",
+                "studios": ["Fox 2000 Pictures"],
+                "country": "United States of America",
+                "languages": ["English"],
+            },
+            "related": {"recommendations": []},
+        }
+
+    @patch("api.views.services.get_media_metadata")
+    def test_media_detail_patch_accepts_string_status_label(self, mock_metadata):
+        """Media PATCH should accept a human-readable status label."""
+        self._mock_movie_metadata(mock_metadata)
+        movie_item = self.items_by_type[MediaTypes.MOVIE.value][0]
+        response = self.call_api(
+            "patch",
+            "api_media_detail",
+            args=(MediaTypes.MOVIE.value, movie_item.source, movie_item.media_id),
+            payload={"status": "Completed"},
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["consumptions"][0]["status"], 3)
+
+    @patch("api.views.services.get_media_metadata")
+    def test_media_detail_patch_accepts_case_insensitive_status_label(
+        self,
+        mock_metadata,
+    ):
+        """Media PATCH should accept a status label regardless of casing."""
+        self._mock_movie_metadata(mock_metadata)
+        movie_item = self.items_by_type[MediaTypes.MOVIE.value][0]
+        response = self.call_api(
+            "patch",
+            "api_media_detail",
+            args=(MediaTypes.MOVIE.value, movie_item.source, movie_item.media_id),
+            payload={"status": "in progress"},
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["consumptions"][0]["status"], 1)
+
+    @patch("api.views.services.get_media_metadata")
+    def test_media_detail_patch_accepts_numeric_string_status(self, mock_metadata):
+        """Media PATCH should accept a status code sent as a numeric string."""
+        self._mock_movie_metadata(mock_metadata)
+        movie_item = self.items_by_type[MediaTypes.MOVIE.value][0]
+        response = self.call_api(
+            "patch",
+            "api_media_detail",
+            args=(MediaTypes.MOVIE.value, movie_item.source, movie_item.media_id),
+            payload={"status": "3"},
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["consumptions"][0]["status"], 3)
+
+    def test_media_detail_patch_rejects_unknown_status_label(self):
+        """Media PATCH should reject a status label that doesn't match any status."""
+        movie_item = self.items_by_type[MediaTypes.MOVIE.value][0]
+        response = self.call_api(
+            "patch",
+            "api_media_detail",
+            args=(MediaTypes.MOVIE.value, movie_item.source, movie_item.media_id),
+            payload={"status": "not-a-status"},
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("invalid status value", response.json().get("detail", "").lower())
 
     def test_media_changes_history_returns_paginated_payload(self):
         """Changes history endpoint should return change entries."""
@@ -1048,7 +1142,7 @@ class MediaCoreTests(YamtrackApiTestCase):
             self.assertEqual(response.status_code, 404)
 
     def test_media_consumption_entry_detail_invalid_consumption_id_methods(self):
-        """Entry-detail endpoints should return not found for unknown consumption ids."""
+        """Entry-detail endpoints should return not found for unknown consumption ids."""  # noqa: E501, W505
         movie_item = self.items_by_type[MediaTypes.MOVIE.value][0]
         invalid_consumption_id = 999999
 
@@ -1155,7 +1249,7 @@ class MediaCoreTests(YamtrackApiTestCase):
             check_minimized_lists_structure(self, item)
 
     def test_media_lists_get_invalid_media_id_returns_empty_results(self):
-        """Media list relation endpoint should return empty results for unknown media."""
+        """Media list relation endpoint should return empty results for unknown media."""  # noqa: E501, W505
         response = self.call_api(
             "get",
             "api_media_lists",

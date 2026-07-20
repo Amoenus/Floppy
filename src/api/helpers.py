@@ -378,8 +378,18 @@ def get_sorts(media_type, *, sort_type="all"):
 
 
 def get_media_status(status, *, reverse=False):
-    """Transform the media status from integer to a valid class."""
+    """Transform the media status between its integer code and label."""
     if reverse:
+        if isinstance(status, str):
+            stripped = status.strip()
+            if stripped.lstrip("-").isdigit():
+                status = int(stripped)
+            else:
+                normalized = stripped.lower()
+                for label in MEDIA_STATUS_MAP:
+                    if label.lower() == normalized:
+                        return label
+                return None
         reverse_map = {v: k for k, v in MEDIA_STATUS_MAP.items()}
         return reverse_map.get(status)
     return MEDIA_STATUS_MAP.get(status)

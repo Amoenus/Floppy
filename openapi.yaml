@@ -4321,6 +4321,10 @@ components:
           2 = Paused
           3 = Completed
           4 = Dropped
+
+        Responses always return the integer code. Requests (POST/PATCH) may
+        alternatively send the status label as a case-insensitive string
+        (e.g. "completed", "In Progress") instead of the integer code.
       nullable: true
     MediaTypes:
       type: string
