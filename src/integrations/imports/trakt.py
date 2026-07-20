@@ -299,6 +299,9 @@ class TraktImporter(TraktMetadataResolverMixin):
         # Track existing media to handle "new" mode correctly
         self.existing_media = helpers.get_existing_media(user)
 
+        # Track media the user explicitly deleted, so it isn't recreated
+        self.deleted_media = helpers.get_deleted_media(user)
+
         # Track previously imported episode plays so rerunning the same sync
         # does not create duplicate episode history rows.
         self.existing_episode_watch_keys = self._get_existing_episode_watch_keys()
@@ -497,6 +500,7 @@ class TraktImporter(TraktMetadataResolverMixin):
             Sources.TMDB.value,
             tmdb_id,
             self.mode,
+            deleted_media=self.deleted_media,
         ):
             return
 
@@ -528,6 +532,13 @@ class TraktImporter(TraktMetadataResolverMixin):
         show = entry["show"]
         tmdb_id = self._get_tmdb_id(show)
         if not tmdb_id:
+            return
+
+        if tmdb_id in self.deleted_media[MediaTypes.TV.value][Sources.TMDB.value]:
+            logger.debug(
+                "Skipping watch history for deleted TV show: %s (deleted locally)",
+                tmdb_id,
+            )
             return
 
         # Extract episode data
@@ -1039,6 +1050,7 @@ class TraktImporter(TraktMetadataResolverMixin):
             Sources.TMDB.value,
             tmdb_id,
             self.mode,
+            deleted_media=self.deleted_media,
         ):
             return
 

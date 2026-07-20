@@ -63,6 +63,7 @@ from app.models.podcast import (
     PodcastShow,
     PodcastShowTracker,
 )
+from app.models.tombstone import DeletedMedia
 from app.models.tv import (
     TV,
     Episode,
@@ -89,6 +90,7 @@ __all__ = [
     "Comic",
     "ComicIssue",
     "CreditRoleType",
+    "DeletedMedia",
     "DiscoverApiCache",
     "DiscoverFeedback",
     "DiscoverFeedbackType",

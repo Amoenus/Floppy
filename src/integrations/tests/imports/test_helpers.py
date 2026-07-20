@@ -7,6 +7,7 @@ from django_celery_beat.models import CrontabSchedule, PeriodicTask
 
 from app.models import (
     TV,
+    DeletedMedia,
     Episode,
     Item,
     MediaTypes,
@@ -206,6 +207,47 @@ class HelpersTest(TestCase):
 
         mock_messages.assert_called_with(request, "Invalid import time.")
         self.assertEqual(PeriodicTask.objects.count(), 0)
+
+    def test_get_deleted_media(self):
+        """Test collecting deletion tombstones for a user."""
+        other_credentials = {"username": "other", "password": "12345"}
+        other_user = get_user_model().objects.create_user(**other_credentials)
+        DeletedMedia.objects.create(
+            user=self.user,
+            media_type=MediaTypes.TV.value,
+            source=Sources.TMDB.value,
+            media_id="12345",
+        )
+        DeletedMedia.objects.create(
+            user=other_user,
+            media_type=MediaTypes.TV.value,
+            source=Sources.TMDB.value,
+            media_id="99999",
+        )
+
+        deleted = helpers.get_deleted_media(self.user)
+
+        self.assertIn("12345", deleted[MediaTypes.TV.value][Sources.TMDB.value])
+        self.assertNotIn("99999", deleted[MediaTypes.TV.value][Sources.TMDB.value])
+
+    def test_should_process_media_skips_deleted_media(self):
+        """Deleted media should be skipped regardless of new/overwrite mode."""
+        existing_media = {}
+        deleted_media = {MediaTypes.MOVIE.value: {Sources.TMDB.value: {"67890"}}}
+
+        for mode in ("new", "overwrite"):
+            to_delete = {}
+            result = helpers.should_process_media(
+                existing_media,
+                to_delete,
+                MediaTypes.MOVIE.value,
+                Sources.TMDB.value,
+                "67890",
+                mode,
+                deleted_media=deleted_media,
+            )
+            self.assertFalse(result)
+            self.assertEqual(to_delete, {})
 
     def test_create_import_schedule_every_2_days(self):
         """Test creating import schedule for every 2 days."""

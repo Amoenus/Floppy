@@ -7,6 +7,7 @@ from django.test import TestCase
 from app.models import (
     TV,
     CollectionEntry,
+    DeletedMedia,
     Episode,
     Item,
     MediaTypes,
@@ -1292,3 +1293,174 @@ class ImportTrakt(TestCase):
             CollectionEntry.objects.filter(user=self.user, item=item).count(),
             1,
         )
+
+    @patch("integrations.imports.trakt.TraktImporter._get_metadata")
+    def test_process_watched_movie_skips_deleted_movie(self, mock_get_metadata):
+        """A movie the user deleted locally is not recreated from watch history."""
+        DeletedMedia.objects.create(
+            user=self.user,
+            media_type=MediaTypes.MOVIE.value,
+            source=Sources.TMDB.value,
+            media_id="67890",
+        )
+        movie_entry = {
+            "type": "movie",
+            "movie": {"title": "Test Movie", "ids": {"tmdb": 67890}},
+            "watched_at": "2023-01-02T00:00:00.000Z",
+        }
+        mock_get_metadata.return_value = {
+            "title": "Test Movie",
+            "image": "movie_image.jpg",
+        }
+
+        trakt_importer = TraktImporter("test", self.user, "new")
+        trakt_importer.process_watched_movie(movie_entry)
+
+        self.assertEqual(len(trakt_importer.bulk_media[MediaTypes.MOVIE.value]), 0)
+
+    @patch("integrations.imports.trakt.TraktImporter._get_metadata")
+    def test_process_watched_episode_skips_deleted_show(self, mock_get_metadata):
+        """A show the user deleted locally is not recreated from watch history."""
+        DeletedMedia.objects.create(
+            user=self.user,
+            media_type=MediaTypes.TV.value,
+            source=Sources.TMDB.value,
+            media_id="12345",
+        )
+        episode_entry = {
+            "type": "episode",
+            "episode": {"season": 1, "number": 1, "title": "Pilot"},
+            "show": {"title": "Test Show", "ids": {"tmdb": 12345}},
+            "watched_at": "2023-01-01T00:00:00.000Z",
+        }
+
+        trakt_importer = TraktImporter("testuser", self.user, "new")
+        trakt_importer.process_watched_episode(episode_entry)
+
+        mock_get_metadata.assert_not_called()
+        self.assertEqual(len(trakt_importer.bulk_media[MediaTypes.TV.value]), 0)
+        self.assertEqual(len(trakt_importer.bulk_media[MediaTypes.SEASON.value]), 0)
+        self.assertEqual(len(trakt_importer.bulk_media[MediaTypes.EPISODE.value]), 0)
+
+    @patch("integrations.imports.trakt.TraktImporter._make_api_request")
+    @patch("integrations.imports.trakt.TraktImporter._get_metadata")
+    def test_process_watchlist_skips_deleted_show_overwrite_mode(
+        self,
+        mock_get_metadata,
+        mock_make_request,
+    ):
+        """Deletion tombstones are honored in overwrite mode too."""
+        DeletedMedia.objects.create(
+            user=self.user,
+            media_type=MediaTypes.TV.value,
+            source=Sources.TMDB.value,
+            media_id="54321",
+        )
+        watchlist_entry = {
+            "listed_at": "2023-01-01T00:00:00.000Z",
+            "type": "show",
+            "show": {"title": "Watchlist Show", "ids": {"tmdb": 54321}},
+        }
+        mock_make_request.side_effect = [[watchlist_entry], []]
+        mock_get_metadata.return_value = {
+            "title": "Watchlist Show",
+            "image": "show_image.jpg",
+        }
+
+        trakt_importer = TraktImporter("testuser", self.user, "overwrite")
+        trakt_importer.process_watchlist()
+
+        self.assertEqual(len(trakt_importer.bulk_media[MediaTypes.TV.value]), 0)
+        self.assertEqual(TV.objects.filter(user=self.user).count(), 0)
+
+    @patch("integrations.imports.trakt.TraktImporter._get_metadata")
+    def test_deleted_movie_tombstone_cleared_on_manual_retrack(self, mock_get_metadata):
+        """Manually re-adding a deleted item clears its tombstone for future imports."""
+        item = Item.objects.create(
+            media_id="67890",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Test Movie",
+        )
+        movie = Movie.objects.create(
+            item=item,
+            user=self.user,
+            status=Status.COMPLETED.value,
+        )
+        movie.delete()
+        self.assertTrue(
+            DeletedMedia.objects.filter(
+                user=self.user,
+                media_type=MediaTypes.MOVIE.value,
+                source=Sources.TMDB.value,
+                media_id="67890",
+            ).exists(),
+        )
+
+        # User manually re-tracks the movie themselves.
+        Movie.objects.create(item=item, user=self.user, status=Status.PLANNING.value)
+        self.assertFalse(
+            DeletedMedia.objects.filter(
+                user=self.user,
+                media_type=MediaTypes.MOVIE.value,
+                source=Sources.TMDB.value,
+                media_id="67890",
+            ).exists(),
+        )
+
+        movie_entry = {
+            "type": "movie",
+            "movie": {"title": "Test Movie", "ids": {"tmdb": 67890}},
+            "watched_at": "2023-01-02T00:00:00.000Z",
+        }
+        mock_get_metadata.return_value = {
+            "title": "Test Movie",
+            "image": "movie_image.jpg",
+        }
+
+        trakt_importer = TraktImporter("test", self.user, "overwrite")
+        trakt_importer.process_watched_movie(movie_entry)
+
+        self.assertEqual(len(trakt_importer.bulk_media[MediaTypes.MOVIE.value]), 1)
+
+    @patch("integrations.imports.trakt.TraktImporter._get_metadata")
+    def test_deleting_tv_show_prevents_resurrection_from_watch_history(
+        self,
+        mock_get_metadata,
+    ):
+        """Deleting a TV show (the reported issue #361 scenario) tombstones it."""
+        tv_item = Item.objects.create(
+            media_id="12345",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Test Show",
+        )
+        tv_obj = TV.objects.create(
+            item=tv_item,
+            user=self.user,
+            status=Status.COMPLETED.value,
+        )
+
+        tv_obj.delete()
+
+        self.assertTrue(
+            DeletedMedia.objects.filter(
+                user=self.user,
+                media_type=MediaTypes.TV.value,
+                source=Sources.TMDB.value,
+                media_id="12345",
+            ).exists(),
+        )
+
+        episode_entry = {
+            "type": "episode",
+            "episode": {"season": 1, "number": 1, "title": "Pilot"},
+            "show": {"title": "Test Show", "ids": {"tmdb": 12345}},
+            "watched_at": "2023-01-01T00:00:00.000Z",
+        }
+
+        trakt_importer = TraktImporter("testuser", self.user, "new")
+        trakt_importer.process_watched_episode(episode_entry)
+
+        mock_get_metadata.assert_not_called()
+        self.assertEqual(TV.objects.filter(user=self.user).count(), 0)

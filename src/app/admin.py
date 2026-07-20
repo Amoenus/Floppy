@@ -5,6 +5,7 @@ from django.contrib import admin
 from django.contrib.admin.sites import AlreadyRegistered
 
 from app.models import (
+    DeletedMedia,
     Episode,
     Item,
     ItemProviderLink,
@@ -101,6 +102,7 @@ SpecialModels = [
     "DiscoverApiCache",
     "DiscoverTasteProfile",
     "DiscoverRowCache",
+    "DeletedMedia",
 ]
 for model in app_models:
     if (
@@ -305,6 +307,17 @@ from app.models import (  # noqa: E402
     DiscoverTasteProfile,
 )
 
+
+class DeletedMediaAdmin(admin.ModelAdmin):
+    """Admin for DeletedMedia tombstones."""
+
+    list_display = ["user", "media_type", "source", "media_id", "deleted_at"]
+    list_filter = ["media_type", "source", "deleted_at"]
+    search_fields = ["user__username", "media_id"]
+    raw_id_fields = ["user"]
+
+
+admin.site.register(DeletedMedia, DeletedMediaAdmin)
 admin.site.register(DiscoverFeedback, DiscoverFeedbackAdmin)
 admin.site.register(DiscoverApiCache, DiscoverApiCacheAdmin)
 admin.site.register(DiscoverTasteProfile, DiscoverTasteProfileAdmin)
