@@ -61,7 +61,8 @@
             <div class="md:hidden text-sm font-medium text-gray-400 text-center">
               <a href="{{ season_url }}" class="hover:text-indigo-400 transition-colors">{{ season_title }}</a>
               <span class="mx-1 text-gray-600">•</span>
-              {% if episode and episode.display_episode_number|default:episode.episode_number %}Ep {{ episode.display_episode_number|default:episode.episode_number }}{% endif %}
+              {{ episode_title }}
+              {% if episode and episode.display_episode_number|default:episode.episode_number %}<span class="mx-1 text-gray-600">•</span>Ep {{ episode.display_episode_number|default:episode.episode_number }}{% endif %}
               {% if episode and episode.air_date %}<span class="mx-1 text-gray-600">•</span>{{ episode.air_date|user_date_format:user }}{% endif %}
               {% if not public_view and episode and episode.history %}{% with ep_watched=episode.history|watched_count %}{% if ep_watched %}<span class="mx-1 text-gray-600">•</span>Watched {% if ep_watched == 1 %}once{% else %}{{ ep_watched }} times{% endif %}{% endif %}{% endwith %}{% endif %}
             </div>
