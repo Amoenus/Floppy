@@ -5,7 +5,7 @@ import json
 import logging
 from collections import defaultdict
 
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, InvalidToken
 from django.apps import apps
 from django.conf import settings
 from django.contrib import messages
@@ -329,3 +329,17 @@ def encrypt(value):
 def decrypt(token):
     """Decrypt value that was encrypted with `encrypt`."""
     return fernet().decrypt(token.encode()).decode()
+
+
+def decrypt_or_raise(token):
+    """Decrypt a stored credential, raising a friendly MediaImportError on failure."""
+    try:
+        return decrypt(token)
+    except InvalidToken as error:
+        logger.exception("Failed to decrypt stored credential")
+        msg = (
+            "Stored credentials could not be decrypted. This usually happens "
+            "after the app's encryption key changes. Please reconnect this "
+            "integration."
+        )
+        raise MediaImportError(msg) from error

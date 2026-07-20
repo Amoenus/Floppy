@@ -18,7 +18,7 @@ from app import helpers as app_helpers
 from app.log_safety import exception_summary
 from app.models import MediaTypes, Sources, Status
 from app.providers import services
-from integrations.imports.helpers import MediaImportError, decrypt
+from integrations.imports.helpers import MediaImportError, decrypt_or_raise
 from integrations.models import AudiobookshelfAccount
 
 logger = logging.getLogger(__name__)
@@ -90,7 +90,16 @@ class AudiobookshelfImporter:
             msg = "Connect Audiobookshelf before importing"
             raise MediaImportError(msg) from error
 
-        token = decrypt(self.account.api_token)
+        try:
+            token = decrypt_or_raise(self.account.api_token)
+        except MediaImportError as error:
+            self.account.connection_broken = True
+            self.account.last_error_message = str(error)
+            self.account.save(
+                update_fields=["connection_broken", "last_error_message", "updated_at"],
+            )
+            raise
+
         self.client = AudiobookshelfClient(self.account.base_url, token)
         self.warnings = []
         self.enable_provider_enrichment = not settings.TESTING

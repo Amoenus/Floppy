@@ -9,7 +9,7 @@ from django.utils import timezone
 
 from app.models import Item, MediaTypes, Sources
 from app.providers import services
-from integrations.imports.helpers import MediaImportError, decrypt
+from integrations.imports.helpers import MediaImportError, decrypt_or_raise
 from integrations.models import RadarrAccount
 from integrations.source_sync import upsert_collection_source_state
 
@@ -66,10 +66,17 @@ class RadarrImporter:
             msg = "Connect Radarr before importing"
             raise MediaImportError(msg) from error
 
-        self.client = RadarrClient(
-            self.account.base_url,
-            decrypt(self.account.api_key),
-        )
+        try:
+            api_key = decrypt_or_raise(self.account.api_key)
+        except MediaImportError as error:
+            self.account.connection_broken = True
+            self.account.last_error_message = str(error)
+            self.account.save(
+                update_fields=["connection_broken", "last_error_message", "updated_at"],
+            )
+            raise
+
+        self.client = RadarrClient(self.account.base_url, api_key)
         self.warnings = []
 
     def import_data(self):

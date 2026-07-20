@@ -24,7 +24,7 @@ from app.models import (
 )
 from integrations import gpodder_api, podcast_rss
 from integrations import models as integration_models
-from integrations.imports.helpers import MediaImportError, decrypt
+from integrations.imports.helpers import MediaImportError, decrypt_or_raise
 
 logger = logging.getLogger(__name__)
 
@@ -47,11 +47,19 @@ class GPodderImporter:
         except integration_models.GPodderAccount.DoesNotExist as exc:
             raise MediaImportError("GPodder account not connected.") from exc
 
-        self.credentials = gpodder_api.GPodderCredentials(
-            server_url=decrypt(self.account.server_url),
-            username=decrypt(self.account.username),
-            password=decrypt(self.account.password),
-        )
+        try:
+            self.credentials = gpodder_api.GPodderCredentials(
+                server_url=decrypt_or_raise(self.account.server_url),
+                username=decrypt_or_raise(self.account.username),
+                password=decrypt_or_raise(self.account.password),
+            )
+        except MediaImportError as error:
+            self.account.connection_broken = True
+            self.account.last_error_message = str(error)
+            self.account.save(
+                update_fields=["connection_broken", "last_error_message", "updated_at"],
+            )
+            raise
         self._seen_fingerprints = set()
         self._episode_cache = {}
         self._show_cache = {}

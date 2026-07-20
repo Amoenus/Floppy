@@ -115,7 +115,7 @@ def get_access_token(encrypted_refresh_token):
     """Get access token from encrypted refresh token."""
     url = "https://api.trakt.tv/oauth/token"
 
-    decrypted_token = helpers.decrypt(encrypted_refresh_token)
+    decrypted_token = helpers.decrypt_or_raise(encrypted_refresh_token)
 
     params = {
         "client_id": settings.TRAKT_API,

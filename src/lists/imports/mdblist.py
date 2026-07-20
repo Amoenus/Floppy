@@ -217,9 +217,8 @@ def import_mdblist_lists(user):
         logger.info("No MDBList account for user %s, skipping sync", user.username)
         return
 
-    api_key = helpers.decrypt(account.api_key)
-
     try:
+        api_key = helpers.decrypt_or_raise(account.api_key)
         own_lists = _request(api_key, "/lists/user")
         if not isinstance(own_lists, list):
             own_lists = []
@@ -280,7 +279,14 @@ def import_mdblist_list_by_reference(user, reference):
         msg = "Connect your MDBList account before importing lists."
         raise helpers.MediaImportError(msg)
 
-    api_key = helpers.decrypt(account.api_key)
+    try:
+        api_key = helpers.decrypt_or_raise(account.api_key)
+    except helpers.MediaImportError as error:
+        account.connection_broken = True
+        account.last_error_message = str(error)
+        account.save(update_fields=["connection_broken", "last_error_message"])
+        raise
+
     list_info = resolve_list_reference(api_key, reference)
     _sync_list(user, api_key, list_info)
     return list_info

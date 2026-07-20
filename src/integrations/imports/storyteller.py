@@ -30,7 +30,7 @@ from app import helpers as app_helpers
 from app.log_safety import exception_summary
 from app.models import MediaTypes, Sources, Status
 from app.providers import services
-from integrations.imports.helpers import MediaImportError, decrypt
+from integrations.imports.helpers import MediaImportError, decrypt_or_raise
 from integrations.models import StorytellerAccount
 
 logger = logging.getLogger(__name__)
@@ -149,7 +149,12 @@ class StorytellerImporter:
             msg = "Connect Storyteller before importing"
             raise MediaImportError(msg)
 
-        token = decrypt(self.account.auth_token)
+        try:
+            token = decrypt_or_raise(self.account.auth_token)
+        except MediaImportError as error:
+            self._mark_broken(str(error))
+            raise
+
         self.client = StorytellerClient(self.account.server_url, token)
         self.warnings = []
         self.enable_provider_enrichment = not settings.TESTING

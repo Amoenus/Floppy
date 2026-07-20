@@ -140,7 +140,7 @@ def import_mdblist(user_id, mode, username=None):  # noqa: ARG001
     if account is None:
         msg = "Connect your MDBList account before importing."
         raise helpers.MediaImportError(msg)
-    api_key = helpers.decrypt(account.api_key)
+    api_key = helpers.decrypt_or_raise(account.api_key)
     return import_media(mdblist.importer, api_key, user_id, mode)
 
 

@@ -166,7 +166,16 @@ class StremioImporter:
             msg = "Connect Stremio before importing"
             raise MediaImportError(msg)
 
-        self.auth_key = helpers.decrypt(self.account.auth_key)
+        try:
+            self.auth_key = helpers.decrypt_or_raise(self.account.auth_key)
+        except MediaImportError as decrypt_error:
+            self.account.connection_broken = True
+            self.account.last_error_message = str(decrypt_error)
+            self.account.save(
+                update_fields=["connection_broken", "last_error_message", "updated_at"],
+            )
+            raise
+
         self.existing_media = helpers.get_existing_media(user)
         self.to_delete = defaultdict(lambda: defaultdict(set))
         self.bulk_media = defaultdict(list)
