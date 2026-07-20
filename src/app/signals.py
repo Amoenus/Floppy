@@ -22,6 +22,7 @@ from app.models import (
     CollectionEntry,
     Comic,
     ComicIssue,
+    DeletedMedia,
     DiscoverFeedback,
     DiscoverFeedbackType,
     Episode,
@@ -369,6 +370,60 @@ def clear_discover_feedback_on_media_save(sender, instance, **kwargs):  # noqa: 
         user_id=user_id,
         item_id=item_id,
         feedback_type=DiscoverFeedbackType.NOT_INTERESTED.value,
+    ).delete()
+
+
+# Same top-level, importer-tracked media types as helpers.get_existing_media()
+# (Season/Episode excluded there and here).
+@receiver(post_delete, sender=TV)
+@receiver(post_delete, sender=Anime)
+@receiver(post_delete, sender=Movie)
+@receiver(post_delete, sender=Manga)
+@receiver(post_delete, sender=Book)
+@receiver(post_delete, sender=Comic)
+@receiver(post_delete, sender=Game)
+@receiver(post_delete, sender=BoardGame)
+@receiver(post_delete, sender=Music)
+@receiver(post_delete, sender=Podcast)
+def record_deleted_media_tombstone(sender, instance, **kwargs):  # noqa: ARG001
+    """Remember that the user deleted this item so imports don't recreate it."""
+    if kwargs.get("raw"):
+        return
+    user = getattr(instance, "user", None)
+    item = getattr(instance, "item", None)
+    if not user or not item:
+        return
+    DeletedMedia.objects.get_or_create(
+        user=user,
+        media_type=item.media_type,
+        source=item.source,
+        media_id=item.media_id,
+    )
+
+
+@receiver(post_save, sender=TV)
+@receiver(post_save, sender=Anime)
+@receiver(post_save, sender=Movie)
+@receiver(post_save, sender=Manga)
+@receiver(post_save, sender=Book)
+@receiver(post_save, sender=Comic)
+@receiver(post_save, sender=Game)
+@receiver(post_save, sender=BoardGame)
+@receiver(post_save, sender=Music)
+@receiver(post_save, sender=Podcast)
+def clear_deleted_media_tombstone_on_track(sender, instance, created, **kwargs):  # noqa: ARG001
+    """Clear a deletion tombstone when the user manually tracks the item again."""
+    if kwargs.get("raw") or not created:
+        return
+    user = getattr(instance, "user", None)
+    item = getattr(instance, "item", None)
+    if not user or not item:
+        return
+    DeletedMedia.objects.filter(
+        user=user,
+        media_type=item.media_type,
+        source=item.source,
+        media_id=item.media_id,
     ).delete()
 
 

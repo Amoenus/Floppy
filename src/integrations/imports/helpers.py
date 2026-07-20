@@ -68,8 +68,26 @@ def get_existing_media(user):
     return existing
 
 
-def should_process_media(existing_media, to_delete, media_type, source, media_id, mode):
+def get_deleted_media(user):
+    """Get media the user explicitly deleted, so imports don't recreate it."""
+    deleted = defaultdict(lambda: defaultdict(set))
+    for tombstone in app.models.DeletedMedia.objects.filter(user=user):
+        deleted[tombstone.media_type][tombstone.source].add(tombstone.media_id)
+    return deleted
+
+
+def should_process_media(
+    existing_media, to_delete, media_type, source, media_id, mode, deleted_media=None,
+):
     """Determine if a media item should be processed based on mode."""
+    if deleted_media and media_id in deleted_media[media_type][source]:
+        logger.debug(
+            "Skipping deleted %s: %s (user deleted this locally)",
+            media_type,
+            media_id,
+        )
+        return False
+
     exists = media_id in existing_media[media_type][source]
 
     if mode == "new" and exists:
