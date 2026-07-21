@@ -1,8 +1,12 @@
 import traceback
 
+from django.contrib import messages
+from django.contrib.auth.views import redirect_to_login
 from django.http import HttpRequest, HttpResponse
-from django.shortcuts import render
+from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.utils import timezone
+from django.utils.http import url_has_allowed_host_and_scheme
 
 
 def format_exception_traceback(exception: BaseException | None) -> str:
@@ -208,12 +212,39 @@ def server_error(request: HttpRequest) -> HttpResponse:
     )
 
 
+def _safe_return_url(request: HttpRequest) -> str:
+    """Return a same-host URL to send the user back to, falling back to home."""
+    referer = request.META.get("HTTP_REFERER")
+    if referer and url_has_allowed_host_and_scheme(
+        url=referer,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
+    ):
+        return referer
+    return reverse("home")
+
+
 def csrf_failure(
     request: HttpRequest,
     reason: str = "",
     template_name: str = "403_csrf.html",
 ) -> HttpResponse:
-    """Render the custom CSRF failure page."""
+    """Handle CSRF failures by redirecting instead of showing a dead end.
+
+    A CSRF failure doesn't necessarily mean the session is invalid - the CSRF
+    cookie and session have independent lifetimes, so a stale/missing CSRF
+    token can happen while the user is still logged in. Only send the user to
+    the login page when they're genuinely unauthenticated; otherwise bounce
+    them back to where they were with a fresh CSRF token on reload.
+    """
+    user = getattr(request, "user", None)
+    if user is not None:
+        return_url = _safe_return_url(request)
+        if not user.is_authenticated:
+            return redirect_to_login(return_url)
+        messages.info(request, "That action needed a quick refresh - please try again.")
+        return redirect(return_url)
+
     return render_error_page(
         request,
         template_name,
