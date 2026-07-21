@@ -2833,6 +2833,38 @@ class MediaDetailsViewTests(TestCase):
         self.assertContains(response, "Fallback Podcast")
         self.assertNotContains(response, 'id="episodes-list"', html=False)
 
+    def test_manual_music_media_details_does_not_crash(self):
+        """Custom/manual music entries should render without KeyError: 'source' (#366)."""
+        item = Item.objects.create(
+            media_id="backrooms-ost",
+            source=Sources.MANUAL.value,
+            media_type=MediaTypes.MUSIC.value,
+            title="Backrooms 2026 (OST)",
+            image="http://example.com/album.jpg",
+        )
+        Music.objects.create(
+            item=item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+
+        response = self.client.get(
+            reverse(
+                "media_details",
+                kwargs={
+                    "source": Sources.MANUAL.value,
+                    "media_type": MediaTypes.MUSIC.value,
+                    "media_id": "backrooms-ost",
+                    "title": "backrooms-ost",
+                },
+            ),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["media"]["source"], Sources.MANUAL.value)
+        self.assertEqual(response.context["media"]["media_type"], MediaTypes.MUSIC.value)
+        self.assertEqual(response.context["media"]["media_id"], "backrooms-ost")
+
     @patch("app.providers.services.get_media_metadata")
     def test_media_details_renders_your_score_chip_with_edit_rating(self, mock_get_metadata):
         mock_get_metadata.return_value = {
