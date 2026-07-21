@@ -1,3 +1,4 @@
+import logging
 from http import HTTPStatus as HTTP  # noqa: N814
 
 from django.conf import settings
@@ -5,8 +6,10 @@ from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.db import IntegrityError
 from django.utils.timezone import datetime, localdate, make_aware
+
 # FORK: the fork pins django-health-check 3.x (no async HealthCheckView);
 # HealthView below is implemented against the 3.x CheckMixin plugin API.
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from health_check.mixins import CheckMixin
 from rest_framework import permissions
 from rest_framework import views as drf_views
@@ -57,6 +60,7 @@ from .helpers import (
     try_parse_date,
     validate_body,
 )
+from .schema import MEDIA_TYPE_COMPLETE_PARAM, MEDIA_TYPE_PARAM
 from .serializers import (
     ChangesHistoryEntrySerializer,
     CompleteEpisodeSerializer,
@@ -69,6 +73,8 @@ from .serializers import (
     TimelineItemSerializer,
     serialize_data,
 )
+
+logger = logging.getLogger(__name__)
 
 # TODO!: check sorters and filters in paginate_data since data is not serialized yet. Maybe data should be serialized first and then sorted/paginated later?? Sorting/filtering should occur at db search level, pagination should be done right after, always at the db search level, then the data should be serialized.  # noqa: E501, W505
 
@@ -161,6 +167,7 @@ class MediaTypeChangesHistoryDetailView(drf_views.APIView):
 
     permission_classes = [permissions.IsAuthenticated]
 
+    @extend_schema(parameters=[MEDIA_TYPE_COMPLETE_PARAM])
     def get(self, request, media_type, history_id):
         """Retrieve the changes history record for a specific media."""
         if not check_valid_type(media_type, complete=True):
@@ -186,6 +193,7 @@ class MediaTypeChangesHistoryDetailView(drf_views.APIView):
                 status=HTTP.NOT_FOUND,
             )
 
+    @extend_schema(parameters=[MEDIA_TYPE_COMPLETE_PARAM])
     def delete(self, request, media_type, history_id):
         """Delete the changes history record for a specific media."""
         if not check_valid_type(media_type, complete=True):
@@ -790,6 +798,7 @@ class MediaTypeListView(drf_views.APIView):
     serializer_class = MediaSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    @extend_schema(parameters=[MEDIA_TYPE_COMPLETE_PARAM])
     def get(self, request, media_type):
         """Retrieve the list of media of a specific media type."""
         user = request.user
@@ -849,6 +858,7 @@ class MediaTypeListView(drf_views.APIView):
         paginated_data["results"] = serialized_data
         return Response(paginated_data, status=HTTP.OK)
 
+    @extend_schema(parameters=[MEDIA_TYPE_COMPLETE_PARAM])
     def post(self, request, media_type):
         """Track a new media item of a specific media type."""
         if not check_valid_type(media_type, complete=True):
@@ -1021,6 +1031,7 @@ class MediaDetailView(drf_views.APIView):
     serializer_class = MediaSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def delete(self, request, media_type, source, media_id):
         """Delete a tracked media item and all its consumptions."""
         user = request.user
@@ -1068,6 +1079,7 @@ class MediaDetailView(drf_views.APIView):
             status=HTTP.NO_CONTENT,
         )
 
+    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def get(self, request, media_type, source, media_id):
         """Retrieve details of a specific media for the authenticated user."""
         user = request.user
@@ -1162,6 +1174,7 @@ class MediaDetailView(drf_views.APIView):
         )
         return Response(serialized, status=HTTP.OK)
 
+    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def patch(self, request, media_type, source, media_id):
         """Update a tracked media item."""
         user = request.user
@@ -1270,6 +1283,7 @@ class MediaChangesHistoryView(drf_views.APIView):
 
     permission_classes = [permissions.IsAuthenticated]
 
+    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def get(self, request, media_type, source, media_id):
         """Retrieve changes history timeline entries for a specific media."""
         limit, offset, err = parse_limit_offset(request)
@@ -1327,6 +1341,7 @@ class MediaConsumptionHistoryView(drf_views.APIView):
     serializer_class = HistorySerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def get(self, request, media_type, source, media_id):
         """Retrieve the history timeline for a specific media."""
         limit, offset, err = parse_limit_offset(request)
@@ -1398,6 +1413,7 @@ class MediaConsumptionEntryDetailView(drf_views.APIView):
     serializer_class = HistorySerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def delete(self, request, media_type, source, media_id, consumption_id):
         """Delete a specific consumption history entry for a specific media."""
         if not check_valid_type(media_type):
@@ -1441,6 +1457,7 @@ class MediaConsumptionEntryDetailView(drf_views.APIView):
 
         return Response(status=HTTP.NO_CONTENT)
 
+    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def get(self, request, media_type, source, media_id, consumption_id):
         """Retrieve a specific consumption history entry for a specific media."""
         if not check_valid_type(media_type):
@@ -1486,6 +1503,7 @@ class MediaConsumptionEntryDetailView(drf_views.APIView):
         )
         return Response(serialized_data, status=HTTP.OK)
 
+    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def patch(self, request, media_type, source, media_id, consumption_id):
         """Update a specific consumption history entry for a specific media."""
         if not check_valid_type(media_type):
@@ -1560,6 +1578,7 @@ class MediaConsumptionEntryDetailView(drf_views.APIView):
 class MediaListsView(drf_views.APIView):
     """Media lists view."""
 
+    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def get(self, request, media_type, source, media_id):
         """Retrieve the lists that a specific media is in."""
         user = request.user
@@ -1592,6 +1611,7 @@ class MediaListsView(drf_views.APIView):
 class MediaListDetailView(drf_views.APIView):
     """Media list detail view."""
 
+    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def delete(self, request, media_type, source, media_id, list_id):
         """Remove a specific media from a specific list."""
         user = request.user
@@ -1643,6 +1663,7 @@ class MediaListDetailView(drf_views.APIView):
         list_item.delete()
         return Response(status=HTTP.NO_CONTENT)
 
+    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def put(self, request, media_type, source, media_id, list_id):
         """Add a specific media to a specific list."""
         user = request.user
@@ -1714,6 +1735,7 @@ class MediaRecommendationsView(drf_views.APIView):
     serializer_class = MediaSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def get(self, _, media_type, source, media_id):
         """Retrieve recommendations for a specific media."""
         if not check_valid_type(media_type):
@@ -1758,6 +1780,7 @@ class MediaSeasonsView(drf_views.APIView):
 
     permission_classes = [permissions.IsAuthenticated]
 
+    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def get(self, request, media_type, source, media_id):
         """Retrieve the history timeline for a specific media."""
         user = request.user
@@ -1928,6 +1951,7 @@ class MediaSyncView(drf_views.APIView):
 
     permission_classes = [permissions.IsAuthenticated]
 
+    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def post(self, request, media_type, source, media_id):  # FORK: was `_`
         """Trigger sync of metadata from provider (non-manual sources only)."""
         if not check_valid_type(media_type):
@@ -2024,6 +2048,7 @@ class MediaSeasonDetailView(drf_views.APIView):
     serializer_class = MediaSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def delete(self, request, media_type, source, media_id, season_number):
         """Delete a tracked season item for the authenticated user."""
         user = request.user
@@ -2080,6 +2105,7 @@ class MediaSeasonDetailView(drf_views.APIView):
             status=HTTP.NO_CONTENT,
         )
 
+    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def get(self, request, media_type, source, media_id, season_number):
         """Retrieve details of a specific season for the authenticated user."""
         user = request.user
@@ -2190,6 +2216,7 @@ class MediaSeasonDetailView(drf_views.APIView):
         )
         return Response(serialized, status=HTTP.OK)
 
+    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def patch(self, request, media_type, source, media_id, season_number):
         """Update a tracked season item."""
         user = request.user
@@ -2308,6 +2335,7 @@ class MediaSeasonChangesHistoryView(drf_views.APIView):
 
     permission_classes = [permissions.IsAuthenticated]
 
+    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def get(self, request, media_type, source, media_id, season_number):
         """Retrieve changes history timeline entries for a season."""
         limit, offset, err = parse_limit_offset(request)
@@ -2373,6 +2401,7 @@ class MediaSeasonEpisodesView(drf_views.APIView):
 
     permission_classes = [permissions.IsAuthenticated]
 
+    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def get(self, request, media_type, source, media_id, season_number):
         """Retrieve the episodes for a specific season of a tv serie."""
         user = request.user
@@ -2485,6 +2514,7 @@ class MediaSeasonConsumptionHistoryView(drf_views.APIView):
     serializer_class = HistorySerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def get(self, request, media_type, source, media_id, season_number):
         """Retrieve the history timeline for a specific season of a tv serie."""
         limit, offset, err = parse_limit_offset(request)
@@ -2559,6 +2589,7 @@ class MediaSeasonConsumptionEntryDetailView(drf_views.APIView):
     serializer_class = HistorySerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def delete(
         self,
         request,
@@ -2619,6 +2650,7 @@ class MediaSeasonConsumptionEntryDetailView(drf_views.APIView):
 
         return Response(status=HTTP.NO_CONTENT)
 
+    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def get(self, request, media_type, source, media_id, season_number, consumption_id):
         """Retrieve a specific consumption history entry for a specific season."""
         if not check_valid_type(media_type):
@@ -2673,6 +2705,7 @@ class MediaSeasonConsumptionEntryDetailView(drf_views.APIView):
         )
         return Response(serialized_data, status=HTTP.OK)
 
+    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def patch(
         self,
         request,
@@ -2764,6 +2797,7 @@ class MediaSeasonConsumptionEntryDetailView(drf_views.APIView):
 class MediaSeasonListsView(drf_views.APIView):
     """Season lists view."""
 
+    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def get(self, request, media_type, source, media_id, season_number):
         """Retrieve the lists that a specific season is in."""
         user = request.user
@@ -2810,6 +2844,7 @@ class MediaSeasonListsView(drf_views.APIView):
 class MediaSeasonListDetailView(drf_views.APIView):
     """Season list detail view."""
 
+    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def delete(self, request, media_type, source, media_id, season_number, list_id):
         """Remove a specific season from a specific list."""
         user = request.user
@@ -2870,6 +2905,7 @@ class MediaSeasonListDetailView(drf_views.APIView):
         list_item.delete()
         return Response(status=HTTP.NO_CONTENT)
 
+    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def put(self, request, media_type, source, media_id, season_number, list_id):
         """Add a specific season to a specific list."""
         user = request.user
@@ -2956,6 +2992,7 @@ class MediaSeasonSyncView(drf_views.APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     # FORK: request arg was `_` upstream
+    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def post(self, request, media_type, source, media_id, season_number):
         """Trigger sync of metadata from provider (non-manual sources only)."""
         # TODO: see if it can be simplified reducing the number of return statements
@@ -3111,6 +3148,7 @@ class MediaEpisodeDetailView(drf_views.APIView):
     serializer_class = MediaSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def delete(
         self,
         request,
@@ -3178,6 +3216,7 @@ class MediaEpisodeDetailView(drf_views.APIView):
             status=HTTP.NO_CONTENT,
         )
 
+    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def get(self, request, media_type, source, media_id, season_number, episode_number):
         """Retrieve details of a specific episode for the authenticated user."""
         user = request.user
@@ -3284,6 +3323,7 @@ class MediaEpisodeDetailView(drf_views.APIView):
         )
         return Response(serialized, status=HTTP.OK)
 
+    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def patch(
         self,
         request,
@@ -3438,6 +3478,7 @@ class MediaEpisodeChangesHistoryView(drf_views.APIView):
 
     permission_classes = [permissions.IsAuthenticated]
 
+    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def get(self, request, media_type, source, media_id, season_number, episode_number):
         """Retrieve changes history timeline entries for a specific episode."""
         limit, offset, err = parse_limit_offset(request)
@@ -3505,6 +3546,7 @@ class MediaEpisodeConsumptionHistoryView(drf_views.APIView):
     serializer_class = HistorySerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def get(self, request, media_type, source, media_id, season_number, episode_number):
         """Retrieve the history timeline for a specific episode of a tv serie."""
         limit, offset, err = parse_limit_offset(request)
@@ -3580,6 +3622,7 @@ class MediaEpisodeConsumptionEntryDetailView(drf_views.APIView):
     serializer_class = HistorySerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def delete(
         self,
         request,
@@ -3639,6 +3682,7 @@ class MediaEpisodeConsumptionEntryDetailView(drf_views.APIView):
 
         return Response(status=HTTP.NO_CONTENT)
 
+    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def get(
         self,
         request,
@@ -3700,6 +3744,7 @@ class MediaEpisodeConsumptionEntryDetailView(drf_views.APIView):
         )
         return Response(serialized_data, status=HTTP.OK)
 
+    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def patch(
         self,
         request,
@@ -3790,6 +3835,7 @@ class MediaEpisodeConsumptionEntryDetailView(drf_views.APIView):
 class MediaEpisodeListsView(drf_views.APIView):
     """Episode lists view."""
 
+    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def get(self, request, media_type, source, media_id, season_number, episode_number):
         """Retrieve the lists that a specific season is in."""
         user = request.user
@@ -3837,6 +3883,7 @@ class MediaEpisodeListsView(drf_views.APIView):
 class MediaEpisodeListDetailView(drf_views.APIView):
     """Episode list detail view."""
 
+    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def delete(
         self,
         request,
@@ -3907,6 +3954,7 @@ class MediaEpisodeListDetailView(drf_views.APIView):
         list_item.delete()
         return Response(status=HTTP.NO_CONTENT)
 
+    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def put(
         self,
         request,
@@ -4003,6 +4051,7 @@ class MediaEpisodeSyncView(drf_views.APIView):
 
     permission_classes = [permissions.IsAuthenticated]
 
+    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def post(
         self,
         request,
@@ -4030,6 +4079,68 @@ class SearchProviderView(drf_views.APIView):
     serializer_class = MediaSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    @extend_schema(
+        parameters=[
+            MEDIA_TYPE_COMPLETE_PARAM,
+            OpenApiParameter(
+                name="search",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                description="Search query passed to the provider.",
+            ),
+            OpenApiParameter(
+                name="source",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Provider to search (e.g. `tmdb`, `igdb`). Defaults to "
+                "the media type's default provider when omitted.",
+            ),
+            OpenApiParameter(
+                name="limit",
+                type=int,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Maximum number of results to return (default: 20).",
+            ),
+            OpenApiParameter(
+                name="offset",
+                type=int,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Offset for pagination (default: 0).",
+            ),
+        ],
+        responses={
+            200: {
+                "type": "object",
+                "properties": {
+                    "pagination": {
+                        "type": "object",
+                        "properties": {
+                            "total": {"type": "integer"},
+                            "limit": {"type": "integer"},
+                            "offset": {"type": "integer"},
+                            "next": {
+                                "type": "string",
+                                "format": "uri",
+                                "nullable": True,
+                            },
+                            "previous": {
+                                "type": "string",
+                                "format": "uri",
+                                "nullable": True,
+                            },
+                        },
+                    },
+                    "results": {
+                        "type": "array",
+                        "items": {"type": "object"},
+                    },
+                },
+            },
+        },
+    )
     def get(self, request, media_type):
         """Search for media using the specified provider."""
         search = request.GET.get("search", "")
@@ -4086,7 +4197,24 @@ class SearchProviderView(drf_views.APIView):
 
                 page += 1
 
-        except Exception:  # noqa: BLE001
+        except services.ProviderAPIError as e:
+            logger.exception(
+                "Provider search failed for media_type=%s source=%s search=%r",
+                media_type,
+                source,
+                search,
+            )
+            return Response(
+                {"detail": f"{e.provider_label} lookup failed."},
+                status=HTTP.INTERNAL_SERVER_ERROR,
+            )
+        except Exception:
+            logger.exception(
+                "Unexpected error during search for media_type=%s source=%s search=%r",
+                media_type,
+                source,
+                search,
+            )
             return Response(
                 {"detail": HTTP.INTERNAL_SERVER_ERROR.phrase},
                 status=HTTP.INTERNAL_SERVER_ERROR,

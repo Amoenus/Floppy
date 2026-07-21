@@ -7,6 +7,7 @@ from http import HTTPStatus as HTTP  # noqa: N814
 from django.conf import settings
 from django.db.models import Count
 from django.utils import timezone
+from drf_spectacular.utils import extend_schema
 from rest_framework import views as drf_views
 from rest_framework.response import Response
 
@@ -18,11 +19,13 @@ from app.tasks import bulk_episode_plays_task
 from .helpers import (
     MEDIA_TYPE_MODEL_MAP,
     check_source_type,
+    check_valid_type,
     paginate_data,
     parse_limit_offset,
     resolve_item_queryset,
     try_parse_datetime_input,
 )
+from .schema import MEDIA_TYPE_PARAM, MEDIA_TYPE_TV_ONLY_PARAM
 from .serializers import serialize_data
 
 logger = logging.getLogger(__name__)
@@ -67,6 +70,7 @@ class MediaEpisodeWatchView(drf_views.APIView):
     the most recent play of the episode is removed.
     """
 
+    @extend_schema(parameters=[MEDIA_TYPE_TV_ONLY_PARAM])
     def post(
         self,
         request,
@@ -120,6 +124,7 @@ class MediaEpisodeWatchView(drf_views.APIView):
         )
         return Response(serialize_data(episode), status=HTTP.CREATED)
 
+    @extend_schema(parameters=[MEDIA_TYPE_TV_ONLY_PARAM])
     def delete(
         self,
         request,
@@ -164,6 +169,7 @@ class MediaEpisodeWatchView(drf_views.APIView):
 class MediaEpisodeDropView(drf_views.APIView):
     """Mark an episode dropped — advances progress without watch history."""
 
+    @extend_schema(parameters=[MEDIA_TYPE_TV_ONLY_PARAM])
     def post(
         self,
         request,
@@ -287,8 +293,14 @@ class MediaTagsView(drf_views.APIView):
     def _get_item(self, media_type, source, media_id):
         return resolve_item_queryset(media_id, source, media_type).first()
 
+    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def get(self, request, media_type, source, media_id):
         """Return the user's tags applied to this item."""
+        if not check_valid_type(media_type):
+            return Response(
+                {"detail": "Unsupported media type."},
+                status=HTTP.BAD_REQUEST,
+            )
         item = self._get_item(media_type, source, media_id)
         if item is None:
             return Response({"detail": "Item not found."}, status=HTTP.NOT_FOUND)
@@ -298,8 +310,14 @@ class MediaTagsView(drf_views.APIView):
             status=HTTP.OK,
         )
 
+    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def put(self, request, media_type, source, media_id):
         """Replace the user's tags on this item with the given tag ids."""
+        if not check_valid_type(media_type):
+            return Response(
+                {"detail": "Unsupported media type."},
+                status=HTTP.BAD_REQUEST,
+            )
         item = self._get_item(media_type, source, media_id)
         if item is None:
             return Response({"detail": "Item not found."}, status=HTTP.NOT_FOUND)
@@ -410,6 +428,7 @@ class HistoryView(drf_views.APIView):
 class HistoryRecordView(drf_views.APIView):
     """Delete a consumption-history record (mirrors the web history delete)."""
 
+    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def delete(self, request, media_type, history_id):
         """Delete the record; play-per-instance types delete the play itself."""
         if media_type not in MEDIA_TYPE_MODEL_MAP:
@@ -445,6 +464,7 @@ class MediaEpisodeBulkView(drf_views.APIView):
     task_id that can be polled at /api/v1/tasks/{task_id}.
     """
 
+    @extend_schema(parameters=[MEDIA_TYPE_TV_ONLY_PARAM])
     def post(self, request, media_type, source, media_id):
         """Queue the bulk play range for the media."""
         if media_type != MediaTypes.TV.value:

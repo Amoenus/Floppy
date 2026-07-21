@@ -641,6 +641,11 @@ class ListSerializer(serializers.Serializer):
 class MediaSerializer(serializers.ModelSerializer):
     """Serializer used for media items."""
 
+    # Declared so OpenAPI generation documents the real wire format (see
+    # api.schema.StatusFieldExtension) instead of the model field's string-label
+    # choices, which `to_representation` below never actually returns.
+    status = StatusField()
+
     class Meta:  # noqa: D106
         model = BasicMedia
         exclude = ("user",)

@@ -5,6 +5,7 @@ from decimal import Decimal, InvalidOperation
 from http import HTTPStatus as HTTP  # noqa: N814
 
 from django.apps import apps
+from drf_spectacular.utils import extend_schema
 from rest_framework import views as drf_views
 from rest_framework.response import Response
 
@@ -19,6 +20,9 @@ from app.models import (
     Sources,
 )
 from app.services import metadata_resolution
+
+from .helpers import check_valid_type
+from .schema import MEDIA_TYPE_PARAM, MEDIA_TYPE_TV_ONLY_PARAM
 
 logger = logging.getLogger(__name__)
 
@@ -113,8 +117,14 @@ class MediaProviderPreferenceView(drf_views.APIView):
             lookup["library_media_type"] = MediaTypes.ANIME.value
         return Item.objects.filter(**lookup).first()
 
+    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def get(self, request, media_type, source, media_id):
         """Return the current provider preference and available options."""
+        if not check_valid_type(media_type):
+            return Response(
+                {"detail": "Unsupported media type."},
+                status=HTTP.BAD_REQUEST,
+            )
         item = self._get_item(media_type, source, media_id)
         if item is None:
             return Response({"detail": "Item not found."}, status=HTTP.NOT_FOUND)
@@ -137,8 +147,14 @@ class MediaProviderPreferenceView(drf_views.APIView):
             status=HTTP.OK,
         )
 
+    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def put(self, request, media_type, source, media_id):
         """Set the provider override (mirrors update_metadata_provider_preference)."""
+        if not check_valid_type(media_type):
+            return Response(
+                {"detail": "Unsupported media type."},
+                status=HTTP.BAD_REQUEST,
+            )
         item = self._get_item(media_type, source, media_id)
         if item is None:
             return Response({"detail": "Item not found."}, status=HTTP.NOT_FOUND)
@@ -185,6 +201,7 @@ class MediaProviderPreferenceView(drf_views.APIView):
 class MediaEpisodeScoreView(drf_views.APIView):
     """Set or clear the score on all plays of an episode."""
 
+    @extend_schema(parameters=[MEDIA_TYPE_TV_ONLY_PARAM])
     def patch(  # noqa: PLR0911
         self,
         request,
