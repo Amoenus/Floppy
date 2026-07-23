@@ -1,6 +1,7 @@
 from django.urls import path, register_converter
 
 from app import converters, views
+from app.discover import feeds as discover_feeds
 
 register_converter(converters.MediaTypeChecker, "media_type")
 register_converter(converters.SourceChecker, "source")
@@ -13,6 +14,16 @@ urlpatterns = [
     path("discover/refresh", views.refresh_discover, name="refresh_discover"),
     path("discover/action", views.discover_action, name="discover_action"),
     path("discover/toggle-hidden", views.discover_toggle_hidden, name="discover_toggle_hidden"),
+    path(
+        "rss/<str:token>/<media_type:media_type>/<str:row_key>.xml",
+        discover_feeds.discover_row_feed,
+        name="discover_row_feed",
+    ),
+    path(
+        "rss/preview",
+        discover_feeds.discover_row_feed_preview,
+        name="discover_row_feed_preview",
+    ),
     path("medialist/<media_type:media_type>", views.media_list, name="medialist"),
     path(
         "medialist/<media_type:media_type>/columns/",

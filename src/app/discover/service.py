@@ -813,9 +813,14 @@ def _prepare_row_from_candidates(
     defer_artwork: bool = False,
     show_more: bool = False,
     source_state: str = "live",
+    blocked_statuses_override: set[str] | None = None,
 ) -> tuple[RowResult, bool]:
     if not row_definition.allow_tracked:
-        blocked_statuses = _blocked_statuses_for_row(row_definition)
+        blocked_statuses = (
+            blocked_statuses_override
+            if blocked_statuses_override is not None
+            else _blocked_statuses_for_row(row_definition)
+        )
         tracked_keys = (
             get_tracked_keys_by_media_type(
                 user,
@@ -1383,6 +1388,46 @@ def get_discover_rows(
         rows.append(row)
 
     return rows
+
+
+def get_live_row(
+    user,
+    media_type: str,
+    row_key: str,
+    *,
+    skip_planning: bool = True,
+) -> RowResult | None:
+    """Build a single Discover row live, bypassing the shared row cache.
+
+    Used by callers that need per-request filtering (e.g. optionally including
+    Planning items) the cached row can't safely provide, since that cache is
+    shared with the main Discover page and isn't keyed by such filters.
+    """
+    media_type = _coerce_media_type(media_type)
+    row_definition = next(
+        (row for row in get_rows(media_type) if row.key == row_key),
+        None,
+    )
+    if row_definition is None:
+        return None
+
+    profile_payload = get_or_compute_taste_profile(user, media_type)
+    candidates = _build_row_candidates(user, media_type, row_definition, profile_payload)
+
+    blocked_statuses_override = None
+    if not skip_planning:
+        blocked_statuses_override = {Status.COMPLETED.value, Status.DROPPED.value}
+
+    row, _needs_async_artwork_refresh = _prepare_row_from_candidates(
+        user,
+        media_type,
+        row_definition,
+        profile_payload,
+        candidates,
+        blocked_statuses_override=blocked_statuses_override,
+    )
+    row.items = dedupe_candidates(row.items, seen_identities=set())[:MAX_ITEMS_PER_ROW]
+    return row
 
 
 def get_discover_payload(

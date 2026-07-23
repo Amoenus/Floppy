@@ -5,7 +5,13 @@ from __future__ import annotations
 from django.apps import apps
 
 from app.discover.schemas import CandidateItem
-from app.models import DiscoverFeedback, DiscoverFeedbackType, MediaTypes, Status
+from app.models import (
+    CollectionEntry,
+    DiscoverFeedback,
+    DiscoverFeedbackType,
+    MediaTypes,
+    Status,
+)
 
 DEFAULT_BLOCKED_STATUSES = {
     Status.COMPLETED.value,
@@ -93,6 +99,39 @@ def get_feedback_keys_by_media_type(
         for row in rows
         if row.item_id
     }
+
+
+def get_owned_keys_by_media_type(user, media_type: str) -> set[tuple[str, str, str]]:
+    """Return identity keys for items already in the user's owned collection."""
+    rows = (
+        CollectionEntry.objects.filter(user=user, item__media_type=media_type)
+        .select_related("item")
+        .only("item__media_type", "item__source", "item__media_id")
+    )
+
+    return {
+        (
+            str(row.item.media_type),
+            str(row.item.source),
+            str(row.item.media_id),
+        )
+        for row in rows
+        if row.item_id
+    }
+
+
+def exclude_owned_items(
+    candidates: list[CandidateItem],
+    owned_keys: set[tuple[str, str, str]],
+) -> list[CandidateItem]:
+    """Filter out candidates already present in the user's owned collection."""
+    if not owned_keys:
+        return list(candidates)
+    return [
+        candidate
+        for candidate in candidates
+        if candidate.identity() not in owned_keys
+    ]
 
 
 def exclude_tracked_items(

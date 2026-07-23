@@ -5,12 +5,15 @@ from django.test import TestCase
 
 from app.discover.filters import (
     dedupe_candidates,
+    exclude_owned_items,
     exclude_tracked_items,
     get_feedback_keys_by_media_type,
+    get_owned_keys_by_media_type,
     get_tracked_keys_by_media_type,
 )
 from app.discover.schemas import CandidateItem
 from app.models import (
+    CollectionEntry,
     DiscoverFeedback,
     DiscoverFeedbackType,
     Item,
@@ -144,3 +147,54 @@ class DiscoverFilterTests(TestCase):
         deduped = dedupe_candidates(candidates, seen_identities=seen)
         self.assertEqual(len(deduped), 1)
         self.assertEqual(deduped[0].media_id, "200")
+
+    def test_get_owned_keys_by_media_type_returns_collected_items(self):
+        owned_item = Item.objects.create(
+            media_id="303",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Owned Movie",
+            image="http://example.com/owned.jpg",
+        )
+        CollectionEntry.objects.create(user=self.user, item=owned_item)
+
+        owned_keys = get_owned_keys_by_media_type(self.user, MediaTypes.MOVIE.value)
+
+        self.assertEqual(
+            owned_keys,
+            {(MediaTypes.MOVIE.value, Sources.TMDB.value, "303")},
+        )
+
+    def test_exclude_owned_items_filters_candidates(self):
+        owned_keys = {(MediaTypes.MOVIE.value, Sources.TMDB.value, "303")}
+        candidates = [
+            CandidateItem(
+                media_type=MediaTypes.MOVIE.value,
+                source=Sources.TMDB.value,
+                media_id="303",
+                title="Owned Movie",
+            ),
+            CandidateItem(
+                media_type=MediaTypes.MOVIE.value,
+                source=Sources.TMDB.value,
+                media_id="304",
+                title="Unowned Movie",
+            ),
+        ]
+
+        filtered = exclude_owned_items(candidates, owned_keys)
+        self.assertEqual(len(filtered), 1)
+        self.assertEqual(filtered[0].media_id, "304")
+
+    def test_exclude_owned_items_no_owned_keys_returns_all(self):
+        candidates = [
+            CandidateItem(
+                media_type=MediaTypes.MOVIE.value,
+                source=Sources.TMDB.value,
+                media_id="305",
+                title="Any Movie",
+            ),
+        ]
+
+        filtered = exclude_owned_items(candidates, set())
+        self.assertEqual(filtered, candidates)

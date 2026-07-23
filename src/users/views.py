@@ -20,6 +20,8 @@ from django.views.decorators.http import require_GET, require_http_methods, requ
 from django_celery_beat.models import PeriodicTask
 
 from app import history_cache, statistics_cache
+from app.discover.feeds import get_external_row_definitions
+from app.discover.registry import DISCOVER_MEDIA_TYPES
 from app.models import Item, MediaTypes, Status
 from app.providers import tmdb
 from app.services import metadata_resolution
@@ -378,6 +380,50 @@ def notifications(request):
         "users/notifications.html",
         {
             "form": form,
+        },
+    )
+
+
+@require_GET
+def rss_settings(request):
+    """Render the RSS settings page for external-metadata Discover row feeds."""
+    media_types = [
+        {
+            "value": media_type,
+            "label": MediaTypes(media_type).label,
+            "rows": [
+                {"key": row.key, "title": row.title}
+                for row in get_external_row_definitions(media_type)
+            ],
+        }
+        for media_type in DISCOVER_MEDIA_TYPES
+    ]
+
+    # Build the feed URL with reverse() (so it stays correct if the route ever
+    # changes), then swap the real values for placeholders the template's JS fills in.
+    placeholder_media_type = DISCOVER_MEDIA_TYPES[0]
+    placeholder_row_key = "trending_right_now"
+    feed_url_template = request.build_absolute_uri(
+        reverse(
+            "discover_row_feed",
+            kwargs={
+                "token": request.user.token,
+                "media_type": placeholder_media_type,
+                "row_key": placeholder_row_key,
+            },
+        ),
+    )
+    feed_url_template = feed_url_template.replace(
+        f"/{placeholder_media_type}/",
+        "/MEDIA_TYPE_PLACEHOLDER/",
+    ).replace(f"{placeholder_row_key}.xml", "ROW_KEY_PLACEHOLDER.xml")
+
+    return render(
+        request,
+        "users/rss.html",
+        {
+            "media_types": media_types,
+            "feed_url_template": feed_url_template,
         },
     )
 

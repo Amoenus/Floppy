@@ -54,6 +54,13 @@
               <span>Integrations</span>
             </a>
 
+            {% url 'rss_settings' as rss_url %}
+            <a href="{{ rss_url }}"
+               class="w-full flex items-center space-x-3 px-2 py-2 rounded-md transition-colors text-left border-l-2 cursor-pointer text-sm {% if request.path == rss_url %}bg-[#39404b] text-white border-indigo-500{% else %}text-gray-400 border-transparent hover:bg-[#313842] hover:text-white{% endif %}">
+              {% include "app/icons/rss.svg" with classes="w-5 h-5" %}
+              <span>RSS</span>
+            </a>
+
             {% url 'import_data' as import_url %}
             <a href="{{ import_url }}"
                class="w-full flex items-center space-x-3 px-2 py-2 rounded-md transition-colors text-left border-l-2 cursor-pointer text-sm {% if request.path == import_url %}bg-[#39404b] text-white border-indigo-500{% else %}text-gray-400 border-transparent hover:bg-[#313842] hover:text-white{% endif %}">
