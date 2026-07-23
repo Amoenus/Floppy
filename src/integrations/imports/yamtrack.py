@@ -119,26 +119,29 @@ def _find_item_after_integrity_error(lookup, original_exc):
     raise original_exc
 
 
-def importer(file, user, mode):
+def importer(file, user, mode, lists_only=False):
     """Import media from CSV file using the class-based importer."""
-    csv_importer = YamtrackImporter(file, user, mode)
+    csv_importer = YamtrackImporter(file, user, mode, lists_only=lists_only)
     return csv_importer.import_data()
 
 
 class YamtrackImporter:
     """Class to handle importing user data from CSV files."""
 
-    def __init__(self, file, user, mode):
+    def __init__(self, file, user, mode, lists_only=False):
         """Initialize the importer with file, user, and mode.
 
         Args:
             file: Uploaded CSV file object
             user: Django user object to import data for
             mode (str): Import mode ("new" or "overwrite")
+            lists_only (bool): When True, only process ``list``/``list_item``
+                rows and skip ``media``/``collection`` rows.
         """
         self.file = file
         self.user = user
         self.mode = mode
+        self.lists_only = lists_only
         self.warnings = []
 
         # Track existing media for "new" mode
@@ -236,14 +239,16 @@ class YamtrackImporter:
     def _process_row(self, row):
         """Process a single row from the CSV file."""
         row_type = (row.get("row_type") or "").strip().lower()
-        if row_type in ("", "media"):
-            self._process_media_row(row)
-            return
         if row_type == "list":
             self._process_list_row(row)
             return
         if row_type == "list_item":
             self._process_list_item_row(row)
+            return
+        if self.lists_only:
+            return
+        if row_type in ("", "media"):
+            self._process_media_row(row)
             return
         if row_type == "collection":
             self._process_collection_row(row)

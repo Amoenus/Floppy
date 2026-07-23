@@ -5,9 +5,10 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_not_required
 from django.core.paginator import Paginator
 from django.db.models import F, OuterRef, Subquery
-from django.http import Http404
+from django.http import Http404, StreamingHttpResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
+from django.utils.text import slugify
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET
 
@@ -22,6 +23,7 @@ from app.providers import (
     services,  # noqa: F401 — kept so legacy test patches on lists.views.services still work
 )
 from app.release_years import prefill_display_release_years
+from integrations import exports
 from lists import tasks as list_tasks
 from lists.forms import CustomListForm
 from lists.models import CustomList, CustomListItem
@@ -426,3 +428,24 @@ def list_detail(request, list_reference):
             return render(request, "app/components/table_items.html", context)
         return render(request, "lists/components/list_table.html", context)
     return render(request, "lists/components/media_grid.html", context)
+
+
+@login_not_required
+@require_GET
+def list_export_csv(request, list_reference):
+    """Stream a single custom list's contents as a CSV file."""
+    reference = str(list_reference or "").strip()
+    custom_list = CustomList.objects.get_by_reference(reference)
+    msg = "List not found"
+    if custom_list is None:
+        raise Http404(msg)
+
+    if not custom_list.user_can_view(request.user):
+        raise Http404(msg)
+
+    filename = slugify(custom_list.name) or "list"
+    return StreamingHttpResponse(
+        exports.generate_list_csv(custom_list),
+        content_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}.csv"'},
+    )

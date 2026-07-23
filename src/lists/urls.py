@@ -42,9 +42,15 @@ urlpatterns = [
     path("list/create", views_list_actions.create, name="list_create"),
     path("list/edit", views_list_actions.edit, name="list_edit"),
     path("list/delete", views_list_actions.delete, name="list_delete"),
+    path("list/import-csv", views_list_actions.import_list_csv, name="list_import_csv"),
     path("list/<slug:list_reference>", views.list_detail, name="list_detail"),
     path("list/<slug:list_reference>/rss", feeds.list_rss_feed, name="list_rss"),
     path("list/<slug:list_reference>/json", feeds.list_json, name="list_json"),
+    path(
+        "list/<slug:list_reference>/export",
+        views.list_export_csv,
+        name="list_export_csv",
+    ),
     path(
         "list/<int:list_id>/cover-image",
         views_list_browse.list_cover_image,

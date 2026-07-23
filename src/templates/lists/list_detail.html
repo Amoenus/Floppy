@@ -160,6 +160,10 @@
                   View Recommendations
                 </a>
               {% endif %}
+              <a href="{% url 'list_export_csv' custom_list.public_reference %}"
+                 class="block w-full px-4 py-2 text-left text-sm text-gray-300 hover:bg-[#454d5a] hover:text-white transition-colors">
+                Export as CSV
+              </a>
             </div>
           </div>
           {% include "lists/components/media_type_breakdown_button.html" %}
@@ -210,16 +214,25 @@
                  class="block w-full px-4 py-2 text-left text-sm text-gray-300 hover:bg-[#454d5a] hover:text-white transition-colors">
                 View Activity History
               </a>
+              <a href="{% url 'list_export_csv' custom_list.public_reference %}"
+                 class="block w-full px-4 py-2 text-left text-sm text-gray-300 hover:bg-[#454d5a] hover:text-white transition-colors">
+                Export as CSV
+              </a>
             </div>
           </div>
           {% include "lists/components/media_type_breakdown_button.html" %}
         </div>
       {% else %}
-        {% if media_type_breakdown %}
-          <div class="hidden sm:flex mb-4 items-center gap-2">
+        <div class="hidden sm:flex mb-4 items-center gap-2">
+          <a href="{% url 'list_export_csv' custom_list.public_reference %}"
+             class="h-10 inline-flex items-center gap-2 px-4 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors cursor-pointer whitespace-nowrap">
+            {% include "app/icons/export.svg" with classes="w-4 h-4" %}
+            <span class="text-sm">Export as CSV</span>
+          </a>
+          {% if media_type_breakdown %}
             {% include "lists/components/media_type_breakdown_button.html" %}
-          </div>
-        {% endif %}
+          {% endif %}
+        </div>
       {% endif %}
   </div>
 
@@ -271,6 +284,10 @@
               View Recommendations
             </a>
           {% endif %}
+          <a href="{% url 'list_export_csv' custom_list.public_reference %}"
+             class="block w-full px-4 py-2 text-left text-sm text-gray-300 hover:bg-[#454d5a] hover:text-white transition-colors">
+            Export as CSV
+          </a>
         </div>
       </div>
       {% include "lists/components/media_type_breakdown_button.html" %}
@@ -321,16 +338,25 @@
              class="block w-full px-4 py-2 text-left text-sm text-gray-300 hover:bg-[#454d5a] hover:text-white transition-colors">
             View Activity History
           </a>
+          <a href="{% url 'list_export_csv' custom_list.public_reference %}"
+             class="block w-full px-4 py-2 text-left text-sm text-gray-300 hover:bg-[#454d5a] hover:text-white transition-colors">
+            Export as CSV
+          </a>
         </div>
       </div>
       {% include "lists/components/media_type_breakdown_button.html" %}
     </div>
   {% else %}
-    {% if media_type_breakdown %}
-      <div class="mb-4 sm:hidden flex items-center gap-2">
+    <div class="mb-4 sm:hidden flex items-center gap-2">
+      <a href="{% url 'list_export_csv' custom_list.public_reference %}"
+         class="h-10 inline-flex items-center gap-2 px-4 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors cursor-pointer whitespace-nowrap">
+        {% include "app/icons/export.svg" with classes="w-4 h-4" %}
+        <span class="text-sm">Export as CSV</span>
+      </a>
+      {% if media_type_breakdown %}
         {% include "lists/components/media_type_breakdown_button.html" %}
-      </div>
-    {% endif %}
+      {% endif %}
+    </div>
   {% endif %}
   {% if custom_list.description %}<p class="mb-6 text-gray-400">{{ custom_list.description }}</p>{% endif %}
 

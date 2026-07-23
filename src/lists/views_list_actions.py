@@ -25,6 +25,7 @@ from app.models import Item, MediaTypes
 from app.providers import services
 from app.services import metadata_resolution
 from lists import smart_rules
+from lists import tasks as list_tasks
 from lists.forms import CustomListForm
 from lists.models import (
     CustomList,
@@ -206,6 +207,19 @@ def delete(request):
 
     messages.error(request, "You do not have permission to delete this list.")
     return helpers.redirect_back(request)
+
+
+@require_POST
+def import_list_csv(request):
+    """Import a single custom list from an uploaded CSV file."""
+    csv_file = request.FILES.get("csv_file")
+    if not csv_file:
+        messages.error(request, "Select a CSV file to import.")
+        return redirect("lists")
+
+    list_tasks.import_list_csv_task.delay(request.user.id, csv_file.read(), "new")
+    messages.info(request, "List import started in the background.")
+    return redirect("lists")
 
 
 @require_GET

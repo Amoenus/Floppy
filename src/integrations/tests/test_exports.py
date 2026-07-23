@@ -268,6 +268,38 @@ class ExportCSVTest(TestCase):
         exported_list_names = sorted({row["list_name"] for row in movie_list_item_rows})
         self.assertEqual(exported_list_names, ["Favorites", "Rewatch"])
 
+    def test_generate_list_csv_only_includes_target_list(self):
+        """generate_list_csv should only emit rows for the given list."""
+        from integrations import exports
+
+        movie_item = Item.objects.get(media_id="10494", media_type=MediaTypes.MOVIE.value)
+        favorites = CustomList.objects.get(owner=self.user, name="Favorites")
+        other_list = CustomList.objects.create(
+            name="Rewatch",
+            description="Need to revisit",
+            owner=self.user,
+            visibility="private",
+        )
+        CustomListItem.objects.create(
+            custom_list=other_list,
+            item=movie_item,
+            added_by=self.user,
+        )
+
+        content = "".join(exports.generate_list_csv(favorites))
+        reader = csv.DictReader(StringIO(content))
+        rows = list(reader)
+
+        list_rows = [row for row in rows if row["row_type"] == "list"]
+        list_item_rows = [row for row in rows if row["row_type"] == "list_item"]
+        media_rows = [row for row in rows if row["row_type"] not in ("list", "list_item")]
+
+        self.assertEqual(len(list_rows), 1)
+        self.assertEqual(list_rows[0]["list_name"], "Favorites")
+        self.assertEqual(len(list_item_rows), 2)
+        self.assertTrue(all(r["list_name"] == "Favorites" for r in list_item_rows))
+        self.assertEqual(media_rows, [])
+
     def test_export_csv_includes_music_artist_and_album_rows(self):
         """ArtistTracker and AlbumTracker rows appear in the CSV export."""
         artist = Artist.objects.create(

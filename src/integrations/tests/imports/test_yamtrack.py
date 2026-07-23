@@ -223,6 +223,28 @@ class ImportYamtrackLists(TestCase):
         self.assertEqual(Episode.objects.filter(related_season__user=self.user).count(), 0)
 
 
+class ImportYamtrackListsOnly(TestCase):
+    """Test the lists_only import flag used by the per-list CSV import."""
+
+    def setUp(self):
+        """Create user for the tests."""
+        self.credentials = {"username": "test", "password": "12345"}
+        self.user = get_user_model().objects.create_user(**self.credentials)
+        with Path(mock_path / "import_yamtrack_with_lists.csv").open("rb") as file:
+            self.import_results = yamtrack.importer(file, self.user, "new", lists_only=True)
+
+    def test_list_and_list_items_still_created(self):
+        """List and list_item rows are processed even with lists_only=True."""
+        custom_list = CustomList.objects.filter(owner=self.user, name="Favorites").first()
+        self.assertIsNotNone(custom_list)
+        self.assertEqual(CustomListItem.objects.filter(custom_list=custom_list).count(), 2)
+
+    def test_media_row_skipped(self):
+        """Media rows in the CSV are ignored when lists_only=True."""
+        self.assertEqual(Movie.objects.filter(user=self.user).count(), 0)
+        self.assertFalse(Item.objects.filter(media_id="manualmovie1").exists())
+
+
 class ImportYamtrackStatusNormalization(TestCase):
     """Test status normalization during Yamtrack import."""
 

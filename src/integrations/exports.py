@@ -230,57 +230,89 @@ def _generate_list_rows(user, writer, fields):
     custom_lists = CustomList.objects.filter(owner=user).order_by("name")
 
     for custom_list in custom_lists:
-        list_row = (
-            ["list"]
-            + [""] * len(fields["item"])
+        yield from _generate_single_list_rows(custom_list, writer, fields)
+
+
+def _generate_single_list_rows(custom_list, writer, fields):
+    """Yield the ``list`` row and its ``list_item`` rows for one custom list."""
+    list_row = (
+        ["list"]
+        + [""] * len(fields["item"])
+        + [""] * len(fields["track"])
+        + [
+            custom_list.id,
+            custom_list.name,
+            custom_list.description,
+            json.dumps(custom_list.tags or []),
+            custom_list.visibility,
+            custom_list.allow_recommendations,
+            custom_list.source,
+            custom_list.source_id,
+            custom_list.is_smart,
+            json.dumps(custom_list.smart_media_types or []),
+            json.dumps(custom_list.smart_excluded_media_types or []),
+            json.dumps(custom_list.smart_filters or {}),
+            "",
+        ]
+        + [""] * len(fields["collection"])
+    )
+    yield writer.writerow(list_row)
+
+    list_items = (
+        custom_list.customlistitem_set.select_related("item")
+        .order_by("date_added", "pk")
+    )
+    for list_item in list_items:
+        item = list_item.item
+        list_item_row = (
+            ["list_item"]
+            + [getattr(item, field, "") for field in fields["item"]]
             + [""] * len(fields["track"])
             + [
                 custom_list.id,
                 custom_list.name,
-                custom_list.description,
-                json.dumps(custom_list.tags or []),
-                custom_list.visibility,
-                custom_list.allow_recommendations,
-                custom_list.source,
-                custom_list.source_id,
-                custom_list.is_smart,
-                json.dumps(custom_list.smart_media_types or []),
-                json.dumps(custom_list.smart_excluded_media_types or []),
-                json.dumps(custom_list.smart_filters or {}),
                 "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                list_item.date_added.isoformat() if list_item.date_added else "",
             ]
             + [""] * len(fields["collection"])
         )
-        yield writer.writerow(list_row)
+        yield writer.writerow(list_item_row)
 
-        list_items = (
-            custom_list.customlistitem_set.select_related("item")
-            .order_by("date_added", "pk")
-        )
-        for list_item in list_items:
-            item = list_item.item
-            list_item_row = (
-                ["list_item"]
-                + [getattr(item, field, "") for field in fields["item"]]
-                + [""] * len(fields["track"])
-                + [
-                    custom_list.id,
-                    custom_list.name,
-                    "",
-                    "",
-                    "",
-                    "",
-                    "",
-                    "",
-                    "",
-                    "",
-                    "",
-                    "",
-                    list_item.date_added.isoformat() if list_item.date_added else "",
-                ]
-                + [""] * len(fields["collection"])
-            )
-            yield writer.writerow(list_item_row)
+
+def generate_list_csv(custom_list):
+    """Generate CSV rows for a single custom list (definition + item snapshot).
+
+    Uses the same header/column layout as ``generate_rows`` so the output is
+    directly importable via the full-backup ``YamtrackImporter``.
+    """
+    pseudo_buffer = Echo()
+    writer = csv.writer(pseudo_buffer, quoting=csv.QUOTE_ALL)
+
+    fields = {
+        "item": get_model_fields(Item),
+        "track": get_track_fields(),
+        "list": get_list_fields(),
+        "collection": get_collection_fields(),
+    }
+
+    yield writer.writerow(
+        ["row_type"]
+        + fields["item"]
+        + fields["track"]
+        + fields["list"]
+        + fields["collection"],
+    )
+
+    yield from _generate_single_list_rows(custom_list, writer, fields)
 
 
 def _generate_collection_rows(user, writer, fields, media_types):
