@@ -10,7 +10,9 @@ completed from real library state.
 
 import logging
 
-from app.models import MediaTypes
+import app.providers.tmdb
+from app import live_playback
+from app.models import MediaTypes, Sources
 
 from .base import BaseWebhookProcessor
 
@@ -37,7 +39,71 @@ class StremioWebhookProcessor(BaseWebhookProcessor):
             )
             return
 
+        self._update_live_playback_state(payload, user, ids)
         self._process_media(payload, user, ids)
+
+    def _update_live_playback_state(self, payload, user, ids):
+        """Update the Now Playing card from a playback-start signal.
+
+        Stremio only ever sends a start ping (no pause/stop/progress), so
+        this always writes a ``media.play`` state with no offset/duration;
+        the card's own stale-after-4h expiry is what clears it.
+        """
+        imdb_id = ids["imdb_id"]
+        media_type = payload.get("type")
+
+        if media_type == "movie":
+            self._update_live_playback_movie(user, imdb_id)
+        elif media_type == "series":
+            self._update_live_playback_episode(payload, user, imdb_id)
+
+    def _update_live_playback_movie(self, user, imdb_id):
+        find_response = app.providers.tmdb.find(imdb_id, "imdb_id")
+        movie_results = find_response.get("movie_results") or []
+        if not movie_results:
+            return
+        media_id = movie_results[0].get("id")
+        if not media_id:
+            return
+
+        movie_metadata = app.providers.tmdb.movie(media_id)
+        live_playback.apply_playback_event(
+            user_id=user.id,
+            event_type="media.play",
+            playback_media_type=MediaTypes.MOVIE.value,
+            media_id=str(media_id),
+            source=Sources.TMDB.value,
+            title=movie_metadata.get("title"),
+        )
+
+    def _update_live_playback_episode(self, payload, user, imdb_id):
+        season_number, episode_number = self._extract_season_episode_from_payload(
+            payload,
+        )
+        if season_number is None or episode_number is None:
+            return
+
+        find_response = app.providers.tmdb.find(imdb_id, "imdb_id")
+        episode_results = find_response.get("tv_episode_results") or []
+        if episode_results:
+            show_id = episode_results[0].get("show_id")
+        else:
+            tv_results = find_response.get("tv_results") or []
+            show_id = tv_results[0].get("id") if tv_results else None
+        if not show_id:
+            return
+
+        tv_metadata = app.providers.tmdb.tv(show_id)
+        live_playback.apply_playback_event(
+            user_id=user.id,
+            event_type="media.play",
+            playback_media_type=MediaTypes.EPISODE.value,
+            media_id=str(show_id),
+            source=Sources.TMDB.value,
+            series_title=tv_metadata.get("title"),
+            season_number=season_number,
+            episode_number=episode_number,
+        )
 
     def _is_supported_event(self, event_type):  # noqa: ARG002
         return True

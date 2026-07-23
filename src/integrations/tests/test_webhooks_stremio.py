@@ -143,3 +143,41 @@ class StremioWebhookProcessorTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertFalse(Movie.objects.filter(user=self.user).exists())
+
+    @patch("integrations.webhooks.stremio.live_playback.apply_playback_event")
+    def test_movie_start_updates_live_playback(self, mock_apply_event):
+        """A movie playback start updates the Now Playing card."""
+        response = self._get("movie", "tt0133093")
+
+        self.assertEqual(response.status_code, 200)
+        mock_apply_event.assert_called_once()
+        _, kwargs = mock_apply_event.call_args
+        self.assertEqual(kwargs["user_id"], self.user.id)
+        self.assertEqual(kwargs["event_type"], "media.play")
+        self.assertEqual(kwargs["playback_media_type"], "movie")
+        self.assertEqual(kwargs["media_id"], "603")
+        self.assertEqual(kwargs["title"], "The Matrix")
+
+    @patch("integrations.webhooks.stremio.live_playback.apply_playback_event")
+    def test_episode_start_updates_live_playback(self, mock_apply_event):
+        """An episode playback start updates the Now Playing card."""
+        response = self._get("series", "tt0108778:1:1")
+
+        self.assertEqual(response.status_code, 200)
+        mock_apply_event.assert_called_once()
+        _, kwargs = mock_apply_event.call_args
+        self.assertEqual(kwargs["user_id"], self.user.id)
+        self.assertEqual(kwargs["event_type"], "media.play")
+        self.assertEqual(kwargs["playback_media_type"], "episode")
+        self.assertEqual(kwargs["media_id"], "1668")
+        self.assertEqual(kwargs["series_title"], "Friends")
+        self.assertEqual(kwargs["season_number"], 1)
+        self.assertEqual(kwargs["episode_number"], 1)
+
+    @patch("integrations.webhooks.stremio.live_playback.apply_playback_event")
+    def test_unsupported_id_skips_live_playback(self, mock_apply_event):
+        """Non-IMDB ids never reach the live playback update."""
+        response = self._get("movie", "yt%3Aabc123")
+
+        self.assertEqual(response.status_code, 200)
+        mock_apply_event.assert_not_called()
