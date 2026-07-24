@@ -488,7 +488,15 @@ def refresh_history_cache(
         elif index_day_keys:
             missing_day_keys = _missing_history_day_keys(user_id, logging_style, index_day_keys)
             if missing_day_keys:
-                warm_targets = missing_day_keys
+                # Bound inline warming so a cold/evicted day-cache can't turn a
+                # "cheap" refresh (e.g. warm_days=0) into a full history rebuild.
+                # Index order is most-recent-first, so the cap keeps the pages a
+                # user is about to view warm; any remainder is backfilled by the
+                # existing low-priority coverage-repair task.
+                cap = warm_days or 0
+                warm_targets = missing_day_keys[:cap]
+                if len(missing_day_keys) > cap:
+                    schedule_history_day_cache_coverage(user_id, logging_style)
             elif warm_days:
                 warm_targets = index_day_keys[:warm_days]
         rebuilt = 0

@@ -1092,7 +1092,12 @@ CELERY_TASK_ROUTES = {
     # User-triggered cache rebuilds go to the dedicated interactive worker so they
     # are never blocked behind long-running background tasks.
     "app.tasks.refresh_statistics_cache_task": {"queue": "interactive"},
-    "app.tasks.refresh_history_cache_task": {"queue": "interactive"},
+    # History cache rebuilds now bound their inline work (see
+    # refresh_history_cache in history_cache_reader.py), but they're kept off the
+    # interactive queue as defense-in-depth so an unanticipated slow rebuild can
+    # never block Plex webhook scrobbles, which share that single-concurrency
+    # worker.
+    "app.tasks.refresh_history_cache_task": {"queue": "celery"},
     # Webhook scrobbles must land right after a play finishes, so they run on the
     # interactive worker at top priority — never behind imports or backfills.
     "Process media server webhook": {
