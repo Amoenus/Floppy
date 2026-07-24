@@ -1,5 +1,6 @@
 import json
 import logging
+from datetime import timedelta
 from urllib.parse import quote, urlparse
 from uuid import uuid4
 
@@ -7,9 +8,10 @@ from django.apps import apps
 from django.conf import settings
 from django.contrib import messages
 from django.http import HttpResponse, HttpResponseBadRequest
-from django.shortcuts import redirect, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
-from django.views.decorators.http import require_POST
+from django.utils import timezone
+from django.views.decorators.http import require_GET, require_POST
 
 from app import cache_utils, fork_services_episode, helpers
 from app.activity_builders import _build_detail_activity_state
@@ -21,6 +23,7 @@ from app.models import (
     Episode,
     Item,
     MediaTypes,
+    Season,
     Sources,
     Status,
 )
@@ -340,6 +343,29 @@ def media_delete(request):
     return redirect_response
 
 
+def _render_season_progress_oob(related_season):
+    """Render the mobile+desktop season-progress OOB span pair as one string.
+
+    `max_progress` is set as a side effect of `Episode.save()` (from freshly
+    fetched provider metadata) rather than being a persisted field, so a
+    `related_season` fetched independently of a just-saved Episode — as in
+    the history poller — may not have it. Fall back to None like every other
+    read site in the codebase (e.g. `helpers.py`, `home_screen.py`).
+    """
+    progress = related_season.completed_episode_count
+    max_progress = getattr(related_season, "max_progress", None)
+    if max_progress:
+        progress = f"{progress}/{max_progress}"
+    spans = ""
+    for variant in ("mobile", "desktop"):
+        spans += (
+            f'<span id="season-progress-{variant}-{related_season.id}" '
+            f'hx-swap-oob="true" class="text-sm font-medium text-gray-400">'
+            f"Progress: {progress}</span>"
+        )
+    return spans
+
+
 def _write_episode_save_oob(
     response,
     request,
@@ -425,12 +451,7 @@ def _write_episode_save_oob(
             request=request,
         ),
     )
-    response.write(
-        f'<span id="season-progress-mobile-{related_season.id}" hx-swap-oob="true" class="text-sm font-medium text-gray-400">Progress: {related_season.completed_episode_count}{f"/{related_season.max_progress}" if related_season.max_progress else ""}</span>',
-    )
-    response.write(
-        f'<span id="season-progress-desktop-{related_season.id}" hx-swap-oob="true" class="text-sm font-medium text-gray-400">Progress: {related_season.completed_episode_count}{f"/{related_season.max_progress}" if related_season.max_progress else ""}</span>',
-    )
+    response.write(_render_season_progress_oob(related_season))
 
 
 @require_POST
@@ -632,6 +653,63 @@ def episode_drop(request):
         return response
 
     return helpers.redirect_back(request)
+
+
+POLL_LOOKBACK_SECONDS = 45  # > poll interval, tolerates jitter/delay
+
+
+@require_GET
+def episode_history_poll(request, season_id):
+    """Push OOB updates for episodes whose history changed since the last poll.
+
+    Plays recorded by webhooks/scrobblers (Plex, generic scrobble API) write
+    directly to the DB with no open HTTP response to attach an OOB swap to,
+    so the season page polls this endpoint to catch up.
+    """
+    related_season = get_object_or_404(Season, pk=season_id, user=request.user)
+    since = timezone.now() - timedelta(seconds=POLL_LOOKBACK_SECONDS)
+
+    recent_item_ids = (
+        Episode.objects.filter(related_season=related_season, created_at__gte=since)
+        .values_list("item_id", flat=True)
+        .distinct()
+    )
+
+    response = HttpResponse()
+    for item_id in recent_item_ids:
+        episode_history = list(
+            Episode.objects.filter(related_season=related_season, item_id=item_id)
+            .select_related("item", "related_season")
+            .order_by("-end_date", "-created_at"),
+        )
+        if not episode_history:
+            continue
+
+        episode = episode_history[0]
+        episode.history = episode_history
+        episode.collection_entry = CollectionEntry.objects.filter(
+            item_id=item_id,
+            user=request.user,
+        ).select_related("item").first()
+
+        response.write(
+            render_to_string(
+                "app/components/detail_episode_track_button.html",
+                {"episode": episode, "track_button_oob": True},
+                request=request,
+            ),
+        )
+        response.write(
+            render_to_string(
+                "app/components/detail_episode_history_line.html",
+                {"episode": episode, "user": request.user, "history_oob": True},
+                request=request,
+            ),
+        )
+
+    response.write(_render_season_progress_oob(related_season))
+    response["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return response
 
 
 @require_POST

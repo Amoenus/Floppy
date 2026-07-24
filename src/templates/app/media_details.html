@@ -107,6 +107,14 @@
                 </div>
               </div>
 
+              {% if not public_view|default:False and current_instance %}
+                {# Picks up plays recorded by webhooks/scrobblers (Plex, generic scrobble API), #}
+                {# which write history directly with no open response to OOB-swap into. #}
+                <div hx-get="{% url 'episode_history_poll' current_instance.id %}"
+                     hx-trigger="every 15s"
+                     hx-swap="none"></div>
+              {% endif %}
+
               {# Season dropdown #}
               <div class="relative hidden md:block"
                    x-data="{ open: false }"

@@ -139,6 +139,11 @@ urlpatterns = [
     path("episode_drop", views.episode_drop, name="episode_drop"),
     path("episode_bulk_save", views.episode_bulk_save, name="episode_bulk_save"),
     path(
+        "episodes/history-poll/<int:season_id>/",
+        views.episode_history_poll,
+        name="episode_history_poll",
+    ),
+    path(
         "history_modal/<source:source>/<media_type:media_type>/<path:media_id>/<int:season_number>/<int:episode_number>",
         views.history_modal,
         name="history_modal",

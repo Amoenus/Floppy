@@ -271,6 +271,7 @@ from app.providers import (
 from app.save_views import (
     episode_bulk_save,
     episode_drop,
+    episode_history_poll,
     episode_save,
     media_delete,
     media_save,
