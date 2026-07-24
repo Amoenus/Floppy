@@ -10,6 +10,7 @@ from . import (
     fork_views_metadata,
     fork_views_music,
     fork_views_podcast,
+    fork_views_scrobble,
     fork_views_statistics,
     fork_views_tracking,
     fork_views_users,
@@ -300,6 +301,11 @@ urlpatterns = [
         r"^export/template/?$",
         fork_views_integrations.ExportTemplateView.as_view(),
         name="api_export_template",
+    ),
+    re_path(
+        r"^scrobble/?$",
+        fork_views_scrobble.ScrobbleView.as_view(),
+        name="api_scrobble",
     ),
     re_path(
         r"^statistics/overview/?$",
