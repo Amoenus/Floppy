@@ -92,7 +92,11 @@ class NotificationSettingsForm(forms.ModelForm):
                 attrs={
                     "rows": 5,
                     "wrap": "off",
-                    "placeholder": "discord://webhook_id/webhook_token\ntgram://bot_token/chat_id",
+                    "placeholder": (
+                        "discord://webhook_id/webhook_token\n"
+                        "tgram://bot_token/chat_id\n"
+                        "notifiarr://api_key/#channel_id"
+                    ),
                 },
             ),
         }
