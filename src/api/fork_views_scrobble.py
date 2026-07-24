@@ -126,6 +126,80 @@ class ScrobbleView(drf_views.APIView):
             "'start'/'pause' only update the live Now Playing card; "
             "'stop' persists a durable watch/progress update."
         ),
+        request={
+            "application/json": {
+                "type": "object",
+                "required": ["action", "media_type", "ids"],
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": list(_ACTIONS),
+                    },
+                    "media_type": {
+                        "type": "string",
+                        "enum": list(_MEDIA_TYPES),
+                    },
+                    "ids": {
+                        "type": "object",
+                        "description": "At least one of tmdb/imdb/tvdb is required.",
+                        "properties": {
+                            "tmdb": {"type": "string", "nullable": True},
+                            "imdb": {"type": "string", "nullable": True},
+                            "tvdb": {"type": "string", "nullable": True},
+                        },
+                    },
+                    "title": {"type": "string", "nullable": True},
+                    "series_title": {
+                        "type": "string",
+                        "nullable": True,
+                        "description": "Required (in effect) for media_type "
+                        "'episode' to power live-card display and title "
+                        "search fallback.",
+                    },
+                    "season_number": {
+                        "type": "integer",
+                        "nullable": True,
+                        "description": "Required for media_type 'episode'.",
+                    },
+                    "episode_number": {
+                        "type": "integer",
+                        "nullable": True,
+                        "description": "Required for media_type 'episode'.",
+                    },
+                    "position_seconds": {"type": "integer", "nullable": True},
+                    "duration_seconds": {"type": "integer", "nullable": True},
+                    "completed": {
+                        "type": "boolean",
+                        "nullable": True,
+                        "description": "Only used by 'stop'. Overrides the "
+                        "position/duration completion heuristic when given.",
+                    },
+                    "played_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "nullable": True,
+                        "description": "Only used by 'stop'. Defaults to now.",
+                    },
+                },
+            },
+        },
+        responses={
+            200: {
+                "type": "object",
+                "properties": {"detail": {"type": "string"}},
+            },
+            400: {
+                "type": "object",
+                "properties": {"detail": {"type": "string"}},
+            },
+            404: {
+                "type": "object",
+                "properties": {
+                    "detail": {"type": "string"},
+                    "errors": {"type": "string"},
+                },
+            },
+        },
     )
     def post(self, request):
         """Validate and apply a scrobble event."""
