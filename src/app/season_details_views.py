@@ -779,9 +779,12 @@ def season_details(
         "item_id_for_polling": item_id_for_polling if not public_view else None,
         "trakt_score": trakt_score,
         "watch_providers": tmdb.filter_providers(
-            season_metadata.get("providers"), request.user.watch_provider_region
+            season_metadata.get("providers"),
+            request.user.watch_provider_region if request.user.is_authenticated else None,
         ),
-        "watch_provider_region": request.user.watch_provider_region,
+        "watch_provider_region": (
+            request.user.watch_provider_region if request.user.is_authenticated else None
+        ),
         "detail_link_sections": _build_detail_link_sections(
             season_metadata,
             MediaTypes.SEASON.value,
