@@ -105,7 +105,6 @@ class ParseReads(SimpleTestCase):
     def test_dates_are_timezone_aware(self):
         """Parsed dates are aware so Django never warns on save."""
         read = storygraph.parse_reads("2021/07/21")[0]
-        self.assertIsNotNone(timezone.is_aware(read.end) or None)
         self.assertTrue(timezone.is_aware(read.end))
 
 
