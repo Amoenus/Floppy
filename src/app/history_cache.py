@@ -136,6 +136,7 @@ def _fetch_episode_data(
     season_number_filter,
     person_source_filter,
     person_id_filter,
+    include_undated=False,
 ):
     """Query and return episode records for history, applying all active filters."""
     if not (
@@ -148,11 +149,11 @@ def _fetch_episode_data(
     ):
         return []
 
+    episodes = Episode.objects.filter(related_season__user=user)
+    if not include_undated:
+        episodes = episodes.filter(end_date__isnull=False)
     episodes = (
-        Episode.objects.filter(
-            related_season__user=user,
-            end_date__isnull=False,
-        )
+        episodes
         .select_related(
             "item",
             "related_season__item",
@@ -296,13 +297,14 @@ def _fetch_movie_data(
     target_source,
     person_source_filter,
     person_id_filter,
+    include_undated=False,
 ):
     """Query and return movies queryset and play-count map for history."""
-    movies_qs = (
-        Movie.objects.filter(user=user)
-        .filter(models.Q(end_date__isnull=False) | models.Q(start_date__isnull=False))
-        .select_related("item")
-    )
+    movies_qs = Movie.objects.filter(user=user).select_related("item")
+    if not include_undated:
+        movies_qs = movies_qs.filter(
+            models.Q(end_date__isnull=False) | models.Q(start_date__isnull=False),
+        )
     if start_date:
         movies_qs = movies_qs.filter(
             models.Q(end_date__gte=start_date)
@@ -346,6 +348,7 @@ def _build_reading_entries(
     genre_filters,
     reading_media_types,
     process_all=False,
+    include_undated=False,
 ):
     """Build history entries for books, comics, manga, and flat anime.
 
@@ -397,7 +400,10 @@ def _build_reading_entries(
             if not credited_reading_item_ids:
                 continue
             queryset = queryset.filter(item_id__in=credited_reading_item_ids)
-        if target_media_id and target_source and media_type_filter == reading_media_type:
+        targets_this_media = (
+            target_media_id and target_source and media_type_filter == reading_media_type
+        )
+        if targets_this_media:
             queryset = queryset.filter(
                 item__media_id=target_media_id,
                 item__source=target_source,
@@ -412,9 +418,12 @@ def _build_reading_entries(
                 models.Q(end_date__lte=end_date)
                 | (models.Q(end_date__isnull=True) & models.Q(start_date__lte=end_date)),
             )
-        queryset = queryset.filter(
-            models.Q(start_date__isnull=False) | models.Q(end_date__isnull=False),
-        ).order_by("-end_date", "-start_date", "-created_at")
+        entry_is_undated = include_undated and targets_this_media
+        if not entry_is_undated:
+            queryset = queryset.filter(
+                models.Q(start_date__isnull=False) | models.Q(end_date__isnull=False),
+            )
+        queryset = queryset.order_by("-end_date", "-start_date", "-created_at")
 
         for reading_entry in queryset:
             item = getattr(reading_entry, "item", None)
@@ -424,13 +433,16 @@ def _build_reading_entries(
                 item_genres = {str(g).lower() for g in _resolve_genres(item)}
                 if not item_genres & set(genre_filters):
                     continue
-            played_at_local = _localize_datetime(
-                reading_entry.end_date
-                or reading_entry.start_date
-                or reading_entry.created_at,
-            )
-            if not played_at_local:
-                continue
+            if not reading_entry.end_date and not reading_entry.start_date:
+                if not entry_is_undated:
+                    continue
+                played_at_local = None
+            else:
+                played_at_local = _localize_datetime(
+                    reading_entry.end_date or reading_entry.start_date,
+                )
+                if not played_at_local:
+                    continue
             entry = {
                 "media_type": item.media_type,
                 "item": _serialize_item(item),
@@ -930,12 +942,17 @@ def build_history_days(user, filters=None, date_filters=None, logging_style_over
     if person_id_filter is not None:
         person_id_filter = str(person_id_filter)
 
+    # Single-item filtered requests (per-entry "History" view) also surface
+    # records with no date at all, grouped into a trailing "Unknown date"
+    # section. The unfiltered global history page never does this.
+    include_undated = bool(target_media_id and target_source)
+
     # --- Fetch querysets ---
     episodes_start = time.perf_counter()
     episodes = _fetch_episode_data(
         user, filters, start_date, end_date, media_type_filter,
         target_media_id, target_source, season_number_filter,
-        person_source_filter, person_id_filter,
+        person_source_filter, person_id_filter, include_undated,
     )
     logger.info(
         "history_build_episodes user_id=%s count=%s elapsed_ms=%.2f",
@@ -948,6 +965,7 @@ def build_history_days(user, filters=None, date_filters=None, logging_style_over
     movies, movie_play_map = _fetch_movie_data(
         user, filters, start_date, end_date, media_type_filter,
         target_media_id, target_source, person_source_filter, person_id_filter,
+        include_undated,
     )
     try:
         movies_count = movies.count()
@@ -1207,6 +1225,8 @@ def build_history_days(user, filters=None, date_filters=None, logging_style_over
                 continue
             entry = _build_episode_entry(episode, episode_title_map)
             if entry:
+                if include_undated and not episode.end_date:
+                    entry["played_at_local"] = None
                 entries.append(entry)
                 entry_counts["episodes"] += 1
 
@@ -1217,6 +1237,8 @@ def build_history_days(user, filters=None, date_filters=None, logging_style_over
             entry = _build_movie_entry(movie)
             if not entry:
                 continue
+            if include_undated and not movie.end_date and not movie.start_date:
+                entry["played_at_local"] = None
             key = (movie.item.media_id, movie.item.source)
             play_count = movie_play_map.get(key) or getattr(movie, "repeats", None) or 1
             entry["play_count"] = play_count
@@ -1227,6 +1249,7 @@ def build_history_days(user, filters=None, date_filters=None, logging_style_over
         user, filters, start_date, end_date, media_type_filter,
         target_media_id, target_source, person_source_filter, person_id_filter,
         genre_filters, reading_media_types, process_all=process_all,
+        include_undated=include_undated,
     ):
         entries.append(entry)
         mt = entry["media_type"]
@@ -1299,6 +1322,9 @@ def build_history_days(user, filters=None, date_filters=None, logging_style_over
     if implied_genre_filters:
         entries = [e for e in entries if entry_matches_implied_genre(e)]
 
+    undated_entries = [e for e in entries if e["played_at_local"] is None]
+    entries = [e for e in entries if e["played_at_local"] is not None]
+
     entries.sort(key=lambda e: e["played_at_local"], reverse=True)
 
     grouped_entries = defaultdict(list)
@@ -1316,6 +1342,22 @@ def build_history_days(user, filters=None, date_filters=None, logging_style_over
                 "weekday": formats.date_format(first_entry_time, "l"),
                 "date_display": formats.date_format(first_entry_time, "F j, Y"),
                 "entries": day_entries,
+                "total_minutes": total_minutes,
+                "total_runtime_display": helpers.minutes_to_hhmm(total_minutes)
+                if total_minutes
+                else "0min",
+            },
+        )
+
+    if undated_entries:
+        undated_entries.sort(key=lambda e: e.get("instance_id") or 0, reverse=True)
+        total_minutes = sum(e["runtime_minutes"] or 0 for e in undated_entries)
+        history_days.append(
+            {
+                "date": None,
+                "weekday": "Unknown",
+                "date_display": "Unknown date",
+                "entries": undated_entries,
                 "total_minutes": total_minutes,
                 "total_runtime_display": helpers.minutes_to_hhmm(total_minutes)
                 if total_minutes
