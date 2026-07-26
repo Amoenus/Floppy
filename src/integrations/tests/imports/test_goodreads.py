@@ -118,6 +118,41 @@ class ImportGoodreads(TestCase):
         self.assertEqual(imported_book.status, Status.COMPLETED.value)
         self.assertEqual(imported_book.progress, 220)
 
+    def test_import_handles_decimal_rating(self):
+        """Decimal ratings (e.g. '3.0') should not crash import."""
+        headers = [
+            "Book Id",
+            "Title",
+            "Author",
+            "ISBN13",
+            "My Rating",
+            "Number of Pages",
+            "Exclusive Shelf",
+            "Date Added",
+            "Date Read",
+            "Private Notes",
+        ]
+        csv_payload = (
+            ",".join(headers)
+            + "\n"
+            "3,Decimal Rating Book,Author,9780000000003,3.0,245,read,,,\n"
+        )
+
+        resolved_book = {
+            "media_id": "1003",
+            "title": "Decimal Rating Book",
+            "image": "",
+        }
+        with patch.object(
+            goodreads.GoodReadsImporter,
+            "_search_book",
+            return_value=resolved_book,
+        ):
+            goodreads.importer(BytesIO(csv_payload.encode("utf-8")), self.user, "new")
+
+        imported_book = Book.objects.get(user=self.user, item__media_id="1003")
+        self.assertEqual(imported_book.score, 6)
+
 
 class ImportGoodreadsProviderErrors(TestCase):
     """Test GoodReads provider error handling."""
