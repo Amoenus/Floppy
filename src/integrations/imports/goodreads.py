@@ -249,7 +249,7 @@ class GoodReadsImporter:
         instance = model(
             item=item,
             user=self.user,
-            score=None if rating in {"", "0"} else int(rating) * 2,
+            score=None if rating in {"", "0"} else float(rating) * 2,
             progress=book_progress,
             status=book_status,
             end_date=date_rated,
