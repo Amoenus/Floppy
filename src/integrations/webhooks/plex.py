@@ -642,13 +642,12 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
             "media.rate",
         )
 
-    def _fetch_rating_from_plex_api(self, user, rating_key, payload):
-        """Fetch user rating from Plex API as fallback if not in webhook payload."""
-
+    def _resolve_plex_server(self, user, payload):
+        """Return (plex_account, server_uri) for API callbacks, or (None, None)."""
         plex_account = getattr(user, "plex_account", None)
         if not plex_account or not plex_account.plex_token:
-            logger.debug("No Plex account found for rating fetch")
-            return None
+            logger.debug("No Plex account found for API callback")
+            return None, None
 
         # Get server URI from payload or account
         plex_uri = None
@@ -668,7 +667,52 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
                         break
 
         if not plex_uri:
-            logger.debug("No Plex server URI found for rating fetch")
+            logger.debug("No Plex server URI found for API callback")
+            return None, None
+
+        return plex_account, plex_uri
+
+    def _fetch_local_season_episode_count(self, user, payload):
+        """Ask the Plex server how many episodes the played season really has.
+
+        Used only when TMDB has no metadata for the season, so an otherwise
+        unresolvable local-only season can still reach Completed.
+        """
+        parent_rating_key = (payload.get("Metadata") or {}).get("parentRatingKey")
+        if not parent_rating_key:
+            return None
+
+        plex_account, plex_uri = self._resolve_plex_server(user, payload)
+        if not plex_uri:
+            return None
+
+        try:
+            metadata = plex_api.fetch_metadata(
+                plex_account.plex_token,
+                plex_uri,
+                str(parent_rating_key),
+            )
+        except Exception as exc:
+            logger.warning(
+                "Failed to fetch season episode count from Plex API: %s",
+                exception_summary(exc),
+            )
+            return None
+
+        if not metadata:
+            return None
+
+        try:
+            leaf_count = int(metadata.get("leafCount"))
+        except (TypeError, ValueError):
+            return None
+
+        return leaf_count if leaf_count > 0 else None
+
+    def _fetch_rating_from_plex_api(self, user, rating_key, payload):
+        """Fetch user rating from Plex API as fallback if not in webhook payload."""
+        plex_account, plex_uri = self._resolve_plex_server(user, payload)
+        if not plex_uri:
             return None
 
         try:

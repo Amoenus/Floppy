@@ -182,6 +182,14 @@ class Item(CalendarTriggerMixin, models.Model):
         choices=[("local_only_missing_season", "Local only: missing season metadata")],
         help_text="Flags special provider metadata states for UI and recovery flows",
     )
+    local_season_episode_count = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text=(
+            "Authoritative episode count for a season the provider is missing, "
+            "sourced from the media server so progress can still complete"
+        ),
+    )
     series_name = models.TextField(null=True, blank=True)
     series_position = models.FloatField(null=True, blank=True)
 

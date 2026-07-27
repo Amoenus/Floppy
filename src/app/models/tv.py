@@ -1222,6 +1222,16 @@ class Episode(models.Model):
     def progressed_at(self):
         return None
 
+    def _local_season_max_progress(self):
+        """Return the media-server-sourced episode count for this season, if any.
+
+        Only set when the provider has no metadata for the season, so the count
+        is the sole authority available for completion.
+        """
+        season_item = getattr(self.related_season, "item", None)
+        count = getattr(season_item, "local_season_episode_count", None)
+        return count if count and count > 0 else None
+
     def save(self, *args, **kwargs):
         """Save the episode instance."""
         if self.tracker.has_changed("status"):
@@ -1252,14 +1262,25 @@ class Episode(models.Model):
             TypeError,
             ValueError,
         ) as error:
-            logger.warning(
-                "Skipping Episode status sync due to missing metadata for %s S%sE%s: %s",
+            max_progress = self._local_season_max_progress()
+            if not max_progress:
+                logger.warning(
+                    "Skipping Episode status sync due to missing metadata for "
+                    "%s S%sE%s: %s",
+                    self.item.media_id,
+                    season_number,
+                    self.item.episode_number,
+                    error,
+                )
+                return
+            logger.info(
+                "Using locally recorded episode count %s for %s S%s "
+                "(provider metadata missing)",
+                max_progress,
                 self.item.media_id,
                 season_number,
-                self.item.episode_number,
-                error,
             )
-            return
+            self.related_season.max_progress = max_progress
 
         # clear prefetch cache to get the updated episodes
         if hasattr(self.related_season, "_episode_stats_cache"):
