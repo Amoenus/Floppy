@@ -1,8 +1,10 @@
 from datetime import UTC, date, datetime
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase, override_settings
+from django.template.loader import render_to_string
+from django.test import RequestFactory, TestCase, override_settings
 from django.urls import reverse
 
 from app.models import (
@@ -224,6 +226,24 @@ class TrackModalViewTests(TestCase):
             '<p class="text-sm tracking-wide text-gray-400">Collected</p>',
             html=True,
         )
+
+        # The collection tab is included with `only`, which drops context
+        # processor values. Without an explicit csrf_token the plain form POST
+        # to /collection/add/ renders an empty token and 403s. See issue #377.
+        content = response.content.decode()
+        form_start = content.index(f'action="{reverse("collection_add")}')
+        add_form = content[form_start : content.index("</form>", form_start)]
+        self.assertRegex(add_form, r'name="csrfmiddlewaretoken" value="[^"]+"')
+
+        # Bound to a real watch, so Delete is live and a rewatch is still one
+        # click away via "Add new entry".
+        self.assertEqual(response.context["general_existing_instance"], episode)
+        delete_start = content.index('formaction="/media_delete')
+        delete_button = content[delete_start : content.index("</button>", delete_start)]
+        self.assertIn("bg-red-700", delete_button)
+        self.assertNotIn("disabled", delete_button)
+        self.assertIn("is_create=1", response.context["episode_create_url"])
+        self.assertContains(response, "Add new entry")
 
     def test_track_modal_view_renders_release_date_shortcuts_for_existing_media(self):
         """Existing item-backed trackers should expose release-date shortcuts."""
@@ -1404,3 +1424,62 @@ class PodcastTrackModalViewTests(TestCase):
             2,
         )
         self.assertTrue(response.context["episode_plays_domain"]["hideSeasonSelectors"])
+
+
+class EpisodeTrackButtonTests(TestCase):
+    """The episode track buttons must edit an existing watch, not stack a new one."""
+
+    def render_button(self, template_name, context):
+        """Render one of the two episode track button variants."""
+        request = RequestFactory().get("/details/tmdb/tv/1668/show/season/1/episode/2")
+        return render_to_string(template_name, context, request=request)
+
+    def test_hero_button_creates_without_history(self):
+        """With nothing watched the hero button opens the modal in create mode."""
+        markup = self.render_button(
+            "app/components/detail_episode_hero_track_button.html",
+            {
+                "episode": {"history": []},
+                "source": Sources.TMDB.value,
+                "media_id": "1668",
+                "season_number": 1,
+                "episode_number": 2,
+            },
+        )
+
+        self.assertIn('"is_create": "1"', markup)
+        self.assertNotIn("instance_id", markup)
+        self.assertIn("Mark Watched", markup)
+
+    def test_hero_button_edits_latest_watch(self):
+        """With a watch on record the hero button binds it so the fields prefill."""
+        markup = self.render_button(
+            "app/components/detail_episode_hero_track_button.html",
+            {
+                "episode": {"history": [SimpleNamespace(id=42)]},
+                "source": Sources.TMDB.value,
+                "media_id": "1668",
+                "season_number": 1,
+                "episode_number": 2,
+            },
+        )
+
+        self.assertIn('"instance_id": "42"', markup)
+        self.assertNotIn("is_create", markup)
+        self.assertIn("Watched", markup)
+
+    def test_row_button_edits_latest_watch(self):
+        """The season-page episode row follows the same rule as the hero button."""
+        markup = self.render_button(
+            "app/components/detail_episode_track_button.html",
+            {
+                "episode": SimpleNamespace(
+                    history=[SimpleNamespace(id=7)],
+                    episode_number=2,
+                    item=SimpleNamespace(id=99),
+                ),
+            },
+        )
+
+        self.assertIn('"instance_id": "7"', markup)
+        self.assertNotIn("is_create", markup)

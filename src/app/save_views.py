@@ -406,6 +406,10 @@ def _write_episode_save_oob(
                     "season_number": season_number,
                     "episode_number": episode_number,
                     "track_button_oob": True,
+                    # request.path here is /episode_save/, not the page the
+                    # button lives on, so the button would send the wrong
+                    # `next` on its second use.
+                    "track_return_url": parsed_next,
                 },
                 request=request,
             ),

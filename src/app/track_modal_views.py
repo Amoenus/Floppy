@@ -612,6 +612,22 @@ def _render_standard_track_modal(
         ),
         "general_delete_formaction": f"{reverse('media_delete')}?next={return_url}",
         "general_existing_instance": media,
+        # Episodes are multi-watch: when the modal is bound to an existing watch
+        # this re-opens it in create mode so a rewatch can still be logged.
+        "episode_create_url": (
+            reverse(
+                "track_modal",
+                kwargs={
+                    "source": source,
+                    "media_type": media_type,
+                    "media_id": media_id,
+                    "season_number": season_number,
+                },
+            )
+            + f"?is_create=1&episode_number={episode_number}&return_url={return_url}"
+            if media_type == MediaTypes.EPISODE.value and media
+            else ""
+        ),
         "metadata_fields": metadata_fields,
         "image_field": image_field,
         "image_save_item_id": (

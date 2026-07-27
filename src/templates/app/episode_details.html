@@ -243,6 +243,11 @@
   </div>
 </div>
 
+{# Your Notes — same component the movie/season pages use, pointed at the watch that carries the note. #}
+{% if not public_view and notes_entry %}
+  {% include "app/components/detail_notes_section.html" with notes_entry=notes_entry detail_notes_target_id=episode_notes_modal_target_id detail_notes_modal_url=episode_notes_modal_url detail_return_url=detail_return_url %}
+{% endif %}
+
 {# Cast & Crew — same grid pattern as detail_secondary_content.html #}
 {% if source == Sources.TMDB.value %}
   {% if episode_metadata.cast %}
