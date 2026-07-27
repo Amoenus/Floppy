@@ -7,6 +7,7 @@ from django.utils import timezone
 import app
 from app.log_safety import exception_summary
 from app.models import MediaTypes, ProviderMetadataStatus, Sources, Status
+from integrations import episode_remap
 from integrations.webhooks import anime_mappings
 
 logger = logging.getLogger(__name__)
@@ -1029,6 +1030,58 @@ class BaseWebhookProcessor:
 
         return None, None
 
+    def _fetch_local_season_episode_count(self, user, payload):
+        """Return the media server's episode count for the played season.
+
+        Subclasses whose source exposes this override it; the default means
+        "unknown", which keeps a local-only season conservatively in progress.
+        """
+        return None
+
+    def _remap_episode_numbering(
+        self,
+        media_id,
+        season_number,
+        episode_number,
+        tv_metadata,
+        external_ids,
+    ):
+        """Recover TMDB's real (season, episode) for a Plex/TVDB-numbered event.
+
+        Mirrors the Plex importer's remap so live webhooks file the watch under
+        the season TMDB actually has instead of a local-only placeholder.
+
+        Returns:
+            tuple: (season_number, episode_number, season_metadata), or None.
+        """
+
+        def load_season(candidate_season):
+            try:
+                candidate_metadata = app.providers.tmdb.tv_with_seasons(
+                    media_id,
+                    [candidate_season],
+                )
+            except Exception as exc:  # pragma: no cover - defensive network guard
+                logger.warning(
+                    "Season lookup failed during webhook remap of %s season %s: %s",
+                    media_id,
+                    candidate_season,
+                    exception_summary(exc),
+                )
+                return None
+            return candidate_metadata.get(f"season/{candidate_season}")
+
+        return episode_remap.remap_via_tmdb_find(
+            external_ids,
+            media_id,
+            load_season,
+        ) or episode_remap.remap_via_cumulative_numbering(
+            season_number,
+            episode_number,
+            tv_metadata,
+            load_season,
+        )
+
     def _handle_tv_episode(
         self,
         media_id,
@@ -1046,6 +1099,32 @@ class BaseWebhookProcessor:
         season_key = f"season/{season_number}"
         season_metadata = tv_metadata.get(season_key)
         used_local_only_fallback = False
+
+        # Try remapping before show recovery: the payload's episode-level GUID
+        # is authoritative, while recovery's title search only guesses at a
+        # different show that happens to have a season with this number.
+        if not season_metadata and int(season_number) != 0:
+            remapped = self._remap_episode_numbering(
+                media_id,
+                season_number,
+                episode_number,
+                tv_metadata,
+                external_ids,
+            )
+            if remapped is not None:
+                remapped_season, remapped_episode, season_metadata = remapped
+                logger.info(
+                    "Remapped Plex episode %s S%sE%s to TMDB S%sE%s",
+                    media_id,
+                    season_number,
+                    episode_number,
+                    remapped_season,
+                    remapped_episode,
+                )
+                season_number = remapped_season
+                episode_number = remapped_episode
+                season_key = f"season/{season_number}"
+
         if not season_metadata and int(season_number) != 0:
             (
                 recovered_media_id,
@@ -1069,9 +1148,12 @@ class BaseWebhookProcessor:
 
         if not season_metadata:
             logger.warning(
-                "Season %s metadata missing for TMDB ID %s; using payload fallback",
+                "Season %s metadata missing for TMDB ID %s and no remap found "
+                "(episode %s); Plex and TMDB disagree on this show's season "
+                "structure, using payload fallback",
                 season_number,
                 media_id,
+                episode_number,
             )
             season_metadata = self._build_fallback_season_metadata(
                 payload,
@@ -1222,9 +1304,24 @@ class BaseWebhookProcessor:
             if used_local_only_fallback
             else ""
         )
+        # Only a local-only season needs an externally sourced episode count;
+        # once the provider has the season, its own count is authoritative.
+        desired_local_episode_count = (
+            self._fetch_local_season_episode_count(user, payload)
+            or season_item.local_season_episode_count
+            if used_local_only_fallback
+            else None
+        )
+
+        season_item_updates = []
         if season_item.provider_metadata_status != desired_provider_metadata_status:
             season_item.provider_metadata_status = desired_provider_metadata_status
-            season_item.save(update_fields=["provider_metadata_status"])
+            season_item_updates.append("provider_metadata_status")
+        if season_item.local_season_episode_count != desired_local_episode_count:
+            season_item.local_season_episode_count = desired_local_episode_count
+            season_item_updates.append("local_season_episode_count")
+        if season_item_updates:
+            season_item.save(update_fields=season_item_updates)
 
         season_instance, season_created = app.models.Season.objects.get_or_create(
             item=season_item,

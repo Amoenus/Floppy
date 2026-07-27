@@ -18,6 +18,7 @@ from app.services.music import prefetch_album_covers
 # Suppress InsecureRequestWarning (Plex local connections often use self-signed certs)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+from integrations import episode_remap
 from integrations import plex as plex_api
 from integrations.imports import helpers
 from integrations.imports.helpers import MediaImportError, MediaImportUnexpectedError
@@ -1981,116 +1982,37 @@ class PlexHistoryImporter:
 
     def _episode_in_season(self, episode_number, season_metadata: dict) -> bool:
         """Return whether the episode number exists in the season payload."""
-        return any(
-            ep.get("episode_number") == episode_number
-            for ep in season_metadata.get("episodes", [])
-        )
+        return episode_remap.episode_in_season(episode_number, season_metadata)
 
-    def _remap_episode_via_tmdb_find(self, record: dict, tv_metadata: dict):
-        """Resolve TMDB numbering from the episode-level TVDB/IMDB Guid."""
-        external_ids = record.get("external_ids") or {}
-        actual_tmdb_id = str(tv_metadata.get("media_id", record["tmdb_id"]))
+    def _season_loader(self, record: dict):
+        """Return a season-payload loader bound to this record's show."""
 
-        for ext_type in ("tvdb_id", "imdb_id"):
-            ext_id = external_ids.get(ext_type)
-            if not ext_id:
-                continue
-
-            cache_key = (ext_type, str(ext_id))
-            if cache_key in self._episode_find_cache:
-                found = self._episode_find_cache[cache_key]
-            else:
-                try:
-                    response = app.providers.tmdb.find(ext_id, ext_type)
-                except services.ProviderAPIError as exc:
-                    logger.debug(
-                        "TMDB find failed during Plex episode remap: %s",
-                        exception_summary(exc),
-                    )
-                    continue
-                results = response.get("tv_episode_results") or []
-                found = None
-                if results:
-                    found = (
-                        str(results[0].get("show_id")),
-                        results[0].get("season_number"),
-                        results[0].get("episode_number"),
-                    )
-                self._episode_find_cache[cache_key] = found
-
-            if not found:
-                continue
-
-            show_id, season_number, episode_number = found
-            if (
-                show_id != actual_tmdb_id
-                or season_number is None
-                or episode_number is None
-            ):
-                continue
-
-            season_metadata = self._ensure_season_payload(
+        def load_season(season_number):
+            return self._ensure_season_payload(
                 record["tmdb_id"],
                 season_number,
                 record.get("series_title"),
             )
-            if season_metadata and self._episode_in_season(
-                episode_number,
-                season_metadata,
-            ):
-                return season_number, episode_number, season_metadata
 
-        return None
+        return load_season
+
+    def _remap_episode_via_tmdb_find(self, record: dict, tv_metadata: dict):
+        """Resolve TMDB numbering from the episode-level TVDB/IMDB Guid."""
+        return episode_remap.remap_via_tmdb_find(
+            record.get("external_ids"),
+            tv_metadata.get("media_id", record["tmdb_id"]),
+            self._season_loader(record),
+            find_cache=self._episode_find_cache,
+        )
 
     def _remap_episode_via_cumulative_numbering(self, record: dict, tv_metadata: dict):
-        """Carry a TVDB-numbered episode into the right TMDB split season.
-
-        TVDB often keeps one long season where TMDB splits several (e.g.
-        Demon Slayer TVDB S2E1-18 = TMDB S2E1-7 + S3E1-11). Walk TMDB seasons
-        from the record's season and spill the episode offset forward.
-        """
-        try:
-            season_number = int(record["season_number"])
-            episode_number = int(record["episode_number"])
-        except (TypeError, ValueError):
-            return None
-        if season_number <= 0 or episode_number <= 0:
-            return None
-
-        seasons = (tv_metadata.get("related") or {}).get("seasons") or []
-        episode_counts: dict[int, int] = {}
-        for season in seasons:
-            number = season.get("season_number")
-            count = season.get("episode_count")
-            if isinstance(number, int) and number > 0 and isinstance(count, int):
-                episode_counts[number] = count
-
-        if season_number not in episode_counts:
-            return None
-
-        remaining = episode_number
-        target_season = season_number
-        while target_season in episode_counts:
-            count = episode_counts[target_season]
-            if remaining <= count:
-                break
-            remaining -= count
-            target_season += 1
-        else:
-            return None
-
-        if target_season == season_number:
-            # No overflow happened; the episode is genuinely missing on TMDB.
-            return None
-
-        season_metadata = self._ensure_season_payload(
-            record["tmdb_id"],
-            target_season,
-            record.get("series_title"),
+        """Carry a TVDB-numbered episode into the right TMDB split season."""
+        return episode_remap.remap_via_cumulative_numbering(
+            record["season_number"],
+            record["episode_number"],
+            tv_metadata,
+            self._season_loader(record),
         )
-        if season_metadata and self._episode_in_season(remaining, season_metadata):
-            return target_season, remaining, season_metadata
-        return None
 
     def _ensure_season_payload(
         self,

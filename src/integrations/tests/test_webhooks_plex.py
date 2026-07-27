@@ -758,6 +758,335 @@ class PlexWebhookTests(TestCase):
         )
         mock_tmdb_search.assert_not_called()
 
+    def _rag_payload(self, season_number, episode_number):
+        """Return a Plex episode payload for a show with divergent numbering."""
+        return {
+            "event": "media.scrobble",
+            "Metadata": {
+                "type": "episode",
+                "grandparentTitle": "Rent-a-Girlfriend",
+                "parentTitle": f"Season {season_number}",
+                "parentRatingKey": "55501",
+                "title": f"Episode {episode_number}",
+                "summary": "Fallback episode metadata.",
+                "duration": 1440000,
+                "originallyAvailableAt": "2026-07-26",
+                "index": episode_number,
+                "parentIndex": season_number,
+                "Guid": [{"id": f"tvdb://90{episode_number:02d}"}],
+            },
+        }
+
+    @staticmethod
+    def _season_payload(episode_count):
+        """Return TMDB season metadata containing the given number of episodes."""
+        return {
+            "image": "",
+            "episodes": [
+                {"episode_number": number, "runtime": 24}
+                for number in range(1, episode_count + 1)
+            ],
+        }
+
+    @patch("app.providers.tmdb.search", return_value={"results": []})
+    @patch("app.providers.tmdb.find")
+    @patch("app.providers.tmdb.tv_with_seasons")
+    def test_divergent_season_numbering_remaps_via_tmdb_find(
+        self,
+        mock_tv_with_seasons,
+        mock_find,
+        mock_tmdb_search,
+    ):
+        """A Plex season the provider lacks should remap onto TMDB's numbering."""
+
+        def fake_tv_with_seasons(_media_id, season_numbers):
+            metadata = {
+                "title": "Rent-a-Girlfriend",
+                "image": "",
+                "tvdb_id": "371233",
+                "synopsis": "",
+                "external_links": {},
+                "related": {
+                    "seasons": [{"season_number": 4, "episode_count": 12}],
+                },
+            }
+            if 4 in season_numbers:
+                metadata["season/4"] = self._season_payload(12)
+            return metadata
+
+        mock_tv_with_seasons.side_effect = fake_tv_with_seasons
+        mock_find.return_value = {
+            "tv_episode_results": [
+                {"show_id": 96316, "season_number": 4, "episode_number": 12},
+            ],
+            "tv_results": [],
+        }
+
+        PlexWebhookProcessor()._handle_tv_episode(
+            "96316",
+            5,
+            12,
+            self._rag_payload(5, 12),
+            self.user,
+        )
+
+        self.assertTrue(
+            Episode.objects.filter(
+                item__media_id="96316",
+                item__season_number=4,
+                item__episode_number=12,
+            ).exists(),
+        )
+        self.assertFalse(
+            Episode.objects.filter(
+                item__media_id="96316",
+                item__season_number=5,
+            ).exists(),
+        )
+        season_item = Item.objects.get(
+            media_id="96316",
+            media_type=MediaTypes.SEASON.value,
+            season_number=4,
+        )
+        self.assertEqual(season_item.provider_metadata_status, "")
+        mock_tmdb_search.assert_not_called()
+
+    @patch("app.providers.tmdb.search", return_value={"results": []})
+    @patch("app.providers.tmdb.tv")
+    @patch("app.providers.tmdb.find")
+    @patch("app.providers.tmdb.tv_with_seasons")
+    def test_remapped_finale_completes_season_and_show(
+        self,
+        mock_tv_with_seasons,
+        mock_find,
+        mock_tmdb_tv,
+        _mock_tmdb_search,
+    ):
+        """Completion promotion should run once the watch lands on a real season."""
+        show_metadata = {
+            "title": "Rent-a-Girlfriend",
+            "image": "",
+            "tvdb_id": "371233",
+            "synopsis": "",
+            "external_links": {},
+            "related": {
+                "seasons": [{"season_number": 4, "episode_count": 3}],
+            },
+        }
+
+        def fake_tv_with_seasons(_media_id, season_numbers):
+            metadata = dict(show_metadata)
+            if 4 in season_numbers:
+                metadata["season/4"] = self._season_payload(3)
+            return metadata
+
+        mock_tv_with_seasons.side_effect = fake_tv_with_seasons
+        mock_tmdb_tv.return_value = dict(show_metadata)
+
+        def fake_find(external_id, _external_source):
+            episode_number = int(str(external_id)[-2:])
+            return {
+                "tv_episode_results": [
+                    {
+                        "show_id": 96316,
+                        "season_number": 4,
+                        "episode_number": episode_number,
+                    },
+                ],
+                "tv_results": [],
+            }
+
+        mock_find.side_effect = fake_find
+
+        processor = PlexWebhookProcessor()
+        # The show has no season after the remapped one, so completing it must
+        # complete the show rather than starting a follow-up season.
+        with patch(
+            "app.models.TV._start_next_available_season",
+            return_value=False,
+        ):
+            for episode_number in (1, 2, 3):
+                processor._handle_tv_episode(
+                    "96316",
+                    5,
+                    episode_number,
+                    self._rag_payload(5, episode_number),
+                    self.user,
+                )
+
+        season = Season.objects.get(
+            item__media_id="96316",
+            item__season_number=4,
+            user=self.user,
+        )
+        self.assertEqual(season.status, Status.COMPLETED.value)
+        self.assertEqual(season.related_tv.status, Status.COMPLETED.value)
+
+    @patch("app.providers.tmdb.search", return_value={"results": []})
+    @patch(
+        "app.providers.tmdb.find",
+        return_value={"tv_episode_results": [], "tv_results": []},
+    )
+    @patch("app.providers.tmdb.tv_with_seasons")
+    def test_cumulative_numbering_remap_spills_into_split_season(
+        self,
+        mock_tv_with_seasons,
+        _mock_find,
+        _mock_tmdb_search,
+    ):
+        """A TVDB-numbered episode should spill into TMDB's later split season."""
+
+        def fake_tv_with_seasons(_media_id, season_numbers):
+            metadata = {
+                "title": "Demon Slayer",
+                "image": "",
+                "tvdb_id": "348545",
+                "synopsis": "",
+                "external_links": {},
+                "related": {
+                    "seasons": [
+                        {"season_number": 2, "episode_count": 7},
+                        {"season_number": 3, "episode_count": 11},
+                    ],
+                },
+            }
+            if 3 in season_numbers:
+                metadata["season/3"] = self._season_payload(11)
+            return metadata
+
+        mock_tv_with_seasons.side_effect = fake_tv_with_seasons
+
+        payload = self._rag_payload(2, 10)
+        payload["Metadata"]["grandparentTitle"] = "Demon Slayer"
+
+        PlexWebhookProcessor()._handle_tv_episode(
+            "85937",
+            2,
+            10,
+            payload,
+            self.user,
+        )
+
+        # TVDB S2E10 = TMDB S2 (7 episodes) + 3 → S3E3
+        self.assertTrue(
+            Episode.objects.filter(
+                item__media_id="85937",
+                item__season_number=3,
+                item__episode_number=3,
+            ).exists(),
+        )
+
+    @patch("app.providers.tmdb.search", return_value={"results": []})
+    @patch(
+        "app.providers.tmdb.find",
+        return_value={"tv_episode_results": [], "tv_results": []},
+    )
+    @patch("app.providers.tmdb.tv_with_seasons")
+    def test_local_only_season_completes_using_plex_episode_count(
+        self,
+        mock_tv_with_seasons,
+        _mock_find,
+        _mock_tmdb_search,
+    ):
+        """A Plex-reported episode count should let a local-only season complete."""
+        mock_tv_with_seasons.return_value = {
+            "title": "Rent-a-Girlfriend",
+            "image": "",
+            "tvdb_id": "371233",
+            "synopsis": "",
+            "external_links": {},
+            "related": {"seasons": [{"season_number": 4, "episode_count": 12}]},
+        }
+
+        with patch(
+            "integrations.webhooks.plex.PlexWebhookProcessor"
+            "._fetch_local_season_episode_count",
+            return_value=2,
+        ):
+            processor = PlexWebhookProcessor()
+            processor._handle_tv_episode(
+                "96316",
+                5,
+                1,
+                self._rag_payload(5, 1),
+                self.user,
+            )
+
+            season = Season.objects.get(
+                item__media_id="96316",
+                item__season_number=5,
+                user=self.user,
+            )
+            season_item = season.item
+            self.assertEqual(season_item.local_season_episode_count, 2)
+            self.assertEqual(
+                season_item.provider_metadata_status,
+                ProviderMetadataStatus.LOCAL_ONLY_MISSING_SEASON.value,
+            )
+            # Only one of two episodes watched — must not complete yet.
+            self.assertEqual(season.status, Status.IN_PROGRESS.value)
+
+            processor._handle_tv_episode(
+                "96316",
+                5,
+                2,
+                self._rag_payload(5, 2),
+                self.user,
+            )
+
+        season.refresh_from_db()
+        self.assertEqual(season.status, Status.COMPLETED.value)
+
+    @patch("app.providers.tmdb.search", return_value={"results": []})
+    @patch(
+        "app.providers.tmdb.find",
+        return_value={"tv_episode_results": [], "tv_results": []},
+    )
+    @patch("app.providers.tmdb.tv_with_seasons")
+    def test_local_only_season_without_episode_count_stays_in_progress(
+        self,
+        mock_tv_with_seasons,
+        _mock_find,
+        _mock_tmdb_search,
+    ):
+        """Without an authoritative count, history is kept but nothing completes."""
+        mock_tv_with_seasons.return_value = {
+            "title": "Rent-a-Girlfriend",
+            "image": "",
+            "tvdb_id": "371233",
+            "synopsis": "",
+            "external_links": {},
+            "related": {"seasons": [{"season_number": 4, "episode_count": 12}]},
+        }
+
+        PlexWebhookProcessor()._handle_tv_episode(
+            "96316",
+            5,
+            12,
+            self._rag_payload(5, 12),
+            self.user,
+        )
+
+        season = Season.objects.get(
+            item__media_id="96316",
+            item__season_number=5,
+            user=self.user,
+        )
+        self.assertTrue(
+            Episode.objects.filter(
+                item__media_id="96316",
+                item__season_number=5,
+                item__episode_number=12,
+            ).exists(),
+        )
+        self.assertIsNone(season.item.local_season_episode_count)
+        self.assertEqual(
+            season.item.provider_metadata_status,
+            ProviderMetadataStatus.LOCAL_ONLY_MISSING_SEASON.value,
+        )
+        self.assertEqual(season.status, Status.IN_PROGRESS.value)
+        self.assertEqual(season.related_tv.status, Status.IN_PROGRESS.value)
+
     @patch("app.providers.tmdb.search", return_value={"results": []})
     @patch(
         "app.providers.tmdb.find",

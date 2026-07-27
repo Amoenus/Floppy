@@ -1226,6 +1226,18 @@ def sync_metadata(request, source, media_type, media_id, season_number=None):
             item.number_of_pages = number_of_pages
             item.save(update_fields=["number_of_pages"])
 
+        # A successful season re-fetch means the provider now has the season,
+        # so the local-only flag and its media-server episode count are stale.
+        if (
+            media_type == MediaTypes.SEASON.value
+            and item.provider_metadata_status
+            and metadata.get("episodes")
+        ):
+            _save_provider_metadata_status(item, "")
+            if item.local_season_episode_count is not None:
+                item.local_season_episode_count = None
+                item.save(update_fields=["local_season_episode_count"])
+
         metadata_update_fields = metadata_utils.apply_item_genres(
             item,
             metadata_utils.extract_metadata_genres(metadata),
