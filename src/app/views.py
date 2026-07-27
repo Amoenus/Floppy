@@ -821,9 +821,33 @@ def episode_details(request, source, media_id, title, season_number, episode_num
         },
     )
 
+    # Surface the note from the most recent watch that has one, the same way
+    # the movie/season pages do (issue #377).
+    notes_entry = next(
+        (
+            watch
+            for watch in (episode_data or {}).get("history", [])
+            if watch.notes and watch.notes.strip()
+        ),
+        None,
+    )
+
     context = {
         "user": request.user,
         "episode": episode_data,
+        "notes_entry": notes_entry,
+        "episode_notes_modal_target_id": (
+            f"episode-notes-modal-{source}-{media_id}-{season_number}-{episode_number}"
+        ),
+        "episode_notes_modal_url": reverse(
+            "track_modal",
+            kwargs={
+                "source": source,
+                "media_type": MediaTypes.EPISODE.value,
+                "media_id": media_id,
+                "season_number": season_number,
+            },
+        ),
         "episodes": processed_episodes,
         "episode_metadata": episode_metadata,
         "season_metadata": season_metadata,

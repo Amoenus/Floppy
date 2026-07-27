@@ -1144,7 +1144,9 @@ class Episode(models.Model):
             "related_season",
             "created_at",
             "score",
-            "start_date",
+            # `status` stays excluded: every episode row is a watch, so its
+            # status is inert noise in the timeline. `start_date` is tracked so
+            # the history modal can show "Started on …" (issue #377).
             "status",
             "notes",
         ],
