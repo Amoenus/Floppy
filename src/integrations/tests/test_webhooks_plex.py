@@ -18,6 +18,7 @@ from app.models import (
     Movie,
     ProviderMetadataStatus,
     Season,
+    Sources,
     Status,
 )
 from app.providers import tmdb
@@ -1223,6 +1224,74 @@ class PlexWebhookTests(TestCase):
 
         season_item.refresh_from_db()
         self.assertEqual(season_item.provider_metadata_status, "")
+
+    @patch("app.providers.tvdb.tv_with_seasons")
+    @patch("app.providers.tmdb.tv_with_seasons")
+    def test_tv_episode_genesis_uses_tvdb_when_preferred(
+        self,
+        mock_tmdb_tv_with_seasons,
+        mock_tvdb_tv_with_seasons,
+    ):
+        """A never-before-tracked show is genesis'd via TVDB when preferred (#387)."""
+        self.user.tv_metadata_source_default = Sources.TVDB.value
+        self.user.save()
+
+        mock_tmdb_tv_with_seasons.return_value = {
+            "media_id": "555001",
+            "title": "Genesis Test Show",
+            "image": "",
+            "tvdb_id": "555002",
+            "season/1": {
+                "image": "",
+                "episodes": [{"episode_number": 1, "runtime": 45}],
+            },
+        }
+        mock_tvdb_tv_with_seasons.return_value = {
+            "media_id": "555002",
+            "title": "Genesis Test Show",
+            "image": "",
+            "season/1": {
+                "image": "",
+                "episodes": [{"episode_number": 1, "runtime": 45}],
+            },
+        }
+
+        payload = {
+            "event": "media.scrobble",
+            "Metadata": {
+                "type": "episode",
+                "grandparentTitle": "Genesis Test Show",
+                "title": "Pilot",
+                "index": 1,
+                "parentIndex": 1,
+                "Guid": [
+                    {"id": "tmdb://555001"},
+                    {"id": "tvdb://555002"},
+                ],
+            },
+        }
+
+        PlexWebhookProcessor()._handle_tv_episode(
+            "555001",
+            1,
+            1,
+            payload,
+            self.user,
+        )
+
+        item = Item.objects.get(
+            media_type=MediaTypes.TV.value,
+            title="Genesis Test Show",
+        )
+        self.assertEqual(item.source, Sources.TVDB.value)
+        self.assertEqual(item.media_id, "555002")
+
+        season_item = Item.objects.get(
+            media_type=MediaTypes.SEASON.value,
+            media_id="555002",
+        )
+        self.assertEqual(season_item.source, Sources.TVDB.value)
+        mock_tvdb_tv_with_seasons.assert_called_with("555002", [1])
 
     @patch("app.providers.tmdb.search", return_value={"results": []})
     @patch("app.providers.tmdb.find")

@@ -97,6 +97,10 @@ class PlexHistoryImporter:
         self._preserved_scores: dict[tuple, float] = {}
         # Cached tmdb.find remaps keyed by episode-level external ID
         self._episode_find_cache: dict[tuple[str, str], tuple | None] = {}
+        # Cached (source, media_id, tv_metadata, season_metadata) genesis
+        # resolution keyed by (tmdb show id, season number) — avoids repeating
+        # a TVDB lookup for every episode record of the same show/season.
+        self._tv_genesis_cache: dict[tuple[str, int], tuple] = {}
 
     def import_data(self):
         """Import history for the selected library."""
@@ -1785,7 +1789,22 @@ class PlexHistoryImporter:
                 continue
 
             actual_tmdb_id = str(tv_metadata.get("media_id", record["tmdb_id"]))
-            tv_key = f"{actual_tmdb_id}"
+            # Honors the user's TV metadata provider preference (issue #387):
+            # a never-before-tracked show is genesis'd under TVDB instead of
+            # TMDB when preferred and a matching TVDB show/season resolves;
+            # falls back to today's TMDB identity otherwise.
+            (
+                item_source,
+                item_media_id,
+                item_tv_metadata,
+                item_season_metadata,
+            ) = self._resolve_tv_genesis(
+                actual_tmdb_id,
+                tv_metadata,
+                season_metadata,
+                record["season_number"],
+            )
+            tv_key = f"{item_source}:{item_media_id}"
             # Shows from an anime library that lack a MAL mapping still belong
             # in the anime view; the item classification drives list routing.
             anime_class = (
@@ -1798,10 +1817,31 @@ class PlexHistoryImporter:
             if tv_key in self.media_instances[MediaTypes.TV.value]:
                 tv_obj = self.media_instances[MediaTypes.TV.value][tv_key][0]
             else:
-                # Check if it already exists in the database
-                existing = self.existing_media[MediaTypes.TV.value][Sources.TMDB.value].get(
-                    actual_tmdb_id,
+                # Check if it already exists in the database, under either
+                # source — a show already tracked (e.g. added manually, or via
+                # an earlier import before the preference changed) must not be
+                # duplicated under the other provider.
+                existing = self.existing_media[MediaTypes.TV.value][item_source].get(
+                    item_media_id,
                 )
+                if existing is None:
+                    other_source = (
+                        Sources.TVDB.value
+                        if item_source == Sources.TMDB.value
+                        else Sources.TMDB.value
+                    )
+                    other_media_id = (
+                        actual_tmdb_id
+                        if other_source == Sources.TMDB.value
+                        else str(tv_metadata.get("tvdb_id") or "")
+                    )
+                    if other_media_id:
+                        existing = self.existing_media[MediaTypes.TV.value][
+                            other_source
+                        ].get(other_media_id)
+                        if existing:
+                            item_source, item_media_id = other_source, other_media_id
+                            tv_key = f"{item_source}:{item_media_id}"
                 if existing and self.mode == "new":
                     tv_obj = existing
                     # Apply rating from library items if available and different
@@ -1826,9 +1866,10 @@ class PlexHistoryImporter:
                 else:
                     tv_item = self._get_or_create_item(
                         MediaTypes.TV.value,
-                        actual_tmdb_id,
-                        tv_metadata,
+                        item_media_id,
+                        item_tv_metadata,
                         library_media_type=anime_class,
+                        source=item_source,
                     )
                     tv_obj = app.models.TV(
                         item=tv_item,
@@ -1853,29 +1894,33 @@ class PlexHistoryImporter:
                     self.bulk_media[MediaTypes.TV.value].append(tv_obj)
                     self.media_instances[MediaTypes.TV.value][tv_key] = [tv_obj]
 
-            season_key = f"{actual_tmdb_id}:{record['season_number']}"
+            season_key = f"{tv_key}:{record['season_number']}"
             if season_key not in self.media_instances[MediaTypes.SEASON.value]:
                 season_obj = None
                 if self.mode == "new":
                     season_obj = self._get_existing_season(
-                        actual_tmdb_id,
+                        item_media_id,
                         record["season_number"],
                         tv_obj,
+                        source=item_source,
                     )
 
                 if season_obj is None:
-                    season_image = season_metadata.get("image") or tv_metadata.get("image")
+                    season_image = item_season_metadata.get(
+                        "image",
+                    ) or item_tv_metadata.get("image")
                     season_item = self._get_or_create_item(
                         MediaTypes.SEASON.value,
-                        actual_tmdb_id,
+                        item_media_id,
                         {
-                            "title": tv_metadata["title"],
-                            "original_title": tv_metadata.get("original_title"),
-                            "localized_title": tv_metadata.get("localized_title"),
+                            "title": item_tv_metadata["title"],
+                            "original_title": item_tv_metadata.get("original_title"),
+                            "localized_title": item_tv_metadata.get("localized_title"),
                             "image": season_image,
                         },
                         season_number=record["season_number"],
                         library_media_type=anime_class,
+                        source=item_source,
                     )
                     season_obj = app.models.Season(
                         item=season_item,
@@ -1900,20 +1945,32 @@ class PlexHistoryImporter:
 
             episode_image = self._get_episode_image(
                 record["episode_number"],
-                season_metadata,
+                item_season_metadata,
+            )
+            # Episode items are historically keyed by the record's originally
+            # resolved TMDB id, which can differ from the show/season's final
+            # `item_media_id` (e.g. title-search fallback landed on another
+            # show) — preserved as-is for the TMDB path. TVDB genesis has no
+            # equivalent per-record id, so it keys episodes the same as the
+            # show/season.
+            episode_media_id = (
+                record["tmdb_id"]
+                if item_source == Sources.TMDB.value
+                else item_media_id
             )
             episode_item = self._get_or_create_item(
                 MediaTypes.EPISODE.value,
-                record["tmdb_id"],
+                episode_media_id,
                 {
-                    "title": tv_metadata["title"],
-                    "original_title": tv_metadata.get("original_title"),
-                    "localized_title": tv_metadata.get("localized_title"),
+                    "title": item_tv_metadata["title"],
+                    "original_title": item_tv_metadata.get("original_title"),
+                    "localized_title": item_tv_metadata.get("localized_title"),
                     "image": episode_image,
                 },
                 season_number=record["season_number"],
                 episode_number=record["episode_number"],
                 library_media_type=anime_class,
+                source=item_source,
             )
             episode_obj = app.models.Episode(
                 item=episode_item,
@@ -1929,8 +1986,8 @@ class PlexHistoryImporter:
                 tv_obj,
                 record["season_number"],
                 record["episode_number"],
-                season_metadata,
-                tv_metadata,
+                item_season_metadata,
+                item_tv_metadata,
             )
 
     def _validate_or_remap_episode(self, record: dict, tv_metadata: dict):
@@ -2078,12 +2135,18 @@ class PlexHistoryImporter:
 
         return False
 
-    def _get_existing_season(self, tmdb_id: str, season_number: int, tv_obj):
+    def _get_existing_season(
+        self,
+        tmdb_id: str,
+        season_number: int,
+        tv_obj,
+        source: str = Sources.TMDB.value,
+    ):
         """Reuse an already-imported season when a fallback TV ID resolves to it."""
         if not getattr(tv_obj, "pk", None):
             return None
 
-        cache_key = (tmdb_id, season_number)
+        cache_key = (source, tmdb_id, season_number)
         if cache_key not in self._existing_season_cache:
             self._existing_season_cache[cache_key] = (
                 app.models.Season.objects.filter(
@@ -2091,7 +2154,7 @@ class PlexHistoryImporter:
                     related_tv_id=tv_obj.pk,
                     item__season_number=season_number,
                     item__media_id=tmdb_id,
-                    item__source=Sources.TMDB.value,
+                    item__source=source,
                 )
                 .select_related("item", "related_tv")
                 .first()
@@ -2249,6 +2312,29 @@ class PlexHistoryImporter:
                 return None
             raise
 
+    def _resolve_tv_genesis(
+        self,
+        actual_tmdb_id: str,
+        tv_metadata: dict,
+        season_metadata: dict,
+        season_number: int,
+    ):
+        """Memoized wrapper around the processor's TV genesis-identity resolver.
+
+        Bulk import can process hundreds of episode records for the same
+        show/season; without caching, each would repeat a live TVDB lookup.
+        """
+        cache_key = (actual_tmdb_id, season_number)
+        if cache_key not in self._tv_genesis_cache:
+            self._tv_genesis_cache[cache_key] = self.processor._resolve_tv_genesis_identity(
+                self.user,
+                actual_tmdb_id,
+                tv_metadata,
+                season_metadata,
+                season_number,
+            )
+        return self._tv_genesis_cache[cache_key]
+
     def _get_or_create_item(
         self,
         media_type: str,
@@ -2257,11 +2343,12 @@ class PlexHistoryImporter:
         season_number: int | None = None,
         episode_number: int | None = None,
         library_media_type: str | None = None,
+        source: str = Sources.TMDB.value,
     ):
         """Get or create an item in the database."""
         item_kwargs = {
             "media_id": tmdb_id,
-            "source": Sources.TMDB.value,
+            "source": source,
             "media_type": media_type,
             "library_media_type": library_media_type or media_type,
         }

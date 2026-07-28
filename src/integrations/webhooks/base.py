@@ -1082,6 +1082,58 @@ class BaseWebhookProcessor:
             load_season,
         )
 
+    def _resolve_tv_genesis_identity(
+        self,
+        user,
+        media_id,
+        tv_metadata,
+        season_metadata,
+        season_number,
+    ):
+        """Return the identity to track a never-before-seen show under.
+
+        Defaults to the resolved TMDB identity. Switches to TVDB when the
+        user prefers TVDB for TV (issue #387) and a matching TVDB show/season
+        is resolvable; falls back to TMDB on any TVDB lookup failure so
+        genesis never blocks on TVDB availability.
+
+        Returns:
+            tuple: (source, media_id, tv_metadata, season_metadata)
+        """
+        from app.services import metadata_resolution  # noqa: PLC0415
+
+        show_tvdb_id = tv_metadata.get("tvdb_id")
+        preferred_source = metadata_resolution.metadata_default_source(
+            user, MediaTypes.TV.value,
+        )
+        if (
+            preferred_source == Sources.TVDB.value
+            and show_tvdb_id
+            and app.providers.tvdb.enabled()
+        ):
+            try:
+                tvdb_show_metadata = app.providers.tvdb.tv_with_seasons(
+                    show_tvdb_id, [season_number],
+                )
+                tvdb_season_metadata = tvdb_show_metadata.get(f"season/{season_number}")
+            except Exception as exc:  # pragma: no cover - defensive network guard
+                logger.warning(
+                    "TVDB genesis lookup failed for show %s season %s: %s",
+                    show_tvdb_id,
+                    season_number,
+                    exception_summary(exc),
+                )
+            else:
+                if tvdb_season_metadata:
+                    return (
+                        Sources.TVDB.value,
+                        str(show_tvdb_id),
+                        tvdb_show_metadata,
+                        tvdb_season_metadata,
+                    )
+
+        return Sources.TMDB.value, str(media_id), tv_metadata, season_metadata
+
     def _handle_tv_episode(
         self,
         media_id,
@@ -1186,19 +1238,38 @@ class BaseWebhookProcessor:
         )
         if existing_tv_item:
             tv_item = existing_tv_item
+            # `tv_metadata`/`season_metadata` were fetched from TMDB above
+            # regardless of the existing item's own source, so the display
+            # data being upserted here is always TMDB's — tag it as such
+            # even when `tv_item.source` is TVDB (a manually-tracked show).
+            item_source = Sources.TMDB.value
+            item_tv_metadata = tv_metadata
+            item_season_metadata = season_metadata
             logger.info(
                 "Webhook using existing %s-tracked item for show: %s",
                 tv_item.source,
                 tv_item.title,
             )
         else:
+            (
+                item_source,
+                item_media_id,
+                item_tv_metadata,
+                item_season_metadata,
+            ) = self._resolve_tv_genesis_identity(
+                user,
+                media_id,
+                tv_metadata,
+                season_metadata,
+                season_number,
+            )
             tv_item, _ = app.models.Item.objects.get_or_create(
-                media_id=media_id,
-                source=Sources.TMDB.value,
+                media_id=item_media_id,
+                source=item_source,
                 media_type=MediaTypes.TV.value,
                 defaults={
-                    "title": tv_metadata["title"],
-                    "image": tv_metadata["image"],
+                    "title": item_tv_metadata["title"],
+                    "image": item_tv_metadata["image"],
                 },
             )
         # `external_ids` describes the EPISODE that triggered this webhook
@@ -1207,16 +1278,18 @@ class BaseWebhookProcessor:
         # link (issue #326). Only `tv_metadata.get("tvdb_id")` (the show-level
         # id, cross-referenced by TMDB itself) is valid here.
         tv_provider_external_ids = {
-            **(tv_metadata.get("provider_external_ids") or {}),
-            "tmdb_id": str(media_id),
+            **(item_tv_metadata.get("provider_external_ids") or {}),
+            metadata_resolution.PROVIDER_EXTERNAL_ID_KEYS[item_source]: str(
+                tv_item.media_id,
+            ),
         }
         show_level_tvdb_id = tv_metadata.get("tvdb_id")
         if show_level_tvdb_id:
             tv_provider_external_ids["tvdb_id"] = show_level_tvdb_id
         metadata_resolution.upsert_provider_links(
             tv_item,
-            tv_metadata | {"provider_external_ids": tv_provider_external_ids},
-            provider=Sources.TMDB.value,
+            item_tv_metadata | {"provider_external_ids": tv_provider_external_ids},
+            provider=item_source,
             provider_media_type=MediaTypes.TV.value,
         )
 
@@ -1227,18 +1300,20 @@ class BaseWebhookProcessor:
         )
 
         if tv_created:
-            logger.info("Created new TV instance: %s", tv_metadata["title"])
+            logger.info("Created new TV instance: %s", item_tv_metadata["title"])
         elif tv_instance.status != Status.IN_PROGRESS.value:
             tv_instance.status = Status.IN_PROGRESS.value
             tv_instance.save()
             logger.info(
                 "Updated TV instance status to %s: %s",
                 Status.IN_PROGRESS.value,
-                tv_metadata["title"],
+                item_tv_metadata["title"],
             )
 
         # Use season poster if available, otherwise fallback to TV show poster
-        season_image = season_metadata.get("image") or tv_metadata.get("image")
+        season_image = item_season_metadata.get("image") or item_tv_metadata.get(
+            "image",
+        )
 
         # If the user is already tracking this show via the anime pathway (TMDB-based
         # anime, separate from MAL anime), keep scrobbles in that same bucket so that
@@ -1257,8 +1332,8 @@ class BaseWebhookProcessor:
             season_library_media_type = MediaTypes.SEASON.value
         else:
             uses_anime_tracking = app.models.Item.objects.filter(
-                media_id=media_id,
-                source=Sources.TMDB.value,
+                media_id=tv_item.media_id,
+                source=tv_item.source,
                 media_type=MediaTypes.SEASON.value,
                 library_media_type=MediaTypes.ANIME.value,
                 season__user=user,
@@ -1280,17 +1355,19 @@ class BaseWebhookProcessor:
             tv_item.media_id,
             tv_item.source,
             season_number,
-            provider=Sources.TMDB.value,
+            provider=item_source,
             library_media_type=season_library_media_type,
-            metadata=season_metadata
+            metadata=item_season_metadata
             | {
                 "provider_external_ids": {
-                    **(season_metadata.get("provider_external_ids") or {}),
-                    "tmdb_id": str(media_id),
+                    **(item_season_metadata.get("provider_external_ids") or {}),
+                    metadata_resolution.PROVIDER_EXTERNAL_ID_KEYS[item_source]: str(
+                        tv_item.media_id,
+                    ),
                 },
             },
             defaults={
-                "title": tv_metadata["title"],
+                "title": item_tv_metadata["title"],
                 "image": season_image,
                 "provider_metadata_status": (
                     ProviderMetadataStatus.LOCAL_ONLY_MISSING_SEASON.value
@@ -1346,7 +1423,9 @@ class BaseWebhookProcessor:
                 season_number,
             )
 
-        episode_item = season_instance.get_episode_item(episode_number, season_metadata)
+        episode_item = season_instance.get_episode_item(
+            episode_number, item_season_metadata,
+        )
 
         if self._is_played(payload):
             now = self._get_played_at(payload) or timezone.now().replace(

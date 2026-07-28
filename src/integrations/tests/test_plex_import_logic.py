@@ -318,6 +318,74 @@ class TestPlexHybridImport(TestCase):
         self.assertEqual(episode.item.media_id, "1515183")
         self.assertEqual(episode.item.title, "Yellowstone")
 
+    @patch("app.providers.tvdb.tv_with_seasons")
+    @patch("integrations.imports.plex.app.providers.tvdb.enabled", return_value=True)
+    def test_new_tv_show_genesis_uses_tvdb_when_preferred(
+        self,
+        mock_tvdb_enabled,  # noqa: ARG002
+        mock_tvdb_tv_with_seasons,
+    ):
+        """A never-before-tracked show is genesis'd via TVDB when preferred (#387)."""
+        self.user.tv_metadata_source_default = Sources.TVDB.value
+        self.user.save()
+
+        mock_tvdb_tv_with_seasons.return_value = {
+            "media_id": "555002",
+            "title": "Genesis Test Show",
+            "image": "",
+            "season/1": {
+                "image": "",
+                "episodes": [{"episode_number": 4}],
+            },
+        }
+
+        importer = PlexHistoryImporter(
+            user=self.user,
+            account=self.account,
+            mode="new",
+            library="machine::1",
+        )
+        importer._episode_records = [
+            {
+                "tmdb_id": "555001",
+                "season_number": 1,
+                "episode_number": 4,
+                "watched_at": timezone.now().replace(second=0, microsecond=0),
+                "viewed_at_ts": 1700000000,
+                "plex_rating_key": "rk-genesis",
+                "rating": None,
+                "title": "Pilot",
+                "series_title": "Genesis Test Show",
+            }
+        ]
+        importer._tv_metadata_cache = {
+            "555001": {
+                "media_id": "555001",
+                "title": "Genesis Test Show",
+                "original_title": "Genesis Test Show",
+                "localized_title": "Genesis Test Show",
+                "image": "",
+                "tvdb_id": "555002",
+                "season/1": {
+                    "image": "",
+                    "episodes": [{"episode_number": 4}],
+                },
+            }
+        }
+
+        importer._build_bulk_media()
+
+        tv_obj = importer.bulk_media[MediaTypes.TV.value][0]
+        season = importer.bulk_media[MediaTypes.SEASON.value][0]
+        episode = importer.bulk_media[MediaTypes.EPISODE.value][0]
+
+        self.assertEqual(tv_obj.item.source, Sources.TVDB.value)
+        self.assertEqual(tv_obj.item.media_id, "555002")
+        self.assertEqual(season.item.source, Sources.TVDB.value)
+        self.assertEqual(season.item.media_id, "555002")
+        self.assertEqual(episode.item.source, Sources.TVDB.value)
+        mock_tvdb_tv_with_seasons.assert_called_with("555002", [1])
+
     def test_existing_season_is_reused_when_resolved_tv_id_differs(self):
         """Resolved imports should reuse an existing season instead of inserting a duplicate."""
         tv_item = Item.objects.create(
