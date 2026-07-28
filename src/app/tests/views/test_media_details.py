@@ -5479,7 +5479,7 @@ class MediaDetailsViewTests(TestCase):
             'class="flex flex-col gap-y-4 md:flex-row md:gap-y-0 items-center justify-between mb-1"',
             content,
         )
-        self.assertIn('class="relative hidden md:block"', content)
+        self.assertIn('class="relative w-full md:w-auto"', content)
         self.assertIn('<h2 class="text-sm font-medium text-gray-400 md:hidden">Season 1</h2>', content)
         self.assertIn(
             'class="hidden flex-wrap items-center justify-start gap-y-1 text-center text-sm font-medium text-gray-400 md:flex md:text-start"',
