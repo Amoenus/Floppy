@@ -148,6 +148,9 @@ from app.tasks_trakt import (  # noqa: E402
     populate_trakt_popularity_data_for_items,
     reconcile_trakt_popularity,
 )
+from app.tasks_tv_provider_migration import (  # noqa: E402
+    migrate_tv_shows_to_preferred_provider_task,
+)
 
 RELEASE_BACKFILL_SOURCES = (
     Sources.TMDB.value,

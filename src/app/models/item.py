@@ -192,6 +192,15 @@ class Item(CalendarTriggerMixin, models.Model):
     )
     series_name = models.TextField(null=True, blank=True)
     series_position = models.FloatField(null=True, blank=True)
+    metadata_migration_pinned_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text=(
+            "When automatic metadata-provider migration (e.g. TMDB->TVDB) was "
+            "skipped for this item due to an incompatible season/episode "
+            "structure, so future runs don't keep retrying it"
+        ),
+    )
 
     class Meta:
         """Meta options for the model."""

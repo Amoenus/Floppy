@@ -1194,6 +1194,12 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": crontab(hour=4, minute=0),  # every day at 4 AM
         "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     },
+    "migrate_tv_shows_to_preferred_provider": {
+        "task": "Migrate TV shows to preferred metadata provider",
+        "schedule": crontab(hour=3, minute=45),  # every day at 3:45 AM
+        "kwargs": {"batch_size": 200},
+        "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
+    },
 }
 
 IS_PROD = not any(cmd in sys.argv for cmd in ("runserver", "test"))
