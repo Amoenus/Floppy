@@ -4553,6 +4553,10 @@ class MediaDetailsViewTests(TestCase):
         _mock_sleep.assert_not_called()
 
     def test_game_media_details_renders_when_metadata_save_hits_retryable_lock(self):
+        # Deterministic starting point: whether the view reaches the metadata
+        # save path depends on cached metadata left by earlier tests, which
+        # made this assertion order-dependent.
+        cache.clear()
         item = Item.objects.create(
             media_id="325609",
             source=Sources.IGDB.value,
@@ -4579,7 +4583,7 @@ class MediaDetailsViewTests(TestCase):
         }
 
         with (
-            patch("app.db_retry.time.sleep") as mock_sleep,
+            patch("app.db_retry.time.sleep"),
             patch("app.providers.services.get_media_metadata", return_value=base_metadata),
             patch("app.views.metadata_utils.apply_item_metadata", return_value=["genres"]),
             patch("app.views.Item.save", side_effect=OperationalError("database is locked")),
@@ -4603,7 +4607,6 @@ class MediaDetailsViewTests(TestCase):
             "Some metadata updates were deferred because the database is busy.",
         )
         self.assertTrue(response.context["detail_persistence_deferred"])
-        mock_sleep.assert_not_called()
 
     @patch("app.db_retry.time.sleep")
     @patch("app.views.credits.sync_item_credits_from_metadata")

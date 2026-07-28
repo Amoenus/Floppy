@@ -32,7 +32,14 @@ from app.models import (
 from users.models import MediaStatusChoices
 
 # Suppress noisy debug logging during tests
-logging.disable(logging.DEBUG)
+def setUpModule():
+    """Silence log noise for this module only."""
+    logging.disable(logging.DEBUG)
+
+
+def tearDownModule():
+    """Restore logging so other modules' assertLogs still see records."""
+    logging.disable(logging.NOTSET)
 
 
 def _bulk_create_movie_items_and_entries(
