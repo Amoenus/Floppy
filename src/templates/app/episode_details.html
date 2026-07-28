@@ -61,7 +61,8 @@
             <div class="md:hidden text-sm font-medium text-gray-400 text-center">
               <a href="{{ season_url }}" class="hover:text-indigo-400 transition-colors">{{ season_title }}</a>
               <span class="mx-1 text-gray-600">•</span>
-              {% if episode and episode.display_episode_number|default:episode.episode_number %}Ep {{ episode.display_episode_number|default:episode.episode_number }}{% endif %}
+              {{ episode_title }}
+              {% if episode and episode.display_episode_number|default:episode.episode_number %}<span class="mx-1 text-gray-600">•</span>Ep {{ episode.display_episode_number|default:episode.episode_number }}{% endif %}
               {% if episode and episode.air_date %}<span class="mx-1 text-gray-600">•</span>{{ episode.air_date|user_date_format:user }}{% endif %}
               {% if not public_view and episode and episode.history %}{% with ep_watched=episode.history|watched_count %}{% if ep_watched %}<span class="mx-1 text-gray-600">•</span>Watched {% if ep_watched == 1 %}once{% else %}{{ ep_watched }} times{% endif %}{% endif %}{% endwith %}{% endif %}
             </div>
@@ -69,12 +70,12 @@
 
           {# Episode dropdown #}
           {% if episodes %}
-            <div class="relative hidden md:block"
+            <div class="relative w-full md:w-auto"
                  x-data="{ open: false }"
                  @click.away="open = false"
                  @keydown.escape.window="open = false">
               <button @click="open = !open"
-                      class="flex items-center space-x-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-md transition-colors duration-200 cursor-pointer">
+                      class="flex w-full items-center justify-center space-x-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-md transition-colors duration-200 cursor-pointer md:w-auto md:justify-start">
                 <span class="text-sm font-medium">{{ episode.display_episode_number|default:episode_number }}. {{ episode_title }}</span>
                 <div class="w-4 h-4" :class="{ 'rotate-180': open }">{% include "app/icons/chevron-down.svg" %}</div>
               </button>
