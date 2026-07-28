@@ -1,6 +1,7 @@
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.test import TestCase
 
 from app.models import TV, Item, MediaTypes, Sources, Status
@@ -13,6 +14,7 @@ class MigrateTvShowsToPreferredProviderTaskTests(TestCase):
 
     def setUp(self):
         """Create a TVDB-preferring user and a TMDB-preferring user."""
+        cache.clear()
         self.tvdb_user = get_user_model().objects.create_user(
             username="tvdb-pref",
             password="pw12345",
