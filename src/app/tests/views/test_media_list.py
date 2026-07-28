@@ -3,6 +3,7 @@ import re
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.template.loader import render_to_string
 from django.test import TestCase
 from django.urls import reverse
@@ -40,6 +41,11 @@ class MediaListViewTests(TestCase):
 
     def setUp(self):
         """Create a user and log in."""
+        # Media-list cache keys are (user_id, media_type, filters) with no data
+        # version, and these fixtures use bulk_create, which skips the
+        # invalidation signals. Every test reuses user id 1, so a list cached by
+        # one test would otherwise be served to the next.
+        cache.clear()
         self.credentials = {"username": "test", "password": "12345"}
         self.user = get_user_model().objects.create_user(**self.credentials)
         self.client.login(**self.credentials)
