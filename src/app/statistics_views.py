@@ -643,7 +643,6 @@ def statistics(request):
             "top_talent": {},
             "status_distribution": {},
             "status_pie_chart_data": {},
-            "hours_per_media_type": {},
             "tv_consumption": {},
             "movie_consumption": {},
             "music_consumption": {},
