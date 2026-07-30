@@ -20,6 +20,7 @@ from django.urls import reverse
 from django.utils import formats, timezone
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
+from app import statistics as stats
 from app import cache_utils, helpers, history_cache
 from app.columns import (
     resolve_column_config,

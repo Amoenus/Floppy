@@ -577,6 +577,25 @@ class MediaListViewTests(TestCase):
             rendered_cell,
         )
 
+    def test_music_media_list_resolves_artist_country_code_to_name(self):
+        """Origin filter options should show country names, not raw ISO codes."""
+        artist = Artist.objects.create(
+            name="Origin Artist",
+            genres=[],
+            country="jp",
+        )
+        ArtistTracker.objects.create(
+            user=self.user,
+            artist=artist,
+            status=Status.COMPLETED.value,
+        )
+
+        response = self.client.get(reverse("medialist", args=[MediaTypes.MUSIC.value]))
+
+        self.assertEqual(response.status_code, 200)
+        origins = response.context["filter_data"]["origins"]
+        self.assertEqual(origins, [{"value": "jp", "label": "Japan"}])
+
     def test_music_media_list_keeps_artist_genres_as_primary_filter_data(self):
         artist = Artist.objects.create(
             name="Genre Artist",

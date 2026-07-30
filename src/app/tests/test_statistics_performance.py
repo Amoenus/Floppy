@@ -30,7 +30,14 @@ from app.models import (
     Status,
 )
 
-logging.disable(logging.DEBUG)
+def setUpModule():
+    """Silence log noise for this module only."""
+    logging.disable(logging.DEBUG)
+
+
+def tearDownModule():
+    """Restore logging so other modules' assertLogs still see records."""
+    logging.disable(logging.NOTSET)
 
 
 @tag("slow", "benchmark")

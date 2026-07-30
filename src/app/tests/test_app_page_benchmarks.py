@@ -23,7 +23,14 @@ from lists.models import CustomList, CustomListItem
 from users.home_screen import ensure_home_screen_rows
 from users.models import HomeScreenRowTypeChoices
 
-logging.disable(logging.DEBUG)
+def setUpModule():
+    """Silence log noise for this module only."""
+    logging.disable(logging.DEBUG)
+
+
+def tearDownModule():
+    """Restore logging so other modules' assertLogs still see records."""
+    logging.disable(logging.NOTSET)
 
 
 @tag("slow", "benchmark")

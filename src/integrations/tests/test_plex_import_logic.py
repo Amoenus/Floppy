@@ -25,7 +25,14 @@ from integrations.imports.plex import PlexHistoryImporter
 from integrations.models import PlexAccount
 
 # Suppress logging during tests
-logging.getLogger("integrations.imports.plex").setLevel(logging.CRITICAL)
+def setUpModule():
+    """Silence provider log noise for this module only."""
+    logging.getLogger("integrations.imports.plex").setLevel(logging.CRITICAL)
+
+
+def tearDownModule():
+    """Restore the provider logger level for other modules."""
+    logging.getLogger("integrations.imports.plex").setLevel(logging.NOTSET)
 
 
 class TestPlexHybridImport(TestCase):
