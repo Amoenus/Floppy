@@ -508,7 +508,88 @@
           </div>
         </div>
         {% endif %}
-        
+
+        {% if user.manga_enabled and hours_per_media_type.manga and hours_per_media_type.manga != "0h 0min" %}
+        <div class="bg-[#2a2f35] rounded-lg p-4 sm:p-6 flex items-center min-w-0" data-media-card x-show="isMediaTypeVisible('manga')">
+          <div class="stats-media-card-icon" style="background-color: {{ media_type_colors.manga }}33;">
+            <svg xmlns="http://www.w3.org/2000/svg"
+                 width="24"
+                 height="24"
+                 viewBox="0 0 24 24"
+                 fill="none"
+                 stroke="currentColor"
+                 stroke-width="2"
+                 stroke-linecap="round"
+                 stroke-linejoin="round"
+                 class="w-5 h-5 sm:w-8 sm:h-8" style="color: {{ media_type_colors.manga }};">
+              <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/>
+              <path d="M14 2v4a2 2 0 0 0 2 2h4"/>
+              <path d="M10 9H8"/>
+              <path d="M16 13H8"/>
+              <path d="M16 17H8"/>
+            </svg>
+          </div>
+          <div class="stats-media-card-copy min-w-0">
+            <h3 class="stats-media-card-title text-xs sm:text-sm font-medium text-gray-400">Manga</h3>
+            <p class="stats-media-card-value text-xl sm:text-2xl font-bold">{{ hours_per_media_type.manga }}</p>
+            {% with compare=hours_per_media_type_comparison.manga %}
+              <div class="stats-media-card-meta">
+                <p class="stats-media-card-range">
+                  <span class="stats-media-card-range-desktop">
+                    {{ selected_range_dates_label }}{% if compare and compare.badge %} ({{ compare.badge|lower }}){% endif %}
+                  </span>
+                  <span class="stats-media-card-range-mobile">
+                    {% if compare and compare.badge_short %}
+                      {% if compare.badge_state == "up" %}
+                        <span class="stats-media-card-mobile-badge stats-media-card-mobile-badge-up">
+                          {% include "app/icons/chevron-up.svg" with classes="stats-media-card-mobile-badge-icon" %}
+                          <span>{{ compare.badge_short }}</span>
+                        </span>
+                      {% elif compare.badge_state == "down" %}
+                        <span class="stats-media-card-mobile-badge stats-media-card-mobile-badge-down">
+                          {% include "app/icons/chevron-down.svg" with classes="stats-media-card-mobile-badge-icon" %}
+                          <span>{{ compare.badge_short }}</span>
+                        </span>
+                      {% else %}
+                        <span class="stats-media-card-mobile-badge stats-media-card-mobile-badge-{{ compare.badge_state }}">{{ compare.badge_short }}</span>
+                      {% endif %}
+                    {% endif %}
+                  </span>
+                </p>
+                {% if compare and compare.tooltip %}
+                  <div class="relative" x-data="{ tooltipOpen: false }">
+                    <button @mouseenter="tooltipOpen = true" @mouseleave="tooltipOpen = false" @click="tooltipOpen = !tooltipOpen" @click.outside="tooltipOpen = false" class="stats-media-card-tooltip-trigger inline-flex items-center cursor-pointer" type="button" aria-label="Show comparison totals">
+                      {% include "app/icons/info.svg" with classes="w-3.5 h-3.5" %}
+                    </button>
+                    <div x-show="tooltipOpen"
+                         x-transition:enter="transition ease-out duration-200"
+                         x-transition:enter-start="opacity-0 scale-95"
+                         x-transition:enter-end="opacity-100 scale-100"
+                         x-transition:leave="transition ease-in duration-150"
+                         x-transition:leave-start="opacity-100 scale-100"
+                         x-transition:leave-end="opacity-0 scale-95"
+                         class="stats-media-card-tooltip-panel absolute right-0 bottom-full mb-2 w-56 max-w-[calc(100vw-2rem)] p-3 text-white text-xs rounded-lg z-10 stats-tooltip"
+                         style="display: none;">
+                      <div class="stats-tooltip-lines">
+                        <div class="stats-tooltip-line">
+                          <span class="stats-tooltip-label">{{ compare.tooltip.current_label }}</span>
+                          <span class="stats-tooltip-value">{{ compare.tooltip.current_total }}</span>
+                        </div>
+                        <div class="stats-tooltip-line">
+                          <span class="stats-tooltip-label">{{ compare.tooltip.comparison_label }}</span>
+                          <span class="stats-tooltip-value">{{ compare.tooltip.comparison_total }}</span>
+                        </div>
+                      </div>
+                      <div class="stats-media-card-tooltip-arrow absolute right-3 top-full w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent stats-tooltip-arrow"></div>
+                    </div>
+                  </div>
+                {% endif %}
+              </div>
+            {% endwith %}
+          </div>
+        </div>
+        {% endif %}
+
         {% if user.music_enabled and hours_per_media_type.music and hours_per_media_type.music != "0h 0min" %}
         <div class="bg-[#2a2f35] rounded-lg p-4 sm:p-6 flex items-center min-w-0" data-media-card x-show="isMediaTypeVisible('music')">
           <div class="stats-media-card-icon" style="background-color: {{ media_type_colors.music }}33;">
@@ -531,6 +612,162 @@
             <h3 class="stats-media-card-title text-xs sm:text-sm font-medium text-gray-400">Music</h3>
             <p class="stats-media-card-value text-xl sm:text-2xl font-bold">{{ hours_per_media_type.music }}</p>
             {% with compare=hours_per_media_type_comparison.music %}
+              <div class="stats-media-card-meta">
+                <p class="stats-media-card-range">
+                  <span class="stats-media-card-range-desktop">
+                    {{ selected_range_dates_label }}{% if compare and compare.badge %} ({{ compare.badge|lower }}){% endif %}
+                  </span>
+                  <span class="stats-media-card-range-mobile">
+                    {% if compare and compare.badge_short %}
+                      {% if compare.badge_state == "up" %}
+                        <span class="stats-media-card-mobile-badge stats-media-card-mobile-badge-up">
+                          {% include "app/icons/chevron-up.svg" with classes="stats-media-card-mobile-badge-icon" %}
+                          <span>{{ compare.badge_short }}</span>
+                        </span>
+                      {% elif compare.badge_state == "down" %}
+                        <span class="stats-media-card-mobile-badge stats-media-card-mobile-badge-down">
+                          {% include "app/icons/chevron-down.svg" with classes="stats-media-card-mobile-badge-icon" %}
+                          <span>{{ compare.badge_short }}</span>
+                        </span>
+                      {% else %}
+                        <span class="stats-media-card-mobile-badge stats-media-card-mobile-badge-{{ compare.badge_state }}">{{ compare.badge_short }}</span>
+                      {% endif %}
+                    {% endif %}
+                  </span>
+                </p>
+                {% if compare and compare.tooltip %}
+                  <div class="relative" x-data="{ tooltipOpen: false }">
+                    <button @mouseenter="tooltipOpen = true" @mouseleave="tooltipOpen = false" @click="tooltipOpen = !tooltipOpen" @click.outside="tooltipOpen = false" class="stats-media-card-tooltip-trigger inline-flex items-center cursor-pointer" type="button" aria-label="Show comparison totals">
+                      {% include "app/icons/info.svg" with classes="w-3.5 h-3.5" %}
+                    </button>
+                    <div x-show="tooltipOpen"
+                         x-transition:enter="transition ease-out duration-200"
+                         x-transition:enter-start="opacity-0 scale-95"
+                         x-transition:enter-end="opacity-100 scale-100"
+                         x-transition:leave="transition ease-in duration-150"
+                         x-transition:leave-start="opacity-100 scale-100"
+                         x-transition:leave-end="opacity-0 scale-95"
+                         class="stats-media-card-tooltip-panel absolute right-0 bottom-full mb-2 w-56 max-w-[calc(100vw-2rem)] p-3 text-white text-xs rounded-lg z-10 stats-tooltip"
+                         style="display: none;">
+                      <div class="stats-tooltip-lines">
+                        <div class="stats-tooltip-line">
+                          <span class="stats-tooltip-label">{{ compare.tooltip.current_label }}</span>
+                          <span class="stats-tooltip-value">{{ compare.tooltip.current_total }}</span>
+                        </div>
+                        <div class="stats-tooltip-line">
+                          <span class="stats-tooltip-label">{{ compare.tooltip.comparison_label }}</span>
+                          <span class="stats-tooltip-value">{{ compare.tooltip.comparison_total }}</span>
+                        </div>
+                      </div>
+                      <div class="stats-media-card-tooltip-arrow absolute right-3 top-full w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent stats-tooltip-arrow"></div>
+                    </div>
+                  </div>
+                {% endif %}
+              </div>
+            {% endwith %}
+          </div>
+        </div>
+        {% endif %}
+
+        {% if user.book_enabled and hours_per_media_type.book and hours_per_media_type.book != "0h 0min" %}
+        <div class="bg-[#2a2f35] rounded-lg p-4 sm:p-6 flex items-center min-w-0" data-media-card x-show="isMediaTypeVisible('book')">
+          <div class="stats-media-card-icon" style="background-color: {{ media_type_colors.book }}33;">
+            <svg xmlns="http://www.w3.org/2000/svg"
+                 width="24"
+                 height="24"
+                 viewBox="0 0 24 24"
+                 fill="none"
+                 stroke="currentColor"
+                 stroke-width="2"
+                 stroke-linecap="round"
+                 stroke-linejoin="round"
+                 class="w-5 h-5 sm:w-8 sm:h-8" style="color: {{ media_type_colors.book }};">
+              <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/>
+            </svg>
+          </div>
+          <div class="stats-media-card-copy min-w-0">
+            <h3 class="stats-media-card-title text-xs sm:text-sm font-medium text-gray-400">Books</h3>
+            <p class="stats-media-card-value text-xl sm:text-2xl font-bold">{{ hours_per_media_type.book }}</p>
+            {% with compare=hours_per_media_type_comparison.book %}
+              <div class="stats-media-card-meta">
+                <p class="stats-media-card-range">
+                  <span class="stats-media-card-range-desktop">
+                    {{ selected_range_dates_label }}{% if compare and compare.badge %} ({{ compare.badge|lower }}){% endif %}
+                  </span>
+                  <span class="stats-media-card-range-mobile">
+                    {% if compare and compare.badge_short %}
+                      {% if compare.badge_state == "up" %}
+                        <span class="stats-media-card-mobile-badge stats-media-card-mobile-badge-up">
+                          {% include "app/icons/chevron-up.svg" with classes="stats-media-card-mobile-badge-icon" %}
+                          <span>{{ compare.badge_short }}</span>
+                        </span>
+                      {% elif compare.badge_state == "down" %}
+                        <span class="stats-media-card-mobile-badge stats-media-card-mobile-badge-down">
+                          {% include "app/icons/chevron-down.svg" with classes="stats-media-card-mobile-badge-icon" %}
+                          <span>{{ compare.badge_short }}</span>
+                        </span>
+                      {% else %}
+                        <span class="stats-media-card-mobile-badge stats-media-card-mobile-badge-{{ compare.badge_state }}">{{ compare.badge_short }}</span>
+                      {% endif %}
+                    {% endif %}
+                  </span>
+                </p>
+                {% if compare and compare.tooltip %}
+                  <div class="relative" x-data="{ tooltipOpen: false }">
+                    <button @mouseenter="tooltipOpen = true" @mouseleave="tooltipOpen = false" @click="tooltipOpen = !tooltipOpen" @click.outside="tooltipOpen = false" class="stats-media-card-tooltip-trigger inline-flex items-center cursor-pointer" type="button" aria-label="Show comparison totals">
+                      {% include "app/icons/info.svg" with classes="w-3.5 h-3.5" %}
+                    </button>
+                    <div x-show="tooltipOpen"
+                         x-transition:enter="transition ease-out duration-200"
+                         x-transition:enter-start="opacity-0 scale-95"
+                         x-transition:enter-end="opacity-100 scale-100"
+                         x-transition:leave="transition ease-in duration-150"
+                         x-transition:leave-start="opacity-100 scale-100"
+                         x-transition:leave-end="opacity-0 scale-95"
+                         class="stats-media-card-tooltip-panel absolute right-0 bottom-full mb-2 w-56 max-w-[calc(100vw-2rem)] p-3 text-white text-xs rounded-lg z-10 stats-tooltip"
+                         style="display: none;">
+                      <div class="stats-tooltip-lines">
+                        <div class="stats-tooltip-line">
+                          <span class="stats-tooltip-label">{{ compare.tooltip.current_label }}</span>
+                          <span class="stats-tooltip-value">{{ compare.tooltip.current_total }}</span>
+                        </div>
+                        <div class="stats-tooltip-line">
+                          <span class="stats-tooltip-label">{{ compare.tooltip.comparison_label }}</span>
+                          <span class="stats-tooltip-value">{{ compare.tooltip.comparison_total }}</span>
+                        </div>
+                      </div>
+                      <div class="stats-media-card-tooltip-arrow absolute right-3 top-full w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent stats-tooltip-arrow"></div>
+                    </div>
+                  </div>
+                {% endif %}
+              </div>
+            {% endwith %}
+          </div>
+        </div>
+        {% endif %}
+
+        {% if user.comic_enabled and hours_per_media_type.comic and hours_per_media_type.comic != "0h 0min" %}
+        <div class="bg-[#2a2f35] rounded-lg p-4 sm:p-6 flex items-center min-w-0" data-media-card x-show="isMediaTypeVisible('comic')">
+          <div class="stats-media-card-icon" style="background-color: {{ media_type_colors.comic }}33;">
+            <svg xmlns="http://www.w3.org/2000/svg"
+                 width="24"
+                 height="24"
+                 viewBox="0 0 24 24"
+                 fill="none"
+                 stroke="currentColor"
+                 stroke-width="2"
+                 stroke-linecap="round"
+                 stroke-linejoin="round"
+                 class="w-5 h-5 sm:w-8 sm:h-8" style="color: {{ media_type_colors.comic }};">
+              <rect width="8" height="18" x="3" y="3" rx="1"/>
+              <path d="M7 3v18"/>
+              <path d="M20.4 18.9c.2.5-.1 1.1-.6 1.3l-1.9.7c-.5.2-1.1-.1-1.3-.6L11.1 5.1c-.2-.5.1-1.1.6-1.3l1.9-.7c.5-.2 1.1.1 1.3.6Z"/>
+            </svg>
+          </div>
+          <div class="stats-media-card-copy min-w-0">
+            <h3 class="stats-media-card-title text-xs sm:text-sm font-medium text-gray-400">Comics</h3>
+            <p class="stats-media-card-value text-xl sm:text-2xl font-bold">{{ hours_per_media_type.comic }}</p>
+            {% with compare=hours_per_media_type_comparison.comic %}
               <div class="stats-media-card-meta">
                 <p class="stats-media-card-range">
                   <span class="stats-media-card-range-desktop">

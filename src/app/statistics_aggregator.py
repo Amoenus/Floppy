@@ -709,53 +709,63 @@ def _aggregate_statistics_from_days(
         items_by_type.pop(MediaTypes.SEASON.value, None)
         top_played_by_type.pop(MediaTypes.SEASON.value, None)
 
-    if start_date is None and end_date is None:
-        undated_models = [MediaTypes.MOVIE.value, MediaTypes.ANIME.value, MediaTypes.GAME.value, MediaTypes.BOARDGAME.value, MediaTypes.MUSIC.value, MediaTypes.PODCAST.value, MediaTypes.MANGA.value, MediaTypes.BOOK.value, MediaTypes.COMIC.value]
-        for media_type in undated_models:
-            if media_type not in active_types:
+    # Entries without any start/end date can never land in a calendar-day
+    # bucket, so the day-builder pipeline above never sees them. Pick them up
+    # here directly so undated items (e.g. Planning-status items that haven't
+    # been started, or imports missing dates) still count towards status,
+    # score and media-count aggregates regardless of the selected date range.
+    undated_models = [
+        MediaTypes.TV.value, MediaTypes.MOVIE.value, MediaTypes.ANIME.value,
+        MediaTypes.MANGA.value, MediaTypes.GAME.value, MediaTypes.BOARDGAME.value,
+        MediaTypes.MUSIC.value, MediaTypes.PODCAST.value, MediaTypes.BOOK.value,
+        MediaTypes.COMIC.value,
+    ]
+    for media_type in undated_models:
+        if media_type not in active_types:
+            continue
+        model = apps.get_model("app", media_type)
+        qs = model.objects.filter(
+            user=user,
+            start_date__isnull=True,
+            end_date__isnull=True,
+            status__in=[
+                Status.IN_PROGRESS.value,
+                Status.COMPLETED.value,
+                Status.DROPPED.value,
+                Status.PAUSED.value,
+                Status.PLANNING.value,
+            ],
+        ).values("id", "item_id", "status", "score", "created_at")
+        for row in qs.iterator(chunk_size=500):
+            activity_dt = _parse_activity_dt(row.get("created_at"))
+            score = row.get("score")
+            score_dt = activity_dt if score is not None else None
+            existing = items_by_type[media_type].get(row["item_id"])
+            if not existing:
+                items_by_type[media_type][row["item_id"]] = {
+                    "item_id": row["item_id"],
+                    "media_id": row["id"],
+                    "media_type": media_type,
+                    "status": row.get("status"),
+                    "score": float(score) if score is not None else None,
+                    "score_dt": score_dt,
+                    "activity_dt": activity_dt,
+                }
                 continue
-            model = apps.get_model("app", media_type)
-            qs = model.objects.filter(
-                user=user,
-                start_date__isnull=True,
-                end_date__isnull=True,
-                status__in=[
-                    Status.IN_PROGRESS.value,
-                    Status.COMPLETED.value,
-                    Status.DROPPED.value,
-                    Status.PAUSED.value,
-                ],
-            ).values("id", "item_id", "status", "score", "created_at")
-            for row in qs.iterator(chunk_size=500):
-                activity_dt = _parse_activity_dt(row.get("created_at"))
-                score = row.get("score")
-                score_dt = activity_dt if score is not None else None
-                existing = items_by_type[media_type].get(row["item_id"])
-                if not existing:
-                    items_by_type[media_type][row["item_id"]] = {
-                        "item_id": row["item_id"],
-                        "media_id": row["id"],
-                        "media_type": media_type,
-                        "status": row.get("status"),
-                        "score": float(score) if score is not None else None,
-                        "score_dt": score_dt,
-                        "activity_dt": activity_dt,
-                    }
-                    continue
 
-                existing_activity = existing.get("activity_dt")
-                if activity_dt and (not existing_activity or activity_dt > existing_activity):
-                    existing["media_id"] = row["id"] or existing.get("media_id")
-                    existing["status"] = row.get("status")
-                    existing["activity_dt"] = activity_dt
+            existing_activity = existing.get("activity_dt")
+            if activity_dt and (not existing_activity or activity_dt > existing_activity):
+                existing["media_id"] = row["id"] or existing.get("media_id")
+                existing["status"] = row.get("status")
+                existing["activity_dt"] = activity_dt
 
-                if score is not None:
-                    existing_score_dt = existing.get("score_dt")
-                    if existing_score_dt is None or (score_dt and score_dt > existing_score_dt):
-                        existing["score"] = float(score)
-                        existing["score_dt"] = score_dt
+            if score is not None:
+                existing_score_dt = existing.get("score_dt")
+                if existing_score_dt is None or (score_dt and score_dt > existing_score_dt):
+                    existing["score"] = float(score)
+                    existing["score_dt"] = score_dt
 
-                items_by_type[media_type][row["item_id"]] = existing
+            items_by_type[media_type][row["item_id"]] = existing
 
     media_count = {"total": 0}
     for media_type in active_types:
@@ -764,18 +774,25 @@ def _aggregate_statistics_from_days(
             media_count[media_type] = count
             media_count["total"] += count
 
-    status_order = list(Status.values)
+    # TV Seasons roll up into their parent TV Show bar here, matching how
+    # Media Type Distribution already merges season minutes into "tv".
+    distribution_types = list(active_types)
+    if MediaTypes.SEASON.value in distribution_types and MediaTypes.TV.value in distribution_types:
+        distribution_types = [mt for mt in distribution_types if mt != MediaTypes.SEASON.value]
+
+    no_status_label = "No status"
+    status_order = [*Status.values, no_status_label]
     status_distribution = {}
     total_completed = 0
-    for media_type in active_types:
-        items = items_by_type.get(media_type, {})
+    for media_type in distribution_types:
+        items = dict(items_by_type.get(media_type, {}))
+        if media_type == MediaTypes.TV.value:
+            items.update(items_by_type.get(MediaTypes.SEASON.value, {}))
         if not items:
             continue
         status_counts = dict.fromkeys(status_order, 0)
         for meta in items.values():
-            status_value = meta.get("status")
-            if not status_value:
-                continue
+            status_value = meta.get("status") or no_status_label
             status_counts[status_value] = status_counts.get(status_value, 0) + 1
             if status_value == Status.COMPLETED.value:
                 total_completed += 1
@@ -810,8 +827,10 @@ def _aggregate_statistics_from_days(
         score_scale_max = 10
     score_range = range(score_scale_max + 1)
 
-    for media_type in active_types:
-        items = items_by_type.get(media_type, {})
+    for media_type in distribution_types:
+        items = dict(items_by_type.get(media_type, {}))
+        if media_type == MediaTypes.TV.value:
+            items.update(items_by_type.get(MediaTypes.SEASON.value, {}))
         if not items:
             continue
         score_counts = dict.fromkeys(score_range, 0)

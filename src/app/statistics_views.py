@@ -612,6 +612,9 @@ def statistics(request):
                 "game": config.get_stats_color(MediaTypes.GAME.value),
                 "music": config.get_stats_color(MediaTypes.MUSIC.value),
                 "podcast": config.get_stats_color(MediaTypes.PODCAST.value),
+                "book": config.get_stats_color(MediaTypes.BOOK.value),
+                "comic": config.get_stats_color(MediaTypes.COMIC.value),
+                "manga": config.get_stats_color(MediaTypes.MANGA.value),
             },
         }
 
@@ -636,6 +639,9 @@ def statistics(request):
                 "game": config.get_stats_color(MediaTypes.GAME.value),
                 "music": config.get_stats_color(MediaTypes.MUSIC.value),
                 "podcast": config.get_stats_color(MediaTypes.PODCAST.value),
+                "book": config.get_stats_color(MediaTypes.BOOK.value),
+                "comic": config.get_stats_color(MediaTypes.COMIC.value),
+                "manga": config.get_stats_color(MediaTypes.MANGA.value),
             },
             "score_distribution": {},
             "top_rated": [],
