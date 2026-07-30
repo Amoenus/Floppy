@@ -57,6 +57,119 @@ def _collection_redirect(request):
     return redirect("collection_list")
 
 
+_SEASON_OR_SHOW_MEDIA_TYPES = {
+    MediaTypes.SEASON.value,
+    MediaTypes.TV.value,
+    MediaTypes.ANIME.value,
+}
+
+_COLLECTION_ENTRY_COPY_FIELDS = (
+    "media_type",
+    "resolution",
+    "hdr",
+    "is_3d",
+    "audio_codec",
+    "audio_channels",
+    "bitrate",
+)
+
+
+def _episodes_for_season_or_show(item):
+    """Return the episode Items covered by a season or show/anime Item."""
+    episode_items = Item.objects.filter(
+        media_id=item.media_id,
+        source=item.source,
+        media_type=MediaTypes.EPISODE.value,
+    )
+    if item.media_type == MediaTypes.SEASON.value:
+        episode_items = episode_items.filter(season_number=item.season_number)
+    else:
+        episode_items = episode_items.exclude(season_number=0)
+    return episode_items
+
+
+def _expand_collection_entry_to_episodes(user, item, *, cleaned_data):
+    """Create a CollectionEntry for every episode under a season/show Item.
+
+    Episodes that already have at least one CollectionEntry for this user are
+    left untouched. Returns (created_count, skipped_count).
+    """
+    episode_items = list(_episodes_for_season_or_show(item))
+    if not episode_items:
+        return 0, 0
+
+    already_collected_ids = set(
+        CollectionEntry.objects.filter(
+            user=user,
+            item_id__in=[episode_item.id for episode_item in episode_items],
+        ).values_list("item_id", flat=True),
+    )
+
+    to_create = [
+        episode_item for episode_item in episode_items if episode_item.id not in already_collected_ids
+    ]
+    if not to_create:
+        return 0, len(episode_items)
+
+    copy_fields = {
+        field: cleaned_data[field]
+        for field in _COLLECTION_ENTRY_COPY_FIELDS
+        if field in cleaned_data
+    }
+    new_entries = CollectionEntry.objects.bulk_create(
+        [
+            CollectionEntry(user=user, item=episode_item, **copy_fields)
+            for episode_item in to_create
+        ],
+    )
+
+    collected_at = cleaned_data.get("collected_at")
+    if collected_at:
+        CollectionEntry.objects.filter(
+            id__in=[entry.id for entry in new_entries],
+        ).update(collected_at=collected_at)
+
+    return len(new_entries), len(already_collected_ids)
+
+
+def _collection_add_season_or_show_response(request, item, form):
+    """Expand a season/show collection submission into per-episode entries."""
+    created_count, skipped_count = _expand_collection_entry_to_episodes(
+        request.user,
+        item,
+        cleaned_data=form.cleaned_data,
+    )
+    if created_count:
+        message = f"Added {created_count} episode(s) to collection"
+        if skipped_count:
+            message += f" ({skipped_count} already collected)"
+    else:
+        message = "All episodes are already in your collection"
+    messages.success(request, message)
+    if request.headers.get("HX-Request"):
+        return JsonResponse({"success": True, "message": message})
+    return _collection_redirect(request)
+
+
+def _collection_quick_add_season_or_show_response(request, item):
+    """Expand a season/show quick-add into per-episode entries."""
+    created_count, skipped_count = _expand_collection_entry_to_episodes(
+        request.user,
+        item,
+        cleaned_data={},
+    )
+    if created_count:
+        message = f"Added {created_count} episode(s) to collection"
+        if skipped_count:
+            message += f" ({skipped_count} already collected)"
+        messages.success(request, message)
+    else:
+        message = "All episodes are already in your collection"
+    if request.headers.get("HX-Request"):
+        return JsonResponse({"success": True, "created": bool(created_count), "message": message})
+    return _collection_redirect(request)
+
+
 @require_POST
 def collection_add(request):
     """Add a new owned copy to collection (with optional metadata)."""
@@ -85,6 +198,9 @@ def collection_add(request):
     )
 
     if form.is_valid():
+        if item.media_type in _SEASON_OR_SHOW_MEDIA_TYPES:
+            return _collection_add_season_or_show_response(request, item, form)
+
         entry = form.save(commit=False)
         entry.user = request.user
         entry.item = item
@@ -139,6 +255,9 @@ def collection_quick_add(request, source, media_type, media_id):
         season_number,
         episode_number,
     )
+
+    if item.media_type in _SEASON_OR_SHOW_MEDIA_TYPES:
+        return _collection_quick_add_season_or_show_response(request, item)
 
     entry = CollectionEntry.objects.filter(user=request.user, item=item).first()
     created = False
@@ -205,7 +324,7 @@ def collection_remove(request, entry_id):
 
 @require_POST
 def collection_remove_season(request, season_item_id):
-    """Remove Sonarr-backed collected episode rows for a season summary chip."""
+    """Remove all collected episode rows for a season summary chip."""
     season_item = get_object_or_404(
         Item,
         id=season_item_id,
@@ -222,8 +341,6 @@ def collection_remove_season(request, season_item_id):
         item__source=season_item.source,
         item__media_type=MediaTypes.EPISODE.value,
         item__season_number=season_item.season_number,
-        item__source_states__user=request.user,
-        item__source_states__source="sonarr",
     ).delete()
 
     if deleted_count:
@@ -315,15 +432,13 @@ def _format_collection_progress_value(collected_count, total_count):
     return progress
 
 
-def _sonarr_episode_collection_entries(user, item, *, season_number=None):
-    """Return episode collection rows that are backed by Sonarr source state."""
+def _episode_collection_entries(user, item, *, season_number=None):
+    """Return episode collection rows (manual or integration-synced) for a show."""
     episode_entries = CollectionEntry.objects.filter(
         user=user,
         item__media_id=item.media_id,
         item__source=item.source,
         item__media_type=MediaTypes.EPISODE.value,
-        item__source_states__user=user,
-        item__source_states__source="sonarr",
     )
     if season_number is not None:
         episode_entries = episode_entries.filter(item__season_number=season_number)
@@ -350,7 +465,7 @@ def _item_has_collection_source_state(user, item, *, source=None):
 
 
 def _build_collection_season_audit_entries(user, item):
-    """Return season-level Sonarr summaries for TV/anime show modal auditing."""
+    """Return season-level collected-episode summaries for TV/anime show modal auditing."""
     supported_media_types = {
         MediaTypes.TV.value,
         MediaTypes.ANIME.value,
@@ -379,19 +494,19 @@ def _build_collection_season_audit_entries(user, item):
         .exclude(season_number=0)
         .order_by("season_number", "episode_number", "id"),
     )
-    sonarr_episode_entries = _sonarr_episode_collection_entries(user, item)
-    if not sonarr_episode_entries:
+    episode_entries = _episode_collection_entries(user, item)
+    if not episode_entries:
         return []
 
     season_item_ids = [season_item.id for season_item in season_items]
-    sonarr_episode_item_ids = [entry.item_id for entry in sonarr_episode_entries]
+    episode_item_ids = [entry.item_id for entry in episode_entries]
     source_labels_by_item_id = _collection_source_labels_by_item_id(
         user,
-        season_item_ids + sonarr_episode_item_ids,
+        season_item_ids + episode_item_ids,
     )
     quality_labels_by_item_id = _collection_quality_labels_by_item_id(
         user,
-        sonarr_episode_item_ids,
+        episode_item_ids,
         source="sonarr",
     )
 
@@ -402,7 +517,7 @@ def _build_collection_season_audit_entries(user, item):
         episode_item_ids_by_season_number[episode_item.season_number].add(episode_item.id)
 
     collected_episode_ids_by_season_number = defaultdict(set)
-    for episode_entry in sonarr_episode_entries:
+    for episode_entry in episode_entries:
         season_number = episode_entry.item.season_number
         if season_number is None:
             continue
@@ -426,7 +541,7 @@ def _build_collection_season_audit_entries(user, item):
                 if label not in source_labels:
                     source_labels.append(label)
         if not source_labels:
-            source_labels = ["Sonarr"]
+            source_labels = ["Manual"]
 
         collection_entry = helpers.get_season_collection_metadata(user, season_item) or {
             "resolution": "",
@@ -469,11 +584,11 @@ def _build_collection_season_audit_entries(user, item):
 
 
 def _build_collection_episode_audit_entries(user, item):
-    """Return episode-level Sonarr rows for season modal auditing."""
+    """Return episode-level collected rows for season modal auditing."""
     if item.media_type != MediaTypes.SEASON.value:
         return []
 
-    episode_entries = _sonarr_episode_collection_entries(
+    episode_entries = _episode_collection_entries(
         user,
         item,
         season_number=item.season_number,
@@ -654,10 +769,7 @@ def build_collection_modal_context(
     season_audit_entries = _build_collection_season_audit_entries(request.user, item)
     episode_audit_entries = _build_collection_episode_audit_entries(request.user, item)
     visible_existing_entries = list(existing_entries)
-    if (
-        (season_audit_entries or episode_audit_entries)
-        and _item_has_collection_source_state(request.user, item, source="sonarr")
-    ):
+    if season_audit_entries or episode_audit_entries:
         visible_existing_entries = []
     form = CollectionEntryForm(
         user=request.user,
