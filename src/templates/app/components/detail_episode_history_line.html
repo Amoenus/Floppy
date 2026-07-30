@@ -24,9 +24,9 @@
           </span>
         {% endif %}
       {% endif %}
-      {% if episode.collection_entry and episode.collection_entry.resolution %}• Collected: {{ episode.collection_entry.resolution }}{% endif %}
+      {% if episode.collection_entry %}• Collected{% if episode.collection_entry.resolution %}: {{ episode.collection_entry.resolution }}{% endif %}{% endif %}
     {% endwith %}
-  {% elif episode.collection_entry and episode.collection_entry.resolution %}
-    Collected: {{ episode.collection_entry.resolution }}
+  {% elif episode.collection_entry %}
+    Collected{% if episode.collection_entry.resolution %}: {{ episode.collection_entry.resolution }}{% endif %}
   {% endif %}
 </p>

@@ -95,7 +95,15 @@
         <div class="flex justify-between items-start mb-2 space-x-2 px-4">
           {% if ep_detail_url %}<a href="{{ ep_detail_url }}" class="block min-w-0 hover:text-indigo-400 transition-colors">{% endif %}
           <div>
-            <h2 class="text-xl font-semibold mb-1 line-clamp-1">{{ episode.title }}</h2>
+            <h2 class="text-xl font-semibold mb-1 line-clamp-1 flex items-center gap-1.5">
+              {{ episode.title }}
+              {% if episode.collection_entry %}
+                <span class="text-indigo-400 shrink-0"
+                      title="Collected{% if episode.collection_entry.resolution %} • {{ episode.collection_entry.resolution }}{% endif %}">
+                  {% include "app/icons/cube.svg" with classes="w-4 h-4" %}
+                </span>
+              {% endif %}
+            </h2>
             <p class="text-sm text-gray-400">
               {% if episode.display_episode_number|default:episode.episode_number %}Episode {{ episode.display_episode_number|default:episode.episode_number }} • {% endif %}{{ episode.air_date|user_date_format:user|default_if_none:"Unknown date" }}{% if episode.runtime %} • {{ episode.runtime }}{% endif %}
             </p>
@@ -134,7 +142,15 @@
   {# Title + metadata #}
   <div class="flex-1 min-w-0">
     {% if ep_detail_url %}<a href="{{ ep_detail_url }}" class="group/ep-row block">{% endif %}
-    <p class="text-sm font-medium truncate {% if ep_detail_url %}group-hover/ep-row:text-indigo-400 transition-colors{% endif %}">{{ episode.title }}</p>
+    <p class="text-sm font-medium truncate flex items-center gap-1.5 {% if ep_detail_url %}group-hover/ep-row:text-indigo-400 transition-colors{% endif %}">
+      <span class="truncate">{{ episode.title }}</span>
+      {% if episode.collection_entry %}
+        <span class="text-indigo-400 shrink-0"
+              title="Collected{% if episode.collection_entry.resolution %} • {{ episode.collection_entry.resolution }}{% endif %}">
+          {% include "app/icons/cube.svg" with classes="w-3.5 h-3.5" %}
+        </span>
+      {% endif %}
+    </p>
     <p class="text-xs text-gray-400 truncate mt-0.5">
       {{ episode.air_date|user_date_format:user|default_if_none:"" }}{% if episode.runtime %} · {{ episode.runtime }}{% endif %}{% if not public_view|default:False and episode.history %}{% with wc=episode.history|watched_count %}{% if wc %} · {% if wc == 1 %}Watched once{% else %}Watched {{ wc }} times{% endif %}{% endif %}{% endwith %}{% endif %}
     </p>
