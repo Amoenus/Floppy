@@ -312,6 +312,7 @@ The only universally required variable is `SECRET` for Django's secret key. For 
 - `WEB_CONCURRENCY` / `GUNICORN_THREADS` - web server concurrency (defaults: 2 worker processes x 4 threads). Total concurrent requests = workers x threads; keep at least 2 workers so one slow request never blocks the whole UI
 - `DEBUG` - leave unset or `False` in production; enabling it slows every request (debug toolbar, no template caching) and is only meant for troubleshooting
 - `REGISTRATION` - set to `True` to allow new signups (needed for your first account), then set to `False` afterward to stop strangers from registering if your instance is reachable from the internet
+- `DEMO_ACCOUNT_ENABLED` - defaults to `True`, provisioning the built-in `demo` / `demodemo` account after migrations; set to `False` if your instance is reachable from the internet and you don't want a publicly known login active
 - `ALLOWED_HOSTS` / `PUID` / `PGID` - `ALLOWED_HOSTS` is a comma-separated list of hostnames/IPs Django will accept requests for; `PUID` / `PGID` set the file-ownership user/group inside the container (match your host user, e.g. Unraid's `99`/`100`, if you hit permission errors)
 
 For a complete list, see the [Environment Variables documentation](wiki/6.-Admin-and-Operations.md#environment-variables).
@@ -461,6 +462,8 @@ The fork also provisions a built-in demo account after migrations:
 
 - Username: `demo`
 - Password: `demodemo`
+
+Set `DEMO_ACCOUNT_ENABLED=False` to disable this (recommended if your instance is reachable from the internet).
 
 ## Support the Project
 
