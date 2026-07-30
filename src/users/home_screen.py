@@ -1606,10 +1606,17 @@ def _media_lookup_for_items(
     lookup: dict[int, object] = {}
     for actual_media_type, type_items in items_by_media_type.items():
         model = apps.get_model("app", actual_media_type)
-        queryset = model.objects.filter(
-            user=user,
-            item_id__in=[item.id for item in type_items],
-        ).select_related("item")
+        item_ids = [item.id for item in type_items]
+        if actual_media_type == MediaTypes.EPISODE.value:
+            queryset = model.objects.filter(
+                related_season__user=user,
+                item_id__in=item_ids,
+            ).select_related("item")
+        else:
+            queryset = model.objects.filter(
+                user=user,
+                item_id__in=item_ids,
+            ).select_related("item")
         if actual_media_type == MediaTypes.PODCAST.value:
             queryset = queryset.select_related("show", "episode")
         if actual_media_type == MediaTypes.MUSIC.value:

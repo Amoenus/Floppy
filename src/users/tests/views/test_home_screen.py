@@ -215,6 +215,62 @@ class HomeScreenViewTests(TestCase):
             ["Still In Progress TV"],
         )
 
+    def test_home_tv_row_with_status_all_ignores_collected_episode_items(self):
+        """A TV row with status "all" shouldn't crash on collected-but-untracked episodes.
+
+        Episodes tracked under a plain TV show carry `library_media_type="tv"`. A
+        row's "status: all" library query falls back to including collection-only
+        items, whose lookup matched those episode items directly by
+        `library_media_type` even though the Episode model has no `user` field,
+        crashing the whole home page with a 500 (issue #397).
+        """
+        self._set_enabled_media_types(MediaTypes.TV.value)
+
+        tv_item = Item.objects.create(
+            media_id="home-tv-episode-tracked",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            library_media_type=MediaTypes.TV.value,
+            title="Episode Tracked Show",
+            image="https://example.com/tv-show.jpg",
+        )
+        TV.objects.create(
+            item=tv_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        untracked_episode_item = Item.objects.create(
+            media_id="home-tv-episode-tracked-untracked",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=1,
+            episode_number=1,
+            library_media_type=MediaTypes.TV.value,
+            title="Untracked Episode",
+            image="https://example.com/tv-episode.jpg",
+        )
+        CollectionEntry.objects.create(user=self.user, item=untracked_episode_item)
+
+        HomeScreenRow.objects.create(
+            user=self.user,
+            media_type=MediaTypes.TV.value,
+            position=0,
+            enabled=True,
+            row_type=HomeScreenRowTypeChoices.LIBRARY_QUERY,
+            sort_by=MediaSortChoices.TITLE,
+            direction=DirectionChoices.ASC,
+            filters={"status": "all", "progress": "all"},
+        )
+
+        groups = home_screen.build_home_page_groups(self.user, items_limit=10)
+
+        self.assertEqual(len(groups), 1)
+        self.assertEqual(len(groups[0]["rows"]), 1)
+        self.assertEqual(
+            [entry.item.title for entry in groups[0]["rows"][0]["items"]],
+            ["Episode Tracked Show"],
+        )
+
     @patch("app.models.providers.services.get_media_metadata")
     def test_home_in_progress_row_hides_fully_watched_stale_seasons(
         self,
