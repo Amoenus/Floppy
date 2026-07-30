@@ -50,6 +50,9 @@ def ensure_demo_user_after_migrate(sender, **kwargs):  # noqa: ARG001
     if getattr(settings, "TESTING", False):
         return
 
+    if not getattr(settings, "DEMO_ACCOUNT_ENABLED", True):
+        return
+
     if getattr(sender, "label", None) != "users":
         return
 

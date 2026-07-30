@@ -2,10 +2,10 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from users.demo import DEMO_EMAIL, DEMO_PASSWORD, DEMO_USERNAME, ensure_demo_user
-from users.signals import _demo_user_schema_ready
+from users.signals import _demo_user_schema_ready, ensure_demo_user_after_migrate
 
 
 class EnsureDemoUserTests(TestCase):
@@ -25,6 +25,15 @@ class EnsureDemoUserTests(TestCase):
         self.assertFalse(user.is_superuser)
         self.assertEqual(user.email, DEMO_EMAIL)
         self.assertTrue(user.check_password(DEMO_PASSWORD))
+
+    @override_settings(TESTING=False, DEMO_ACCOUNT_ENABLED=False)
+    def test_signal_skips_provisioning_when_demo_account_disabled(self):
+        """The post-migrate signal should not create a demo account when disabled."""
+        ensure_demo_user_after_migrate(sender=SimpleNamespace(label="users"))
+
+        self.assertFalse(
+            get_user_model().objects.filter(username=DEMO_USERNAME).exists(),
+        )
 
     def test_schema_ready_returns_false_when_user_table_is_missing_columns(self):
         """Provisioning should wait until the current user schema is present."""
