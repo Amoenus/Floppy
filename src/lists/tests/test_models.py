@@ -244,6 +244,49 @@ class CustomListManagerTest(TestCase):
         smart_list.sync_smart_items()
         self.assertTrue(smart_list.items.filter(id=tv_item.id).exists())
 
+    def test_collect_matching_item_ids_excludes_collected_episode_items_for_tv(self):
+        """Collection-only fallback shouldn't surface bare episode items for a TV row.
+
+        Episodes carrying `library_media_type="tv"` (normal per-episode TV tracking)
+        match the "tv" media type via `library_media_type`, but the Episode model has
+        no `user` field, so returning their raw item ids crashes any downstream code
+        that resolves them with `Episode.objects.filter(user=...)` (issue #397).
+        """
+        tv_item = Item.objects.create(
+            title="Collected Show",
+            media_id="778",
+            media_type=MediaTypes.TV.value,
+            library_media_type=MediaTypes.TV.value,
+            source=Sources.TMDB.value,
+            image="https://example.com/tv.jpg",
+        )
+        TV.objects.create(item=tv_item, user=self.user, status=Status.IN_PROGRESS.value)
+
+        untracked_episode_item = Item.objects.create(
+            title="Untracked Episode",
+            media_id="779",
+            media_type=MediaTypes.EPISODE.value,
+            library_media_type=MediaTypes.TV.value,
+            source=Sources.TMDB.value,
+            season_number=1,
+            episode_number=1,
+            image="https://example.com/episode.jpg",
+        )
+        CollectionEntry.objects.create(user=self.user, item=untracked_episode_item)
+
+        normalized_rules = smart_rules.normalize_rule_payload(
+            {"media_types": [MediaTypes.TV.value], "status": "all"},
+            self.user,
+        )
+        matched_ids = smart_rules.collect_matching_item_ids(
+            self.user,
+            normalized_rules,
+            include_collection_only_untracked=True,
+        )
+
+        self.assertIn(tv_item.id, matched_ids)
+        self.assertNotIn(untracked_episode_item.id, matched_ids)
+
     def test_smart_list_language_filter(self):
         """Language filter should match item language metadata."""
         item = Item.objects.create(

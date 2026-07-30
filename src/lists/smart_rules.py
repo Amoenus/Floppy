@@ -583,6 +583,7 @@ def _collection_only_item_ids(
     candidate_item_ids = set(
         Item.objects.filter(id__in=collected_item_ids)
         .filter(direct_type_match)
+        .exclude(media_type=MediaTypes.EPISODE.value)
         .values_list("id", flat=True),
     )
 
