@@ -461,6 +461,167 @@ class JellyfinWebhookTests(TestCase):
         self.assertEqual(movie.progress, 0)
         self.assertEqual(movie.status, Status.IN_PROGRESS.value)
 
+    def test_mark_played_event_ignored_when_disabled(self):
+        """Test MarkPlayed events are ignored unless opted in by the user."""
+        self.assertFalse(self.user.jellyfin_mark_played_enabled)
+        payload = {
+            "Event": "MarkPlayed",
+            "Item": {
+                "Name": "The Matrix",
+                "ProductionYear": 1999,
+                "Type": "Movie",
+                "ProviderIds": {"Tmdb": "603"},
+                "UserData": {"Played": True},
+            },
+        }
+
+        response = self.client.post(
+            self.url,
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(Movie.objects.count(), 0)
+
+    def test_mark_played_event_marks_movie_completed_when_enabled(self):
+        """Test MarkPlayed events mark a movie as completed once opted in."""
+        self.user.jellyfin_mark_played_enabled = True
+        self.user.save(update_fields=["jellyfin_mark_played_enabled"])
+
+        payload = {
+            "Event": "MarkPlayed",
+            "Item": {
+                "Name": "The Matrix",
+                "ProductionYear": 1999,
+                "Type": "Movie",
+                "ProviderIds": {"Tmdb": "603"},
+                "UserData": {"Played": False},
+            },
+        }
+
+        response = self.client.post(
+            self.url,
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        movie = Movie.objects.get(item__media_id="603", user=self.user)
+        self.assertEqual(movie.status, Status.COMPLETED.value)
+        self.assertEqual(movie.progress, 1)
+
+    def test_mark_unplayed_event_ignored_when_disabled(self):
+        """Test MarkUnplayed events are ignored unless opted in by the user."""
+        self.assertFalse(self.user.jellyfin_mark_unplayed_enabled)
+
+        stop_payload = {
+            "Event": "Stop",
+            "Item": {
+                "Name": "The Matrix",
+                "ProductionYear": 1999,
+                "Type": "Movie",
+                "ProviderIds": {"Tmdb": "603"},
+                "UserData": {"Played": True},
+            },
+        }
+        self.client.post(
+            self.url,
+            data=json.dumps(stop_payload),
+            content_type="application/json",
+        )
+        self.assertEqual(Movie.objects.count(), 1)
+
+        mark_unplayed_payload = dict(stop_payload, Event="MarkUnplayed")
+        response = self.client.post(
+            self.url,
+            data=json.dumps(mark_unplayed_payload),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(Movie.objects.count(), 1)
+
+    def test_mark_unplayed_event_deletes_movie_when_enabled(self):
+        """Test MarkUnplayed events delete the tracked movie once opted in."""
+        self.user.jellyfin_mark_unplayed_enabled = True
+        self.user.save(update_fields=["jellyfin_mark_unplayed_enabled"])
+
+        stop_payload = {
+            "Event": "Stop",
+            "Item": {
+                "Name": "The Matrix",
+                "ProductionYear": 1999,
+                "Type": "Movie",
+                "ProviderIds": {"Tmdb": "603"},
+                "UserData": {"Played": True},
+            },
+        }
+        self.client.post(
+            self.url,
+            data=json.dumps(stop_payload),
+            content_type="application/json",
+        )
+        self.assertEqual(Movie.objects.count(), 1)
+
+        mark_unplayed_payload = dict(stop_payload, Event="MarkUnplayed")
+        response = self.client.post(
+            self.url,
+            data=json.dumps(mark_unplayed_payload),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(Movie.objects.count(), 0)
+
+    def test_mark_unplayed_event_deletes_episode_when_enabled(self):
+        """Test MarkUnplayed events delete the tracked episode once opted in."""
+        self.user.jellyfin_mark_unplayed_enabled = True
+        self.user.save(update_fields=["jellyfin_mark_unplayed_enabled"])
+
+        stop_payload = {
+            "Event": "Stop",
+            "Item": {
+                "Type": "Episode",
+                "Name": "The One Where Monica Gets a Roommate",
+                "ProviderIds": {
+                    "Tvdb": "303821",
+                    "Imdb": "tt0583459",
+                },
+                "SeriesName": "Friends",
+                "ParentIndexNumber": 1,
+                "IndexNumber": 1,
+                "UserData": {"Played": True},
+            },
+        }
+        self.client.post(
+            self.url,
+            data=json.dumps(stop_payload),
+            content_type="application/json",
+        )
+        episode = Episode.objects.get(
+            item__media_id="1668",
+            item__season_number=1,
+            item__episode_number=1,
+        )
+        self.assertIsNotNone(episode)
+
+        mark_unplayed_payload = dict(stop_payload, Event="MarkUnplayed")
+        response = self.client.post(
+            self.url,
+            data=json.dumps(mark_unplayed_payload),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(
+            Episode.objects.filter(
+                item__media_id="1668",
+                item__season_number=1,
+                item__episode_number=1,
+            ).exists(),
+        )
+
     @patch("app.providers.tmdb.tv_with_seasons")
     @patch("app.providers.tmdb.find")
     def test_tv_episode_uses_existing_tvdb_tracked_item(

@@ -1024,6 +1024,7 @@ def integrations(request):
             "plex_library_options_json": json.dumps(plex_library_options),
             "selected_plex_webhook_libraries_json": json.dumps(selected_plex_webhook_libraries),
             "jellyfin_account": jellyfin_account,
+            "seerr_global_webhook_enabled": bool(settings.SEERR_GLOBAL_WEBHOOK_SECRET),
         },
     )
 
@@ -1418,6 +1419,26 @@ def update_plex_usernames(request):
         messages.success(request, "Plex usernames updated successfully")
 
     return redirect(redirect_target)
+
+
+@require_POST
+def update_jellyfin_webhook_events(request):
+    """Update optional Jellyfin webhook event handling for the user."""
+    request.user.jellyfin_mark_played_enabled = (
+        "jellyfin_mark_played_enabled" in request.POST
+    )
+    request.user.jellyfin_mark_unplayed_enabled = (
+        "jellyfin_mark_unplayed_enabled" in request.POST
+    )
+    request.user.save(
+        update_fields=[
+            "jellyfin_mark_played_enabled",
+            "jellyfin_mark_unplayed_enabled",
+        ],
+    )
+    messages.success(request, "Jellyfin webhook settings updated successfully")
+
+    return redirect("integrations")
 
 
 @require_POST

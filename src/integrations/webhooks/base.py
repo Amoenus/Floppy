@@ -49,6 +49,10 @@ class BaseWebhookProcessor:
         """Check if media is marked as played."""
         raise NotImplementedError
 
+    def _is_unplayed(self, _payload):
+        """Check if media is marked as unplayed."""
+        return False
+
     def _extract_external_ids(self, payload):
         """Extract external IDs from payload."""
         raise NotImplementedError
@@ -799,6 +803,21 @@ class BaseWebhookProcessor:
         """Handle movie playback event."""
         from app.services import metadata_resolution  # noqa: PLC0415
 
+        if self._is_unplayed(payload):
+            deleted, _ = app.models.Movie.objects.filter(
+                item__media_id=media_id,
+                item__source=Sources.TMDB.value,
+                item__media_type=MediaTypes.MOVIE.value,
+                user=user,
+            ).delete()
+            if deleted:
+                logger.info("Marked movie as unplayed: %s", media_id)
+            else:
+                logger.debug(
+                    "Movie marked as unplayed but no instance exists: %s", media_id,
+                )
+            return
+
         movie_metadata = app.providers.tmdb.movie(media_id)
         movie_item, _ = app.models.Item.objects.get_or_create(
             media_id=media_id,
@@ -1144,6 +1163,31 @@ class BaseWebhookProcessor:
     ):
         """Handle TV episode playback event."""
         from app.services import metadata_resolution  # noqa: PLC0415
+
+        if self._is_unplayed(payload):
+            deleted, _ = app.models.Episode.objects.filter(
+                item__media_id=media_id,
+                item__source=Sources.TMDB.value,
+                item__season_number=season_number,
+                item__episode_number=episode_number,
+                related_season__user=user,
+            ).delete()
+            if deleted:
+                logger.info(
+                    "Marked episode as unplayed: %s S%02dE%02d",
+                    media_id,
+                    season_number,
+                    episode_number,
+                )
+            else:
+                logger.debug(
+                    "Episode marked as unplayed but no instance exists: "
+                    "%s S%02dE%02d",
+                    media_id,
+                    season_number,
+                    episode_number,
+                )
+            return
 
         tv_metadata = app.providers.tmdb.tv_with_seasons(media_id, [season_number])
         external_ids = self._extract_external_ids(payload)

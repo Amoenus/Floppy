@@ -217,7 +217,7 @@
             <ul class="list-disc list-inside ml-6 mt-2 space-y-1 text-gray-400">
               <li>Payload format: <strong>Default</strong></li>
               <li>Listen to events only for: your Jellyfin user</li>
-              <li>Events: <strong>Play</strong> and <strong>Stop</strong></li>
+              <li>Events: <strong>Play</strong>, <strong>Stop</strong>, <strong>MarkPlayed</strong> and <strong>MarkUnplayed</strong></li>
             </ul>
           </li>
           <li>
@@ -232,6 +232,60 @@
             {# djlint:on #}
           </li>
         </ol>
+      </div>
+      <div class="bg-[#262a2f] p-4 rounded-md mt-4">
+        <h4 class="text-sm font-medium mb-3">Webhook Events</h4>
+        <p class="text-gray-400 mb-4 text-sm">
+          Play and Stop events are always processed. Enable these to sync manual watched changes from the unofficial Webhooks plugin.
+        </p>
+        <form method="post"
+              action="{% url 'update_jellyfin_webhook_events' %}"
+              class="space-y-3">
+          {% csrf_token %}
+          <div class="flex items-center justify-between p-3 bg-[#39404b] rounded-md">
+            <div class="flex-1">
+              <div class="flex items-center text-gray-200 mb-1">
+                {% include "app/icons/circle-check.svg" with classes="w-5 h-5 mr-2" %}
+                <span class="text-sm font-medium">Process MarkPlayed events</span>
+              </div>
+              <p class="text-xs text-gray-400 ml-7">Mark media as watched when it is manually marked played in Jellyfin.</p>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer ml-4">
+              <input class="sr-only peer"
+                     type="checkbox"
+                     name="jellyfin_mark_played_enabled"
+                     {% if user.jellyfin_mark_played_enabled %}checked{% endif %}>
+              <div class="w-9 h-5 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-px after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4.5 after:w-4.5 after:transition-all peer-checked:bg-indigo-600">
+              </div>
+            </label>
+          </div>
+          <div class="flex items-center justify-between p-3 bg-[#39404b] rounded-md">
+            <div class="flex-1">
+              <div class="flex items-center text-gray-200 mb-1">
+                {% include "app/icons/error.svg" with classes="w-5 h-5 mr-2 text-amber-400" %}
+                <span class="text-sm font-medium">Process MarkUnplayed events</span>
+              </div>
+              <p class="text-xs text-gray-400 ml-7">
+                Remove watched progress when it is manually marked unplayed in Jellyfin. This event can delete media from Floppy.
+              </p>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer ml-4">
+              <input class="sr-only peer"
+                     type="checkbox"
+                     name="jellyfin_mark_unplayed_enabled"
+                     {% if user.jellyfin_mark_unplayed_enabled %}checked{% endif %}>
+              <div class="w-9 h-5 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-px after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4.5 after:w-4.5 after:transition-all peer-checked:bg-indigo-600">
+              </div>
+            </label>
+          </div>
+          <div class="pt-1">
+            <button type="submit"
+                    class="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm cursor-pointer">
+              {% include "app/icons/save.svg" with classes="w-4 h-4 mr-2" %}
+              Save Changes
+            </button>
+          </div>
+        </form>
       </div>
     </div>
 
@@ -893,6 +947,68 @@
           <li>Select the notification types you want (commonly request/approval events).</li>
         </ol>
       </div>
+
+      {% if seerr_global_webhook_enabled %}
+        <div class="bg-[#262a2f] p-4 rounded-md mt-4">
+          <h4 class="text-sm font-medium mb-3">Global Webhook (multi-user households)</h4>
+          <p class="text-gray-400 mb-3 text-sm">
+            Seerr only supports one webhook per instance. If multiple Floppy users share the same
+            Jellyseerr/Overseerr instance, point Seerr at this single global URL instead of a per-user one.
+            Floppy matches each incoming request's requester username against every user's
+            <strong>Allowed Jellyseerr usernames</strong> above, so each user must still enable
+            "Auto-add requested media" and list their own Seerr username there.
+          </p>
+          <ol class="list-decimal list-inside space-y-2 text-sm text-gray-300">
+            <li>In Jellyseerr, go to <strong>Settings > Notifications > Webhook</strong>.</li>
+            <li>Create a webhook with method <strong>POST</strong> and content type <strong>application/json</strong>.</li>
+            <li>
+              Set the webhook URL to:
+              {# djlint:off #}
+              <div class="mt-2 inline-flex items-center gap-2 w-[calc(100%-30px)]">
+                <input readonly
+                       id="seerr-global-webhook-url"
+                       class="w-full bg-[#262a2f] rounded-md text-gray-400 text-sm border-0 focus:ring-0 outline-none font-mono"
+                       type="text"
+                       value="{% url 'seerr_global_webhook' as seerr_global_webhook_path %}{% absolute_app_url seerr_global_webhook_path %}">
+                <span class="flex items-center cursor-pointer group"
+                      title="Copy"
+                      data-copy-target="#seerr-global-webhook-url">
+                  {% include "app/icons/copy.svg" with classes="w-5 h-5 text-gray-400 group-hover:text-indigo-400 transition-colors" %}
+                </span>
+              </div>
+              {# djlint:on #}
+            </li>
+            <li>
+              Paste this <strong>JSON Payload</strong> template into Jellyseerr, replacing
+              <code class="px-1 rounded bg-black/30">REPLACE_WITH_SHARED_SECRET</code> with the value your
+              administrator configured in <code class="px-1 rounded bg-black/30">SEERR_GLOBAL_WEBHOOK_SECRET</code>:
+              <div class="bg-[#39404b] p-4 rounded-lg mt-2">
+                <div class="flex items-center justify-end mb-2">
+                  <span class="flex items-center cursor-pointer group"
+                        title="Copy"
+                        role="button"
+                        aria-label="Copy JSON template"
+                        data-copy-target="#seerr-global-json-template">
+                    {% include "app/icons/copy.svg" with classes="w-5 h-5 text-gray-400 group-hover:text-indigo-400 transition-colors" %}
+                  </span>
+                </div>
+                <textarea readonly
+                          id="seerr-global-json-template"
+                          class="w-full bg-[#262a2f] rounded-md text-gray-300 text-sm border-0 focus:ring-0 outline-none font-mono p-3 resize-none overflow-auto max-h-72"
+                          rows="8">{% verbatim %}
+{
+  "media_type": "{{media_type}}",
+  "media_tmdbid": "{{media_tmdbid}}",
+  "media_status": "{{media_status}}",
+  "requestedBy_username": "{{requestedBy_username}}",
+  "secret": "REPLACE_WITH_SHARED_SECRET"
+}
+{% endverbatim %}</textarea>
+              </div>
+            </li>
+          </ol>
+        </div>
+      {% endif %}
     </div>
 
   </div>

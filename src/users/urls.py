@@ -87,6 +87,11 @@ urlpatterns = [
         name="update_plex_webhook_libraries",
     ),
     path(
+        "update_jellyfin_webhook_events",
+        views.update_jellyfin_webhook_events,
+        name="update_jellyfin_webhook_events",
+    ),
+    path(
         "settings/integrations/jellyseerr/",
         views.update_jellyseerr_settings,
         name="update_jellyseerr_settings",

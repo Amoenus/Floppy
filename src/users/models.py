@@ -809,6 +809,14 @@ class User(AbstractUser):
         null=True,
         help_text="When the API token was regenerated (update webhook URLs)",
     )
+    jellyfin_mark_played_enabled = models.BooleanField(
+        default=False,
+        help_text="Process Jellyfin MarkPlayed webhook events",
+    )
+    jellyfin_mark_unplayed_enabled = models.BooleanField(
+        default=False,
+        help_text="Process Jellyfin MarkUnplayed webhook events",
+    )
 
     jellyseerr_enabled = models.BooleanField(
         default=False,

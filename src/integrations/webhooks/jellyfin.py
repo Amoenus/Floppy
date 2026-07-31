@@ -37,7 +37,7 @@ class JellyfinWebhookProcessor(BaseWebhookProcessor):
         )
 
         event_type = payload.get("Event")
-        if not self._is_supported_event(event_type):
+        if not self._is_supported_event(event_type, user):
             logger.debug("Ignoring Jellyfin webhook event type: %s", event_type)
             return
 
@@ -65,11 +65,32 @@ class JellyfinWebhookProcessor(BaseWebhookProcessor):
 
         self._process_media(payload, user, ids)
 
-    def _is_supported_event(self, event_type):
-        return event_type in ("Play", "Pause", "Stop")
+    def _is_supported_event(self, event_type, user=None):
+        if event_type in ("Play", "Pause", "Stop"):
+            return True
+
+        if user is None:
+            return False
+
+        if event_type == "MarkPlayed":
+            return user.jellyfin_mark_played_enabled
+
+        if event_type == "MarkUnplayed":
+            return user.jellyfin_mark_unplayed_enabled
+
+        return False
 
     def _is_played(self, payload):
+        if payload["Event"] == "MarkPlayed":
+            return True
+
+        if payload["Event"] == "MarkUnplayed":
+            return False
+
         return payload["Item"]["UserData"]["Played"]
+
+    def _is_unplayed(self, payload):
+        return payload["Event"] == "MarkUnplayed"
 
     def _get_media_type(self, payload):
         return self.MEDIA_TYPE_MAPPING.get(payload["Item"].get("Type"))
