@@ -1139,6 +1139,8 @@ class CollectionEntryForm(forms.ModelForm):
 
         config_entry = config.get_collection_field_config(collection_media_type)
         self.collection_fields = config_entry.get("fields", [])
+        if self.collection_fields:
+            self.order_fields(self.collection_fields)
 
         labels = config_entry.get("labels", {})
         for field_name, label in labels.items():

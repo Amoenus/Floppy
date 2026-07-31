@@ -338,8 +338,8 @@ COLLECTION_FIELD_CONFIG = {
     },
     "games": {
         "fields": [
-            "media_type",
             "resolution",
+            "media_type",
             "hdr",
             "purchase_price",
             "purchase_location",
