@@ -227,8 +227,17 @@ class MediaManager(models.Manager):
         # Apply status filter. Statusless media (an imported rating with no
         # tracking state) is never part of a status view, including "All"; it is
         # surfaced separately by the "No Status" filter.
-        if status_filter != users.models.MediaStatusChoices.ALL:
-            queryset = queryset.filter(status=status_filter)
+        if isinstance(status_filter, (list, tuple, set, frozenset)):
+            status_filters = [
+                value for value in status_filter if value and value != users.models.MediaStatusChoices.ALL
+            ]
+        elif status_filter and status_filter != users.models.MediaStatusChoices.ALL:
+            status_filters = [status_filter]
+        else:
+            status_filters = []
+
+        if status_filters:
+            queryset = queryset.filter(status__in=status_filters)
         else:
             queryset = queryset.exclude(status__isnull=True)
 
@@ -1665,6 +1674,7 @@ class MediaManager(models.Manager):
         source,
         season_number=None,
         episode_number=None,
+        library_media_type=None,
     ):
         """Filter media objects based on parameters."""
         if media_type == MediaTypes.ANIME.value and source in {
@@ -1683,7 +1693,27 @@ class MediaManager(models.Manager):
             episode_number,
         )
 
-        return model.objects.filter(**params)
+        queryset = model.objects.filter(**params)
+
+        # FORK: bucket-aware scoping, mirrors api.helpers.resolve_item_queryset —
+        # Item rows are bucketed by library_media_type (e.g. grouped-anime rows
+        # share a season/episode number with a plain-TV row); default to the
+        # non-anime bucket unless a bucket is explicitly requested.
+        if media_type in (
+            MediaTypes.TV.value,
+            MediaTypes.SEASON.value,
+            MediaTypes.EPISODE.value,
+        ):
+            if library_media_type:
+                queryset = queryset.filter(
+                    item__library_media_type=library_media_type,
+                )
+            else:
+                queryset = queryset.exclude(
+                    item__library_media_type=MediaTypes.ANIME.value,
+                )
+
+        return queryset
 
     def filter_media_prefetch(
         self,
@@ -1693,6 +1723,7 @@ class MediaManager(models.Manager):
         source,
         season_number=None,
         episode_number=None,
+        library_media_type=None,
     ):
         """Filter user media object with prefetch_related applied."""
         queryset = self.filter_media(
@@ -1702,6 +1733,7 @@ class MediaManager(models.Manager):
             source,
             season_number,
             episode_number,
+            library_media_type,
         )
         queryset = self._apply_prefetch_related(queryset, media_type)
         queryset = queryset.select_related("item")
@@ -1715,6 +1747,7 @@ class MediaManager(models.Manager):
         media_id,
         source,
         season_numbers=None,
+        library_media_type=None,
     ):
         """Return tracked season consumptions for a show."""
         queryset = self.filter_media_prefetch(
@@ -1722,6 +1755,7 @@ class MediaManager(models.Manager):
             media_id,
             MediaTypes.SEASON.value,
             source,
+            library_media_type=library_media_type,
         )
 
         if season_numbers is not None:
@@ -1763,6 +1797,7 @@ class MediaManager(models.Manager):
         source,
         season_number=None,
         episode_numbers=None,
+        library_media_type=None,
     ):
         """Return tracked episode consumptions for a show."""
         queryset = self.filter_media_prefetch(
@@ -1771,6 +1806,7 @@ class MediaManager(models.Manager):
             MediaTypes.EPISODE.value,
             source,
             season_number=season_number,
+            library_media_type=library_media_type,
         )
 
         if episode_numbers is not None:
@@ -1835,7 +1871,8 @@ class MediaManager(models.Manager):
             params["user"] = user
         elif media_type == MediaTypes.EPISODE.value:
             params["item__season_number"] = season_number
-            params["item__episode_number"] = episode_number
+            if episode_number is not None:
+                params["item__episode_number"] = episode_number
             params["related_season__user"] = user
         else:
             params["user"] = user

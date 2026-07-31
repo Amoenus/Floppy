@@ -1,6 +1,6 @@
 from unittest.mock import patch
 
-from app.models import MediaTypes, Sources
+from app.models import Item, MediaTypes, Season, Sources
 
 from .base import FloppyApiTestCase
 from .helpers import (
@@ -933,6 +933,68 @@ class MediaSeasonTests(FloppyApiTestCase):
         for episode in payload["results"]:
             check_media_structure(self, episode)
 
+    @patch("api.views.services.get_media_metadata")
+    def test_season_episodes_get_reports_tracked_episodes(self, mock_metadata):
+        """Season episodes GET should report tracked status for watched episodes.
+
+        Regression test: get_season_episodes previously filtered on
+        item__episode_number=None when only a season_number was given, so this
+        always returned an empty queryset and every episode showed
+        tracked=False regardless of real Episode consumption rows.
+        """
+        tv_item = self.items_by_type[MediaTypes.TV.value][0]
+        season_item = self.items_by_type[MediaTypes.SEASON.value][0]
+        tracked_episode_items = self.items_by_type[MediaTypes.EPISODE.value]
+
+        mock_metadata.return_value = {
+            "episodes": [
+                {
+                    "episode_number": episode_item.episode_number,
+                    "season_number": episode_item.season_number,
+                    "show_id": tv_item.media_id,
+                    "name": episode_item.title,
+                    "overview": "",
+                    "vote_average": 0.0,
+                    "vote_count": 0,
+                    "air_date": None,
+                    "runtime": None,
+                    "episode_type": None,
+                    "crew": [],
+                    "guest_stars": [],
+                    "still_path": None,
+                }
+                for episode_item in tracked_episode_items
+            ],
+        }
+
+        response = self.call_api(
+            "get",
+            "api_media_season_episodes",
+            args=(
+                MediaTypes.TV.value,
+                tv_item.source,
+                tv_item.media_id,
+                season_item.season_number,
+            ),
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        results = response.json()["results"]
+        self.assertEqual(len(results), len(tracked_episode_items))
+        tracked_episode = next(
+            episode_media
+            for episode_media in self.episode_medias
+            if episode_media.item_id == tracked_episode_items[0].id
+        )
+        first_result = next(
+            episode
+            for episode in results
+            if episode["item"]["episode_number"] == 1
+        )
+        self.assertTrue(first_result["tracked"])
+        self.assertEqual(first_result["consumption_id"], tracked_episode.id)
+
     @patch("api.views.services.get_media_metadata", side_effect=Exception("boom"))
     def test_season_episodes_get_invalid_media_id_returns_internal_server_error(
         self,
@@ -1082,6 +1144,75 @@ class MediaSeasonTests(FloppyApiTestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload["results"], [])
+
+    def test_season_consumption_history_scopes_to_library_media_type_bucket(self):
+        """Season consumption-history should not mix rows from a different bucket.
+
+        Regression test: Item rows can be bucketed by library_media_type (e.g.
+        a grouped-anime row sharing the same season_number as a plain-TV row).
+        The manager previously returned both rows for a bare season_number
+        lookup, so the API could nondeterministically surface a stale/wrong
+        bucket's consumption record instead of the tracked one.
+        """
+        tv_item = self.items_by_type[MediaTypes.TV.value][0]
+        season_item = self.items_by_type[MediaTypes.SEASON.value][0]
+        self.season_medias[0].notes = "non-anime-bucket"
+        self.season_medias[0].save()
+
+        anime_bucket_item = Item.objects.create(
+            media_id=tv_item.media_id,
+            source=tv_item.source,
+            media_type=MediaTypes.SEASON.value,
+            library_media_type=MediaTypes.ANIME.value,
+            title="Anime Bucket Season 1",
+            image="https://example.com/anime-season-1.jpg",
+            season_number=season_item.season_number,
+        )
+        anime_bucket_season = Season.objects.create(
+            item=anime_bucket_item,
+            user=self.user1,
+            related_tv=self.tv_medias[0],
+            notes="anime-bucket",
+        )
+
+        response = self.call_api(
+            "get",
+            "api_media_season_consumption_history",
+            args=(
+                MediaTypes.TV.value,
+                tv_item.source,
+                tv_item.media_id,
+                season_item.season_number,
+            ),
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        check_pagination_structure(self, payload["pagination"], total=1)
+        self.assertEqual(payload["results"][0]["notes"], "non-anime-bucket")
+
+        anime_response = self.call_api(
+            "get",
+            "api_media_season_consumption_history",
+            args=(
+                MediaTypes.TV.value,
+                tv_item.source,
+                tv_item.media_id,
+                season_item.season_number,
+            ),
+            params={"library_media_type": MediaTypes.ANIME.value},
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(anime_response.status_code, 200)
+        anime_payload = anime_response.json()
+        check_pagination_structure(self, anime_payload["pagination"], total=1)
+        self.assertEqual(anime_payload["results"][0]["notes"], "anime-bucket")
+        self.assertEqual(
+            anime_payload["results"][0]["consumption_id"],
+            anime_bucket_season.id,
+        )
 
     def test_season_consumption_entry_detail_get_returns_expected_structure(self):
         """Season history entry detail GET should return serialized consumption."""

@@ -1109,12 +1109,14 @@ class MediaDetailView(drf_views.APIView):
                 status=HTTP.INTERNAL_SERVER_ERROR,
             )
 
+        library_media_type = request.query_params.get("library_media_type")
         try:
             user_medias = BasicMedia.objects.filter_media_prefetch(
                 user,
                 media_id,
                 media_type,
                 source,
+                library_media_type=library_media_type,
             )
         except Exception as e:  # noqa: BLE001
             return Response(
@@ -1139,6 +1141,7 @@ class MediaDetailView(drf_views.APIView):
                     user,
                     media_id,
                     source,
+                    library_media_type=library_media_type,
                 ),
             )
             season_lists_by_number = (
@@ -1879,6 +1882,7 @@ class MediaSeasonsView(drf_views.APIView):
                 media_id,
                 source,
                 season_numbers=season_numbers,
+                library_media_type=season_bucket,
             )
             for tracked in tracked_seasons:
                 item = getattr(tracked, "item", None)
@@ -2154,6 +2158,7 @@ class MediaSeasonDetailView(drf_views.APIView):
                 status=HTTP.NOT_FOUND,
             )
 
+        library_media_type = request.query_params.get("library_media_type")
         try:
             user_medias = BasicMedia.objects.filter_media_prefetch(
                 user,
@@ -2161,6 +2166,7 @@ class MediaSeasonDetailView(drf_views.APIView):
                 "season",
                 source,
                 season_number=season_number,
+                library_media_type=library_media_type,
             )
         except Exception as e:  # noqa: BLE001
             return Response(
@@ -2177,6 +2183,7 @@ class MediaSeasonDetailView(drf_views.APIView):
                 media_id,
                 source,
                 season_number=season_number,
+                library_media_type=library_media_type,
             ),
         )
         episode_lists_by_number = BasicMedia.objects.get_season_episode_lists_by_number(
@@ -2370,6 +2377,7 @@ class MediaSeasonChangesHistoryView(drf_views.APIView):
             "season",
             source,
             season_number=season_number,
+            library_media_type=request.query_params.get("library_media_type"),
         )
 
         if not user_medias:
@@ -2483,6 +2491,7 @@ class MediaSeasonEpisodesView(drf_views.APIView):
                 source,
                 season_number=season_number,
                 episode_numbers=episode_numbers,
+                library_media_type=request.query_params.get("library_media_type"),
             )
             for tracked in tracked_episodes:
                 item = getattr(tracked, "item", None)
@@ -2550,6 +2559,7 @@ class MediaSeasonConsumptionHistoryView(drf_views.APIView):
                 "season",
                 source,
                 season_number=season_number,
+                library_media_type=request.query_params.get("library_media_type"),
             )
         except Exception as e:  # noqa: BLE001
             return Response(
@@ -3289,6 +3299,7 @@ class MediaEpisodeDetailView(drf_views.APIView):
                 source,
                 season_number=season_number,
                 episode_number=episode_number,
+                library_media_type=request.query_params.get("library_media_type"),
             )
         except Exception as e:  # noqa: BLE001
             return Response(
@@ -3514,6 +3525,7 @@ class MediaEpisodeChangesHistoryView(drf_views.APIView):
             source,
             season_number=season_number,
             episode_number=episode_number,
+            library_media_type=request.query_params.get("library_media_type"),
         )
 
         if not user_medias:
@@ -3583,6 +3595,7 @@ class MediaEpisodeConsumptionHistoryView(drf_views.APIView):
                 source,
                 season_number=season_number,
                 episode_number=episode_number,
+                library_media_type=request.query_params.get("library_media_type"),
             )
         except Exception as e:  # noqa: BLE001
             return Response(
