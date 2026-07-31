@@ -5,7 +5,9 @@ import json
 import logging
 import re
 import secrets
+import zipfile
 from datetime import datetime, timedelta
+from io import BytesIO
 from urllib.parse import unquote
 
 import requests
@@ -72,6 +74,8 @@ ARR_SYNC_INTERVAL_HOURS = 2
 RADARR_RECURRING_TASK_NAME = "Import from Radarr (Recurring)"
 SONARR_RECURRING_TASK_NAME = "Import from Sonarr (Recurring)"
 GPODDER_RECURRING_TASK_NAME = "Import from GPodder (Recurring)"
+# The upload rides in the Celery message, so bound what a single import can send.
+TRAKT_EXPORT_MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 
 
 def _read_uploaded_file(file):
@@ -940,25 +944,73 @@ def import_yamtrack(request):
 
 
 @require_POST
-def import_trakt_collection_csv(request):
-    """View for importing collection ownership from a Trakt collection CSV export."""
-    file = request.FILES.get("trakt_collection_csv")
+def import_trakt_export_file(request):
+    """View for importing a Trakt data export: a .zip, loose .json files, or a .csv.
 
-    if not file:
-        messages.error(request, "Trakt collection CSV file is required.")
+    Trakt now exports a .zip of flat .json files, but the older community CSV
+    format is still accepted. Loose .json uploads are repackaged into an
+    in-memory zip so the Celery task always receives a single blob of bytes.
+    """
+    uploads = request.FILES.getlist("trakt_export") or request.FILES.getlist(
+        "trakt_collection_csv",
+    )
+
+    if not uploads:
+        messages.error(request, "A Trakt export file is required.")
+        return redirect("import_data")
+
+    total_size = sum(upload.size for upload in uploads)
+    if total_size > TRAKT_EXPORT_MAX_UPLOAD_BYTES:
+        messages.error(
+            request,
+            "That Trakt export is too large to import "
+            f"(limit {TRAKT_EXPORT_MAX_UPLOAD_BYTES // (1024 * 1024)} MB).",
+        )
         return redirect("import_data")
 
     mode = request.POST["mode"]
-    tasks.import_trakt_collection_csv.delay(
+    payloads = [(upload.name, _read_uploaded_file(upload)) for upload in uploads]
+
+    if len(payloads) == 1 and not _is_trakt_export_payload(*payloads[0]):
+        tasks.import_trakt_collection_csv.delay(
+            user_id=request.user.id,
+            file=payloads[0][1],
+            mode=mode,
+        )
+        messages.info(
+            request,
+            "The task to import collection data from the Trakt CSV file has been "
+            "queued.",
+        )
+        return redirect("import_data")
+
+    tasks.import_trakt_export.delay(
         user_id=request.user.id,
-        file=_read_uploaded_file(file),
+        file=_build_trakt_export_archive(payloads),
         mode=mode,
     )
     messages.info(
         request,
-        "The task to import collection data from the Trakt CSV file has been queued.",
+        "The task to import your Trakt data export has been queued.",
     )
     return redirect("import_data")
+
+
+def _is_trakt_export_payload(name, content):
+    """Whether an upload is part of the JSON/zip export rather than the legacy CSV."""
+    return name.lower().endswith((".zip", ".json")) or content[:4] == b"PK\x03\x04"
+
+
+def _build_trakt_export_archive(payloads):
+    """Return export bytes: the zip as uploaded, or loose .json files zipped up."""
+    if len(payloads) == 1 and payloads[0][1][:4] == b"PK\x03\x04":
+        return payloads[0][1]
+
+    buffer = BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        for name, content in payloads:
+            archive.writestr(name.rsplit("/", 1)[-1], content)
+    return buffer.getvalue()
 
 
 @require_POST

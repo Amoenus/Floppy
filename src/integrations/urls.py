@@ -11,8 +11,14 @@ urlpatterns = [
     ),
     path("import/trakt/public", views.import_trakt_public, name="import_trakt_public"),
     path(
+        "import/trakt/export",
+        views.import_trakt_export_file,
+        name="import_trakt_export_file",
+    ),
+    # Legacy route kept working for anything still pointing at the CSV-only URL.
+    path(
         "import/trakt/collection-csv",
-        views.import_trakt_collection_csv,
+        views.import_trakt_export_file,
         name="import_trakt_collection_csv",
     ),
     path("import/mdblist", views.import_mdblist, name="import_mdblist"),

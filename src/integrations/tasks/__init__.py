@@ -57,6 +57,7 @@ from integrations.tasks._media_imports import (
     import_stremio_recurring,
     import_trakt,
     import_trakt_collection_csv,
+    import_trakt_export,
     import_yamtrack,
     push_jellyfin_watched,
     sync_plex_watchlist,

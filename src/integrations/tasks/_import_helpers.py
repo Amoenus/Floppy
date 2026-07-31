@@ -91,6 +91,10 @@ def format_import_message(imported_counts, warning_messages=None):
             f"entr{'ies' if collection_count != 1 else 'y'}",
         )
 
+    lists_count = imported_counts.get("lists", 0)
+    if lists_count > 0:
+        parts.append(f"{lists_count} list{'s' if lists_count != 1 else ''}")
+
     parts = [p for p in parts if p is not None]
 
     if not parts:

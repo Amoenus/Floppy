@@ -32,6 +32,7 @@ from integrations.imports import (
     stremio,
     trakt,
     trakt_collection,
+    trakt_export,
     yamtrack,
 )
 from integrations.jellyfin_sync import (
@@ -194,6 +195,17 @@ def import_trakt_collection_csv(file, user_id, mode):
     """Celery task for importing collection ownership from a Trakt CSV export."""
     return import_media(
         trakt_collection.importer,
+        _coerce_uploaded_file(file),
+        user_id,
+        mode,
+    )
+
+
+@shared_task(name="Import Trakt data export")
+def import_trakt_export(file, user_id, mode):
+    """Celery task for importing a Trakt data export archive."""
+    return import_media(
+        trakt_export.importer,
         _coerce_uploaded_file(file),
         user_id,
         mode,

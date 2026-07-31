@@ -30,6 +30,7 @@ _FILE_IMPORTS = {
     # Service key stays "yamtrack": it is a public API parameter value.
     "yamtrack": (tasks.import_yamtrack, "Floppy backup or Yamtrack CSV"),
     "trakt-collection": (tasks.import_trakt_collection_csv, "Trakt collection CSV"),
+    "trakt-export": (tasks.import_trakt_export, "Trakt data export zip"),
     "hltb": (tasks.import_hltb, "HowLongToBeat CSV"),
     "grouvee": (tasks.import_grouvee, "Grouvee JSON"),
     "imdb": (tasks.import_imdb, "IMDB CSV"),
@@ -52,9 +53,9 @@ class ImportDispatchView(drf_views.APIView):
     """Queue a one-off import for a service (mirrors the web import forms).
 
     Username services (mal, anilist, kitsu, steam) take {"username", "mode"}.
-    File services (yamtrack, trakt-collection, hltb, grouvee, imdb,
-    goodreads, hardcover, storygraph) take a multipart upload in the "file"
-    field plus an optional "mode". Returns 202 with a task_id pollable at
+    File services (yamtrack, trakt-collection, trakt-export, hltb, grouvee,
+    imdb, goodreads, hardcover, storygraph) take a multipart upload in the
+    "file" field plus an optional "mode". Returns 202 with a task_id pollable at
     /api/v1/tasks/{task_id}. Recurring schedules stay web-only.
     """
 

@@ -105,6 +105,83 @@ def import_trakt_lists(user, access_token, client_id=None):
     )
 
 
+def import_trakt_lists_from_export(user, archive):
+    """Rebuild Trakt lists from a Trakt export archive instead of the API.
+
+    Mirrors ``import_trakt_lists``: existing ``source="trakt"`` lists are
+    dropped and recreated, with the watchlist stored as a synthetic list.
+    Only the data source differs — ``lists-lists.json`` for list metadata,
+    ``lists-list-<id>-*.json`` for their items, ``lists-watchlist-*.json``
+    for the watchlist.
+
+    Returns ``(lists_created, warnings)``.
+    """
+    trakt_lists = archive.read_json("lists-lists", default=[]) or []
+    items_by_list_id = archive.list_item_files()
+    imported_count = 0
+    skipped_items = 0
+    warnings = []
+
+    with transaction.atomic():
+        helpers.retry_on_lock(
+            lambda: CustomList.objects.filter(owner=user, source="trakt").delete(),
+        )
+
+        for trakt_list in trakt_lists:
+            list_id = trakt_list.get("ids", {}).get("trakt")
+            if not list_id:
+                continue
+            custom_list = _create_custom_list(user, trakt_list, list_id)
+            imported_count += 1
+
+            for base_name in items_by_list_id.get(str(list_id), []):
+                for entry in archive.read_json(base_name, default=[]) or []:
+                    item = _build_item_from_entry(entry)
+                    if not item:
+                        skipped_items += 1
+                        continue
+                    CustomListItem.objects.get_or_create(
+                        custom_list=custom_list,
+                        item=item,
+                        defaults={"added_by": user},
+                    )
+
+        watchlist_entries = archive.load("lists-watchlist")
+        watchlist_list = CustomList.objects.create(
+            name="Watchlist",
+            description="",
+            owner=user,
+            visibility="private",
+            allow_recommendations=False,
+            source="trakt",
+            source_id="watchlist",
+        )
+        imported_count += 1
+        for entry in watchlist_entries:
+            item = _build_item_from_entry(entry)
+            if not item:
+                skipped_items += 1
+                continue
+            CustomListItem.objects.get_or_create(
+                custom_list=watchlist_list,
+                item=item,
+                defaults={"added_by": user},
+            )
+
+    if skipped_items:
+        warnings.append(
+            f"Skipped {skipped_items} list item(s) that could not be matched in TMDB.",
+        )
+
+    logger.info(
+        "Imported %s Trakt lists from export for %s (%s items skipped)",
+        imported_count,
+        user.username,
+        skipped_items,
+    )
+    return imported_count, warnings
+
+
 def _get_trakt_lists(access_token, client_id=None):
     """Fetch Trakt lists for the authenticated user."""
     return _make_paginated_trakt_request(

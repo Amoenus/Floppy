@@ -1478,7 +1478,11 @@ class User(AbstractUser):
     def get_import_tasks(self):
         """Return import tasks history and schedules for the user."""
         result_task_names = {
-            "trakt": ["Import from Trakt"],
+            "trakt": [
+                "Import from Trakt",
+                "Import Trakt data export",
+                "Import Trakt collection CSV",
+            ],
             "simkl": ["Import from SIMKL"],
             "myanimelist": ["Import from MyAnimeList"],
             "anilist": ["Import from AniList"],

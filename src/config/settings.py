@@ -514,6 +514,9 @@ AUTH_USER_MODEL = "users.User"
 # For CSV imports
 FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10 MB
 
+# A Trakt data export is ~170 loose .json files if uploaded unzipped.
+DATA_UPLOAD_MAX_NUMBER_FILES = 300
+
 
 def _clean_metadata_value(value):
     """Normalize version metadata values from the environment."""
