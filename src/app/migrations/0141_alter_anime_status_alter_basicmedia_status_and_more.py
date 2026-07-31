@@ -5,7 +5,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("app", "0139_item_metadata_migration_pinned_at"),
+        ("app", "0140_collectionentry_purchase_location_and_more"),
     ]
 
     operations = [
