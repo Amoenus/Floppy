@@ -79,53 +79,6 @@ Open `http://localhost:8000`, create your account, then set `REGISTRATION=False`
 
 That's the whole install. `SECRET` is the only variable you truly must set; `TMDB_API` is what makes movie and TV metadata work, and every other API key is optional until you want that media type. Everything else — Postgres, reverse proxies, the full environment variable list, Docker Run, Portainer specifics — is in [Configuration and deployment](#configuration-and-deployment) further down.
 
-## Screenshots
-
-### Time Left / Progress
-
-The Progress view is built to make active shows, backlog triage, and planning visible at a glance.
-
-<img alt="Time Left progress view" src="https://github.com/user-attachments/assets/ab5594ea-6ddc-4512-9837-87b68ec874c2" />
-
-### History
-
-History keeps watches and listens in one place so recent activity is easy to scan.
-
-<img alt="History page" src="https://github.com/user-attachments/assets/18927954-dd57-40ba-86ef-11ae986cf9ee" />
-
-### Statistics
-
-Statistics are designed for recap-style browsing across time ranges and media types.
-
-<img alt="Statistics dashboard" src="https://github.com/user-attachments/assets/be9da320-d745-45aa-8c6a-23efa66d0c6c" />
-
-### Shareable Lists
-
-Lists can be shared publicly, surfaced on profiles, and used as more than a private backlog.
-
-<img alt="Shareable lists" src="https://github.com/user-attachments/assets/ef13eff1-dc14-4ab6-b5d0-39598a1264ec" />
-
-### Collections / Owned Media
-
-Collections add ownership context alongside tracking, with room for copy-level detail.
-
-<table>
-  <tr>
-    <td valign="top">
-      <img width="1296" height="643" alt="Collection view" src="https://github.com/user-attachments/assets/28bdac5a-1678-4144-a227-0d361912882c" />
-    </td>
-    <td valign="top">
-      <img width="508" height="631" alt="Copy-level collection detail" src="https://github.com/user-attachments/assets/a2c8deb9-2d92-4aaa-b605-758871f36634" />
-    </td>
-  </tr>
-</table>
-
-### Music and Podcasts
-
-Music and podcasts are treated as first-class parts of the same tracker, not side imports.
-
-<img alt="Music and podcasts" src="https://github.com/user-attachments/assets/0c6da813-d73e-4f7c-9d2b-ba42d65221a7" />
-
 ## What Floppy does
 
 Floppy covers the workflows Trakt used to serve: Time Left progress, a unified history feed, recap-style stats, public list sharing, and all-in-one tracking across every media type you care about.
@@ -163,6 +116,47 @@ Floppy covers the workflows Trakt used to serve: Time Left progress, a unified h
 ### Also included
 
 Multi-user accounts with OIDC and social login; calendar and iCalendar feeds for upcoming releases; release notifications through Apprise; Jellyfin, Plex, and Emby playback integrations; imports from Trakt, Simkl, MyAnimeList, AniList, Kitsu, Steam, Goodreads, StoryGraph, Hardcover, IMDb, HowLongToBeat, Grouvee and more; a REST API at `/api/v1` with an MCP server; and CSV export/import so your data is always yours to take elsewhere.
+
+## Screenshots
+
+### Customizable Home Screen
+
+Change and configure what content is most important to you, making things faster and more tailored to your needs.
+
+<img alt="Floppy home screen" src="https://github.com/user-attachments/assets/9b57dc0f-909f-491d-8941-97507d865de7" />
+
+### Statistics
+
+Statistics are designed for recap-style browsing across time ranges and media types.
+
+<img alt="Screenshot 2026-07-30 at 10 31 12 PM" src="https://github.com/user-attachments/assets/89e9c0f5-5d2f-464e-952e-cebdbc82ee2b" />
+
+### History
+
+History keeps watches and listens in one place so recent activity is easy to scan.
+
+<img alt="Screenshot 2026-07-30 at 10 31 48 PM" src="https://github.com/user-attachments/assets/ed795cb3-7686-49b8-9304-1c9630a808a4" />
+
+### Shareable Lists
+
+Lists can be shared publicly, surfaced on profiles, and used as more than a private backlog.
+
+<img alt="Screenshot 2026-07-30 at 10 32 37 PM" src="https://github.com/user-attachments/assets/21e07055-235c-45c3-950c-c41e675984da" />
+
+### Collections / Owned Media
+
+Collections add ownership context alongside tracking, with room for copy-level detail.
+
+<table>
+  <tr>
+    <td valign="top">
+      <img width="1296" height="643" alt="Collection view" src="https://github.com/user-attachments/assets/28bdac5a-1678-4144-a227-0d361912882c" />
+    </td>
+    <td valign="top">
+      <img width="508" height="631" alt="Copy-level collection detail" src="https://github.com/user-attachments/assets/a2c8deb9-2d92-4aaa-b605-758871f36634" />
+    </td>
+  </tr>
+</table>
 
 ## Coming from Yamtrack?
 
