@@ -110,6 +110,11 @@ urlpatterns = [
         name="jellyseerr_webhook",
     ),
     path(
+        "webhook/seerr/global/",
+        views.seerr_global_webhook,
+        name="seerr_global_webhook",
+    ),
+    path(
         "webhook/kodi/<str:token>",
         views.kodi_webhook,
         name="kodi_webhook",

@@ -847,6 +847,11 @@ TMDB_API = config(
 TMDB_NSFW = config("TMDB_NSFW", default=False, cast=bool)
 TMDB_LANG = config("TMDB_LANG", default="en")
 
+SEERR_GLOBAL_WEBHOOK_SECRET = config(
+    "SEERR_GLOBAL_WEBHOOK_SECRET",
+    default=secret("SEERR_GLOBAL_WEBHOOK_SECRET_FILE", ""),
+)
+
 TVDB_API_KEY = config(
     "TVDB_API_KEY",
     default=secret(

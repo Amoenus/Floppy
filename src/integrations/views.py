@@ -1,5 +1,6 @@
 """Contains views for importing and exporting media data from various sources."""
 
+import hmac
 import json
 import logging
 import re
@@ -2331,6 +2332,67 @@ def jellyseerr_webhook(request, token):
         return HttpResponse("Invalid JSON", status=400)
 
     tasks.process_webhook.delay("jellyseerr", payload, user.id)
+    return HttpResponse(status=200)
+
+
+@login_not_required
+@csrf_exempt
+@require_POST
+def seerr_global_webhook(request):
+    """Handle a single shared Seerr webhook for multiple Floppy users.
+
+    Unlike the per-user Jellyseerr webhook, this endpoint has no per-user
+    token in the URL, so it demultiplexes users by matching the payload's
+    requester username against each opted-in user's allowed usernames.
+    """
+    if not settings.SEERR_GLOBAL_WEBHOOK_SECRET:
+        return HttpResponse(status=404)
+
+    data = request.body
+    if not data:
+        logger.warning("Missing payload in Seerr global webhook request")
+        return HttpResponse("Missing payload", status=400)
+
+    try:
+        payload = json.loads(data)
+    except Exception:
+        logger.warning("Invalid JSON payload in Seerr global webhook request")
+        return HttpResponse("Invalid JSON", status=400)
+
+    if not hmac.compare_digest(
+        str(payload.get("secret", "")),
+        settings.SEERR_GLOBAL_WEBHOOK_SECRET,
+    ):
+        logger.warning("Seerr global webhook: invalid or missing secret")
+        return HttpResponse(status=401)
+
+    requester = (
+        (payload.get("requestedBy_username") or "").strip()
+        or (payload.get("notifyuser_username") or "").strip()
+    )
+    if not requester:
+        logger.warning("Missing requester in Seerr global webhook request")
+        return HttpResponse("Missing requester", status=400)
+
+    matched = False
+    for user in users.models.User.objects.filter(
+        jellyseerr_enabled=True,
+    ).exclude(jellyseerr_allowed_usernames=""):
+        allowed = {
+            username.strip().lower()
+            for username in user.jellyseerr_allowed_usernames.split(",")
+            if username.strip()
+        }
+        if requester.lower() in allowed:
+            matched = True
+            tasks.process_webhook.delay("jellyseerr", payload, user.id)
+
+    if not matched:
+        logger.info(
+            "Seerr global webhook: no user matched requester=%r",
+            requester,
+        )
+
     return HttpResponse(status=200)
 
 
