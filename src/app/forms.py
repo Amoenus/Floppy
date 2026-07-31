@@ -1079,6 +1079,8 @@ class CollectionEntryForm(forms.ModelForm):
             "audio_codec",
             "audio_channels",
             "bitrate",
+            "purchase_price",
+            "purchase_location",
         ]
         widgets = {
             "item": forms.HiddenInput(),
@@ -1093,6 +1095,12 @@ class CollectionEntryForm(forms.ModelForm):
             ),
             "audio_channels": forms.TextInput(attrs={"placeholder": "5.1, 7.1.2"}),
             "bitrate": forms.NumberInput(attrs={"placeholder": "128, 320, 1411"}),
+            "purchase_price": forms.NumberInput(
+                attrs={"placeholder": "9.99", "step": "0.01", "min": "0"},
+            ),
+            "purchase_location": forms.TextInput(
+                attrs={"placeholder": "Amazon, Steam, Best Buy"},
+            ),
         }
 
     def __init__(self, *args, **kwargs):

@@ -66,6 +66,21 @@ class CollectionEntry(models.Model):
         help_text="Audio bitrate in kbps (e.g., 128, 320, 1411)",
     )
 
+    # Purchase metadata
+    purchase_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Purchase price",
+    )
+    purchase_location = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        help_text="Where the item was purchased or which service/retailer it's tied to",
+    )
+
     # Plex rating key cache (for faster bulk imports)
     plex_rating_key = models.CharField(
         max_length=50,
