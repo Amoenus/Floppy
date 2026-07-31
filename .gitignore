@@ -32,3 +32,7 @@ docs/upstream-review.md
 
 # Pinned tailwindcss CLI (see package.json) — keeps generated main.css reproducible
 node_modules/
+
+# Brand masters are kept outside the repo; only the web-sized derivatives
+# under docs/brand/ and src/static/img/ are committed.
+docs/brand/*-source.png
