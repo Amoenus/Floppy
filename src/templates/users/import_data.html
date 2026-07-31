@@ -19,6 +19,13 @@
          plexLibrariesLoading: {% if plex_account %}true{% else %}false{% endif %},
          plexLiveError: '',
          plexWatchlistSyncEnabled: {% if plex_account and plex_account.watchlist_sync_enabled %}true{% else %}false{% endif %},
+         activeModal: null,
+         openModal(slug) {
+           this.activeModal = slug;
+         },
+         closeModal() {
+           this.activeModal = null;
+         },
          activeMediaTag: 'all',
          mediaTagLabels: {
            all: 'All Sources',
@@ -298,12 +305,285 @@
            x-text="'Showing ' + mediaTagLabels[activeMediaTag] + '.'">
         </p>
       </div>
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+      {# Import source tiles - click a tile to open its setup/import modal #}
+      <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+        <button type="button"
+                @click="openModal('plex')"
+                x-show="sourceSupports(['screen', 'music'])"
+                x-transition.opacity.duration.150ms
+                class="bg-[#39404b] hover:bg-[#454d59] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
+          <div class="flex items-center justify-between">
+            {% source_display "plex" %}
+            {% if plex_account %}<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" title="Connected">{% include "app/icons/checkmark.svg" with classes="w-3 h-3" %}</span>{% endif %}
+          </div>
+          <p class="text-xs text-gray-400 line-clamp-2">Import watch and listen history from Plex.</p>
+        </button>
+
+        <button type="button"
+                @click="openModal('radarr')"
+                x-show="sourceSupports(['screen'])"
+                x-transition.opacity.duration.150ms
+                class="bg-[#39404b] hover:bg-[#454d59] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
+          <div class="flex items-center justify-between">
+            {% source_display "radarr" %}
+            {% if radarr_account and radarr_account.is_connected %}<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" title="Connected">{% include "app/icons/checkmark.svg" with classes="w-3 h-3" %}</span>{% endif %}
+          </div>
+          <p class="text-xs text-gray-400 line-clamp-2">Import owned movies from Radarr.</p>
+        </button>
+
+        <button type="button"
+                @click="openModal('sonarr')"
+                x-show="sourceSupports(['screen'])"
+                x-transition.opacity.duration.150ms
+                class="bg-[#39404b] hover:bg-[#454d59] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
+          <div class="flex items-center justify-between">
+            {% source_display "sonarr" %}
+            {% if sonarr_account and sonarr_account.is_connected %}<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" title="Connected">{% include "app/icons/checkmark.svg" with classes="w-3 h-3" %}</span>{% endif %}
+          </div>
+          <p class="text-xs text-gray-400 line-clamp-2">Import owned TV shows from Sonarr.</p>
+        </button>
+
+        <button type="button"
+                @click="openModal('stremio')"
+                x-show="sourceSupports(['screen'])"
+                x-transition.opacity.duration.150ms
+                class="bg-[#39404b] hover:bg-[#454d59] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
+          <div class="flex items-center justify-between">
+            {% source_display "stremio" %}
+            {% if stremio_account and stremio_account.is_connected %}<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" title="Connected">{% include "app/icons/checkmark.svg" with classes="w-3 h-3" %}</span>{% endif %}
+          </div>
+          <p class="text-xs text-gray-400 line-clamp-2">Import watched movies and episodes from Stremio.</p>
+        </button>
+
+        <button type="button"
+                @click="openModal('audiobookshelf')"
+                x-show="sourceSupports(['books', 'podcasts'])"
+                x-transition.opacity.duration.150ms
+                class="bg-[#39404b] hover:bg-[#454d59] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
+          <div class="flex items-center justify-between">
+            {% source_display "audiobookshelf" %}
+            {% if audiobookshelf_account and audiobookshelf_account.is_connected %}<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" title="Connected">{% include "app/icons/checkmark.svg" with classes="w-3 h-3" %}</span>{% endif %}
+          </div>
+          <p class="text-xs text-gray-400 line-clamp-2">Import audiobook progress from Audiobookshelf.</p>
+        </button>
+
+        <button type="button"
+                @click="openModal('storyteller')"
+                x-show="sourceSupports(['reading'])"
+                x-transition.opacity.duration.150ms
+                class="bg-[#39404b] hover:bg-[#454d59] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
+          <div class="flex items-center justify-between">
+            {% source_display "storyteller" %}
+            {% if storyteller_account and storyteller_account.is_connected %}<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" title="Connected">{% include "app/icons/checkmark.svg" with classes="w-3 h-3" %}</span>{% endif %}
+          </div>
+          <p class="text-xs text-gray-400 line-clamp-2">Import reading progress from Storyteller.</p>
+        </button>
+
+        <button type="button"
+                @click="openModal('pocketcasts')"
+                x-show="sourceSupports(['podcasts'])"
+                x-transition.opacity.duration.150ms
+                class="bg-[#39404b] hover:bg-[#454d59] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
+          <div class="flex items-center justify-between">
+            {% source_display "pocketcasts" %}
+            {% if pocketcasts_account and pocketcasts_account.is_connected %}<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" title="Connected">{% include "app/icons/checkmark.svg" with classes="w-3 h-3" %}</span>{% endif %}
+          </div>
+          <p class="text-xs text-gray-400 line-clamp-2">Import podcast progress from Pocket Casts.</p>
+        </button>
+
+        <button type="button"
+                @click="openModal('gpodder')"
+                x-show="sourceSupports(['podcasts'])"
+                x-transition.opacity.duration.150ms
+                class="bg-[#39404b] hover:bg-[#454d59] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
+          <div class="flex items-center justify-between">
+            {% source_display "gpodder" %}
+            {% if gpodder_account and gpodder_account.is_connected %}<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" title="Connected">{% include "app/icons/checkmark.svg" with classes="w-3 h-3" %}</span>{% endif %}
+          </div>
+          <p class="text-xs text-gray-400 line-clamp-2">Import podcast history from GPodder.</p>
+        </button>
+
+        <button type="button"
+                @click="openModal('lastfm')"
+                x-show="sourceSupports(['music'])"
+                x-transition.opacity.duration.150ms
+                class="bg-[#39404b] hover:bg-[#454d59] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
+          <div class="flex items-center justify-between">
+            {% source_display "lastfm" %}
+            {% if lastfm_account and lastfm_account.is_connected %}<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" title="Connected">{% include "app/icons/checkmark.svg" with classes="w-3 h-3" %}</span>{% endif %}
+          </div>
+          <p class="text-xs text-gray-400 line-clamp-2">Import listening history from Last.fm.</p>
+        </button>
+
+        <button type="button"
+                @click="openModal('trakt')"
+                x-show="sourceSupports(['screen'])"
+                x-transition.opacity.duration.150ms
+                class="bg-[#39404b] hover:bg-[#454d59] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
+          <div class="flex items-center justify-between">{% source_display "trakt" %}</div>
+          <p class="text-xs text-gray-400 line-clamp-2">Import movies and TV shows from Trakt.</p>
+        </button>
+
+        <button type="button"
+                @click="openModal('mdblist')"
+                x-show="sourceSupports(['screen'])"
+                x-transition.opacity.duration.150ms
+                class="bg-[#39404b] hover:bg-[#454d59] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
+          <div class="flex items-center justify-between">
+            {% source_display "mdblist" %}
+            {% if user.mdblist_account.is_connected %}<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" title="Connected">{% include "app/icons/checkmark.svg" with classes="w-3 h-3" %}</span>{% endif %}
+          </div>
+          <p class="text-xs text-gray-400 line-clamp-2">Import watch history and ratings from MDBList.</p>
+        </button>
+
+        <button type="button"
+                @click="openModal('simkl')"
+                x-show="sourceSupports(['screen', 'anime_manga'])"
+                x-transition.opacity.duration.150ms
+                class="bg-[#39404b] hover:bg-[#454d59] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
+          <div class="flex items-center justify-between">{% source_display "simkl" %}</div>
+          <p class="text-xs text-gray-400 line-clamp-2">Import movies, TV shows and anime from Simkl.</p>
+        </button>
+
+        <button type="button"
+                @click="openModal('myanimelist')"
+                x-show="sourceSupports(['anime_manga'])"
+                x-transition.opacity.duration.150ms
+                class="bg-[#39404b] hover:bg-[#454d59] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
+          <div class="flex items-center justify-between">{% source_display "myanimelist" %}</div>
+          <p class="text-xs text-gray-400 line-clamp-2">Import anime and manga from MyAnimeList.</p>
+        </button>
+
+        <button type="button"
+                @click="openModal('anilist')"
+                x-show="sourceSupports(['anime_manga'])"
+                x-transition.opacity.duration.150ms
+                class="bg-[#39404b] hover:bg-[#454d59] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
+          <div class="flex items-center justify-between">{% source_display "anilist" %}</div>
+          <p class="text-xs text-gray-400 line-clamp-2">Import anime and manga from AniList.</p>
+        </button>
+
+        <button type="button"
+                @click="openModal('kitsu')"
+                x-show="sourceSupports(['anime_manga'])"
+                x-transition.opacity.duration.150ms
+                class="bg-[#39404b] hover:bg-[#454d59] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
+          <div class="flex items-center justify-between">{% source_display "kitsu" %}</div>
+          <p class="text-xs text-gray-400 line-clamp-2">Import anime and manga from Kitsu.</p>
+        </button>
+
+        <button type="button"
+                @click="openModal('yamtrack')"
+                x-show="sourceSupports(['backup', 'screen', 'anime_manga', 'reading', 'games', 'podcasts', 'music'])"
+                x-transition.opacity.duration.150ms
+                class="bg-[#39404b] hover:bg-[#454d59] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
+          <div class="flex items-center justify-between">{% source_display "yamtrack" %}</div>
+          <p class="text-xs text-gray-400 line-clamp-2">Import a backup from Floppy.</p>
+        </button>
+
+        <button type="button"
+                @click="openModal('yamtrack_native')"
+                x-show="sourceSupports(['backup', 'screen', 'anime_manga', 'reading', 'games', 'podcasts', 'music'])"
+                x-transition.opacity.duration.150ms
+                class="bg-[#39404b] hover:bg-[#454d59] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
+          <div class="flex items-center justify-between">{% source_display "yamtrack_native" %}</div>
+          <p class="text-xs text-gray-400 line-clamp-2">Import a CSV export from Yamtrack.</p>
+        </button>
+
+        <a href="{% url 'import_template_csv' %}"
+           x-show="sourceSupports(['backup', 'screen', 'anime_manga', 'reading', 'games', 'podcasts', 'music'])"
+           x-transition.opacity.duration.150ms
+           class="bg-[#39404b] hover:bg-[#454d59] transition-colors rounded-lg p-4 text-left flex flex-col gap-2">
+          <div class="flex items-center">
+            {% include "app/icons/download.svg" with classes="w-5 h-5 text-indigo-400 mr-2" %}
+            <span class="font-medium text-gray-200">Import Template</span>
+          </div>
+          <p class="text-xs text-gray-400 line-clamp-2">Download a starter template, then re-upload it to your library.</p>
+        </a>
+
+        <button type="button"
+                @click="openModal('hltb')"
+                x-show="sourceSupports(['games'])"
+                x-transition.opacity.duration.150ms
+                class="bg-[#39404b] hover:bg-[#454d59] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
+          <div class="flex items-center justify-between">{% source_display "hltb" %}</div>
+          <p class="text-xs text-gray-400 line-clamp-2">Import games from HowLongToBeat.</p>
+        </button>
+
+        <button type="button"
+                @click="openModal('grouvee')"
+                x-show="sourceSupports(['games'])"
+                x-transition.opacity.duration.150ms
+                class="bg-[#39404b] hover:bg-[#454d59] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
+          <div class="flex items-center justify-between">{% source_display "grouvee" %}</div>
+          <p class="text-xs text-gray-400 line-clamp-2">Import games from Grouvee.</p>
+        </button>
+
+        <button type="button"
+                @click="openModal('steam')"
+                x-show="sourceSupports(['games'])"
+                x-transition.opacity.duration.150ms
+                class="bg-[#39404b] hover:bg-[#454d59] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
+          <div class="flex items-center justify-between">{% source_display "steam" %}</div>
+          <p class="text-xs text-gray-400 line-clamp-2">Import games from Steam.</p>
+        </button>
+
+        <button type="button"
+                @click="openModal('imdb')"
+                x-show="sourceSupports(['screen'])"
+                x-transition.opacity.duration.150ms
+                class="bg-[#39404b] hover:bg-[#454d59] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
+          <div class="flex items-center justify-between">{% source_display "imdb" %}</div>
+          <p class="text-xs text-gray-400 line-clamp-2">Import ratings from IMDB.</p>
+        </button>
+
+        <button type="button"
+                @click="openModal('goodreads')"
+                x-show="sourceSupports(['reading'])"
+                x-transition.opacity.duration.150ms
+                class="bg-[#39404b] hover:bg-[#454d59] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
+          <div class="flex items-center justify-between">{% source_display "goodreads" %}</div>
+          <p class="text-xs text-gray-400 line-clamp-2">Import a backup from Goodreads.</p>
+        </button>
+
+        <button type="button"
+                @click="openModal('hardcover')"
+                x-show="sourceSupports(['reading'])"
+                x-transition.opacity.duration.150ms
+                class="bg-[#39404b] hover:bg-[#454d59] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
+          <div class="flex items-center justify-between">{% source_display "hardcover" %}</div>
+          <p class="text-xs text-gray-400 line-clamp-2">Import an export from Hardcover.</p>
+        </button>
+
+        <button type="button"
+                @click="openModal('storygraph')"
+                x-show="sourceSupports(['reading'])"
+                x-transition.opacity.duration.150ms
+                class="bg-[#39404b] hover:bg-[#454d59] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
+          <div class="flex items-center justify-between">{% source_display "storygraph" %}</div>
+          <p class="text-xs text-gray-400 line-clamp-2">Import an export from StoryGraph.</p>
+        </button>
+      </div>
+
+      {# Setup/import modals - one per source tile above, opened via activeModal #}
+      <div>
 
         {# Plex #}
-        <div class="bg-[#39404b] p-4 rounded-lg space-y-3"
-             x-show="sourceSupports(['screen', 'music'])"
-             x-transition.opacity.duration.150ms>
+        <div x-show="activeModal === 'plex'"
+             x-cloak
+             @keydown.escape.window="closeModal()"
+             x-transition.opacity.duration.150ms
+             class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div class="modal-max-height overflow-y-auto w-full"
+               style="width: min(96vw, 32rem);"
+               @click.outside="closeModal()">
+            <button type="button"
+                    @click="closeModal()"
+                    class="block w-fit ml-auto mb-2 text-gray-400 hover:text-white cursor-pointer p-1 rounded-md hover:bg-gray-700/70 bg-[#2a2f35]">
+              {% include "app/icons/x.svg" with classes="w-4 h-4" %}
+            </button>
+        <div class="bg-[#39404b] p-4 rounded-lg space-y-3">
           <div class="flex items-center justify-between">
             <div class="flex items-center">{% source_display "plex" %}</div>
             {% if plex_account %}
@@ -441,12 +721,24 @@
             </form>
           {% endif %}
         </div>
-
+          </div>
+        </div>
 
         {# Radarr #}
-        <div class="bg-[#39404b] p-4 rounded-lg space-y-3"
-             x-show="sourceSupports(['screen'])"
-             x-transition.opacity.duration.150ms>
+        <div x-show="activeModal === 'radarr'"
+             x-cloak
+             @keydown.escape.window="closeModal()"
+             x-transition.opacity.duration.150ms
+             class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div class="modal-max-height overflow-y-auto w-full"
+               style="width: min(96vw, 32rem);"
+               @click.outside="closeModal()">
+            <button type="button"
+                    @click="closeModal()"
+                    class="block w-fit ml-auto mb-2 text-gray-400 hover:text-white cursor-pointer p-1 rounded-md hover:bg-gray-700/70 bg-[#2a2f35]">
+              {% include "app/icons/x.svg" with classes="w-4 h-4" %}
+            </button>
+        <div class="bg-[#39404b] p-4 rounded-lg space-y-3">
           <div class="flex items-center justify-between">
             <div class="flex items-center">{% source_display "radarr" %}</div>
             {% if radarr_account and radarr_account.is_connected %}
@@ -512,11 +804,24 @@
             </form>
           {% endif %}
         </div>
+          </div>
+        </div>
 
         {# Sonarr #}
-        <div class="bg-[#39404b] p-4 rounded-lg space-y-3"
-             x-show="sourceSupports(['screen'])"
-             x-transition.opacity.duration.150ms>
+        <div x-show="activeModal === 'sonarr'"
+             x-cloak
+             @keydown.escape.window="closeModal()"
+             x-transition.opacity.duration.150ms
+             class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div class="modal-max-height overflow-y-auto w-full"
+               style="width: min(96vw, 32rem);"
+               @click.outside="closeModal()">
+            <button type="button"
+                    @click="closeModal()"
+                    class="block w-fit ml-auto mb-2 text-gray-400 hover:text-white cursor-pointer p-1 rounded-md hover:bg-gray-700/70 bg-[#2a2f35]">
+              {% include "app/icons/x.svg" with classes="w-4 h-4" %}
+            </button>
+        <div class="bg-[#39404b] p-4 rounded-lg space-y-3">
           <div class="flex items-center justify-between">
             <div class="flex items-center">{% source_display "sonarr" %}</div>
             {% if sonarr_account and sonarr_account.is_connected %}
@@ -582,11 +887,24 @@
             </form>
           {% endif %}
         </div>
+          </div>
+        </div>
 
         {# Stremio #}
-        <div class="bg-[#39404b] p-4 rounded-lg space-y-3"
-             x-show="sourceSupports(['screen'])"
-             x-transition.opacity.duration.150ms>
+        <div x-show="activeModal === 'stremio'"
+             x-cloak
+             @keydown.escape.window="closeModal()"
+             x-transition.opacity.duration.150ms
+             class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div class="modal-max-height overflow-y-auto w-full"
+               style="width: min(96vw, 32rem);"
+               @click.outside="closeModal()">
+            <button type="button"
+                    @click="closeModal()"
+                    class="block w-fit ml-auto mb-2 text-gray-400 hover:text-white cursor-pointer p-1 rounded-md hover:bg-gray-700/70 bg-[#2a2f35]">
+              {% include "app/icons/x.svg" with classes="w-4 h-4" %}
+            </button>
+        <div class="bg-[#39404b] p-4 rounded-lg space-y-3">
           <div class="flex items-center justify-between">
             <div class="flex items-center">{% source_display "stremio" %}</div>
             {% if stremio_account and stremio_account.is_connected %}
@@ -665,11 +983,24 @@
             </div>
           {% endif %}
         </div>
+          </div>
+        </div>
 
         {# Audiobookshelf #}
-        <div class="bg-[#39404b] p-4 rounded-lg space-y-3"
-             x-show="sourceSupports(['books', 'podcasts'])"
-             x-transition.opacity.duration.150ms>
+        <div x-show="activeModal === 'audiobookshelf'"
+             x-cloak
+             @keydown.escape.window="closeModal()"
+             x-transition.opacity.duration.150ms
+             class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div class="modal-max-height overflow-y-auto w-full"
+               style="width: min(96vw, 32rem);"
+               @click.outside="closeModal()">
+            <button type="button"
+                    @click="closeModal()"
+                    class="block w-fit ml-auto mb-2 text-gray-400 hover:text-white cursor-pointer p-1 rounded-md hover:bg-gray-700/70 bg-[#2a2f35]">
+              {% include "app/icons/x.svg" with classes="w-4 h-4" %}
+            </button>
+        <div class="bg-[#39404b] p-4 rounded-lg space-y-3">
           <div class="flex items-center justify-between">
             <div class="flex items-center">{% source_display "audiobookshelf" %}</div>
             {% if audiobookshelf_account and audiobookshelf_account.is_connected %}
@@ -735,11 +1066,24 @@
             </form>
           {% endif %}
         </div>
+          </div>
+        </div>
 
         {# Storyteller #}
-        <div class="bg-[#39404b] p-4 rounded-lg space-y-3"
-             x-show="sourceSupports(['reading'])"
-             x-transition.opacity.duration.150ms>
+        <div x-show="activeModal === 'storyteller'"
+             x-cloak
+             @keydown.escape.window="closeModal()"
+             x-transition.opacity.duration.150ms
+             class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div class="modal-max-height overflow-y-auto w-full"
+               style="width: min(96vw, 32rem);"
+               @click.outside="closeModal()">
+            <button type="button"
+                    @click="closeModal()"
+                    class="block w-fit ml-auto mb-2 text-gray-400 hover:text-white cursor-pointer p-1 rounded-md hover:bg-gray-700/70 bg-[#2a2f35]">
+              {% include "app/icons/x.svg" with classes="w-4 h-4" %}
+            </button>
+        <div class="bg-[#39404b] p-4 rounded-lg space-y-3">
           <div class="flex items-center justify-between">
             <div class="flex items-center">{% source_display "storyteller" %}</div>
             {% if storyteller_account and storyteller_account.is_connected %}
@@ -851,11 +1195,24 @@
             </form>
           {% endif %}
         </div>
+          </div>
+        </div>
 
         {# Pocket Casts #}
-        <div class="bg-[#39404b] p-4 rounded-lg space-y-3"
-             x-show="sourceSupports(['podcasts'])"
-             x-transition.opacity.duration.150ms>
+        <div x-show="activeModal === 'pocketcasts'"
+             x-cloak
+             @keydown.escape.window="closeModal()"
+             x-transition.opacity.duration.150ms
+             class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div class="modal-max-height overflow-y-auto w-full"
+               style="width: min(96vw, 32rem);"
+               @click.outside="closeModal()">
+            <button type="button"
+                    @click="closeModal()"
+                    class="block w-fit ml-auto mb-2 text-gray-400 hover:text-white cursor-pointer p-1 rounded-md hover:bg-gray-700/70 bg-[#2a2f35]">
+              {% include "app/icons/x.svg" with classes="w-4 h-4" %}
+            </button>
+        <div class="bg-[#39404b] p-4 rounded-lg space-y-3">
           <div class="flex items-center justify-between">
             <div class="flex items-center">{% source_display "pocketcasts" %}</div>
             {% if pocketcasts_account and pocketcasts_account.is_connected %}
@@ -941,11 +1298,24 @@
             </div>
           {% endif %}
         </div>
+          </div>
+        </div>
 
         {# GPodder #}
-        <div class="bg-[#39404b] p-4 rounded-lg space-y-3"
-             x-show="sourceSupports(['podcasts'])"
-             x-transition.opacity.duration.150ms>
+        <div x-show="activeModal === 'gpodder'"
+             x-cloak
+             @keydown.escape.window="closeModal()"
+             x-transition.opacity.duration.150ms
+             class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div class="modal-max-height overflow-y-auto w-full"
+               style="width: min(96vw, 32rem);"
+               @click.outside="closeModal()">
+            <button type="button"
+                    @click="closeModal()"
+                    class="block w-fit ml-auto mb-2 text-gray-400 hover:text-white cursor-pointer p-1 rounded-md hover:bg-gray-700/70 bg-[#2a2f35]">
+              {% include "app/icons/x.svg" with classes="w-4 h-4" %}
+            </button>
+        <div class="bg-[#39404b] p-4 rounded-lg space-y-3">
           <div class="flex items-center justify-between">
             <div class="flex items-center">{% source_display "gpodder" %}</div>
             {% if gpodder_account and gpodder_account.is_connected %}
@@ -1042,11 +1412,24 @@
             </form>
           {% endif %}
         </div>
+          </div>
+        </div>
 
         {# Last.fm #}
-        <div class="bg-[#39404b] p-4 rounded-lg space-y-3"
-             x-show="sourceSupports(['music'])"
-             x-transition.opacity.duration.150ms>
+        <div x-show="activeModal === 'lastfm'"
+             x-cloak
+             @keydown.escape.window="closeModal()"
+             x-transition.opacity.duration.150ms
+             class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div class="modal-max-height overflow-y-auto w-full"
+               style="width: min(96vw, 32rem);"
+               @click.outside="closeModal()">
+            <button type="button"
+                    @click="closeModal()"
+                    class="block w-fit ml-auto mb-2 text-gray-400 hover:text-white cursor-pointer p-1 rounded-md hover:bg-gray-700/70 bg-[#2a2f35]">
+              {% include "app/icons/x.svg" with classes="w-4 h-4" %}
+            </button>
+        <div class="bg-[#39404b] p-4 rounded-lg space-y-3">
           <div class="flex items-center justify-between">
             <div class="flex items-center">{% source_display "lastfm" %}</div>
             {% if lastfm_account and lastfm_account.is_connected %}
@@ -1168,12 +1551,25 @@
             </form>
           {% endif %}
         </div>
+          </div>
+        </div>
 
         {# Trakt #}
+        <div x-show="activeModal === 'trakt'"
+             x-cloak
+             @keydown.escape.window="closeModal()"
+             x-transition.opacity.duration.150ms
+             class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div class="modal-max-height overflow-y-auto w-full"
+               style="width: min(96vw, 32rem);"
+               @click.outside="closeModal()">
+            <button type="button"
+                    @click="closeModal()"
+                    class="block w-fit ml-auto mb-2 text-gray-400 hover:text-white cursor-pointer p-1 rounded-md hover:bg-gray-700/70 bg-[#2a2f35]">
+              {% include "app/icons/x.svg" with classes="w-4 h-4" %}
+            </button>
         <div class="bg-[#39404b] p-4 rounded-lg"
-             x-data="{ traktProfileType: '{% if trakt_configured %}public{% else %}csv{% endif %}' }"
-             x-show="sourceSupports(['screen'])"
-             x-transition.opacity.duration.150ms>
+             x-data="{ traktProfileType: '{% if trakt_configured %}public{% else %}csv{% endif %}' }">
           <div class="flex items-center mb-3">{% source_display "trakt" %}</div>
           <p class="text-sm text-gray-400 mb-3">Import TV shows and movies, including your collection</p>
 
@@ -1289,11 +1685,24 @@
             </label>
           </form>
         </div>
+          </div>
+        </div>
 
         {# MDBList #}
-        <div class="bg-[#39404b] p-4 rounded-lg"
-             x-show="sourceSupports(['screen'])"
-             x-transition.opacity.duration.150ms>
+        <div x-show="activeModal === 'mdblist'"
+             x-cloak
+             @keydown.escape.window="closeModal()"
+             x-transition.opacity.duration.150ms
+             class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div class="modal-max-height overflow-y-auto w-full"
+               style="width: min(96vw, 32rem);"
+               @click.outside="closeModal()">
+            <button type="button"
+                    @click="closeModal()"
+                    class="block w-fit ml-auto mb-2 text-gray-400 hover:text-white cursor-pointer p-1 rounded-md hover:bg-gray-700/70 bg-[#2a2f35]">
+              {% include "app/icons/x.svg" with classes="w-4 h-4" %}
+            </button>
+        <div class="bg-[#39404b] p-4 rounded-lg">
           <div class="flex items-center mb-3">{% source_display "mdblist" %}</div>
           <p class="text-sm text-gray-400 mb-3">Import watched history, watchlist, ratings, dropped shows and collection. Lists sync separately from the Lists page.</p>
 
@@ -1335,11 +1744,24 @@
             {% endif %}
           </form>
         </div>
+          </div>
+        </div>
 
         {# Simkl #}
-        <div class="bg-[#39404b] p-4 rounded-lg"
-             x-show="sourceSupports(['screen', 'anime_manga'])"
-             x-transition.opacity.duration.150ms>
+        <div x-show="activeModal === 'simkl'"
+             x-cloak
+             @keydown.escape.window="closeModal()"
+             x-transition.opacity.duration.150ms
+             class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div class="modal-max-height overflow-y-auto w-full"
+               style="width: min(96vw, 32rem);"
+               @click.outside="closeModal()">
+            <button type="button"
+                    @click="closeModal()"
+                    class="block w-fit ml-auto mb-2 text-gray-400 hover:text-white cursor-pointer p-1 rounded-md hover:bg-gray-700/70 bg-[#2a2f35]">
+              {% include "app/icons/x.svg" with classes="w-4 h-4" %}
+            </button>
+        <div class="bg-[#39404b] p-4 rounded-lg">
           <div class="flex items-center mb-3">{% source_display "simkl" %}</div>
           <p class="text-sm text-gray-400 mb-3">Import TV shows, movies and anime</p>
           <form method="post" action="{% url 'simkl_oauth' %}">
@@ -1355,11 +1777,24 @@
             </button>
           </form>
         </div>
+          </div>
+        </div>
 
         {# MyAnimeList #}
-        <div class="bg-[#39404b] p-4 rounded-lg"
-             x-show="sourceSupports(['anime_manga'])"
-             x-transition.opacity.duration.150ms>
+        <div x-show="activeModal === 'myanimelist'"
+             x-cloak
+             @keydown.escape.window="closeModal()"
+             x-transition.opacity.duration.150ms
+             class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div class="modal-max-height overflow-y-auto w-full"
+               style="width: min(96vw, 32rem);"
+               @click.outside="closeModal()">
+            <button type="button"
+                    @click="closeModal()"
+                    class="block w-fit ml-auto mb-2 text-gray-400 hover:text-white cursor-pointer p-1 rounded-md hover:bg-gray-700/70 bg-[#2a2f35]">
+              {% include "app/icons/x.svg" with classes="w-4 h-4" %}
+            </button>
+        <div class="bg-[#39404b] p-4 rounded-lg">
           <div class="flex items-center mb-3">{% source_display "myanimelist" %}</div>
           <p class="text-sm text-gray-400 mb-3">Import anime and manga</p>
           <form class="flex items-center"
@@ -1383,12 +1818,25 @@
             </div>
           </form>
         </div>
+          </div>
+        </div>
 
         {# AniList #}
+        <div x-show="activeModal === 'anilist'"
+             x-cloak
+             @keydown.escape.window="closeModal()"
+             x-transition.opacity.duration.150ms
+             class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div class="modal-max-height overflow-y-auto w-full"
+               style="width: min(96vw, 32rem);"
+               @click.outside="closeModal()">
+            <button type="button"
+                    @click="closeModal()"
+                    class="block w-fit ml-auto mb-2 text-gray-400 hover:text-white cursor-pointer p-1 rounded-md hover:bg-gray-700/70 bg-[#2a2f35]">
+              {% include "app/icons/x.svg" with classes="w-4 h-4" %}
+            </button>
         <div class="bg-[#39404b] p-4 rounded-lg"
-             x-data="{ usePrivateImport: false }"
-             x-show="sourceSupports(['anime_manga'])"
-             x-transition.opacity.duration.150ms>
+             x-data="{ usePrivateImport: false }">
           <div class="flex items-center mb-3">{% source_display "anilist" %}</div>
           <p class="text-sm text-gray-400 mb-3">Import anime and manga</p>
 
@@ -1442,11 +1890,24 @@
             </button>
           </form>
         </div>
+          </div>
+        </div>
 
         {# Kitsu #}
-        <div class="bg-[#39404b] p-4 rounded-lg"
-             x-show="sourceSupports(['anime_manga'])"
-             x-transition.opacity.duration.150ms>
+        <div x-show="activeModal === 'kitsu'"
+             x-cloak
+             @keydown.escape.window="closeModal()"
+             x-transition.opacity.duration.150ms
+             class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div class="modal-max-height overflow-y-auto w-full"
+               style="width: min(96vw, 32rem);"
+               @click.outside="closeModal()">
+            <button type="button"
+                    @click="closeModal()"
+                    class="block w-fit ml-auto mb-2 text-gray-400 hover:text-white cursor-pointer p-1 rounded-md hover:bg-gray-700/70 bg-[#2a2f35]">
+              {% include "app/icons/x.svg" with classes="w-4 h-4" %}
+            </button>
+        <div class="bg-[#39404b] p-4 rounded-lg">
           <div class="flex items-center mb-3">{% source_display "kitsu" %}</div>
           <p class="text-sm text-gray-400 mb-3">Import anime and manga</p>
           <form class="flex items-center"
@@ -1478,11 +1939,24 @@
             </button>
           </form>
         </div>
+          </div>
+        </div>
 
         {# Floppy #}
-        <div class="bg-[#39404b] p-4 rounded-lg"
-             x-show="sourceSupports(['backup', 'screen', 'anime_manga', 'reading', 'games', 'podcasts', 'music'])"
-             x-transition.opacity.duration.150ms>
+        <div x-show="activeModal === 'yamtrack'"
+             x-cloak
+             @keydown.escape.window="closeModal()"
+             x-transition.opacity.duration.150ms
+             class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div class="modal-max-height overflow-y-auto w-full"
+               style="width: min(96vw, 32rem);"
+               @click.outside="closeModal()">
+            <button type="button"
+                    @click="closeModal()"
+                    class="block w-fit ml-auto mb-2 text-gray-400 hover:text-white cursor-pointer p-1 rounded-md hover:bg-gray-700/70 bg-[#2a2f35]">
+              {% include "app/icons/x.svg" with classes="w-4 h-4" %}
+            </button>
+        <div class="bg-[#39404b] p-4 rounded-lg">
           <div class="flex items-center justify-between mb-3">
             <div class="flex items-center">{% source_display "yamtrack" %}</div>
             <a href="https://github.com/dannyvfilms/Floppy/wiki/6.-Admin-and-Operations#csv-import-floppy--yamtrack-format"
@@ -1491,7 +1965,7 @@
                title="View CSV format documentation">{% include "app/icons/info.svg" with classes="w-4 h-4" %}</a>
           </div>
           <p class="text-sm text-gray-400 mb-3"
-             x-text="importFrequency === 'once' ? 'Import a Floppy backup, or a CSV exported from Yamtrack (media + lists)' : 'File uploads are not available for periodic imports'">
+             x-text="importFrequency === 'once' ? 'Import a Floppy backup (media + lists)' : 'File uploads are not available for periodic imports'">
           </p>
           <form method="post"
                 action="{% url 'import_yamtrack' %}"
@@ -1513,28 +1987,72 @@
             </label>
           </form>
         </div>
-
-        {# Import Template #}
-        <div class="bg-[#39404b] p-4 rounded-lg"
-             x-show="sourceSupports(['backup', 'screen', 'anime_manga', 'reading', 'games', 'podcasts', 'music'])"
-             x-transition.opacity.duration.150ms>
-          <div class="flex items-center mb-3">
-            {% include "app/icons/download.svg" with classes="w-5 h-5 text-indigo-400 mr-2" %}
-            <span class="font-medium text-gray-200">Import Template</span>
           </div>
-          <p class="text-sm text-gray-400 mb-3">
-            Download the format, then re-upload it above to see it in your library.
+        </div>
+
+        {# Yamtrack (same import_yamtrack backend/CSV format as Floppy above) #}
+        <div x-show="activeModal === 'yamtrack_native'"
+             x-cloak
+             @keydown.escape.window="closeModal()"
+             x-transition.opacity.duration.150ms
+             class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div class="modal-max-height overflow-y-auto w-full"
+               style="width: min(96vw, 32rem);"
+               @click.outside="closeModal()">
+            <button type="button"
+                    @click="closeModal()"
+                    class="block w-fit ml-auto mb-2 text-gray-400 hover:text-white cursor-pointer p-1 rounded-md hover:bg-gray-700/70 bg-[#2a2f35]">
+              {% include "app/icons/x.svg" with classes="w-4 h-4" %}
+            </button>
+        <div class="bg-[#39404b] p-4 rounded-lg">
+          <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center">{% source_display "yamtrack_native" %}</div>
+            <a href="https://github.com/dannyvfilms/Floppy/wiki/6.-Admin-and-Operations#csv-import-floppy--yamtrack-format"
+               target="_blank"
+               class="text-gray-400 hover:text-indigo-400 transition-colors p-1 rounded-md hover:bg-gray-600/50"
+               title="View CSV format documentation">{% include "app/icons/info.svg" with classes="w-4 h-4" %}</a>
+          </div>
+          <p class="text-sm text-gray-400 mb-3"
+             x-text="importFrequency === 'once' ? 'Import a CSV exported from Yamtrack (media + lists)' : 'File uploads are not available for periodic imports'">
           </p>
-          <a href="{% url 'import_template_csv' %}"
-             class="flex items-center justify-center w-full px-4 py-2 text-sm rounded-md transition-colors bg-gray-600 text-gray-200 hover:bg-gray-500">
-            Download Sample Template
-          </a>
+          <form method="post"
+                action="{% url 'import_yamtrack' %}"
+                enctype="multipart/form-data">
+            {% csrf_token %}
+            <input type="hidden" name="frequency" x-model="importFrequency">
+            <input type="hidden" name="time" x-model="importTime">
+            <input type="hidden" name="mode" x-model="importMode">
+            <label class="flex items-center justify-center w-full px-4 py-2 text-sm rounded-md transition-colors"
+                   :class="importFrequency === 'once' && !standardImportsDisabled() ? 'bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer' : 'bg-gray-600 text-gray-400 cursor-not-allowed'"
+                   :disabled="importFrequency !== 'once' || standardImportsDisabled()">
+              <input name="yamtrack_csv"
+                     accept=".csv"
+                     class="hidden"
+                     type="file"
+                     :disabled="importFrequency !== 'once' || standardImportsDisabled()"
+                     @change="importFrequency === 'once' && !standardImportsDisabled() && $el.form.submit()">
+              Select CSV File
+            </label>
+          </form>
+        </div>
+          </div>
         </div>
 
         {# HowLongToBeat #}
-        <div class="bg-[#39404b] p-4 rounded-lg"
-             x-show="sourceSupports(['games'])"
-             x-transition.opacity.duration.150ms>
+        <div x-show="activeModal === 'hltb'"
+             x-cloak
+             @keydown.escape.window="closeModal()"
+             x-transition.opacity.duration.150ms
+             class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div class="modal-max-height overflow-y-auto w-full"
+               style="width: min(96vw, 32rem);"
+               @click.outside="closeModal()">
+            <button type="button"
+                    @click="closeModal()"
+                    class="block w-fit ml-auto mb-2 text-gray-400 hover:text-white cursor-pointer p-1 rounded-md hover:bg-gray-700/70 bg-[#2a2f35]">
+              {% include "app/icons/x.svg" with classes="w-4 h-4" %}
+            </button>
+        <div class="bg-[#39404b] p-4 rounded-lg">
           <div class="flex items-center mb-3">{% source_display "hltb" %}</div>
           <p class="text-sm text-gray-400 mb-3"
              x-text="importFrequency === 'once' ? 'Import games' : 'File uploads are not available for periodic imports'">
@@ -1559,11 +2077,24 @@
             </label>
           </form>
         </div>
+          </div>
+        </div>
 
         {# Grouvee #}
-        <div class="bg-[#39404b] p-4 rounded-lg"
-             x-show="sourceSupports(['games'])"
-             x-transition.opacity.duration.150ms>
+        <div x-show="activeModal === 'grouvee'"
+             x-cloak
+             @keydown.escape.window="closeModal()"
+             x-transition.opacity.duration.150ms
+             class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div class="modal-max-height overflow-y-auto w-full"
+               style="width: min(96vw, 32rem);"
+               @click.outside="closeModal()">
+            <button type="button"
+                    @click="closeModal()"
+                    class="block w-fit ml-auto mb-2 text-gray-400 hover:text-white cursor-pointer p-1 rounded-md hover:bg-gray-700/70 bg-[#2a2f35]">
+              {% include "app/icons/x.svg" with classes="w-4 h-4" %}
+            </button>
+        <div class="bg-[#39404b] p-4 rounded-lg">
           <div class="flex items-center mb-3">{% source_display "grouvee" %}</div>
           <p class="text-sm text-gray-400 mb-3"
              x-text="importFrequency === 'once' ? 'Import games' : 'File uploads are not available for periodic imports'">
@@ -1588,11 +2119,24 @@
             </label>
           </form>
         </div>
+          </div>
+        </div>
 
         {# Steam #}
-        <div class="bg-[#39404b] p-4 rounded-lg"
-             x-show="sourceSupports(['games'])"
-             x-transition.opacity.duration.150ms>
+        <div x-show="activeModal === 'steam'"
+             x-cloak
+             @keydown.escape.window="closeModal()"
+             x-transition.opacity.duration.150ms
+             class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div class="modal-max-height overflow-y-auto w-full"
+               style="width: min(96vw, 32rem);"
+               @click.outside="closeModal()">
+            <button type="button"
+                    @click="closeModal()"
+                    class="block w-fit ml-auto mb-2 text-gray-400 hover:text-white cursor-pointer p-1 rounded-md hover:bg-gray-700/70 bg-[#2a2f35]">
+              {% include "app/icons/x.svg" with classes="w-4 h-4" %}
+            </button>
+        <div class="bg-[#39404b] p-4 rounded-lg">
           <div class="flex items-center mb-3">{% source_display "steam" %}</div>
           <p class="text-sm text-gray-400 mb-3">Import games from your Steam library</p>
           <form class="flex items-center"
@@ -1625,11 +2169,24 @@
             </button>
           </form>
         </div>
+          </div>
+        </div>
 
         {# IMDB #}
-        <div class="bg-[#39404b] p-4 rounded-lg"
-             x-show="sourceSupports(['screen'])"
-             x-transition.opacity.duration.150ms>
+        <div x-show="activeModal === 'imdb'"
+             x-cloak
+             @keydown.escape.window="closeModal()"
+             x-transition.opacity.duration.150ms
+             class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div class="modal-max-height overflow-y-auto w-full"
+               style="width: min(96vw, 32rem);"
+               @click.outside="closeModal()">
+            <button type="button"
+                    @click="closeModal()"
+                    class="block w-fit ml-auto mb-2 text-gray-400 hover:text-white cursor-pointer p-1 rounded-md hover:bg-gray-700/70 bg-[#2a2f35]">
+              {% include "app/icons/x.svg" with classes="w-4 h-4" %}
+            </button>
+        <div class="bg-[#39404b] p-4 rounded-lg">
           <div class="flex items-center justify-between mb-3">
             <div class="flex items-center">{% source_display "imdb" %}</div>
           </div>
@@ -1656,11 +2213,24 @@
             </label>
           </form>
         </div>
+          </div>
+        </div>
 
         {# Goodreads #}
-        <div class="bg-[#39404b] p-4 rounded-lg"
-             x-show="sourceSupports(['reading'])"
-             x-transition.opacity.duration.150ms>
+        <div x-show="activeModal === 'goodreads'"
+             x-cloak
+             @keydown.escape.window="closeModal()"
+             x-transition.opacity.duration.150ms
+             class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div class="modal-max-height overflow-y-auto w-full"
+               style="width: min(96vw, 32rem);"
+               @click.outside="closeModal()">
+            <button type="button"
+                    @click="closeModal()"
+                    class="block w-fit ml-auto mb-2 text-gray-400 hover:text-white cursor-pointer p-1 rounded-md hover:bg-gray-700/70 bg-[#2a2f35]">
+              {% include "app/icons/x.svg" with classes="w-4 h-4" %}
+            </button>
+        <div class="bg-[#39404b] p-4 rounded-lg">
           <div class="flex items-center mb-3">{% source_display "goodreads" %}</div>
           <p class="text-sm text-gray-400 mb-3"
              x-text="importFrequency === 'once' ? 'Import from Goodreads backup' : 'File uploads are not available for periodic imports'">
@@ -1685,11 +2255,24 @@
             </label>
           </form>
         </div>
+          </div>
+        </div>
 
         {# Hardcover #}
-        <div class="bg-[#39404b] p-4 rounded-lg"
-             x-show="sourceSupports(['reading'])"
-             x-transition.opacity.duration.150ms>
+        <div x-show="activeModal === 'hardcover'"
+             x-cloak
+             @keydown.escape.window="closeModal()"
+             x-transition.opacity.duration.150ms
+             class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div class="modal-max-height overflow-y-auto w-full"
+               style="width: min(96vw, 32rem);"
+               @click.outside="closeModal()">
+            <button type="button"
+                    @click="closeModal()"
+                    class="block w-fit ml-auto mb-2 text-gray-400 hover:text-white cursor-pointer p-1 rounded-md hover:bg-gray-700/70 bg-[#2a2f35]">
+              {% include "app/icons/x.svg" with classes="w-4 h-4" %}
+            </button>
+        <div class="bg-[#39404b] p-4 rounded-lg">
           <div class="flex items-center mb-3">{% source_display "hardcover" %}</div>
           <p class="text-sm text-gray-400 mb-3"
              x-text="importFrequency === 'once' ? 'Import from Hardcover export (Account -> Export Data)' : 'File uploads are not available for periodic imports'">
@@ -1714,11 +2297,24 @@
             </label>
           </form>
         </div>
+          </div>
+        </div>
 
         {# StoryGraph #}
-        <div class="bg-[#39404b] p-4 rounded-lg"
-             x-show="sourceSupports(['reading'])"
-             x-transition.opacity.duration.150ms>
+        <div x-show="activeModal === 'storygraph'"
+             x-cloak
+             @keydown.escape.window="closeModal()"
+             x-transition.opacity.duration.150ms
+             class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div class="modal-max-height overflow-y-auto w-full"
+               style="width: min(96vw, 32rem);"
+               @click.outside="closeModal()">
+            <button type="button"
+                    @click="closeModal()"
+                    class="block w-fit ml-auto mb-2 text-gray-400 hover:text-white cursor-pointer p-1 rounded-md hover:bg-gray-700/70 bg-[#2a2f35]">
+              {% include "app/icons/x.svg" with classes="w-4 h-4" %}
+            </button>
+        <div class="bg-[#39404b] p-4 rounded-lg">
           <div class="flex items-center mb-3">{% source_display "storygraph" %}</div>
           <p class="text-sm text-gray-400 mb-3"
              x-text="importFrequency === 'once' ? 'Import from StoryGraph export (Profile -> Manage Account -> Export StoryGraph Library)' : 'File uploads are not available for periodic imports'">
@@ -1742,6 +2338,8 @@
               Select CSV File
             </label>
           </form>
+        </div>
+          </div>
         </div>
 
       </div>

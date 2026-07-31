@@ -40,8 +40,14 @@ SOURCES_CONFIG = {
     # Source key stays "yamtrack": it is persisted on import records and the
     # CSV format is shared with upstream Yamtrack.
     "yamtrack": {
-        "name": "Floppy / Yamtrack",
+        "name": "Floppy",
         "logo": static("img/floppy-icon.png"),
+    },
+    # Display-only entry: same "yamtrack" import backend/CSV format as above,
+    # shown as a separate source tile for users importing a Yamtrack export.
+    "yamtrack_native": {
+        "name": "Yamtrack",
+        "logo": static("img/yamtrack-logo.png"),
     },
     "hltb": {
         "name": "HowLongToBeat",
