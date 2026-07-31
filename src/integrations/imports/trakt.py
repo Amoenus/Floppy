@@ -346,8 +346,35 @@ class TraktImporter(TraktMetadataResolverMixin):
             ),
         )
 
+    def _raise_for_user_error(self, error):
+        """Translate a Trakt HTTP error about the user into a MediaImportError."""
+        if error.response.status_code == requests.codes.not_found:
+            msg = (
+                f"User slug {self.username} not found. "
+                "User slug can be found in your Trakt profile URL."
+            )
+            raise MediaImportError(msg) from error
+
+        if error.response.status_code == requests.codes.unauthorized:
+            msg = "This account is set to private, use OAuth import instead."
+            raise MediaImportError(msg) from error
+
+    def _validate_username(self):
+        """Fail fast on a bad slug.
+
+        Trakt answers /history and /watchlist for an unknown user with an empty
+        200, so without this check the import runs to completion looking like a
+        no-op, or dies minutes later on the first endpoint that does 404.
+        """
+        try:
+            self._make_api_request(self.user_base_url)
+        except requests.exceptions.HTTPError as error:
+            self._raise_for_user_error(error)
+            raise
+
     def import_data(self):
         """Import all user data from Trakt."""
+        self._validate_username()
         self.process_dropped()
         self.process_history()
         self.process_watchlist()
@@ -405,16 +432,7 @@ class TraktImporter(TraktMetadataResolverMixin):
             try:
                 page_data = self._make_api_request(url)
             except requests.exceptions.HTTPError as error:
-                if error.response.status_code == requests.codes.not_found:
-                    msg = (
-                        f"User slug {self.username} not found. "
-                        "User slug can be found in your Trakt profile URL."
-                    )
-                    raise MediaImportError(msg) from error
-
-                if error.response.status_code == requests.codes.unauthorized:
-                    msg = "This account is set to private, use OAuth import instead."
-                    raise MediaImportError(msg) from error
+                self._raise_for_user_error(error)
 
                 if error.response.status_code == requests.codes.method_not_allowed:
                     logger.warning(
@@ -738,6 +756,9 @@ class TraktImporter(TraktMetadataResolverMixin):
                 self._process_generic_entry(
                     entry,
                     "rating",
+                    # Trakt rates out of 10, which is already the internal storage
+                    # scale, so the score is stored as-is. scale_score_for_storage
+                    # converts *display* scores and would double a 5-scale user's.
                     {"score": entry["rating"]},
                 )
             except Exception as e:
@@ -920,10 +941,9 @@ class TraktImporter(TraktMetadataResolverMixin):
                 entry["movie"]["title"],
                 entry_type,
             )
-            # Movies with Completed status (from ratings and comments)
-            # should have progress=1
-            status = attribute_updates.get("status", Status.COMPLETED.value)
-            if status == Status.COMPLETED.value:
+            # Only an explicit Completed status implies a watch. Ratings and
+            # comments carry no status, so they must not fabricate progress.
+            if attribute_updates.get("status") == Status.COMPLETED.value:
                 attribute_updates["progress"] = 1
 
             self._process_media_item(
@@ -932,6 +952,7 @@ class TraktImporter(TraktMetadataResolverMixin):
                 MediaTypes.MOVIE.value,
                 app.models.Movie,
                 attribute_updates,
+                entry_type=entry_type,
             )
         elif entry["type"] == "show":
             logger.info(
@@ -945,6 +966,7 @@ class TraktImporter(TraktMetadataResolverMixin):
                 MediaTypes.TV.value,
                 app.models.TV,
                 attribute_updates,
+                entry_type=entry_type,
             )
         elif entry["type"] == "season":
             logger.info(
@@ -960,6 +982,7 @@ class TraktImporter(TraktMetadataResolverMixin):
                 app.models.Season,
                 attribute_updates,
                 entry["season"]["number"],
+                entry_type=entry_type,
             )
         elif entry["type"] == "episode":
             logger.info(
@@ -977,8 +1000,6 @@ class TraktImporter(TraktMetadataResolverMixin):
 
     def _process_episode_attribute(self, show_data, episode_data, attribute_updates):
         """Apply attribute updates (e.g. score) to existing Episode instances."""
-        from decimal import Decimal
-
         tmdb_id = self._get_tmdb_id(show_data)
         if not tmdb_id:
             return
@@ -1009,7 +1030,9 @@ class TraktImporter(TraktMetadataResolverMixin):
         if not season_obj:
             return
 
-        scaled_score = self.user.scale_score_for_storage(Decimal(str(score)))
+        # Trakt scores are already on the 0-10 storage scale; converting them
+        # with scale_score_for_storage doubled them for 5-scale users.
+        scaled_score = score
 
         # Try persisted episodes first (season_obj must have a pk to filter by it)
         if season_obj.pk:
@@ -1034,6 +1057,8 @@ class TraktImporter(TraktMetadataResolverMixin):
         model_class,
         defaults,
         season_number=None,
+        *,
+        entry_type=None,
     ):
         """Process media items for watchlist, ratings, and comments."""
         tmdb_id = self._get_tmdb_id(media_data)
@@ -1069,8 +1094,18 @@ class TraktImporter(TraktMetadataResolverMixin):
             or entry["comment"].get("updated_at"),
         )
 
+        # A rating or a comment says nothing about whether the user tracks the
+        # media. When it isn't already tracked from history or the watchlist,
+        # store the score without a status rather than inventing one.
+        rates_without_tracking = entry_type in {"rating", "comment"}
+
         if media_type == MediaTypes.SEASON.value:
-            tv_obj = self._get_tv_obj(tmdb_id, media_data, updated_at)
+            tv_obj = self._get_tv_obj(
+                tmdb_id,
+                media_data,
+                updated_at,
+                status=None if rates_without_tracking else Status.IN_PROGRESS.value,
+            )
             if not tv_obj:
                 return
             defaults["related_tv"] = tv_obj
@@ -1084,6 +1119,8 @@ class TraktImporter(TraktMetadataResolverMixin):
         if key in self.media_instances[media_type]:
             self._update_instance(media_type, key, defaults)
         else:
+            if rates_without_tracking:
+                defaults.setdefault("status", None)
             media_obj = model_class(
                 item=item,
                 user=self.user,
@@ -1094,7 +1131,13 @@ class TraktImporter(TraktMetadataResolverMixin):
             self.bulk_media[media_type].append(media_obj)
             self.media_instances[media_type][key] = [media_obj]
 
-    def _get_tv_obj(self, tmdb_id, media_data, updated_at):
+    def _get_tv_obj(
+        self,
+        tmdb_id,
+        media_data,
+        updated_at,
+        status=Status.IN_PROGRESS.value,
+    ):
         """Get or create a TV object for the given season."""
         tv_metadata = self._get_metadata(
             MediaTypes.TV.value,
@@ -1119,7 +1162,7 @@ class TraktImporter(TraktMetadataResolverMixin):
             tv_obj = app.models.TV(
                 item=tv_item,
                 user=self.user,
-                status=Status.IN_PROGRESS.value,
+                status=status,
             )
             if updated_at is not None:
                 tv_obj._history_date = updated_at

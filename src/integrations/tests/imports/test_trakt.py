@@ -1,8 +1,11 @@
+from decimal import Decimal
 from pathlib import Path
 from unittest.mock import patch
 
+import requests
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from requests import Response
 
 from app.models import (
     TV,
@@ -17,6 +20,7 @@ from app.models import (
     Status,
 )
 from integrations.imports import helpers
+from integrations.imports.helpers import MediaImportError
 from integrations.imports.trakt import TraktImporter, importer
 
 mock_path = Path(__file__).resolve().parent.parent / "mock_data"
@@ -223,6 +227,135 @@ class ImportTrakt(TestCase):
         self.assertEqual(len(trakt_importer.bulk_media[MediaTypes.MOVIE.value]), 1)
         movie_obj = trakt_importer.bulk_media[MediaTypes.MOVIE.value][0]
         self.assertEqual(movie_obj.score, 8)
+        # A rating is not a watch: no status, no fabricated progress.
+        self.assertIsNone(movie_obj.status)
+        self.assertEqual(movie_obj.progress, 0)
+
+    @patch("integrations.imports.trakt.TraktImporter._make_api_request")
+    @patch("integrations.imports.trakt.TraktImporter._get_metadata")
+    def test_season_rating_for_unwatched_show_is_statusless(
+        self,
+        mock_get_metadata,
+        mock_make_request,
+    ):
+        """A rating on a never-watched season must not fabricate a tracked show."""
+        rating_entry = {
+            "rated_at": "2023-01-01T00:00:00.000Z",
+            "type": "season",
+            "show": {"title": "Never Watched", "ids": {"tmdb": 4321}},
+            "season": {"number": 1},
+            "rating": 10,
+        }
+
+        mock_make_request.side_effect = [[rating_entry], []]
+        mock_get_metadata.return_value = {
+            "title": "Never Watched",
+            "image": "show.jpg",
+            "season_title": "Season 1",
+            "season_number": 1,
+            "max_progress": 8,
+            "episodes": [],
+        }
+
+        trakt_importer = TraktImporter("testuser", self.user, "new")
+        trakt_importer.process_ratings()
+
+        season_obj = trakt_importer.bulk_media[MediaTypes.SEASON.value][0]
+        self.assertEqual(season_obj.score, 10)
+        self.assertIsNone(season_obj.status)
+
+        # The parent show is created to hang the season off, but it is not
+        # tracked either — this is what used to flood the library.
+        self.assertEqual(len(trakt_importer.bulk_media[MediaTypes.TV.value]), 1)
+        self.assertIsNone(trakt_importer.bulk_media[MediaTypes.TV.value][0].status)
+
+    @patch("integrations.imports.trakt.TraktImporter._make_api_request")
+    @patch("integrations.imports.trakt.TraktImporter._get_metadata")
+    def test_season_rating_leaves_watched_show_status_alone(
+        self,
+        mock_get_metadata,
+        mock_make_request,
+    ):
+        """A rating on a season watched in the same run only adds the score."""
+        rating_entry = {
+            "rated_at": "2023-01-01T00:00:00.000Z",
+            "type": "season",
+            "show": {"title": "Watched Show", "ids": {"tmdb": 4322}},
+            "season": {"number": 1},
+            "rating": 9,
+        }
+
+        mock_make_request.side_effect = [[rating_entry], []]
+        mock_get_metadata.return_value = {
+            "title": "Watched Show",
+            "image": "show.jpg",
+            "season_title": "Season 1",
+            "season_number": 1,
+            "max_progress": 8,
+            "episodes": [],
+        }
+
+        trakt_importer = TraktImporter("testuser", self.user, "new")
+        # Stand in for a season already built by process_history.
+        tracked_season = Season(user=self.user, status=Status.IN_PROGRESS.value)
+        trakt_importer.media_instances[MediaTypes.SEASON.value]["4322:1"] = [
+            tracked_season,
+        ]
+        trakt_importer.media_instances[MediaTypes.TV.value]["4322"] = [
+            TV(user=self.user, status=Status.IN_PROGRESS.value),
+        ]
+
+        trakt_importer.process_ratings()
+
+        self.assertEqual(tracked_season.score, 9)
+        self.assertEqual(tracked_season.status, Status.IN_PROGRESS.value)
+        self.assertEqual(len(trakt_importer.bulk_media[MediaTypes.SEASON.value]), 0)
+
+    @patch("integrations.imports.trakt.TraktImporter._make_api_request")
+    @patch("integrations.imports.trakt.TraktImporter._get_metadata")
+    def test_rating_score_is_stored_unscaled_for_five_point_users(
+        self,
+        mock_get_metadata,
+        mock_make_request,
+    ):
+        """Trakt rates out of 10, which is already the storage scale."""
+        self.user.rating_scale = "5"
+        self.user.save(update_fields=["rating_scale"])
+
+        rating_entry = {
+            "rated_at": "2023-01-01T00:00:00.000Z",
+            "type": "movie",
+            "movie": {"title": "Scaled Movie", "ids": {"tmdb": 239}},
+            "rating": 6,
+        }
+        mock_make_request.side_effect = [[rating_entry], []]
+        mock_get_metadata.return_value = {
+            "title": "Scaled Movie",
+            "image": "movie.jpg",
+        }
+
+        trakt_importer = TraktImporter("testuser", self.user, "new")
+        trakt_importer.process_ratings()
+
+        movie_obj = trakt_importer.bulk_media[MediaTypes.MOVIE.value][0]
+        # Stored as-is (displays as 3/5), not doubled to the 10 ceiling.
+        self.assertEqual(movie_obj.score, 6)
+        self.assertEqual(self.user.scale_score_for_display(Decimal("6")), Decimal("3"))
+
+    @patch("integrations.imports.trakt.TraktImporter._make_api_request")
+    def test_invalid_username_fails_before_importing(self, mock_make_request):
+        """A bad slug errors immediately instead of importing an empty library."""
+        response = Response()
+        response.status_code = 404
+        mock_make_request.side_effect = requests.exceptions.HTTPError(response=response)
+
+        trakt_importer = TraktImporter("@bad-slug", self.user, "new")
+
+        with self.assertRaises(MediaImportError):
+            trakt_importer.import_data()
+
+        # Only the validation request was made; no import work was attempted.
+        self.assertEqual(mock_make_request.call_count, 1)
 
     @patch("integrations.imports.trakt.TraktImporter._make_api_request")
     @patch("integrations.imports.trakt.TraktImporter._get_metadata")
@@ -793,10 +926,11 @@ class ImportTrakt(TestCase):
         episode_obj.refresh_from_db()
         self.assertEqual(float(episode_obj.score), 9.0)
 
+    @patch("integrations.imports.trakt.TraktImporter._make_api_request")
     @patch("integrations.imports.trakt.TraktImporter._get_paginated_data")
     @patch("integrations.imports.trakt.TraktImporter._get_metadata")
     def test_episode_rating_survives_full_import_flow(
-        self, mock_get_metadata, mock_get_paginated
+        self, mock_get_metadata, mock_get_paginated, _mock_make_request
     ):
         """Episode ratings are applied when running the full import_data() pipeline."""
         from integrations.imports.trakt import importer
@@ -830,10 +964,11 @@ class ImportTrakt(TestCase):
         self.assertIsNotNone(episode_obj.score)
         self.assertEqual(float(episode_obj.score), 8.0)
 
+    @patch("integrations.imports.trakt.TraktImporter._make_api_request")
     @patch("integrations.imports.trakt.TraktImporter._get_paginated_data")
     @patch("integrations.imports.trakt.TraktImporter._get_metadata")
     def test_episode_rating_applied_on_first_ever_import(
-        self, mock_get_metadata, mock_get_paginated
+        self, mock_get_metadata, mock_get_paginated, _mock_make_request
     ):
         """Ratings land correctly when history and ratings are imported in the same run.
 
@@ -942,10 +1077,11 @@ class ImportTrakt(TestCase):
         mock_get_paginated.assert_not_called()
         self.assertEqual(len(trakt_importer.dropped_tmdb_ids), 0)
 
+    @patch("integrations.imports.trakt.TraktImporter._make_api_request")
     @patch("integrations.imports.trakt.TraktImporter._get_paginated_data")
     @patch("integrations.imports.trakt.TraktImporter._get_metadata")
     def test_dropped_show_status_on_first_import(
-        self, mock_get_metadata, mock_get_paginated
+        self, mock_get_metadata, mock_get_paginated, _mock_make_request
     ):
         """A show that is both watched and dropped lands in DB with status Dropped."""
         from integrations.imports.trakt import importer
@@ -999,10 +1135,11 @@ class ImportTrakt(TestCase):
         self.assertIsNotNone(tv_obj)
         self.assertEqual(tv_obj.status, Status.DROPPED.value)
 
+    @patch("integrations.imports.trakt.TraktImporter._make_api_request")
     @patch("integrations.imports.trakt.TraktImporter._get_paginated_data")
     @patch("integrations.imports.trakt.TraktImporter._get_metadata")
     def test_dropped_show_updates_existing_tv(
-        self, mock_get_metadata, mock_get_paginated
+        self, mock_get_metadata, mock_get_paginated, _mock_make_request
     ):
         """A recurring import updates an existing IN_PROGRESS TV show to Dropped."""
         from integrations.imports.trakt import importer
