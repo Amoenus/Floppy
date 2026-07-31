@@ -3,7 +3,7 @@
 {% load app_tags %}
 
 {% block title %}
-  {{ media_type|media_type_readable_plural }} - Yamtrack
+  {{ media_type|media_type_readable_plural }} - Floppy
 {% endblock title %}
 
 {% block content %}
@@ -376,8 +376,8 @@
     
     // Bind once: a second copy of these handlers would see
     // paginationInProgress=true and block every pagination request.
-    if (!window.__yamtrackMediaListPaginationBound) {
-    window.__yamtrackMediaListPaginationBound = true;
+    if (!window.__floppyMediaListPaginationBound) {
+    window.__floppyMediaListPaginationBound = true;
 
     // Prevent multiple pagination triggers from being active at once
     document.body.addEventListener('htmx:beforeRequest', function(evt) {
@@ -473,8 +473,8 @@
   </script>
 
   <script>
-    if (!window.__yamtrackResultCountBound) {
-    window.__yamtrackResultCountBound = true;
+    if (!window.__floppyResultCountBound) {
+    window.__floppyResultCountBound = true;
     document.body.addEventListener('resultCountUpdated', function(evt) {
       const count = evt.detail && evt.detail.count;
       if (count === undefined || count === null) {

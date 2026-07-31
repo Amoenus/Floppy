@@ -27,7 +27,8 @@ _USERNAME_IMPORTS = {
 
 # File-driven imports: service -> (task, file label).
 _FILE_IMPORTS = {
-    "yamtrack": (tasks.import_yamtrack, "Yamtrack CSV"),
+    # Service key stays "yamtrack": it is a public API parameter value.
+    "yamtrack": (tasks.import_yamtrack, "Floppy backup or Yamtrack CSV"),
     "trakt-collection": (tasks.import_trakt_collection_csv, "Trakt collection CSV"),
     "hltb": (tasks.import_hltb, "HowLongToBeat CSV"),
     "grouvee": (tasks.import_grouvee, "Grouvee JSON"),
@@ -179,7 +180,7 @@ class ExportCsvView(drf_views.APIView):
             content_type="text/csv",
             headers={
                 "Content-Disposition": (
-                    f'attachment; filename="yamtrack_{now}.csv"'
+                    f'attachment; filename="floppy_{now}.csv"'
                 ),
             },
         )
@@ -196,6 +197,6 @@ class ExportTemplateView(drf_views.APIView):
         content = exports.generate_sample_template()
         response = HttpResponse(content, content_type="text/csv")
         response["Content-Disposition"] = (
-            'attachment; filename="yamtrack_import_template.csv"'
+            'attachment; filename="floppy_import_template.csv"'
         )
         return response

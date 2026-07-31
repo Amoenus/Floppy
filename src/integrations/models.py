@@ -220,7 +220,7 @@ class GPodderAccount(models.Model):
     )
     device_id = models.CharField(
         max_length=255,
-        help_text="Yamtrack-managed GPodder device identifier",
+        help_text="Floppy-managed GPodder device identifier",
     )
     device_filter = models.CharField(
         max_length=255,
@@ -276,7 +276,7 @@ class AudiobookshelfAccount(models.Model):
     )
     create_missing = models.BooleanField(
         default=True,
-        help_text="Create Yamtrack items when ABS items cannot be matched",
+        help_text="Create Floppy items when ABS items cannot be matched",
     )
     last_sync_ms = models.BigIntegerField(
         null=True,
@@ -516,11 +516,11 @@ class JellyfinAccount(models.Model):
     jellyfin_username = models.CharField(max_length=255, blank=True, default="")
     push_watched_enabled = models.BooleanField(
         default=True,
-        help_text="Push Yamtrack 'watched' status to Jellyfin",
+        help_text="Push Floppy 'watched' status to Jellyfin",
     )
     push_unwatched_enabled = models.BooleanField(
         default=False,
-        help_text="Push Yamtrack 'unwatched' status to Jellyfin",
+        help_text="Push Floppy 'unwatched' status to Jellyfin",
     )
     scheduled_push_enabled = models.BooleanField(
         default=False,

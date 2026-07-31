@@ -363,7 +363,7 @@ def write_backup(user, media_types=None, include_lists=True, include_collection=
     backup_dir.mkdir(parents=True, exist_ok=True)
 
     now = timezone.localtime()
-    filename = f"yamtrack_{now.strftime('%Y-%m-%d_%H%M%S')}.csv"
+    filename = f"floppy_{now.strftime('%Y-%m-%d_%H%M%S')}.csv"
     filepath = backup_dir / filename
 
     with open(filepath, "w", newline="", encoding="utf-8") as f:
@@ -593,7 +593,7 @@ SAMPLE_MUSIC = [
 
 
 def generate_sample_template():
-    """Build a sample CSV demonstrating the Yamtrack import format.
+    """Build a sample CSV demonstrating the Floppy/Yamtrack CSV format.
 
     Uses real, verifiable catalog entries (real TMDB/MAL/IGDB/OpenLibrary/
     ComicVine/BGG/Pocket Casts/MusicBrainz IDs) instead of placeholder data,

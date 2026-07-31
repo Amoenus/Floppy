@@ -5,10 +5,10 @@ from unittest.mock import patch
 
 from app.models import Episode, Movie, Status
 
-from .base import YamtrackApiTestCase
+from .base import FloppyApiTestCase
 
 
-class ScrobbleAuthTests(YamtrackApiTestCase):
+class ScrobbleAuthTests(FloppyApiTestCase):
     """Auth is handled by the shared DRF auth classes."""
 
     def test_missing_token_rejected(self):
@@ -31,7 +31,7 @@ class ScrobbleAuthTests(YamtrackApiTestCase):
         self.assertEqual(response.status_code, HTTP.FORBIDDEN)
 
 
-class ScrobbleValidationTests(YamtrackApiTestCase):
+class ScrobbleValidationTests(FloppyApiTestCase):
     """400s for malformed scrobble payloads."""
 
     def _post(self, payload):
@@ -69,7 +69,7 @@ class ScrobbleValidationTests(YamtrackApiTestCase):
         self.assertEqual(response.status_code, HTTP.BAD_REQUEST)
 
 
-class ScrobbleLivePlaybackTests(YamtrackApiTestCase):
+class ScrobbleLivePlaybackTests(FloppyApiTestCase):
     """'start'/'pause' only update the Now Playing card, no durable write."""
 
     @patch("api.fork_views_scrobble.live_playback.apply_playback_event")
@@ -130,7 +130,7 @@ class ScrobbleLivePlaybackTests(YamtrackApiTestCase):
         self.assertEqual(response.status_code, HTTP.OK)
 
 
-class ScrobbleStopTests(YamtrackApiTestCase):
+class ScrobbleStopTests(FloppyApiTestCase):
     """'stop' persists a durable watch/progress update."""
 
     def test_stop_completed_marks_movie_completed(self):

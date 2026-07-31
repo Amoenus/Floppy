@@ -7,7 +7,7 @@ from django.contrib.auth import get_user_model
 from django.http import HttpResponse
 from django.test import RequestFactory, TestCase, override_settings
 
-from app.apps import AppConfig as YamtrackAppConfig
+from app.apps import AppConfig as FloppyAppConfig
 from app.middleware import DiscoverWarmupMiddleware
 from app.tasks import warm_discover_startup_tabs
 
@@ -92,7 +92,7 @@ class DiscoverWarmupTests(TestCase):
         self,
         _mock_is_celery_worker,
     ):
-        config = YamtrackAppConfig("app", import_module("app"))
+        config = FloppyAppConfig("app", import_module("app"))
 
         with (
             patch.object(config, "_repair_celery_redis_bindings"),
@@ -111,7 +111,7 @@ class DiscoverWarmupTests(TestCase):
         self,
         _mock_is_celery_worker,
     ):
-        config = YamtrackAppConfig("app", import_module("app"))
+        config = FloppyAppConfig("app", import_module("app"))
 
         with (
             patch.object(config, "_repair_celery_redis_bindings"),

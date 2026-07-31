@@ -9,7 +9,7 @@ Storyteller exposes an OAuth device-code flow plus a small REST API:
 
 Each position carries a Readium locator whose
 ``locator.locations.totalProgression`` is the 0-1 reading fraction. We turn
-that into a Yamtrack book entry: in-progress while reading, and completed once
+that into a Floppy book entry: in-progress while reading, and completed once
 the fraction reaches the account's ``finished_threshold`` (default 0.95).
 """
 

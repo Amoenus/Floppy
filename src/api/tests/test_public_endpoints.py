@@ -1,8 +1,8 @@
-from .base import YamtrackApiTestCase
+from .base import FloppyApiTestCase
 from .helpers import check_health_structure, check_info_structure
 
 
-class PublicEndpointsTests(YamtrackApiTestCase):
+class PublicEndpointsTests(FloppyApiTestCase):
     """Verify public endpoints stay accessible without auth."""
 
     def test_health_endpoint(self):

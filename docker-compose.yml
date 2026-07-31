@@ -1,10 +1,10 @@
 services:
-  yamtrack:
-    container_name: yamtrack
+  floppy:
+    container_name: floppy
     # Image defaults to :latest tag (latest commit on the latest branch)
     # Use :release or :vX.X.X for stable builds tied to a GitHub Release
     # Use :dev for the development branch
-    image: ghcr.io/dannyvfilms/yamtrack:latest
+    image: ghcr.io/dannyvfilms/floppy:latest
     restart: unless-stopped
     depends_on:
       - redis
@@ -13,6 +13,9 @@ services:
       - SECRET=longstring
       - REDIS_URL=redis://redis:6379
       - ADMIN_ENABLED=False
+      # Off by default: otherwise a publicly known demo/demodemo
+      # account is provisioned after migrations.
+      - DEMO_ACCOUNT_ENABLED=False
       # Keep DEBUG off in production: the debug toolbar slows every request
       # and disables Django's cached template loader.
       - DEBUG=False
@@ -22,14 +25,14 @@ services:
       - WEB_CONCURRENCY=2
       - GUNICORN_THREADS=4
     volumes:
-      - ./db:/yamtrack/db
+      - ./db:/floppy/db
     ports:
       - "8000:8000"
     networks:
-      - yamtrack-net
+      - floppy-net
 
   redis:
-    container_name: yamtrack-redis
+    container_name: floppy-redis
     image: redis:8-alpine
     restart: unless-stopped
     # Persist to disk so a restart doesn't drop the cache wholesale (#386).
@@ -37,12 +40,12 @@ services:
     volumes:
       - redis_data:/data
     networks:
-      - yamtrack-net
+      - floppy-net
 
 volumes:
   redis_data:
 
 
 networks:
-  yamtrack-net:
+  floppy-net:
     driver: bridge

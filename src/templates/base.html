@@ -7,19 +7,19 @@
     {# Required meta tags #}
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="keywords" content="Yamtrack, Media Tracker">
-    <meta name="description" content="Search and track media on Yamtrack.">
+    <meta name="keywords" content="Floppy, Media Tracker">
+    <meta name="description" content="Search and track media on Floppy.">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="mobile-web-app-title" content="Yamtrack">
+    <meta name="mobile-web-app-title" content="Floppy">
 
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="mobile-web-app-title" content="Yamtrack">
+    <meta name="mobile-web-app-title" content="Floppy">
 
     <title>
       {% block title %}
-        Yamtrack
+        Floppy
       {% endblock title %}
     </title>
 
@@ -68,7 +68,7 @@
               return;
             }
             const body = xhr.responseText || "";
-            if (body.indexOf('name="yamtrack-page" content="entrance"') === -1) {
+            if (body.indexOf('name="floppy-page" content="entrance"') === -1) {
               return;
             }
             event.detail.shouldSwap = false;
@@ -153,7 +153,14 @@
         <aside class="fixed top-0 left-0 z-40 h-screen w-64 bg-[#1a1d20] transform transition-transform duration-300 ease-in-out border-r border-[#2c3136] -translate-x-full lg:translate-x-0 lg:sticky flex flex-col"
                :class="isMobileMenuOpen ? 'translate-x-0' : ''">
           <div class="h-16 border-b border-[#2c3136] flex items-center px-6">
-            <h1 class="text-2xl font-semibold text-gray-100">Yamtrack</h1>
+            <h1 class="flex items-center">
+              <img src="{% static 'img/floppy-logo.png' %}"
+                   srcset="{% static 'img/floppy-logo.png' %} 1x, {% static 'img/floppy-logo@2x.png' %} 2x"
+                   alt="Floppy"
+                   width="158"
+                   height="48"
+                   class="h-9 w-auto">
+            </h1>
           </div>
           {# hx-boost: swap the body instead of reloading on sidebar navigation #}
           <nav class="p-4 flex-1 overflow-y-auto" hx-boost="true" style="-webkit-overflow-scrolling: touch;">
@@ -508,8 +515,8 @@
       }
 
       // Bind once: these scripts are re-evaluated on boosted (hx-boost) navigation.
-      if (!window.__yamtrackSelect2Bound) {
-        window.__yamtrackSelect2Bound = true;
+      if (!window.__floppySelect2Bound) {
+        window.__floppySelect2Bound = true;
         document.addEventListener('DOMContentLoaded', () => initDjangoSelect2(document));
         document.body.addEventListener('htmx:afterSwap', () => initDjangoSelect2(document));
         document.body.addEventListener('htmx:afterSettle', () => initDjangoSelect2(document));

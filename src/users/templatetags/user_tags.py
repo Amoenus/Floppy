@@ -37,9 +37,11 @@ SOURCES_CONFIG = {
         "name": "SIMKL",
         "logo": static("img/simkl-logo.png"),
     },
+    # Source key stays "yamtrack": it is persisted on import records and the
+    # CSV format is shared with upstream Yamtrack.
     "yamtrack": {
-        "name": "YamTrack",
-        "logo": static("favicon/apple-touch-icon.png"),
+        "name": "Floppy / Yamtrack",
+        "logo": static("img/floppy-icon.png"),
     },
     "hltb": {
         "name": "HowLongToBeat",

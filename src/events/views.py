@@ -198,7 +198,7 @@ def download_calendar(request, token: str):
 
     # Create iCalendar object
     cal = icalendar.Calendar()
-    cal.add("prodid", "-//Yamtrack//EN")
+    cal.add("prodid", "-//Floppy//EN")
     cal.add("version", "2.0")
 
     for release in releases:

@@ -169,9 +169,11 @@ def import_kitsu(username, user_id, mode):
     return import_media(kitsu.importer, username, user_id, mode)
 
 
+# Task name stays "Import from Yamtrack": it is persisted in celery result
+# and beat rows, and matched by name in users.models.
 @shared_task(name="Import from Yamtrack")
 def import_yamtrack(file, user_id, mode):
-    """Celery task for importing media data from Yamtrack."""
+    """Celery task for importing a Floppy backup or Yamtrack CSV."""
     return import_media(yamtrack.importer, _coerce_uploaded_file(file), user_id, mode)
 
 
@@ -314,7 +316,7 @@ def sync_plex_watchlist(user_id, mode="watchlist"):  # noqa: ARG001
 
 @shared_task(name=JELLYFIN_PUSH_TASK_NAME)
 def push_jellyfin_watched(user_id):
-    """Celery task for pushing Yamtrack watched state to Jellyfin."""
+    """Celery task for pushing Floppy watched state to Jellyfin."""
     from integrations.models import JellyfinAccount
 
     user = get_user_model().objects.get(id=user_id)

@@ -96,7 +96,7 @@ class SonarrImporter:
         self.warnings = []
 
     def import_data(self):
-        """Sync Sonarr ownership into Yamtrack collection rows."""
+        """Sync Sonarr ownership into Floppy collection rows."""
         imported_counts = defaultdict(int)
 
         try:
@@ -143,7 +143,7 @@ class SonarrImporter:
         return dict(imported_counts), "\n".join(dict.fromkeys(self.warnings))
 
     def _find_series_item(self, row):
-        """Find an existing Yamtrack show item without creating one."""
+        """Find an existing Floppy show item without creating one."""
         tmdb_id = row.get("tmdbId")
         tvdb_id = row.get("tvdbId")
 

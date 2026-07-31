@@ -4,7 +4,7 @@ from django.urls import reverse
 
 from app.models import MediaTypes, Sources
 
-from .base import YamtrackApiTestCase
+from .base import FloppyApiTestCase
 from .helpers import (
     check_changes_history_entry_structure,
     check_consumption_structure,
@@ -13,7 +13,7 @@ from .helpers import (
 )
 
 
-class MediaEpisodeTests(YamtrackApiTestCase):
+class MediaEpisodeTests(FloppyApiTestCase):
     """Validate episode endpoint contracts."""
 
     def test_episode_endpoints_reject_non_tv_media_type(self):

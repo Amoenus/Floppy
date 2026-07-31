@@ -3,7 +3,7 @@
 {% load app_tags %}
 
 {% block title %}
-  {{ error_page_title|default:"Forbidden" }} - Yamtrack
+  {{ error_page_title|default:"Forbidden" }} - Floppy
 {% endblock title %}
 
 {% block extra_head %}
@@ -43,16 +43,16 @@
         <div class="bg-[#2a2f35] p-4 rounded-lg mb-4 text-left">
           <h3 class="font-medium mb-2 text-gray-300">Using a Reverse Proxy?</h3>
           <p class="text-sm text-gray-400">
-            If you're accessing YamTrack through a reverse proxy, you need to set the <code class="bg-[#39404b] px-1 py-0.5 rounded">URLS</code> environment variable to your application URL.
+            If you're accessing Floppy through a reverse proxy, you need to set the <code class="bg-[#39404b] px-1 py-0.5 rounded">URLS</code> environment variable to your application URL.
           </p>
 
           <p class="text-sm text-gray-400 mt-2">
-            For example, <code class="bg-[#39404b] px-1 py-0.5 rounded">https://yamtrack.mydomain.com</code>.
+            For example, <code class="bg-[#39404b] px-1 py-0.5 rounded">https://floppy.mydomain.com</code>.
           </p>
         </div>
         {% include "includes/error_report_panel.html" %}
         <p class="text-sm text-gray-500 mb-6">
-          If you believe this was a bug, please <a href="https://github.com/dannyvfilms/Yamtrack/issues"
+          If you believe this was a bug, please <a href="https://github.com/dannyvfilms/Floppy/issues"
     class="text-indigo-400 hover:underline">report the issue.</a>
         </p>
       </div>

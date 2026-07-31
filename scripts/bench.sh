@@ -43,7 +43,7 @@ bench_env() {
   export REDIS_URL=redis://localhost:6379/3
   export REDIS_PREFIX=bench
   export ALLOWED_HOSTS="localhost,127.0.0.1"
-  export YAMTRACK_AUTO_LOGIN_USERNAME="$BENCH_USER"
+  export FLOPPY_AUTO_LOGIN_USERNAME="$BENCH_USER"
   export PERF_LOG_SLOW_REQUEST_MS="${PERF_LOG_SLOW_REQUEST_MS:-25}"
 }
 
@@ -74,14 +74,14 @@ cmd_up() {
   celery --app config worker --queues celery --hostname "bench-celery@%h" \
     --loglevel INFO --without-mingle --without-gossip \
     >"$BENCH_DIR/celery-background.log" 2>&1 &
-  YAMTRACK_PROCESS_ROLE=interactive celery --app config worker --queues interactive \
+  FLOPPY_PROCESS_ROLE=interactive celery --app config worker --queues interactive \
     --hostname "bench-interactive@%h" --loglevel INFO --without-mingle --without-gossip \
     >"$BENCH_DIR/celery-interactive.log" 2>&1 &
   celery --app config worker --queues discover --hostname "bench-discover@%h" \
     --loglevel INFO --without-mingle --without-gossip \
     >"$BENCH_DIR/celery-discover.log" 2>&1 &
   echo "Bench up on $BASE (logs in $BENCH_DIR). Ctrl-C to stop."
-  export YAMTRACK_PROCESS_ROLE=web
+  export FLOPPY_PROCESS_ROLE=web
   exec gunicorn --bind "localhost:$BENCH_PORT" \
     --config python:config.gunicorn config.wsgi:application
 }

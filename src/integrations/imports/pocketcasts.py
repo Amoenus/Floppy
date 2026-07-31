@@ -2413,7 +2413,7 @@ class PocketCastsImporter:
             response = requests.get(
                 ITUNES_API_BASE,
                 params=params,
-                headers={"User-Agent": "Yamtrack/1.0 (https://github.com/FuzzyGrim/Yamtrack)"},
+                headers={"User-Agent": "Floppy/1.0 (https://github.com/dannyvfilms/Floppy)"},
                 timeout=10,
             )
             response.raise_for_status()

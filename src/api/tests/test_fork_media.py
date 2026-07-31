@@ -13,10 +13,10 @@ from app.models import (
     Status,
 )
 
-from .base import YamtrackApiTestCase
+from .base import FloppyApiTestCase
 
 
-class ForkMediaTypeOverlayTests(YamtrackApiTestCase):
+class ForkMediaTypeOverlayTests(FloppyApiTestCase):
     """Fork media types are first-class citizens of the media endpoints."""
 
     def setUp(self):
@@ -114,7 +114,7 @@ class ForkMediaTypeOverlayTests(YamtrackApiTestCase):
         self.assertIn(MediaTypes.COMIC_ISSUE.value, types_seen)
 
 
-class ForkProgressEndpointTests(YamtrackApiTestCase):
+class ForkProgressEndpointTests(FloppyApiTestCase):
     """POST .../progress mirrors the web UI progress changer."""
 
     def setUp(self):
@@ -186,7 +186,7 @@ class ForkProgressEndpointTests(YamtrackApiTestCase):
         self.assertIn(response.status_code, (HTTP.UNAUTHORIZED, HTTP.FORBIDDEN))
 
 
-class ForkCollectionEndpointTests(YamtrackApiTestCase):
+class ForkCollectionEndpointTests(FloppyApiTestCase):
     """Collection CRUD wraps the owned-media flows."""
 
     def _movie_item(self):

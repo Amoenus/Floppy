@@ -1,10 +1,10 @@
-"""Thin async REST client for the Yamtrack API used by the MCP tools.
+"""Thin async REST client for the Floppy API used by the MCP tools.
 
 Configured entirely from environment variables so the server can be pointed
-at any Yamtrack instance:
+at any Floppy instance:
 
-- YAMTRACK_URL: base URL of the instance, e.g. https://yamtrack.example.com
-- YAMTRACK_TOKEN: the user's API token (Settings -> Advanced in the web UI),
+- FLOPPY_URL: base URL of the instance, e.g. https://floppy.example.com
+- FLOPPY_TOKEN: the user's API token (Settings -> Advanced in the web UI),
   sent as an X-API-Key header.
 """
 
@@ -18,37 +18,38 @@ import httpx
 DEFAULT_TIMEOUT = 30.0
 
 
-class YamtrackConfigError(RuntimeError):
+class FloppyConfigError(RuntimeError):
     """Required environment variables are missing."""
 
 
-class YamtrackAPIError(RuntimeError):
-    """The Yamtrack API returned an error response."""
+class FloppyAPIError(RuntimeError):
+    """The Floppy API returned an error response."""
 
     def __init__(self, status_code: int, detail: Any):
         """Store the failed response's status code and parsed body."""
         self.status_code = status_code
         self.detail = detail
-        super().__init__(f"Yamtrack API error {status_code}: {detail}")
+        super().__init__(f"Floppy API error {status_code}: {detail}")
 
 
 def _base_url() -> str:
-    url = os.environ.get("YAMTRACK_URL")
+    # YAMTRACK_* names stay readable so pre-rename configs keep working.
+    url = os.environ.get("FLOPPY_URL") or os.environ.get("YAMTRACK_URL")
     if not url:
-        msg = "YAMTRACK_URL environment variable is required."
-        raise YamtrackConfigError(msg)
+        msg = "FLOPPY_URL environment variable is required."
+        raise FloppyConfigError(msg)
     return url.rstrip("/")
 
 
 def _token() -> str:
-    token = os.environ.get("YAMTRACK_TOKEN")
+    token = os.environ.get("FLOPPY_TOKEN") or os.environ.get("YAMTRACK_TOKEN")
     if not token:
-        msg = "YAMTRACK_TOKEN environment variable is required."
-        raise YamtrackConfigError(msg)
+        msg = "FLOPPY_TOKEN environment variable is required."
+        raise FloppyConfigError(msg)
     return token
 
 
-class YamtrackClient:
+class FloppyClient:
     """Async client for /api/v1/ endpoints, reused across tool calls."""
 
     def __init__(self) -> None:
@@ -99,16 +100,16 @@ class YamtrackClient:
         except ValueError:
             body = response.text
         if response.is_error:
-            raise YamtrackAPIError(response.status_code, body)
+            raise FloppyAPIError(response.status_code, body)
         return body
 
 
-_client: YamtrackClient | None = None
+_client: FloppyClient | None = None
 
 
-def get_client() -> YamtrackClient:
+def get_client() -> FloppyClient:
     """Return the process-wide client instance (created lazily)."""
     global _client  # noqa: PLW0603 — single lazy module-level singleton
     if _client is None:
-        _client = YamtrackClient()
+        _client = FloppyClient()
     return _client

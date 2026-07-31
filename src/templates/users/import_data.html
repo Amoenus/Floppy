@@ -3,7 +3,7 @@
 {% load app_tags %}
 
 {% block title %}
-  Import - Yamtrack
+  Import - Floppy
 {% endblock title %}
 
 {% block settings_content %}
@@ -230,7 +230,7 @@
       </div>
       <p class="text-gray-400 mb-5 text-sm">
         Some of these require additional configuration, check the
-        <a href="https://github.com/dannyvfilms/Yamtrack/wiki/4.-Integrations#import-overview"
+        <a href="https://github.com/dannyvfilms/Floppy/wiki/4.-Integrations#import-overview"
            target="_blank"
            class="text-indigo-400 hover:text-indigo-300 underline">import configuration guide</a>.
       </p>
@@ -1203,7 +1203,7 @@
               <li>Set <code class="text-indigo-200">TRAKT_API</code> and <code class="text-indigo-200">TRAKT_API_SECRET</code> in your environment.</li>
             </ol>
             <p class="text-gray-400">
-              Behind reverse proxies, also set <code class="text-indigo-200">URLS=https://your_domain.com</code> so Yamtrack builds the correct callback URL.
+              Behind reverse proxies, also set <code class="text-indigo-200">URLS=https://your_domain.com</code> so Floppy builds the correct callback URL.
             </p>
           </div>
 
@@ -1465,19 +1465,19 @@
           </form>
         </div>
 
-        {# Yamtrack #}
+        {# Floppy #}
         <div class="bg-[#39404b] p-4 rounded-lg"
              x-show="sourceSupports(['backup', 'screen', 'anime_manga', 'reading', 'games', 'podcasts', 'music'])"
              x-transition.opacity.duration.150ms>
           <div class="flex items-center justify-between mb-3">
             <div class="flex items-center">{% source_display "yamtrack" %}</div>
-            <a href="https://github.com/dannyvfilms/Yamtrack/wiki/6.-Admin-and-Operations#csv-import-yamtrack-format"
+            <a href="https://github.com/dannyvfilms/Floppy/wiki/6.-Admin-and-Operations#csv-import-floppy--yamtrack-format"
                target="_blank"
                class="text-gray-400 hover:text-indigo-400 transition-colors p-1 rounded-md hover:bg-gray-600/50"
                title="View CSV format documentation">{% include "app/icons/info.svg" with classes="w-4 h-4" %}</a>
           </div>
           <p class="text-sm text-gray-400 mb-3"
-             x-text="importFrequency === 'once' ? 'Import from YamTrack backup (media + lists)' : 'File uploads are not available for periodic imports'">
+             x-text="importFrequency === 'once' ? 'Import a Floppy backup, or a CSV exported from Yamtrack (media + lists)' : 'File uploads are not available for periodic imports'">
           </p>
           <form method="post"
                 action="{% url 'import_yamtrack' %}"

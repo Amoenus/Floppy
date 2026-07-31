@@ -1,6 +1,6 @@
 """Stremio scrobbler addon processor.
 
-Stremio has no playback webhook, so Yamtrack serves a minimal addon whose
+Stremio has no playback webhook, so Floppy serves a minimal addon whose
 ``subtitles`` resource is requested when playback starts. The payload built
 by the addon views is ``{"id": "tt123" | "tt123:season:episode", "type":
 "movie" | "series"}``. That is a start-only signal: media is marked

@@ -157,10 +157,14 @@ def get_process_role():
     Roles: "web" (gunicorn), "interactive" (the interactive Celery worker,
     which handles webhook scrobbles and user-triggered rebuilds), and
     "background" (the default Celery worker and beat). Set explicitly via
-    YAMTRACK_PROCESS_ROLE in supervisord; unlabeled celery processes fall
+    FLOPPY_PROCESS_ROLE in supervisord; unlabeled celery processes fall
     back to "background" so they can never starve interactive requests.
     """
-    role = os.environ.get("YAMTRACK_PROCESS_ROLE", "").strip().lower()
+    role = os.environ.get(
+        "FLOPPY_PROCESS_ROLE",
+        os.environ.get("YAMTRACK_PROCESS_ROLE", ""),
+    )
+    role = role.strip().lower()
     if role in {"web", "interactive", "background"}:
         return role
     argv0 = os.path.basename(sys.argv[0]).lower() if sys.argv and sys.argv[0] else ""

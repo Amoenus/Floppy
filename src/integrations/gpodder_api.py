@@ -13,7 +13,7 @@ from app.log_safety import exception_summary, safe_url
 
 logger = logging.getLogger(__name__)
 
-USER_AGENT = "Yamtrack/1.0 (https://github.com/FuzzyGrim/Yamtrack)"
+USER_AGENT = "Floppy/1.0 (https://github.com/dannyvfilms/Floppy)"
 DEFAULT_SERVER_URL = "https://gpodder.net"
 
 
@@ -163,8 +163,8 @@ def verify_login(credentials: GPodderCredentials) -> None:
 
 
 def register_device(credentials: GPodderCredentials, device_id: str) -> None:
-    """Best-effort registration of the Yamtrack device."""
-    payload = {"caption": "Yamtrack", "type": "server"}
+    """Best-effort registration of the Floppy device."""
+    payload = {"caption": "Floppy", "type": "server"}
     _request(
         "POST",
         credentials.server_url,

@@ -267,7 +267,7 @@ def get_missing_linkages(user):
 
 
 def compare_plex_track_count(user, plex_track_count=None):
-    """Compare Yamtrack track counts with Plex data.
+    """Compare Floppy track counts with Plex data.
     
     Args:
         user: Django User instance
@@ -279,7 +279,7 @@ def compare_plex_track_count(user, plex_track_count=None):
     validation = validate_music_library(user)
 
     result = {
-        "yamtrack": {
+        "floppy": {
             "total_music_entries": validation["total_music_entries"],
             "unique_tracks": validation["unique_tracks"],
             "tracks_with_plays": validation["with_plays"],
@@ -292,7 +292,7 @@ def compare_plex_track_count(user, plex_track_count=None):
         }
         result["comparison"] = {
             "difference": validation["unique_tracks"] - plex_track_count,
-            "yamtrack_higher": validation["unique_tracks"] > plex_track_count,
+            "floppy_higher": validation["unique_tracks"] > plex_track_count,
         }
 
     return result

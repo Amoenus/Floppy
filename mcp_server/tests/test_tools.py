@@ -4,7 +4,7 @@ import json
 import respx
 from httpx import Response
 
-from yamtrack_mcp import server
+from floppy_mcp import server
 
 
 def ok(payload=None):

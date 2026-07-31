@@ -97,7 +97,7 @@ class DiscoverRowFeed(Feed):
 
     def title(self, obj):
         """Return the feed title."""
-        return f"{obj['row_definition'].title} - Yamtrack"
+        return f"{obj['row_definition'].title} - Floppy"
 
     def link(self, obj):  # noqa: ARG002
         """Return the Discover page URL."""
@@ -121,13 +121,15 @@ class DiscoverRowFeed(Feed):
         return item.source_reason or item.title
 
     def item_link(self, item):
-        """Return the item's Yamtrack detail URL."""
+        """Return the item's Floppy detail URL."""
         return self.request.build_absolute_uri(media_url(item))
 
     def item_guid(self, item):
         """Return the arr-compatible guid, preferring the TMDB scheme."""
         if item.source == Sources.TMDB.value:
             return f"tmdb://{item.media_id}"
+        # Scheme stays "yamtrack": guids are opaque dedupe keys already held
+        # by subscribers, and changing them re-marks every item unread.
         return f"yamtrack://{item.media_type}/{item.source}/{item.media_id}"
 
     def item_guid_is_permalink(self, item):  # noqa: ARG002

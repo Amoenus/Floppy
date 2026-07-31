@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 from app.models import Episode, ItemTag, MediaTypes, Movie, Sources, Tag
 
-from .base import YamtrackApiTestCase
+from .base import FloppyApiTestCase
 
 SEASON_METADATA = {
     "media_id": "1001",
@@ -44,7 +44,7 @@ def _season_metadata_side_effect(
     return SEASON_METADATA
 
 
-class EpisodeWatchTests(YamtrackApiTestCase):
+class EpisodeWatchTests(FloppyApiTestCase):
     """POST/DELETE episode watch and POST episode drop."""
 
     def _watch(self, episode_number, payload=None, headers=None):
@@ -158,7 +158,7 @@ class EpisodeWatchTests(YamtrackApiTestCase):
         )
 
 
-class TagTests(YamtrackApiTestCase):
+class TagTests(FloppyApiTestCase):
     """Tag CRUD and per-item tag assignment."""
 
     def test_create_list_and_delete_tag(self):
@@ -267,7 +267,7 @@ class TagTests(YamtrackApiTestCase):
         self.assertEqual(response.status_code, HTTP.NOT_FOUND)
 
 
-class HistoryTimelineTests(YamtrackApiTestCase):
+class HistoryTimelineTests(FloppyApiTestCase):
     """GET /history returns the day-grouped consumption timeline."""
 
     def setUp(self):
@@ -313,7 +313,7 @@ class HistoryTimelineTests(YamtrackApiTestCase):
         self.assertEqual(response.status_code, HTTP.BAD_REQUEST)
 
 
-class HistoryRecordDeleteTests(YamtrackApiTestCase):
+class HistoryRecordDeleteTests(FloppyApiTestCase):
     """DELETE /history/{media_type}/{history_id} removes plays."""
 
     def test_delete_movie_play_removes_instance(self):
@@ -366,7 +366,7 @@ class HistoryRecordDeleteTests(YamtrackApiTestCase):
         self.assertEqual(response.status_code, HTTP.BAD_REQUEST)
 
 
-class EpisodeBulkTests(YamtrackApiTestCase):
+class EpisodeBulkTests(FloppyApiTestCase):
     """POST episodes/bulk dispatches the bulk plays task."""
 
     @patch("app.tasks.bulk_episode_plays_task.apply_async")

@@ -24,7 +24,7 @@ DISCOGRAPHY_CACHE_VERSION = 2
 _last_request_time = 0
 
 # User-Agent required by MusicBrainz API
-USER_AGENT = "Yamtrack/1.0 (https://github.com/FuzzyGrim/Yamtrack)"
+USER_AGENT = "Floppy/1.0 (https://github.com/dannyvfilms/Floppy)"
 _GENRE_ACRONYMS = frozenset({"ebm", "edm", "idm", "ndw", "nsbm", "nwobhm", "usbm"})
 _GENRE_PARENT_SUFFIXES = {
     "rock": "Rock",

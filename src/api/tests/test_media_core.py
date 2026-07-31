@@ -3,7 +3,7 @@ from uuid import UUID
 
 from app.models import MediaTypes, Sources, Status
 
-from .base import YamtrackApiTestCase
+from .base import FloppyApiTestCase
 from .helpers import (
     check_changes_history_record_structure,
     check_complete_media_structure,
@@ -14,7 +14,7 @@ from .helpers import (
 )
 
 
-class MediaCoreTests(YamtrackApiTestCase):
+class MediaCoreTests(FloppyApiTestCase):
     """Validate media endpoint behavior for core media types."""
 
     def setUp(self):

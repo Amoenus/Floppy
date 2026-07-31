@@ -1,12 +1,12 @@
 <script>
   // var (not let/const): this script re-executes on boosted navigation
   var RELEASE_YEAR_FETCH_URL = '{% url "fetch_release_year" %}';
-  var releaseYearState = window.__yamtrackReleaseYearState || {
+  var releaseYearState = window.__floppyReleaseYearState || {
     pending: new Set(),
     queue: [],
     processing: false,
   };
-  window.__yamtrackReleaseYearState = releaseYearState;
+  window.__floppyReleaseYearState = releaseYearState;
 
   function processReleaseYearQueue() {
     if (releaseYearState.processing || releaseYearState.queue.length === 0) return;
@@ -81,8 +81,8 @@
     loadVisibleReleaseYears();
   }
 
-  if (!window.__yamtrackReleaseYearsAfterSwapBound) {
-    window.__yamtrackReleaseYearsAfterSwapBound = true;
+  if (!window.__floppyReleaseYearsAfterSwapBound) {
+    window.__floppyReleaseYearsAfterSwapBound = true;
     document.body.addEventListener('htmx:afterSwap', function() {
       setTimeout(loadVisibleReleaseYears, 50);
     });

@@ -1610,7 +1610,7 @@ class PlexHistoryImporter:
         """Snapshot user scores before overwrite deletion wipes the rows.
 
         Plex only supplies ratings present in its own history/library, so a
-        rating set in Yamtrack would otherwise vanish on every periodic
+        rating set in Floppy would otherwise vanish on every periodic
         overwrite import.
         """
         model_by_type = {

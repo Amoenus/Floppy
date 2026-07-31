@@ -737,7 +737,7 @@ class UserGetImportTasksTests(TestCase):
 
     @patch("users.helpers.process_task_result")
     def test_get_import_tasks_yamtrack_user_id_first_in_kwargs(self, mock_process_task_result):
-        """Yamtrack tasks appear in history when user_id comes before the file bytes blob."""
+        """CSV import tasks appear in history when user_id precedes the file bytes blob."""
         processed_task = MagicMock()
         processed_task.summary = "Imported 5 items."
         processed_task.errors = None

@@ -1024,6 +1024,9 @@
   .w-\[calc\(100\%-30px\)\] {
     width: calc(100% - 30px);
   }
+  .w-auto {
+    width: auto;
+  }
   .w-full {
     width: 100%;
   }

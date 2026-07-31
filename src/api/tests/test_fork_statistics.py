@@ -2,10 +2,10 @@
 from http import HTTPStatus as HTTP  # noqa: N814
 from unittest.mock import patch
 
-from .base import YamtrackApiTestCase
+from .base import FloppyApiTestCase
 
 
-class StatisticsOverviewTests(YamtrackApiTestCase):
+class StatisticsOverviewTests(FloppyApiTestCase):
     """GET /statistics/overview."""
 
     def test_default_range_returns_statistics(self):
@@ -54,7 +54,7 @@ class StatisticsOverviewTests(YamtrackApiTestCase):
         self.assertEqual(response.status_code, HTTP.BAD_REQUEST)
 
 
-class StatisticsRefreshTests(YamtrackApiTestCase):
+class StatisticsRefreshTests(FloppyApiTestCase):
     """POST /statistics/refresh."""
 
     @patch("api.fork_views_statistics.statistics_cache.schedule_statistics_refresh")

@@ -2,11 +2,11 @@ from unittest.mock import patch
 
 from django.utils import timezone
 
-from .base import YamtrackApiTestCase
+from .base import FloppyApiTestCase
 from .helpers import check_calendar_event_structure, check_pagination_structure
 
 
-class CalendarTests(YamtrackApiTestCase):
+class CalendarTests(FloppyApiTestCase):
     """Validate calendar endpoint contracts."""
 
     def setUp(self):

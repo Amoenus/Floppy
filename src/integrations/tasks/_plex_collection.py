@@ -29,7 +29,7 @@ def update_collection_metadata_from_plex_webhook(
 
     Args:
         user_id: User ID
-        item_id: Item ID in Yamtrack
+        item_id: Item ID in Floppy
         rating_key: Plex rating key
         plex_uri: Plex server URI
         plex_token: Plex authentication token
@@ -300,7 +300,7 @@ def fetch_collection_metadata_for_item(
 
     Args:
         user_id: User ID
-        item_id: Item ID in Yamtrack
+        item_id: Item ID in Floppy
         lookup_policy: Either ``cached_or_search`` or ``cached_only``
     """
     logger.info(
@@ -409,7 +409,7 @@ def _find_plex_rating_key_for_item(
     available_uris=None,
     lookup_policy="cached_or_search",
 ):
-    """Find Plex rating key for a Yamtrack item.
+    """Find Plex rating key for a Floppy item.
 
     Checks cached rating keys first, then searches Plex library if needed.
 
@@ -906,9 +906,9 @@ def _aggregate_tv_show_collection_metadata(
 
 @shared_task(name="Update collection metadata from Plex")
 def update_collection_metadata_from_plex(library, user_id):
-    """Update collection metadata for existing Yamtrack items from Plex server.
+    """Update collection metadata for existing Floppy items from Plex server.
 
-    This task queries the Plex server for items that match existing Yamtrack items
+    This task queries the Plex server for items that match existing Floppy items
     and updates their collection metadata without performing a full import.
 
     Args:

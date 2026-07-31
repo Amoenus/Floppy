@@ -13,7 +13,7 @@ from django.conf import settings
 logger = logging.getLogger(__name__)
 
 LASTFM_API_BASE = "https://ws.audioscrobbler.com/2.0/"
-USER_AGENT = "Yamtrack/1.0 (https://github.com/FuzzyGrim/Yamtrack)"
+USER_AGENT = "Floppy/1.0 (https://github.com/dannyvfilms/Floppy)"
 
 
 class LastFMAPIError(Exception):

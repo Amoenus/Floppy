@@ -243,7 +243,7 @@ class GPodderImporter:
         return episode
 
     def _process_action(self, action, subscriptions):
-        """Apply a single GPodder play action to Yamtrack history."""
+        """Apply a single GPodder play action to Floppy history."""
         action_time = self._parse_action_timestamp(action)
         if action_time is None:
             return False

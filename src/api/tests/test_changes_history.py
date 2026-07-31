@@ -1,8 +1,8 @@
-from .base import YamtrackApiTestCase
+from .base import FloppyApiTestCase
 from .helpers import check_changes_history_entry_structure, check_pagination_structure
 
 
-class ChangesHistoryTests(YamtrackApiTestCase):
+class ChangesHistoryTests(FloppyApiTestCase):
     """Validate changes history endpoint contracts."""
 
     def test_changes_history_get(self):

@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 ITUNES_API_BASE = "https://itunes.apple.com/search"
 ITUNES_LOOKUP_BASE = "https://itunes.apple.com/lookup"
-USER_AGENT = "Yamtrack/1.0 (https://github.com/FuzzyGrim/Yamtrack)"
+USER_AGENT = "Floppy/1.0 (https://github.com/dannyvfilms/Floppy)"
 
 
 def handle_error(error):

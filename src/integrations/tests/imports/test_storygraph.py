@@ -57,7 +57,7 @@ class ParseFields(SimpleTestCase):
     """Tests for the remaining column parsers."""
 
     def test_status_mapping(self):
-        """Each StoryGraph read status maps to a Yamtrack status."""
+        """Each StoryGraph read status maps to a Floppy status."""
         self.assertEqual(storygraph.determine_status("read"), Status.COMPLETED.value)
         self.assertEqual(
             storygraph.determine_status("currently-reading"),
@@ -76,7 +76,7 @@ class ParseFields(SimpleTestCase):
         self.assertEqual(storygraph.determine_status("nonsense"), Status.PLANNING.value)
 
     def test_rating_doubled_to_ten_point_scale(self):
-        """StoryGraph rates 0-5 with halves; Yamtrack scores 0-10."""
+        """StoryGraph rates 0-5 with halves; Floppy scores 0-10."""
         self.assertEqual(storygraph.parse_rating("4.5"), 9.0)
         self.assertEqual(storygraph.parse_rating("5.0"), 10.0)
         self.assertIsNone(storygraph.parse_rating(""))
@@ -109,7 +109,7 @@ class ParseFields(SimpleTestCase):
         self.assertEqual(storygraph.normalize_isbn(""), "")
 
     def test_format_mapping(self):
-        """StoryGraph formats map onto the values Yamtrack already uses."""
+        """StoryGraph formats map onto the values Floppy already uses."""
         self.assertEqual(storygraph.map_format("digital"), "ebook")
         self.assertEqual(storygraph.map_format("audio"), "audiobook")
         self.assertEqual(storygraph.map_format("paperback"), "paperback")

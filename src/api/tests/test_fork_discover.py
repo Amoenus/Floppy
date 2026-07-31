@@ -4,10 +4,10 @@ from unittest.mock import patch
 
 from app.models import CollectionEntry, DiscoverFeedback, MediaTypes
 
-from .base import YamtrackApiTestCase
+from .base import FloppyApiTestCase
 
 
-class CollectionStatusTests(YamtrackApiTestCase):
+class CollectionStatusTests(FloppyApiTestCase):
     """GET collection/status/{item_id}."""
 
     def test_status_reflects_collection(self):
@@ -42,7 +42,7 @@ class CollectionStatusTests(YamtrackApiTestCase):
         self.assertEqual(response.status_code, HTTP.NOT_FOUND)
 
 
-class CollectionSeasonTests(YamtrackApiTestCase):
+class CollectionSeasonTests(FloppyApiTestCase):
     """DELETE collection/seasons/{season_item_id}."""
 
     def test_no_sonarr_entries_not_found(self):
@@ -57,7 +57,7 @@ class CollectionSeasonTests(YamtrackApiTestCase):
         self.assertEqual(response.status_code, HTTP.NOT_FOUND)
 
 
-class DiscoverTests(YamtrackApiTestCase):
+class DiscoverTests(FloppyApiTestCase):
     """Discover rows, refresh, and hidden toggles."""
 
     @patch("api.fork_views_discover._discover_response_rows", return_value=[])
@@ -129,7 +129,7 @@ class DiscoverTests(YamtrackApiTestCase):
         self.assertEqual(response.status_code, HTTP.BAD_REQUEST)
 
 
-class HomeTests(YamtrackApiTestCase):
+class HomeTests(FloppyApiTestCase):
     """GET /home returns serialized home groups."""
 
     def test_home_groups(self):

@@ -4,10 +4,10 @@ from unittest.mock import patch
 
 from app.models import MediaTypes
 
-from .base import YamtrackApiTestCase
+from .base import FloppyApiTestCase
 
 
-class PreferencesTests(YamtrackApiTestCase):
+class PreferencesTests(FloppyApiTestCase):
     """GET/PATCH user/preferences."""
 
     def test_get_preferences_with_choices(self):
@@ -74,7 +74,7 @@ class PreferencesTests(YamtrackApiTestCase):
         self.assertEqual(rejected.status_code, HTTP.BAD_REQUEST)
 
 
-class SidebarTests(YamtrackApiTestCase):
+class SidebarTests(FloppyApiTestCase):
     """GET/PUT user/sidebar."""
 
     def test_toggle_media_type(self):
@@ -103,7 +103,7 @@ class SidebarTests(YamtrackApiTestCase):
         self.assertEqual(response.status_code, HTTP.BAD_REQUEST)
 
 
-class NotificationsTests(YamtrackApiTestCase):
+class NotificationsTests(FloppyApiTestCase):
     """Notification settings, exclusions, and test send."""
 
     def test_patch_notification_settings(self):
@@ -174,7 +174,7 @@ class NotificationsTests(YamtrackApiTestCase):
         self.assertTrue(response.json()["sent"])
 
 
-class TokenRegenerateTests(YamtrackApiTestCase):
+class TokenRegenerateTests(FloppyApiTestCase):
     """POST user/token/regenerate."""
 
     def test_regenerate_rotates_token(self):

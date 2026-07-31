@@ -1,4 +1,4 @@
-name: "Yamtrack CodeQL Config"
+name: "Floppy CodeQL Config"
 
 query-filters:
   # py/clear-text-logging-of-sensitive-data generates ~340 false positives because

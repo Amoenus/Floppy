@@ -58,7 +58,12 @@ COPY ./nginx.conf /etc/nginx/nginx.conf
 # Generate a copy of the nginx config with IPv6 support.
 RUN sed 's/listen 8000;/listen 8000; listen [::]:8000;/' /etc/nginx/nginx.conf > /etc/nginx/nginx.ipv6.conf
 
-WORKDIR /yamtrack
+WORKDIR /floppy
+
+# Legacy compat: pre-rename compose files bind-mount ./db to /yamtrack/db.
+# Without this symlink such a mount lands on a stale path and the app
+# silently creates an empty database.
+RUN ln -s /floppy /yamtrack
 
 RUN apk add --no-cache nginx shadow \
     && pip install --no-cache-dir -r /requirements.txt \
@@ -72,7 +77,7 @@ RUN apk add --no-cache nginx shadow \
     && mkdir -p /var/log/nginx \
     && mkdir -p /var/lib/nginx/body
 
-COPY --from=repo_meta /repo_owner /etc/yamtrack/fork_owner
+COPY --from=repo_meta /repo_owner /etc/floppy/fork_owner
 
 # Django app
 COPY src ./

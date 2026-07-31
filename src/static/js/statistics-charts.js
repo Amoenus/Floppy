@@ -7,14 +7,14 @@ function initStatisticsCharts() {
 
   // Destroy charts from a previous visit (their canvases were detached by a
   // boosted body swap) before creating new instances.
-  (window.__yamtrackStatsCharts || []).forEach(function (chart) {
+  (window.__floppyStatsCharts || []).forEach(function (chart) {
     try {
       chart.destroy();
     } catch (error) {
       console.debug("[stats] failed to destroy stale chart", error);
     }
   });
-  window.__yamtrackStatsCharts = [];
+  window.__floppyStatsCharts = [];
 
   // Custom external tooltip for bar charts
   function customBarTooltip(context) {
@@ -172,7 +172,7 @@ function initStatisticsCharts() {
         data: data,
         options: options,
       });
-      window.__yamtrackStatsCharts.push(chart);
+      window.__floppyStatsCharts.push(chart);
       return chart;
     }
     return null;
@@ -993,7 +993,7 @@ function initStatisticsCharts() {
           document.getElementById(spec.canvasId).getContext("2d"),
           { type: "bar", data: processed, options: chartOptions }
         );
-        window.__yamtrackStatsCharts.push(chart);
+        window.__floppyStatsCharts.push(chart);
         combinedChartInstances[spec.key] = chart;
       }
     }
@@ -1158,7 +1158,7 @@ function initStatisticsCharts() {
             elements: { arc: { borderWidth: 1, borderColor: "rgba(0,0,0,0.15)" } },
           },
         });
-        window.__yamtrackStatsCharts.push(donutChartInstance);
+        window.__floppyStatsCharts.push(donutChartInstance);
       }
     }
 
@@ -1363,7 +1363,7 @@ function initStatisticsCharts() {
             elements: { arc: { borderWidth: 1, borderColor: "rgba(0,0,0,0.15)" } },
           },
         });
-        window.__yamtrackStatsCharts.push(statusCompositionChartInstance);
+        window.__floppyStatsCharts.push(statusCompositionChartInstance);
       }
 
       if (legendEl) {
@@ -1620,7 +1620,7 @@ function initStatisticsCharts() {
           data: chartData,
           options: chartOptions,
         });
-        window.__yamtrackStatsCharts.push(ratingDistributionChartInstance);
+        window.__floppyStatsCharts.push(ratingDistributionChartInstance);
       }
     }
 
@@ -1833,7 +1833,7 @@ function initStatisticsCharts() {
         },
       });
       featuredPersonRingCanvas = canvas;
-      window.__yamtrackStatsCharts.push(featuredPersonRingChart);
+      window.__floppyStatsCharts.push(featuredPersonRingChart);
     };
 
     if (document.getElementById("featuredPersonRingChart")) {
@@ -1847,15 +1847,15 @@ function initStatisticsCharts() {
   matchScoreCopyHeight();
   // Re-bind through a window-level reference so the resize listener is only
   // attached once but always uses the current page's sizing function.
-  window.__yamtrackStatsFit = matchScoreCopyHeight;
-  if (!window.__yamtrackStatsResizeBound) {
-    window.__yamtrackStatsResizeBound = true;
+  window.__floppyStatsFit = matchScoreCopyHeight;
+  if (!window.__floppyStatsResizeBound) {
+    window.__floppyStatsResizeBound = true;
     window.addEventListener("resize", function () {
       // Debounce-ish
       clearTimeout(window._scoreCopyResizeTimer);
       window._scoreCopyResizeTimer = setTimeout(function () {
-        if (window.__yamtrackStatsFit) {
-          window.__yamtrackStatsFit();
+        if (window.__floppyStatsFit) {
+          window.__floppyStatsFit();
         }
       }, 120);
     });

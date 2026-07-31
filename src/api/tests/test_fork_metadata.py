@@ -12,10 +12,10 @@ from app.models import (
     Sources,
 )
 
-from .base import YamtrackApiTestCase
+from .base import FloppyApiTestCase
 
 
-class ItemImageTests(YamtrackApiTestCase):
+class ItemImageTests(FloppyApiTestCase):
     """PATCH /metadata/items/{id}/image overrides the stored image."""
 
     def test_update_image(self):
@@ -57,7 +57,7 @@ class ItemImageTests(YamtrackApiTestCase):
         self.assertEqual(response.status_code, HTTP.BAD_REQUEST)
 
 
-class ItemMetadataTests(YamtrackApiTestCase):
+class ItemMetadataTests(FloppyApiTestCase):
     """PATCH /metadata/items/{id} applies custom-metadata overrides."""
 
     def setUp(self):
@@ -101,7 +101,7 @@ class ItemMetadataTests(YamtrackApiTestCase):
         )
 
 
-class ProviderPreferenceTests(YamtrackApiTestCase):
+class ProviderPreferenceTests(FloppyApiTestCase):
     """GET/PUT media provider-preference."""
 
     def test_get_default_preference(self):
@@ -159,7 +159,7 @@ class ProviderPreferenceTests(YamtrackApiTestCase):
         self.assertEqual(response.status_code, HTTP.BAD_REQUEST)
 
 
-class EpisodeScoreTests(YamtrackApiTestCase):
+class EpisodeScoreTests(FloppyApiTestCase):
     """PATCH episode score updates all plays of the episode."""
 
     def _patch_score(self, payload, headers=None):
@@ -224,7 +224,7 @@ class EpisodeScoreTests(YamtrackApiTestCase):
         self.assertEqual(response.status_code, HTTP.NOT_FOUND)
 
 
-class EpisodePatchScoreTests(YamtrackApiTestCase):
+class EpisodePatchScoreTests(FloppyApiTestCase):
     """The generic episode PATCH accepts the fork's score/dropped fields."""
 
     @patch("api.views.services.get_media_metadata")

@@ -4,7 +4,7 @@
 {% load user_tags %}
 
 {% block title %}
-  Statistics - Yamtrack
+  Statistics - Floppy
 {% endblock title %}
 
 {% block content %}
@@ -2173,8 +2173,8 @@
       });
     }
 
-    if (!window.__yamtrackStatsCardFitBound) {
-      window.__yamtrackStatsCardFitBound = true;
+    if (!window.__floppyStatsCardFitBound) {
+      window.__floppyStatsCardFitBound = true;
       window.addEventListener("resize", () => scheduleStatisticsMediaCardFit(), { passive: true });
       window.addEventListener("load", () => scheduleStatisticsMediaCardFit());
     }

@@ -14,7 +14,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: dannyvfilms/yamtrack
+  IMAGE_NAME: dannyvfilms/floppy
 
 jobs:
   build:

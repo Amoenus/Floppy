@@ -13,19 +13,21 @@ from app.templatetags.app_tags import media_url
 from lists.models import CustomList, CustomListItem
 
 
-class YamtrackRssFeed(Rss201rev2Feed):
-    """RSS feed generator with Yamtrack-specific item metadata."""
+class FloppyRssFeed(Rss201rev2Feed):
+    """RSS feed generator with Floppy-specific item metadata."""
 
+    # The namespace URI and "yamtrack:" prefix are a published contract:
+    # existing subscribers parse against them, so they survive the rename.
     yamtrack_namespace = "https://yamtrack.dannyvfilms.com/ns/rss"
 
     def rss_attributes(self):
-        """Expose the Yamtrack namespace on the RSS root element."""
+        """Expose the feed namespace on the RSS root element."""
         attrs = super().rss_attributes()
         attrs["xmlns:yamtrack"] = self.yamtrack_namespace
         return attrs
 
     def add_item_elements(self, handler, item):
-        """Add standard RSS elements plus Yamtrack extensions."""
+        """Add standard RSS elements plus Floppy extensions."""
         super().add_item_elements(handler, item)
         handler.addQuickElement("yamtrack:status", item.get("status", ""))
         handler.addQuickElement("yamtrack:image_url", item.get("image_url", ""))
@@ -35,7 +37,7 @@ class YamtrackRssFeed(Rss201rev2Feed):
 class PublicListFeed(Feed):
     """RSS feed for public custom lists."""
 
-    feed_type = YamtrackRssFeed
+    feed_type = FloppyRssFeed
 
     def _attach_owner_media_statuses(self, list_items, owner):
         """Attach owner tracking status and metadata to feed items."""
@@ -108,7 +110,7 @@ class PublicListFeed(Feed):
 
     def title(self, obj):
         """Return the feed title."""
-        return f"{obj.name} - Yamtrack"
+        return f"{obj.name} - Floppy"
 
     def link(self, obj):
         """Return the list detail URL."""

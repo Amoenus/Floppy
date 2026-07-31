@@ -1,8 +1,8 @@
-from .base import YamtrackApiTestCase
+from .base import FloppyApiTestCase
 from .helpers import check_statistics_structure
 
 
-class StatisticsTests(YamtrackApiTestCase):
+class StatisticsTests(FloppyApiTestCase):
     """Validate statistics endpoint contracts."""
 
     def test_statistics_unauthenticated_returns_forbidden(self):

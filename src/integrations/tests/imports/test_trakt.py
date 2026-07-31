@@ -981,7 +981,7 @@ class ImportTrakt(TestCase):
         from integrations.imports.trakt import importer
 
         TMDB_ID = 55505
-        # No pre-existing DB rows — simulates a brand-new Yamtrack account
+        # No pre-existing DB rows — simulates a brand-new Floppy account
 
         episode_entry = {
             "type": "episode",

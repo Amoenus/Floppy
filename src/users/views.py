@@ -516,9 +516,9 @@ def test_notification(request):
 
         # Send test notification
         result = apobj.notify(
-            title="YamTrack Test Notification",
+            title="Floppy Test Notification",
             body=(
-                "<p>This is a test notification from YamTrack.</p>"
+                "<p>This is a test notification from Floppy.</p>"
                 "<p>If you're seeing this, "
                 "your notifications are working correctly!</p>"
             ),
@@ -1301,7 +1301,7 @@ def create_export_schedule(request):
                 include_collection=include_collection,
             ),
             content_type="text/csv",
-            headers={"Content-Disposition": f'attachment; filename="yamtrack_{now}.csv"'},
+            headers={"Content-Disposition": f'attachment; filename="floppy_{now}.csv"'},
         )
 
     if frequency == "once":

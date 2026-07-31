@@ -4,7 +4,7 @@
 {% load user_tags %}
 
 {% block title %}
-  Integrations - Yamtrack
+  Integrations - Floppy
 {% endblock title %}
 
 {% block settings_content %}
@@ -133,7 +133,7 @@
           <li>
             Configure the webhook with the following settings:
             <ul class="list-disc list-inside ml-6 mt-2 space-y-1 text-gray-400">
-              <li>Name: <strong>Yamtrack</strong></li>
+              <li>Name: <strong>Floppy</strong></li>
               <li>Notification Type: <strong>Playback Start</strong>, <strong>Playback Stop</strong>, and <strong>Playback Progress</strong></li>
               <li>User Filter: your Jellyfin user</li>
             </ul>
@@ -235,14 +235,14 @@
       </div>
     </div>
 
-    {# Jellyfin push (Yamtrack -> Jellyfin) #}
+    {# Jellyfin push (Floppy -> Jellyfin) #}
     <div class="bg-[#39404b] p-5 rounded-lg mb-6"
          x-show="activeIntegration === 'all' || activeIntegration === 'jellyfin'"
          x-transition.opacity.duration.150ms>
       <div class="flex items-center justify-between mb-3">
         <div class="flex items-center">
           {% include "app/icons/server.svg" with classes="w-5 h-5 text-indigo-400 mr-2" %}
-          <h3 class="text-base font-medium">Yamtrack &rarr; Jellyfin</h3>
+          <h3 class="text-base font-medium">Floppy &rarr; Jellyfin</h3>
         </div>
         {% if jellyfin_account and jellyfin_account.is_connected %}
           <span class="px-2 py-1 text-xs rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">Connected</span>
@@ -250,7 +250,7 @@
           <span class="px-2 py-1 text-xs rounded bg-gray-500/20 text-gray-300 border border-gray-600/50">Disconnected</span>
         {% endif %}
       </div>
-      <p class="text-gray-400 mb-4 text-sm">Push your Yamtrack watched status onto a Jellyfin server, e.g. after re-adding media or setting up a fresh Jellyfin instance.</p>
+      <p class="text-gray-400 mb-4 text-sm">Push your Floppy watched status onto a Jellyfin server, e.g. after re-adding media or setting up a fresh Jellyfin instance.</p>
       <div class="bg-[#262a2f] p-4 rounded-md space-y-3">
         {% if jellyfin_account %}
           <div class="flex items-center gap-2 text-sm text-gray-400">
@@ -647,7 +647,7 @@
         <h3 class="text-base font-medium">Stremio Integration</h3>
       </div>
       <p class="text-gray-400 mb-4 text-sm">
-        Install the Yamtrack Scrobbler addon in Stremio to mark movies and episodes as in progress the moment playback starts.
+        Install the Floppy Scrobbler addon in Stremio to mark movies and episodes as in progress the moment playback starts.
         Pair it with the Stremio import on the <a href="{% url 'import_data' %}" class="text-indigo-400 hover:underline">Import page</a>, which syncs watched state from your Stremio library every 2 hours.
       </p>
       <div class="bg-[#262a2f] p-4 rounded-md">
@@ -667,7 +667,7 @@
             {# djlint:on #}
           </li>
           <li>In Stremio, open <strong>Addons</strong>, paste the URL into the search box at the top, and click <strong>Install</strong>.</li>
-          <li>Yamtrack must be reachable from your Stremio device over <strong>HTTPS</strong> (plain HTTP only works for localhost).</li>
+          <li>Floppy must be reachable from your Stremio device over <strong>HTTPS</strong> (plain HTTP only works for localhost).</li>
           <li>Playback start marks the item in progress; the recurring library import marks items watched.</li>
         </ol>
       </div>
@@ -681,7 +681,7 @@
         {% include "app/icons/server.svg" with classes="w-5 h-5 text-indigo-400 mr-2" %}
         <h3 class="text-base font-medium">Jellyseerr Integration</h3>
       </div>
-      <p class="text-gray-400 mb-4 text-sm">Use a Jellyseerr webhook to automatically add requested/approved media into Yamtrack.</p>
+      <p class="text-gray-400 mb-4 text-sm">Use a Jellyseerr webhook to automatically add requested/approved media into Floppy.</p>
 
       <div class="bg-[#262a2f] p-4 rounded-md mb-4">
         <h4 class="text-sm font-medium mb-3">Jellyseerr Settings</h4>
@@ -693,7 +693,7 @@
               Auto-add requested media
             </label>
             <p class="text-gray-400 text-sm mb-2">
-              Controls whether Jellyseerr webhooks are allowed to add items to your Yamtrack list.
+              Controls whether Jellyseerr webhooks are allowed to add items to your Floppy list.
             </p>
 
             <div class="relative"
@@ -784,7 +784,7 @@
 
           <div>
             <label for="jellyseerr_default_added_status" class="block text-gray-200 text-sm font-medium mb-1">
-              Default Yamtrack status for added items
+              Default Floppy status for added items
             </label>
             <div class="relative" x-data="{ open: false, selectedValue: '{{ request.user.jellyseerr_default_added_status|default:"Planning" }}', selectedLabel: '{{ request.user.jellyseerr_default_added_status|default:"Planning" }}' }">
               <button type="button"
@@ -884,7 +884,7 @@
 }
 {% endverbatim %}</textarea>
               <p class="text-gray-400 text-sm mt-3">
-                Important: Jellyseerr's default payload will not work with Yamtrack. You must use the template above.
+                Important: Jellyseerr's default payload will not work with Floppy. You must use the template above.
                 If you see logs like <code class="px-1 rounded bg-black/30">unsupported media_type='{media_type}'</code>,
                 Jellyseerr is sending the literal template (it was pasted/escaped incorrectly).
               </p>

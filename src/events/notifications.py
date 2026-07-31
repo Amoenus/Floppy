@@ -48,7 +48,7 @@ def send_releases():
     result = send_notifications(
         events=events,
         users=users,
-        title="🔔 YamTrack: New Releases Available! 🔔",
+        title="🔔 Floppy: New Releases Available! 🔔",
     )
 
     # Mark events as notified
@@ -103,7 +103,7 @@ def send_daily_digest():
     if not events.exists():
         return "No releases scheduled for today"
 
-    title = "📆 YamTrack: Today's Releases 📆"
+    title = "📆 Floppy: Today's Releases 📆"
 
     result = send_notifications(
         events=events,

@@ -918,11 +918,11 @@ def import_kitsu(request):
 
 @require_POST
 def import_yamtrack(request):
-    """View for importing anime and manga data from Yamtrack CSV."""
+    """View for importing a Floppy backup or an upstream Yamtrack CSV."""
     file = request.FILES.get("yamtrack_csv")
 
     if not file:
-        messages.error(request, "Yamtrack CSV file is required.")
+        messages.error(request, "A CSV file is required.")
         return redirect("import_data")
 
     mode = request.POST["mode"]
@@ -933,7 +933,7 @@ def import_yamtrack(request):
     )
     messages.info(
         request,
-        "The task to import media from Yamtrack CSV file has been queued.",
+        "The task to import media from the CSV file has been queued.",
     )
     return redirect("import_data")
 
@@ -1767,6 +1767,8 @@ def gpodder_connect(request):
         messages.error(request, f"Failed to connect to GPodder: {exc}")
         return redirect("import_data")
 
+    # Device id stays "yamtrack-<id>": it is registered on the remote
+    # GPodder server, and a new id would start a fresh sync from scratch.
     device_id = f"yamtrack-{request.user.id}"
 
     try:
@@ -2179,7 +2181,7 @@ def import_template_csv(request):
     """View for downloading a sample CSV demonstrating the import format."""
     content = exports.generate_sample_template()
     response = HttpResponse(content, content_type="text/csv")
-    response["Content-Disposition"] = 'attachment; filename="yamtrack_import_template.csv"'
+    response["Content-Disposition"] = 'attachment; filename="floppy_import_template.csv"'
     return response
 
 
@@ -2208,7 +2210,7 @@ def export_csv(request):
             include_collection=include_collection,
         ),
         content_type="text/csv",
-        headers={"Content-Disposition": f'attachment; filename="yamtrack_{now}.csv"'},
+        headers={"Content-Disposition": f'attachment; filename="floppy_{now}.csv"'},
     )
     logger.info("User %s started CSV export", request.user.username)
     return response
@@ -2362,11 +2364,13 @@ def kodi_webhook(request, token):
 
 
 STREMIO_ADDON_MANIFEST = {
+    # Id stays "org.yamtrack.scrobbler": Stremio clients key installed
+    # addons by it, and changing it would force everyone to reinstall.
     "id": "org.yamtrack.scrobbler",
     "version": "1.0.0",
-    "name": "Yamtrack Scrobbler",
+    "name": "Floppy Scrobbler",
     "description": (
-        "Marks movies and episodes as in progress on Yamtrack when playback "
+        "Marks movies and episodes as in progress on Floppy when playback "
         "starts in Stremio."
     ),
     "resources": ["subtitles"],

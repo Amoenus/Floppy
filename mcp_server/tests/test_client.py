@@ -2,22 +2,22 @@ import pytest
 import respx
 from httpx import Response
 
-from yamtrack_mcp.client import (
-    YamtrackAPIError,
-    YamtrackConfigError,
+from floppy_mcp.client import (
+    FloppyAPIError,
+    FloppyConfigError,
     get_client,
 )
 
 
 async def test_missing_url_raises(monkeypatch):
-    monkeypatch.delenv("YAMTRACK_URL", raising=False)
-    with pytest.raises(YamtrackConfigError):
+    monkeypatch.delenv("FLOPPY_URL", raising=False)
+    with pytest.raises(FloppyConfigError):
         await get_client().request("get", "media")
 
 
 async def test_missing_token_raises(monkeypatch):
-    monkeypatch.delenv("YAMTRACK_TOKEN", raising=False)
-    with pytest.raises(YamtrackConfigError):
+    monkeypatch.delenv("FLOPPY_TOKEN", raising=False)
+    with pytest.raises(FloppyConfigError):
         await get_client().request("get", "media")
 
 
@@ -43,7 +43,7 @@ async def test_error_response_raises_with_detail(api_base_url):
         respx.get(f"{api_base_url}/media/movie/tmdb/999").mock(
             return_value=Response(404, json={"detail": "Item not found."}),
         )
-        with pytest.raises(YamtrackAPIError) as exc_info:
+        with pytest.raises(FloppyAPIError) as exc_info:
             await get_client().request("get", "media/movie/tmdb/999")
         assert exc_info.value.status_code == 404
         assert exc_info.value.detail == {"detail": "Item not found."}

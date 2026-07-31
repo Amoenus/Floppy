@@ -111,7 +111,7 @@ class GoodReadsImporter:
         return imported_counts, deduplicated_messages
 
     def _row_description(self, row):
-        """Return a useful label for warnings without assuming Yamtrack fields."""
+        """Return a useful label for warnings without assuming Floppy fields."""
         title = row.get("Title")
         book_id = row.get("Book Id")
 

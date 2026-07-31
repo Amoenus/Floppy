@@ -26,7 +26,7 @@ from events.models import Event
 from lists.models import CustomList, CustomListItem
 
 
-class YamtrackApiTestCase(APITestCase):
+class FloppyApiTestCase(APITestCase):
     """Shared setup and request helpers for API endpoint tests."""
 
     def setUp(self):

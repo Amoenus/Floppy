@@ -11,10 +11,10 @@ from app.models import (
     Track,
 )
 
-from .base import YamtrackApiTestCase
+from .base import FloppyApiTestCase
 
 
-class MusicApiTestCase(YamtrackApiTestCase):
+class MusicApiTestCase(FloppyApiTestCase):
     """Shared music catalog fixtures."""
 
     def setUp(self):

@@ -38,16 +38,16 @@ class AutoLoginMiddlewareTest(TestCase):
         middleware = AutoLoginMiddleware(lambda _request: None)
         middleware(request)
 
-    @override_settings(YAMTRACK_AUTO_LOGIN_USERNAME=None)
+    @override_settings(FLOPPY_AUTO_LOGIN_USERNAME=None)
     def test_env_var_unset(self):
-        """Test that no auto-login occurs when YAMTRACK_AUTO_LOGIN_USERNAME is unset."""
+        """Test that no auto-login occurs when FLOPPY_AUTO_LOGIN_USERNAME is unset."""
         request = self.get_request()
 
         self.run_middleware(request)
 
         self.assertFalse(request.user.is_authenticated)
 
-    @override_settings(YAMTRACK_AUTO_LOGIN_USERNAME="active_user")
+    @override_settings(FLOPPY_AUTO_LOGIN_USERNAME="active_user")
     def test_existing_active_user(self):
         """Test that auto-login works with an existing active user."""
         request = self.get_request()
@@ -57,7 +57,7 @@ class AutoLoginMiddlewareTest(TestCase):
         self.assertTrue(request.user.is_authenticated)
         self.assertEqual(request.user, self.existing_active_user)
 
-    @override_settings(YAMTRACK_AUTO_LOGIN_USERNAME="missing_user")
+    @override_settings(FLOPPY_AUTO_LOGIN_USERNAME="missing_user")
     def test_missing_user(self):
         """Test that no auto-login occurs with a missing user."""
         request = self.get_request()
@@ -66,7 +66,7 @@ class AutoLoginMiddlewareTest(TestCase):
 
         self.assertFalse(request.user.is_authenticated)
 
-    @override_settings(YAMTRACK_AUTO_LOGIN_USERNAME="inactive_user")
+    @override_settings(FLOPPY_AUTO_LOGIN_USERNAME="inactive_user")
     def test_inactive_user(self):
         """Test that no auto-login occurs with an inactive user."""
         request = self.get_request()

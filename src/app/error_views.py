@@ -199,8 +199,8 @@ def page_not_found(request: HttpRequest, exception: BaseException) -> HttpRespon
 
 def server_error(request: HttpRequest) -> HttpResponse:
     """Render the custom 500 page."""
-    exception = getattr(request, "_yamtrack_captured_exception", None)
-    traceback_text = getattr(request, "_yamtrack_captured_traceback", None)
+    exception = getattr(request, "_floppy_captured_exception", None)
+    traceback_text = getattr(request, "_floppy_captured_traceback", None)
     return render_error_page(
         request,
         "500.html",
@@ -279,7 +279,7 @@ def csrf_failure(
         error_message=(
             "CSRF verification failed for this request. This usually means the CSRF "
             "cookie was missing, expired, or didn't match the form token. If "
-            "Yamtrack is behind an HTTPS reverse proxy, set the CSRF (or URLS) "
+            "Floppy is behind an HTTPS reverse proxy, set the CSRF (or URLS) "
             "environment variable to the address you use to reach it, and set "
             "USE_X_FORWARDED=true."
         ),

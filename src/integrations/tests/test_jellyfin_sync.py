@@ -59,7 +59,7 @@ def _jellyfin_episode(
 
 
 class JellyfinPushSyncServiceTests(TestCase):
-    """Cover the Yamtrack -> Jellyfin watched-state push sync."""
+    """Cover the Floppy -> Jellyfin watched-state push sync."""
 
     def setUp(self):
         """Create a user with a connected Jellyfin account and a watched movie."""
@@ -87,7 +87,7 @@ class JellyfinPushSyncServiceTests(TestCase):
     @patch("integrations.jellyfin_sync.JellyfinClient.mark_played")
     @patch("integrations.jellyfin_sync.JellyfinClient.iter_library_items")
     def test_pushes_watched_movie_not_yet_played(self, mock_items, mock_mark_played):
-        """A completed Yamtrack movie should mark the matching Jellyfin item played."""
+        """A completed Floppy movie should mark the matching Jellyfin item played."""
         mock_items.return_value = iter([_jellyfin_movie("jf-1", "603", played=False)])
 
         counts, warnings = JellyfinPushSyncService(self.user, self.account).sync()
@@ -123,7 +123,7 @@ class JellyfinPushSyncServiceTests(TestCase):
     @patch("integrations.jellyfin_sync.JellyfinClient.mark_unplayed")
     @patch("integrations.jellyfin_sync.JellyfinClient.iter_library_items")
     def test_unwatched_push_when_enabled(self, mock_items, mock_mark_unplayed):
-        """Enabling push_unwatched should clear played state Yamtrack no longer has."""
+        """Enabling push_unwatched should clear played state Floppy no longer has."""
         self.account.push_unwatched_enabled = True
         self.account.save(update_fields=["push_unwatched_enabled"])
         self.movie.status = Status.IN_PROGRESS.value

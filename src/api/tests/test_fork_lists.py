@@ -10,10 +10,10 @@ from lists.models import (
     ListRecommendation,
 )
 
-from .base import YamtrackApiTestCase
+from .base import FloppyApiTestCase
 
 
-class SmartRulesTests(YamtrackApiTestCase):
+class SmartRulesTests(FloppyApiTestCase):
     """GET/PUT smart-rules and POST smart-sync."""
 
     def setUp(self):
@@ -85,7 +85,7 @@ class SmartRulesTests(YamtrackApiTestCase):
         self.assertEqual(response.status_code, HTTP.NOT_FOUND)
 
 
-class CollaboratorTests(YamtrackApiTestCase):
+class CollaboratorTests(FloppyApiTestCase):
     """GET/PUT collaborators."""
 
     def test_get_collaborators(self):
@@ -142,7 +142,7 @@ class CollaboratorTests(YamtrackApiTestCase):
         self.assertEqual(response.json()["missing"], ["nobody-here"])
 
 
-class ReorderTests(YamtrackApiTestCase):
+class ReorderTests(FloppyApiTestCase):
     """Reorder endpoints."""
 
     def _ordered_item_ids(self, custom_list):
@@ -188,7 +188,7 @@ class ReorderTests(YamtrackApiTestCase):
         self.assertEqual(self._ordered_item_ids(favorites), desired)
 
 
-class RecommendationTests(YamtrackApiTestCase):
+class RecommendationTests(FloppyApiTestCase):
     """Recommendation submit/list/approve/deny and activity."""
 
     def setUp(self):

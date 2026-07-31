@@ -1,4 +1,4 @@
-"""Django settings for Yamtrack project."""
+"""Django settings for Floppy project."""
 
 import hashlib
 import json
@@ -250,8 +250,12 @@ MIDDLEWARE = [
 if ENABLE_DEBUG_TOOLBAR:
     MIDDLEWARE.insert(0, "debug_toolbar.middleware.DebugToolbarMiddleware")
 
-YAMTRACK_AUTO_LOGIN_USERNAME = config("YAMTRACK_AUTO_LOGIN_USERNAME", default=None)
-if YAMTRACK_AUTO_LOGIN_USERNAME:
+# YAMTRACK_* env names stay readable as a fallback for pre-rename deployments.
+FLOPPY_AUTO_LOGIN_USERNAME = config(
+    "FLOPPY_AUTO_LOGIN_USERNAME",
+    default=config("YAMTRACK_AUTO_LOGIN_USERNAME", default=None),
+)
+if FLOPPY_AUTO_LOGIN_USERNAME:
     _index = MIDDLEWARE.index("django.contrib.auth.middleware.AuthenticationMiddleware")
     MIDDLEWARE.insert(_index + 1, "app.middleware.AutoLoginMiddleware")
 
@@ -505,7 +509,7 @@ LOGIN_REDIRECT_URL = "home"
 
 AUTH_USER_MODEL = "users.User"
 
-# Yamtrack settings
+# Floppy settings
 
 # For CSV imports
 FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10 MB
@@ -728,7 +732,8 @@ def _read_fork_owner_file():
     if configured_path:
         file_paths.append(Path(configured_path))
     file_paths.append(BASE_DIR / ".fork_owner")
-    file_paths.append(Path("/etc/yamtrack/fork_owner"))
+    file_paths.append(Path("/etc/floppy/fork_owner"))
+    file_paths.append(Path("/etc/yamtrack/fork_owner"))  # pre-rename images
 
     for path in file_paths:
         try:
@@ -976,9 +981,9 @@ PLEX_CLIENT_IDENTIFIER = config(
     "PLEX_CLIENT_IDENTIFIER",
     default=DEFAULT_PLEX_CLIENT_IDENTIFIER,
 )
-PLEX_PRODUCT = config("PLEX_PRODUCT", default="Yamtrack")
-PLEX_DEVICE = config("PLEX_DEVICE", default="Yamtrack Importer")
-PLEX_PLATFORM = config("PLEX_PLATFORM", default="Yamtrack")
+PLEX_PRODUCT = config("PLEX_PRODUCT", default="Floppy")
+PLEX_DEVICE = config("PLEX_DEVICE", default="Floppy Importer")
+PLEX_PLATFORM = config("PLEX_PLATFORM", default="Floppy")
 PLEX_PLATFORM_VERSION = config("PLEX_PLATFORM_VERSION", default=VERSION)
 PLEX_SSL_VERIFY = config("PLEX_SSL_VERIFY", default=False, cast=bool)
 PLEX_SECTIONS_TTL_HOURS = config("PLEX_SECTIONS_TTL_HOURS", default=24, cast=int)

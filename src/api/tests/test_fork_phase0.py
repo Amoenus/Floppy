@@ -7,10 +7,10 @@ from django_celery_results.models import TaskResult
 
 from app.models import MediaTypes, Movie
 
-from .base import YamtrackApiTestCase
+from .base import FloppyApiTestCase
 
 
-class HistorySortTests(YamtrackApiTestCase):
+class HistorySortTests(FloppyApiTestCase):
     """Consumption-history endpoints accept an optional `sort` param."""
 
     def setUp(self):
@@ -65,7 +65,7 @@ class HistorySortTests(YamtrackApiTestCase):
         self.assertEqual(response.json()["pagination"]["total"], 2)
 
 
-class TaskStatusTests(YamtrackApiTestCase):
+class TaskStatusTests(FloppyApiTestCase):
     """GET /tasks/{task_id} reports Celery task state with ownership checks."""
 
     def test_unknown_task_reports_pending(self):

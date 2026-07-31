@@ -2,11 +2,11 @@ from unittest.mock import patch
 
 from django.urls import reverse
 
-from .base import YamtrackApiTestCase
+from .base import FloppyApiTestCase
 from .helpers import check_pagination_structure
 
 
-class SearchTests(YamtrackApiTestCase):
+class SearchTests(FloppyApiTestCase):
     """Validate search endpoint contracts."""
 
     def test_search_rejects_invalid_media_type(self):

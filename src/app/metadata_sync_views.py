@@ -1682,7 +1682,7 @@ def _sync_plex_rating(request, item, media_type):
         logger.debug("Invalid rating value returned during Plex sync")
         return
 
-    # Normalize rating (Plex userRating is typically 0-10, Yamtrack uses 0-10)
+    # Normalize rating (Plex userRating is typically 0-10, Floppy uses 0-10)
     if rating_float <= 10:
         normalized_rating = rating_float
     elif rating_float <= 100:

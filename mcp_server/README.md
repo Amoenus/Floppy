@@ -1,8 +1,8 @@
-# Yamtrack MCP Server
+# Floppy MCP Server
 
-An MCP (Model Context Protocol) server that wraps the Yamtrack REST API
+An MCP (Model Context Protocol) server that wraps the Floppy REST API
 (`src/api/`) so AI agents (Claude Code, Claude Desktop, etc.) can search,
-track, and manage a user's Yamtrack library — with the same level of
+track, and manage a user's Floppy library — with the same level of
 access as the web UI.
 
 Rather than exposing every REST route 1:1, this server groups them into 20
@@ -19,9 +19,9 @@ pip install -e ".[dev]"   # add [dev] only if you want to run the tests
 
 Configure the server with two environment variables:
 
-- `YAMTRACK_URL` — base URL of the Yamtrack instance, e.g.
-  `https://yamtrack.example.com` (no trailing slash needed).
-- `YAMTRACK_TOKEN` — the user's API token, found under
+- `FLOPPY_URL` — base URL of the Floppy instance, e.g.
+  `https://floppy.example.com` (no trailing slash needed).
+- `FLOPPY_TOKEN` — the user's API token, found under
   Settings → Integrations in the web UI (the same token used for webhooks and
   the iCal feed). Sent as an `X-API-Key` header.
 
@@ -30,23 +30,23 @@ Configure the server with two environment variables:
 Stdio transport (for Claude Code / Claude Desktop):
 
 ```bash
-YAMTRACK_URL=https://yamtrack.example.com \
-YAMTRACK_TOKEN=your-token \
-python -m yamtrack_mcp.server
+FLOPPY_URL=https://floppy.example.com \
+FLOPPY_TOKEN=your-token \
+python -m floppy_mcp.server
 ```
 
 Register it with Claude Code:
 
 ```bash
-claude mcp add yamtrack \
-  --env YAMTRACK_URL=https://yamtrack.example.com \
-  --env YAMTRACK_TOKEN=your-token \
-  -- python -m yamtrack_mcp.server
+claude mcp add floppy \
+  --env FLOPPY_URL=https://floppy.example.com \
+  --env FLOPPY_TOKEN=your-token \
+  -- python -m floppy_mcp.server
 ```
 
 For streamable-HTTP transport instead of stdio, call
 `mcp.run(transport="streamable-http")` in `server.py` (see the `FastMCP`
-docs) or run `uvicorn yamtrack_mcp.server:mcp.streamable_http_app`.
+docs) or run `uvicorn floppy_mcp.server:mcp.streamable_http_app`.
 
 ## Tools
 
@@ -75,7 +75,7 @@ docs) or run `uvicorn yamtrack_mcp.server:mcp.streamable_http_app`.
 
 ### Notes on tool contracts
 
-- **`status`** on `track_media` accepts the display names Yamtrack uses in
+- **`status`** on `track_media` accepts the display names Floppy uses in
   the UI (`"Planning"`, `"In progress"`, `"Paused"`, `"Completed"`,
   `"Dropped"`); the tool translates them to the API's numeric wire format
   internally.
@@ -101,7 +101,7 @@ python -m pytest tests/ -q
 ```
 
 Tests mock the REST API with `respx` and assert each tool sends the
-expected HTTP method/path/params/body — no live Yamtrack instance needed
+expected HTTP method/path/params/body — no live Floppy instance needed
 for the unit suite. They were also verified end-to-end against a running
 `manage.py runserver` + Celery worker instance covering tracking, list
 membership, tags, history, statistics, settings, and async task dispatch.
@@ -109,7 +109,7 @@ membership, tags, history, statistics, settings, and async task dispatch.
 ## Design notes
 
 - One shared `httpx.AsyncClient` per process (`client.py`), created lazily
-  on first request so `YAMTRACK_URL`/`YAMTRACK_TOKEN` can be set after
+  on first request so `FLOPPY_URL`/`FLOPPY_TOKEN` can be set after
   import (useful in tests).
 - `_call()` in `server.py` is the single place that turns REST errors into
   a structured payload — no tool duplicates that error handling.

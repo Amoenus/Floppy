@@ -76,18 +76,18 @@ class Command(BaseCommand):
             self.stdout.write("\n📊 PLEX COMPARISON")
             self.stdout.write("-" * 70)
             self.stdout.write(f"Plex Tracks with Plays:  {plex_count:,}")
-            self.stdout.write(f"Yamtrack Unique Tracks:  {validation['unique_tracks']:,}")
+            self.stdout.write(f"Floppy Unique Tracks:  {validation['unique_tracks']:,}")
             difference = validation["unique_tracks"] - plex_count
             if difference > 0:
                 self.stdout.write(
                     self.style.WARNING(
-                        f"Difference:                +{difference:,} (Yamtrack has more tracks)",
+                        f"Difference:                +{difference:,} (Floppy has more tracks)",
                     ),
                 )
             elif difference < 0:
                 self.stdout.write(
                     self.style.WARNING(
-                        f"Difference:                {difference:,} (Yamtrack has fewer tracks)",
+                        f"Difference:                {difference:,} (Floppy has fewer tracks)",
                     ),
                 )
             else:

@@ -1,8 +1,8 @@
-from .base import YamtrackApiTestCase
+from .base import FloppyApiTestCase
 from .endpoints import get_endpoint_cases
 
 
-class AuthenticationMatrixTests(YamtrackApiTestCase):
+class AuthenticationMatrixTests(FloppyApiTestCase):
     """Assert protected endpoints reject missing or invalid credentials."""
 
     def test_protected_endpoints_require_authentication(self):

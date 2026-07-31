@@ -1,7 +1,7 @@
 // Global keyboard shortcut for search
 // Bind once: this script is re-evaluated on boosted (hx-boost) navigation.
-if (!window.__yamtrackSearchShortcutBound) {
-window.__yamtrackSearchShortcutBound = true;
+if (!window.__floppySearchShortcutBound) {
+window.__floppySearchShortcutBound = true;
 document.addEventListener('keydown', (e) => {
   // Ignore if typing in an input, textarea, or contenteditable
   const activeEl = document.activeElement;

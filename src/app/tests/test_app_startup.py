@@ -8,7 +8,7 @@ from django.conf import settings
 from django.core.cache import cache
 from django.test import TestCase, override_settings
 
-from app.apps import AppConfig as YamtrackAppConfig
+from app.apps import AppConfig as FloppyAppConfig
 from app.tasks import GENRE_BACKFILL_VERSION
 
 
@@ -24,7 +24,7 @@ class AppStartupTests(TestCase):
         self,
         _mock_is_celery_worker,
     ):
-        config = YamtrackAppConfig("app", import_module("app"))
+        config = FloppyAppConfig("app", import_module("app"))
 
         with (
             patch.object(config, "_repair_celery_redis_bindings"),
@@ -49,7 +49,7 @@ class AppStartupTests(TestCase):
         self,
         _mock_is_celery_worker,
     ):
-        config = YamtrackAppConfig("app", import_module("app"))
+        config = FloppyAppConfig("app", import_module("app"))
 
         with (
             patch.object(config, "_repair_celery_redis_bindings"),
@@ -77,7 +77,7 @@ class AppStartupTests(TestCase):
         _mock_is_celery_worker,
     ):
         cache.delete("history_day_coverage_startup_scheduled")
-        config = YamtrackAppConfig("app", import_module("app"))
+        config = FloppyAppConfig("app", import_module("app"))
 
         with (
             patch.object(config, "_repair_celery_redis_bindings") as mock_repair,
@@ -110,7 +110,7 @@ class AppStartupTests(TestCase):
             (["manage.py", "migrate", "--noinput"], True),
             (["manage.py", "check"], True),
             (["manage.py", "shell"], True),
-            (["/yamtrack/manage.py", "collectstatic"], True),
+            (["/floppy/manage.py", "collectstatic"], True),
             (["manage.py", "runserver"], False),
             (["manage.py", "runserver", "0.0.0.0:8000"], False),
             (["gunicorn", "config.wsgi:application"], False),
@@ -129,7 +129,7 @@ class AppStartupTests(TestCase):
         # The missing-profile count check must not run in AppConfig.ready(),
         # since preload_app executes it pre-fork in the Gunicorn master
         # (issue #335); it belongs inside the Celery task instead.
-        config = YamtrackAppConfig("app", import_module("app"))
+        config = FloppyAppConfig("app", import_module("app"))
 
         config._schedule_imdb_game_person_profile_backfill()
 
@@ -175,7 +175,7 @@ class AppStartupTests(TestCase):
     ):
         version_key = f"genre_backfill_reconciled_v{GENRE_BACKFILL_VERSION}"
         cache.delete(version_key)
-        config = YamtrackAppConfig("app", import_module("app"))
+        config = FloppyAppConfig("app", import_module("app"))
 
         config._schedule_genre_backfill_reconcile()
         config._schedule_genre_backfill_reconcile()
@@ -201,7 +201,7 @@ class AppStartupTests(TestCase):
     ):
         version_key = f"genre_backfill_reconciled_v{GENRE_BACKFILL_VERSION}"
         cache.set(version_key, "done", timeout=None)
-        config = YamtrackAppConfig("app", import_module("app"))
+        config = FloppyAppConfig("app", import_module("app"))
 
         config._schedule_genre_backfill_reconcile()
 
@@ -245,7 +245,7 @@ class AppStartupTests(TestCase):
         self,
         mock_apply_async,
     ):
-        config = YamtrackAppConfig("app", import_module("app"))
+        config = FloppyAppConfig("app", import_module("app"))
 
         config._schedule_history_day_coverage_warmup()
 

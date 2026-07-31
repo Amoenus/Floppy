@@ -12,7 +12,7 @@ from django.core.cache import cache
 logger = logging.getLogger(__name__)
 
 ITUNES_API_BASE = "https://itunes.apple.com/search"
-USER_AGENT = "Yamtrack/1.0 (https://github.com/FuzzyGrim/Yamtrack)"
+USER_AGENT = "Floppy/1.0 (https://github.com/dannyvfilms/Floppy)"
 
 
 def fetch_album_artwork(album_title: str, artist_name: str) -> str | None:

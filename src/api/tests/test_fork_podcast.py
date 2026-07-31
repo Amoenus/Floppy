@@ -10,10 +10,10 @@ from app.models import (
     PodcastShowTracker,
 )
 
-from .base import YamtrackApiTestCase
+from .base import FloppyApiTestCase
 
 
-class PodcastApiTestCase(YamtrackApiTestCase):
+class PodcastApiTestCase(FloppyApiTestCase):
     """Shared podcast catalog fixtures."""
 
     def setUp(self):

@@ -1584,7 +1584,7 @@ class TestOverwriteMetadataFailureSafety(TestCase):
 
     def test_tv_show_preserved_when_tmdb_returns_404_in_overwrite(self):
         """A TV show that TMDB can no longer resolve (404) must survive an overwrite import."""
-        # Pre-create the show in Yamtrack as if previously imported
+        # Pre-create the show in Floppy as if previously imported
         item = Item.objects.create(
             media_id="9999",
             source=Sources.TMDB.value,
@@ -1748,7 +1748,7 @@ class TestPlexIdentityAndScorePreservation(TestCase):
         _mock_tvdb_enabled,
         _mock_mapping_data,
     ):
-        """Scores set in Yamtrack survive periodic overwrite imports."""
+        """Scores set in Floppy survive periodic overwrite imports."""
         movie_item, _ = Item.objects.get_or_create(
             media_id="501",
             source=Sources.TMDB.value,

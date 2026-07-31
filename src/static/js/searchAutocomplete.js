@@ -9,8 +9,8 @@
 // field) or arrow down to the last row, which is the "Search online" action.
 //
 // Bind once: this script is re-evaluated on boosted (hx-boost) navigation.
-if (!window.__yamtrackSearchAutocompleteBound) {
-window.__yamtrackSearchAutocompleteBound = true;
+if (!window.__floppySearchAutocompleteBound) {
+window.__floppySearchAutocompleteBound = true;
 
 const CONTAINER_ID = 'search-suggestions';
 const INPUT_ID = 'global-search';

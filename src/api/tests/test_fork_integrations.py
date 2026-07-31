@@ -5,10 +5,10 @@ from unittest.mock import patch
 
 from django.urls import reverse
 
-from .base import YamtrackApiTestCase
+from .base import FloppyApiTestCase
 
 
-class ImportDispatchTests(YamtrackApiTestCase):
+class ImportDispatchTests(FloppyApiTestCase):
     """POST /imports/{service}."""
 
     @patch("api.fork_views_integrations.tasks.import_mal.delay")
@@ -89,7 +89,7 @@ class ImportDispatchTests(YamtrackApiTestCase):
         self.assertEqual(response.status_code, HTTP.BAD_REQUEST)
 
 
-class ImportActivityTests(YamtrackApiTestCase):
+class ImportActivityTests(FloppyApiTestCase):
     """GET /imports/activity."""
 
     def test_activity_returns_results(self):
@@ -103,7 +103,7 @@ class ImportActivityTests(YamtrackApiTestCase):
         self.assertIn("results", response.json())
 
 
-class ExportTests(YamtrackApiTestCase):
+class ExportTests(FloppyApiTestCase):
     """GET /export/csv and /export/template."""
 
     def test_export_csv_streams_library(self):

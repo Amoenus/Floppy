@@ -18,13 +18,13 @@ class ProcessRoleDetectionTests(SimpleTestCase):
     def test_explicit_roles_from_environment(self):
         """The supervisord-provided label wins."""
         for role in ("web", "interactive", "background"):
-            with patch.dict("os.environ", {"YAMTRACK_PROCESS_ROLE": role}):
+            with patch.dict("os.environ", {"FLOPPY_PROCESS_ROLE": role}):
                 self.assertEqual(services.get_process_role(), role)
 
     def test_unknown_label_falls_back_to_argv_heuristic(self):
         """An unrecognized label is ignored in favor of the argv check."""
         with (
-            patch.dict("os.environ", {"YAMTRACK_PROCESS_ROLE": "bogus"}),
+            patch.dict("os.environ", {"FLOPPY_PROCESS_ROLE": "bogus"}),
             patch.object(services.sys, "argv", ["/usr/local/bin/celery"]),
         ):
             self.assertEqual(services.get_process_role(), "background")
@@ -35,7 +35,7 @@ class ProcessRoleDetectionTests(SimpleTestCase):
             patch.dict("os.environ", {}, clear=False),
             patch.object(services.sys, "argv", ["celery", "worker"]),
         ):
-            services.os.environ.pop("YAMTRACK_PROCESS_ROLE", None)
+            services.os.environ.pop("FLOPPY_PROCESS_ROLE", None)
             self.assertEqual(services.get_process_role(), "background")
 
     def test_unlabeled_non_celery_process_is_web(self):
@@ -44,7 +44,7 @@ class ProcessRoleDetectionTests(SimpleTestCase):
             patch.dict("os.environ", {}, clear=False),
             patch.object(services.sys, "argv", ["gunicorn"]),
         ):
-            services.os.environ.pop("YAMTRACK_PROCESS_ROLE", None)
+            services.os.environ.pop("FLOPPY_PROCESS_ROLE", None)
             self.assertEqual(services.get_process_role(), "web")
 
     def test_background_role_uses_separate_smaller_bucket(self):

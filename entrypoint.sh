@@ -30,7 +30,7 @@ echo "[entrypoint] Fixing file ownership (PUID=${PUID} PGID=${PGID})" >&2
 groupmod -o -g "$PGID" abc
 usermod -o -u "$PUID" abc
 
-chown abc:abc /yamtrack
+chown abc:abc /floppy
 
 # Bound each recursive chown: a stalled bind mount (e.g. network storage)
 # must degrade to a warning instead of hanging the boot silently (issue #341).

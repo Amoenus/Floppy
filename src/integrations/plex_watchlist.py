@@ -1,4 +1,4 @@
-"""Sync Plex Discover watchlist items into Yamtrack Planning entries."""
+"""Sync Plex Discover watchlist items into Floppy Planning entries."""
 
 import logging
 from collections import defaultdict
@@ -22,7 +22,7 @@ WATCHLIST_PAGE_SIZE = 100
 
 
 class PlexWatchlistSyncService:
-    """Synchronize a user's Plex Discover watchlist into Yamtrack."""
+    """Synchronize a user's Plex Discover watchlist into Floppy."""
 
     def __init__(self, user, account):
         self.user = user
@@ -111,7 +111,7 @@ class PlexWatchlistSyncService:
         return entries
 
     def _sync_entry(self, entry: dict, seen_item_ids: set[int]) -> int | None:
-        """Sync a single watchlist entry into Yamtrack."""
+        """Sync a single watchlist entry into Floppy."""
         entry = self._hydrate_entry_with_external_ids(entry)
         raw_type = str(entry.get("type") or "").strip().lower()
         if raw_type == "movie":

@@ -21,7 +21,7 @@ from app.models import (
     Sources,
     Status,
 )
-from lists.feeds import YamtrackRssFeed
+from lists.feeds import FloppyRssFeed
 from lists.models import CustomList, CustomListItem, ListActivity
 from users.models import DateFormatChoices
 
@@ -2441,7 +2441,7 @@ class ListRssFeedTests(TestCase):
         """Return RSS feed for a public list."""
         response = self.client.get(reverse("list_rss", args=[self.custom_list.id]))
         root = ET.fromstring(response.content)
-        namespaces = {"yamtrack": YamtrackRssFeed.yamtrack_namespace}
+        namespaces = {"yamtrack": FloppyRssFeed.yamtrack_namespace}
         item = root.find("./channel/item")
 
         self.assertEqual(response.status_code, 200)

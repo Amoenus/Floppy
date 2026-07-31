@@ -1,9 +1,9 @@
-"""Yamtrack MCP server.
+"""Floppy MCP server.
 
-Wraps the Yamtrack REST API (src/api/) with a small set of agent-shaped
+Wraps the Floppy REST API (src/api/) with a small set of agent-shaped
 tools rather than a 1:1 mapping of every REST route. Each tool fans out to
-one or more underlying endpoints. Configure via YAMTRACK_URL and
-YAMTRACK_TOKEN environment variables (see client.py).
+one or more underlying endpoints. Configure via FLOPPY_URL and
+FLOPPY_TOKEN environment variables (see client.py).
 """
 
 from __future__ import annotations
@@ -12,13 +12,13 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
-from .client import YamtrackAPIError, YamtrackConfigError, get_client
+from .client import FloppyAPIError, FloppyConfigError, get_client
 
 mcp = FastMCP(
-    name="yamtrack",
+    name="floppy",
     instructions=(
         "Tools for tracking movies, TV, anime, manga, books, comics, games, "
-        "board games, music, and podcasts in a user's Yamtrack library, plus "
+        "board games, music, and podcasts in a user's Floppy library, plus "
         "custom lists, history, statistics, and account settings. Call "
         "search_media before track_media when you don't already have a "
         "known source/media_id — track_media requires exact identifiers."
@@ -27,9 +27,9 @@ mcp = FastMCP(
 
 
 def _error_payload(exc: Exception) -> dict[str, Any]:
-    if isinstance(exc, YamtrackAPIError):
+    if isinstance(exc, FloppyAPIError):
         return {"error": True, "status_code": exc.status_code, "detail": exc.detail}
-    if isinstance(exc, YamtrackConfigError):
+    if isinstance(exc, FloppyConfigError):
         return {"error": True, "detail": str(exc)}
     return {"error": True, "detail": str(exc)}
 
@@ -37,7 +37,7 @@ def _error_payload(exc: Exception) -> dict[str, Any]:
 async def _call(method: str, path: str, **kwargs: Any) -> Any:
     try:
         return await get_client().request(method, path, **kwargs)
-    except (YamtrackAPIError, YamtrackConfigError) as exc:
+    except (FloppyAPIError, FloppyConfigError) as exc:
         return _error_payload(exc)
 
 
@@ -482,7 +482,7 @@ async def manage_settings(action: str, **fields: Any) -> Any:
 
 
 def main() -> None:
-    """Entry point for `python -m yamtrack_mcp.server` / console script."""
+    """Entry point for `python -m floppy_mcp.server` / console script."""
     mcp.run()
 
 

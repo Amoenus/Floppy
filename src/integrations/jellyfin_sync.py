@@ -1,4 +1,4 @@
-"""Push Yamtrack watched/unwatched state to a Jellyfin server."""
+"""Push Floppy watched/unwatched state to a Jellyfin server."""
 
 import logging
 from collections import defaultdict
@@ -47,7 +47,7 @@ def format_jellyfin_push_message(push_counts: dict, warning_text: str = "") -> s
         parts.append(f"{skipped_unsupported} use an unsupported metadata source")
 
     if not parts:
-        message = "Nothing to sync — Jellyfin already matched Yamtrack's watched state."
+        message = "Nothing to sync — Jellyfin already matched Floppy's watched state."
     else:
         message = "Jellyfin sync: " + ", ".join(parts) + "."
 
@@ -120,7 +120,7 @@ class JellyfinPushSyncService:
         """Build lookup indexes of Jellyfin library items keyed by provider id.
 
         Jellyfin Episode items carry episode-level provider ids (e.g. the TVDB
-        episode id), while Yamtrack matches on the series-level id, so episodes
+        episode id), while Floppy matches on the series-level id, so episodes
         are keyed by their parent Series item's provider ids instead.
         """
         movie_index: dict[tuple[str, str], dict] = {}

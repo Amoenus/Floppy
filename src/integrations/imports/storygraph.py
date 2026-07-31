@@ -2,7 +2,7 @@
 
 StoryGraph has no public API, so the export CSV is the supported path. Each
 read in the ``Dates Read`` column becomes its own ``Book`` row, which is how
-Yamtrack models re-reads: the history calendar is built from live rows rather
+Floppy models re-reads: the history calendar is built from live rows rather
 than from simple-history records.
 """
 
@@ -90,7 +90,7 @@ def parse_reads(dates_read):
 
 
 def determine_status(raw_status):
-    """Map a StoryGraph read status onto a Yamtrack status."""
+    """Map a StoryGraph read status onto a Floppy status."""
     return STATUS_MAP.get(
         str(raw_status or "").strip().lower(),
         Status.PLANNING.value,
@@ -133,7 +133,7 @@ def normalize_isbn(raw_isbn):
 
 
 def map_format(raw_format):
-    """Map a StoryGraph format onto the format values Yamtrack stores."""
+    """Map a StoryGraph format onto the format values Floppy stores."""
     return FORMAT_MAP.get(str(raw_format or "").strip().lower(), "")
 
 
