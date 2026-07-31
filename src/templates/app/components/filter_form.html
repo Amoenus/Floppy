@@ -1,7 +1,10 @@
 <form id="filter-form" class="hidden">
   <input type="hidden" name="sort" x-model="sort">
   <input type="hidden" name="direction" x-model="direction">
-  <input type="hidden" name="status" x-model="status">
+  <template x-for="s in statuses" :key="`status-${s}`">
+    <input type="hidden" name="status" :value="s">
+  </template>
+  <input type="hidden" name="status" value="all" :disabled="statuses.length > 0">
   <input type="hidden" name="rating" x-model="rating">
   <input type="hidden" name="collection" x-model="collection">
   <input type="hidden" name="progress" x-model="progress">
@@ -16,8 +19,10 @@
   <input type="hidden" name="origin" x-model="origin">
   <input type="hidden" name="format" x-model="format">
   <input type="hidden" name="author" x-model="author">
-  <input type="hidden" name="tag" x-model="tag">
-  <input type="hidden" name="tag_exclude" x-model="tag_exclude">
+  <template x-for="t in selectedTags" :key="`tag-${t}`">
+    <input type="hidden" name="tag" :value="t">
+  </template>
+  <input type="hidden" name="tag_mode" x-model="tagMode">
   <input type="hidden" name="search" x-model="search">
   <input type="hidden" name="layout" x-model="layout">
   <input type="hidden" name="department" x-model="department">

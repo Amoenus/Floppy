@@ -129,7 +129,7 @@ for _status_choice in Status:
     STATUS_FILTER_ALIASES[str(_status_choice.label).strip().casefold()] = _status_choice.value
 
 HOME_QUERY_DEFAULT_FILTERS = {
-    "status": Status.IN_PROGRESS.value,
+    "status": [Status.IN_PROGRESS.value],
     "progress": "all",
     "rating": "all",
     "collection": "all",
@@ -143,8 +143,8 @@ HOME_QUERY_DEFAULT_FILTERS = {
     "origin": "",
     "format": "",
     "author": "",
-    "tag": "",
-    "tag_exclude": "",
+    "tag": [],
+    "tag_mode": "or",
 }
 SUPPORTED_FILTERS_BY_MEDIA_TYPE = {
     MediaTypes.TV.value: {
@@ -159,7 +159,6 @@ SUPPORTED_FILTERS_BY_MEDIA_TYPE = {
         "language",
         "country",
         "tag",
-        "tag_exclude",
     },
     MediaTypes.SEASON.value: {
         "status",
@@ -170,7 +169,6 @@ SUPPORTED_FILTERS_BY_MEDIA_TYPE = {
         "release",
         "source",
         "tag",
-        "tag_exclude",
     },
     MediaTypes.MOVIE.value: {
         "status",
@@ -183,7 +181,6 @@ SUPPORTED_FILTERS_BY_MEDIA_TYPE = {
         "language",
         "country",
         "tag",
-        "tag_exclude",
     },
     MediaTypes.ANIME.value: {
         "status",
@@ -197,7 +194,6 @@ SUPPORTED_FILTERS_BY_MEDIA_TYPE = {
         "language",
         "country",
         "tag",
-        "tag_exclude",
     },
     MediaTypes.MANGA.value: {
         "status",
@@ -210,7 +206,6 @@ SUPPORTED_FILTERS_BY_MEDIA_TYPE = {
         "format",
         "author",
         "tag",
-        "tag_exclude",
     },
     MediaTypes.GAME.value: {
         "status",
@@ -222,7 +217,6 @@ SUPPORTED_FILTERS_BY_MEDIA_TYPE = {
         "source",
         "platform",
         "tag",
-        "tag_exclude",
     },
     MediaTypes.BOARDGAME.value: {
         "status",
@@ -233,7 +227,6 @@ SUPPORTED_FILTERS_BY_MEDIA_TYPE = {
         "release",
         "source",
         "tag",
-        "tag_exclude",
     },
     MediaTypes.BOOK.value: {
         "status",
@@ -246,7 +239,6 @@ SUPPORTED_FILTERS_BY_MEDIA_TYPE = {
         "format",
         "author",
         "tag",
-        "tag_exclude",
     },
     MediaTypes.COMIC.value: {
         "status",
@@ -259,7 +251,6 @@ SUPPORTED_FILTERS_BY_MEDIA_TYPE = {
         "format",
         "author",
         "tag",
-        "tag_exclude",
     },
     MediaTypes.COMIC_ISSUE.value: {
         "status",
@@ -269,7 +260,6 @@ SUPPORTED_FILTERS_BY_MEDIA_TYPE = {
         "source",
         "author",
         "tag",
-        "tag_exclude",
     },
     MediaTypes.MUSIC.value: {
         "subview",
@@ -282,7 +272,6 @@ SUPPORTED_FILTERS_BY_MEDIA_TYPE = {
         "source",
         "origin",
         "tag",
-        "tag_exclude",
     },
     MediaTypes.PODCAST.value: {
         "status",
@@ -295,7 +284,6 @@ SUPPORTED_FILTERS_BY_MEDIA_TYPE = {
         "language",
         "country",
         "tag",
-        "tag_exclude",
     },
 }
 
@@ -474,7 +462,7 @@ def _build_default_rows_for_media_type(user, media_type: str) -> list[HomeScreen
     ]
     if getattr(user, "show_planned_on_home", "disabled") != "disabled":
         planned_filters = dict(HOME_QUERY_DEFAULT_FILTERS)
-        planned_filters["status"] = Status.PLANNING.value
+        planned_filters["status"] = [Status.PLANNING.value]
         defaults.append(
             HomeScreenRow(
                 user=user,
@@ -529,7 +517,7 @@ def _legacy_default_rows_for_media_type(user, media_type: str) -> list[HomeScree
     ]
     if getattr(user, "show_planned_on_home", "disabled") != "disabled":
         planned_filters = dict(HOME_QUERY_DEFAULT_FILTERS)
-        planned_filters["status"] = Status.PLANNING.value
+        planned_filters["status"] = [Status.PLANNING.value]
         defaults.append(
             HomeScreenRow(
                 user=user,
@@ -576,7 +564,7 @@ def _single_query_default_rows_for_media_type(
     ]
     if getattr(user, "show_planned_on_home", "disabled") != "disabled":
         planned_filters = dict(HOME_QUERY_DEFAULT_FILTERS)
-        planned_filters["status"] = Status.PLANNING.value
+        planned_filters["status"] = [Status.PLANNING.value]
         defaults.append(
             HomeScreenRow(
                 user=user,
@@ -841,15 +829,7 @@ def build_filter_field_data(
         {
             "key": "tag",
             "label": "Tag",
-            "options": [{"value": "", "label": "Any"}] + [
-                {"value": value, "label": value}
-                for value in filter_data.get("tags", [])
-            ],
-        },
-        {
-            "key": "tag_exclude",
-            "label": "Exclude Tag",
-            "options": [{"value": "", "label": "Any"}] + [
+            "options": [
                 {"value": value, "label": value}
                 for value in filter_data.get("tags", [])
             ],
@@ -932,17 +912,10 @@ def describe_library_query(filters: dict, user, media_type: str) -> str:
     """Return a compact query-row summary for settings and home."""
     normalized = _normalized_filter_payload(filters, media_type)
 
-    status = normalized.get("status") or "all"
-    if status == Status.IN_PROGRESS.value:
-        parts = ["In Progress"]
-    elif status == Status.PLANNING.value:
-        parts = ["Planning"]
-    elif status == Status.COMPLETED.value:
-        parts = ["Completed"]
-    elif status == Status.PAUSED.value:
-        parts = ["Paused"]
-    elif status == Status.DROPPED.value:
-        parts = ["Dropped"]
+    status_values = [value for value in (normalized.get("status") or []) if value]
+    status_labels = dict(Status.choices)
+    if status_values:
+        parts = [" & ".join(status_labels.get(value, value) for value in status_values)]
     else:
         parts = ["Library"]
 
@@ -969,18 +942,23 @@ def describe_library_query(filters: dict, user, media_type: str) -> str:
         "origin",
         "format",
         "author",
-        "tag",
-        "tag_exclude",
     ):
         value = str(normalized.get(key, "") or "").strip()
         if not value or value in {"all", "Any"}:
             continue
         label = _summary_filter_label(key, value)
-        if key == "tag_exclude":
-            label = f"Not tagged {label}"
         parts.append(label)
         if len(parts) >= 4:
             break
+
+    tag_values = [value for value in (normalized.get("tag") or []) if value]
+    if tag_values and len(parts) < 4:
+        tag_mode = normalized.get("tag_mode", "or")
+        joined = " & " if tag_mode == "and" else " or "
+        tag_label = joined.join(tag_values)
+        if tag_mode == "not":
+            tag_label = f"Not tagged {tag_label}"
+        parts.append(tag_label)
 
     return " • ".join(parts)
 
@@ -1117,15 +1095,38 @@ def toggle_home_row_direction(user, row_id: int) -> HomeScreenRow:
     return row
 
 
+def _as_list(value) -> list:
+    """Coerce a legacy scalar or a list/tuple into a list, leaving None distinct."""
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple, set)):
+        return list(value)
+    return [value]
+
+
+def _normalize_status_list(raw_value, fallback: list[str]) -> list[str]:
+    """Normalize a status list, falling back to `fallback` only when absent (None)."""
+    if raw_value is None:
+        return list(fallback)
+    normalized_values = []
+    seen = set()
+    for entry in _as_list(raw_value):
+        canonical = _canonical_status_filter(entry, None)
+        if not canonical or canonical == "all" or canonical not in Status.values:
+            continue
+        if canonical in seen:
+            continue
+        seen.add(canonical)
+        normalized_values.append(canonical)
+    return normalized_values
+
+
 def _normalized_filter_payload(filters: dict | None, media_type: str) -> dict:
     raw_filters = dict(filters or {})
     # subview is a music-only dimension, not a smart-rule filter. handling separately
     raw_subview = raw_filters.pop("subview", None)
     if "status" in raw_filters:
-        raw_filters["status"] = _canonical_status_filter(
-            raw_filters.get("status"),
-            raw_filters.get("status"),
-        )
+        raw_filters["status"] = _normalize_status_list(raw_filters.get("status"), [])
 
     normalized = smart_rules.normalize_rule_payload(
         {
@@ -1136,7 +1137,7 @@ def _normalized_filter_payload(filters: dict | None, media_type: str) -> dict:
         owner=None,
     )
     normalized.pop("media_types", None)
-    normalized["status"] = _canonical_status_filter(
+    normalized["status"] = _normalize_status_list(
         raw_filters.get("status", normalized.get("status")),
         HOME_QUERY_DEFAULT_FILTERS["status"],
     )
@@ -1218,6 +1219,8 @@ def validate_library_row_filters(raw_filters: dict | None, media_type: str) -> d
         raise HomeScreenValidationError("Library row filters must be an object.")
 
     supported = SUPPORTED_FILTERS_BY_MEDIA_TYPE.get(media_type, set())
+    if "tag" in supported:
+        supported = supported | {"tag_mode"}
     for key, value in raw_filters.items():
         if key not in HOME_SCREEN_FILTER_KEYS:
             raise HomeScreenValidationError(f"Unsupported filter '{key}' for {media_type}.")
@@ -1227,12 +1230,11 @@ def validate_library_row_filters(raw_filters: dict | None, media_type: str) -> d
             raise HomeScreenValidationError(f"Filter '{key}' is not available for {media_type}.")
 
     normalized = _normalized_filter_payload(raw_filters, media_type)
-    raw_status = str(raw_filters.get("status", "") or "").strip()
-    if raw_status:
-        canonical_status = _canonical_status_filter(raw_status, None)
-        if canonical_status not in STATUS_FILTER_VALUES:
-            raise HomeScreenValidationError(f"Unsupported status filter for {media_type}.")
-        normalized["status"] = canonical_status
+    if "status" in raw_filters:
+        for raw_status in _as_list(raw_filters.get("status")):
+            canonical_status = _canonical_status_filter(raw_status, None)
+            if canonical_status not in STATUS_FILTER_VALUES:
+                raise HomeScreenValidationError(f"Unsupported status filter for {media_type}.")
     raw_rating = str(raw_filters.get("rating", normalized["rating"]) or "").strip().lower()
     if raw_rating and raw_rating not in {"all", "rated", "not_rated"}:
         raise HomeScreenValidationError(f"Unsupported rating filter for {media_type}.")
@@ -1462,12 +1464,12 @@ def _build_album_home_entries(user, filters: dict, sort_by: str, direction: str)
     """Build Home entries from the user's tracked albums (AlbumTracker)."""
     from app.models import AlbumTracker  # noqa: PLC0415
 
-    status_filter = filters.get("status", "all")
+    status_filter = filters.get("status") or []
     trackers = AlbumTracker.objects.filter(user=user).select_related(
         "album", "album__artist",
     )
-    if status_filter and status_filter != "all":
-        trackers = trackers.filter(status=status_filter)
+    if status_filter:
+        trackers = trackers.filter(status__in=status_filter)
     trackers = list(_apply_music_tracker_rating_filter(trackers, filters.get("rating", "all")))
 
     specs = [
@@ -1499,15 +1501,15 @@ def _build_artist_home_entries(user, filters: dict, sort_by: str, direction: str
     """Build Home entries from the user's tracked artists (ArtistTracker)."""
     from app.models import ArtistTracker  # noqa: PLC0415
 
-    status_filter = filters.get("status", "all")
+    status_filter = filters.get("status") or []
     trackers = (
         ArtistTracker.objects.filter(user=user)
         .exclude(artist__name__isnull=True)
         .exclude(artist__name__exact="")
         .select_related("artist")
     )
-    if status_filter and status_filter != "all":
-        trackers = trackers.filter(status=status_filter)
+    if status_filter:
+        trackers = trackers.filter(status__in=status_filter)
     trackers = list(_apply_music_tracker_rating_filter(trackers, filters.get("rating", "all")))
 
     specs = [
@@ -1597,8 +1599,9 @@ def _media_lookup_for_items(
     user,
     items: list[Item],
     *,
-    status_filter: str = "all",
+    status_filter: list[str] | None = None,
 ) -> dict[int, object]:
+    status_filter = status_filter or []
     items_by_media_type: dict[str, list[Item]] = defaultdict(list)
     for item in items:
         items_by_media_type[item.media_type].append(item)
@@ -1659,7 +1662,7 @@ def _media_lookup_for_items(
 
             for primary_entry in candidate_entries:
                 latest_status = getattr(primary_entry, "aggregated_status", None) or getattr(primary_entry, "status", None)
-                if status_filter != "all" and latest_status != status_filter:
+                if status_filter and latest_status not in status_filter:
                     continue
                 if actual_media_type == MediaTypes.PODCAST.value:
                     primary_entry.use_podcast_show = bool(getattr(primary_entry, "show", None))
@@ -1981,7 +1984,7 @@ def _library_query_entries(user, row: HomeScreenRow) -> list[HomeRowEntry]:
                 user, normalized_filters, row.sort_by, row.direction,
             )
         # MUSIC_SUBVIEW_TRACKS falls through to the standard Music/Item query below.
-    status_filter = normalized_filters.get("status", "all")
+    status_filter = normalized_filters.get("status") or []
     rule_payload = {
         "media_types": [row.media_type],
         **normalized_filters,
@@ -2008,13 +2011,13 @@ def _library_query_entries(user, row: HomeScreenRow) -> list[HomeRowEntry]:
             podcast_show=getattr(media_lookup.get(item.id), "show", None),
             show_progress_controls=media_lookup.get(item.id) is not None,
             subtitle_override=_entry_release_date(item)
-            if status_filter == Status.PLANNING.value
+            if status_filter == [Status.PLANNING.value]
             else None,
         )
         for item in items
         if _item_matches_home_media_type(item, row.media_type)
     ]
-    if status_filter != "all":
+    if status_filter:
         entries = [entry for entry in entries if entry.media is not None]
     entries = _apply_progress_filter(entries, row.media_type, normalized_filters.get("progress", "all"))
     return sort_home_entries(entries, row.sort_by, row.direction)
@@ -2138,33 +2141,40 @@ def home_row_destination_url(row: HomeScreenRow, user) -> str:
         return base
 
     # Library-query / recently-unrated rows open the media list.
-    params = {
-        "sort": row.sort_by,
-        "direction": row.direction,
-        "layout": getattr(user, f"{row.media_type}_layout", None) or "grid",
-    }
+    query_pairs = [
+        ("sort", row.sort_by),
+        ("direction", row.direction),
+        ("layout", getattr(user, f"{row.media_type}_layout", None) or "grid"),
+    ]
 
     if row.row_type == HomeScreenRowTypeChoices.RECENTLY_UNRATED:
-        params["rating"] = "not_rated"
-        params["status"] = MediaStatusChoices.ALL.value
+        query_pairs.append(("rating", "not_rated"))
+        query_pairs.append(("status", MediaStatusChoices.ALL.value))
     else:
         normalized = _normalized_filter_payload(row.filters or {}, row.media_type)
-        status_value = normalized.get("status") or "all"
-        params["status"] = (
-            MediaStatusChoices.ALL.value if status_value == "all" else status_value
-        )
+        status_values = [value for value in (normalized.get("status") or []) if value]
+        if status_values:
+            query_pairs.extend(("status", value) for value in status_values)
+        else:
+            query_pairs.append(("status", MediaStatusChoices.ALL.value))
+
+        tag_values = [value for value in (normalized.get("tag") or []) if value]
         for key, raw_value in normalized.items():
-            if key == "status":
+            if key in {"status", "tag", "tag_mode"}:
                 continue
             value = raw_value
             if isinstance(value, (list, tuple)):
                 value = value[0] if len(value) == 1 else None
             if value in _HOME_LINK_SKIP_FILTER_VALUES:
                 continue
-            params[key] = value
+            query_pairs.append((key, value))
+
+        if tag_values:
+            query_pairs.extend(("tag", value) for value in tag_values)
+            query_pairs.append(("tag_mode", normalized.get("tag_mode", "or")))
 
     base = reverse("medialist", args=[row.media_type])
-    return f"{base}?{urlencode(params)}"
+    return f"{base}?{urlencode(query_pairs)}"
 
 
 _HOME_ROW_EMPTY_SENTINEL = "__home_row_empty__"

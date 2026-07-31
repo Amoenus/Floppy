@@ -337,6 +337,47 @@ class TagFilterViewTest(TestCase):
         self.assertNotContains(response, "Tagged Movie")
         self.assertContains(response, "Untagged Movie")
 
+    def test_multiple_tag_filter_modes(self):
+        """Multiple tags support AND, OR, and NOT semantics."""
+        comedy = Tag.objects.create(user=self.user, name="Comedy")
+        untagged_item = Item.objects.create(
+            media_id="3",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Still Untagged Movie",
+        )
+        Movie.objects.create(item=untagged_item, user=self.user, status=Status.COMPLETED)
+        ItemTag.objects.create(tag=comedy, item=self.item2)
+
+        url = reverse("medialist", args=["movie"])
+        and_response = self.client.get(
+            url,
+            {"tag": ["Favorite", "Comedy"], "tag_mode": "and"},
+        )
+        self.assertEqual(and_response.context["media_list"].paginator.count, 0)
+
+        or_response = self.client.get(
+            url,
+            {"tag": ["Favorite", "Comedy"], "tag_mode": "or"},
+        )
+        self.assertEqual(or_response.context["media_list"].paginator.count, 2)
+
+        not_response = self.client.get(
+            url,
+            {"tag": ["Favorite", "Comedy"], "tag_mode": "not"},
+        )
+        self.assertEqual(not_response.context["media_list"].paginator.count, 1)
+        self.assertContains(not_response, "Still Untagged Movie")
+
+    def test_legacy_exclude_tag_falls_back_to_not_mode(self):
+        """Old scalar tag_exclude links remain valid without a data migration."""
+        response = self.client.get(
+            reverse("medialist", args=["movie"]),
+            {"tag_exclude": "Favorite"},
+        )
+        self.assertEqual(response.context["current_tag"], ["Favorite"])
+        self.assertEqual(response.context["current_tag_mode"], "not")
+
     def test_tag_filter_case_insensitive(self):
         """Tag filter is case-insensitive."""
         url = reverse("medialist", args=["movie"])

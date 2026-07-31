@@ -107,7 +107,7 @@ def _smart_list_detail_response(
         active_rules = smart_rules.normalize_rule_payload(
             {
                 "media_types": request_media_types,
-                "status": request.GET.get("status", saved_rules["status"]),
+                "status": request.GET.getlist("status") if "status" in request.GET else saved_rules["status"],
                 "rating": request.GET.get("rating", saved_rules["rating"]),
                 "rating_min": request.GET.get("rating_min", saved_rules["rating_min"]),
                 "rating_max": request.GET.get("rating_max", saved_rules["rating_max"]),
@@ -142,8 +142,9 @@ def _smart_list_detail_response(
                 "origin": request.GET.get("origin", saved_rules["origin"]),
                 "format": request.GET.get("format", saved_rules["format"]),
                 "author": request.GET.get("author", saved_rules["author"]),
-                "tag": request.GET.get("tag", saved_rules["tag"]),
-                "tag_exclude": request.GET.get("tag_exclude", saved_rules["tag_exclude"]),
+                "tag": request.GET.getlist("tag") if "tag" in request.GET else saved_rules["tag"],
+                "tag_exclude": request.GET.get("tag_exclude", ""),
+                "tag_mode": request.GET.get("tag_mode", saved_rules["tag_mode"]),
                 "search": request.GET.get("q", saved_rules["search"]),
                 "sort": request.GET.get("sort", saved_rules["sort"]),
                 "sort_direction": request.GET.get("direction", saved_rules["sort_direction"]),
@@ -274,7 +275,8 @@ def _smart_list_detail_response(
     is_pagination = is_partial and page > 1
     has_active_filters = bool(active_rules.get("media_types")) or any(
         [
-            active_rules.get("status") not in {"", "all"},
+            bool(active_rules.get("status")),
+            bool(active_rules.get("tag")),
             active_rules.get("rating") not in {"", "all"},
             active_rules.get("rating_min"),
             active_rules.get("rating_max"),

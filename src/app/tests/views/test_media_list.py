@@ -1182,7 +1182,7 @@ class MediaListViewTests(TestCase):
 
         self.assertEqual(
             response.context["current_status"],
-            Status.COMPLETED.value,
+            [Status.COMPLETED.value],
         )
         self.assertEqual(response.context["current_sort"], "score")
         self.assertEqual(response.context["current_layout"], "table")
@@ -1193,6 +1193,25 @@ class MediaListViewTests(TestCase):
         self.assertEqual(self.user.movie_status, Status.COMPLETED.value)
         self.assertEqual(self.user.movie_sort, "score")
         self.assertEqual(self.user.movie_layout, "table")
+
+    def test_media_list_accepts_multiple_status_filters(self):
+        """Multiple statuses are combined with OR semantics."""
+        response = self.client.get(
+            reverse("medialist", args=[MediaTypes.MOVIE.value]),
+            {"status": [Status.COMPLETED.value, Status.IN_PROGRESS.value]},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.context["current_status"],
+            [Status.COMPLETED.value, Status.IN_PROGRESS.value],
+        )
+        self.assertEqual(response.context["media_list"].paginator.count, 5)
+        self.user.refresh_from_db()
+        self.assertEqual(
+            self.user.movie_status,
+            f"{Status.COMPLETED.value},{Status.IN_PROGRESS.value}",
+        )
 
     def test_status_all_excludes_collected_untracked_items(self):
         tracked_item = Item.objects.create(
@@ -1285,7 +1304,7 @@ class MediaListViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context["current_status"], "no_status")
+        self.assertEqual(response.context["current_status"], ["no_status"])
         self.assertEqual(
             [entry.item.title for entry in response.context["media_list"].object_list],
             ["No Status Filter Untracked"],
@@ -2472,12 +2491,12 @@ class MediaListViewTests(TestCase):
         """Filter persistence should derive keys from the hidden filter form."""
         response = self.client.get(
             reverse("medialist", args=[MediaTypes.MOVIE.value])
-            + "?tag=Favorite&tag_exclude=Archived&layout=grid",
+            + "?tag=Favorite&tag_mode=not&layout=grid",
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context["current_tag"], "Favorite")
-        self.assertEqual(response.context["current_tag_exclude"], "Archived")
+        self.assertEqual(response.context["current_tag"], ["Favorite"])
+        self.assertEqual(response.context["current_tag_mode"], "not")
         self.assertContains(response, "function buildMediaListFilterParams(form, overrides = {})")
         self.assertContains(response, "Array.from(form.elements)")
         self.assertContains(response, "const persistedKeys = Array.from(")

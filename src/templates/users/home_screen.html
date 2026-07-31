@@ -132,12 +132,19 @@
 
                                   <template x-for="field in filterMenuFields(section)" :key="`${field.key}-menu`">
                                     <div x-show="filterView === field.key">
-                                      <button type="button"
-                                              class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white border-b border-gray-700"
-                                              @click.stop="filterView = 'root'; filterSearch = ''">
-                                        <span class="mr-3">{% include "app/icons/chevron-left.svg" with classes="w-3.5 h-3.5" %}</span>
+                                      <div class="flex items-center w-full px-4 py-2 text-left text-sm text-gray-300 border-b border-gray-700">
+                                        <button type="button"
+                                                class="mr-3 rounded hover:bg-[#454d5a] transition-colors cursor-pointer"
+                                                @click.stop="filterView = 'root'; filterSearch = ''">
+                                          {% include "app/icons/chevron-left.svg" with classes="w-3.5 h-3.5" %}
+                                        </button>
                                         <span x-text="field.label"></span>
-                                      </button>
+                                        <button type="button"
+                                                x-show="field.key === 'tag'"
+                                                class="ml-auto px-2 py-0.5 rounded text-xs font-medium uppercase bg-[#2a2f35] border border-gray-600 text-indigo-300 hover:text-white hover:border-indigo-500 transition-colors cursor-pointer"
+                                                @click.stop="cycleRowTagMode(row)"
+                                                x-text="row.filters?.tag_mode || 'or'"></button>
+                                      </div>
 
                                       <div x-show="shouldShowFieldSearch(field)"
                                            class="p-2 border-b border-gray-700">
@@ -151,8 +158,8 @@
                                         <template x-for="option in filteredMenuOptions(field, filterSearch)" :key="`${field.key}-${option.value}`">
                                           <button type="button"
                                                   class="block w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
-                                                  :class="normalizeFieldValue(option.value) === normalizeFieldValue(row.filters[field.key]) ? 'bg-indigo-600 text-white font-medium' : 'text-gray-300 hover:bg-[#454d5a] hover:text-white'"
-                                                  @click.stop="setRowFilter(row, field.key, option.value); openMenu = null; filterView = 'root'; filterSearch = ''"
+                                                  :class="isRowFilterOptionSelected(row, field.key, option.value) ? 'bg-indigo-600 text-white font-medium' : 'text-gray-300 hover:bg-[#454d5a] hover:text-white'"
+                                                  @click.stop="selectRowFilter(row, field.key, option.value)"
                                                   x-text="option.label"></button>
                                         </template>
                                       </div>
@@ -181,8 +188,8 @@
                                   <template x-for="option in statusFilterOptions(section)" :key="option.value">
                                     <button type="button"
                                             class="block w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
-                                            :class="row.filters.status === option.value ? 'bg-indigo-600 text-white font-medium' : 'text-gray-300 hover:bg-[#454d5a] hover:text-white'"
-                                            @click.stop="row.filters.status = option.value; openMenu = null"
+                                            :class="isRowStatusSelected(row, option.value) ? 'bg-indigo-600 text-white font-medium' : 'text-gray-300 hover:bg-[#454d5a] hover:text-white'"
+                                            @click.stop="toggleRowStatus(row, option.value)"
                                             x-text="option.label"></button>
                                   </template>
                                 </div>
@@ -445,28 +452,79 @@
         },
         activeLibraryFilterCount(row) {
           return Object.entries(row.filters || {}).filter(([key, value]) => {
-            if (key === 'status') return false;
+            if (key === 'status' || key === 'tag_mode') return false;
             if (value === null || typeof value === 'undefined') return false;
-            return value !== '' && value !== 'all';
+            return Array.isArray(value) ? value.length > 0 : value !== '' && value !== 'all';
           }).length;
+        },
+        asList(value) {
+          if (Array.isArray(value)) return value;
+          return value === null || typeof value === 'undefined' || value === '' ? [] : [value];
+        },
+        rowStatusValues(row) {
+          return this.asList(row.filters?.status).filter(value => value && value !== 'all');
+        },
+        rowTagValues(row) {
+          return this.asList(row.filters?.tag).filter(value => value);
+        },
+        isRowStatusSelected(row, value) {
+          if (value === 'all' || value === 'All') return this.rowStatusValues(row).length === 0;
+          return this.rowStatusValues(row).includes(value);
+        },
+        toggleRowStatus(row, value) {
+          if (value === 'all' || value === 'All') {
+            row.filters.status = [];
+            return;
+          }
+          const statuses = this.rowStatusValues(row);
+          row.filters.status = statuses.includes(value)
+            ? statuses.filter(status => status !== value)
+            : [...statuses, value];
+        },
+        toggleRowTag(row, value) {
+          const tags = this.rowTagValues(row);
+          row.filters.tag = tags.includes(value)
+            ? tags.filter(tag => tag !== value)
+            : [...tags, value];
+        },
+        cycleRowTagMode(row) {
+          const mode = row.filters?.tag_mode || 'or';
+          row.filters.tag_mode = mode === 'and' ? 'or' : (mode === 'or' ? 'not' : 'and');
+        },
+        isRowFilterOptionSelected(row, key, value) {
+          if (key === 'tag') return this.rowTagValues(row).includes(value);
+          if (key === 'status') return this.isRowStatusSelected(row, value);
+          return this.normalizeFieldValue(value) === this.normalizeFieldValue(row.filters?.[key]);
         },
         rowFilterLabel(section, row) {
           const labels = [];
-          for (const key of ['progress', 'rating', 'collection', 'genre', 'year', 'release', 'source', 'language', 'country', 'platform', 'origin', 'format', 'author', 'tag', 'tag_exclude']) {
+          const statuses = this.rowStatusValues(row);
+          if (statuses.length) {
+            const statusLabels = statuses.map(value => this.fieldOptionLabel(section, 'status', value));
+            labels.push(statuses.length === 1 ? statusLabels[0] : `${statuses.length} Statuses`);
+          }
+          for (const key of ['progress', 'rating', 'collection', 'genre', 'year', 'release', 'source', 'language', 'country', 'platform', 'origin', 'format', 'author']) {
             const value = row.filters?.[key];
             if (!value || value === 'all') continue;
-            let label = this.fieldOptionLabel(section, key, value);
-            if (key === 'tag') label = `+${label}`;
-            if (key === 'tag_exclude') label = `-${label}`;
-            labels.push(label);
+            labels.push(this.fieldOptionLabel(section, key, value));
+          }
+          const tags = this.rowTagValues(row);
+          if (tags.length) {
+            const separator = (row.filters?.tag_mode || 'or') === 'and' ? ' & ' : ', ';
+            const prefix = row.filters?.tag_mode === 'not' ? 'Not tagged ' : '';
+            labels.push(prefix + tags.join(separator));
           }
           if (!labels.length) return 'All';
           if (labels.length === 1) return labels[0];
           return `${labels[0]} +${labels.length - 1}`;
         },
         statusButtonLabel(section, row) {
-          const option = this.statusFilterOptions(section).find(candidate => candidate.value === row.filters?.status);
-          return option ? option.label : 'Status';
+          const statuses = this.rowStatusValues(row);
+          if (statuses.length === 1) {
+            const option = this.statusFilterOptions(section).find(candidate => candidate.value === statuses[0]);
+            return option ? option.label : statuses[0];
+          }
+          return statuses.length ? `${statuses.length} Statuses` : 'Status';
         },
         sortButtonLabel(section, row) {
           const choice = this.sortChoices(section, row).find(candidate => candidate.value === row.sort_by);
@@ -480,13 +538,10 @@
           row.sort_by = value;
         },
         describeFilters(section, row) {
-          const status = row.filters?.status || 'all';
+          const statuses = this.rowStatusValues(row);
           const parts = [];
-          if (status === 'In progress') parts.push('In Progress');
-          else if (status === 'Planning') parts.push('Planning');
-          else if (status === 'Completed') parts.push('Completed');
-          else if (status === 'Paused') parts.push('Paused');
-          else if (status === 'Dropped') parts.push('Dropped');
+          if (statuses.length === 1) parts.push(this.fieldOptionLabel(section, 'status', statuses[0]));
+          else if (statuses.length > 1) parts.push(`${statuses.length} Statuses`);
           else parts.push('Library');
 
           if (section.media_type === 'music') {
@@ -505,12 +560,19 @@
             return option ? option.label : value;
           };
 
-          ['progress', 'rating', 'collection', 'genre', 'year', 'release', 'source', 'language', 'country', 'platform', 'origin', 'format', 'author', 'tag', 'tag_exclude']
+          ['progress', 'rating', 'collection', 'genre', 'year', 'release', 'source', 'language', 'country', 'platform', 'origin', 'format', 'author']
             .forEach(key => {
               const value = row.filters?.[key];
               if (!value || value === 'all') return;
-              parts.push(key === 'tag_exclude' ? `Not tagged ${labelFor(key, value)}` : labelFor(key, value));
+              parts.push(labelFor(key, value));
             });
+
+          const tags = this.rowTagValues(row);
+          if (tags.length) {
+            const separator = (row.filters?.tag_mode || 'or') === 'and' ? ' & ' : ' or ';
+            const prefix = row.filters?.tag_mode === 'not' ? 'Not tagged ' : '';
+            parts.push(prefix + tags.map(value => labelFor('tag', value)).join(separator));
+          }
 
           return parts.slice(0, 4).join(' • ');
         },
@@ -543,6 +605,15 @@
         },
         fieldSelectionLabel(section, row, key) {
           const value = row.filters?.[key];
+          if (key === 'status') {
+            const statuses = this.rowStatusValues(row);
+            if (statuses.length === 1) return this.fieldOptionLabel(section, key, statuses[0]);
+            return statuses.length ? `${statuses.length} Statuses` : 'Any';
+          }
+          if (key === 'tag') {
+            const tags = this.rowTagValues(row);
+            return tags.length === 1 ? tags[0] : (tags.length ? `${tags.length} Tags` : 'Any');
+          }
           if (!value || value === 'all') {
             const field = this.fieldDefinition(section, key);
             return field?.options?.[0]?.label || 'Any';
@@ -568,6 +639,16 @@
         },
         setRowFilter(row, key, value) {
           row.filters[key] = value;
+        },
+        selectRowFilter(row, key, value) {
+          if (key === 'tag') {
+            this.toggleRowTag(row, value);
+            return;
+          }
+          this.setRowFilter(row, key, value);
+          this.openMenu = null;
+          this.filterView = 'root';
+          this.filterSearch = '';
         },
         clearLibraryFilters(section, row) {
           const defaults = this.defaultFilters(section, 'library_query');
@@ -611,7 +692,7 @@
         defaultFilters(section, rowType) {
           if (rowType !== 'library_query') return {};
           const defaults = {
-            status: 'In progress',
+            status: ['In progress'],
             progress: ['tv', 'anime'].includes(section.media_type) ? 'not_caught_up' : 'all',
             rating: 'all',
             collection: 'all',
@@ -625,8 +706,8 @@
             origin: '',
             format: '',
             author: '',
-            tag: '',
-            tag_exclude: ''
+            tag: [],
+            tag_mode: 'or'
           };
           if (section.media_type === 'music') defaults.subview = 'tracks';
           return defaults;

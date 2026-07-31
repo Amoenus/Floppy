@@ -30,7 +30,11 @@
     layout: '{{ current_layout }}',
     renderedLayout: '{{ current_layout }}',
     query: '{{ active_smart_rules.search|default:''|escapejs }}',
-    status: '{{ active_smart_rules.status|default:'all'|escapejs }}',
+    statuses: [
+      {% for value in active_smart_rules.status %}
+        '{{ value|escapejs }}'{% if not forloop.last %},{% endif %}
+      {% endfor %}
+    ],
     rating: '{{ active_smart_rules.rating|default:'all'|escapejs }}',
     rating_min: '{{ active_smart_rules.rating_min|default:''|escapejs }}',
     rating_max: '{{ active_smart_rules.rating_max|default:''|escapejs }}',
@@ -49,8 +53,12 @@
     platform: '{{ active_smart_rules.platform|default:''|escapejs }}',
     origin: '{{ active_smart_rules.origin|default:''|escapejs }}',
     format: '{{ active_smart_rules.format|default:''|escapejs }}',
-    tag: '{{ active_smart_rules.tag|default:''|escapejs }}',
-    tag_exclude: '{{ active_smart_rules.tag_exclude|default:''|escapejs }}',
+    selectedTags: [
+      {% for value in active_smart_rules.tag %}
+        '{{ value|escapejs }}'{% if not forloop.last %},{% endif %}
+      {% endfor %}
+    ],
+    tagMode: '{{ active_smart_rules.tag_mode|default:'or'|escapejs }}',
     showLanguages: {{ smart_filter_data.show_languages|yesno:'true,false' }},
     showCountries: {{ smart_filter_data.show_countries|yesno:'true,false' }},
     showPlatforms: {{ smart_filter_data.show_platforms|yesno:'true,false' }},
@@ -179,6 +187,25 @@
       }
       return this.selectedTypes;
     },
+    isStatusSelected(value) { return this.statuses.includes(value); },
+    toggleStatus(value) {
+      if (this.statuses.includes(value)) {
+        this.statuses = this.statuses.filter((s) => s !== value);
+      } else {
+        this.statuses = [...this.statuses, value];
+      }
+    },
+    isTagSelected(value) { return this.selectedTags.includes(value); },
+    toggleTag(value) {
+      if (this.selectedTags.includes(value)) {
+        this.selectedTags = this.selectedTags.filter((t) => t !== value);
+      } else {
+        this.selectedTags = [...this.selectedTags, value];
+      }
+    },
+    cycleTagMode() {
+      this.tagMode = this.tagMode === 'and' ? 'or' : (this.tagMode === 'or' ? 'not' : 'and');
+    },
     filterLabel() {
       const labels = [];
       if (!this.allTypesSelected()) {
@@ -232,11 +259,9 @@
       if (this.showFormats && this.format) {
         labels.push(this.format === 'ebook' ? 'eBook' : this.format.charAt(0).toUpperCase() + this.format.slice(1));
       }
-      if (this.tag) {
-        labels.push('+' + this.tag);
-      }
-      if (this.tag_exclude) {
-        labels.push('-' + this.tag_exclude);
+      if (this.selectedTags.length) {
+        const prefix = this.tagMode === 'not' ? '-' : '+';
+        labels.push(prefix + this.selectedTags.join(this.tagMode === 'and' ? ' & ' : ', '));
       }
       if (labels.length === 0) {
         return 'All';
@@ -265,8 +290,8 @@
       this.platform = '';
       this.origin = '';
       this.format = '';
-      this.tag = '';
-      this.tag_exclude = '';
+      this.selectedTags = [];
+      this.tagMode = 'or';
     },
     itemsCountLabel() {
       return `${this.itemsCount} item${this.itemsCount === 1 ? '' : 's'}`;
@@ -284,7 +309,7 @@
     async saveSmartRules() {
       const payload = {
         media_types: this.selectedTypesForSubmit(),
-        status: this.status,
+        status: this.statuses,
         rating: this.rating,
         rating_min: this.rating_min,
         rating_max: this.rating_max,
@@ -302,8 +327,8 @@
         platform: this.platform,
         origin: this.origin,
         format: this.format,
-        tag: this.tag,
-        tag_exclude: this.tag_exclude,
+        tag: this.selectedTags,
+        tag_mode: this.tagMode,
         search: this.query,
         sort: this.sort,
         sort_direction: this.direction,

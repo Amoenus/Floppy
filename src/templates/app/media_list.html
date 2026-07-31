@@ -24,7 +24,11 @@
     mediaListUrl: '{% url 'medialist' media_type %}',
     sort: '{{ current_sort }}',
     direction: '{{ current_direction }}',
-    status: '{{ current_status }}',
+    statuses: [
+      {% for value in current_status %}
+        '{{ value }}'{% if not forloop.last %},{% endif %}
+      {% endfor %}
+    ],
     rating: '{{ current_rating }}',
     collection: '{{ current_collection }}',
     progress: '{{ current_progress|default:'all' }}',
@@ -40,8 +44,12 @@
     origin: '{{ current_origin|default:'' }}',
     format: '{{ current_format|default:'' }}',
     author: '{{ current_author|default:'' }}',
-    tag: '{{ current_tag|default:'' }}',
-    tag_exclude: '{{ current_tag_exclude|default:'' }}',
+    selectedTags: [
+      {% for value in current_tag %}
+        '{{ value|escapejs }}'{% if not forloop.last %},{% endif %}
+      {% endfor %}
+    ],
+    tagMode: '{{ current_tag_mode|default:'or' }}',
     layout: '{{ current_layout }}',
     search: '{{ request.GET.search|default:'' }}',
     showLanguages: {{ filter_data.show_languages|yesno:'true,false' }},
@@ -108,6 +116,25 @@
       }
     },
     layoutHref(nextLayout) { return buildMediaListHref(this.mediaListUrl, document.getElementById('filter-form'), { layout: nextLayout }); },
+    isStatusSelected(value) { return this.statuses.includes(value); },
+    toggleStatus(value) {
+      if (this.statuses.includes(value)) {
+        this.statuses = this.statuses.filter((s) => s !== value);
+      } else {
+        this.statuses = [...this.statuses, value];
+      }
+    },
+    isTagSelected(value) { return this.selectedTags.includes(value); },
+    toggleTag(value) {
+      if (this.selectedTags.includes(value)) {
+        this.selectedTags = this.selectedTags.filter((t) => t !== value);
+      } else {
+        this.selectedTags = [...this.selectedTags, value];
+      }
+    },
+    cycleTagMode() {
+      this.tagMode = this.tagMode === 'and' ? 'or' : (this.tagMode === 'or' ? 'not' : 'and');
+    },
     filterLabel() {
       const labels = [];
       if (this.rating && this.rating !== 'all') {
@@ -155,11 +182,9 @@
       if (this.showAuthors && this.author) {
         labels.push(this.author);
       }
-      if (this.tag) {
-        labels.push('+' + this.tag);
-      }
-      if (this.tag_exclude) {
-        labels.push('-' + this.tag_exclude);
+      if (this.selectedTags.length) {
+        const prefix = this.tagMode === 'not' ? '-' : '+';
+        labels.push(prefix + this.selectedTags.join(this.tagMode === 'and' ? ' & ' : ', '));
       }
       if (labels.length === 0) {
         return 'All';
@@ -185,8 +210,8 @@
       this.origin = '';
       this.format = '';
       this.author = '';
-      this.tag = '';
-      this.tag_exclude = '';
+      this.selectedTags = [];
+      this.tagMode = 'or';
     }
   }">
 

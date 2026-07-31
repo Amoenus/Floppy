@@ -36,11 +36,13 @@ SMART_FILTER_KEYS = (
     "format",
     "author",
     "tag",
-    "tag_exclude",
+    "tag_mode",
 )
 
+TAG_MODE_CHOICES = {"and", "or", "not"}
+
 SMART_FILTER_DEFAULTS = {
-    "status": "all",
+    "status": [],
     "rating": "all",
     "rating_min": "",
     "rating_max": "",
@@ -63,8 +65,8 @@ SMART_FILTER_DEFAULTS = {
     "origin": "",
     "format": "",
     "author": "",
-    "tag": "",
-    "tag_exclude": "",
+    "tag": [],
+    "tag_mode": "or",
 }
 
 RATING_CHOICES = {"all", "rated", "not_rated"}
@@ -261,9 +263,21 @@ def normalize_rule_payload(payload, owner):
         seen.add(value)
         normalized_media_types.append(value)
 
-    status = str(_payload_get(payload, "status", "all") or "all").strip()
-    if not status or status.lower() == "all" or status == "All" or status not in Status.values:
-        status = "all"
+    status_values = _payload_getlist(payload, "status")
+    if not status_values:
+        legacy_status = str(_payload_get(payload, "status", "") or "").strip()
+        if legacy_status and legacy_status.lower() != "all":
+            status_values = [legacy_status]
+    normalized_statuses = []
+    seen_statuses = set()
+    for value in status_values:
+        value = str(value).strip()
+        if not value or value.lower() == "all" or value not in Status.values:
+            continue
+        if value in seen_statuses:
+            continue
+        seen_statuses.add(value)
+        normalized_statuses.append(value)
 
     rating = str(_payload_get(payload, "rating", "all") or "all").strip().lower()
     if rating not in RATING_CHOICES:
@@ -295,9 +309,27 @@ def normalize_rule_payload(payload, owner):
     if sort_direction not in {"asc", "desc"}:
         sort_direction = ""
 
+    tag_values = [str(value).strip() for value in _payload_getlist(payload, "tag") if str(value).strip()]
+    tag_mode = str(_payload_get(payload, "tag_mode", "") or "").strip().lower()
+    if not tag_values:
+        legacy_tag_exclude = str(_payload_get(payload, "tag_exclude", "") or "").strip()
+        if legacy_tag_exclude:
+            tag_values = [legacy_tag_exclude]
+            tag_mode = "not"
+    if tag_mode not in TAG_MODE_CHOICES:
+        tag_mode = "or"
+    seen_tags = set()
+    deduped_tags = []
+    for value in tag_values:
+        key = value.lower()
+        if key in seen_tags:
+            continue
+        seen_tags.add(key)
+        deduped_tags.append(value)
+
     normalized = {
         "media_types": normalized_media_types,
-        "status": status,
+        "status": normalized_statuses,
         "rating": rating,
         "rating_min": rating_min,
         "rating_max": rating_max,
@@ -320,8 +352,8 @@ def normalize_rule_payload(payload, owner):
         "origin": str(_payload_get(payload, "origin", "") or "").strip(),
         "format": str(_payload_get(payload, "format", "") or "").strip(),
         "author": str(_payload_get(payload, "author", "") or "").strip(),
-        "tag": str(_payload_get(payload, "tag", "") or "").strip(),
-        "tag_exclude": str(_payload_get(payload, "tag_exclude", "") or "").strip(),
+        "tag": deduped_tags,
+        "tag_mode": tag_mode,
     }
     return normalized
 
@@ -361,20 +393,25 @@ def normalize_list_rules(custom_list) -> dict:
 def _base_media_queryset(
     owner,
     media_type: str,
-    status_filter: str = "all",
+    status_filter: list[str] | str = "all",
     search_query: str = "",
     date_added_from: str = "",
     date_added_to: str = "",
 ):
+    if isinstance(status_filter, str):
+        status_filters = [] if status_filter in ("", "all") else [status_filter]
+    else:
+        status_filters = [value for value in (status_filter or []) if value and value != "all"]
+
     model = apps.get_model("app", media_type)
     if media_type == MediaTypes.EPISODE.value:
         queryset = model.objects.filter(related_season__user=owner)
-        if status_filter != "all":
-            queryset = queryset.filter(related_season__status=status_filter)
+        if status_filters:
+            queryset = queryset.filter(related_season__status__in=status_filters)
     else:
         queryset = model.objects.filter(user=owner)
-        if status_filter != "all":
-            queryset = queryset.filter(status=status_filter)
+        if status_filters:
+            queryset = queryset.filter(status__in=status_filters)
 
     if search_query:
         queryset = queryset.filter(item__title__icontains=search_query)
@@ -505,6 +542,9 @@ def _rules_require_item_scan(normalized_rules: dict) -> bool:
     ):
         return True
 
+    if normalized_rules.get("tag"):
+        return True
+
     for key in (
         "genre",
         "implied_genre",
@@ -518,8 +558,6 @@ def _rules_require_item_scan(normalized_rules: dict) -> bool:
         "origin",
         "format",
         "author",
-        "tag",
-        "tag_exclude",
     ):
         if _normalize_filter_value(normalized_rules.get(key)):
             return True
@@ -653,6 +691,32 @@ def _filter_item_ids_by_rating(
     return candidate_item_ids
 
 
+def _resolve_tag_id_sets(
+    owner,
+    tag_values: list[str],
+    tag_mode: str,
+) -> tuple[set[int] | None, set[int] | None]:
+    """Return (matching_ids_or_None, excluded_ids_or_None) for a mode-aware tag filter."""
+    if not tag_values:
+        return None, None
+
+    per_tag_id_sets = [
+        set(
+            ItemTag.objects.filter(
+                tag__user=owner,
+                tag__name__iexact=value,
+            ).values_list("item_id", flat=True),
+        )
+        for value in tag_values
+    ]
+
+    if tag_mode == "and":
+        return set.intersection(*per_tag_id_sets), None
+    if tag_mode == "not":
+        return None, set().union(*per_tag_id_sets)
+    return set().union(*per_tag_id_sets), None
+
+
 def collect_matching_item_ids(
     owner,
     normalized_rules: dict,
@@ -677,31 +741,23 @@ def collect_matching_item_ids(
     if collection_filter != "all":
         collected_item_ids, collected_episode_pairs = _collection_filter_context(owner)
 
-    tag_filter = _normalize_filter_value(normalized_rules.get("tag"))
-    tag_exclude = _normalize_filter_value(normalized_rules.get("tag_exclude"))
-    tag_included_ids = None
-    tag_excluded_ids = None
-    if tag_filter:
-        tag_included_ids = set(
-            ItemTag.objects.filter(
-                tag__user=owner,
-                tag__name__iexact=tag_filter,
-            ).values_list("item_id", flat=True)
-        )
-    if tag_exclude:
-        tag_excluded_ids = set(
-            ItemTag.objects.filter(
-                tag__user=owner,
-                tag__name__iexact=tag_exclude,
-            ).values_list("item_id", flat=True)
-        )
+    tag_match_ids, tag_excluded_ids = _resolve_tag_id_sets(
+        owner,
+        normalized_rules.get("tag") or [],
+        normalized_rules.get("tag_mode", "or"),
+    )
+
+    def _tag_filter_excludes(item_id: int) -> bool:
+        if tag_match_ids is not None and item_id not in tag_match_ids:
+            return True
+        return bool(tag_excluded_ids is not None and item_id in tag_excluded_ids)
 
     matched_ids = set()
     for media_type in target_media_types:
         queryset = _base_media_queryset(
             owner=owner,
             media_type=media_type,
-            status_filter=normalized_rules.get("status", "all"),
+            status_filter=normalized_rules.get("status") or [],
             search_query=normalized_rules.get("search", ""),
             date_added_from=normalized_rules.get("date_added_from", ""),
             date_added_to=normalized_rules.get("date_added_to", ""),
@@ -712,7 +768,7 @@ def collect_matching_item_ids(
             matched_ids.update(queryset_item_ids)
             if (
                 include_collection_only_untracked
-                and normalized_rules.get("status", "all") == "all"
+                and not normalized_rules.get("status")
                 and collection_filter != "not_collected"
                 and not has_rating_constraints
             ):
@@ -756,17 +812,14 @@ def collect_matching_item_ids(
             ):
                 continue
 
-            if tag_included_ids is not None and item.id not in tag_included_ids:
-                continue
-
-            if tag_excluded_ids is not None and item.id in tag_excluded_ids:
+            if _tag_filter_excludes(item.id):
                 continue
 
             matched_ids.add(item.id)
 
         if (
             include_collection_only_untracked
-            and normalized_rules.get("status", "all") == "all"
+            and not normalized_rules.get("status")
             and collection_filter != "not_collected"
             and not has_rating_constraints
         ):
@@ -780,9 +833,7 @@ def collect_matching_item_ids(
                 for item in Item.objects.filter(id__in=collection_only_ids).iterator():
                     if not _matches_item_filters(item, normalized_rules, today):
                         continue
-                    if tag_included_ids is not None and item.id not in tag_included_ids:
-                        continue
-                    if tag_excluded_ids is not None and item.id in tag_excluded_ids:
+                    if _tag_filter_excludes(item.id):
                         continue
                     matched_ids.add(item.id)
 
@@ -807,7 +858,7 @@ def item_matches_rules(
     queryset = _base_media_queryset(
         owner=owner,
         media_type=item.media_type,
-        status_filter=normalized_rules.get("status", "all"),
+        status_filter=normalized_rules.get("status") or [],
         search_query=normalized_rules.get("search", ""),
         date_added_from=normalized_rules.get("date_added_from", ""),
         date_added_to=normalized_rules.get("date_added_to", ""),
@@ -830,23 +881,24 @@ def item_matches_rules(
     if not _matches_item_filters(item, normalized_rules, today):
         return False
 
-    tag_filter = _normalize_filter_value(normalized_rules.get("tag"))
-    tag_exclude = _normalize_filter_value(normalized_rules.get("tag_exclude"))
-    if tag_filter:
-        has_tag = ItemTag.objects.filter(
-            tag__user=owner,
-            tag__name__iexact=tag_filter,
-            item=item,
-        ).exists()
-        if not has_tag:
-            return False
-    if tag_exclude:
-        has_excluded_tag = ItemTag.objects.filter(
-            tag__user=owner,
-            tag__name__iexact=tag_exclude,
-            item=item,
-        ).exists()
-        if has_excluded_tag:
+    tag_values = normalized_rules.get("tag") or []
+    if tag_values:
+        tag_mode = normalized_rules.get("tag_mode", "or")
+        item_tag_names = {
+            name.lower()
+            for name in ItemTag.objects.filter(
+                tag__user=owner,
+                item=item,
+            ).values_list("tag__name", flat=True)
+        }
+        wanted = {value.lower() for value in tag_values}
+        if tag_mode == "and":
+            if not wanted.issubset(item_tag_names):
+                return False
+        elif tag_mode == "not":
+            if wanted & item_tag_names:
+                return False
+        elif not (wanted & item_tag_names):
             return False
 
     collection_filter = normalized_rules.get("collection", "all")
@@ -947,7 +999,7 @@ def sync_smart_lists_for_item(owner, item: Item) -> dict[str, int]:
 def build_rule_filter_data(
     owner,
     media_types: list[str],
-    status: str,
+    status: list[str] | str,
     search: str,
     *,
     include_collection_only_untracked: bool = False,
@@ -955,6 +1007,7 @@ def build_rule_filter_data(
 ):
     """Build menu options for smart-rule filters from matched candidate media."""
     target_media_types = _target_media_types(owner, media_types)
+    status_is_all = not status or status == "all"
 
     item_ids = set()
     for media_type in target_media_types:
@@ -966,7 +1019,7 @@ def build_rule_filter_data(
         )
         queryset_item_ids = set(queryset.values_list("item_id", flat=True))
         item_ids.update(queryset_item_ids)
-        if include_collection_only_untracked and status == "all":
+        if include_collection_only_untracked and status_is_all:
             item_ids.update(
                 _collection_only_item_ids(
                     owner,

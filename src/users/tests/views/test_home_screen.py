@@ -14,11 +14,13 @@ from app.models import (
     Episode,
     Game,
     Item,
+    ItemTag,
     MediaTypes,
     Movie,
     Season,
     Sources,
     Status,
+    Tag,
 )
 from lists.models import CustomList
 from users import home_screen
@@ -530,6 +532,56 @@ class HomeScreenViewTests(TestCase):
             ["Home Progress Tracked TV"],
         )
 
+    def test_home_rows_support_multi_status_and_tag_filters(self):
+        """Home rows use OR status matching and mode-aware tag matching."""
+        self._set_enabled_media_types(MediaTypes.MOVIE.value)
+        both_item = Item.objects.create(
+            title="Home Action Comedy",
+            media_id="home-multi-1",
+            media_type=MediaTypes.MOVIE.value,
+            source=Sources.TMDB.value,
+        )
+        action_item = Item.objects.create(
+            title="Home Action",
+            media_id="home-multi-2",
+            media_type=MediaTypes.MOVIE.value,
+            source=Sources.TMDB.value,
+        )
+        comedy_item = Item.objects.create(
+            title="Home Comedy",
+            media_id="home-multi-3",
+            media_type=MediaTypes.MOVIE.value,
+            source=Sources.TMDB.value,
+        )
+        Movie.objects.create(item=both_item, user=self.user, status=Status.COMPLETED.value)
+        Movie.objects.create(item=action_item, user=self.user, status=Status.DROPPED.value)
+        Movie.objects.create(item=comedy_item, user=self.user, status=Status.COMPLETED.value)
+        action_tag = Tag.objects.create(user=self.user, name="Action")
+        comedy_tag = Tag.objects.create(user=self.user, name="Comedy")
+        ItemTag.objects.create(item=both_item, tag=action_tag)
+        ItemTag.objects.create(item=both_item, tag=comedy_tag)
+        ItemTag.objects.create(item=action_item, tag=action_tag)
+        ItemTag.objects.create(item=comedy_item, tag=comedy_tag)
+
+        row = HomeScreenRow.objects.create(
+            user=self.user,
+            media_type=MediaTypes.MOVIE.value,
+            position=0,
+            enabled=True,
+            row_type=HomeScreenRowTypeChoices.LIBRARY_QUERY,
+            sort_by=MediaSortChoices.TITLE,
+            direction=DirectionChoices.ASC,
+            filters={
+                "status": [Status.COMPLETED.value, Status.DROPPED.value],
+                "tag": ["Action", "Comedy"],
+                "tag_mode": "and",
+            },
+        )
+
+        entries = home_screen._library_query_entries(self.user, row)
+
+        self.assertEqual([entry.item.title for entry in entries], ["Home Action Comedy"])
+
     def test_home_screen_settings_do_not_expose_no_status_option(self):
         self._set_enabled_media_types(MediaTypes.MOVIE.value)
 
@@ -670,7 +722,7 @@ class HomeScreenViewTests(TestCase):
         )
         self.assertEqual(
             sections[MediaTypes.TV.value]["rows"][0]["filters"]["status"],
-            Status.IN_PROGRESS.value,
+            [Status.IN_PROGRESS.value],
         )
         self.assertEqual(
             sections[MediaTypes.TV.value]["rows"][0]["filters"]["progress"],
@@ -827,7 +879,7 @@ class HomeScreenViewTests(TestCase):
         )
         self.assertEqual(tv_row.sort_by, MediaSortChoices.NEXT_EPISODE_AIR_DATE)
         self.assertEqual(tv_row.direction, DirectionChoices.DESC)
-        self.assertEqual(tv_row.filters["status"], Status.IN_PROGRESS.value)
+        self.assertEqual(tv_row.filters["status"], [Status.IN_PROGRESS.value])
         self.assertEqual(tv_row.filters["progress"], "not_caught_up")
 
         anime_row = HomeScreenRow.objects.get(
@@ -837,7 +889,7 @@ class HomeScreenViewTests(TestCase):
         )
         self.assertEqual(anime_row.sort_by, MediaSortChoices.NEXT_EPISODE_AIR_DATE)
         self.assertEqual(anime_row.direction, DirectionChoices.DESC)
-        self.assertEqual(anime_row.filters["status"], Status.IN_PROGRESS.value)
+        self.assertEqual(anime_row.filters["status"], [Status.IN_PROGRESS.value])
         self.assertEqual(anime_row.filters["progress"], "not_caught_up")
 
     def test_home_screen_get_upgrades_single_row_legacy_tv_and_anime_defaults(self):
@@ -885,7 +937,7 @@ class HomeScreenViewTests(TestCase):
             )
             self.assertEqual(row.sort_by, MediaSortChoices.NEXT_EPISODE_AIR_DATE)
             self.assertEqual(row.direction, DirectionChoices.DESC)
-            self.assertEqual(row.filters["status"], Status.IN_PROGRESS.value)
+            self.assertEqual(row.filters["status"], [Status.IN_PROGRESS.value])
             self.assertEqual(row.filters["progress"], "not_caught_up")
 
     def test_home_screen_get_upgrades_original_single_row_seeded_anime_defaults(self):
@@ -928,7 +980,7 @@ class HomeScreenViewTests(TestCase):
         )
         self.assertEqual(anime_row.sort_by, MediaSortChoices.NEXT_EPISODE_AIR_DATE)
         self.assertEqual(anime_row.direction, DirectionChoices.DESC)
-        self.assertEqual(anime_row.filters["status"], Status.IN_PROGRESS.value)
+        self.assertEqual(anime_row.filters["status"], [Status.IN_PROGRESS.value])
         self.assertEqual(anime_row.filters["progress"], "not_caught_up")
 
     def test_describe_library_query_uses_static_summary_labels(self):
@@ -1012,9 +1064,9 @@ class HomeScreenViewTests(TestCase):
         ])
         self.assertEqual(rows[0].sort_by, "title")
         self.assertEqual(rows[0].direction, "asc")
-        self.assertEqual(rows[0].filters["status"], Status.COMPLETED.value)
+        self.assertEqual(rows[0].filters["status"], [Status.COMPLETED.value])
         self.assertEqual(rows[0].filters["rating"], "rated")
-        self.assertEqual(rows[0].filters["tag"], "favorite")
+        self.assertEqual(rows[0].filters["tag"], ["favorite"])
         self.assertFalse(rows[1].enabled)
         self.assertEqual(rows[1].custom_list_id, custom_list.id)
         self.assertEqual(rows[1].sort_by, "date_added")

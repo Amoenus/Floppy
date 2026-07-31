@@ -25,6 +25,20 @@ VALID_HOME_SCREEN_MEDIA_TYPES = [
     value for value in MediaTypes.values if value != MediaTypes.EPISODE.value
 ]
 
+MULTI_STATUS_PREFERENCE_FIELDS = {
+    "tv_status",
+    "season_status",
+    "movie_status",
+    "anime_status",
+    "manga_status",
+    "game_status",
+    "boardgame_status",
+    "book_status",
+    "comic_status",
+    "music_status",
+    "podcast_status",
+}
+
 
 def generate_token():
     """Generate a user token."""
@@ -382,7 +396,7 @@ class User(AbstractUser):
         choices=MediaSortChoices,
     )
     tv_status = models.CharField(
-        max_length=20,
+        max_length=128,
         default=MediaStatusChoices.ALL,
         choices=MediaStatusChoices,
     )
@@ -405,7 +419,7 @@ class User(AbstractUser):
         choices=MediaSortChoices,
     )
     season_status = models.CharField(
-        max_length=20,
+        max_length=128,
         default=MediaStatusChoices.ALL,
         choices=MediaStatusChoices,
     )
@@ -428,7 +442,7 @@ class User(AbstractUser):
         choices=MediaSortChoices,
     )
     movie_status = models.CharField(
-        max_length=20,
+        max_length=128,
         default=MediaStatusChoices.ALL,
         choices=MediaStatusChoices,
     )
@@ -451,7 +465,7 @@ class User(AbstractUser):
         choices=MediaSortChoices,
     )
     anime_status = models.CharField(
-        max_length=20,
+        max_length=128,
         default=MediaStatusChoices.ALL,
         choices=MediaStatusChoices,
     )
@@ -474,7 +488,7 @@ class User(AbstractUser):
         choices=MediaSortChoices,
     )
     manga_status = models.CharField(
-        max_length=20,
+        max_length=128,
         default=MediaStatusChoices.ALL,
         choices=MediaStatusChoices,
     )
@@ -497,7 +511,7 @@ class User(AbstractUser):
         choices=MediaSortChoices,
     )
     game_status = models.CharField(
-        max_length=20,
+        max_length=128,
         default=MediaStatusChoices.ALL,
         choices=MediaStatusChoices,
     )
@@ -520,7 +534,7 @@ class User(AbstractUser):
         choices=MediaSortChoices.choices,
     )
     boardgame_status = models.CharField(
-        max_length=20,
+        max_length=128,
         default=MediaStatusChoices.ALL,
         choices=MediaStatusChoices.choices,
     )
@@ -543,7 +557,7 @@ class User(AbstractUser):
         choices=MediaSortChoices,
     )
     book_status = models.CharField(
-        max_length=20,
+        max_length=128,
         default=MediaStatusChoices.ALL,
         choices=MediaStatusChoices,
     )
@@ -566,7 +580,7 @@ class User(AbstractUser):
         choices=MediaSortChoices,
     )
     comic_status = models.CharField(
-        max_length=20,
+        max_length=128,
         default=MediaStatusChoices.ALL,
         choices=MediaStatusChoices,
     )
@@ -589,7 +603,7 @@ class User(AbstractUser):
         choices=MediaSortChoices,
     )
     music_status = models.CharField(
-        max_length=20,
+        max_length=128,
         default=MediaStatusChoices.ALL,
         choices=MediaStatusChoices.choices,
     )
@@ -612,7 +626,7 @@ class User(AbstractUser):
         choices=MediaSortChoices.choices,
     )
     podcast_status = models.CharField(
-        max_length=20,
+        max_length=128,
         default=MediaStatusChoices.ALL,
         choices=MediaStatusChoices,
     )
@@ -1084,10 +1098,6 @@ class User(AbstractUser):
                 condition=models.Q(boardgame_direction__in=DirectionChoices.values),
             ),
             models.CheckConstraint(
-                name="boardgame_status_valid",
-                condition=models.Q(boardgame_status__in=MediaStatusChoices.values),
-            ),
-            models.CheckConstraint(
                 name="book_sort_valid",
                 condition=models.Q(book_sort__in=MediaSortChoices.values),
             ),
@@ -1179,34 +1189,6 @@ class User(AbstractUser):
                 condition=models.Q(list_detail_status__in=MediaStatusChoices.values),
             ),
             models.CheckConstraint(
-                name="tv_status_valid",
-                condition=models.Q(tv_status__in=MediaStatusChoices.values),
-            ),
-            models.CheckConstraint(
-                name="season_status_valid",
-                condition=models.Q(season_status__in=MediaStatusChoices.values),
-            ),
-            models.CheckConstraint(
-                name="movie_status_valid",
-                condition=models.Q(movie_status__in=MediaStatusChoices.values),
-            ),
-            models.CheckConstraint(
-                name="anime_status_valid",
-                condition=models.Q(anime_status__in=MediaStatusChoices.values),
-            ),
-            models.CheckConstraint(
-                name="manga_status_valid",
-                condition=models.Q(manga_status__in=MediaStatusChoices.values),
-            ),
-            models.CheckConstraint(
-                name="game_status_valid",
-                condition=models.Q(game_status__in=MediaStatusChoices.values),
-            ),
-            models.CheckConstraint(
-                name="book_status_valid",
-                condition=models.Q(book_status__in=MediaStatusChoices.values),
-            ),
-            models.CheckConstraint(
                 name="music_layout_valid",
                 condition=models.Q(music_layout__in=LayoutChoices.values),
             ),
@@ -1219,10 +1201,6 @@ class User(AbstractUser):
                 condition=models.Q(music_direction__in=DirectionChoices.values),
             ),
             models.CheckConstraint(
-                name="music_status_valid",
-                condition=models.Q(music_status__in=MediaStatusChoices.values),
-            ),
-            models.CheckConstraint(
                 name="podcast_layout_valid",
                 condition=models.Q(podcast_layout__in=LayoutChoices.values),
             ),
@@ -1233,10 +1211,6 @@ class User(AbstractUser):
             models.CheckConstraint(
                 name="podcast_direction_valid",
                 condition=models.Q(podcast_direction__in=DirectionChoices.values),
-            ),
-            models.CheckConstraint(
-                name="podcast_status_valid",
-                condition=models.Q(podcast_status__in=MediaStatusChoices.values),
             ),
             models.CheckConstraint(
                 name="quick_watch_date_valid",
@@ -1270,6 +1244,19 @@ class User(AbstractUser):
         # Special case for last_search_type
         if field_name == "last_search_type" and new_value not in VALID_SEARCH_TYPES:
             return getattr(self, field_name)
+
+        # Media-type status preferences hold a comma-joined list of statuses
+        # (multi-select filter), so each token is validated individually
+        # instead of the field's own single-choice `choices`.
+        if field_name in MULTI_STATUS_PREFERENCE_FIELDS:
+            tokens = [token for token in str(new_value or "").split(",") if token]
+            if any(token not in MediaStatusChoices.values for token in tokens):
+                return getattr(self, field_name)
+            current_value = getattr(self, field_name)
+            if new_value != current_value:
+                setattr(self, field_name, new_value)
+                self.save(update_fields=[field_name])
+            return new_value
 
         field = self._meta.get_field(field_name)
         # Check if the field has choices

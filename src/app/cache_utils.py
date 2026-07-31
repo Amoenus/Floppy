@@ -37,7 +37,7 @@ def build_time_left_cache_key(
     platform_filter: str = "",
     origin_filter: str = "",
     tag_filter: str = "",
-    tag_exclude_filter: str = "",
+    tag_mode: str = "",
 ) -> str:
     """Create the cache key used for time-left sorted TV lists."""
     normalized_status = status_filter or ""
@@ -55,13 +55,13 @@ def build_time_left_cache_key(
     normalized_platform = platform_filter or ""
     normalized_origin = origin_filter or ""
     normalized_tag = tag_filter or ""
-    normalized_tag_exclude = tag_exclude_filter or ""
+    normalized_tag_mode = tag_mode or ""
     return (
         f"{TIME_LEFT_CACHE_PREFIX}_{user_id}_{media_type}_{normalized_status}_"
         f"{normalized_query}_{normalized_direction}_{normalized_rating}_{normalized_progress}_{normalized_collection}_"
         f"{normalized_genre}_{normalized_year}_{normalized_release}_{normalized_source}_"
         f"{normalized_language}_{normalized_country}_{normalized_platform}_{normalized_origin}_"
-        f"{normalized_tag}_{normalized_tag_exclude}"
+        f"{normalized_tag}_{normalized_tag_mode}"
     )
 
 
@@ -128,7 +128,7 @@ def build_media_list_cache_key(
     platform_filter: str = "",
     origin_filter: str = "",
     tag_filter: str = "",
-    tag_exclude_filter: str = "",
+    tag_mode: str = "",
     cache_variant: str = "",
 ) -> str:
     """Create the cache key for a fully-processed media list page."""
@@ -155,7 +155,7 @@ def build_media_list_cache_key(
         platform_filter or "",
         origin_filter or "",
         tag_filter or "",
-        tag_exclude_filter or "",
+        tag_mode or "",
         cache_variant or "",
     ]
     return "_".join(parts)
@@ -178,7 +178,7 @@ def build_media_list_filter_cache_key(
     author_filter: str = "",
     format_filter: str = "",
     tag_filter: str = "",
-    tag_exclude_filter: str = "",
+    tag_mode: str = "",
     cache_variant: str = "",
 ) -> str:
     """Create the cache key for media-list filter summary data."""
@@ -200,7 +200,7 @@ def build_media_list_filter_cache_key(
         author_filter or "",
         format_filter or "",
         tag_filter or "",
-        tag_exclude_filter or "",
+        tag_mode or "",
         cache_variant or "",
     ]
     return "_".join(parts)

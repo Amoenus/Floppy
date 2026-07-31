@@ -570,26 +570,32 @@ def media_list(request, media_type):
         MediaTypes.MUSIC.value,
         MediaTypes.PODCAST.value,
     }
-    raw_status_filter = request.GET.get("status")
+    raw_status_filter = request.GET.getlist("status")
     valid_statuses = {choice[0] for choice in MediaStatusChoices.choices}
-    persisted_status_filter = getattr(
+    allowed_status_values = (valid_statuses - {MediaStatusChoices.ALL}) | (
+        {MEDIA_LIST_NO_STATUS} if supports_untracked_status_filter else set()
+    )
+    persisted_status_pref = getattr(
         request.user,
         f"{route_media_type}_status",
         MediaStatusChoices.ALL,
     )
+    persisted_status_filter = tuple(
+        value
+        for value in str(persisted_status_pref or "").split(",")
+        if value and value in allowed_status_values
+    )
 
-    if raw_status_filter in valid_statuses:
-        status_filter = request.user.update_preference(
-            f"{route_media_type}_status",
-            raw_status_filter,
+    if "status" in request.GET:
+        status_filter = tuple(
+            dict.fromkeys(
+                value for value in raw_status_filter if value in allowed_status_values
+            ),
         )
-    elif raw_status_filter is None:
-        status_filter = persisted_status_filter
-    elif (
-        supports_untracked_status_filter
-        and raw_status_filter == MEDIA_LIST_NO_STATUS
-    ):
-        status_filter = MEDIA_LIST_NO_STATUS
+        request.user.update_preference(
+            f"{route_media_type}_status",
+            ",".join(status_filter),
+        )
     else:
         status_filter = persisted_status_filter
 
@@ -629,18 +635,23 @@ def media_list(request, media_type):
     origin_filter = (request.GET.get("origin") or "").strip()
     format_filter = (request.GET.get("format") or "").strip()
     author_filter = (request.GET.get("author") or "").strip()
-    tag_filter = (request.GET.get("tag") or "").strip()
-    tag_exclude_filter = (request.GET.get("tag_exclude") or "").strip()
+    tag_values = tuple(
+        dict.fromkeys(value.strip() for value in request.GET.getlist("tag") if value.strip()),
+    )
+    tag_mode = (request.GET.get("tag_mode") or "or").strip().lower()
+    if tag_mode not in {"and", "or", "not"}:
+        tag_mode = "or"
+    if not tag_values:
+        legacy_tag_exclude = (request.GET.get("tag_exclude") or "").strip()
+        if legacy_tag_exclude:
+            tag_values = (legacy_tag_exclude,)
+            tag_mode = "not"
 
     search_query = request.GET.get("search", "")
     try:
         page = int(request.GET.get("page", 1))
     except (ValueError, TypeError):
         page = 1
-
-    # Prepare status filter for database query
-    if not status_filter:
-        status_filter = MediaStatusChoices.ALL
 
     def is_rated(media):
         aggregated_score = getattr(media, "aggregated_score", None)
@@ -654,25 +665,28 @@ def media_list(request, media_type):
         should_be_rated = filter_value == "rated"
         return [media for media in media_items if is_rated(media) == should_be_rated]
 
-    def apply_latest_status_filter(media_items, filter_value):
+    def apply_latest_status_filter(media_items, filter_values):
         """Filter against each item's latest aggregated status."""
-        if not filter_value or filter_value == MediaStatusChoices.ALL:
+        if not filter_values:
             return media_items
-        if filter_value == MEDIA_LIST_NO_STATUS:
-            # Items with no tracker row at all, plus rating-only media rows that
-            # carry a score without a tracking status.
-            return [
-                media
-                for media in media_items
-                if getattr(getattr(media, "media", media), "status", None) is None
-            ]
+
+        real_statuses = {value for value in filter_values if value != MEDIA_LIST_NO_STATUS}
+        include_no_status = MEDIA_LIST_NO_STATUS in filter_values
+
         filtered_items = []
         for media in media_items:
+            if include_no_status and (
+                getattr(getattr(media, "media", media), "status", None) is None
+            ):
+                filtered_items.append(media)
+                continue
+            if not real_statuses:
+                continue
             latest_status = (
                 getattr(media, "aggregated_status", None)
                 or getattr(media, "status", None)
             )
-            if latest_status == filter_value:
+            if latest_status in real_statuses:
                 filtered_items.append(media)
         return filtered_items
 
@@ -1018,23 +1032,24 @@ def media_list(request, media_type):
         for media in media_items:
             media.display_authors = _extract_item_authors(getattr(media, "item", None))
 
-    # Pre-fetch tag item IDs for include/exclude filters
-    tag_included_ids = None
-    tag_excluded_ids = None
-    if tag_filter:
-        tag_included_ids = set(
+    # Pre-fetch tag item IDs for the mode-aware (AND/OR/NOT) tag filter.
+    tag_id_sets = [
+        set(
             ItemTag.objects.filter(
                 tag__user=request.user,
-                tag__name__iexact=tag_filter,
-            ).values_list("item_id", flat=True)
+                tag__name__iexact=value,
+            ).values_list("item_id", flat=True),
         )
-    if tag_exclude_filter:
-        tag_excluded_ids = set(
-            ItemTag.objects.filter(
-                tag__user=request.user,
-                tag__name__iexact=tag_exclude_filter,
-            ).values_list("item_id", flat=True)
-        )
+        for value in tag_values
+    ]
+    if not tag_id_sets:
+        tag_included_ids = tag_excluded_ids = None
+    elif tag_mode == "and":
+        tag_included_ids, tag_excluded_ids = set.intersection(*tag_id_sets), None
+    elif tag_mode == "not":
+        tag_included_ids, tag_excluded_ids = None, set().union(*tag_id_sets)
+    else:
+        tag_included_ids, tag_excluded_ids = set().union(*tag_id_sets), None
 
     # Get media list with filters applied
     query_sort_filter = (
@@ -1075,10 +1090,8 @@ def media_list(request, media_type):
         else ""
     )
 
-    tracked_status_filter = (
-        MediaStatusChoices.ALL
-        if status_filter == MEDIA_LIST_NO_STATUS
-        else status_filter
+    tracked_status_filter = tuple(
+        value for value in status_filter if value != MEDIA_LIST_NO_STATUS
     )
 
     def _item_matches_requested_media_type(item):
@@ -1247,14 +1260,16 @@ def media_list(request, media_type):
     # Platform ordering is resolved from collection entries after the base query,
     # so cache only the database-backed sort orders.
     _use_media_list_cache = not _time_left_active and sort_filter != "platform"
-    _include_untracked_entries = status_filter == MEDIA_LIST_NO_STATUS
+    _include_untracked_entries = MEDIA_LIST_NO_STATUS in status_filter
+    _status_cache_key = ",".join(sorted(status_filter))
+    _tag_cache_key = ",".join(sorted(tag_values))
     _media_list_cache_key = (
         cache_utils.build_media_list_cache_key(
             request.user.id,
             media_type,
             sort_filter,
             direction,
-            status_filter,
+            _status_cache_key,
             search_query,
             rating_filter,
             progress_filter,
@@ -1270,8 +1285,8 @@ def media_list(request, media_type):
             country_filter,
             platform_filter,
             origin_filter,
-            tag_filter,
-            tag_exclude_filter,
+            _tag_cache_key,
+            tag_mode,
             cache_variant,
         )
         if _use_media_list_cache
@@ -1281,7 +1296,7 @@ def media_list(request, media_type):
         cache_utils.build_media_list_filter_cache_key(
             request.user.id,
             media_type,
-            status_filter,
+            _status_cache_key,
             search_query,
             progress_filter,
             genre_filter,
@@ -1294,8 +1309,8 @@ def media_list(request, media_type):
             platform_filter,
             author_filter,
             format_filter,
-            tag_filter,
-            tag_exclude_filter,
+            _tag_cache_key,
+            tag_mode,
             cache_variant,
         )
         if (_use_media_list_cache or _time_left_active)
@@ -1318,7 +1333,7 @@ def media_list(request, media_type):
         _time_left_cache_key = cache_utils.build_time_left_cache_key(
             request.user.id,
             media_type,
-            status_filter,
+            _status_cache_key,
             search_query,
             direction,
             rating_filter,
@@ -1332,8 +1347,8 @@ def media_list(request, media_type):
             country_filter,
             platform_filter,
             origin_filter,
-            tag_filter,
-            tag_exclude_filter,
+            _tag_cache_key,
+            tag_mode,
         )
         _time_left_cached_order = cache.get(_time_left_cache_key)
         if _time_left_cached_order is not None and filter_data is not None:
@@ -1397,7 +1412,7 @@ def media_list(request, media_type):
         media_list = apply_latest_status_filter(media_list, status_filter)
 
         if (
-            status_filter == MEDIA_LIST_NO_STATUS
+            status_filter == (MEDIA_LIST_NO_STATUS,)
             and media_type != MediaTypes.ANIME.value
             and sort_filter not in {"author", "runtime", "plays", "time_watched", "time_to_beat", "platform", "time_left"}
         ):
@@ -1830,7 +1845,7 @@ def media_list(request, media_type):
         "filter_hx_target": _layout_class if media_page else "#empty_list",
         "current_sort": sort_filter,
         "current_direction": direction,
-        "current_status": status_filter,
+        "current_status": list(status_filter),
         "current_rating": rating_filter,
         "current_collection": collection_filter,
         "current_progress": progress_filter,
@@ -1845,8 +1860,8 @@ def media_list(request, media_type):
         "current_origin": origin_filter,
         "current_format": format_filter,
         "current_author": author_filter,
-        "current_tag": tag_filter,
-        "current_tag_exclude": tag_exclude_filter,
+        "current_tag": list(tag_values),
+        "current_tag_mode": tag_mode,
         "sort_choices": sorted_media_sort_choices,
         "status_choices": status_choices,
         "rating_choices": MEDIA_RATING_CHOICES,
@@ -1872,8 +1887,8 @@ def media_list(request, media_type):
         )
 
         # Apply status filter to shows
-        if status_filter and status_filter != MediaStatusChoices.ALL:
-            show_trackers = show_trackers.filter(status=status_filter)
+        if tracked_status_filter:
+            show_trackers = show_trackers.filter(status__in=tracked_status_filter)
 
         # Apply search filter to shows
         if search_query:
@@ -2042,7 +2057,7 @@ def media_list(request, media_type):
             "filter_hx_target": (".media-grid" if layout == "grid" else ".media-table") if media_page else "#empty_list",
             "current_sort": sort_filter,
             "current_direction": direction,
-            "current_status": status_filter,
+            "current_status": list(status_filter),
             "current_rating": rating_filter,
             "current_collection": collection_filter,
             "current_genre": genre_filter,
@@ -2079,8 +2094,8 @@ def media_list(request, media_type):
                 .prefetch_related("album__artist_credits__artist")
             )
 
-            if status_filter and status_filter != MediaStatusChoices.ALL:
-                album_trackers = album_trackers.filter(status=status_filter)
+            if tracked_status_filter:
+                album_trackers = album_trackers.filter(status__in=tracked_status_filter)
 
             if search_query:
                 album_trackers = album_trackers.filter(album__title__icontains=search_query)
@@ -2195,8 +2210,8 @@ def media_list(request, media_type):
             )
 
             # Apply status filter to artists
-            if status_filter and status_filter != MediaStatusChoices.ALL:
-                artist_trackers = artist_trackers.filter(status=status_filter)
+            if tracked_status_filter:
+                artist_trackers = artist_trackers.filter(status__in=tracked_status_filter)
 
             # Apply search filter to artists
             if search_query:

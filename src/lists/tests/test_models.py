@@ -12,11 +12,13 @@ from app.models import (
     CollectionEntry,
     Game,
     Item,
+    ItemTag,
     MediaTypes,
     Movie,
     Music,
     Sources,
     Status,
+    Tag,
 )
 from lists import smart_rules
 from lists.models import CustomList, CustomListItem
@@ -210,6 +212,81 @@ class CustomListManagerTest(TestCase):
             matched_ids = smart_rules.collect_matching_item_ids(self.user, normalized_rules)
 
         self.assertEqual(matched_ids, {completed_item.id})
+
+    def test_smart_rules_support_multi_status_and_tag_modes(self):
+        """Smart-list matching combines statuses with OR and tags by mode."""
+        both_item = Item.objects.create(
+            title="Action Comedy Movie",
+            media_id="multi-1",
+            media_type=MediaTypes.MOVIE.value,
+            source=Sources.TMDB.value,
+        )
+        action_item = Item.objects.create(
+            title="Action Movie",
+            media_id="multi-2",
+            media_type=MediaTypes.MOVIE.value,
+            source=Sources.TMDB.value,
+        )
+        comedy_item = Item.objects.create(
+            title="Comedy Movie",
+            media_id="multi-3",
+            media_type=MediaTypes.MOVIE.value,
+            source=Sources.TMDB.value,
+        )
+        plain_item = Item.objects.create(
+            title="Plain Movie",
+            media_id="multi-4",
+            media_type=MediaTypes.MOVIE.value,
+            source=Sources.TMDB.value,
+        )
+        Movie.objects.create(item=both_item, user=self.user, status=Status.COMPLETED.value)
+        Movie.objects.create(item=action_item, user=self.user, status=Status.DROPPED.value)
+        Movie.objects.create(item=comedy_item, user=self.user, status=Status.PLANNING.value)
+        Movie.objects.create(item=plain_item, user=self.user, status=Status.PAUSED.value)
+        action_tag = Tag.objects.create(user=self.user, name="Action")
+        comedy_tag = Tag.objects.create(user=self.user, name="Comedy")
+        ItemTag.objects.create(item=both_item, tag=action_tag)
+        ItemTag.objects.create(item=both_item, tag=comedy_tag)
+        ItemTag.objects.create(item=action_item, tag=action_tag)
+        ItemTag.objects.create(item=comedy_item, tag=comedy_tag)
+
+        status_rules = smart_rules.normalize_rule_payload(
+            {
+                "media_types": [MediaTypes.MOVIE.value],
+                "status": [Status.COMPLETED.value, Status.DROPPED.value],
+            },
+            self.user,
+        )
+        self.assertEqual(
+            smart_rules.collect_matching_item_ids(self.user, status_rules),
+            {both_item.id, action_item.id},
+        )
+
+        for mode, expected_ids in {
+            "and": {both_item.id},
+            "or": {both_item.id, action_item.id, comedy_item.id},
+            "not": {plain_item.id},
+        }.items():
+            rules = smart_rules.normalize_rule_payload(
+                {
+                    "media_types": [MediaTypes.MOVIE.value],
+                    "tag": ["Action", "Comedy"],
+                    "tag_mode": mode,
+                },
+                self.user,
+            )
+            self.assertEqual(
+                smart_rules.collect_matching_item_ids(self.user, rules),
+                expected_ids,
+            )
+            self.assertEqual(
+                {
+                    item.id
+                    for item in (both_item, action_item, comedy_item, plain_item)
+                    if smart_rules.item_matches_rules(self.user, item, rules)
+                },
+                expected_ids,
+            )
 
     def test_smart_list_collection_filter_uses_episode_collection_for_tv(self):
         """Collected TV rules should match when related episodes are collected."""

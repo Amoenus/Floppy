@@ -2,7 +2,10 @@
   <input type="hidden" name="sort" x-model="sort">
   <input type="hidden" name="direction" x-model="direction">
   <input type="hidden" name="layout" x-model="layout">
-  <input type="hidden" name="status" x-model="status">
+  <template x-for="s in statuses" :key="`smart-status-${s}`">
+    <input type="hidden" name="status" :value="s">
+  </template>
+  <input type="hidden" name="status" value="all" :disabled="statuses.length > 0">
   <input type="hidden" name="rating" x-model="rating">
   <input type="hidden" name="rating_min" x-model="rating_min">
   <input type="hidden" name="rating_max" x-model="rating_max">
@@ -21,8 +24,11 @@
   <input type="hidden" name="platform" x-model="platform">
   <input type="hidden" name="origin" x-model="origin">
   <input type="hidden" name="format" x-model="format">
-  <input type="hidden" name="tag" x-model="tag">
-  <input type="hidden" name="tag_exclude" x-model="tag_exclude">
+  <template x-for="t in selectedTags" :key="`smart-tag-${t}`">
+    <input type="hidden" name="tag" :value="t">
+  </template>
+  <input type="hidden" name="tag" value="" :disabled="selectedTags.length > 0">
+  <input type="hidden" name="tag_mode" x-model="tagMode">
   <input type="hidden" name="q" x-model="query">
   <input type="hidden" name="type_mode" :value="allTypesSelected() ? 'all' : 'subset'">
   {% if can_edit %}
@@ -276,15 +282,8 @@
             <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
                     @click="view = 'tag'; resetSearch()"
                     type="button">
-              <span class="flex-shrink-0 mr-3">Include Tag</span>
-              <span class="ml-auto text-xs text-gray-400 block min-w-0 truncate max-w-[8rem]" x-text="tag || 'Any'"></span>
-              <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
-            </button>
-            <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
-                    @click="view = 'tag_exclude'; resetSearch()"
-                    type="button">
-              <span class="flex-shrink-0 mr-3">Exclude Tag</span>
-              <span class="ml-auto text-xs text-gray-400 block min-w-0 truncate max-w-[8rem]" x-text="tag_exclude || 'Any'"></span>
+              <span class="flex-shrink-0 mr-3">Tag</span>
+              <span class="ml-auto text-xs text-gray-400 block min-w-0 truncate max-w-[8rem]" x-text="selectedTags.length ? selectedTags.join(', ') : 'Any'"></span>
               <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
             </button>
           {% endif %}
@@ -952,7 +951,11 @@
                     type="button">
               {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
             </button>
-            <div class="text-xs uppercase tracking-wide text-gray-300">Include Tag</div>
+            <div class="text-xs uppercase tracking-wide text-gray-300">Tag</div>
+            <button type="button"
+                    class="ml-auto px-2 py-0.5 rounded text-xs font-medium uppercase bg-[#2a2f35] border border-gray-600 text-indigo-300 hover:text-white hover:border-indigo-500 transition-colors cursor-pointer"
+                    @click.stop="cycleTagMode(); onRuleChange()"
+                    x-text="tagMode.toUpperCase()"></button>
           </div>
           <div class="px-2 py-2">
             <input type="text"
@@ -966,10 +969,10 @@
                     hx-include="#smart-filter-form"
                     hx-indicator="#loading-indicator"
                     class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
-                    @click="tag = ''; open = false; view = 'root'; onRuleChange()"
+                    @click="selectedTags = []; onRuleChange()"
                     type="button">
-              <span>All Tags</span>
-              <span class="ml-auto" x-show="tag === ''">
+              <span>Clear Tags</span>
+              <span class="ml-auto" x-show="selectedTags.length === 0">
                 {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
               </span>
             </button>
@@ -979,55 +982,10 @@
                       hx-include="#smart-filter-form"
                       hx-indicator="#loading-indicator"
                       class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
-                      @click="tag = option; open = false; view = 'root'; onRuleChange()"
+                      @click="toggleTag(option); onRuleChange()"
                       type="button">
                 <span class="block min-w-0 truncate max-w-[11rem]" x-text="option"></span>
-                <span class="ml-auto" x-show="tag === option">
-                  {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
-                </span>
-              </button>
-            </template>
-          </div>
-        </div>
-
-        <div x-show="view === 'tag_exclude'" x-cloak class="p-2">
-          <div class="flex items-center gap-2 px-2 py-1">
-            <button class="p-1 rounded hover:bg-[#454d5a] transition-colors cursor-pointer"
-                    @click="view = 'root'"
-                    type="button">
-              {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
-            </button>
-            <div class="text-xs uppercase tracking-wide text-gray-300">Exclude Tag</div>
-          </div>
-          <div class="px-2 py-2">
-            <input type="text"
-                   x-model="tagSearch"
-                   placeholder="Filter Tags"
-                   class="w-full px-3 py-2 rounded-md bg-[#2a2f35] text-sm text-gray-200 placeholder-gray-500 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
-          </div>
-          <div class="max-h-64 overflow-y-auto">
-            <button hx-get="{% url 'list_detail' custom_list.public_reference %}"
-                    hx-target="#items-view"
-                    hx-include="#smart-filter-form"
-                    hx-indicator="#loading-indicator"
-                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
-                    @click="tag_exclude = ''; open = false; view = 'root'; onRuleChange()"
-                    type="button">
-              <span>No Exclusion</span>
-              <span class="ml-auto" x-show="tag_exclude === ''">
-                {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
-              </span>
-            </button>
-            <template x-for="option in filteredTags()" :key="option">
-              <button hx-get="{% url 'list_detail' custom_list.public_reference %}"
-                      hx-target="#items-view"
-                      hx-include="#smart-filter-form"
-                      hx-indicator="#loading-indicator"
-                      class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
-                      @click="tag_exclude = option; open = false; view = 'root'; onRuleChange()"
-                      type="button">
-                <span class="block min-w-0 truncate max-w-[11rem]" x-text="option"></span>
-                <span class="ml-auto" x-show="tag_exclude === option">
+                <span class="ml-auto" x-show="isTagSelected(option)">
                   {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
                 </span>
               </button>
@@ -1041,7 +999,7 @@
       <button class="flex items-center px-2 py-2 rounded-md text-gray-200 hover:text-white transition-colors cursor-pointer"
               @click="open = !open"
               type="button">
-        <span x-text="(status === 'all' || status === 'All' || status === '') ? 'Status' : (statusLabels[status] || status)"></span>
+        <span x-text="statuses.length === 0 ? 'Status' : (statuses.length === 1 ? (statusLabels[statuses[0]] || statuses[0]) : statuses.length + ' Statuses')"></span>
         <svg xmlns="http://www.w3.org/2000/svg"
              viewBox="0 0 20 20"
              class="w-4 h-4 ml-2"
@@ -1060,15 +1018,30 @@
            x-transition:leave="transition ease-in duration-75"
            x-transition:leave-start="transform opacity-100 scale-100"
            x-transition:leave-end="transform opacity-0 scale-95">
+        <button hx-get="{% url 'list_detail' custom_list.public_reference %}"
+                hx-target="#items-view"
+                hx-include="#smart-filter-form"
+                hx-indicator="#loading-indicator"
+                class="block w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
+                :class="statuses.length === 0 ? 'bg-indigo-600 text-white font-medium' : 'text-gray-300 hover:bg-[#454d5a] hover:text-white'"
+                @click="statuses = []; onRuleChange()"
+                type="button">All</button>
         {% for value, label in status_choices %}
-          <button hx-get="{% url 'list_detail' custom_list.public_reference %}"
-                  hx-target="#items-view"
-                  hx-include="#smart-filter-form"
-                  hx-indicator="#loading-indicator"
-                  class="block w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
-                  :class="status === '{{ value }}' ? 'bg-indigo-600 text-white font-medium' : 'text-gray-300 hover:bg-[#454d5a] hover:text-white'"
-                  @click="status = '{{ value }}'; open = false; onRuleChange()"
-                  type="button">{{ label }}</button>
+          {% if value != 'all' and value != 'All' %}
+            <button hx-get="{% url 'list_detail' custom_list.public_reference %}"
+                    hx-target="#items-view"
+                    hx-include="#smart-filter-form"
+                    hx-indicator="#loading-indicator"
+                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
+                    :class="isStatusSelected('{{ value }}') ? 'bg-indigo-600 text-white font-medium' : 'text-gray-300 hover:bg-[#454d5a] hover:text-white'"
+                    @click="toggleStatus('{{ value }}'); onRuleChange()"
+                    type="button">
+              <span>{{ label }}</span>
+              <span class="ml-auto" x-show="isStatusSelected('{{ value }}')">
+                {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-white" %}
+              </span>
+            </button>
+          {% endif %}
         {% endfor %}
       </div>
     </div>

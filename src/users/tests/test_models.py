@@ -10,6 +10,7 @@ from django_celery_results.models import TaskResult
 from users.models import (
     HomeSortChoices,
     MediaSortChoices,
+    MediaStatusChoices,
     MediaTypes,
     QuickWatchDateChoices,
     relabel_end_date_sort_choice,
@@ -101,6 +102,30 @@ class UserUpdatePreferenceTests(TestCase):
         # Should not change the value
         self.user.refresh_from_db()
         self.assertEqual(self.user.home_sort, HomeSortChoices.UPCOMING)
+
+    def test_update_preference_accepts_multiple_statuses(self):
+        """Media-list status preferences accept a comma-separated selection."""
+        value = f"{MediaStatusChoices.COMPLETED.value},{MediaStatusChoices.DROPPED.value}"
+
+        result = self.user.update_preference("movie_status", value)
+
+        self.assertEqual(result, value)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.movie_status, value)
+
+    def test_update_preference_rejects_invalid_status_token(self):
+        """One invalid status token rejects the whole preference update."""
+        self.user.movie_status = MediaStatusChoices.COMPLETED.value
+        self.user.save(update_fields=["movie_status"])
+
+        result = self.user.update_preference(
+            "movie_status",
+            f"{MediaStatusChoices.COMPLETED.value},invalid",
+        )
+
+        self.assertEqual(result, MediaStatusChoices.COMPLETED.value)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.movie_status, MediaStatusChoices.COMPLETED.value)
 
     def test_update_preference_boolean_field(self):
         """Test update_preference with a boolean field."""

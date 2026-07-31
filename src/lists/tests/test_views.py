@@ -1293,11 +1293,11 @@ class ListDetailViewTests(TestCase):
         self.assertFalse(filtered_response.context["smart_edit_mode"])
         self.assertEqual(
             filtered_response.context["active_smart_rules"]["status"],
-            Status.COMPLETED.value,
+            [Status.COMPLETED.value],
         )
         self.assertEqual(
             filtered_response.context["saved_smart_rules"]["status"],
-            "all",
+            [],
         )
         self.assertEqual(len(filtered_response.context["items"]), 1)
         self.assertEqual(

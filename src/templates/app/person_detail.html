@@ -124,7 +124,7 @@
     mediaListUrl: '{{ person_detail_url }}',
     sort: '{{ current_sort }}',
     direction: '{{ current_direction }}',
-    status: 'all',
+    statuses: [],
     rating: '{{ current_rating }}',
     collection: '{{ current_collection }}',
     progress: 'all',
@@ -139,8 +139,8 @@
     origin: '',
     format: '',
     author: '',
-    tag: '',
-    tag_exclude: '',
+    selectedTags: [],
+    tagMode: 'or',
     layout: 'grid',
     search: '',
     department: '{{ current_department }}',
@@ -195,6 +195,25 @@
       else { this.collection = 'all'; }
     },
     layoutHref(nextLayout) { return buildMediaListHref(this.mediaListUrl, document.getElementById('filter-form'), { layout: nextLayout }); },
+    isStatusSelected(value) { return this.statuses.includes(value); },
+    toggleStatus(value) {
+      if (this.statuses.includes(value)) {
+        this.statuses = this.statuses.filter((s) => s !== value);
+      } else {
+        this.statuses = [...this.statuses, value];
+      }
+    },
+    isTagSelected(value) { return this.selectedTags.includes(value); },
+    toggleTag(value) {
+      if (this.selectedTags.includes(value)) {
+        this.selectedTags = this.selectedTags.filter((t) => t !== value);
+      } else {
+        this.selectedTags = [...this.selectedTags, value];
+      }
+    },
+    cycleTagMode() {
+      this.tagMode = this.tagMode === 'and' ? 'or' : (this.tagMode === 'or' ? 'not' : 'and');
+    },
     filterLabel() {
       const labels = [];
       if (this.department) { labels.push(this.department); }
@@ -203,8 +222,10 @@
       if (this.sourceFilter) { labels.push(this.sourceFilter.toUpperCase()); }
       if (this.rating !== 'all') { labels.push(this.ratingLabels[this.rating] || this.rating); }
       if (this.collection !== 'all') { labels.push(this.collectionLabels[this.collection] || this.collection); }
-      if (this.tag) { labels.push('+' + this.tag); }
-      if (this.tag_exclude) { labels.push('-' + this.tag_exclude); }
+      if (this.selectedTags.length) {
+        const prefix = this.tagMode === 'not' ? '-' : '+';
+        labels.push(prefix + this.selectedTags.join(this.tagMode === 'and' ? ' & ' : ', '));
+      }
       if (labels.length === 0) { return 'All'; }
       if (labels.length === 1) { return labels[0]; }
       return `${labels[0]} +${labels.length - 1}`;
@@ -225,8 +246,8 @@
       this.origin = '';
       this.format = '';
       this.author = '';
-      this.tag = '';
-      this.tag_exclude = '';
+      this.selectedTags = [];
+      this.tagMode = 'or';
     }
   }">
     {% if not is_author %}
