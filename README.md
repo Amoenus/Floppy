@@ -1,46 +1,83 @@
-# Yamtrack
+<p align="center">
+  <img alt="Floppy — everything in one place" src="docs/brand/floppy-wallpaper.png" width="880" />
+</p>
 
-A self-hosted Trakt replacement built on Yamtrack, with unified History, Time Left / Progress, richer stats, smarter lists, deeper integrations, and the daily-driver polish former Trakt users usually miss.
+<p align="center">
+  <b>Self-hosted media tracking for people who miss Trakt.</b><br>
+  Movies, TV, anime, manga, books, comics, games, board games, music, and podcasts — one library, one history, one set of stats.
+</p>
 
-[Demo](https://yamtrack.dannyvfilms.com) | [Docker Image](https://github.com/dannyvfilms/Yamtrack/pkgs/container/yamtrack) | [Releases](https://github.com/dannyvfilms/Yamtrack/releases)
+<p align="center">
+  <a href="https://yamtrack.dannyvfilms.com">Demo</a> ·
+  <a href="https://github.com/dannyvfilms/Floppy/pkgs/container/floppy">Docker Image</a> ·
+  <a href="https://github.com/dannyvfilms/Floppy/wiki">Wiki</a> ·
+  <a href="https://github.com/dannyvfilms/Floppy/releases">Releases</a>
+</p>
 
-Credentials for Demo:
-- Username: `demo`
-- Password: `demodemo`
+Floppy is a self-hosted tracker built around the things Trakt used to do well and then stopped doing: a real progress view that tells you what to watch next, a unified history you can actually scan, recap-style statistics, lists worth sharing, and integrations that sync instead of asking you to upload a file every few months.
 
-## What this fork adds
+It runs in Docker, keeps your data on your own hardware, and treats music and podcasts as first-class media rather than bolt-ons.
 
-The fork is built around the workflows Trakt used to cover well: Time Left progress, a unified history feed, recap-style stats, public list sharing, and all-in-one tracking. The sections below show what has been added to get there.
+**Try it first:** the [demo instance](https://yamtrack.dannyvfilms.com) is open with `demo` / `demodemo`.
 
-### Major additions
+*Floppy was formerly published as the `dannyvfilms/Yamtrack` fork. Old links redirect here.*
 
-- **Music**: artist and album pages, track-level history and scoring, play-count and listening-time statistics, bulk save and mark-all-listened; MusicBrainz-backed metadata with discography sync and cover art; fully native in history, search, home rows, and collection, not a thin importer.
-- **Podcasts**: dedicated show and episode pages, episode-level tracking, mark-all-played; Pocket Casts account sync as a live integration, not a one-shot file import; podcast listening appears naturally in history, runtime stats, and search.
-- **Collections / owned media**: track what you physically or digitally own with copy-level detail: source, resolution, HDR, format, codec, and bitrate; filtered collection views, per-item collection status tied into detail pages and list/smart-list rules; supports Plex collection sync.
-- **Discover**: personalized recommendation rows that improve with use: genre, studio, cast, and tag affinity built from your library; not-interested and hide feedback that sticks; background refresh so rows stay current, individually refreshable from the UI, not a static recommendations page.
-- **History and statistics**: history rebuilt as a filterable feed with month navigation, media-type and genre filters, inline duplicate-play cleanup, and a delete flow; statistics rebuilt with explicit refresh, compare mode, custom date ranges, top-talent breakdowns, and per-type splits covering TV, film, music, podcasts, and reading with pages read, top authors, reading streaks, and listening time.
-- **Lists: public, social, and smart**: public and private lists, custom slugs, public profile pages; RSS and JSON feeds per list; smart-list rules for collection status, release state, platform, origin, author, and tags; recommendations with approval flow; list completion percentages and media-type breakdowns in the index; Trakt list and watchlist import; sort by rating, progress, release date, last watched, or custom manual order.
-- **Integration coverage**: Plex full library import, watchlist sync, and ratings sync; Pocket Casts account sync; Last.fm history import and live poll; Audiobookshelf account import; Radarr and Sonarr scheduled library sync; Jellyseerr webhook auto-add, each with dedicated settings and status display.
+## Building an integration?
 
-### Minor additions
+Floppy exposes a REST API at `/api/v1` and ships an [MCP server](mcp_server/). Integrations meant for Floppy should target **this repository** and the `ghcr.io/dannyvfilms/floppy` image — upstream Yamtrack does not carry Floppy's API surface, media types, or integration workflows, so "compatible with Yamtrack" and "compatible with Floppy" are not interchangeable claims.
 
-- **Richer metadata and title control**: localized and original titles switchable per user preference; critic ratings and popularity scores displayed; game-length data; manual metadata overrides; metadata-provider preference; image refresh flows.
-- **People, studios, and credit browsing**: actor, director, author, and studio pages with filmographies and top works; person credits visible from detail pages rather than hidden as tooltip data; author pages with top-read breakdowns.
-- **Better anime handling**: proper separation of anime and TV library concerns so mixed libraries stay organized; anime-specific season and episode navigation; grouped-anime routing for franchise-spanning series.
-- **Richer episode and book workflows**: episode detail pages with individual scoring; bulk episode save; drop an episode without logging it to history; book-specific: barcode and ISBN scanning from a photo, percentage-based reading progress, top-authors stats, and more resilient import flows.
-- **Configurable home screen**: choose what rows appear and in what order; rows from library queries, custom lists, smart lists, or recently played but not rated; direction and media-type filters stored per user.
-- **Configurable table columns**: choose and reorder visible columns per view, with media tables and list-detail tables configured independently; available columns include critic rating, episodes left, time left, time to beat, runtime, time watched, last watched, next air date, date added, popularity, and more.
-- **Scheduled backups and richer export management**: recurring export scheduling with media-type and list inclusion options; export history and backup destination visible in settings.
-- **Account security**: TOTP authenticator setup and management; recovery codes; password recovery via authenticator or recovery code; session duration as a per-user preference.
+- Interactive docs: `/api/docs/` on any instance · raw schema: `/api/schema/`
+- Auth: `Authorization: Bearer <token>` or `X-API-Key: <token>`, from Settings → Advanced
+- Full reference: [API and MCP Server](https://github.com/dannyvfilms/Floppy/wiki/7.-API-and-MCP-Server)
 
-### Quality-of-life changes
+## Install
 
-- **Much deeper preferences**: sort modes for critic rating, popularity, runtime, time to beat, plays, time watched, release date, last watched, next air date, and time left; display preferences for duration format, rating scale, stats default range, compare mode, mobile grid density, subtitle visibility on cards, localized vs. original title display, progress-bar visibility, planned-item home visibility, and obfuscating unseen episode titles.
-- **Livelier UI**: a now-playing card showing what is actively playing via Plex, Jellyfin, or Emby webhook; explicit stale and refreshing indicators on history and stats with one-click refresh; lazy-loaded covers and asynchronous fragments throughout.
-- **Better search and add flows**: music-native search that creates artist and album entries from search results; improved anime and localized-title search results.
-- **Deeper filters**: rated and unrated, collected and not collected, caught-up and not-caught-up, no-status, language, country, platform, origin, format, author, tag inclusion, and tag exclusion; smart-list rules use the same expanded vocabulary, making them meaningfully programmable.
-- **More reliable under load**: WAL mode and timeout configuration for SQLite; retry logic for lock and I/O failures; prioritized background task queues for a smoother experience with large libraries.
-- **Integration settings and import UX**: import history and status visible per integration in settings; watchlist-only and collection-update-only import modes; Jellyseerr allowed usernames and defaults persisted as preferences; per-user Plex webhook library selection.
+One stack, app plus Redis. Save it as `docker-compose.yml` and run `docker compose up -d`, or paste it straight into a Portainer stack.
+
+```yaml
+services:
+  floppy:
+    image: ghcr.io/dannyvfilms/floppy:latest
+    container_name: floppy
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      - SECRET=change_me_to_a_long_random_string
+      - REDIS_URL=redis://redis:6379
+      - REGISTRATION=True
+      - DEMO_ACCOUNT_ENABLED=False
+      - TZ=America/Chicago
+      - TMDB_API=your_tmdb_api_key
+    volumes:
+      - floppy_db:/floppy/db
+    ports:
+      - "8000:8000"
+
+  redis:
+    image: redis:8-alpine
+    container_name: floppy-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - redis_data:/data
+
+volumes:
+  floppy_db:
+  redis_data:
+```
+
+Open `http://localhost:8000`, create your account, then set `REGISTRATION=False` and redeploy so strangers can't sign up.
+
+`DEMO_ACCOUNT_ENABLED=False` is set above on purpose: it otherwise defaults to `True` and provisions a publicly known `demo` / `demodemo` login after migrations. Leave it off unless you actually want a shared demo account.
+
+That's the whole install. `SECRET` is the only variable you truly must set; `TMDB_API` is what makes movie and TV metadata work, and every other API key is optional until you want that media type. Everything else — Postgres, reverse proxies, the full environment variable list, Docker Run, Portainer specifics — is in [Configuration and deployment](#configuration-and-deployment) further down.
 
 ## Screenshots
 
@@ -75,10 +112,10 @@ Collections add ownership context alongside tracking, with room for copy-level d
 <table>
   <tr>
     <td valign="top">
-      <img width="1296" height="643" alt="Screenshot 2026-04-10 at 7 47 58 PM" src="https://github.com/user-attachments/assets/28bdac5a-1678-4144-a227-0d361912882c" />
+      <img width="1296" height="643" alt="Collection view" src="https://github.com/user-attachments/assets/28bdac5a-1678-4144-a227-0d361912882c" />
     </td>
     <td valign="top">
-      <img width="508" height="631" alt="Screenshot 2026-04-10 at 7 48 52 PM" src="https://github.com/user-attachments/assets/a2c8deb9-2d92-4aaa-b605-758871f36634" />
+      <img width="508" height="631" alt="Copy-level collection detail" src="https://github.com/user-attachments/assets/a2c8deb9-2d92-4aaa-b605-758871f36634" />
     </td>
   </tr>
 </table>
@@ -89,101 +126,65 @@ Music and podcasts are treated as first-class parts of the same tracker, not sid
 
 <img alt="Music and podcasts" src="https://github.com/user-attachments/assets/0c6da813-d73e-4f7c-9d2b-ba42d65221a7" />
 
-## What you still keep from upstream Yamtrack
+## What Floppy does
 
-This fork builds on Yamtrack's foundation instead of replacing it. You still keep:
+Floppy covers the workflows Trakt used to serve: Time Left progress, a unified history feed, recap-style stats, public list sharing, and all-in-one tracking across every media type you care about.
 
-- Tracking for movies, TV, anime, manga, games, books, comics, and board games, plus manual entries for hard-to-find media
-- Multi-user accounts, OIDC and social login support, and per-user tracking data
-- Calendar and iCalendar feeds for upcoming releases
-- Release notifications through Apprise
-- Jellyfin, Plex, and Emby playback integrations
-- Import/export flows for Trakt, Simkl, MyAnimeList, AniList, Kitsu, Yamtrack CSV, and more
-- Docker deployment with SQLite or PostgreSQL
-- CSV export/import and self-hosted control over your data
+### The big pieces
 
-## Quick Start
+- **Music**: artist and album pages, track-level history and scoring, play-count and listening-time statistics, bulk save and mark-all-listened; MusicBrainz-backed metadata with discography sync and cover art; fully native in history, search, home rows, and collection, not a thin importer.
+- **Podcasts**: dedicated show and episode pages, episode-level tracking, mark-all-played; Pocket Casts account sync as a live integration, not a one-shot file import; podcast listening appears naturally in history, runtime stats, and search.
+- **Collections / owned media**: track what you physically or digitally own with copy-level detail: source, resolution, HDR, format, codec, and bitrate; filtered collection views, per-item collection status tied into detail pages and list/smart-list rules; supports Plex collection sync.
+- **Discover**: personalized recommendation rows that improve with use: genre, studio, cast, and tag affinity built from your library; not-interested and hide feedback that sticks; background refresh so rows stay current, individually refreshable from the UI, not a static recommendations page.
+- **History and statistics**: history is a filterable feed with month navigation, media-type and genre filters, inline duplicate-play cleanup, and a delete flow; statistics offer explicit refresh, compare mode, custom date ranges, top-talent breakdowns, and per-type splits covering TV, film, music, podcasts, and reading with pages read, top authors, reading streaks, and listening time.
+- **Lists: public, social, and smart**: public and private lists, custom slugs, public profile pages; RSS and JSON feeds per list; smart-list rules for collection status, release state, platform, origin, author, and tags; recommendations with approval flow; list completion percentages and media-type breakdowns in the index; Trakt list and watchlist import; sort by rating, progress, release date, last watched, or custom manual order.
+- **Integration coverage**: Plex full library import, watchlist sync, and ratings sync; Pocket Casts account sync; Last.fm history import and live poll; Audiobookshelf account import; Radarr and Sonarr scheduled library sync; Jellyseerr webhook auto-add, each with dedicated settings and status display.
 
-If you already know you want the fork, start here.
+### Beyond the basics
 
-### Docker Compose (Recommended)
+- **Richer metadata and title control**: localized and original titles switchable per user preference; critic ratings and popularity scores displayed; game-length data; manual metadata overrides; metadata-provider preference; image refresh flows.
+- **People, studios, and credit browsing**: actor, director, author, and studio pages with filmographies and top works; person credits visible from detail pages rather than hidden as tooltip data; author pages with top-read breakdowns.
+- **Careful anime handling**: proper separation of anime and TV library concerns so mixed libraries stay organized; anime-specific season and episode navigation; grouped-anime routing for franchise-spanning series.
+- **Richer episode and book workflows**: episode detail pages with individual scoring; bulk episode save; drop an episode without logging it to history; book-specific: barcode and ISBN scanning from a photo, percentage-based reading progress, top-authors stats, and more resilient import flows.
+- **Configurable home screen**: choose what rows appear and in what order; rows from library queries, custom lists, smart lists, or recently played but not rated; direction and media-type filters stored per user.
+- **Configurable table columns**: choose and reorder visible columns per view, with media tables and list-detail tables configured independently; available columns include critic rating, episodes left, time left, time to beat, runtime, time watched, last watched, next air date, date added, popularity, and more.
+- **Scheduled backups and export management**: recurring export scheduling with media-type and list inclusion options; export history and backup destination visible in settings.
+- **Account security**: TOTP authenticator setup and management; recovery codes; password recovery via authenticator or recovery code; session duration as a per-user preference.
 
-The easiest way to get started is with Docker Compose. This works well with Portainer stacks or a plain local Docker install.
+### Day-to-day polish
 
-Important:
+- **Deep preferences**: sort modes for critic rating, popularity, runtime, time to beat, plays, time watched, release date, last watched, next air date, and time left; display preferences for duration format, rating scale, stats default range, compare mode, mobile grid density, subtitle visibility on cards, localized vs. original title display, progress-bar visibility, planned-item home visibility, and obfuscating unseen episode titles.
+- **A livelier UI**: a now-playing card showing what is actively playing via Plex, Jellyfin, or Emby webhook; explicit stale and refreshing indicators on history and stats with one-click refresh; lazy-loaded covers and asynchronous fragments throughout.
+- **Better search and add flows**: music-native search that creates artist and album entries from search results; improved anime and localized-title search results.
+- **Deeper filters**: rated and unrated, collected and not collected, caught-up and not-caught-up, no-status, language, country, platform, origin, format, author, tag inclusion, and tag exclusion; smart-list rules use the same expanded vocabulary, making them meaningfully programmable.
+- **More reliable under load**: WAL mode and timeout configuration for SQLite; retry logic for lock and I/O failures; prioritized background task queues for a smoother experience with large libraries.
+- **Integration settings and import UX**: import history and status visible per integration in settings; watchlist-only and collection-update-only import modes; Jellyseerr allowed usernames and defaults persisted as preferences; per-user Plex webhook library selection.
 
-- Yamtrack uses PostgreSQL only when `DB_HOST` is set.
-- If `DB_HOST` is not set, Yamtrack uses SQLite at `/yamtrack/db/db.sqlite3`.
-- `DATABASE_URL` is not currently supported.
+### Also included
 
-**For SQLite (simple setup):**
+Multi-user accounts with OIDC and social login; calendar and iCalendar feeds for upcoming releases; release notifications through Apprise; Jellyfin, Plex, and Emby playback integrations; imports from Trakt, Simkl, MyAnimeList, AniList, Kitsu, Steam, Goodreads, StoryGraph, Hardcover, IMDb, HowLongToBeat, Grouvee and more; a REST API at `/api/v1` with an MCP server; and CSV export/import so your data is always yours to take elsewhere.
 
-This single stack runs the app and Redis together — paste it into a Portainer Stack (or an Unraid stack via the Portainer plugin) and deploy, or save it as `docker-compose.yml` and run `docker compose up -d`. Either way, it's a complete, working setup on its own; you only need to edit the placeholder values.
+## Coming from Yamtrack?
 
-```yaml
-services:
-  yamtrack:
-    image: ghcr.io/dannyvfilms/yamtrack:latest
-    container_name: yamtrack
-    restart: unless-stopped
-    depends_on:
-      redis:
-        condition: service_healthy
-    environment:
-      - ALLOWED_HOSTS=yamtrack.yourdomain.com,your.lan.ip.address
-      - DEBUG=False
-      - GUNICORN_THREADS=4
-      - IGDB_ID=your_igdb_client_id
-      - IGDB_SECRET=your_igdb_client_secret
-      - LASTFM_API_KEY=your_lastfm_api_key
-      - MAL_API=your_mal_client_id
-      - PGID=1000
-      - PUID=1000
-      - REDIS_URL=redis://redis:6379
-      - REGISTRATION=True
-      - SECRET=your_django_secret_key
-      - TMDB_API=your_tmdb_api_key
-      - TVDB_API_KEY=your_tvdb_api_key
-      - TZ=America/Chicago
-      - WEB_CONCURRENCY=2
-    volumes:
-      - yamtrack_db:/yamtrack/db
-    ports:
-      - "8000:8000"
+Floppy started as a fork of [Yamtrack](https://github.com/FuzzyGrim/Yamtrack) and has diverged substantially since — the rename exists so the two projects stop being confused for each other. The upgrade path is intentionally boring:
 
-  redis:
-    image: redis:8-alpine
-    container_name: yamtrack-redis
-    restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 3s
-      retries: 10
-    volumes:
-      - redis_data:/data
+- **Your data moves over as-is.** Export a CSV from Yamtrack and import it under **Settings → Import**; the formats are identical. Floppy's own backups export as `floppy_<date>.csv` and use the same format, so nothing is one-way.
+- **Your existing container keeps working.** If you already run this project's image, the rename doesn't break your compose file: the old `/yamtrack/db` mount path still resolves inside the image, and pre-rename `YAMTRACK_*` environment variables are still read.
+- **One thing to update:** the image moved to `ghcr.io/dannyvfilms/floppy`. Point your compose file at the new path when convenient — the old path stops receiving new builds.
 
-volumes:
-  yamtrack_db:
-  redis_data:
-```
+Floppy retains Yamtrack's core tracking, import, and self-hosting workflows, with the additional capabilities described above.
 
-Leave `REGISTRATION=True` for your first run so you can create an account, then set it back to `False` and redeploy the stack once you're the only user who needs one — this keeps randos from signing up if your instance is reachable from the internet.
+## Configuration and deployment
 
-Only the vars above need values you provide; everything else (metadata language/NSFW toggles, build/version info, etc.) ships with sane defaults. See [Environment Variables](#environment-variables) below for the full optional list.
+### PostgreSQL
 
-If you use SQLite, you must persist `/yamtrack/db`. Without that mount, recreating the container also recreates an empty database.
-
-Then visit `http://localhost:8000` and log in with the account you created.
-
-**For PostgreSQL (production setup):**
+Floppy uses PostgreSQL only when `DB_HOST` is set. Without it, it uses SQLite at `/floppy/db/db.sqlite3`. `DATABASE_URL` is not supported — set the individual `DB_*` variables.
 
 ```yaml
 services:
-  yamtrack:
-    image: ghcr.io/dannyvfilms/yamtrack:latest
-    container_name: yamtrack
+  floppy:
+    image: ghcr.io/dannyvfilms/floppy:latest
+    container_name: floppy
     restart: unless-stopped
     depends_on:
       - db
@@ -191,10 +192,11 @@ services:
     environment:
       - SECRET=your-secret-key-here-change-this
       - REDIS_URL=redis://redis:6379
+      - DEMO_ACCOUNT_ENABLED=False
       - TZ=America/New_York
       - DB_HOST=db
-      - DB_NAME=yamtrack
-      - DB_USER=yamtrack
+      - DB_NAME=floppy
+      - DB_USER=floppy
       - DB_PASSWORD=change-this-password
       - DB_PORT=5432
     ports:
@@ -202,18 +204,18 @@ services:
 
   db:
     image: postgres:16-alpine
-    container_name: yamtrack-db
+    container_name: floppy-db
     restart: unless-stopped
     environment:
-      - POSTGRES_DB=yamtrack
-      - POSTGRES_USER=yamtrack
+      - POSTGRES_DB=floppy
+      - POSTGRES_USER=floppy
       - POSTGRES_PASSWORD=change-this-password
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
   redis:
     image: redis:8-alpine
-    container_name: yamtrack-redis
+    container_name: floppy-redis
     restart: unless-stopped
     volumes:
       - redis_data:/data
@@ -223,29 +225,30 @@ volumes:
   redis_data:
 ```
 
-For PostgreSQL, use `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, and `DB_PORT`. Do not replace these with `DATABASE_URL`; Yamtrack falls back to SQLite if `DB_HOST` is missing.
+> Already running Postgres with `DB_NAME=yamtrack`? Leave those values alone. Renaming the database, role, or password against an existing volume breaks the deployment.
 
 ### Docker Run
 
-If you don't have Portainer, paste this into a terminal and you're up and running — no compose file needed:
+No compose file needed:
 
 ```bash
-docker network create yamtrack-net
+docker network create floppy-net
 
 docker run -d \
-  --name yamtrack-redis \
-  --network yamtrack-net \
+  --name floppy-redis \
+  --network floppy-net \
   --restart unless-stopped \
-  -v yamtrack-redis-data:/data \
+  -v floppy-redis-data:/data \
   redis:8-alpine \
   redis-server --appendonly yes
 
 docker run -d \
-  --name yamtrack \
-  --network yamtrack-net \
+  --name floppy \
+  --network floppy-net \
   --restart unless-stopped \
-  -e ALLOWED_HOSTS=yamtrack.yourdomain.com,your.lan.ip.address \
+  -e ALLOWED_HOSTS=floppy.yourdomain.com,your.lan.ip.address \
   -e DEBUG=False \
+  -e DEMO_ACCOUNT_ENABLED=False \
   -e GUNICORN_THREADS=4 \
   -e IGDB_ID=your_igdb_client_id \
   -e IGDB_SECRET=your_igdb_client_secret \
@@ -253,47 +256,36 @@ docker run -d \
   -e MAL_API=your_mal_client_id \
   -e PGID=1000 \
   -e PUID=1000 \
-  -e REDIS_URL=redis://yamtrack-redis:6379 \
+  -e REDIS_URL=redis://floppy-redis:6379 \
   -e REGISTRATION=True \
   -e SECRET=your_django_secret_key \
   -e TMDB_API=your_tmdb_api_key \
   -e TVDB_API_KEY=your_tvdb_api_key \
   -e TZ=America/Chicago \
   -e WEB_CONCURRENCY=2 \
-  -v yamtrack-db:/yamtrack/db \
+  -v floppy-db:/floppy/db \
   -p 8000:8000 \
-  ghcr.io/dannyvfilms/yamtrack:latest
+  ghcr.io/dannyvfilms/floppy:latest
 ```
 
-Leave `REGISTRATION=True` for your first run so you can create an account, then set it back to `False` (`docker rm -f yamtrack` and re-run with the updated value, or use `docker update`/recreate) once you're the only user who needs one.
+Leave `REGISTRATION=True` for your first run, then recreate the container with `False` once your account exists.
 
-This setup uses named volumes (`yamtrack-db` and `yamtrack-redis-data`) and a shared network (`yamtrack-net`). Only the vars above need values you provide — see [Environment Variables](#environment-variables) for the full optional list. For more options, use Docker Compose.
+### Portainer and Unraid
 
-### Portainer
+Prefer **Stacks** over **Containers → Add container**. Stacks let you paste a complete Compose configuration and avoid missing required volumes or environment variables. This is also the recommended path for **Unraid**: rather than installing from a Community Applications template and standing up Redis separately, paste one compose file into a stack via the Portainer plugin and both containers come up together.
 
-Portainer users should prefer **Stacks** over **Containers -> Add container**. Stacks let you paste the working compose file directly and avoid missing required volumes or env vars. This is also the recommended path for **Unraid**: rather than installing the app from a Community Applications template and standing up Redis separately, paste one compose file into a stack (via the Portainer plugin) and both containers come up together as a single unit.
-
-**Recommended: Portainer Stacks**
-
-1. In Portainer, go to **Stacks** -> **Add Stack**
-2. Name it `yamtrack`
+1. Go to **Stacks** → **Add Stack**
+2. Name it `floppy`
 3. Paste one of the compose configurations above
-4. Update the `SECRET` environment variable with a secure random string, and fill in whichever metadata API keys you have
+4. Set `SECRET` to a secure random string, and fill in whichever metadata API keys you have
 5. Deploy the stack
 6. Create your account while `REGISTRATION=True`, then set it to `False` and redeploy
 
-**If you use Containers -> Add container anyway**
+If you use **Containers → Add container** anyway: always set `SECRET` and `REDIS_URL`; for SQLite mount persistent storage to `/floppy/db`; for PostgreSQL set the `DB_*` variables on the Floppy container and persist `/var/lib/postgresql/data` on the Postgres container; publish port `8000`; and leave `Command` and `Entrypoint` empty.
 
-- Always set `SECRET` and `REDIS_URL`.
-- For SQLite, mount persistent storage to `/yamtrack/db`.
-- For PostgreSQL, set `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, and `DB_PORT` on the Yamtrack container.
-- For PostgreSQL, also persist `/var/lib/postgresql/data` on the Postgres container.
-- Publish port `8000` from the container to a host port.
-- Leave `Command` and `Entrypoint` empty unless you know you need to override them.
+### Environment variables
 
-### Environment Variables
-
-The only universally required variable is `SECRET` for Django's secret key. For Docker installs, you should also set `REDIS_URL` to a reachable Redis instance.
+The only universally required variable is `SECRET`. For Docker installs you should also set `REDIS_URL`.
 
 **Optional but recommended:**
 
@@ -307,22 +299,15 @@ The only universally required variable is `SECRET` for Django's secret key. For 
 - `COMICVINE_API` - comic metadata
 - `LASTFM_API_KEY` - Last.fm integration and scrobble polling
 - `TRAKT_API` / `TRAKT_API_SECRET` - Trakt private-profile OAuth imports
-- `URLS` - your public URL if using a reverse proxy, for example `https://yamtrack.mydomain.com`
-- `ADMIN_ENABLED` - set to `True` to enable the Django admin interface at `/admin/` (see the [Admin Guide](wiki/6.-Admin-and-Operations.md#admin-guide))
+- `URLS` - your public URL if using a reverse proxy, for example `https://floppy.mydomain.com`
+- `ADMIN_ENABLED` - set to `True` to enable the Django admin interface at `/admin/` (see the [Admin Guide](https://github.com/dannyvfilms/Floppy/wiki/6.-Admin-and-Operations#admin-guide))
 - `WEB_CONCURRENCY` / `GUNICORN_THREADS` - web server concurrency (defaults: 2 worker processes x 4 threads). Total concurrent requests = workers x threads; keep at least 2 workers so one slow request never blocks the whole UI
 - `DEBUG` - leave unset or `False` in production; enabling it slows every request (debug toolbar, no template caching) and is only meant for troubleshooting
-- `REGISTRATION` - set to `True` to allow new signups (needed for your first account), then set to `False` afterward to stop strangers from registering if your instance is reachable from the internet
-- `DEMO_ACCOUNT_ENABLED` - defaults to `True`, provisioning the built-in `demo` / `demodemo` account after migrations; set to `False` if your instance is reachable from the internet and you don't want a publicly known login active
+- `REGISTRATION` - set to `True` to allow new signups (needed for your first account), then set to `False` afterward
+- `DEMO_ACCOUNT_ENABLED` - defaults to `True`, provisioning the built-in `demo` / `demodemo` account after migrations. The examples above set it to `False`; only turn it on if you want a shared demo login
 - `ALLOWED_HOSTS` / `PUID` / `PGID` - `ALLOWED_HOSTS` is a comma-separated list of hostnames/IPs Django will accept requests for; `PUID` / `PGID` set the file-ownership user/group inside the container (match your host user, e.g. Unraid's `99`/`100`, if you hit permission errors)
 
-For a complete list, see the [Environment Variables documentation](wiki/6.-Admin-and-Operations.md#environment-variables).
-
-### Persistence Checklist
-
-- SQLite stores the app database at `/yamtrack/db/db.sqlite3`; persist `/yamtrack/db`.
-- PostgreSQL stores its database files at `/var/lib/postgresql/data`; persist that path on the Postgres container.
-- Redis stores sessions and background-task state; resetting Redis can log users out, but it should not delete accounts if the database is persisted.
-- Do not assume `DATABASE_URL` enables PostgreSQL. Yamtrack uses Postgres only when `DB_HOST` is set.
+For the complete list, see the [Environment Variables documentation](https://github.com/dannyvfilms/Floppy/wiki/6.-Admin-and-Operations#environment-variables).
 
 Example `.env` file:
 
@@ -344,138 +329,105 @@ WEB_CONCURRENCY=2
 GUNICORN_THREADS=4
 ```
 
-#### Trakt private profile import (OAuth)
+### Persistence checklist
+
+- SQLite stores the app database at `/floppy/db/db.sqlite3`; persist `/floppy/db`. (Pre-rename `/yamtrack/db` mounts still resolve, so existing setups keep working.)
+- PostgreSQL stores its database files at `/var/lib/postgresql/data`; persist that path on the Postgres container.
+- Redis stores sessions and background-task state; resetting Redis can log users out, but it should not delete accounts if the database is persisted.
+- Do not assume `DATABASE_URL` enables PostgreSQL. Floppy uses Postgres only when `DB_HOST` is set.
+
+### Trakt private profile import (OAuth)
 
 If you import from a private Trakt profile, configure OAuth first:
 
 1. Create an app in [Trakt API Apps](https://trakt.tv/oauth/applications).
 2. Add this Redirect URI in the Trakt app:
    - `https://your_domain.com/import/trakt/private`
-3. Set these environment variables in Yamtrack:
+3. Set these environment variables:
    - `TRAKT_API` = your Trakt client ID
    - `TRAKT_API_SECRET` = your Trakt client secret
 
-If you run Yamtrack behind a reverse proxy, set `URLS=https://your_domain.com` so Yamtrack generates the correct external callback URL.
+Behind a reverse proxy, also set `URLS=https://your_domain.com` so Floppy generates the correct external callback URL.
 
+### Reverse proxy setup
 
-### Troubleshooting: I Updated and My Login Is Gone
-
-If an update recreated the container and your account is gone:
-
-1. If you intended to use PostgreSQL, confirm `DB_HOST` is set. `DATABASE_URL` alone will not enable Postgres.
-2. If you intended to use SQLite, confirm `/yamtrack/db` is mounted to persistent storage.
-3. If you were only logged out but can sign in again, Redis/session data was reset; your account database is still intact.
-4. Do not remove database volumes during updates unless you intentionally want a fresh install.
-
-### Reverse Proxy Setup
-
-If you are using a reverse proxy (Nginx, Traefik, Caddy, and so on) and see a `403 Forbidden` error, add your URL to the environment variables:
+If you are behind a reverse proxy (Nginx, Traefik, Caddy, and so on) and see a `403 Forbidden`, add your URL to the environment:
 
 ```yaml
 environment:
-  - URLS=https://yamtrack.mydomain.com
+  - URLS=https://floppy.mydomain.com
 ```
 
-Multiple origins can be specified with commas, for example `https://yamtrack.mydomain.com,https://yamtrack-alt.mydomain.com`.
+Multiple origins can be comma-separated, for example `https://floppy.mydomain.com,https://floppy-alt.mydomain.com`.
 
-If Yamtrack does not generate the correct callback URLs for authenticating with Anilist and other imports, add this to your environment variables:
+If callback URLs for AniList and other imports come out wrong, add:
 
 ```yaml
 environment:
   - USE_X_FORWARDED=True
 ```
 
-> **Note:** If you are using a Cloudflare Tunnel or any HTTPS-terminating proxy, also set `USE_X_FORWARDED_PROTO=True` — otherwise Django cannot detect the correct scheme and CSRF checks will fail.
+> **Note:** With a Cloudflare Tunnel or any HTTPS-terminating proxy, also set `USE_X_FORWARDED_PROTO=True` — otherwise Django cannot detect the correct scheme and CSRF checks will fail.
 
-### Docker Image Tags
+### Troubleshooting: I updated and my login is gone
 
-The Docker image is available at `ghcr.io/dannyvfilms/yamtrack` with these tags:
+1. If you intended to use PostgreSQL, confirm `DB_HOST` is set. `DATABASE_URL` alone will not enable Postgres.
+2. If you intended to use SQLite, confirm `/floppy/db` (or the legacy `/yamtrack/db`) is mounted to persistent storage.
+3. If you were only logged out but can sign in again, Redis/session data was reset; your account database is still intact.
+4. Do not remove database volumes during updates unless you intentionally want a fresh install.
 
-- `:latest` - the latest commit on this fork's `latest` branch
+### Docker image tags
+
+The image lives at `ghcr.io/dannyvfilms/floppy`:
+
+- `:latest` - the latest commit on the `latest` branch
 - `:release` - builds published from GitHub release tags
 - `:vX.Y.Z` - versioned release builds
-- `:dev` - the `dev` branch, which this fork keeps aligned with upstream Yamtrack
+- `:dev` - the `dev` branch, kept aligned with upstream Yamtrack
 
-## Local Development
+## Local development
 
-If you want to contribute or customize the app locally:
+For contributing or customizing locally:
 
-1. Clone the repository:
+```bash
+git clone https://github.com/dannyvfilms/Floppy.git
+cd Floppy
+docker run -d --name redis -p 6379:6379 --restart unless-stopped redis:8-alpine
+python -m pip install -U -r requirements-dev.txt
+```
 
-   ```bash
-   git clone https://github.com/dannyvfilms/Yamtrack.git
-   cd Yamtrack
-   ```
+Create a `.env` with at least `SECRET`, `DEBUG=True`, and whichever API keys you need (same names as the Docker list above), then:
 
-2. Start Redis:
+```bash
+cd src
+python manage.py migrate
+python manage.py createsuperuser
+python manage.py runserver
+```
 
-   ```bash
-   docker run -d --name redis -p 6379:6379 --restart unless-stopped redis:8-alpine
-   ```
+Celery and Tailwind run in separate terminals:
 
-3. Create a `.env` file:
+```bash
+celery -A config worker --queues interactive --hostname celery-interactive@%h --loglevel DEBUG
+celery -A config worker --queues celery --beat --scheduler django --hostname celery@%h --loglevel DEBUG
+```
 
-   ```bash
-   TMDB_API=your_key
-   TVDB_API_KEY=your_tvdb_key
-   TVDB_PIN=your_subscriber_pin (Optional)
-   MAL_API=your_mal_client_id
-   IGDB_ID=your_id
-   IGDB_SECRET=your_secret
-   STEAM_API_KEY=your_key
-   BGG_API_TOKEN=your_bgg_token
-   HARDCOVER_API=your_hardcover_token
-   COMICVINE_API=your_comicvine_key
-   LASTFM_API_KEY=your_lastfm_key
-   SECRET=your_secret
-   DEBUG=True
-   ```
+```bash
+npx @tailwindcss/cli -i ./static/css/input.css -o ./static/css/main.css --watch
+```
 
-4. Install dependencies and initialize the app:
+Visit `http://localhost:8000`. A `demo` / `demodemo` account is provisioned after migrations; set `DEMO_ACCOUNT_ENABLED=False` to disable it. See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
 
-   ```bash
-   python -m pip install -U -r requirements-dev.txt
-   cd src
-   python manage.py migrate
-   python manage.py createsuperuser
-   ```
+## Support the project
 
-5. Start services in separate terminals:
-
-   ```bash
-   python manage.py runserver
-   ```
-
-   ```bash
-   celery -A config worker --queues interactive --hostname celery-interactive@%h --loglevel DEBUG
-
-   celery -A config worker --queues celery --beat --scheduler django --hostname celery@%h --loglevel DEBUG
-   ```
-
-   ```bash
-   npx @tailwindcss/cli -i ./static/css/input.css -o ./static/css/main.css --watch
-   ```
-
-Visit `http://localhost:8000` to use your local instance.
-
-The fork also provisions a built-in demo account after migrations:
-
-- Username: `demo`
-- Password: `demodemo`
-
-Set `DEMO_ACCOUNT_ENABLED=False` to disable this (recommended if your instance is reachable from the internet).
-
-## Support the Project
-
-- Star the repository if you want to help more people discover the fork.
-- Open an [issue](https://github.com/dannyvfilms/Yamtrack/issues) for bugs or missing migration workflows you run into.
-- Use [GitHub issues](https://github.com/dannyvfilms/Yamtrack/issues) for feature requests and fork-specific improvement ideas.
+- Star the repository if you want to help more people find Floppy.
+- Open an [issue](https://github.com/dannyvfilms/Floppy/issues) for bugs, or for feature requests and ideas.
 - Open a pull request if you want to contribute code, docs, or polish.
 
 ## License
 
-This project is licensed under the AGPL-3.0 License.
+AGPL-3.0.
 
-## Acknowledgments
+## Origins
 
-This fork is based on [FuzzyGrim/Yamtrack](https://github.com/FuzzyGrim/Yamtrack), which remains the foundation. This repository focuses on the Trakt-replacement, daily-driver direction for users who want a more opinionated and feature-dense Yamtrack experience.
+Floppy began as a fork of [FuzzyGrim/Yamtrack](https://github.com/FuzzyGrim/Yamtrack) and still shares its foundation and data model — Yamtrack CSV exports import directly, and this repository will keep showing the fork link. Since then it has grown into a distinct project with its own direction: a Trakt-replacement daily driver for people who want something more opinionated and more feature-dense. Thanks to FuzzyGrim and Yamtrack's contributors for the groundwork.

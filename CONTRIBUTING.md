@@ -1,6 +1,6 @@
 # Contributing
 
-This is a personal fork of [FuzzyGrim/Yamtrack](https://github.com/FuzzyGrim/Yamtrack). Contributions are welcome but the bar is practical: changes should be clean, minimal, and safe to land.
+Floppy is a personally maintained project, originally forked from [FuzzyGrim/Yamtrack](https://github.com/FuzzyGrim/Yamtrack). Contributions are welcome but the bar is practical: changes should be clean, minimal, and safe to land.
 
 ---
 

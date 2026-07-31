@@ -243,8 +243,8 @@ Keep summaries short. Do not explain obvious edits.
 
 Oververbosity:low
 
-# Yamtrack Notes
-Yamtrack is a Django 5.2 app for self-hosted media tracking with Celery workers and Redis. Tailwind CSS output is committed under `src/static/css/`, and templates load `src/static/css/main.css` via `src/templates/base.html`.
+# Floppy Notes
+Floppy is a Django 5.2 app for self-hosted media tracking with Celery workers and Redis. Tailwind CSS output is committed under `src/static/css/`, and templates load `src/static/css/main.css` via `src/templates/base.html`.
 
 ## Branch Policy
 - `dev` must be an exact mirror of upstream `FuzzyGrim/Yamtrack:dev` with no fork-only commits or edits. You will never update this branch.
@@ -253,7 +253,7 @@ Yamtrack is a Django 5.2 app for self-hosted media tracking with Celery workers 
 - `release` is for versioned release/container publication flow, not the primary integration branch.
 
 ## Merge Workflow
-This workspace is the fork `dannyvfilms/Yamtrack`, branch `latest`. When syncing upstream `dev` into `latest`, treat the merge as a conflict-resolution task where upstream `dev` brings maintenance changes and `latest` preserves fork features.
+This workspace is `dannyvfilms/Floppy` (a fork of `FuzzyGrim/Yamtrack`), branch `latest`. When syncing upstream `dev` into `latest`, treat the merge as a conflict-resolution task where upstream `dev` brings maintenance changes and `latest` preserves fork features.
 
 High-level rules:
 - Use upstream `dev` as the source of truth for dependency versions, security/bugfix patches, small refactors, settings/config changes, CSS cleanups, and tests.
@@ -302,7 +302,7 @@ Conflict-resolution steps:
 - Treat `wiki/` as its own git repo (not a submodule); run commits/pushes from `wiki/`.
 - Do not add `wiki/` to the main repo index; it should remain untracked here.
 - Primary local development is source-run Django with Redis, Celery worker/beat, and Tailwind watcher.
-- Secondary Docker usage is for deployment or quick smoke runs; the compose files use the prebuilt `ghcr.io/dannyvfilms/yamtrack` image.
+- Secondary Docker usage is for deployment or quick smoke runs; the compose files use the prebuilt `ghcr.io/dannyvfilms/floppy` image.
 
 ## Agent Docs
 - `docs/agents/media_type_integration.md`: playbook for adding new media types safely.
