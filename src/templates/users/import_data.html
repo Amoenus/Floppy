@@ -1171,107 +1171,121 @@
 
         {# Trakt #}
         <div class="bg-[#39404b] p-4 rounded-lg"
-             x-data="{ traktProfileType: 'public' }"
+             x-data="{ traktProfileType: '{% if trakt_configured %}public{% else %}csv{% endif %}' }"
              x-show="sourceSupports(['screen'])"
              x-transition.opacity.duration.150ms>
           <div class="flex items-center mb-3">{% source_display "trakt" %}</div>
           <p class="text-sm text-gray-400 mb-3">Import TV shows and movies, including your collection</p>
 
-          <div class="mb-3">
-            <label class="block text-sm text-gray-300 mb-2">Profile</label>
-            <div class="relative">
-              <select x-model="traktProfileType"
-                      class="w-full py-2 px-3 bg-[#2a2f35] rounded-md text-white text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50 appearance-none">
-                <option value="public">Public profile</option>
-                <option value="private">Private profile (OAuth)</option>
-                <option value="csv">CSV export</option>
-              </select>
-              {% include "app/icons/chevron-down.svg" with classes="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" %}
-            </div>
-          </div>
-
-          <div x-show="traktProfileType === 'private'" class="mb-3 rounded-md border border-indigo-500/30 bg-indigo-500/10 p-3 text-xs text-gray-300 space-y-2">
-            <p class="text-indigo-200 font-medium">Private Profile Import (OAuth)</p>
-            <ol class="list-decimal list-inside space-y-1">
-              <li>
-                Create a Trakt application at
-                <a href="https://trakt.tv/oauth/applications"
-                   target="_blank"
-                   class="text-indigo-300 underline hover:text-indigo-200">Trakt API Apps</a>.
-              </li>
-              <li>Set the Redirect URI to <code class="text-indigo-200 break-all">{{ request.scheme }}://{{ request.get_host }}{% url 'import_trakt_private' %}</code>.</li>
-              <li>Set <code class="text-indigo-200">TRAKT_API</code> and <code class="text-indigo-200">TRAKT_API_SECRET</code> in your environment.</li>
-            </ol>
-            <p class="text-gray-400">
-              Behind reverse proxies, also set <code class="text-indigo-200">URLS=https://your_domain.com</code> so Floppy builds the correct callback URL.
+          {% if not trakt_configured %}
+            <p class="text-xs text-gray-400 mb-3">
+              Trakt now requires VIP to register new API applications, so username-based
+              import is unavailable unless <code class="text-indigo-200">TRAKT_API</code> and
+              <code class="text-indigo-200">TRAKT_API_SECRET</code> are already set. Use a Trakt
+              data export instead.
             </p>
-          </div>
+          {% endif %}
 
-          <form class="flex items-center"
-                method="post"
-                x-show="traktProfileType === 'public'"
-                action="{% url 'import_trakt_public' %}">
-            {% csrf_token %}
-            <input type="hidden" name="frequency" x-model="importFrequency">
-            <input type="hidden" name="time" x-model="importTime">
-            <input type="hidden" name="mode" x-model="importMode">
-
-            <div class="flex w-full">
-              <input placeholder="Public Trakt username"
-                     name="user"
-                     class="relative w-full py-2 px-3 bg-[#2a2f35] rounded-l-md text-white text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
-                     type="text"
-                     required>
-              <button type="submit"
-                      class="px-3 py-2 rounded-r-md transition-colors text-sm border cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                      :class="standardImportsDisabled() ? 'bg-gray-600 text-gray-400 border-gray-600 cursor-not-allowed' : 'bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700'"
-                      :disabled="standardImportsDisabled()">
-                Import
-              </button>
+          {% if trakt_configured %}
+            <div class="mb-3">
+              <label class="block text-sm text-gray-300 mb-2">Profile</label>
+              <div class="relative">
+                <select x-model="traktProfileType"
+                        class="w-full py-2 px-3 bg-[#2a2f35] rounded-md text-white text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50 appearance-none">
+                  <option value="public">Public profile</option>
+                  <option value="private">Private profile (OAuth)</option>
+                  <option value="csv">Data export file</option>
+                </select>
+                {% include "app/icons/chevron-down.svg" with classes="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" %}
+              </div>
             </div>
-          </form>
 
-          <form class="flex items-center"
-                method="post"
-                x-show="traktProfileType === 'private'"
-                action="{% url 'trakt_oauth' %}">
-            {% csrf_token %}
-            <input type="hidden" name="frequency" x-model="importFrequency">
-            <input type="hidden" name="time" x-model="importTime">
-            <input type="hidden" name="mode" x-model="importMode">
+            <div x-show="traktProfileType === 'private'" class="mb-3 rounded-md border border-indigo-500/30 bg-indigo-500/10 p-3 text-xs text-gray-300 space-y-2">
+              <p class="text-indigo-200 font-medium">Private Profile Import (OAuth)</p>
+              <ol class="list-decimal list-inside space-y-1">
+                <li>
+                  Create a Trakt application at
+                  <a href="https://trakt.tv/oauth/applications"
+                     target="_blank"
+                     class="text-indigo-300 underline hover:text-indigo-200">Trakt API Apps</a>.
+                </li>
+                <li>Set the Redirect URI to <code class="text-indigo-200 break-all">{{ request.scheme }}://{{ request.get_host }}{% url 'import_trakt_private' %}</code>.</li>
+                <li>Set <code class="text-indigo-200">TRAKT_API</code> and <code class="text-indigo-200">TRAKT_API_SECRET</code> in your environment.</li>
+              </ol>
+              <p class="text-gray-400">
+                Behind reverse proxies, also set <code class="text-indigo-200">URLS=https://your_domain.com</code> so Floppy builds the correct callback URL.
+              </p>
+            </div>
 
-            <button type="submit"
-                    class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                    :class="standardImportsDisabled() ? 'bg-gray-600 text-gray-400 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-700'"
-                    :disabled="standardImportsDisabled()">
-              Connect with Trakt & Import
-            </button>
-          </form>
+            <form class="flex items-center"
+                  method="post"
+                  x-show="traktProfileType === 'public'"
+                  action="{% url 'import_trakt_public' %}">
+              {% csrf_token %}
+              <input type="hidden" name="frequency" x-model="importFrequency">
+              <input type="hidden" name="time" x-model="importTime">
+              <input type="hidden" name="mode" x-model="importMode">
 
-          <div x-show="traktProfileType === 'csv' && importMode === 'update_collection'" class="mb-3 rounded-md border border-indigo-500/30 bg-indigo-500/10 p-3 text-xs text-gray-300">
-            No Trakt account anymore? Upload the "collection" CSV from a Trakt data
-            export to import your owned movies and episodes.
-          </div>
-          <div x-show="traktProfileType === 'csv' && importMode !== 'update_collection'" class="mb-3 rounded-md border border-indigo-500/30 bg-indigo-500/10 p-3 text-xs text-gray-300">
-            No Trakt account anymore? Upload a Trakt data export CSV to import from it.
+              <div class="flex w-full">
+                <input placeholder="Public Trakt username"
+                       name="user"
+                       class="relative w-full py-2 px-3 bg-[#2a2f35] rounded-l-md text-white text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+                       type="text"
+                       required>
+                <button type="submit"
+                        class="px-3 py-2 rounded-r-md transition-colors text-sm border cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                        :class="standardImportsDisabled() ? 'bg-gray-600 text-gray-400 border-gray-600 cursor-not-allowed' : 'bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700'"
+                        :disabled="standardImportsDisabled()">
+                  Import
+                </button>
+              </div>
+            </form>
+
+            <form class="flex items-center"
+                  method="post"
+                  x-show="traktProfileType === 'private'"
+                  action="{% url 'trakt_oauth' %}">
+              {% csrf_token %}
+              <input type="hidden" name="frequency" x-model="importFrequency">
+              <input type="hidden" name="time" x-model="importTime">
+              <input type="hidden" name="mode" x-model="importMode">
+
+              <button type="submit"
+                      class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      :class="standardImportsDisabled() ? 'bg-gray-600 text-gray-400 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-700'"
+                      :disabled="standardImportsDisabled()">
+                Connect with Trakt & Import
+              </button>
+            </form>
+          {% endif %}
+
+          <div x-show="traktProfileType === 'csv'" class="mb-3 rounded-md border border-indigo-500/30 bg-indigo-500/10 p-3 text-xs text-gray-300 space-y-2">
+            <p>
+              No Trakt account anymore? Upload the <code class="text-indigo-200">.zip</code> from a
+              Trakt data export to import your history, ratings, watchlist, collection and lists.
+              Individual <code class="text-indigo-200">.json</code> files and the older
+              <code class="text-indigo-200">.csv</code> export also work.
+            </p>
+            <p class="text-gray-400">Importing lists replaces any lists previously imported from Trakt.</p>
           </div>
 
           <form method="post"
                 x-show="traktProfileType === 'csv'"
-                action="{% url 'import_trakt_collection_csv' %}"
+                action="{% url 'import_trakt_export_file' %}"
                 enctype="multipart/form-data">
             {% csrf_token %}
             <input type="hidden" name="mode" x-model="importMode">
             <label class="flex items-center justify-center w-full px-4 py-2 text-sm rounded-md transition-colors"
                    :class="importFrequency === 'once' ? 'bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer' : 'bg-gray-600 text-gray-400 cursor-not-allowed'"
                    :disabled="importFrequency !== 'once'">
-              <input name="trakt_collection_csv"
-                     accept=".csv"
+              <input name="trakt_export"
+                     accept=".zip,.json,.csv"
+                     multiple
                      class="hidden"
                      type="file"
                      :disabled="importFrequency !== 'once'"
                      @change="importFrequency === 'once' && $el.form.submit()">
-              <span x-text="importMode === 'update_collection' ? 'Select Collection CSV File' : 'Select CSV File'"></span>
+              <span>Select Export File</span>
             </label>
           </form>
         </div>

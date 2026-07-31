@@ -1107,6 +1107,7 @@ def import_data(request):
         "lastfm_history_total_pages": lastfm_history_total_pages,
         "lastfm_history_can_start": lastfm_history_can_start,
         "lastfm_history_button_label": lastfm_history_button_label,
+        "trakt_configured": bool(settings.TRAKT_API and settings.TRAKT_API_SECRET),
     }
     return render(request, "users/import_data.html", context)
 

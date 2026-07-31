@@ -172,6 +172,7 @@ def _make_trakt_request(access_token, url, client_id=None):
         client_id = settings.TRAKT_API
     headers = {
         "Content-Type": "application/json",
+        "User-Agent": f"Floppy/{settings.VERSION}",
         "trakt-api-version": "2",
         "trakt-api-key": client_id,
         "Authorization": f"Bearer {access_token}",

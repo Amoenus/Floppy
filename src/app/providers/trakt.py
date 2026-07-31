@@ -30,6 +30,7 @@ def _headers() -> dict[str, str]:
     """Return Trakt request headers."""
     return {
         "Content-Type": "application/json",
+        "User-Agent": f"Floppy/{settings.VERSION}",
         "trakt-api-version": TRAKT_API_VERSION,
         "trakt-api-key": settings.TRAKT_API,
     }

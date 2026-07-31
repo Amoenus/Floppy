@@ -10,6 +10,7 @@ from app.discover import cache_repo
 from app.discover.schemas import CandidateItem
 from app.models import MediaTypes, Sources
 from app.providers import services
+from app.providers import trakt as trakt_provider
 
 logger = logging.getLogger(__name__)
 
@@ -30,8 +31,12 @@ class TraktDiscoverAdapter:
         if payload and not is_stale:
             return payload
 
+        if not trakt_provider.is_configured():
+            return payload if payload else {"results": []}
+
         headers = {
             "Content-Type": "application/json",
+            "User-Agent": f"Floppy/{settings.VERSION}",
             "trakt-api-version": "2",
             "trakt-api-key": settings.TRAKT_API,
         }

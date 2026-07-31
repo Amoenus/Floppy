@@ -90,6 +90,7 @@ def get_username_from_oauth(access_token, client_id=None):
 
     headers = {
         "Content-Type": "application/json",
+        "User-Agent": f"Floppy/{settings.VERSION}",
         "trakt-api-version": "2",
         "trakt-api-key": client_id,
         "Authorization": f"Bearer {access_token}",
@@ -293,7 +294,9 @@ class TraktImporter(TraktMetadataResolverMixin):
         self.user = user
         self.mode = mode
         self.refresh_token = refresh_token
-        self.user_base_url = f"{TRAKT_API_BASE_URL}/users/{username}"
+        self.is_oauth_import = bool(refresh_token)
+        user_identifier = "me" if self.is_oauth_import else username
+        self.user_base_url = f"{TRAKT_API_BASE_URL}/users/{user_identifier}"
         self.warnings = []
 
         # Track existing media to handle "new" mode correctly
@@ -404,6 +407,7 @@ class TraktImporter(TraktMetadataResolverMixin):
         """Make a request to the Trakt API with proper headers."""
         headers = {
             "Content-Type": "application/json",
+            "User-Agent": f"Floppy/{settings.VERSION}",
             "trakt-api-version": "2",
             "trakt-api-key": settings.TRAKT_API,
         }
@@ -469,6 +473,27 @@ class TraktImporter(TraktMetadataResolverMixin):
         logger.info("Importing watch history for user %s", self.username)
         history_endpoint = f"{self.user_base_url}/history"
         full_history = self._get_paginated_data(history_endpoint, "history entries")
+
+        # Some private profiles can return empty user history with OAuth.
+        # Fallback to the authenticated sync endpoint in that case.
+        if self.is_oauth_import and not full_history:
+            fallback_endpoint = f"{TRAKT_API_BASE_URL}/sync/history"
+            logger.warning(
+                "Empty Trakt history for OAuth user %s at %s. Trying %s",
+                self.username,
+                history_endpoint,
+                fallback_endpoint,
+            )
+            try:
+                full_history = self._get_paginated_data(
+                    fallback_endpoint,
+                    "history entries",
+                )
+            except Exception:
+                logger.exception(
+                    "Fallback Trakt history endpoint failed for user %s",
+                    self.username,
+                )
 
         # Process in chronological order (oldest first)
         for entry in reversed(full_history):
@@ -914,13 +939,20 @@ class TraktImporter(TraktMetadataResolverMixin):
                 season_metadata,
             )
 
+    def _supports_hidden_sections(self):
+        """Whether the hidden/progress sections are reachable for this import.
+
+        Overridden by the export importer, which reads them from files.
+        """
+        return bool(self.refresh_token)
+
     def process_dropped(self):
         """Collect TMDB IDs of shows the user has dropped (hidden from progress).
 
         Trakt represents dropped shows as hidden items in the progress_watched
         section.  Requires OAuth — public imports skip this silently.
         """
-        if not self.refresh_token:
+        if not self._supports_hidden_sections():
             return
         logger.info("Importing dropped shows for user %s", self.username)
         for section in ("progress_watched", "progress_watched_reset"):
