@@ -539,6 +539,55 @@ class MediaListViewTests(TestCase):
         self.assertEqual(response.context["media_list"].paginator.count, 1)
         self.assertContains(response, "Untracked Manga No Status")
 
+    def _statusless_manga(self, score=None):
+        """A rating-only media row: a score with no tracking status."""
+        item = Item.objects.create(
+            media_id="statusless-manga",
+            source=Sources.MAL.value,
+            media_type=MediaTypes.MANGA.value,
+            title="Statusless Manga",
+            image="http://example.com/statusless-manga.jpg",
+        )
+        return Manga.objects.create(
+            item=item,
+            user=self.user,
+            status=None,
+            score=score,
+        )
+
+    def test_statusless_media_is_hidden_from_every_status_view(self):
+        self._statusless_manga()
+
+        for status_filter in ("All", *Status.values):
+            response = self.client.get(
+                reverse("medialist", args=[MediaTypes.MANGA.value]),
+                {"status": status_filter},
+            )
+
+            self.assertEqual(response.status_code, 200)
+            self.assertNotContains(
+                response,
+                "Statusless Manga",
+                msg_prefix=f"status={status_filter}",
+            )
+
+    def test_statusless_media_appears_under_no_status_with_its_score(self):
+        self._statusless_manga(score=8)
+
+        response = self.client.get(
+            reverse("medialist", args=[MediaTypes.MANGA.value]) + "?status=no_status",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Statusless Manga")
+
+        entry = response.context["media_list"].object_list[0]
+        # The tracker row is attached, so the score renders, but the entry still
+        # reads as statusless for the "No Status" chip.
+        self.assertIsNotNone(entry.media)
+        self.assertEqual(entry.score, 8)
+        self.assertTrue(entry.is_statusless)
+
     def test_music_media_list_uses_canonical_artist_links(self):
         """Music list should render artist cells with canonical shared-detail URLs."""
         artist = Artist.objects.create(name="List Artist")

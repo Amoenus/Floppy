@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import ROUND_DOWN, Decimal, InvalidOperation
 
+from django.apps import apps as django_apps
 from django.conf import settings
 from django.contrib.auth.decorators import login_not_required, login_required
 from django.core.cache import cache
@@ -86,6 +87,16 @@ class MediaListEntry:
     @property
     def is_untracked(self) -> bool:
         return self.media is None
+
+    @property
+    def is_statusless(self) -> bool:
+        """True when nothing tracks this item, including a rating-only media row."""
+        if self.media is None:
+            return True
+        return (
+            getattr(self.media, "aggregated_status", None) is None
+            and getattr(self.media, "status", None) is None
+        )
 
     @property
     def item_id(self):
@@ -648,10 +659,12 @@ def media_list(request, media_type):
         if not filter_value or filter_value == MediaStatusChoices.ALL:
             return media_items
         if filter_value == MEDIA_LIST_NO_STATUS:
+            # Items with no tracker row at all, plus rating-only media rows that
+            # carry a score without a tracking status.
             return [
                 media
                 for media in media_items
-                if getattr(media, "media", media) is None
+                if getattr(getattr(media, "media", media), "status", None) is None
             ]
         filtered_items = []
         for media in media_items:
@@ -1088,6 +1101,22 @@ def media_list(request, media_type):
             )
         return item.media_type == media_type
 
+    def _statusless_media_by_item_id():
+        """Media rows the user holds without a tracking status (e.g. imported ratings)."""
+        model_names = {media_type}
+        if media_type == MediaTypes.ANIME.value and include_grouped_anime_in_anime:
+            model_names.add(MediaTypes.TV.value)
+
+        statusless = {}
+        for model_name in model_names:
+            model = django_apps.get_model(app_label="app", model_name=model_name)
+            for media in model.objects.filter(
+                user=request.user,
+                status__isnull=True,
+            ).select_related("item"):
+                statusless[media.item_id] = media
+        return statusless
+
     def _build_untracked_media_entries(tracked_item_ids, *, ignore_platform_filter=False):
         if not supports_untracked_status_filter:
             return []
@@ -1095,10 +1124,11 @@ def media_list(request, media_type):
         collected_item_ids = set(
             CollectionEntry.objects.filter(user=request.user).values_list("item_id", flat=True),
         )
-        if not collected_item_ids:
+        statusless_media_by_item_id = _statusless_media_by_item_id()
+        if not collected_item_ids and not statusless_media_by_item_id:
             return []
 
-        candidate_item_ids = set(collected_item_ids)
+        candidate_item_ids = set(collected_item_ids) | set(statusless_media_by_item_id)
         if media_type in {MediaTypes.TV.value, MediaTypes.ANIME.value}:
             episode_pairs = {
                 (str(media_id), str(source))
@@ -1201,7 +1231,12 @@ def media_list(request, media_type):
                 continue
             if tag_excluded_ids is not None and item.id in tag_excluded_ids:
                 continue
-            filtered_items.append(MediaListEntry(item=item, media=None))
+            filtered_items.append(
+                MediaListEntry(
+                    item=item,
+                    media=statusless_media_by_item_id.get(item.id),
+                ),
+            )
 
         return filtered_items
 

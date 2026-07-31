@@ -358,6 +358,19 @@ class MediaForm(RatingScaleFormMixin, forms.ModelForm):
             # Explicitly remove required attribute from widget to prevent HTML5 validation
             self.fields["end_date"].widget.attrs.pop("required", None)
 
+        # status is nullable: blank means the user holds the media (usually an
+        # imported rating) without tracking it. Label it like the list filter
+        # instead of Django's default "---------".
+        if "status" in self.fields:
+            self.fields["status"].choices = [
+                ("", "No Status"),
+                *[
+                    (value, label)
+                    for value, label in self.fields["status"].choices
+                    if value
+                ],
+            ]
+
         if self.instance and getattr(self.instance, "item", None):
             current_image = self.instance.item.image
             if current_image and current_image != settings.IMG_NONE:

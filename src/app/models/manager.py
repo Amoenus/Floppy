@@ -224,9 +224,13 @@ class MediaManager(models.Manager):
         # Build base queryset
         queryset = model.objects.filter(user=user.id)
 
-        # Apply status filter
+        # Apply status filter. Statusless media (an imported rating with no
+        # tracking state) is never part of a status view, including "All"; it is
+        # surfaced separately by the "No Status" filter.
         if status_filter != users.models.MediaStatusChoices.ALL:
             queryset = queryset.filter(status=status_filter)
+        else:
+            queryset = queryset.exclude(status__isnull=True)
 
         # Apply search filter
         if search:

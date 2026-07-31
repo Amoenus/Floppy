@@ -1,5 +1,5 @@
 {% load app_tags %}
-{% if media.is_untracked %}
+{% if media.is_statusless %}
   <span class="text-gray-300">No Status</span>
 {% elif media.aggregated_status %}
   <div class="font-medium">{{ media.aggregated_status|media_status_readable }}</div>

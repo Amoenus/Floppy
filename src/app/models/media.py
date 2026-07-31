@@ -58,6 +58,11 @@ class Media(models.Model):
         max_length=20,
         choices=Status,
         default=Status.COMPLETED.value,
+        # Null means the user has data about this media (typically an imported
+        # rating) without tracking it. Statusless media is kept out of the media
+        # lists and only surfaces under the "No Status" filter.
+        null=True,
+        blank=True,
     )
     start_date = models.DateTimeField(null=True, blank=True)
     end_date = models.DateTimeField(null=True, blank=True)
