@@ -714,8 +714,11 @@ def _aggregate_statistics_from_days(
     # here directly so undated items (e.g. Planning-status items that haven't
     # been started, or imports missing dates) still count towards status,
     # score and media-count aggregates regardless of the selected date range.
+    # TV is excluded here: it (and Season) override start_date/end_date as
+    # computed properties derived from Episode rows, not real DB columns, so
+    # they can't be filtered on directly and raise FieldError if added back.
     undated_models = [
-        MediaTypes.TV.value, MediaTypes.MOVIE.value, MediaTypes.ANIME.value,
+        MediaTypes.MOVIE.value, MediaTypes.ANIME.value,
         MediaTypes.MANGA.value, MediaTypes.GAME.value, MediaTypes.BOARDGAME.value,
         MediaTypes.MUSIC.value, MediaTypes.PODCAST.value, MediaTypes.BOOK.value,
         MediaTypes.COMIC.value,
