@@ -1928,6 +1928,11 @@ def process_episodes(season_metadata, episodes_in_db):
             tmdb_media_id=season_metadata.get("media_id"),
         )
 
+    # TVDB season payloads are also processed here, so episode rows must keep the
+    # season's own source. Hardcoding TMDB sends track/detail routes for a TVDB
+    # show to /tmdb/<tvdb_id>, which 404s at TMDB.
+    episode_source = season_metadata.get("source") or Sources.TMDB.value
+
     for episode in season_metadata["episodes"]:
         episode_number = episode["episode_number"]
 
@@ -1968,7 +1973,7 @@ def process_episodes(season_metadata, episodes_in_db):
             {
                 "media_id": season_metadata["media_id"],
                 "media_type": MediaTypes.EPISODE.value,
-                "source": Sources.TMDB.value,
+                "source": episode_source,
                 "season_number": season_metadata["season_number"],
                 "episode_number": episode_number,
                 "air_date": air_date,  # when unknown, response returns null

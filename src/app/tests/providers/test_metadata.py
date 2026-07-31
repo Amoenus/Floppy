@@ -338,6 +338,44 @@ class Metadata(TestCase):
         )
 
     @patch("app.helpers.get_tmdb_backdrop_image")
+    @patch("app.providers.tmdb.get_tvdb_episode_image_map")
+    def test_process_episodes_keeps_season_source(
+        self,
+        mock_get_tvdb_episode_image_map,
+        mock_get_tmdb_backdrop_image,
+    ):
+        """TVDB season payloads must not be relabelled as TMDB episodes.
+
+        Stamping TMDB on them points episode track/detail routes at
+        /tmdb/<tvdb_id>, which 404s at TMDB.
+        """
+        mock_get_tvdb_episode_image_map.return_value = {}
+        mock_get_tmdb_backdrop_image.return_value = None
+
+        season_metadata = {
+            "media_id": "480759",
+            "source": Sources.TVDB.value,
+            "season_number": 1,
+            "episodes": [
+                {
+                    "episode_number": 1,
+                    "name": "Episode 1",
+                    "overview": "",
+                    "runtime": None,
+                    "still_path": None,
+                },
+            ],
+        }
+
+        result = tmdb.process_episodes(season_metadata, [])
+        self.assertEqual(result[0]["source"], Sources.TVDB.value)
+
+        # A payload without an explicit source still defaults to TMDB.
+        del season_metadata["source"]
+        result = tmdb.process_episodes(season_metadata, [])
+        self.assertEqual(result[0]["source"], Sources.TMDB.value)
+
+    @patch("app.helpers.get_tmdb_backdrop_image")
     def test_process_episodes_uses_show_backdrop_when_still_missing(
         self,
         mock_get_tmdb_backdrop_image,
