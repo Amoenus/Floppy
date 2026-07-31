@@ -266,6 +266,44 @@ class ImportYamtrackStatusNormalization(TestCase):
         self.assertEqual(season.status, Status.IN_PROGRESS.value)
 
 
+class ImportYamtrackStatuslessRoundTrip(TestCase):
+    """A rating-only media row survives an export/import cycle without a status."""
+
+    def setUp(self):
+        """Export a statusless, rated movie for a second user to import."""
+        self.exporter = get_user_model().objects.create_user(
+            username="statusless-exporter",
+            password="12345",  # noqa: S106
+        )
+        self.importer_user = get_user_model().objects.create_user(
+            username="statusless-importer",
+            password="12345",  # noqa: S106
+        )
+        item, _ = Item.objects.get_or_create(
+            media_id="10494",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            season_number=None,
+            episode_number=None,
+            defaults={"title": "Perfect Blue", "image": "https://image.url"},
+        )
+        Movie.objects.create(
+            item=item,
+            user=self.exporter,
+            status=None,
+            score=8,
+        )
+        self.csv_bytes = "".join(exports.generate_rows(self.exporter)).encode("utf-8")
+
+    def test_statusless_media_round_trips_as_null(self):
+        """An exported blank status must come back as NULL, not an empty string."""
+        yamtrack.importer(BytesIO(self.csv_bytes), self.importer_user, "new")
+
+        movie = Movie.objects.get(user=self.importer_user)
+        self.assertIsNone(movie.status)
+        self.assertEqual(movie.score, 8)
+
+
 class ImportSampleTemplate(TestCase):
     """Test that the downloadable sample template imports cleanly, unmodified."""
 

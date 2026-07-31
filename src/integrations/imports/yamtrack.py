@@ -272,7 +272,9 @@ class YamtrackImporter:
         row["source"] = (row.get("source") or "").strip().lower()
         normalized_status = _normalize_status(row.get("status"))
         if normalized_status is not None:
-            row["status"] = normalized_status
+            # An exported blank means the media has no tracking status (a
+            # rating-only row); store a real NULL, not an empty string.
+            row["status"] = normalized_status or None
 
         season_number = (
             int(row["season_number"]) if row["season_number"] != "" else None
