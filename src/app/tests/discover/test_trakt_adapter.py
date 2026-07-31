@@ -1,5 +1,6 @@
 from unittest.mock import patch
 
+import requests
 from django.test import TestCase
 
 from app.discover.providers.trakt_adapter import TraktDiscoverAdapter
@@ -110,3 +111,15 @@ class TraktDiscoverAdapterTests(TestCase):
         self.assertEqual(first[0].source, Sources.TMDB.value)
         self.assertEqual(first[0].release_date, "2025-12-12")
         self.assertEqual(mock_api_request.call_count, 1)
+
+    @patch("app.discover.providers.trakt_adapter.trakt_provider.is_configured", return_value=True)
+    @patch("app.discover.providers.trakt_adapter.services.api_request")
+    def test_movie_watched_weekly_degrades_to_empty_on_http_error(self, mock_api_request, _mock_configured):
+        response = requests.Response()
+        response.status_code = 403
+        mock_api_request.side_effect = requests.exceptions.HTTPError(response=response)
+
+        adapter = TraktDiscoverAdapter()
+        result = adapter.movie_watched_weekly(limit=25)
+
+        self.assertEqual(result, [])

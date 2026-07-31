@@ -67,7 +67,12 @@ class TMDbDiscoverAdapter:
                     error,
                 )
                 return payload
-            raise
+            logger.warning(
+                "discover_tmdb_request_failed endpoint=%s error=%s",
+                endpoint,
+                error,
+            )
+            return {"results": []}
 
     def _paginated_raw_results(
         self,

@@ -66,7 +66,12 @@ class TraktDiscoverAdapter:
                     error,
                 )
                 return payload
-            raise
+            logger.warning(
+                "discover_trakt_request_failed endpoint=%s error=%s",
+                endpoint,
+                error,
+            )
+            return {"results": []}
 
     def movie_watched_weekly(self, *, limit: int = 100) -> list[CandidateItem]:
         """Return Trakt watched-weekly movies normalized to Discover candidates."""
