@@ -270,9 +270,17 @@ COLLECTION_FIELD_CONFIG = {
             "audio_codec",
             "audio_channels",
             "bitrate",
+            "purchase_price",
+            "purchase_location",
             "collected_at",
         ],
-        "labels": {"media_type": "Format", "is_3d": "3D", "collected_at": "Collected At"},
+        "labels": {
+            "media_type": "Format",
+            "is_3d": "3D",
+            "purchase_price": "Purchase Price",
+            "purchase_location": "Purchased From",
+            "collected_at": "Collected At",
+        },
         "choices": {
             "media_type": ["4K Blu-ray", "Blu-ray", "DVD", "Digital", "Streaming", "VHS"],
             "resolution": ["480p", "720p", "1080p", "4K", "8K"],
@@ -294,8 +302,21 @@ COLLECTION_FIELD_CONFIG = {
         },
     },
     "music": {
-        "fields": ["media_type", "audio_codec", "audio_channels", "bitrate", "collected_at"],
-        "labels": {"media_type": "Format", "collected_at": "Collected At"},
+        "fields": [
+            "media_type",
+            "audio_codec",
+            "audio_channels",
+            "bitrate",
+            "purchase_price",
+            "purchase_location",
+            "collected_at",
+        ],
+        "labels": {
+            "media_type": "Format",
+            "purchase_price": "Purchase Price",
+            "purchase_location": "Purchased From",
+            "collected_at": "Collected At",
+        },
         "choices": {
             "media_type": ["Vinyl", "CD", "Digital", "Cassette", "SACD", "Streaming"],
             "audio_codec": ["FLAC", "MP3", "AAC", "ALAC", "WAV", "OGG", "Opus"],
@@ -304,8 +325,13 @@ COLLECTION_FIELD_CONFIG = {
         },
     },
     "books": {
-        "fields": ["media_type", "collected_at"],
-        "labels": {"media_type": "Format", "collected_at": "Collected At"},
+        "fields": ["media_type", "purchase_price", "purchase_location", "collected_at"],
+        "labels": {
+            "media_type": "Format",
+            "purchase_price": "Purchase Price",
+            "purchase_location": "Purchased From",
+            "collected_at": "Collected At",
+        },
         "choices": {
             "media_type": ["Hardcover", "Paperback", "Trade Paperback", "Digital", "Audiobook"],
         },
@@ -315,12 +341,16 @@ COLLECTION_FIELD_CONFIG = {
             "media_type",
             "resolution",
             "hdr",
+            "purchase_price",
+            "purchase_location",
             "collected_at",
         ],
         "labels": {
             "media_type": "Format",
             "resolution": "Platform",
             "hdr": "Edition",
+            "purchase_price": "Purchase Price",
+            "purchase_location": "Purchased From",
             "collected_at": "Collected At",
         },
         "choices": {
@@ -353,8 +383,13 @@ COLLECTION_FIELD_CONFIG = {
         },
     },
     "boardgames": {
-        "fields": ["media_type", "collected_at"],
-        "labels": {"media_type": "Format", "collected_at": "Collected At"},
+        "fields": ["media_type", "purchase_price", "purchase_location", "collected_at"],
+        "labels": {
+            "media_type": "Format",
+            "purchase_price": "Purchase Price",
+            "purchase_location": "Purchased From",
+            "collected_at": "Collected At",
+        },
         "choices": {
             "media_type": ["Physical", "Print & Play", "Digital"],
         },
