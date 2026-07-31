@@ -15,6 +15,7 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: dannyvfilms/floppy
+  LEGACY_IMAGE_NAME: dannyvfilms/yamtrack
 
 jobs:
   build:
@@ -48,7 +49,12 @@ jobs:
         id: meta
         uses: docker/metadata-action@v6
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          # Dual-publish during the rename grace period: the legacy path keeps
+          # receiving identical tags so pre-rename deployments still get
+          # updates. Drop the second line once traffic to it has died off.
+          images: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+            ${{ env.REGISTRY }}/${{ env.LEGACY_IMAGE_NAME }}
           tags: |
             type=ref,event=branch,enable=${{ github.ref != 'refs/heads/latest' }}
             type=ref,event=pr
