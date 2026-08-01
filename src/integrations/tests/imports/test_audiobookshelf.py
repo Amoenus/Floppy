@@ -8,7 +8,17 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
 
-from app.models import Book, Item, MediaTypes, Sources, Status
+from app.models import (
+    Book,
+    Item,
+    MediaTypes,
+    Podcast,
+    PodcastEpisode,
+    PodcastShow,
+    PodcastShowTracker,
+    Sources,
+    Status,
+)
 from integrations.imports import helpers
 from integrations.imports.audiobookshelf import (
     AudiobookshelfAuthError,
@@ -17,6 +27,62 @@ from integrations.imports.audiobookshelf import (
 )
 from integrations.imports.helpers import MediaImportError
 from integrations.models import AudiobookshelfAccount
+
+
+def podcast_progress(**overrides):
+    """Return an ABS podcast episode progress entry."""
+    return {
+        "libraryItemId": "podcast-item",
+        "episodeId": "ep-1",
+        "mediaItemId": "ep-1",
+        "mediaItemType": "podcastEpisode",
+        "currentTime": 1200,
+        "duration": 3000,
+        "progress": 0.4,
+        "isFinished": False,
+        "lastUpdate": 2000,
+        "startedAt": 1_700_000_000_000,
+        "finishedAt": None,
+        **overrides,
+    }
+
+
+def podcast_library_item(**overrides):
+    """Return an expanded ABS podcast library item payload."""
+    return {
+        "id": "podcast-item",
+        "mediaType": "podcast",
+        "coverPath": "/metadata/items/podcast-item/cover.jpg",
+        "media": {
+            "id": "pod-1",
+            "metadata": {
+                "title": "Test Show",
+                "author": "Test Network",
+                "description": "A show.",
+                "language": "en",
+                "genres": ["Technology"],
+                "feedUrl": "https://feed.example/rss.xml",
+                "imageUrl": "https://feed.example/cover.jpg",
+            },
+            "episodes": [
+                {
+                    "id": "ep-1",
+                    "title": "Episode 14",
+                    "guid": "guid-1",
+                    "enclosure": {
+                        "url": "https://cdn.example/ep14.mp3",
+                        "type": "audio/mpeg",
+                    },
+                    "season": "2",
+                    "episode": "14",
+                    "episodeType": "full",
+                    "publishedAt": 1_699_516_800_000,
+                    "duration": 3000.4,
+                },
+            ],
+        },
+        **overrides,
+    }
 
 
 class AudiobookshelfImporterTests(TestCase):
@@ -76,25 +142,212 @@ class AudiobookshelfImporterTests(TestCase):
 
     @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_library_item")
     @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_me")
-    def test_skips_podcast_episode_progress(self, mock_me, mock_item):
-        """Skip ABS podcast episode progress in v1."""
+    def test_imports_podcast_episode_progress(self, mock_me, mock_item):
+        """Import ABS podcast episode progress into Podcast rows."""
+        mock_me.return_value = {"mediaProgress": [podcast_progress()]}
+        mock_item.return_value = podcast_library_item()
+
+        importer = AudiobookshelfImporter(self.user)
+        counts, warnings = importer.import_data()
+
+        self.assertEqual(counts.get(MediaTypes.PODCAST.value), 1)
+        self.assertEqual(warnings, "")
+        mock_item.assert_called_once_with("podcast-item", expanded=True)
+
+        show = PodcastShow.objects.get()
+        self.assertEqual(show.source, Sources.AUDIOBOOKSHELF.value)
+        self.assertEqual(show.title, "Test Show")
+        self.assertEqual(show.rss_feed_url, "https://feed.example/rss.xml")
+
+        episode = PodcastEpisode.objects.get()
+        self.assertEqual(episode.episode_uuid, "guid-1")
+        self.assertEqual(episode.duration, 3000)
+        self.assertEqual(episode.season_number, 2)
+        self.assertEqual(episode.episode_number, 14)
+
+        media = Podcast.objects.get(user=self.user)
+        self.assertEqual(media.status, Status.IN_PROGRESS.value)
+        self.assertEqual(media.played_up_to_seconds, 1200)
+        self.assertEqual(media.progress, 20)
+        self.assertEqual(media.last_seen_status, 2)
+        self.assertIsNone(media.end_date)
+        self.assertEqual(media.item.media_type, MediaTypes.PODCAST.value)
+        self.assertEqual(media.item.media_id, "guid-1")
+        self.assertTrue(
+            PodcastShowTracker.objects.filter(user=self.user, show=show).exists(),
+        )
+
+    @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_library_item")
+    @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_me")
+    def test_imports_finished_podcast_episode_as_completed(self, mock_me, mock_item):
+        """Map a finished ABS episode onto a completed Podcast row."""
+        finished_at_ms = 1_700_003_600_000
         mock_me.return_value = {
             "mediaProgress": [
-                {
-                    "libraryItemId": "podcast-item",
-                    "episodeId": "ep-1",
-                    "currentTime": 100,
-                    "lastUpdate": 2000,
-                },
+                podcast_progress(
+                    currentTime=3000,
+                    progress=1,
+                    isFinished=True,
+                    finishedAt=finished_at_ms,
+                ),
             ],
         }
+        mock_item.return_value = podcast_library_item()
+
+        importer = AudiobookshelfImporter(self.user)
+        counts, _ = importer.import_data()
+
+        self.assertEqual(counts.get(MediaTypes.PODCAST.value), 1)
+        media = Podcast.objects.get(user=self.user)
+        self.assertEqual(media.status, Status.COMPLETED.value)
+        self.assertEqual(media.last_seen_status, 3)
+        self.assertEqual(
+            media.end_date,
+            datetime.fromtimestamp(finished_at_ms / 1000, tz=UTC),
+        )
+
+    @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_library_item")
+    @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_me")
+    def test_skips_podcast_episode_without_listening_activity(self, mock_me, mock_item):
+        """Ignore ABS rows that were touched but never played."""
+        mock_me.return_value = {"mediaProgress": [podcast_progress(currentTime=0)]}
+        mock_item.return_value = podcast_library_item()
 
         importer = AudiobookshelfImporter(self.user)
         counts, _ = importer.import_data()
 
         self.assertEqual(counts, {})
-        self.assertFalse(Item.objects.filter(source=Sources.AUDIOBOOKSHELF.value).exists())
+        self.assertFalse(Podcast.objects.exists())
+
+    @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_library_item")
+    @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_me")
+    def test_podcast_episode_uuid_falls_back_to_enclosure_then_id(
+        self,
+        mock_me,
+        mock_item,
+    ):
+        """Fall back to the enclosure URL, then the ABS episode id."""
+        mock_me.return_value = {"mediaProgress": [podcast_progress()]}
+        library_item = podcast_library_item()
+        library_item["media"]["episodes"][0].pop("guid")
+        mock_item.return_value = library_item
+
+        AudiobookshelfImporter(self.user).import_data()
+        self.assertEqual(
+            PodcastEpisode.objects.get().episode_uuid,
+            "https://cdn.example/ep14.mp3",
+        )
+
+        PodcastEpisode.objects.all().delete()
+        PodcastShow.objects.all().delete()
+        library_item["media"]["episodes"][0].pop("enclosure")
+        mock_me.return_value = {"mediaProgress": [podcast_progress(lastUpdate=9000)]}
+
+        AudiobookshelfImporter(self.user).import_data()
+        self.assertEqual(PodcastEpisode.objects.get().episode_uuid, "abs_ep-1")
+
+    @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_library_item")
+    @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_me")
+    def test_cursor_covers_podcast_entries(self, mock_me, mock_item):
+        """Advance last_sync_ms past podcast progress so it is not replayed."""
+        mock_me.return_value = {"mediaProgress": [podcast_progress(lastUpdate=5000)]}
+        mock_item.return_value = podcast_library_item()
+
+        AudiobookshelfImporter(self.user).import_data()
+
+        account = AudiobookshelfAccount.objects.get(user=self.user)
+        self.assertEqual(account.last_sync_ms, 5000)
+
+        mock_item.reset_mock()
+        counts, _ = AudiobookshelfImporter(self.user).import_data()
+        self.assertEqual(counts, {})
         mock_item.assert_not_called()
+
+    @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_library_item")
+    @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_me")
+    def test_updates_existing_in_progress_podcast_row(self, mock_me, mock_item):
+        """Update the open row instead of creating a second play."""
+        mock_me.return_value = {"mediaProgress": [podcast_progress()]}
+        mock_item.return_value = podcast_library_item()
+        AudiobookshelfImporter(self.user).import_data()
+
+        mock_me.return_value = {
+            "mediaProgress": [podcast_progress(currentTime=1800, lastUpdate=9000)],
+        }
+        AudiobookshelfImporter(self.user).import_data()
+
+        media = Podcast.objects.get(user=self.user)
+        self.assertEqual(media.played_up_to_seconds, 1800)
+        self.assertEqual(media.progress, 30)
+
+    @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_library_item")
+    @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_me")
+    def test_reuses_existing_show_with_same_feed_url(self, mock_me, mock_item):
+        """Attach to a show another integration already created for the feed."""
+        existing = PodcastShow.objects.create(
+            podcast_uuid="gp_existing",
+            source=Sources.GPODDER.value,
+            title="Test Show",
+            rss_feed_url="https://feed.example/rss.xml",
+        )
+        mock_me.return_value = {"mediaProgress": [podcast_progress()]}
+        mock_item.return_value = podcast_library_item()
+
+        AudiobookshelfImporter(self.user).import_data()
+
+        self.assertEqual(PodcastShow.objects.count(), 1)
+        existing.refresh_from_db()
+        self.assertEqual(existing.source, Sources.GPODDER.value)
+        self.assertEqual(
+            Podcast.objects.get(user=self.user).item.source,
+            Sources.GPODDER.value,
+        )
+
+    @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_library_item")
+    @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_me")
+    def test_warns_when_episode_missing_from_library_item(self, mock_me, mock_item):
+        """Warn instead of failing when ABS omits the episode."""
+        mock_me.return_value = {"mediaProgress": [podcast_progress(episodeId="ep-404")]}
+        mock_item.return_value = podcast_library_item()
+
+        counts, warnings = AudiobookshelfImporter(self.user).import_data()
+
+        self.assertEqual(counts, {})
+        self.assertIn("ep-404", warnings)
+
+    @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_library_item")
+    @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_me")
+    def test_imports_mixed_book_and_podcast_payload(self, mock_me, mock_item):
+        """Handle a payload containing both media types."""
+        mock_me.return_value = {
+            "mediaProgress": [
+                {
+                    "libraryItemId": "item-1",
+                    "currentTime": 3600,
+                    "duration": 7200,
+                    "isFinished": False,
+                    "lastUpdate": 1000,
+                },
+                podcast_progress(),
+            ],
+        }
+
+        def library_item(library_item_id, *, expanded=False):  # noqa: ARG001
+            if library_item_id == "podcast-item":
+                return podcast_library_item()
+            return {
+                "media": {
+                    "duration": 7200,
+                    "metadata": {"title": "The Hobbit"},
+                },
+            }
+
+        mock_item.side_effect = library_item
+
+        counts, _ = AudiobookshelfImporter(self.user).import_data()
+
+        self.assertEqual(counts.get(MediaTypes.BOOK.value), 1)
+        self.assertEqual(counts.get(MediaTypes.PODCAST.value), 1)
 
     @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_library_item")
     @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_me")

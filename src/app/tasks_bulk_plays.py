@@ -56,6 +56,7 @@ def bulk_episode_plays_task(
     if media_type == MediaTypes.PODCAST.value and source in {
         Sources.POCKETCASTS.value,
         Sources.GPODDER.value,
+        Sources.AUDIOBOOKSHELF.value,
     }:
         podcast_show = PodcastShow.objects.filter(podcast_uuid=media_id).first()
     else:

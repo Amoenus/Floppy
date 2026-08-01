@@ -244,6 +244,7 @@ def media_details(
     if media_type == MediaTypes.PODCAST.value and source in {
         Sources.POCKETCASTS.value,
         Sources.GPODDER.value,
+        Sources.AUDIOBOOKSHELF.value,
     }:
         from app.models import PodcastEpisode, PodcastShow, PodcastShowTracker
 
