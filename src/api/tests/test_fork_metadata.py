@@ -4,11 +4,13 @@ from http import HTTPStatus as HTTP  # noqa: N814
 from unittest.mock import patch
 
 from app.models import (
+    TV,
     Episode,
     Item,
     MediaTypes,
     MetadataProviderPreference,
     Movie,
+    Season,
     Sources,
 )
 
@@ -99,6 +101,101 @@ class ItemMetadataTests(FloppyApiTestCase):
             response.status_code,
             (HTTP.BAD_REQUEST, HTTP.OK),
         )
+
+
+class ManualEpisodeMetadataTests(FloppyApiTestCase):
+    """PATCH /metadata/items/{id} on a manual episode.
+
+    Episode rows have no ``user`` column -- ownership is inherited from the
+    related season -- so the ownership check has to join through it.
+    """
+
+    def setUp(self):
+        """Track a manual show with one season and one episode."""
+        super().setUp()
+        tv_item = Item.objects.create(
+            media_id="manual-tv-1",
+            source=Sources.MANUAL.value,
+            media_type=MediaTypes.TV.value,
+            title="Manual Show",
+        )
+        tv = TV.objects.create(item=tv_item, user=self.user1)
+        season_item = Item.objects.create(
+            media_id="manual-tv-1",
+            source=Sources.MANUAL.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Manual Show",
+            season_number=2026,
+        )
+        self.season = Season.objects.create(
+            item=season_item,
+            user=self.user1,
+            related_tv=tv,
+        )
+        self.episode_item = Item.objects.create(
+            media_id="manual-tv-1",
+            source=Sources.MANUAL.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="Manual Show",
+            season_number=2026,
+            episode_number=1,
+        )
+        Episode.objects.create(item=self.episode_item, related_season=self.season)
+
+    def test_update_manual_episode_metadata(self):
+        """Episode overrides are stored instead of raising."""
+        response = self.call_api(
+            "patch",
+            "api_item_metadata",
+            args=(self.episode_item.id,),
+            payload={"episode_title": "A video about spinning things"},
+            headers=self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.OK)
+        self.episode_item.refresh_from_db()
+        self.assertEqual(
+            self.episode_item.manual_metadata["episode_title"],
+            "A video about spinning things",
+        )
+
+    def test_other_users_episode_not_found(self):
+        """An episode in someone else's library still 404s."""
+        response = self.call_api(
+            "patch",
+            "api_item_metadata",
+            args=(self.episode_item.id,),
+            payload={"episode_title": "Nope"},
+            headers=self.auth_headers2,
+        )
+        self.assertEqual(response.status_code, HTTP.NOT_FOUND)
+
+    def test_watching_an_episode_with_a_string_runtime(self):
+        """Manual items store the runtime as a string; watching must survive it."""
+        season_metadata = {
+            "episodes": [
+                {
+                    "episode_number": 1,
+                    "title": "A video about spinning things",
+                    "image": "https://example.com/episode.jpg",
+                    "runtime": "12",
+                },
+            ],
+        }
+        with patch(
+            "app.providers.services.get_media_metadata",
+            return_value=season_metadata,
+        ):
+            self.season.watch(1, datetime.datetime.now(tz=datetime.UTC))
+
+        self.assertEqual(
+            Episode.objects.filter(
+                related_season=self.season,
+                item__episode_number=1,
+            ).count(),
+            2,
+        )
+        self.episode_item.refresh_from_db()
+        self.assertEqual(self.episode_item.runtime_minutes, 12)
 
 
 class ProviderPreferenceTests(FloppyApiTestCase):
