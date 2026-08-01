@@ -27,13 +27,25 @@ from .schema import MEDIA_TYPE_PARAM, MEDIA_TYPE_TV_ONLY_PARAM
 logger = logging.getLogger(__name__)
 
 
+def _owned_media_queryset(user, item):
+    """Return the user's tracked-media rows for an item.
+
+    Episode rows have no `user` column -- ownership is inherited from the
+    related season -- so filtering them by `user=` raises FieldError and turns
+    every episode metadata override into a 500.
+    """
+    media_model = apps.get_model("app", item.media_type)
+    if item.media_type == MediaTypes.EPISODE.value:
+        return media_model.objects.filter(related_season__user=user, item=item)
+    return media_model.objects.filter(user=user, item=item)
+
+
 def _get_owned_tracked_item(user, item_id):
     """Return the Item if the user tracks it, else None."""
     item = Item.objects.filter(id=item_id).first()
     if item is None:
         return None
-    media_model = apps.get_model("app", item.media_type)
-    if not media_model.objects.filter(user=user, item=item).exists():
+    if not _owned_media_queryset(user, item).exists():
         return None
     return item
 
