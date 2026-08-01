@@ -119,6 +119,21 @@ def get_fork_endpoint_cases() -> list[EndpointCase]:
         EndpointCase("post", "api_import_dispatch", args=("mal",), payload={}),
         EndpointCase("get", "api_export_csv"),
         EndpointCase("get", "api_export_template"),
+        EndpointCase("get", "api_playback_progress"),
+        EndpointCase(
+            "put",
+            "api_playback_progress",
+            payload={
+                "media_type": "movie",
+                "ids": {"tmdb": "603"},
+                "position_seconds": 60,
+            },
+        ),
+        EndpointCase(
+            "delete",
+            "api_playback_progress",
+            payload={"media_type": "movie", "ids": {"tmdb": "603"}},
+        ),
         EndpointCase("get", "api_statistics_overview"),
         EndpointCase(
             "post",

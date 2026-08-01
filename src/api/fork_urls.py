@@ -9,6 +9,7 @@ from . import (
     fork_views_lists,
     fork_views_metadata,
     fork_views_music,
+    fork_views_playback,
     fork_views_podcast,
     fork_views_scrobble,
     fork_views_statistics,
@@ -301,6 +302,11 @@ urlpatterns = [
         r"^export/template/?$",
         fork_views_integrations.ExportTemplateView.as_view(),
         name="api_export_template",
+    ),
+    re_path(
+        r"^playback/progress/?$",
+        fork_views_playback.PlaybackProgressView.as_view(),
+        name="api_playback_progress",
     ),
     re_path(
         r"^scrobble/?$",

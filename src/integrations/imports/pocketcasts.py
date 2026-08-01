@@ -1934,6 +1934,9 @@ class PocketCastsImporter:
                     fields_changed = True
                 if existing_podcast.played_up_to_seconds != played_up_to:
                     existing_podcast.played_up_to_seconds = played_up_to
+                    # Keeps ?updated_since= delta sync on the playback progress
+                    # API honest; progressed_at only monitors 'progress'.
+                    existing_podcast.position_updated_at = timezone.now()
                     fields_changed = True
                 if existing_podcast.last_seen_status != playing_status:
                     existing_podcast.last_seen_status = playing_status
@@ -2006,6 +2009,7 @@ class PocketCastsImporter:
                     progress=progress_minutes,
                     played_up_to_seconds=played_up_to,
                     last_seen_status=playing_status,
+                    position_updated_at=timezone.now() if played_up_to else None,
                     start_date=published if progress_minutes > 0 else None,  # Use published date as start
                     end_date=completion_date if new_status == Status.COMPLETED.value else None,
                     notes="Imported from Pocket Casts",

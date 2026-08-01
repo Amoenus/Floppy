@@ -10,6 +10,7 @@ from app.models import (
     Item,
     ItemProviderLink,
     MetadataProviderPreference,
+    PlaybackProgress,
 )
 
 
@@ -103,6 +104,7 @@ SpecialModels = [
     "DiscoverTasteProfile",
     "DiscoverRowCache",
     "DeletedMedia",
+    "PlaybackProgress",
 ]
 for model in app_models:
     if (
@@ -327,7 +329,17 @@ class DeletedMediaAdmin(admin.ModelAdmin):
     raw_id_fields = ["user"]
 
 
+class PlaybackProgressAdmin(admin.ModelAdmin):
+    """Admin for durable resume positions."""
+
+    list_display = ["user", "item", "position_seconds", "completed", "updated_at"]
+    list_filter = ["completed", "updated_at"]
+    search_fields = ["user__username", "item__title"]
+    raw_id_fields = ["user", "item"]
+
+
 admin.site.register(DeletedMedia, DeletedMediaAdmin)
+admin.site.register(PlaybackProgress, PlaybackProgressAdmin)
 admin.site.register(DiscoverFeedback, DiscoverFeedbackAdmin)
 admin.site.register(DiscoverApiCache, DiscoverApiCacheAdmin)
 admin.site.register(DiscoverTasteProfile, DiscoverTasteProfileAdmin)

@@ -336,6 +336,7 @@ class GPodderImporter:
             progress=progress_minutes,
             played_up_to_seconds=position_seconds or None,
             last_seen_status=provider_status,
+            position_updated_at=timezone.now() if position_seconds else None,
             end_date=action_time if is_completed else None,
         )
         return True
@@ -406,6 +407,12 @@ class GPodderImporter:
             if getattr(podcast, field) != value:
                 setattr(podcast, field, value)
                 update_fields.append(field)
+
+        # Keeps ?updated_since= delta sync on the playback progress API honest;
+        # progressed_at only monitors 'progress', not the seconds position.
+        if "played_up_to_seconds" in update_fields:
+            podcast.position_updated_at = timezone.now()
+            update_fields.append("position_updated_at")
 
         if update_fields:
             podcast.save(update_fields=update_fields)

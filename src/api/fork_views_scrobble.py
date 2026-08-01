@@ -12,8 +12,9 @@ from rest_framework.response import Response
 import app.providers.tmdb
 from app import live_playback
 from app.models import MediaTypes
-from integrations.webhooks.generic_scrobble import GenericScrobbleProcessor
+from integrations.webhooks.generic_scrobble import GenericScrobbleProcessor, is_played
 
+from . import fork_views_playback
 from .helpers import try_parse_datetime_input
 
 logger = logging.getLogger(__name__)
@@ -239,7 +240,44 @@ class ScrobbleView(drf_views.APIView):
                 status=HTTP.NOT_FOUND,
             )
 
+        self._store_playback_progress(
+            request.user,
+            payload,
+            completed=is_played(payload),
+        )
+
         return Response({"detail": "accepted"}, status=HTTP.OK)
+
+    def _store_playback_progress(self, user, payload, *, completed):
+        """Persist the durable resume position; failures are never raised.
+
+        The processor has just resolved/created the Item, so this is a cheap
+        lookup. Exposed to clients via /api/v1/playback/progress/.
+        """
+        position = payload.get("position_seconds")
+        if position is None:
+            return
+        try:
+            item = fork_views_playback.resolve_video_item(
+                user,
+                payload["media_type"],
+                payload["ids"],
+                payload.get("season_number"),
+                payload.get("episode_number"),
+                create=False,
+            )
+            if item is None:
+                return
+            duration = payload.get("duration_seconds")
+            fork_views_playback.upsert_playback_progress(
+                user,
+                item,
+                max(0, int(position)),
+                max(0, int(duration)) if duration is not None else None,
+                completed=completed,
+            )
+        except Exception:  # noqa: BLE001 - progress storage is best-effort
+            logger.warning("Scrobble playback-progress update failed", exc_info=True)
 
     def _update_live_playback(self, user, action, media_type, ids, data):
         """Update the Now Playing card; failures are logged, never raised."""

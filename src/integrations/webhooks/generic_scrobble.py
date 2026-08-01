@@ -22,6 +22,27 @@ _MEDIA_TYPE_MAPPING = {
 }
 
 
+def is_played(payload):
+    """Completed if the client says so, else via position/duration.
+
+    Reuses the same buffer/fallback heuristic the live playback card
+    already uses to guess completion, so "played" detection is consistent
+    across the scrobble, live-card and playback-progress surfaces.
+    """
+    completed = payload.get("completed")
+    if completed is not None:
+        return bool(completed)
+
+    position = payload.get("position_seconds")
+    if position is None:
+        return False
+
+    duration = payload.get("duration_seconds")
+    if duration:
+        return position >= duration - PLAYBACK_SCROBBLE_BUFFER_SECONDS
+    return position >= PLAYBACK_SCROBBLE_FALLBACK_SECONDS
+
+
 class GenericScrobbleProcessor(BaseWebhookProcessor):
     """Processor for normalized scrobble-stop events from the API."""
 
@@ -36,24 +57,7 @@ class GenericScrobbleProcessor(BaseWebhookProcessor):
         return True
 
     def _is_played(self, payload):
-        """Completed if the client says so, else via position/duration.
-
-        Reuses the same buffer/fallback heuristic the live playback card
-        already uses to guess completion, so "played" detection is
-        consistent across the two surfaces.
-        """
-        completed = payload.get("completed")
-        if completed is not None:
-            return bool(completed)
-
-        position = payload.get("position_seconds")
-        if position is None:
-            return False
-
-        duration = payload.get("duration_seconds")
-        if duration:
-            return position >= duration - PLAYBACK_SCROBBLE_BUFFER_SECONDS
-        return position >= PLAYBACK_SCROBBLE_FALLBACK_SECONDS
+        return is_played(payload)
 
     def _get_media_type(self, payload):
         return _MEDIA_TYPE_MAPPING.get(payload.get("media_type"))

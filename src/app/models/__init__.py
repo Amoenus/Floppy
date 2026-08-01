@@ -57,6 +57,7 @@ from app.models.music import (
     Music,
     Track,
 )
+from app.models.playback import PlaybackProgress
 from app.models.podcast import (
     Podcast,
     PodcastEpisode,
@@ -114,6 +115,7 @@ __all__ = [
     "Music",
     "Person",
     "PersonGender",
+    "PlaybackProgress",
     "Podcast",
     "PodcastEpisode",
     "PodcastShow",

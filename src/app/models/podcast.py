@@ -139,6 +139,15 @@ class Podcast(Media):
         blank=True,
         help_text="Last seen playingStatus from API (2=in-progress, 3=completed)",
     )
+    position_updated_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text=(
+            "When played_up_to_seconds last changed. Media.progressed_at only "
+            "monitors 'progress', so the playback progress API needs its own "
+            "timestamp for ?updated_since= delta sync."
+        ),
+    )
 
     @property
     def completed_play_count(self):
