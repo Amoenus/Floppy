@@ -181,6 +181,65 @@ class ImportTrakt(TestCase):
             season_obj.id,
         )
 
+    @patch("integrations.imports.trakt.TraktImporter._get_metadata")
+    def test_process_watched_episode_overwrite_mode_existing_show(
+        self,
+        mock_get_metadata,
+    ):
+        """Overwrite-mode re-import must not reference a deleted TV row (#419)."""
+        tv_item = Item.objects.get_or_create(
+            media_id="12345",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            defaults={"title": "Test Show"},
+        )[0]
+        TV.objects.create(
+            item=tv_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+
+        episode_entry = {
+            "type": "episode",
+            "episode": {"season": 1, "number": 1, "title": "Pilot"},
+            "show": {"title": "Test Show", "ids": {"tmdb": 12345}},
+            "watched_at": "2023-01-01T00:00:00.000Z",
+        }
+
+        def mock_metadata_side_effect(media_type, _, __, ___=None):
+            if media_type == MediaTypes.TV.value:
+                return {
+                    "title": "Test Show",
+                    "image": "tv_image.jpg",
+                    "last_episode_season": 1,
+                    "max_progress": 1,
+                }
+            if media_type == MediaTypes.SEASON.value:
+                return {
+                    "title": "Season 1",
+                    "image": "season_image.jpg",
+                    "episodes": [{"episode_number": 1, "still_path": "/still.jpg"}],
+                    "max_progress": 1,
+                }
+            return None
+
+        mock_get_metadata.side_effect = mock_metadata_side_effect
+
+        trakt_importer = TraktImporter("testuser", self.user, "overwrite")
+        trakt_importer.process_watched_episode(episode_entry)
+
+        self.assertEqual(len(trakt_importer.bulk_media[MediaTypes.TV.value]), 1)
+
+        # Exercise the actual delete-then-create sequence used by import_data().
+        helpers.cleanup_existing_media(trakt_importer.to_delete, trakt_importer.user)
+        helpers.bulk_create_media(trakt_importer.bulk_media, trakt_importer.user)
+
+        new_tv = TV.objects.get(user=self.user, item__media_id="12345")
+        season = Season.objects.get(user=self.user, related_tv=new_tv)
+        self.assertTrue(
+            Episode.objects.filter(related_season=season).exists(),
+        )
+
     @patch("integrations.imports.trakt.TraktImporter._make_api_request")
     @patch("integrations.imports.trakt.TraktImporter._get_metadata")
     def test_process_watchlist(self, mock_get_metadata, mock_make_request):

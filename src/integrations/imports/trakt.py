@@ -648,7 +648,10 @@ class TraktImporter(TraktMetadataResolverMixin):
             tv_obj = self.existing_media[MediaTypes.TV.value][Sources.TMDB.value].get(
                 tmdb_id,
             )
-            if tv_obj is None:
+            tv_marked_for_deletion = (
+                tmdb_id in self.to_delete[MediaTypes.TV.value][Sources.TMDB.value]
+            )
+            if tv_obj is None or tv_marked_for_deletion:
                 status = (
                     Status.DROPPED.value
                     if tmdb_id in self.dropped_tmdb_ids
