@@ -155,7 +155,13 @@ def update_manual_item_metadata(request, item_id):
     return_url = helpers.normalize_navigation_url(request.POST.get("return_url"))
     item = get_object_or_404(Item, id=item_id)
     media_model = apps.get_model("app", item.media_type)
-    if not media_model.objects.filter(user=request.user, item=item).exists():
+    # Episode rows have no `user` column -- ownership is inherited from the
+    # related season -- so filtering them by `user=` raises FieldError.
+    if item.media_type == MediaTypes.EPISODE.value:
+        owned = media_model.objects.filter(related_season__user=request.user, item=item)
+    else:
+        owned = media_model.objects.filter(user=request.user, item=item)
+    if not owned.exists():
         messages.error(request, "You can only update metadata for items in your library.")
         return helpers.redirect_back(request)
 
