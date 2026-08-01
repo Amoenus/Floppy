@@ -24,6 +24,19 @@ from app.models.media import Media
 logger = logging.getLogger(__name__)
 
 
+def _runtime_minutes(value):
+    """Return a positive runtime in minutes, or None.
+
+    Providers disagree on the type: TMDB sends an int, manual items store the
+    string the custom-metadata form was filled in with.
+    """
+    try:
+        minutes = int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+    return minutes if minutes > 0 else None
+
+
 class TV(Media):
     """Model for TV shows."""
 
@@ -1031,10 +1044,10 @@ class Season(Media):
                 matched_episode.get("image"),
             )
 
-            # Extract runtime from episode metadata (raw TMDB data has integer runtime in minutes)
-            if matched_episode.get("runtime") is not None:
-                # Runtime is an integer (minutes) from TMDB
-                runtime_minutes = int(matched_episode["runtime"]) if matched_episode["runtime"] > 0 else None
+            # Extract runtime from episode metadata. TMDB sends an integer
+            # number of minutes, manual items whatever the custom-metadata form
+            # stored (a string), so compare only after coercing.
+            runtime_minutes = _runtime_minutes(matched_episode.get("runtime"))
 
             # Extract release_datetime from episode air_date
             air_date = matched_episode.get("air_date")
