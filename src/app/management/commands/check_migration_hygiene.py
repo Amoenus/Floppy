@@ -16,13 +16,14 @@ DEFAULT_APPS = ("app", "users", "lists", "integrations", "events")
 DEFAULT_BASE_REF = "upstream/dev"
 MIGRATION_FILE_RE = re.compile(r"^\d{4}_.+\.py$")
 RISKY_OP_RE = re.compile(
-    r"\bmigrations\.(AddConstraint|RemoveConstraint|AddIndex|RemoveIndex)\s*\("
+    r"\bmigrations\.(AddConstraint|RemoveConstraint|AddIndex|RemoveIndex|AddField)\s*\("
 )
 RISKY_FIX_HINTS = {
     "AddConstraint": "use AddConstraintIfNotExists",
     "RemoveConstraint": "use RemoveConstraintIfExists",
     "AddIndex": "use AddIndexIfNotExists",
     "RemoveIndex": "use RemoveIndexIfExists",
+    "AddField": "use AddFieldIfNotExists",
 }
 
 
