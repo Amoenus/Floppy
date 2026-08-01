@@ -1183,6 +1183,52 @@ class MediaCoreTests(FloppyApiTestCase):
         check_consumption_structure(self, payload)
         self.assertEqual(payload["notes"], "updated-from-test")
 
+    def test_media_consumption_entry_detail_patch_null_score_clears_rating(self):
+        """Entry-detail PATCH should clear an existing score when sent null."""
+        movie_item = self.items_by_type[MediaTypes.MOVIE.value][0]
+        consumption_id = self.movie_medias[0].id
+        self.movie_medias[0].score = 7
+        self.movie_medias[0].save()
+
+        response = self.call_api(
+            "patch",
+            "api_media_consumption_entry_detail",
+            args=(
+                MediaTypes.MOVIE.value,
+                movie_item.source,
+                movie_item.media_id,
+                consumption_id,
+            ),
+            payload={"score": None},
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        check_consumption_structure(self, payload)
+        self.assertIsNone(payload["score"])
+
+    def test_media_consumption_entry_detail_patch_invalid_score_returns_bad_request(
+        self,
+    ):
+        """Entry-detail PATCH should reject non-numeric score values."""
+        movie_item = self.items_by_type[MediaTypes.MOVIE.value][0]
+        consumption_id = self.movie_medias[0].id
+        response = self.call_api(
+            "patch",
+            "api_media_consumption_entry_detail",
+            args=(
+                MediaTypes.MOVIE.value,
+                movie_item.source,
+                movie_item.media_id,
+                consumption_id,
+            ),
+            payload={"score": "not-a-number"},
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 400)
+
     def test_media_consumption_entry_detail_patch_accepts_datetime_strings(self):
         """Entry-detail PATCH should accept ISO datetime values for date fields."""
         movie_item = self.items_by_type[MediaTypes.MOVIE.value][0]

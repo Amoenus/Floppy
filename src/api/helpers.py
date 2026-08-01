@@ -580,6 +580,8 @@ def try_parse_datetime_input(value):
 
 def _validate_score(filtered_body):
     """Validate and convert score field."""
+    if filtered_body["score"] is None:
+        return filtered_body, None
     try:
         score_value = float(filtered_body["score"])
         if score_value < 0 or score_value > 10:  # noqa: PLR2004
