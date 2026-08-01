@@ -792,6 +792,9 @@ class TraktImporter(TraktMetadataResolverMixin):
                     # converts *display* scores and would double a 5-scale user's.
                     {"score": entry["rating"]},
                 )
+            except MediaImportError:
+                # Fatal, importer-level problems (auth, etc.) must still abort.
+                raise
             except Exception as e:
                 msg = f"Error processing rating entry: {entry}"
                 raise MediaImportUnexpectedError(msg) from e
@@ -809,6 +812,9 @@ class TraktImporter(TraktMetadataResolverMixin):
                     "comment",
                     {"notes": entry["comment"]["comment"]},
                 )
+            except MediaImportError:
+                # Fatal, importer-level problems (auth, etc.) must still abort.
+                raise
             except Exception as e:
                 msg = f"Error processing comment entry: {entry}"
                 raise MediaImportUnexpectedError(msg) from e

@@ -231,6 +231,30 @@ class ImportTrakt(TestCase):
         self.assertIsNone(movie_obj.status)
         self.assertEqual(movie_obj.progress, 0)
 
+    @patch("app.providers.tmdb.services.api_request")
+    @patch("integrations.imports.trakt.TraktImporter._make_api_request")
+    def test_process_ratings_tmdb_401_raises_clean_import_error(
+        self,
+        mock_make_request,
+        mock_api_request,
+    ):
+        """A TMDB 401 aborts rating import with a clear error, not a raw crash."""
+        rating_entry = {
+            "rated_at": "2023-01-01T00:00:00.000Z",
+            "type": "movie",
+            "movie": {"title": "Rated Movie", "ids": {"tmdb": 238}},
+            "rating": 8,
+        }
+        mock_make_request.side_effect = [[rating_entry], []]
+
+        response = Response()
+        response.status_code = requests.codes.unauthorized
+        mock_api_request.side_effect = requests.exceptions.HTTPError(response=response)
+
+        trakt_importer = TraktImporter("testuser", self.user, "new")
+        with self.assertRaises(MediaImportError):
+            trakt_importer.process_ratings()
+
     @patch("integrations.imports.trakt.TraktImporter._make_api_request")
     @patch("integrations.imports.trakt.TraktImporter._get_metadata")
     def test_season_rating_for_unwatched_show_is_statusless(
@@ -393,6 +417,32 @@ class ImportTrakt(TestCase):
         self.assertEqual(len(trakt_importer.bulk_media[MediaTypes.MOVIE.value]), 1)
         movie_obj = trakt_importer.bulk_media[MediaTypes.MOVIE.value][0]
         self.assertEqual(movie_obj.notes, "Great movie!")
+
+    @patch("app.providers.tmdb.services.api_request")
+    @patch("integrations.imports.trakt.TraktImporter._make_api_request")
+    def test_process_comments_tmdb_401_raises_clean_import_error(
+        self,
+        mock_make_request,
+        mock_api_request,
+    ):
+        """A TMDB 401 aborts comment import with a clear error, not a raw crash."""
+        comment_entry = {
+            "type": "movie",
+            "movie": {"title": "Commented Movie", "ids": {"tmdb": 123}},
+            "comment": {
+                "comment": "Great movie!",
+                "updated_at": "2023-01-01T00:00:00.000Z",
+            },
+        }
+        mock_make_request.side_effect = [[comment_entry], []]
+
+        response = Response()
+        response.status_code = requests.codes.unauthorized
+        mock_api_request.side_effect = requests.exceptions.HTTPError(response=response)
+
+        trakt_importer = TraktImporter("testuser", self.user, "new")
+        with self.assertRaises(MediaImportError):
+            trakt_importer.process_comments()
 
     @patch("integrations.imports.trakt.TraktImporter._get_paginated_data")
     @patch("integrations.imports.trakt.TraktImporter._make_api_request")
