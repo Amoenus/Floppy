@@ -171,9 +171,7 @@ def _build_detail_activity_state(
             last_played = None
 
             # Iterate through all seasons and episodes
-            seasons = current_instance.seasons.all().select_related("item").prefetch_related(
-                "episodes__item",
-            )
+            seasons = current_instance.seasons.all().select_related("item")
             for season in seasons:
                 episodes = season.episodes.all().select_related("item")
                 for episode in episodes:
