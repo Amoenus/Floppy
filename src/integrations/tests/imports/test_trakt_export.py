@@ -13,12 +13,15 @@ from app.models import (
     TV,
     CollectionEntry,
     Episode,
+    Item,
     MediaTypes,
     Movie,
     Season,
+    Sources,
     Status,
 )
 from app.providers import services
+from integrations.imports import helpers
 from integrations.imports.helpers import MediaImportError
 from integrations.imports.trakt_export import TraktExportArchive, importer
 from lists.models import CustomList, CustomListItem
@@ -194,6 +197,32 @@ class ImportTraktExport(TestCase):
         """Create user for the tests."""
         credentials = {"username": "test", "password": "12345"}
         self.user = get_user_model().objects.create_user(**credentials)
+
+    def test_duplicate_show_rows_are_deduplicated_before_bulk_create(self):
+        """Duplicate in-memory rows must not abort a large export import."""
+        item = Item.objects.create(
+            media_id="12345",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Duplicate Show",
+            image="",
+        )
+
+        helpers.bulk_create_media(
+            {
+                MediaTypes.TV.value: [
+                    TV(item=item, user=self.user, status=Status.IN_PROGRESS.value),
+                    TV(item=item, user=self.user, status=Status.COMPLETED.value),
+                ],
+            },
+            self.user,
+        )
+
+        self.assertEqual(TV.objects.filter(user=self.user, item=item).count(), 1)
+        self.assertEqual(
+            TV.objects.get(user=self.user, item=item).status,
+            Status.COMPLETED.value,
+        )
 
     @patch("integrations.imports.trakt.TraktImporter._get_metadata")
     def test_history_creates_movie_and_episodes(self, mock_get_metadata):

@@ -9,7 +9,6 @@ from cryptography.fernet import Fernet, InvalidToken
 from django.apps import apps
 from django.conf import settings
 from django.contrib import messages
-from django.db.utils import OperationalError
 from django.utils import timezone
 from django_celery_beat.models import CrontabSchedule, PeriodicTask
 from requests import RequestException
@@ -17,12 +16,7 @@ from simple_history.utils import bulk_create_with_history
 
 import app
 from app import providers
-from app.db_retry import (
-    is_disk_io_error,
-    is_lock_error,
-    is_retryable_error,
-    run_retryable_db_operation,
-)
+from app.db_retry import run_retryable_db_operation
 from app.models import Episode, MediaTypes, Status
 
 logger = logging.getLogger(__name__)
@@ -281,6 +275,47 @@ def _backfill_completed_season_episodes(seasons):
         bulk_create_with_history(episodes_to_create, Episode, batch_size=500)
 
 
+def _has_unique_user_item_constraint(model):
+    """Return whether model enforces one row per user/item pair."""
+    return any(
+        tuple(getattr(constraint, "fields", ())) == ("user", "item")
+        for constraint in model._meta.constraints
+    )
+
+
+def _merge_duplicate_media_row(existing, duplicate):
+    """Fold non-empty imported values from duplicate into the kept row."""
+    for field in duplicate._meta.fields:
+        if field.primary_key or field.name in {"created_at", "item", "user"}:
+            continue
+        value = getattr(duplicate, field.name)
+        if value not in (None, ""):
+            setattr(existing, field.name, value)
+
+    if hasattr(duplicate, "_history_date"):
+        existing._history_date = duplicate._history_date
+
+
+def _deduplicate_unique_user_item_rows(model, bulk_media):
+    """Remove duplicate unsaved rows that would violate a user/item import key."""
+    if not _has_unique_user_item_constraint(model):
+        return bulk_media
+
+    deduplicated = []
+    by_user_item = {}
+    for media_obj in bulk_media:
+        key = (media_obj.user_id, media_obj.item_id)
+        existing = by_user_item.get(key)
+        if existing is None:
+            by_user_item[key] = media_obj
+            deduplicated.append(media_obj)
+            continue
+
+        _merge_duplicate_media_row(existing, media_obj)
+
+    return deduplicated
+
+
 def bulk_create_media(bulk_media_list, user):
     """Bulk create all media objects."""
     for media_type in _ordered_media_types(bulk_media_list):
@@ -289,6 +324,7 @@ def bulk_create_media(bulk_media_list, user):
             continue
 
         model = apps.get_model(app_label="app", model_name=media_type)
+        bulk_media = _deduplicate_unique_user_item_rows(model, bulk_media)
 
         logger.info("Bulk importing %s", media_type)
 
