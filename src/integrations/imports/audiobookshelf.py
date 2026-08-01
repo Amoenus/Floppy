@@ -1,4 +1,4 @@
-"""Audiobookshelf importer for audiobook progress."""
+"""Audiobookshelf importer for audiobook and podcast progress."""
 
 import hashlib
 import logging
@@ -12,11 +12,20 @@ from urllib.parse import urljoin, urlparse
 import requests
 from django.conf import settings
 from django.utils import timezone
+from django.utils.text import slugify
 
 import app
 from app import helpers as app_helpers
 from app.log_safety import exception_summary
-from app.models import MediaTypes, Sources, Status
+from app.models import (
+    MediaTypes,
+    Podcast,
+    PodcastEpisode,
+    PodcastShow,
+    PodcastShowTracker,
+    Sources,
+    Status,
+)
 from app.providers import services
 from integrations.imports.helpers import MediaImportError, decrypt_or_raise
 from integrations.models import AudiobookshelfAccount
@@ -68,9 +77,16 @@ class AudiobookshelfClient:
         """Return authenticated user payload."""
         return self._request("/api/me")
 
-    def get_library_item(self, library_item_id: str):
-        """Return metadata for an Audiobookshelf library item."""
-        return self._request(f"/api/items/{library_item_id}")
+    def get_library_item(self, library_item_id: str, *, expanded: bool = False):
+        """Return metadata for an Audiobookshelf library item.
+
+        Podcast library items only expose per-episode durations in the
+        expanded payload, so podcast lookups must pass expanded=True.
+        """
+        path = f"/api/items/{library_item_id}"
+        if expanded:
+            path = f"{path}?expanded=1"
+        return self._request(path)
 
 
 def importer(identifier, user, mode):  # noqa: ARG001
@@ -123,7 +139,9 @@ class AudiobookshelfImporter:
 
         progress_entries = me.get("mediaProgress") or []
         last_sync_ms = self.account.last_sync_ms or 0
-        book_progress_entries = self._book_progress_entries(progress_entries)
+        book_progress_entries, podcast_progress_entries = self._split_progress_entries(
+            progress_entries,
+        )
         existing_items = self._existing_book_items(book_progress_entries)
         changed_entries, unchanged_entries = self._partition_book_progress_entries(
             book_progress_entries,
@@ -165,6 +183,26 @@ class AudiobookshelfImporter:
             logger.info(
                 "Audiobookshelf unchanged book repairs applied=%s",
                 repaired_count,
+            )
+
+        changed_podcast_entries, _ = self._partition_book_progress_entries(
+            podcast_progress_entries,
+            last_sync_ms,
+        )
+        podcast_max_seen, podcast_processed = self._import_changed_podcast_episodes(
+            changed_podcast_entries,
+            imported_counts,
+            last_sync_ms,
+        )
+        # The cursor is shared with the book pass, so it has to cover podcast
+        # entries too or their progress is replayed on every run.
+        max_seen = max(max_seen, podcast_max_seen)
+
+        if changed_podcast_entries:
+            logger.info(
+                "Audiobookshelf changed podcast entries processed=%s imported=%s",
+                len(changed_podcast_entries),
+                podcast_processed,
             )
 
         self.account.last_sync_ms = max_seen
@@ -372,19 +410,25 @@ class AudiobookshelfImporter:
         value = f"{base_url.strip().lower()}::{library_item_id}"
         return hashlib.sha256(value.encode("utf-8")).hexdigest()[:20]
 
-    def _book_progress_entries(self, progress_entries):
+    def _split_progress_entries(self, progress_entries):
+        """Split ABS progress entries into book and podcast episode entries.
+
+        A podcast entry carries an episodeId (mediaItemType podcastEpisode);
+        its libraryItemId identifies the show, not the episode.
+        """
         book_progress_entries = []
+        podcast_progress_entries = []
         for entry in progress_entries:
             library_item_id = entry.get("libraryItemId")
             if not library_item_id:
                 continue
 
-            # Skip podcast episode progress in v1.
             if entry.get("episodeId"):
+                podcast_progress_entries.append((str(library_item_id), entry))
                 continue
 
             book_progress_entries.append((str(library_item_id), entry))
-        return book_progress_entries
+        return book_progress_entries, podcast_progress_entries
 
     def _partition_book_progress_entries(self, book_progress_entries, last_sync_ms):
         changed_entries = []
@@ -476,12 +520,363 @@ class AudiobookshelfImporter:
             if media_id in items_by_media_id
         }
 
-    def _fetch_library_item(self, library_item_id: str):
+    def _fetch_library_item(self, library_item_id: str, *, expanded: bool = False):
+        kwargs = {"expanded": True} if expanded else {}
         try:
-            return self.client.get_library_item(library_item_id)
+            return self.client.get_library_item(library_item_id, **kwargs)
         except AudiobookshelfClientError:
             self.warnings.append(f"{library_item_id}: failed to fetch metadata")
             return None
+
+    def _import_changed_podcast_episodes(
+        self,
+        changed_entries,
+        imported_counts,
+        last_sync_ms,
+    ):
+        """Import podcast episode progress, one library fetch per show."""
+        max_seen = last_sync_ms
+        processed = 0
+        entries_by_show = defaultdict(list)
+        for library_item_id, entry in changed_entries:
+            max_seen = max(max_seen, int(entry.get("lastUpdate") or 0))
+            entries_by_show[library_item_id].append(entry)
+
+        for library_item_id, entries in entries_by_show.items():
+            item_metadata = self._fetch_library_item(library_item_id, expanded=True)
+            if item_metadata is None:
+                continue
+
+            show = self._ensure_podcast_show(library_item_id, item_metadata)
+            episodes_by_id = self._index_podcast_episodes(item_metadata)
+
+            for entry in entries:
+                episode_id = str(entry.get("episodeId") or "")
+                episode_metadata = episodes_by_id.get(episode_id)
+                if episode_metadata is None:
+                    self.warnings.append(
+                        f"{library_item_id}: episode {episode_id} "
+                        "missing from library item",
+                    )
+                    continue
+
+                if self._record_podcast_progress(show, episode_metadata, entry):
+                    imported_counts[MediaTypes.PODCAST.value] += 1
+                    processed += 1
+        return max_seen, processed
+
+    def _index_podcast_episodes(self, item_metadata: dict[str, Any]):
+        media_info = item_metadata.get("media") or {}
+        episodes = media_info.get("episodes") or []
+        return {
+            str(episode.get("id")): episode
+            for episode in episodes
+            if isinstance(episode, dict) and episode.get("id")
+        }
+
+    def _podcast_show_uuid(self, library_item_id: str):
+        return f"abs_{self._stable_media_id(self.account.base_url, library_item_id)}"
+
+    def _ensure_podcast_show(self, library_item_id: str, item_metadata: dict[str, Any]):
+        """Create or update the podcast show for an ABS library item."""
+        media_info = item_metadata.get("media") or {}
+        metadata = media_info.get("metadata") or {}
+        feed_url = str(metadata.get("feedUrl") or "").strip()
+        podcast_uuid = self._podcast_show_uuid(library_item_id)
+
+        show = None
+        if feed_url:
+            show = PodcastShow.objects.filter(rss_feed_url=feed_url).first()
+        if show is None:
+            show = PodcastShow.objects.filter(podcast_uuid=podcast_uuid).first()
+
+        title = (
+            metadata.get("title")
+            or item_metadata.get("title")
+            or f"Audiobookshelf {library_item_id}"
+        )
+        defaults = {
+            "title": str(title)[:255],
+            "slug": slugify(title)[:255],
+            "author": str(metadata.get("author") or "")[:255],
+            "description": str(metadata.get("description") or ""),
+            "language": str(metadata.get("language") or "")[:10],
+            "genres": self._extract_genres(metadata),
+            "image": self._podcast_show_image(library_item_id, item_metadata, metadata),
+            "rss_feed_url": feed_url,
+        }
+
+        if show is None:
+            return PodcastShow.objects.create(
+                podcast_uuid=podcast_uuid,
+                source=Sources.AUDIOBOOKSHELF.value,
+                **defaults,
+            )
+
+        # An existing show may have been created by another integration
+        # (Pocket Casts, GPodder) for the same feed; keep its source.
+        update_fields = []
+        for field, value in defaults.items():
+            if value and getattr(show, field) != value:
+                setattr(show, field, value)
+                update_fields.append(field)
+        if update_fields:
+            show.save(update_fields=update_fields)
+        return show
+
+    def _podcast_show_image(
+        self,
+        library_item_id: str,
+        item_metadata: dict[str, Any],
+        metadata: dict[str, Any],
+    ):
+        """Prefer the public feed artwork over the authenticated ABS cover."""
+        image_url = self._normalize_cover_url(metadata.get("imageUrl"))
+        if image_url and urlparse(image_url).netloc.lower() != urlparse(
+            self.account.base_url,
+        ).netloc.lower():
+            return image_url
+        if item_metadata.get("coverPath") or image_url:
+            base = self.account.base_url.rstrip("/")
+            return f"{base}/api/items/{library_item_id}/cover"
+        return ""
+
+    def _ensure_podcast_episode(self, show, episode_metadata: dict[str, Any]):
+        """Create or update the catalog episode for an ABS podcast episode."""
+        episode_id = str(episode_metadata.get("id") or "")
+        enclosure = episode_metadata.get("enclosure") or {}
+        audio_url = str(enclosure.get("url") or "")[:500]
+        guid = str(episode_metadata.get("guid") or "").strip()
+        episode_uuid = (guid or audio_url or f"abs_{episode_id}")[:500]
+
+        episode = PodcastEpisode.objects.filter(
+            show=show,
+            episode_uuid=episode_uuid,
+        ).first()
+        if episode is None and audio_url:
+            episode = PodcastEpisode.objects.filter(
+                show=show,
+                audio_url=audio_url,
+            ).first()
+
+        title = str(episode_metadata.get("title") or "Unknown Episode")
+        updates = {
+            "title": title[:500],
+            "slug": slugify(title)[:255],
+            "published": self._parse_datetime(episode_metadata.get("publishedAt")),
+            "duration": self._podcast_episode_duration(episode_metadata),
+            "audio_url": audio_url,
+            "episode_number": self._coerce_positive_int(
+                episode_metadata.get("episode"),
+            ),
+            "season_number": self._coerce_positive_int(
+                episode_metadata.get("season"),
+            ),
+            "file_type": str(enclosure.get("type") or "")[:50],
+            "episode_type": str(episode_metadata.get("episodeType") or "")[:50],
+        }
+
+        if episode is None:
+            episode, _ = PodcastEpisode.objects.get_or_create(
+                show=show,
+                episode_uuid=episode_uuid,
+                defaults=updates,
+            )
+            return episode
+
+        update_fields = []
+        for field, value in updates.items():
+            if value not in (None, "") and getattr(episode, field) != value:
+                setattr(episode, field, value)
+                update_fields.append(field)
+        if update_fields:
+            episode.save(update_fields=update_fields)
+        return episode
+
+    def _podcast_episode_duration(self, episode_metadata: dict[str, Any]):
+        duration = episode_metadata.get("duration")
+        if not duration:
+            audio_file = episode_metadata.get("audioFile") or {}
+            duration = audio_file.get("duration")
+        try:
+            seconds = int(float(duration))
+        except (TypeError, ValueError):
+            return None
+        return seconds if seconds > 0 else None
+
+    def _coerce_positive_int(self, value):
+        """Coerce ABS season/episode numbers, which arrive as strings."""
+        if value in (None, ""):
+            return None
+        try:
+            number = int(float(value))
+        except (TypeError, ValueError):
+            return None
+        return number if number >= 0 else None
+
+    def _ensure_podcast_item(self, show, episode, total_seconds):
+        """Return the trackable item for a podcast episode."""
+        runtime_minutes = None
+        if total_seconds:
+            runtime_minutes = max(1, total_seconds // 60)
+        elif episode.duration:
+            runtime_minutes = max(1, episode.duration // 60)
+
+        defaults = {
+            "title": episode.title,
+            "image": show.image or settings.IMG_NONE,
+        }
+        if runtime_minutes:
+            defaults["runtime_minutes"] = runtime_minutes
+        if episode.published:
+            defaults["release_datetime"] = episode.published
+
+        # Keyed on the show source so a feed already tracked through another
+        # integration keeps a single item per episode.
+        item, _ = app.models.Item.objects.get_or_create(
+            media_id=episode.episode_uuid,
+            source=show.source,
+            media_type=MediaTypes.PODCAST.value,
+            defaults=defaults,
+        )
+        update_fields = []
+        if item.title != episode.title:
+            item.title = episode.title
+            update_fields.append("title")
+        if runtime_minutes and item.runtime_minutes != runtime_minutes:
+            item.runtime_minutes = runtime_minutes
+            update_fields.append("runtime_minutes")
+        if episode.published and item.release_datetime != episode.published:
+            item.release_datetime = episode.published
+            update_fields.append("release_datetime")
+        if update_fields:
+            item.save(update_fields=update_fields)
+        return item
+
+    def _record_podcast_progress(
+        self,
+        show,
+        episode_metadata: dict[str, Any],
+        progress_entry: dict[str, Any],
+    ):
+        """Write a single ABS podcast episode progress entry."""
+        is_completed = self._is_finished_progress_entry(progress_entry)
+        position_seconds = int(float(progress_entry.get("currentTime") or 0))
+        if not is_completed and position_seconds <= 0:
+            # Touched but never started; ABS keeps such rows around.
+            return False
+
+        episode = self._ensure_podcast_episode(show, episode_metadata)
+        total_seconds = (
+            int(float(progress_entry.get("duration") or 0)) or episode.duration or None
+        )
+
+        # Completed rows get lifted to the full runtime by Media.process_status.
+        progress_minutes = max(1, position_seconds // 60) if position_seconds > 0 else 0
+
+        item = self._ensure_podcast_item(show, episode, total_seconds)
+        PodcastShowTracker.objects.get_or_create(
+            user=self.user,
+            show=show,
+            defaults={"status": Status.IN_PROGRESS.value},
+        )
+
+        end_date = None
+        if is_completed:
+            end_date = self._parse_datetime(
+                progress_entry.get("finishedAt"),
+            ) or self._parse_datetime(progress_entry.get("lastUpdate"))
+
+        status_value = (
+            Status.COMPLETED.value if is_completed else Status.IN_PROGRESS.value
+        )
+        provider_status = 3 if is_completed else 2
+
+        entries = list(
+            Podcast.objects.filter(user=self.user, item=item)
+            .select_related("episode", "show", "item")
+            .order_by("-created_at"),
+        )
+        latest_in_progress = next(
+            (entry for entry in entries if entry.end_date is None),
+            None,
+        )
+        latest_completed = next(
+            (entry for entry in entries if entry.end_date is not None),
+            None,
+        )
+
+        if latest_in_progress is not None:
+            if (
+                latest_in_progress.played_up_to_seconds == (position_seconds or None)
+                and latest_in_progress.end_date == end_date
+                and latest_in_progress.status == status_value
+            ):
+                return False
+            self._update_podcast_row(
+                latest_in_progress,
+                show=show,
+                episode=episode,
+                status=status_value,
+                progress_minutes=progress_minutes,
+                position_seconds=position_seconds,
+                provider_status=provider_status,
+                end_date=end_date,
+            )
+            return True
+
+        if (
+            latest_completed is not None
+            and is_completed
+            and latest_completed.played_up_to_seconds == (position_seconds or None)
+        ):
+            return False
+
+        Podcast.objects.create(
+            user=self.user,
+            item=item,
+            show=show,
+            episode=episode,
+            status=status_value,
+            progress=progress_minutes,
+            played_up_to_seconds=position_seconds or None,
+            last_seen_status=provider_status,
+            start_date=self._parse_datetime(progress_entry.get("startedAt")),
+            end_date=end_date,
+        )
+        return True
+
+    def _update_podcast_row(
+        self,
+        podcast,
+        *,
+        show,
+        episode,
+        status,
+        progress_minutes,
+        position_seconds,
+        provider_status,
+        end_date,
+    ):
+        """Update an existing in-progress podcast row in place."""
+        updates = {
+            "show": show,
+            "episode": episode,
+            "status": status,
+            "progress": progress_minutes,
+            "played_up_to_seconds": position_seconds or None,
+            "last_seen_status": provider_status,
+        }
+        if end_date is not None:
+            updates["end_date"] = end_date
+
+        update_fields = []
+        for field, value in updates.items():
+            if getattr(podcast, field) != value:
+                setattr(podcast, field, value)
+                update_fields.append(field)
+        if update_fields:
+            podcast.save(update_fields=update_fields)
 
     def _needs_book_repair(self, item):
         if item is None:

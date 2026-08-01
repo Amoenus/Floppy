@@ -828,7 +828,11 @@ def track_modal(
     if (
         not standard_modal
         and media_type == MediaTypes.PODCAST.value
-        and source in {Sources.POCKETCASTS.value, Sources.GPODDER.value}
+        and source in {
+            Sources.POCKETCASTS.value,
+            Sources.GPODDER.value,
+            Sources.AUDIOBOOKSHELF.value,
+        }
     ):
         from app.models import PodcastEpisode, PodcastShow
 
