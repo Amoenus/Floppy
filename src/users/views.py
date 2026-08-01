@@ -166,6 +166,7 @@ def _get_import_data_user(user):
         "audiobookshelf_account",
         "pocketcasts_account",
         "lastfm_account",
+        "koito_account",
         "radarr_account",
         "sonarr_account",
     ).get(pk=user.pk)
@@ -1049,6 +1050,20 @@ def import_data(request):
 
     # Get Last.fm account
     lastfm_account = getattr(user, "lastfm_account", None)
+
+    # Get Koito account
+    koito_account = getattr(user, "koito_account", None)
+    koito_history_status_label = "Not started"
+    koito_history_can_start = False
+    koito_history_button_label = "Import full history"
+    if koito_account:
+        if koito_account.history_import_status != "idle":
+            koito_history_status_label = (
+                koito_account.get_history_import_status_display()
+            )
+        koito_history_can_start = koito_account.history_import_can_start
+        if koito_account.history_import_status in {"completed", "failed"}:
+            koito_history_button_label = "Reimport full history"
     radarr_account = getattr(user, "radarr_account", None)
     sonarr_account = getattr(user, "sonarr_account", None)
     stremio_account = getattr(user, "stremio_account", None)
@@ -1097,6 +1112,7 @@ def import_data(request):
         "pocketcasts_account": pocketcasts_account,
         "gpodder_account": gpodder_account,
         "lastfm_account": lastfm_account,
+        "koito_account": koito_account,
         "radarr_account": radarr_account,
         "sonarr_account": sonarr_account,
         "stremio_account": stremio_account,
@@ -1107,6 +1123,9 @@ def import_data(request):
         "lastfm_history_total_pages": lastfm_history_total_pages,
         "lastfm_history_can_start": lastfm_history_can_start,
         "lastfm_history_button_label": lastfm_history_button_label,
+        "koito_history_status_label": koito_history_status_label,
+        "koito_history_can_start": koito_history_can_start,
+        "koito_history_button_label": koito_history_button_label,
         "trakt_configured": bool(settings.TRAKT_API and settings.TRAKT_API_SECRET),
     }
     return render(request, "users/import_data.html", context)

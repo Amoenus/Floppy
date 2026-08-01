@@ -407,6 +407,89 @@ class LastFMAccount(models.Model):
         self.history_import_last_error_message = ""
 
 
+class KoitoAccount(models.Model):
+    """Store Koito connection settings and sync state for a user.
+
+    Receive-only: Floppy polls Koito for listens and never submits back to it.
+    Reuses LastFMHistoryImportStatus for the backfill state machine since the
+    states are identical.
+    """
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="koito_account",
+    )
+    base_url = models.URLField(help_text="Koito server URL")
+    api_key = models.TextField(help_text="Encrypted Koito API key")
+    last_fetch_timestamp_uts = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text="Unix timestamp (seconds) of last successful poll",
+    )
+    last_sync_at = models.DateTimeField(null=True, blank=True)
+    connection_broken = models.BooleanField(
+        default=False,
+        help_text="True if connection is broken (invalid key or persistent errors)",
+    )
+    failure_count = models.IntegerField(
+        default=0,
+        help_text="Number of consecutive failures",
+    )
+    last_error_message = models.TextField(blank=True, default="")
+    last_failed_at = models.DateTimeField(null=True, blank=True)
+    history_import_status = models.CharField(
+        max_length=20,
+        choices=LastFMHistoryImportStatus.choices,
+        default=LastFMHistoryImportStatus.IDLE,
+        help_text="Current Koito history import state",
+    )
+    history_import_started_at = models.DateTimeField(null=True, blank=True)
+    history_import_completed_at = models.DateTimeField(null=True, blank=True)
+    history_import_last_error_message = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Model options."""
+
+        verbose_name = "Koito account"
+        verbose_name_plural = "Koito accounts"
+
+    def __str__(self):
+        """Readable representation."""
+        return f"KoitoAccount({self.user.username})"
+
+    @property
+    def is_connected(self):
+        """Return True when the account appears connected."""
+        return bool(self.base_url and self.api_key) and not self.connection_broken
+
+    @property
+    def history_import_is_active(self):
+        """Return True when a history backfill is queued or running."""
+        return self.history_import_status in {
+            LastFMHistoryImportStatus.QUEUED,
+            LastFMHistoryImportStatus.RUNNING,
+        }
+
+    @property
+    def history_import_can_start(self):
+        """Return True when the user can start or rerun a history backfill."""
+        return self.history_import_status in {
+            LastFMHistoryImportStatus.IDLE,
+            LastFMHistoryImportStatus.FAILED,
+            LastFMHistoryImportStatus.COMPLETED,
+        }
+
+    def reset_history_import(self):
+        """Prepare state for a fresh history backfill."""
+        self.history_import_status = LastFMHistoryImportStatus.QUEUED
+        self.history_import_started_at = None
+        self.history_import_completed_at = None
+        self.history_import_last_error_message = ""
+
+
 class RadarrAccount(models.Model):
     """Store Radarr connection settings and sync state for a user."""
 

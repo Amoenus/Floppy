@@ -26,6 +26,8 @@ handler500 = "app.error_views.server_error"
 
 urlpatterns = [
     path("api/v1/", include("api.urls")),
+    # ListenBrainz-compatible ingest lives at the root path clients expect.
+    path("apis/listenbrainz/1/", include("api.listenbrainz_urls")),
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
     path(
         "api/docs/",

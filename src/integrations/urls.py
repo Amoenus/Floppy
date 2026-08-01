@@ -93,6 +93,14 @@ urlpatterns = [
     path("import/lastfm/disconnect", views.lastfm_disconnect, name="lastfm_disconnect"),
     path("import/lastfm/history", views.import_lastfm_history_manual, name="import_lastfm_history"),
     path("import/lastfm/poll", views.poll_lastfm_manual, name="poll_lastfm_manual"),
+    path("import/koito/connect", views.koito_connect, name="koito_connect"),
+    path("import/koito/disconnect", views.koito_disconnect, name="koito_disconnect"),
+    path(
+        "import/koito/history",
+        views.import_koito_history_manual,
+        name="import_koito_history",
+    ),
+    path("import/koito/poll", views.poll_koito_manual, name="poll_koito_manual"),
     path("export/csv", views.export_csv, name="export_csv"),
     path("import/yamtrack/template", views.import_template_csv, name="import_template_csv"),
     path(

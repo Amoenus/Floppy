@@ -1,13 +1,11 @@
 """Processor for Last.fm scrobbles."""
 
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 from django.utils import timezone
 
-from app.models import MediaTypes, Music
 from app.services import music_scrobble
-from integrations import lastfm_api
 
 logger = logging.getLogger(__name__)
 
@@ -127,50 +125,14 @@ class LastFMScrobbleProcessor:
         track_title: str,
         album_title: str,
     ) -> bool:
-        """Check if this scrobble is an exact duplicate.
-
-        Uses exact match on (user, played_at_uts, artist, track, album) to prevent
-        duplicates from pagination overlap or API inconsistencies.
-
-        Args:
-            user: User instance
-            played_at_uts: Unix timestamp in seconds
-            artist_name: Artist name
-            track_title: Track title
-            album_title: Album title
-
-        Returns:
-            True if duplicate found, False otherwise
-        """
-        # Convert Unix timestamp to datetime for comparison
-        try:
-            played_at = datetime.fromtimestamp(played_at_uts, tz=UTC)
-            played_at = timezone.localtime(played_at)
-        except (ValueError, TypeError, OSError):
-            return False
-
-        # Find existing Music entries with same end_date (within 1 second tolerance for timezone conversion)
-        # and matching artist/track/album
-        existing = Music.objects.filter(
-            user=user,
-            end_date__gte=played_at - timedelta(seconds=1),
-            end_date__lte=played_at + timedelta(seconds=1),
-        ).select_related("artist", "album", "track")
-
-        for music in existing:
-            # Check exact match on all fields
-            if (
-                music.artist
-                and music.artist.name == artist_name
-                and music.track
-                and music.track.title == track_title
-            ):
-                # Album match (can be None)
-                music_album = music.album.title if music.album else None
-                if music_album == album_title or (not music_album and not album_title):
-                    return True
-
-        return False
+        """Check if this scrobble is an exact duplicate."""
+        return music_scrobble.is_duplicate_scrobble(
+            user,
+            played_at_uts,
+            artist_name,
+            track_title,
+            album_title,
+        )
 
     def process_tracks(self, tracks: list[dict], user, *, fast_mode: bool = False) -> dict[str, int | set]:
         """Process multiple Last.fm tracks.

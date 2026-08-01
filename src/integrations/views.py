@@ -26,7 +26,14 @@ from django.views.decorators.http import require_GET, require_POST
 import users
 from app import helpers as app_helpers
 from app.log_safety import exception_summary
-from integrations import exports, gpodder_api, lastfm_api, pocketcasts_api, tasks
+from integrations import (
+    exports,
+    gpodder_api,
+    koito_api,
+    lastfm_api,
+    pocketcasts_api,
+    tasks,
+)
 from integrations import plex as plex_api
 from integrations.gpodder_api import GPodderAuthError, GPodderClientError
 from integrations.imports import anilist, helpers, mdblist, simkl, stremio, trakt
@@ -51,6 +58,7 @@ from integrations.models import (
     AudiobookshelfAccount,
     GPodderAccount,
     JellyfinAccount,
+    KoitoAccount,
     LastFMAccount,
     MDBListAccount,
     PlexAccount,
@@ -2020,6 +2028,129 @@ def import_lastfm_history_manual(request):
     _save_lastfm_history_reset(lastfm_account, cutoff_uts)
     tasks.import_lastfm_history.delay(user_id=request.user.id, reset=False)
     messages.info(request, "Full Last.fm history import queued.")
+    return redirect("import_data")
+
+
+def _ensure_koito_poll_schedule(user):
+    """Create the recurring Koito poll schedule for a user if missing."""
+    from django_celery_beat.models import CrontabSchedule, PeriodicTask
+
+    existing_task = PeriodicTask.objects.filter(
+        task=tasks.KOITO_POLL_TASK_NAME,
+        kwargs__contains=f'"user_id": {user.id}',
+        enabled=True,
+    ).first()
+    if existing_task:
+        return
+
+    crontab, _ = CrontabSchedule.objects.get_or_create(
+        minute="*/15",
+        hour="*",
+        day_of_week="*",
+        day_of_month="*",
+        month_of_year="*",
+        timezone=timezone.get_default_timezone(),
+    )
+    PeriodicTask.objects.create(
+        name=f"Poll Koito for {user.username} (every 15 minutes)",
+        task=tasks.KOITO_POLL_TASK_NAME,
+        crontab=crontab,
+        kwargs=json.dumps({"user_id": user.id}),
+        start_time=timezone.now(),
+        enabled=True,
+    )
+
+
+@require_POST
+def koito_connect(request):
+    """Connect a Koito account using base URL + API key."""
+    base_url = request.POST.get("base_url", "").strip().rstrip("/")
+    api_key = request.POST.get("api_key", "").strip()
+
+    if not base_url or not api_key:
+        messages.error(request, "Koito server URL and API key are required.")
+        return redirect("import_data")
+
+    try:
+        koito_api.validate_connection(base_url, api_key)
+    except koito_api.KoitoAuthError as exc:
+        messages.error(request, str(exc))
+        return redirect("import_data")
+    except Exception as exc:  # noqa: BLE001 - surface any connection failure
+        messages.error(request, f"Failed to connect to Koito: {exc}")
+        return redirect("import_data")
+
+    KoitoAccount.objects.update_or_create(
+        user=request.user,
+        defaults={
+            "base_url": base_url,
+            "api_key": helpers.encrypt(api_key),
+            "last_fetch_timestamp_uts": int(timezone.now().timestamp()),
+            "connection_broken": False,
+            "failure_count": 0,
+            "last_error_message": "",
+            "last_failed_at": None,
+        },
+    )
+
+    _ensure_koito_poll_schedule(request.user)
+    tasks.poll_koito_for_user.delay(user_id=request.user.id)
+    tasks.import_koito_history.delay(user_id=request.user.id, reset=True)
+    messages.success(request, "Connected Koito. Full history import queued.")
+    return redirect("import_data")
+
+
+@require_POST
+def koito_disconnect(request):
+    """Disconnect the Koito integration."""
+    from django_celery_beat.models import PeriodicTask
+
+    PeriodicTask.objects.filter(
+        task=tasks.KOITO_POLL_TASK_NAME,
+        kwargs__contains=f'"user_id": {request.user.id}',
+    ).delete()
+    KoitoAccount.objects.filter(user=request.user).delete()
+    messages.info(request, "Disconnected Koito.")
+    return redirect("import_data")
+
+
+@require_POST
+def poll_koito_manual(request):
+    """Manually trigger a Koito sync for the current user."""
+    koito_account = getattr(request.user, "koito_account", None)
+    if not koito_account:
+        messages.error(request, "Connect Koito before syncing.")
+        return redirect("import_data")
+
+    koito_account.refresh_from_db()
+    if not koito_account.is_connected:
+        messages.error(request, "Koito connection is broken. Please reconnect.")
+        return redirect("import_data")
+
+    tasks.poll_koito_for_user.delay(user_id=request.user.id)
+    messages.info(request, "Koito sync queued. Listens will be imported shortly.")
+    return redirect("import_data")
+
+
+@require_POST
+def import_koito_history_manual(request):
+    """Queue or rerun a full Koito history import for the current user."""
+    koito_account = getattr(request.user, "koito_account", None)
+    if not koito_account:
+        messages.error(request, "Connect Koito before importing history.")
+        return redirect("import_data")
+
+    koito_account.refresh_from_db()
+    if not koito_account.is_connected:
+        messages.error(request, "Koito connection is broken. Please reconnect.")
+        return redirect("import_data")
+
+    if koito_account.history_import_is_active:
+        messages.info(request, "Full Koito history import already running.")
+        return redirect("import_data")
+
+    tasks.import_koito_history.delay(user_id=request.user.id, reset=True)
+    messages.info(request, "Full Koito history import queued.")
     return redirect("import_data")
 
 

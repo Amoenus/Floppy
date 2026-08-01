@@ -2,7 +2,7 @@
 
 import logging
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from unittest.mock import Mock
 
 from django.conf import settings
@@ -78,6 +78,60 @@ class ResolvedMusicMetadata:
     artist_sort_name: str = ""
     artist_genres: list = field(default_factory=list)
     artist_image: str = ""
+
+
+def is_duplicate_scrobble(
+    user,
+    played_at_uts: int,
+    artist_name: str,
+    track_title: str,
+    album_title: str | None,
+) -> bool:
+    """Check if a scrobble has already been recorded.
+
+    Matches on (user, played_at_uts, artist, track, album) to prevent duplicates
+    from pagination overlap, API inconsistencies, or the same listen arriving
+    through more than one ingest path.
+
+    Args:
+        user: User instance
+        played_at_uts: Unix timestamp in seconds
+        artist_name: Artist name
+        track_title: Track title
+        album_title: Album title, or None when unknown
+
+    Returns:
+        True if duplicate found, False otherwise
+    """
+    # Convert Unix timestamp to datetime for comparison
+    try:
+        played_at = datetime.fromtimestamp(played_at_uts, tz=UTC)
+        played_at = timezone.localtime(played_at)
+    except (ValueError, TypeError, OSError):
+        return False
+
+    # Find existing Music entries with same end_date (within 1 second tolerance
+    # for timezone conversion) and matching artist/track/album
+    existing = Music.objects.filter(
+        user=user,
+        end_date__gte=played_at - timedelta(seconds=1),
+        end_date__lte=played_at + timedelta(seconds=1),
+    ).select_related("artist", "album", "track")
+
+    for music in existing:
+        # Check exact match on all fields
+        if (
+            music.artist
+            and music.artist.name == artist_name
+            and music.track
+            and music.track.title == track_title
+        ):
+            # Album match (can be None)
+            music_album = music.album.title if music.album else None
+            if music_album == album_title or (not music_album and not album_title):
+                return True
+
+    return False
 
 
 def record_music_playback(event: MusicPlaybackEvent) -> Music | None:

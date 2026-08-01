@@ -417,6 +417,18 @@
         </button>
 
         <button type="button"
+                @click="openModal('koito')"
+                x-show="sourceSupports(['music'])"
+                x-transition.opacity.duration.150ms
+                class="bg-[#39404b] hover:bg-[#454d59] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
+          <div class="flex items-center justify-between">
+            {% source_display "koito" %}
+            {% if koito_account and koito_account.is_connected %}<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" title="Connected">{% include "app/icons/checkmark.svg" with classes="w-3 h-3" %}</span>{% endif %}
+          </div>
+          <p class="text-xs text-gray-400 line-clamp-2">Import listening history from a self-hosted Koito server.</p>
+        </button>
+
+        <button type="button"
                 @click="openModal('trakt')"
                 x-show="sourceSupports(['screen'])"
                 x-transition.opacity.duration.150ms
@@ -1546,6 +1558,142 @@
                 <button type="submit"
                         class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
                   Connect Last.fm
+                </button>
+              </div>
+            </form>
+          {% endif %}
+        </div>
+          </div>
+        </div>
+
+        {# Koito #}
+        <div x-show="activeModal === 'koito'"
+             x-cloak
+             @keydown.escape.window="closeModal()"
+             x-transition.opacity.duration.150ms
+             class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div class="modal-max-height overflow-y-auto w-full"
+               style="width: min(96vw, 32rem);"
+               @click.outside="closeModal()">
+            <button type="button"
+                    @click="closeModal()"
+                    class="block w-fit ml-auto mb-2 text-gray-400 hover:text-white cursor-pointer p-1 rounded-md hover:bg-gray-700/70 bg-[#2a2f35]">
+              {% include "app/icons/x.svg" with classes="w-4 h-4" %}
+            </button>
+        <div class="bg-[#39404b] p-4 rounded-lg space-y-3">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center">{% source_display "koito" %}</div>
+            {% if koito_account and koito_account.is_connected %}
+              <form method="post" action="{% url 'koito_disconnect' %}">
+                {% csrf_token %}
+                <button type="submit"
+                        class="px-2 py-1 text-xs rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/20 transition-colors cursor-pointer">
+                  Connected
+                </button>
+              </form>
+            {% else %}
+              <span class="px-2 py-1 text-xs rounded bg-gray-500/20 text-gray-300 border border-gray-600/50">Disconnected</span>
+            {% endif %}
+          </div>
+          {% if koito_account %}
+            <p class="text-sm text-gray-400">Import your Koito listening history automatically every 15 minutes. Floppy only reads from Koito and never sends listens back.</p>
+
+            <div class="space-y-2 text-sm">
+              <div class="flex items-center gap-2">
+                <span class="text-gray-400">Server:</span>
+                <span class="text-gray-300 break-all">{{ koito_account.base_url }}</span>
+              </div>
+              {% if koito_account.last_sync_at %}
+                <div class="flex items-center gap-2">
+                  <span class="text-gray-400">Last sync: {{ koito_account.last_sync_at|user_datetime_format:user }}</span>
+                </div>
+              {% endif %}
+              <div class="flex items-center gap-2">
+                <span class="text-gray-400">Full history import:</span>
+                {% if koito_account.history_import_status == "completed" %}
+                  <span class="text-green-300">{{ koito_history_status_label }}</span>
+                {% elif koito_account.history_import_status == "failed" %}
+                  <span class="text-red-300">{{ koito_history_status_label }}</span>
+                {% elif koito_account.history_import_status == "running" %}
+                  <span class="text-blue-300">{{ koito_history_status_label }}</span>
+                {% elif koito_account.history_import_status == "queued" %}
+                  <span class="text-indigo-300">{{ koito_history_status_label }}</span>
+                {% else %}
+                  <span class="text-gray-300">{{ koito_history_status_label }}</span>
+                {% endif %}
+              </div>
+              {% if koito_account.history_import_completed_at %}
+                <div>Completed: {{ koito_account.history_import_completed_at|user_datetime_format:user }}</div>
+              {% endif %}
+            </div>
+
+            {% if koito_account.connection_broken and koito_account.last_error_message %}
+              <div class="text-sm text-red-300 bg-red-500/10 border border-red-500/30 rounded-md p-2">
+                <strong>Error:</strong> {{ koito_account.last_error_message }}
+              </div>
+            {% endif %}
+
+            {% if koito_account.history_import_status == "failed" and koito_account.history_import_last_error_message %}
+              <div class="text-sm text-red-300 bg-red-500/10 border border-red-500/30 rounded-md p-2">
+                <strong>Import error:</strong> {{ koito_account.history_import_last_error_message }}
+              </div>
+            {% endif %}
+
+            <div class="space-y-3">
+              <form method="post" action="{% url 'poll_koito_manual' %}">
+                {% csrf_token %}
+                <button type="submit"
+                        class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
+                  Sync now
+                </button>
+              </form>
+
+              {% if koito_history_can_start %}
+                <form method="post" action="{% url 'import_koito_history' %}">
+                  {% csrf_token %}
+                  <button type="submit"
+                          class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-sky-600 text-white hover:bg-sky-700">
+                    {{ koito_history_button_label }}
+                  </button>
+                </form>
+              {% endif %}
+
+              <form method="post" action="{% url 'koito_disconnect' %}">
+                {% csrf_token %}
+                <button type="submit"
+                        class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-red-600 text-white hover:bg-red-700">
+                  Disconnect
+                </button>
+              </form>
+            </div>
+
+          {% else %}
+            <p class="text-sm text-gray-400 mb-3">
+              Connect a self-hosted Koito server to import your full listening history and sync new listens every 15 minutes. Generate an API key in Koito under Settings &rarr; API Keys. Floppy only reads from Koito and never sends listens back.
+            </p>
+            <form method="post" action="{% url 'koito_connect' %}">
+              {% csrf_token %}
+              <div class="space-y-3">
+                <div>
+                  <label class="block text-sm text-gray-400 mb-2">Koito Server URL</label>
+                  <input type="url"
+                         name="base_url"
+                         required
+                         class="w-full py-2 px-3 bg-[#2a2f35] rounded-md text-white text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+                         placeholder="https://koito.example.com">
+                </div>
+                <div>
+                  <label class="block text-sm text-gray-400 mb-2">API Key</label>
+                  <input type="password"
+                         name="api_key"
+                         required
+                         autocomplete="off"
+                         class="w-full py-2 px-3 bg-[#2a2f35] rounded-md text-white text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+                         placeholder="Koito API key">
+                </div>
+                <button type="submit"
+                        class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
+                  Connect Koito
                 </button>
               </div>
             </form>

@@ -13,6 +13,14 @@ from integrations.tasks._import_helpers import (
     format_media_type_display,
     format_watchlist_sync_message,
 )
+from integrations.tasks._koito import (
+    KOITO_PARTIAL_SYNC_ERROR,
+    KOITO_POLL_TASK_NAME,
+    _run_incremental_koito_sync,
+    import_koito_history,
+    poll_all_koito_accounts,
+    poll_koito_for_user,
+)
 from integrations.tasks._lastfm import (
     LASTFM_PARTIAL_SYNC_ERROR,
     _enqueue_lastfm_music_enrichment,
