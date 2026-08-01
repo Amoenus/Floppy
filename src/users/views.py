@@ -1250,7 +1250,8 @@ def export_data(request):
 @require_GET
 def advanced(request):
     """Render the advanced settings page."""
-    return render(request, "users/advanced.html")
+    context = {"tmdb_proxy_configured": bool(request.user.tmdb_proxy_url)}
+    return render(request, "users/advanced.html", context)
 
 
 @require_GET
@@ -1588,6 +1589,25 @@ def clear_search_cache(request):
     logger.info(
         "Successfully cleared %s search entries",
         deleted,
+    )
+
+    return redirect("advanced")
+
+
+@require_POST
+def update_tmdb_proxy(request):
+    """Update or clear the user's TMDB outbound proxy URL."""
+    from integrations.imports.helpers import encrypt
+
+    proxy_url = request.POST.get("tmdb_proxy_url", "").strip()
+
+    request.user.tmdb_proxy_url = encrypt(proxy_url) if proxy_url else ""
+    request.user.save(update_fields=["tmdb_proxy_url"])
+    cache.delete("tmdb_proxy_url")
+
+    messages.success(
+        request,
+        "TMDB proxy updated successfully" if proxy_url else "TMDB proxy removed",
     )
 
     return redirect("advanced")

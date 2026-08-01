@@ -8,6 +8,7 @@ from difflib import SequenceMatcher
 import requests
 from defusedxml import ElementTree
 from django.conf import settings
+from django.core.cache import cache
 from pyrate_limiter import RedisBucket
 from redis import ConnectionPool
 from requests.adapters import HTTPAdapter
@@ -328,6 +329,30 @@ def raise_not_found_error(provider, media_id, media_type="item"):
     raise ProviderAPIError(provider, mock_error, error_msg)
 
 
+def _get_tmdb_proxy_url():
+    """Return the configured TMDB outbound proxy URL, if any.
+
+    The setting is stored per-user (Settings > Advanced UI), but applied
+    instance-wide: the first user with one configured wins. Cached briefly
+    since api_request is on the hot path for search and metadata backfill.
+    """
+    cached = cache.get("tmdb_proxy_url")
+    if cached is not None:
+        return cached or None
+
+    from integrations.imports.helpers import decrypt
+    from users.models import User
+
+    encrypted = (
+        User.objects.exclude(tmdb_proxy_url="")
+        .values_list("tmdb_proxy_url", flat=True)
+        .first()
+    )
+    proxy_url = decrypt(encrypted) if encrypted else ""
+    cache.set("tmdb_proxy_url", proxy_url, 60)
+    return proxy_url or None
+
+
 def api_request(
     provider,
     method,
@@ -358,6 +383,11 @@ def api_request(
             "headers": headers,
             "timeout": settings.REQUEST_TIMEOUT,
         }
+
+        if provider == Sources.TMDB.value:
+            proxy_url = _get_tmdb_proxy_url()
+            if proxy_url:
+                request_kwargs["proxies"] = {"http": proxy_url, "https": proxy_url}
 
         if method == "GET":
             request_kwargs["params"] = params

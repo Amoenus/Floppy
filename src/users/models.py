@@ -856,6 +856,13 @@ class User(AbstractUser):
         default=Status.PLANNING.value,
         help_text="Status to set when adding media via Jellyseerr webhook",
     )
+    tmdb_proxy_url = models.TextField(
+        blank=True,
+        help_text=(
+            "Encrypted outbound proxy URL for TMDB requests "
+            "(e.g. socks5://user:pass@host:port)"
+        ),
+    )
 
     date_format = models.CharField(
         max_length=20,

@@ -2,6 +2,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import requests
+from django.core.cache import cache
 from django.test import TestCase
 
 from app.models import Item, MediaTypes, Sources
@@ -11,6 +12,8 @@ from app.providers import (
     services,
     tmdb,
 )
+from integrations.imports.helpers import encrypt
+from users.models import User
 
 mock_path = Path(__file__).resolve().parent.parent / "mock_data"
 
@@ -69,6 +72,60 @@ class ServicesTests(TestCase):
         self.assertEqual(kwargs["json"], {"json_param": "value"})
         self.assertEqual(kwargs["data"], {"form_data": "value"})
         self.assertIn("timeout", kwargs)
+
+    def tearDown(self):
+        """Avoid leaking the tmdb proxy cache key between tests."""
+        cache.delete("tmdb_proxy_url")
+        super().tearDown()
+
+    @patch("app.providers.services.session.get")
+    def test_api_request_uses_configured_tmdb_proxy(self, mock_get):
+        """TMDB requests should route through a configured user's proxy URL."""
+        User.objects.create_user(
+            username="proxy-user",
+            password="testpass123",  # noqa: S106
+            tmdb_proxy_url=encrypt("socks5://127.0.0.1:1080"),
+        )
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"data": "test"}
+        mock_get.return_value = mock_response
+
+        services.api_request(Sources.TMDB.value, "GET", "https://example.com/api")
+
+        _, kwargs = mock_get.call_args
+        self.assertEqual(
+            kwargs["proxies"],
+            {"http": "socks5://127.0.0.1:1080", "https": "socks5://127.0.0.1:1080"},
+        )
+
+    @patch("app.providers.services.session.get")
+    def test_api_request_omits_proxies_when_not_configured(self, mock_get):
+        """No proxy should be applied when no user has one configured."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"data": "test"}
+        mock_get.return_value = mock_response
+
+        services.api_request(Sources.TMDB.value, "GET", "https://example.com/api")
+
+        _, kwargs = mock_get.call_args
+        self.assertNotIn("proxies", kwargs)
+
+    @patch("app.providers.services.session.get")
+    def test_api_request_only_proxies_tmdb_provider(self, mock_get):
+        """Non-TMDB providers should not pick up the TMDB proxy setting."""
+        User.objects.create_user(
+            username="proxy-user",
+            password="testpass123",  # noqa: S106
+            tmdb_proxy_url=encrypt("socks5://127.0.0.1:1080"),
+        )
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"data": "test"}
+        mock_get.return_value = mock_response
+
+        services.api_request(Sources.TVDB.value, "GET", "https://example.com/api")
+
+        _, kwargs = mock_get.call_args
+        self.assertNotIn("proxies", kwargs)
 
     @patch("app.providers.services.session.get")
     def test_api_request_wraps_connection_failures(self, mock_get):

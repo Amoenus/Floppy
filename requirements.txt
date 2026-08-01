@@ -23,6 +23,7 @@ Pillow==12.3.0
 psycopg[binary,pool]==3.3.3
 python-decouple==3.8
 pyotp==2.9.0
+PySocks==1.7.1
 qrcode==8.2
 redis[hiredis]==7.4.0
 requests==2.33.1
