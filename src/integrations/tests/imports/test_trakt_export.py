@@ -1,8 +1,9 @@
 import json
 import zipfile
 from io import BytesIO
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
+import requests
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
@@ -17,6 +18,7 @@ from app.models import (
     Season,
     Status,
 )
+from app.providers import services
 from integrations.imports.helpers import MediaImportError
 from integrations.imports.trakt_export import TraktExportArchive, importer
 from lists.models import CustomList, CustomListItem
@@ -430,6 +432,39 @@ class ImportTraktExport(TestCase):
         importer(export, self.user, "new")
 
         mock_request.assert_not_called()
+
+    @patch("app.providers.tmdb.services.api_request")
+    def test_watchlist_movie_tmdb_401_raises_clean_import_error(self, mock_api_request):
+        """A TMDB 401 (e.g. bad API key) aborts the import with a clear message.
+
+        Regression test for GitHub issue #424: a bad TMDB_API key used to
+        surface as an unhandled MediaImportUnexpectedError. TraktImporter
+        now treats a 401 as fatal, just like it already does for 404s.
+        """
+        response = Mock()
+        response.status_code = requests.codes.unauthorized
+        response.json.return_value = {
+            "status_message": "Invalid API key: You must be granted a valid key.",
+        }
+        mock_api_request.side_effect = requests.exceptions.HTTPError(response=response)
+
+        export = _zip_bytes(
+            {
+                "lists-watchlist-1.json": [
+                    {
+                        "type": "movie",
+                        "listed_at": "2023-03-01T00:00:00.000Z",
+                        "movie": _movie(),
+                    },
+                ],
+            },
+        )
+
+        with self.assertRaises(MediaImportError) as ctx:
+            importer(export, self.user, "new")
+
+        self.assertIsInstance(ctx.exception.__cause__, services.ProviderAPIError)
+        self.assertIn("API key", str(ctx.exception))
 
     @patch("lists.imports.trakt._get_metadata")
     @patch("integrations.imports.trakt.TraktImporter._get_metadata")

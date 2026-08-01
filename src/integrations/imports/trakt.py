@@ -219,6 +219,9 @@ class TraktMetadataResolverMixin:
                     f"{title}: not found in {Sources.TMDB.label} with ID {tmdb_id}.",
                 )
                 return None
+            if error.status_code == requests.codes.unauthorized:
+                msg = f"Invalid {Sources.TMDB.label} API key."
+                raise MediaImportError(msg) from error
             raise
 
     def _get_or_create_item(
@@ -766,6 +769,9 @@ class TraktImporter(TraktMetadataResolverMixin):
                     "watchlist",
                     {"status": Status.PLANNING.value},
                 )
+            except MediaImportError:
+                # Fatal, importer-level problems (auth, etc.) must still abort.
+                raise
             except Exception as e:
                 msg = f"Error processing watchlist entry: {entry}"
                 raise MediaImportUnexpectedError(msg) from e
