@@ -297,6 +297,8 @@ def media_type_readable_plural(media_type):
 @register.filter
 def media_status_readable(media_status):
     """Return the readable media status."""
+    if not media_status:
+        return "No Status"
     return Status(media_status).label
 
 
