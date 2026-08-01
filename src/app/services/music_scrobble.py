@@ -140,7 +140,7 @@ def record_music_playback(event: MusicPlaybackEvent) -> Music | None:
     This resolves canonical metadata (MusicBrainz when possible), ensures
     Artist/Album/Track/Item existence, and updates the per-user Music row.
     """
-    played_at = event.played_at or timezone.now().replace(second=0, microsecond=0)
+    played_at = event.played_at or timezone.now()
 
     if getattr(event, "defer_cover_prefetch", False):
         recording_id = event.external_ids.get("musicbrainz_recording")

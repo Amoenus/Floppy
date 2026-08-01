@@ -160,8 +160,7 @@ class Media(models.Model):
                     # For podcasts, don't set end_date here - it's calculated from published date + duration in import
                     # For other media types, set end_date if not already set
                     if self.item.media_type != MediaTypes.PODCAST.value and not self.end_date:
-                        now = timezone.now().replace(second=0, microsecond=0)
-                        self.end_date = now
+                        self.end_date = timezone.now()
 
     def process_status(self):
         """Update fields depending on the status of the media."""

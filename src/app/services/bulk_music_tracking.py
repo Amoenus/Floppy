@@ -364,14 +364,14 @@ def apply_bulk_music_plays(
             [episode["air_date"] for episode in selected_episodes],
             start_date,
             end_date,
-            fallback_dt=timezone.now().replace(second=0, microsecond=0),
+            fallback_dt=timezone.now(),
         )
     else:
         timestamps = distribute_timestamps(
             start_date,
             end_date,
             len(selected_episodes),
-            fallback_dt=timezone.now().replace(second=0, microsecond=0),
+            fallback_dt=timezone.now(),
         )
 
     selected_track_ids = [

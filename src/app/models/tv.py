@@ -716,7 +716,7 @@ class Season(Media):
                 episodes,
             )
 
-        now = timezone.now().replace(second=0, microsecond=0)
+        now = timezone.now()
 
         if next_episode_number:
             self.watch(next_episode_number, now)
