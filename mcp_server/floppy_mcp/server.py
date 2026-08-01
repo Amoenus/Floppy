@@ -78,7 +78,7 @@ async def search_media(media_type: str, query: str, page: int = 1) -> Any:
     return await _call(
         "get",
         f"search/{media_type}",
-        params={"q": query, "page": page},
+        params={"search": query, "page": page},
     )
 
 
@@ -186,8 +186,19 @@ async def track_media(
         "notes": notes,
     }
     body = {k: v for k, v in body.items() if v is not None}
+    # media/{type}/{source}/{id} resolves provider metadata for ANY known
+    # item, tracked or not — it 200s even when nothing is tracked yet (it
+    # returns {"tracked": False, "id": None, ...} in that case). Checking
+    # only "did the GET error" therefore always looked truthy and this
+    # always PATCHed, even for brand-new items, which the API 404s on.
+    # The correct signal for "does a consumption record already exist" is
+    # the `tracked` flag (or a non-null `id`), not just GET success.
     existing = await _call("get", f"media/{media_type}/{source}/{media_id}")
-    if isinstance(existing, dict) and not existing.get("error"):
+    if (
+        isinstance(existing, dict)
+        and not existing.get("error")
+        and existing.get("tracked")
+    ):
         return await _call(
             "patch",
             f"media/{media_type}/{source}/{media_id}",
