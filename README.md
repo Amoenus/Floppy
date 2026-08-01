@@ -3,8 +3,9 @@
 </p>
 
 <p align="center">
-  <b>Self-hosted media tracking for people who miss Trakt.</b><br>
-  Movies, TV, anime, manga, books, comics, games, board games, music, and podcasts — one library, one history, one set of stats.
+  <b>Self-hosted media tracking for people who miss Trakt and TV Time.</b><br>
+  Movies, TV, anime, manga, books, comics, games, board games, music, and podcasts. <br>
+  One library, one history, and one set of stats for everything you watch, read, play, or listen to.
 </p>
 
 <p align="center">
@@ -14,21 +15,13 @@
   <a href="https://github.com/dannyvfilms/Floppy/releases">Releases</a>
 </p>
 
-Floppy is a self-hosted tracker built around the things Trakt used to do well and then stopped doing: a real progress view that tells you what to watch next, a unified history you can actually scan, recap-style statistics, lists worth sharing, and integrations that sync instead of asking you to upload a file every few months.
+Floppy is a self-hosted, all-in-one media tracker and personal media diary, a broader alternative to Trakt, Letterboxd, and TV Time for people who want one place for everything they watch, read, play, or listen to. It gives you a real progress view that tells you what to watch next, a unified history you can actually scan, recap-style statistics, shareable lists, owned-media collections, and integrations that sync instead of asking you to upload a file every few months.
 
 It runs in Docker, keeps your data on your own hardware, and treats music and podcasts as first-class media rather than bolt-ons.
 
 **Try it first:** the [demo instance](https://yamtrack.dannyvfilms.com) is open with `demo` / `demodemo`.
 
 *Floppy was formerly published as the `dannyvfilms/Yamtrack` fork. Old links redirect here.*
-
-## Building an integration?
-
-Floppy exposes a REST API at `/api/v1` and ships an [MCP server](mcp_server/). Integrations meant for Floppy should target **this repository** and the `ghcr.io/dannyvfilms/floppy` image — upstream Yamtrack does not carry Floppy's API surface, media types, or integration workflows, so "compatible with Yamtrack" and "compatible with Floppy" are not interchangeable claims.
-
-- Interactive docs: `/api/docs/` on any instance · raw schema: `/api/schema/`
-- Auth: `Authorization: Bearer <token>` or `X-API-Key: <token>`, from Settings → Advanced
-- Full reference: [API and MCP Server](https://github.com/dannyvfilms/Floppy/wiki/7.-API-and-MCP-Server)
 
 ## Install
 
@@ -81,7 +74,7 @@ That's the whole install. `SECRET` is the only variable you truly must set; `TMD
 
 ## What Floppy does
 
-Floppy covers the workflows Trakt used to serve: Time Left progress, a unified history feed, recap-style stats, public list sharing, and all-in-one tracking across every media type you care about.
+Floppy combines the jobs people often split between a watchlist, a media diary, and an owned-media collection: Time Left progress, a unified history feed, recap-style stats, public list sharing, and all-in-one tracking across every media type you care about.
 
 ### The big pieces
 
@@ -167,6 +160,14 @@ Floppy started as a fork of [Yamtrack](https://github.com/FuzzyGrim/Yamtrack) an
 - **One thing to update:** the image moved to `ghcr.io/dannyvfilms/floppy`. Point your compose file at the new path when convenient — the old path stops receiving new builds.
 
 Floppy retains Yamtrack's core tracking, import, and self-hosting workflows, with the additional capabilities described above.
+
+## Building an integration?
+
+Floppy exposes a REST API at `/api/v1` and ships an [MCP server](mcp_server/). Integrations meant for Floppy should target **this repository** and the `ghcr.io/dannyvfilms/floppy` image — upstream Yamtrack does not carry Floppy's API surface, media types, or integration workflows, so "compatible with Yamtrack" and "compatible with Floppy" are not interchangeable claims.
+
+- Interactive docs: `/api/docs/` on any instance · raw schema: `/api/schema/`
+- Auth: `Authorization: Bearer <token>` or `X-API-Key: <token>`, from Settings → Advanced
+- Full reference: [API and MCP Server](https://github.com/dannyvfilms/Floppy/wiki/7.-API-and-MCP-Server)
 
 ## Configuration and deployment
 
