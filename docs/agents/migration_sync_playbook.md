@@ -1,9 +1,9 @@
-# Migration Sync Playbook (`dev` -> `latest`)
+# Migration Sync Playbook (`upstream` -> `latest`)
 
 This playbook defines the required migration process for syncing upstream `dev` into fork `latest`.
 
 ## Branch model
-- `dev`: exact mirror of `upstream/dev`.
+- `upstream` (fork branch, formerly named `dev`): exact mirror of `upstream/dev` (the actual FuzzyGrim/Yamtrack `dev` branch).
 - `latest`: integration branch for fork features and upstream sync merges.
 - `release`: versioned release/container publication flow.
 
@@ -17,12 +17,12 @@ This playbook defines the required migration process for syncing upstream `dev` 
 
 ## Sync SOP (hard gate)
 1. Update and verify mirror branch:
-   - `git checkout dev`
+   - `git checkout upstream`
    - `git fetch upstream`
    - `git reset --hard upstream/dev`
 2. Merge upstream mirror into integration branch:
    - `git checkout latest`
-   - `git merge --no-ff dev`
+   - `git merge --no-ff upstream`
 3. Resolve conflicts:
    - Keep upstream maintenance changes.
    - Keep fork-visible behavior and UX.

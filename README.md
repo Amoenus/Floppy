@@ -378,7 +378,7 @@ The image lives at `ghcr.io/dannyvfilms/floppy`:
 - `:latest` - the latest commit on the `latest` branch
 - `:release` - builds published from GitHub release tags
 - `:vX.Y.Z` - versioned release builds
-- `:dev` - the `dev` branch, kept aligned with upstream Yamtrack
+- `:dev` - built from the fork's `upstream` branch (formerly named `dev`), kept aligned with upstream Yamtrack
 
 ## Local development
 

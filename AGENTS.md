@@ -247,16 +247,16 @@ Oververbosity:low
 Floppy is a Django 5.2 app for self-hosted media tracking with Celery workers and Redis. Tailwind CSS output is committed under `src/static/css/`, and templates load `src/static/css/main.css` via `src/templates/base.html`.
 
 ## Branch Policy
-- `dev` must be an exact mirror of upstream `FuzzyGrim/Yamtrack:dev` with no fork-only commits or edits. You will never update this branch.
-- Any local `dev` divergence should be reset/fast-forwarded back to upstream before merging. `dev` will always be a perfect mirror of upstream.
+- `upstream` (formerly named `dev` in this fork) must be an exact mirror of upstream `FuzzyGrim/Yamtrack:dev` with no fork-only commits or edits. You will never update this branch.
+- Any local `upstream` divergence should be reset/fast-forwarded back to upstream before merging. `upstream` will always be a perfect mirror of upstream.
 - `latest` is the fork integration branch for day-to-day feature work and upstream sync merges.
 - `release` is for versioned release/container publication flow, not the primary integration branch.
 
 ## Merge Workflow
-This workspace is `dannyvfilms/Floppy` (a fork of `FuzzyGrim/Yamtrack`), branch `latest`. When syncing upstream `dev` into `latest`, treat the merge as a conflict-resolution task where upstream `dev` brings maintenance changes and `latest` preserves fork features.
+This workspace is `dannyvfilms/Floppy` (a fork of `FuzzyGrim/Yamtrack`), branch `latest`. When syncing upstream `dev` into `latest`, treat the merge as a conflict-resolution task where the fork's `upstream` branch (mirroring upstream `dev`) brings maintenance changes and `latest` preserves fork features.
 
 High-level rules:
-- Use upstream `dev` as the source of truth for dependency versions, security/bugfix patches, small refactors, settings/config changes, CSS cleanups, and tests.
+- Use upstream `dev` (mirrored locally as `upstream`) as the source of truth for dependency versions, security/bugfix patches, small refactors, settings/config changes, CSS cleanups, and tests.
 - Use `latest` as the source of truth for fork-specific features and behavior changes.
 - When logic overlaps, merge intent from both sides rather than choosing one side wholesale.
 
