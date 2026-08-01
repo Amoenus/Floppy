@@ -23,14 +23,6 @@ It runs in Docker, keeps your data on your own hardware, and treats music and po
 
 *Floppy was formerly published as the `dannyvfilms/Yamtrack` fork. Old links redirect here.*
 
-## Building an integration?
-
-Floppy exposes a REST API at `/api/v1` and ships an [MCP server](mcp_server/). Integrations meant for Floppy should target **this repository** and the `ghcr.io/dannyvfilms/floppy` image — upstream Yamtrack does not carry Floppy's API surface, media types, or integration workflows, so "compatible with Yamtrack" and "compatible with Floppy" are not interchangeable claims.
-
-- Interactive docs: `/api/docs/` on any instance · raw schema: `/api/schema/`
-- Auth: `Authorization: Bearer <token>` or `X-API-Key: <token>`, from Settings → Advanced
-- Full reference: [API and MCP Server](https://github.com/dannyvfilms/Floppy/wiki/7.-API-and-MCP-Server)
-
 ## Install
 
 One stack, app plus Redis. Save it as `docker-compose.yml` and run `docker compose up -d`, or paste it straight into a Portainer stack.
@@ -168,6 +160,14 @@ Floppy started as a fork of [Yamtrack](https://github.com/FuzzyGrim/Yamtrack) an
 - **One thing to update:** the image moved to `ghcr.io/dannyvfilms/floppy`. Point your compose file at the new path when convenient — the old path stops receiving new builds.
 
 Floppy retains Yamtrack's core tracking, import, and self-hosting workflows, with the additional capabilities described above.
+
+## Building an integration?
+
+Floppy exposes a REST API at `/api/v1` and ships an [MCP server](mcp_server/). Integrations meant for Floppy should target **this repository** and the `ghcr.io/dannyvfilms/floppy` image — upstream Yamtrack does not carry Floppy's API surface, media types, or integration workflows, so "compatible with Yamtrack" and "compatible with Floppy" are not interchangeable claims.
+
+- Interactive docs: `/api/docs/` on any instance · raw schema: `/api/schema/`
+- Auth: `Authorization: Bearer <token>` or `X-API-Key: <token>`, from Settings → Advanced
+- Full reference: [API and MCP Server](https://github.com/dannyvfilms/Floppy/wiki/7.-API-and-MCP-Server)
 
 ## Configuration and deployment
 
