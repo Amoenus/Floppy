@@ -1597,3 +1597,74 @@ class GroupedAnimeStatisticsTests(TestCase):
         )
 
         self.assertGreater(minutes.get(MediaTypes.TV.value, 0), 0)
+
+
+class EpisodelessCompletedSeasonStatisticsTests(TestCase):
+    """A Completed season/show with zero Episode rows must still count.
+
+    Bulk imports (e.g. an MDBList season-rating import, see issue #369)
+    can persist a Season as COMPLETED via bulk_create, bypassing
+    Season.save()'s episode-completion fan-out, leaving it with no
+    Episode children. get_user_media() used to key the TV/Season "All
+    Time" buckets off existing Episode rows, making such shows/seasons
+    invisible in Statistics even though they exist in the library.
+    """
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="episodeless-user",
+            password="password",
+        )
+
+        self.tv_item = Item.objects.create(
+            media_id="900001",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Rating Only Show",
+        )
+        self.tv = TV.objects.create(
+            user=self.user,
+            item=self.tv_item,
+            status=Status.COMPLETED.value,
+        )
+
+        self.season_item = Item.objects.create(
+            media_id="900001",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=1,
+            title="Rating Only Show S1",
+        )
+        # bulk_create mirrors the bulk-import path: it skips Season.save(),
+        # so no Episode backfill happens here.
+        self.season = Season.objects.bulk_create(
+            [
+                Season(
+                    user=self.user,
+                    item=self.season_item,
+                    related_tv=self.tv,
+                    status=Status.COMPLETED.value,
+                    score=7,
+                ),
+            ],
+        )[0]
+
+    def test_episodeless_season_and_show_included_all_time(self):
+        """All Time stats must include the show/season despite zero episodes."""
+        self.assertEqual(
+            Episode.objects.filter(related_season=self.season).count(),
+            0,
+        )
+
+        user_media, media_count = statistics.get_user_media(self.user, None, None)
+
+        self.assertIn(
+            self.tv.id,
+            list(user_media[MediaTypes.TV.value].values_list("id", flat=True)),
+        )
+        self.assertIn(
+            self.season.id,
+            list(user_media[MediaTypes.SEASON.value].values_list("id", flat=True)),
+        )
+        self.assertEqual(media_count[MediaTypes.TV.value], 1)
+        self.assertEqual(media_count[MediaTypes.SEASON.value], 1)

@@ -44,8 +44,9 @@ def get_user_media(user, start_date, end_date):
 
     # Cache the base episodes query
     base_episodes = None
+    _all_time = start_date is None and end_date is None
     if TV in media_models or Season in media_models:
-        if start_date is None and end_date is None:
+        if _all_time:
             # No date filtering for "All Time"
             base_episodes = Episode.objects.filter(
                 related_season__user=user,
@@ -55,6 +56,13 @@ def get_user_media(user, start_date, end_date):
                 related_season__user=user,
                 end_date__range=(start_date, end_date),
             )
+
+    _status_filter = [
+        Status.IN_PROGRESS.value,
+        Status.COMPLETED.value,
+        Status.DROPPED.value,
+        Status.PAUSED.value,
+    ]
 
     _tv_ids = None  # saved for grouped-anime pass after the main loop
     _genre_anime_tv_ids = set()
@@ -72,11 +80,17 @@ def get_user_media(user, start_date, end_date):
                 "related_season__related_tv",
                 flat=True,
             ).distinct()
+            # "All Time" includes every show regardless of episode history
+            # (e.g. a season completed via rating-only import with no
+            # per-episode rows); date-ranged views still rely on episode
+            # activity since TV/Season have no date fields of their own.
+            base_tv_qs = (
+                TV.objects.filter(user=user, status__in=_status_filter)
+                if _all_time
+                else TV.objects.filter(id__in=_tv_ids, status__in=_status_filter)
+            )
             # Exclude grouped anime (library_media_type="anime") — they belong in the anime bucket
-            queryset = TV.objects.filter(
-                id__in=_tv_ids,
-                status__in=[Status.IN_PROGRESS.value, Status.COMPLETED.value, Status.DROPPED.value, Status.PAUSED.value],
-            ).exclude(
+            queryset = base_tv_qs.exclude(
                 item__library_media_type=MediaTypes.ANIME.value,
             )
             if _split_tv_anime:
@@ -114,10 +128,12 @@ def get_user_media(user, start_date, end_date):
                 "related_season",
                 flat=True,
             ).distinct()
-            queryset = Season.objects.filter(
-                id__in=season_ids,
-                status__in=[Status.IN_PROGRESS.value, Status.COMPLETED.value, Status.DROPPED.value, Status.PAUSED.value],
-            ).prefetch_related(
+            base_season_qs = (
+                Season.objects.filter(user=user, status__in=_status_filter)
+                if _all_time
+                else Season.objects.filter(id__in=season_ids, status__in=_status_filter)
+            )
+            queryset = base_season_qs.prefetch_related(
                 Prefetch("episodes", queryset=base_episodes),
             )
         # For other models, apply date filtering conditionally

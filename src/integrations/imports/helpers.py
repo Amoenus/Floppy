@@ -12,16 +12,18 @@ from django.contrib import messages
 from django.db.utils import OperationalError
 from django.utils import timezone
 from django_celery_beat.models import CrontabSchedule, PeriodicTask
+from requests import RequestException
 from simple_history.utils import bulk_create_with_history
 
 import app
+from app import providers
 from app.db_retry import (
     is_disk_io_error,
     is_lock_error,
     is_retryable_error,
     run_retryable_db_operation,
 )
-from app.models import MediaTypes
+from app.models import Episode, MediaTypes, Status
 
 logger = logging.getLogger(__name__)
 
@@ -225,6 +227,60 @@ def _ordered_media_types(bulk_media_list):
     return ordered_types
 
 
+def _backfill_completed_season_episodes(seasons):
+    """Create the missing Episode rows for seasons bulk-created as Completed.
+
+    Bulk imports persist Season instances via bulk_create, which bypasses
+    Season.save() and the episode-completion fan-out it normally performs
+    (see Season.save() in app/models/tv.py). A season imported directly as
+    Completed with no per-episode history (e.g. a rating-only import) would
+    otherwise end up with zero Episode rows, making it invisible to
+    exports/statistics that key off episode data.
+    """
+    completed_seasons = [
+        season
+        for season in seasons
+        if season.pk is not None and season.status == Status.COMPLETED.value
+    ]
+    if not completed_seasons:
+        return
+
+    existing_season_ids = set(
+        Episode.objects.filter(
+            related_season__in=completed_seasons,
+        ).values_list("related_season_id", flat=True).distinct(),
+    )
+
+    episodes_to_create = []
+    for season in completed_seasons:
+        if season.pk in existing_season_ids:
+            continue
+        try:
+            season_metadata = providers.services.get_media_metadata(
+                MediaTypes.SEASON.value,
+                season.item.media_id,
+                season.item.source,
+                [season.item.season_number],
+            )
+            episodes_to_create.extend(season.get_remaining_eps(season_metadata))
+        except (
+            providers.services.ProviderAPIError,
+            RequestException,
+            KeyError,
+            TypeError,
+            ValueError,
+        ) as error:
+            logger.warning(
+                "Skipping episode backfill due to missing metadata for %s S%s: %s",
+                season.item.media_id,
+                season.item.season_number,
+                error,
+            )
+
+    if episodes_to_create:
+        bulk_create_with_history(episodes_to_create, Episode, batch_size=500)
+
+
 def bulk_create_media(bulk_media_list, user):
     """Bulk create all media objects."""
     for media_type in _ordered_media_types(bulk_media_list):
@@ -256,6 +312,15 @@ def bulk_create_media(bulk_media_list, user):
             )
 
         retry_on_lock(create_media)
+
+    # Run after every media type (including any episodes the importer supplied
+    # directly) has been persisted, so the "does this season already have
+    # episodes" check below sees the importer's own episodes too.
+    bulk_seasons = bulk_media_list.get(MediaTypes.SEASON.value)
+    if bulk_seasons:
+        retry_on_lock(
+            lambda: _backfill_completed_season_episodes(bulk_seasons),
+        )
 
 
 def create_import_schedule(

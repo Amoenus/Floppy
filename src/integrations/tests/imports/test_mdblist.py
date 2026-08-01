@@ -215,6 +215,53 @@ class ImportMDBList(TestCase):
         season = Season.objects.get(item__media_id="12345", user=self.user)
         self.assertEqual(season.status, Status.COMPLETED.value)
 
+    def test_season_rating_backfills_episodes(self):
+        """Rating a season with no watch history still creates its episodes.
+
+        A season rating with no accompanying watched entry is built as a
+        COMPLETED Season via bulk_create, which bypasses Season.save()'s
+        normal episode-completion fan-out (see issue #369: exports/stats
+        were missing episodes for seasons completed this way).
+        """
+        responses = {
+            "/sync/ratings": {
+                "seasons": [
+                    {
+                        "rated_at": "2023-01-03T00:00:00Z",
+                        "rating": 7,
+                        "season": {
+                            "number": 1,
+                            "show": {"title": "Test Show", "ids": {"tmdb": 12345}},
+                        },
+                    },
+                ],
+            },
+        }
+        season_metadata = {
+            "title": "Season 1",
+            "image": "season_image.jpg",
+            "episodes": [
+                {"episode_number": 1, "still_path": "/still.jpg"},
+                {"episode_number": 2, "still_path": None},
+            ],
+            "max_progress": 2,
+            "_tvdb_episode_image_map": {},
+        }
+        with patch(
+            "app.providers.services.get_media_metadata",
+            side_effect=lambda media_type, *_a, **_kw: (
+                season_metadata if media_type == MediaTypes.SEASON.value else {}
+            ),
+        ):
+            self._run_import(responses)
+
+        season = Season.objects.get(item__media_id="12345", user=self.user)
+        self.assertEqual(season.status, Status.COMPLETED.value)
+        self.assertEqual(
+            Episode.objects.filter(related_season=season).count(),
+            2,
+        )
+
     def test_dropped_show_marks_existing_tv(self):
         """Dropped shows set DROPPED on the TV row built during the import."""
         responses = {
