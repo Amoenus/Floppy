@@ -3,8 +3,9 @@
 </p>
 
 <p align="center">
-  <b>Self-hosted media tracking for people who miss Trakt.</b><br>
-  Movies, TV, anime, manga, books, comics, games, board games, music, and podcasts — one library, one history, one set of stats.
+  <b>Self-hosted media tracking for people who miss Trakt and TV Time.</b><br>
+  Movies, TV, anime, manga, books, comics, games, board games, music, and podcasts. <br>
+  One library, one history, and one set of stats for everything you watch, read, play, or listen to.
 </p>
 
 <p align="center">
@@ -14,7 +15,7 @@
   <a href="https://github.com/dannyvfilms/Floppy/releases">Releases</a>
 </p>
 
-Floppy is a self-hosted tracker built around the things Trakt used to do well and then stopped doing: a real progress view that tells you what to watch next, a unified history you can actually scan, recap-style statistics, lists worth sharing, and integrations that sync instead of asking you to upload a file every few months.
+Floppy is a self-hosted tracker built around the things Trakt used to do well and then stopped doing: a real progress view that tells you what to watch next, a unified history you can actually scan, recap-style statistics, lists worth sharing, and integrations that sync instead of asking you to upload a file every few months. 
 
 It runs in Docker, keeps your data on your own hardware, and treats music and podcasts as first-class media rather than bolt-ons.
 
