@@ -61,7 +61,7 @@ Every PR must include these in the description:
 
 ## AI-Assisted Contributions
 
-If an AI agent (Claude Code, Cursor, GitHub Copilot, Codex, etc.) generated or substantially shaped the code you're submitting, say so in the PR description under an **AI Assistance** section:
+If an AI agent (Claude Code, Cursor, GitHub Copilot, Codex, Hermes Agent, etc.) generated or substantially shaped the code you're submitting, say so in the PR description under an **AI Assistance** section. Name the specific model that did the work, not just the tool or subscription it ran under (e.g. "Codex Subscription" alone isn't enough — say which model, such as `gpt-5.1-codex`):
 
 ```
 ## AI Assistance
