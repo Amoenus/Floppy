@@ -17,7 +17,11 @@ FORK_MEDIA_MODELS = {
 
 FORK_VALID_SOURCES = {
     MediaTypes.MUSIC.value: [Sources.MUSICBRAINZ.value, Sources.MANUAL.value],
-    MediaTypes.PODCAST.value: [Sources.POCKETCASTS.value, Sources.GPODDER.value],
+    MediaTypes.PODCAST.value: [
+        Sources.POCKETCASTS.value,
+        Sources.GPODDER.value,
+        Sources.AUDIOBOOKSHELF.value,
+    ],
     MediaTypes.COMIC_ISSUE.value: [Sources.COMICVINE.value, Sources.MANUAL.value],
 }
 
