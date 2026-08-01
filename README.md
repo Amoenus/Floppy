@@ -15,7 +15,7 @@
   <a href="https://github.com/dannyvfilms/Floppy/releases">Releases</a>
 </p>
 
-Floppy is a self-hosted tracker built around the things Trakt used to do well and then stopped doing: a real progress view that tells you what to watch next, a unified history you can actually scan, recap-style statistics, lists worth sharing, and integrations that sync instead of asking you to upload a file every few months. 
+Floppy is a self-hosted, all-in-one media tracker and personal media diary, a broader alternative to Trakt, Letterboxd, and TV Time for people who want one place for everything they watch, read, play, or listen to. It gives you a real progress view that tells you what to watch next, a unified history you can actually scan, recap-style statistics, shareable lists, owned-media collections, and integrations that sync instead of asking you to upload a file every few months.
 
 It runs in Docker, keeps your data on your own hardware, and treats music and podcasts as first-class media rather than bolt-ons.
 
@@ -82,7 +82,7 @@ That's the whole install. `SECRET` is the only variable you truly must set; `TMD
 
 ## What Floppy does
 
-Floppy covers the workflows Trakt used to serve: Time Left progress, a unified history feed, recap-style stats, public list sharing, and all-in-one tracking across every media type you care about.
+Floppy combines the jobs people often split between a watchlist, a media diary, and an owned-media collection: Time Left progress, a unified history feed, recap-style stats, public list sharing, and all-in-one tracking across every media type you care about.
 
 ### The big pieces
 
