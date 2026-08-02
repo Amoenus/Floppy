@@ -323,7 +323,9 @@ def refresh_podcast_episodes():
                         uuid_str = (
                             f"{rss_ep.get('title', '')}{rss_ep.get('published', '')}"
                         )
-                        episode_uuid = hashlib.md5(uuid_str.encode()).hexdigest()[:36]
+                        episode_uuid = hashlib.md5(
+                            uuid_str.encode(), usedforsecurity=False
+                        ).hexdigest()[:36]
 
                     if episode_uuid in existing_episodes:
                         continue

@@ -7,7 +7,9 @@ Pocket Casts history.
 
 import logging
 import re
-import xml.etree.ElementTree as ET
+from xml.etree.ElementTree import Element
+
+from defusedxml import ElementTree as ET  # noqa: N817  # long-standing alias
 from datetime import datetime
 
 import requests
@@ -173,7 +175,7 @@ def fetch_episodes_from_rss(rss_feed_url: str, limit: int | None = None) -> list
         return episodes
 
 
-def _parse_rss_feed(root: ET.Element, limit: int | None) -> list[dict]:
+def _parse_rss_feed(root: Element, limit: int | None) -> list[dict]:
     """Parse RSS 2.0 format feed."""
     episodes = []
     namespaces = {
@@ -246,7 +248,7 @@ def _parse_rss_feed(root: ET.Element, limit: int | None) -> list[dict]:
     return episodes
 
 
-def _parse_atom_feed(root: ET.Element, limit: int | None) -> list[dict]:
+def _parse_atom_feed(root: Element, limit: int | None) -> list[dict]:
     """Parse Atom format feed."""
     episodes = []
     namespaces = {

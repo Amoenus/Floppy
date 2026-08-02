@@ -19,7 +19,7 @@ class SeerrGlobalWebhookTests(TestCase):
     def _url(self):
         return reverse("seerr_global_webhook")
 
-    def _payload(self, secret="topsecret", requester="alice", **overrides):
+    def _payload(self, secret="topsecret", requester="alice", **overrides):  # noqa: S107  # test fixture value
         payload = {
             "media_type": "movie",
             "media_tmdbid": "123",

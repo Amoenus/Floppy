@@ -4,7 +4,7 @@ import logging
 from http import HTTPStatus
 from typing import Any
 from urllib.parse import quote_plus
-from xml.etree import ElementTree
+from defusedxml import ElementTree
 
 import requests
 from django.conf import settings

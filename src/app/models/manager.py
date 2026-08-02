@@ -1,3 +1,7 @@
+# ruff: noqa: S608, S610
+# This module hand-writes the case-insensitive JSON-array match the ORM cannot
+# express across postgres and sqlite. Every identifier goes through
+# connection.ops.quote_name() and the only user value is bound via params.
 import logging
 from collections import defaultdict
 from datetime import timedelta

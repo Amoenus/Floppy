@@ -6,6 +6,7 @@ import logging
 from datetime import date
 
 from django.conf import settings
+from django.utils import timezone
 
 from app.discover import cache_repo
 from app.discover.schemas import CandidateItem
@@ -216,7 +217,7 @@ class TMDbDiscoverAdapter:
             )
 
         if media_type == MediaTypes.TV.value:
-            today = date.today().isoformat()
+            today = timezone.localdate().isoformat()
             payload = self._cache_request(
                 "/discover/tv",
                 {

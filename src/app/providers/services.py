@@ -812,7 +812,7 @@ def _resolve_hardcover_isbn_search(query, page):
 
     try:
         ol_results = openlibrary.search(isbn, 1).get("results", [])
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001, S112  # best-effort provider lookup
         return None
 
     best_fallback_response = None
@@ -825,7 +825,7 @@ def _resolve_hardcover_isbn_search(query, page):
         if media_id:
             try:
                 ol_metadata = openlibrary.book(str(media_id))
-            except Exception:  # noqa: BLE001
+            except Exception:  # noqa: BLE001, S112  # best-effort provider lookup
                 ol_metadata = None
             else:
                 title = str(ol_metadata.get("title") or title).strip()
@@ -849,7 +849,7 @@ def _resolve_hardcover_isbn_search(query, page):
 
             try:
                 hardcover_results = hardcover.search(normalized_query, page)
-            except Exception:  # noqa: BLE001
+            except Exception:  # noqa: BLE001, S112  # best-effort provider lookup
                 continue
 
             if not best_fallback_response and hardcover_results.get("results"):
@@ -862,7 +862,7 @@ def _resolve_hardcover_isbn_search(query, page):
 
                 try:
                     hardcover_metadata = hardcover.book(media_id)
-                except Exception:  # noqa: BLE001
+                except Exception:  # noqa: BLE001, S112  # best-effort provider lookup
                     continue
 
                 hardcover_isbns = _extract_isbns(hardcover_metadata)
@@ -962,7 +962,7 @@ def search_by_id(media_type, query, source=None):
             metadata = openlibrary.book(query)
         elif _UUID_RE.match(query) and media_type == MediaTypes.MUSIC.value:
             metadata = musicbrainz.recording(query)
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001, S112  # best-effort provider lookup
         return None
 
     if not metadata or not metadata.get("title"):

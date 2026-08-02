@@ -235,7 +235,9 @@ class GPodderImporter:
         guid = (
             rss_episode.get("guid")
             or audio_url
-            or hashlib.md5(show.podcast_uuid.encode()).hexdigest()
+            or hashlib.md5(
+                show.podcast_uuid.encode(), usedforsecurity=False
+            ).hexdigest()
         )
 
         episode = PodcastEpisode.objects.filter(show=show, episode_uuid=guid).first()
@@ -486,7 +488,7 @@ class GPodderImporter:
         return candidates
 
     def _show_key(self, normalized_feed):
-        return f"gp_{hashlib.md5(normalized_feed.encode()).hexdigest()}"
+        return f"gp_{hashlib.md5(normalized_feed.encode(), usedforsecurity=False).hexdigest()}"
 
     def _parse_action_timestamp(self, action):
         timestamp = action.get("timestamp")

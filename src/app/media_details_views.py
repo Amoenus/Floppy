@@ -361,7 +361,7 @@ def media_details(
                                     if not episode_uuid:
                                         uuid_str = f"{episode_data.get('title', '')}{episode_data.get('published', '')}"
                                         episode_uuid = hashlib.md5(
-                                            uuid_str.encode()
+                                            uuid_str.encode(), usedforsecurity=False
                                         ).hexdigest()[:36]
 
                                     if episode_uuid in seen_uuids:
@@ -470,9 +470,9 @@ def media_details(
                         episode_uuid = episode_data.get("guid")
                         if not episode_uuid:
                             uuid_str = f"{episode_data.get('title', '')}{episode_data.get('published', '')}"
-                            episode_uuid = hashlib.md5(uuid_str.encode()).hexdigest()[
-                                :36
-                            ]
+                            episode_uuid = hashlib.md5(
+                                uuid_str.encode(), usedforsecurity=False
+                            ).hexdigest()[:36]
 
                         if episode_uuid in existing_uuids:
                             continue
