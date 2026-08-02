@@ -262,7 +262,7 @@ class MediaManagerTests(TestCase):
 
         self.assertTrue(hasattr(prefetched_queryset, "_prefetch_related_lookups"))
         prefetch_lookups = prefetched_queryset._prefetch_related_lookups
-        self.assertEqual(len(prefetch_lookups), 3)
+        self.assertEqual(len(prefetch_lookups), 4)
 
         queryset = Season.objects.filter(user=self.user.id)
         prefetched_queryset = manager._apply_prefetch_related(
@@ -272,7 +272,7 @@ class MediaManagerTests(TestCase):
 
         self.assertTrue(hasattr(prefetched_queryset, "_prefetch_related_lookups"))
         prefetch_lookups = prefetched_queryset._prefetch_related_lookups
-        self.assertEqual(len(prefetch_lookups), 2)
+        self.assertEqual(len(prefetch_lookups), 3)
 
         queryset = Movie.objects.filter(user=self.user.id)
         prefetched_queryset = manager._apply_prefetch_related(
@@ -282,7 +282,7 @@ class MediaManagerTests(TestCase):
 
         self.assertTrue(hasattr(prefetched_queryset, "_prefetch_related_lookups"))
         prefetch_lookups = prefetched_queryset._prefetch_related_lookups
-        self.assertEqual(len(prefetch_lookups), 1)
+        self.assertEqual(len(prefetch_lookups), 2)
 
     def test_get_media_list_with_prefetch_related(self):
         """Test the get_media_list method with prefetch_related for TV and Season."""

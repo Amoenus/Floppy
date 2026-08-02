@@ -61,6 +61,16 @@ def no_underscore(arg1):
 
 
 @register.filter
+def user_tag_names(item_tags, user):
+    """Return tag names from a prefetched ItemTag queryset, scoped to one user."""
+    if not item_tags or user is None:
+        return []
+    return [
+        item_tag.tag.name for item_tag in item_tags if item_tag.tag.user_id == user.id
+    ]
+
+
+@register.filter
 def title_preserve_acronyms(value):
     """Title-case text while preserving all-uppercase acronyms."""
     if not isinstance(value, str):

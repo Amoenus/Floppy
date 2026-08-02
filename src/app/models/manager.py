@@ -25,6 +25,7 @@ from django.utils import timezone
 import events
 import users
 from app.models.choices import MediaTypes, Sources, Status
+from app.models.discovery import ItemTag
 from app.models.item import Item
 
 logger = logging.getLogger(__name__)
@@ -516,6 +517,10 @@ class MediaManager(models.Manager):
                     "seasons__episodes",
                     queryset=episode_qs,
                 ),
+                Prefetch(
+                    "item__item_tags",
+                    queryset=ItemTag.objects.select_related("tag"),
+                ),
             )
 
         base_queryset = queryset.prefetch_related(
@@ -523,6 +528,10 @@ class MediaManager(models.Manager):
                 "item__event_set",
                 queryset=events.models.Event.objects.all(),
                 to_attr="prefetched_events",
+            ),
+            Prefetch(
+                "item__item_tags",
+                queryset=ItemTag.objects.select_related("tag"),
             ),
         )
 
