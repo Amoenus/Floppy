@@ -22,7 +22,7 @@ from app.history_cache_utils import (
     _music_history_user_q,
     _normalize_logging_style,
 )
-from app.models import BoardGame, Episode, Game, Movie
+from app.models import Anime, BoardGame, Book, Comic, Episode, Game, Manga, Movie
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +81,28 @@ def build_history_index(user, logging_style_override=None):
     )
     movie_count = _add_days(days, movie_end_days)
     movie_count += _add_days(days, movie_start_days)
+
+    # Reading (books, comics, manga) and flat anime. These are rendered by
+    # build_history_day() in exactly this shape, so they have to be indexed
+    # here too - a day whose only activity is a finished book is otherwise
+    # never asked for, and the read silently never appears in history.
+    reading_count = 0
+    for model in (Book, Comic, Manga, Anime):
+        reading_qs = model.objects.filter(user=user)
+        reading_end_days = (
+            reading_qs.filter(end_date__isnull=False)
+            .annotate(day=TruncDate("end_date"))
+            .values_list("day", flat=True)
+            .distinct()
+        )
+        reading_start_days = (
+            reading_qs.filter(end_date__isnull=True, start_date__isnull=False)
+            .annotate(day=TruncDate("start_date"))
+            .values_list("day", flat=True)
+            .distinct()
+        )
+        reading_count += _add_days(days, reading_end_days)
+        reading_count += _add_days(days, reading_start_days)
 
     HistoricalMusic = apps.get_model("app", "HistoricalMusic")
     music_days = (
@@ -250,12 +272,13 @@ def build_history_index(user, logging_style_override=None):
     day_list = sorted(days, reverse=True)
     day_keys = [_day_key_for_date(day) for day in day_list]
     logger.info(
-        "history_index_build user_id=%s logging_style=%s days=%s episode_days=%s movie_days=%s music_days=%s podcast_days=%s game_days=%s boardgame_days=%s elapsed_ms=%.2f",
+        "history_index_build user_id=%s logging_style=%s days=%s episode_days=%s movie_days=%s reading_days=%s music_days=%s podcast_days=%s game_days=%s boardgame_days=%s elapsed_ms=%.2f",
         user.id,
         logging_style,
         len(day_keys),
         episode_count,
         movie_count,
+        reading_count,
         music_count,
         podcast_count,
         game_count,

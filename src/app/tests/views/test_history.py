@@ -1497,7 +1497,18 @@ class HistoryViewAuthorFilterTests(TestCase):
         self.assertIn("Credited Manga", titles)
         self.assertNotIn("Uncredited Book", titles)
 
-    def test_history_without_person_filter_does_not_include_reading_entries(self):
+    def test_history_without_person_filter_is_not_narrowed_to_credited_entries(self):
+        """Unfiltered history shows every read, credited to this person or not.
+
+        This asserted the opposite until reading types were put on the History
+        timeline generally rather than only under a matching filter (see
+        'feat(history): show books, comics, manga, and flat anime on the
+        History timeline'). The old assertion outlived that change because the
+        cached month view renders only indexed days and reading days were
+        never indexed, so the entries stayed invisible on the default view.
+        What the person filter does is narrow to credited items, which is what
+        the sibling test above covers.
+        """
         response = self.client.get(reverse("history"))
 
         self.assertEqual(response.status_code, 200)
@@ -1506,7 +1517,8 @@ class HistoryViewAuthorFilterTests(TestCase):
             for day in response.context["history_days"]
             for entry in day.get("entries", [])
         ]
-        self.assertNotIn("Credited Book", titles)
+        self.assertIn("Credited Book", titles)
+        self.assertIn("Uncredited Book", titles)
 
 
 class HistoryImpliedGenreFilterTests(TestCase):

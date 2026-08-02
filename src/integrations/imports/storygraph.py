@@ -46,7 +46,15 @@ BOOK_METADATA_PROVIDER_ORDER = (Sources.HARDCOVER.value, Sources.OPENLIBRARY.val
 TITLE_MATCH_THRESHOLD = 0.72
 MAX_SEARCH_RESULTS = 5
 MAX_TITLE_CANDIDATES = 3
-BEST_TIER = 3
+# Candidates rank on author agreement first, then on how exactly the title
+# lines up. Author agreement leads because a bare title with no author behind
+# it is the weakest evidence there is; the title rank only breaks ties.
+AUTHOR_RANK = {"match": 2, "unknown": 1}
+EXACT_TITLE_RANK = 2
+LOOSE_TITLE_RANK = 1
+LEADING_ARTICLES = frozenset({"a", "an", "the"})
+NO_MATCH = (0, 0, False, 0.0)
+BEST_MATCH = (AUTHOR_RANK["match"], EXACT_TITLE_RANK, True, 1.0)
 
 
 class Read(NamedTuple):
@@ -87,6 +95,18 @@ def parse_reads(dates_read):
 
     reads.sort(key=lambda read: read.end or read.start)
     return reads
+
+
+def read_day(value):
+    """Return the local calendar day a stored or parsed read date falls on.
+
+    ``parse_date`` builds local midnight, which the database keeps in UTC -
+    for any zone east of Greenwich that is the *previous* day. Reading
+    ``.date()`` off either side would compare a local day against a UTC one,
+    so both sides go through this instead. That mismatch is invisible under
+    ``TZ=UTC``, which is why the test suite never caught it.
+    """
+    return timezone.localdate(value) if value else None
 
 
 def determine_status(raw_status):
@@ -184,6 +204,71 @@ def authors_overlap(target_authors, provider_authors):
     return False
 
 
+def prepends_extra_words(target_title, candidate_title):
+    """Return whether the candidate is the export title with words bolted on front.
+
+    Closeness alone cannot separate a novel from a companion book about it:
+    'Spark Notes Harry Potter and the Sorcerer's Stone' repeats the export
+    title in full and so scores fractionally above the novel itself, whose
+    edition differs by a word ('Philosopher's'). What gives the guide away is
+    position - it carries the title complete and unaltered, with framing words
+    in front of it.
+
+    The test is deliberately narrow: the export title must appear in the
+    candidate word for word, starting somewhere after the beginning. A title
+    that merely differs in spelling ('Valour' / 'Valor') or gains words in the
+    middle ('A Storm of Swords, Part 2: ...') is not prepended, and is left
+    for closeness to judge. Leading articles vary freely between editions
+    ('Dragon Keeper' / 'The Dragon Keeper'), so they are dropped first.
+    """
+    target = _significant_words(target_title)
+    candidate = _significant_words(candidate_title)
+    if not target or len(candidate) <= len(target):
+        return False
+    return any(
+        candidate[start : start + len(target)] == target
+        for start in range(1, len(candidate) - len(target) + 1)
+    )
+
+
+def _significant_words(value):
+    """Split a title into normalized words, dropping a leading article."""
+    words = normalize_name(value).split()
+    if words and words[0] in LEADING_ARTICLES:
+        words = words[1:]
+    return words
+
+
+def match_rank(target_title, candidate_title, verdict):
+    """Rank a candidate by author agreement, then title exactness, then closeness.
+
+    The title rank exists because ``titles_match`` accepts a prefix in either
+    direction. That is what lets a CSV title of 'Mistborn' match 'Mistborn:
+    The Final Empire', but read the other way it also lets a bare 'The
+    Visitor' answer for 'The Visitor: Kill or Cure' - a different book by the
+    same author. Both agree on the author, so without a tiebreak the two are
+    indistinguishable and whichever query ran first won.
+
+    Closeness settles the rest. A novel published in halves has a record for
+    each half and one for the whole, all by the same author and none titled
+    exactly as the export writes it: 'A Storm of Swords: Blood and Gold'
+    reads much closer to 'A Storm of Swords, Part 2: Blood and Gold' (0.90)
+    than to the bare 'A Storm of Swords' (0.69), so each half keeps its own
+    book instead of both collapsing onto the whole novel.
+    """
+    title_rank = (
+        EXACT_TITLE_RANK
+        if normalize_name(target_title) == normalize_name(candidate_title)
+        else LOOSE_TITLE_RANK
+    )
+    return (
+        AUTHOR_RANK[verdict],
+        title_rank,
+        not prepends_extra_words(target_title, candidate_title),
+        title_similarity(target_title, candidate_title),
+    )
+
+
 def classify_authors(target_authors, candidate_authors):
     """Classify author agreement as 'match', 'unknown', or 'conflict'."""
     if not target_authors:
@@ -260,8 +345,15 @@ class BookResolver:
         when the truth is that nothing was ever actually checked. Any other
         exception is genuinely unexpected and is not caught here at all, so
         it can abort the import as the design spec requires.
+
+        Only an exact title from an author-confirmed record ends the walk
+        outright; a looser match keeps looking, because the remaining queries
+        are what turn up the record that actually carries the full title. To
+        stop that costing every book a full ladder, an author-confirmed match
+        does end the walk at the provider boundary - Hardcover is the
+        preferred source, and Open Library is only here for coverage.
         """
-        best_tier = 0
+        best_rank = NO_MATCH
         best_result = None
         last_error = None
         any_success = False
@@ -269,15 +361,17 @@ class BookResolver:
         for source in BOOK_METADATA_PROVIDER_ORDER:
             for query in self._queries(title, authors, isbn):
                 try:
-                    tier, result = self._match_query(source, query, title, authors)
+                    rank, result = self._match_query(source, query, title, authors)
                 except services.ProviderAPIError as error:
                     last_error = error
                     continue
                 any_success = True
-                if tier > best_tier:
-                    best_tier, best_result = tier, result
-                    if best_tier == BEST_TIER:
+                if rank > best_rank:
+                    best_rank, best_result = rank, result
+                    if best_rank == BEST_MATCH:
                         return best_result
+            if best_rank[0] == AUTHOR_RANK["match"]:
+                break
 
         if best_result is None and not any_success and last_error is not None:
             raise last_error
@@ -285,7 +379,7 @@ class BookResolver:
         return best_result
 
     def _match_query(self, source, query, title, authors):
-        """Search one provider with one query, returning ``(tier, result)``.
+        """Search one provider with one query, returning ``(rank, result)``.
 
         Provider failures are not caught here: ``services.search`` and
         ``services.get_media_metadata`` only raise ``ProviderAPIError`` once
@@ -297,7 +391,7 @@ class BookResolver:
         response = services.search(MediaTypes.BOOK.value, query, 1, source)
 
         results = response.get("results", []) if isinstance(response, dict) else []
-        best_tier = 0
+        best_rank = NO_MATCH
         best_result = None
 
         for candidate in self._title_candidates(results, title):
@@ -311,21 +405,22 @@ class BookResolver:
                 source,
             )
 
-            if not titles_match(title, str(metadata.get("title") or "")):
+            candidate_title = str(metadata.get("title") or "")
+            if not titles_match(title, candidate_title):
                 continue
 
             verdict = classify_authors(authors, extract_provider_authors(metadata))
             if verdict == "conflict":
                 continue
 
-            tier = BEST_TIER if verdict == "match" else 2
-            if tier > best_tier:
-                best_tier = tier
+            rank = match_rank(title, candidate_title, verdict)
+            if rank > best_rank:
+                best_rank = rank
                 best_result = (source, str(media_id), metadata)
-                if best_tier == BEST_TIER:
+                if best_rank == BEST_MATCH:
                     break
 
-        return best_tier, best_result
+        return best_rank, best_result
 
     def _title_candidates(self, results, title):
         """Return the best title-matching search results, best first."""
@@ -477,7 +572,7 @@ class StoryGraphImporter:
         for book in model.objects.filter(user=self.user).select_related("item"):
             key = (book.item.source, book.item.media_id)
             if book.status == Status.COMPLETED.value:
-                tracked_dates[key].add(book.end_date.date() if book.end_date else None)
+                tracked_dates[key].add(read_day(book.end_date))
             else:
                 tracked_statuses[key].add(book.status)
         return tracked_dates, tracked_statuses
@@ -579,10 +674,10 @@ class StoryGraphImporter:
 
         instances = []
         for read in reads:
-            read_day = read.end.date() if read.end else None
-            if read_day in tracked_dates:
+            day = read_day(read.end)
+            if day in tracked_dates:
                 continue
-            tracked_dates.add(read_day)
+            tracked_dates.add(day)
             instances.append(
                 self._build_instance(
                     item,

@@ -4,7 +4,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.test import SimpleTestCase, TestCase
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -967,3 +967,337 @@ class StoryGraphWiring(TestCase):
 
         self.assertEqual(response.status_code, 302)
         delay.assert_called_once()
+
+
+@override_settings(TIME_ZONE="Europe/Berlin")
+class ImportStoryGraphNonUtcTimezone(TestCase):
+    """Dedup must survive a server timezone that is not UTC.
+
+    Dates parsed from the export are local midnight, which Postgres stores as
+    the previous day in UTC for any zone east of Greenwich. Comparing a stored
+    date against a parsed one therefore has to happen in the same zone, or
+    every read looks new on every import.
+    """
+
+    def setUp(self):
+        """Create the user and import the fixture once."""
+        self.user = get_user_model().objects.create_user(
+            username="test",
+            password="12345",
+        )
+        self._import()
+
+    def _import(self, mode="new"):
+        """Import the fixture export with the providers mocked out."""
+        with (
+            patch(
+                "integrations.imports.storygraph.services.search",
+                side_effect=fake_search,
+            ),
+            patch(
+                "integrations.imports.storygraph.services.get_media_metadata",
+                side_effect=fake_metadata,
+            ),
+            Path(mock_path / "import_storygraph.csv").open("rb") as file,
+        ):
+            return storygraph.importer(file, self.user, mode)
+
+    def test_reimport_creates_nothing(self):
+        """Importing the same export twice leaves the entry count unchanged."""
+        before = Book.objects.filter(user=self.user).count()
+        counts, _ = self._import()
+        self.assertEqual(counts.get("book", 0), 0)
+        self.assertEqual(Book.objects.filter(user=self.user).count(), before)
+
+    def test_read_dates_survive_the_round_trip(self):
+        """A read keeps its local calendar day after being stored."""
+        books = list(
+            Book.objects.filter(user=self.user, item__title="Re-read Book").order_by(
+                "end_date",
+            ),
+        )
+        self.assertEqual(len(books), 2)
+        local_days = [timezone.localtime(book.end_date).date() for book in books]
+        self.assertEqual(
+            local_days,
+            [datetime(2021, 9, 14).date(), datetime(2022, 11, 28).date()],
+        )
+
+
+class ResolverPrefersTheExactTitle(SimpleTestCase):
+    """A more specific title must not be swallowed by a shorter provider match.
+
+    ``titles_match`` accepts a prefix in either direction so that a CSV title
+    like 'Mistborn' still matches 'Mistborn: The Final Empire'. Read the other
+    way that same rule lets a bare 'The Visitor' answer for 'The Visitor: Kill
+    or Cure' - a different book by the same author. Both agree on the author,
+    so both reached the top tier and whichever query ran first won, which put
+    two unrelated books onto one item.
+
+    The fixtures mirror what Hardcover actually returns for these queries.
+    """
+
+    VAGUE = {
+        "media_id": "535841",
+        "title": "The Visitor",
+        "max_progress": 100,
+        "details": {"author": ["Mark Lawrence"]},
+    }
+    EXACT = {
+        "media_id": "2179794",
+        "title": "The Visitor: Kill or Cure",
+        "max_progress": 120,
+        "details": {"author": ["Mark Lawrence"]},
+    }
+
+    def _resolve(self, title, isbn, results_by_query):
+        def search(_media_type, query, _page, source):
+            if source != Sources.HARDCOVER.value:
+                return {"results": []}
+            return {"results": results_by_query.get(query, [])}
+
+        def metadata(_media_type, media_id, _source):
+            return self.VAGUE if str(media_id) == "535841" else self.EXACT
+
+        with (
+            patch(
+                "integrations.imports.storygraph.services.search",
+                side_effect=search,
+            ),
+            patch(
+                "integrations.imports.storygraph.services.get_media_metadata",
+                side_effect=metadata,
+            ),
+        ):
+            return storygraph.BookResolver({}).resolve(title, ["Mark Lawrence"], isbn)
+
+    def test_exact_title_beats_an_earlier_prefix_match(self):
+        """The title query's exact hit wins over the ISBN query's vaguer one.
+
+        Hardcover maps 9781250265890 to the bare 'The Visitor' record, so the
+        ISBN query - which runs first - used to short circuit the whole ladder.
+        """
+        vague_hit = [{"media_id": "535841", "title": "The Visitor"}]
+        exact_hit = [{"media_id": "2179794", "title": "The Visitor: Kill or Cure"}]
+        resolved = self._resolve(
+            "The Visitor: Kill or Cure",
+            "9781250265890",
+            {
+                "9781250265890": vague_hit,
+                "The Visitor: Kill or Cure Mark Lawrence": exact_hit,
+                "The Visitor: Kill or Cure": exact_hit,
+            },
+        )
+
+        self.assertIsNotNone(resolved)
+        _source, media_id, metadata = resolved
+        self.assertEqual(media_id, "2179794")
+        self.assertEqual(metadata["title"], "The Visitor: Kill or Cure")
+
+    def test_prefix_match_still_resolves_when_nothing_better_exists(self):
+        """A row whose only candidate is the vaguer record still resolves."""
+        vague_hit = [{"media_id": "535841", "title": "The Visitor"}]
+        resolved = self._resolve(
+            "The Visitor: A Wild Cards Story",
+            "",
+            {
+                "The Visitor: A Wild Cards Story Mark Lawrence": vague_hit,
+                "The Visitor: A Wild Cards Story": vague_hit,
+            },
+        )
+
+        self.assertIsNotNone(resolved)
+        _source, media_id, _metadata = resolved
+        self.assertEqual(media_id, "535841")
+
+    def test_shorter_csv_title_still_matches_a_subtitled_edition(self):
+        """The Mistborn case the prefix rule exists for keeps working."""
+        exact_hit = [{"media_id": "2179794", "title": "The Visitor: Kill or Cure"}]
+        resolved = self._resolve(
+            "The Visitor",
+            "",
+            {
+                "The Visitor Mark Lawrence": exact_hit,
+                "The Visitor": exact_hit,
+            },
+        )
+
+        self.assertIsNotNone(resolved)
+        _source, media_id, _metadata = resolved
+        self.assertEqual(media_id, "2179794")
+
+
+class ResolverPrefersTheClosestTitle(SimpleTestCase):
+    """Split volumes must resolve to their own record, not the whole novel.
+
+    'A Storm of Swords: Blood and Gold' is one half of a novel Hardcover also
+    carries whole, as 'A Storm of Swords'. Both records share the author and
+    neither title matches exactly, so they tie on author and exactness alike.
+    The ISBN query answers with the whole novel and runs first, so without a
+    closeness tiebreak both halves collapse onto it.
+    """
+
+    WHOLE = {
+        "media_id": "236",
+        "title": "A Storm of Swords",
+        "max_progress": 900,
+        "details": {"author": ["George R. R. Martin"]},
+    }
+    PART_TWO = {
+        "media_id": "485846",
+        "title": "A Storm of Swords, Part 2: Blood and Gold",
+        "max_progress": 450,
+        "details": {"author": ["George R. R. Martin"]},
+    }
+
+    def _resolve(self, title, isbn, results_by_query):
+        def search(_media_type, query, _page, source):
+            if source != Sources.HARDCOVER.value:
+                return {"results": []}
+            return {"results": results_by_query.get(query, [])}
+
+        def metadata(_media_type, media_id, _source):
+            return self.WHOLE if str(media_id) == "236" else self.PART_TWO
+
+        with (
+            patch(
+                "integrations.imports.storygraph.services.search",
+                side_effect=search,
+            ),
+            patch(
+                "integrations.imports.storygraph.services.get_media_metadata",
+                side_effect=metadata,
+            ),
+        ):
+            return storygraph.BookResolver({}).resolve(
+                title,
+                ["George R. R. Martin"],
+                isbn,
+            )
+
+    def test_split_volume_beats_the_whole_novel(self):
+        """The half-volume record wins over the whole novel the ISBN points at."""
+        whole = {"media_id": "236", "title": "A Storm of Swords"}
+        part = {
+            "media_id": "485846",
+            "title": "A Storm of Swords, Part 2: Blood and Gold",
+        }
+        resolved = self._resolve(
+            "A Storm of Swords: Blood and Gold",
+            "9780007119554",
+            {
+                "9780007119554": [whole],
+                "A Storm of Swords: Blood and Gold George R. R. Martin": [whole, part],
+                "A Storm of Swords: Blood and Gold": [whole, part],
+            },
+        )
+
+        self.assertIsNotNone(resolved)
+        _source, media_id, metadata = resolved
+        self.assertEqual(media_id, "485846")
+        self.assertEqual(metadata["title"], "A Storm of Swords, Part 2: Blood and Gold")
+
+    def test_whole_novel_still_wins_for_the_whole_novel(self):
+        """A row that really is the whole novel is not dragged onto a half."""
+        whole = {"media_id": "236", "title": "A Storm of Swords"}
+        part = {
+            "media_id": "485846",
+            "title": "A Storm of Swords, Part 2: Blood and Gold",
+        }
+        resolved = self._resolve(
+            "A Storm of Swords",
+            "",
+            {
+                "A Storm of Swords George R. R. Martin": [whole, part],
+                "A Storm of Swords": [whole, part],
+            },
+        )
+
+        self.assertIsNotNone(resolved)
+        _source, media_id, _metadata = resolved
+        self.assertEqual(media_id, "236")
+
+
+class ResolverRejectsPrependedTitles(SimpleTestCase):
+    """A study guide must not outscore the novel it is about.
+
+    'Spark Notes Harry Potter and the Sorcerer's Stone' contains the whole
+    export title, so raw closeness scores it a hair above the real novel,
+    whose US/UK edition differs by one word ('Philosopher's'). What separates
+    them is where the shared text sits: the guide bolts words on in front,
+    while a genuine edition or volume starts on the same word.
+    """
+
+    NOVEL = {
+        "media_id": "328491",
+        "title": "Harry Potter and the Philosopher's Stone",
+        "max_progress": 223,
+        "details": {"author": ["J.K. Rowling"]},
+    }
+    GUIDE = {
+        "media_id": "749475",
+        "title": "Spark Notes Harry Potter and the Sorcerer's Stone",
+        "max_progress": 80,
+        "details": {"author": ["J.K. Rowling"]},
+    }
+
+    def _resolve(self, title):
+        hits = [
+            {"media_id": "328491", "title": self.NOVEL["title"]},
+            {"media_id": "749475", "title": self.GUIDE["title"]},
+        ]
+
+        def search(_media_type, _query, _page, source):
+            return {"results": hits if source == Sources.HARDCOVER.value else []}
+
+        def metadata(_media_type, media_id, _source):
+            return self.NOVEL if str(media_id) == "328491" else self.GUIDE
+
+        with (
+            patch(
+                "integrations.imports.storygraph.services.search",
+                side_effect=search,
+            ),
+            patch(
+                "integrations.imports.storygraph.services.get_media_metadata",
+                side_effect=metadata,
+            ),
+        ):
+            return storygraph.BookResolver({}).resolve(title, ["J.K. Rowling"], "")
+
+    def test_novel_beats_a_study_guide_about_it(self):
+        """The edition difference loses to the novel, not to the companion book."""
+        resolved = self._resolve("Harry Potter and the Sorcerer's Stone")
+
+        self.assertIsNotNone(resolved)
+        _source, media_id, _metadata = resolved
+        self.assertEqual(media_id, "328491")
+
+    def test_only_genuine_prepending_is_flagged(self):
+        """Spelling variants and mid-title inserts are not prepending."""
+        self.assertTrue(
+            storygraph.prepends_extra_words(
+                "Harry Potter and the Sorcerer's Stone",
+                "Spark Notes Harry Potter and the Sorcerer's Stone",
+            ),
+        )
+        # A leading article is not extra framing.
+        self.assertFalse(
+            storygraph.prepends_extra_words("Dragon Keeper", "The Dragon Keeper"),
+        )
+        # A different spelling is a job for closeness, not this guard: flagging
+        # it let an Italian edition of 'Valour' beat the US 'Valor'.
+        self.assertFalse(storygraph.prepends_extra_words("Valour", "Valor"))
+        self.assertFalse(
+            storygraph.prepends_extra_words(
+                "Valour",
+                "Valour. L'astro splendente. La fede e l'inganno",
+            ),
+        )
+        # Words added in the middle are a half-volume, not a companion book.
+        self.assertFalse(
+            storygraph.prepends_extra_words(
+                "A Storm of Swords: Blood and Gold",
+                "A Storm of Swords, Part 2: Blood and Gold",
+            ),
+        )

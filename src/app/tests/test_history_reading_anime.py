@@ -118,3 +118,35 @@ class ReadingAnimeHistoryDayTests(TestCase):
         for call in mock_invalidate.call_args_list:
             called_day_keys.update(call.kwargs.get("day_keys") or [])
         self.assertIn(self.day_key, called_day_keys)
+
+    def test_reading_and_anime_days_reach_the_history_index(self):
+        """A day whose only activity is reading must be an indexed history day.
+
+        The cached month view only renders days the index lists, so a read on
+        a day with no episode/movie/game/music activity was invisible in
+        history even though build_history_day() rendered it correctly.
+        """
+        self._make(Book, MediaTypes.BOOK.value, "book-5", "Indexed Book", 8)
+
+        day_keys = history_cache.build_history_index(self.user)
+
+        self.assertIn(self.day_key, day_keys)
+
+    def test_in_progress_reading_is_indexed_from_its_start_date(self):
+        """An unfinished read is indexed on its start day, as the day builder renders it."""
+        item = Item.objects.create(
+            media_id="book-6",
+            source=Sources.MANUAL.value,
+            media_type=MediaTypes.BOOK.value,
+            title="Started Book",
+            image="http://example.com/x.jpg",
+        )
+        Book.objects.create(
+            item=item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+            progress=1,
+            start_date=self.now,
+        )
+
+        self.assertIn(self.day_key, history_cache.build_history_index(self.user))
