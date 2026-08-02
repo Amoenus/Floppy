@@ -1185,6 +1185,37 @@ class HomeScreenViewTests(TestCase):
         self.user.refresh_from_db()
         self.assertFalse(self.user.home_show_media_type_headers)
 
+    def test_home_screen_deleted_last_row_does_not_reseed(self):
+        self._set_enabled_media_types(MediaTypes.TV.value)
+
+        payload = [{"media_type": MediaTypes.TV.value, "rows": []}]
+        self.client.post(
+            reverse("home_screen"),
+            {"home_screen_sections": json.dumps(payload)},
+        )
+        self.assertEqual(
+            HomeScreenRow.objects.filter(
+                user=self.user,
+                media_type=MediaTypes.TV.value,
+            ).count(),
+            0,
+        )
+
+        response = self.client.get(reverse("home_screen"))
+
+        self.assertEqual(
+            HomeScreenRow.objects.filter(
+                user=self.user,
+                media_type=MediaTypes.TV.value,
+            ).count(),
+            0,
+        )
+        sections = {
+            section["media_type"]: section
+            for section in json.loads(response.context["home_screen_sections_json"])
+        }
+        self.assertEqual(sections[MediaTypes.TV.value]["rows"], [])
+
     def test_serialize_sections_includes_custom_title(self):
         self._set_enabled_media_types(MediaTypes.MOVIE.value)
         HomeScreenRow.objects.create(

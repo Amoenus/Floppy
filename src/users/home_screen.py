@@ -690,10 +690,12 @@ def ensure_home_screen_rows(user) -> list[HomeScreenRow]:
         )
 
     existing_media_types = {row.media_type for row in rows}
+    saved_media_types = set(getattr(user, "home_screen_media_type_order", None) or [])
     missing_media_types = [
         media_type
         for media_type in _seeded_home_media_types(user)
         if media_type not in existing_media_types
+        and media_type not in saved_media_types
     ]
     if missing_media_types:
         HomeScreenRow.objects.bulk_create(
