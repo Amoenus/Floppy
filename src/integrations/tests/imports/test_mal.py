@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 import requests
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, tag
 
 from app.models import (
     Anime,
@@ -92,6 +92,7 @@ class ImportMAL(TestCase):
         self.assertEqual(erased_item.localized_title, "Erased")
         self.assertEqual(erased_item.original_title, "Boku dake ga Inai Machi")
 
+    @tag("network")
     def test_user_not_found(self):
         """Test that an error is raised if the user is not found."""
         self.assertRaises(

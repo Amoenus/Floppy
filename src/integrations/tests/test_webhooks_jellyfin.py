@@ -2,7 +2,7 @@ import json
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.test import Client, TestCase
+from django.test import Client, TestCase, tag
 from django.urls import reverse
 
 from app import live_playback
@@ -41,6 +41,7 @@ class JellyfinWebhookTests(TestCase):
         response = self.client.post(url, data={}, content_type="application/json")
         self.assertEqual(response.status_code, 401)
 
+    @tag("network")
     def test_tv_episode_mark_played(self):
         """Test webhook handles TV episode mark played event."""
         payload = {
@@ -87,6 +88,7 @@ class JellyfinWebhookTests(TestCase):
         )
         self.assertIsNotNone(episode.end_date)
 
+    @tag("network")
     def test_movie_mark_played(self):
         """Test webhook handles movie mark played event."""
         payload = {
@@ -116,6 +118,7 @@ class JellyfinWebhookTests(TestCase):
         self.assertEqual(movie.status, Status.COMPLETED.value)
         self.assertEqual(movie.progress, 1)
 
+    @tag("network")
     @patch("app.providers.mal.anime")
     @patch("app.providers.tmdb.find")
     def test_anime_movie_mark_played(self, mock_tmdb_find, mock_mal_anime):
@@ -432,6 +435,7 @@ class JellyfinWebhookTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(Movie.objects.count(), 0)
 
+    @tag("network")
     def test_mark_unplayed(self):
         """Test webhook handles not finished events."""
         payload = {
@@ -511,6 +515,7 @@ class JellyfinWebhookTests(TestCase):
         self.assertEqual(movie.status, Status.COMPLETED.value)
         self.assertEqual(movie.progress, 1)
 
+    @tag("network")
     def test_mark_unplayed_event_ignored_when_disabled(self):
         """Test MarkUnplayed events are ignored unless opted in by the user."""
         self.assertFalse(self.user.jellyfin_mark_unplayed_enabled)
@@ -622,6 +627,7 @@ class JellyfinWebhookTests(TestCase):
             ).exists(),
         )
 
+    @tag("network")
     @patch("app.providers.tmdb.tv_with_seasons")
     @patch("app.providers.tmdb.find")
     def test_tv_episode_uses_existing_tvdb_tracked_item(
@@ -1075,6 +1081,7 @@ class JellyfinWebhookTests(TestCase):
         )
         self.assertIsNotNone(episode.end_date)
 
+    @tag("network")
     def test_repeated_watch(self):
         """Test webhook handles repeated watches."""
         payload = {

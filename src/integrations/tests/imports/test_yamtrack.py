@@ -3,7 +3,7 @@ from io import BytesIO
 from pathlib import Path
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, tag
 
 from app.models import (
     TV,
@@ -84,6 +84,7 @@ class ImportYamtrack(TestCase):
             datetime(2024, 2, 9, 12, 0, 0, tzinfo=UTC),
         )
 
+    @tag("network")
     def test_missing_metadata_handling(self):
         """Test _handle_missing_metadata method directly."""
         test_rows = [
@@ -136,6 +137,7 @@ class ImportYamtrack(TestCase):
             self.assertNotEqual(row["image"], original_row["image"])
 
 
+@tag("network")
 class ImportYamtrackPartials(TestCase):
     """Test importing yamtrack media with no ID."""
 
@@ -329,6 +331,7 @@ class ImportSampleTemplate(TestCase):
         file = BytesIO(content.encode("utf-8"))
         self.import_results, self.warnings = yamtrack.importer(file, self.user, "new")
 
+    @tag("network")
     def test_no_warnings(self):
         """The sample template should import without any warnings."""
         self.assertEqual(self.warnings, "")

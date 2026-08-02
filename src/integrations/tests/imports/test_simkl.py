@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
-from django.test import TestCase, override_settings
+from django.test import TestCase, override_settings, tag
 from django.urls import reverse
 from django.utils import timezone
 
@@ -47,6 +47,7 @@ class ImportSimkl(TestCase):
             "new",
         )
 
+    @tag("network")
     @patch("integrations.imports.simkl.SimklImporter._get_user_list")
     def test_importer(
         self,

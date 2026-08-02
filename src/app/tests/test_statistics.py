@@ -3,7 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, tag
 from django.urls import reverse
 from django.utils import timezone
 
@@ -1340,6 +1340,7 @@ class ConsumptionStatisticsTests(TestCase):
             end_date=now - datetime.timedelta(hours=6),
         )
 
+    @tag("network")
     def test_consumption_stats_aggregation(self):
         """TV/movie consumption helpers should return expected totals and chart data."""
         with patch(

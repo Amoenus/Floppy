@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import requests
 from django.conf import settings
 from django.core.cache import cache
-from django.test import TestCase, override_settings
+from django.test import TestCase, override_settings, tag
 
 from app.credits import _normalize_credit_rows
 from app.models import Episode, Item, MediaTypes, Sources
@@ -62,6 +62,7 @@ class Metadata(TestCase):
         self.assertEqual(response["details"]["status"], "Finished")
         self.assertEqual(response["details"]["number_of_chapters"], 162)
 
+    @tag("network")
     def test_mangaupdates(self):
         """Test the metadata method for manga from mangaupdates."""
         response = mangaupdates.manga("72274276213")
@@ -69,6 +70,7 @@ class Metadata(TestCase):
         self.assertEqual(response["details"]["year"], "1994")
         self.assertEqual(response["details"]["format"], "Manga")
 
+    @tag("network")
     def test_tv(self):
         """Test the metadata method for TV shows."""
         response = tmdb.tv("1396")
@@ -1465,6 +1467,7 @@ class Metadata(TestCase):
         next_episode = tmdb.find_next_episode(5, episodes_metadata)
         self.assertIsNone(next_episode)
 
+    @tag("network")
     def test_movie(self):
         """Test the metadata method for movies."""
         response = tmdb.movie("10494")
@@ -1704,12 +1707,14 @@ class Metadata(TestCase):
         with self.assertRaises(ValueError, msg="IGDB game IDs must be numeric"):
             igdb.game("game-123")
 
+    @tag("network")
     def test_external_game_steam(self):
         """Test the external_game method for Steam games."""
         igdb_game_id = igdb.external_game("292030", igdb.ExternalGameSource.STEAM)
 
         self.assertEqual(igdb_game_id, 1942)
 
+    @tag("network")
     def test_external_game_not_found(self):
         """Test the external_game method with non-existent Steam ID."""
         igdb_game_id = igdb.external_game("999999999", igdb.ExternalGameSource.STEAM)

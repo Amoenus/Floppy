@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
-from django.test import Client, TestCase
+from django.test import Client, TestCase, tag
 from django.urls import reverse
 
 from app.models import (
@@ -108,6 +108,7 @@ class StremioWebhookProcessorTests(TestCase):
             f"/stremio-addon/test-token/subtitles/{media_type}/{media_id}.json",
         )
 
+    @tag("network")
     def test_movie_start_marks_in_progress(self):
         """A movie playback start marks the movie in progress."""
         response = self._get("movie", "tt0133093")
@@ -144,6 +145,7 @@ class StremioWebhookProcessorTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertFalse(Movie.objects.filter(user=self.user).exists())
 
+    @tag("network")
     @patch("integrations.webhooks.stremio.live_playback.apply_playback_event")
     def test_movie_start_updates_live_playback(self, mock_apply_event):
         """A movie playback start updates the Now Playing card."""

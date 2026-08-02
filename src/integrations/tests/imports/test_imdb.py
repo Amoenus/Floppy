@@ -3,7 +3,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, tag
 from django.utils import timezone
 
 from app.models import (
@@ -32,6 +32,7 @@ class ImportIMDB(TestCase):
         with Path(mock_path / "import_imdb.csv").open("rb") as file:
             self.import_results = imdb.importer(file, self.user, "new")
 
+    @tag("network")
     def test_import_imdb_csv(self):
         """Test importing movies and TV shows from IMDB CSV."""
         imported_counts, warnings = self.import_results
@@ -128,6 +129,7 @@ class ImportIMDB(TestCase):
 
         self.assertIsNone(result)
 
+    @tag("network")
     def test_duplicate_handling(self):
         """Test handling of duplicate IMDB entries that map to same TMDB ID."""
         imported_counts, warnings = self.import_results
