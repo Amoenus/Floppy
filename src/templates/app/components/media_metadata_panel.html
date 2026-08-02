@@ -77,6 +77,26 @@
           </button>
         </div>
       </form>
+
+      {% if display_provider != identity_provider %}
+        <div class="pt-2 border-t border-[#2c3136] space-y-2">
+          <p class="text-sm text-gray-200">
+            {% if metadata_provider_mapping_status == "missing" %}
+              No automatic match was found on {{ display_provider_label }}.
+            {% else %}
+              Wrong match? Search {{ display_provider_label }} to pick the correct title.
+            {% endif %}
+          </p>
+          <input type="text"
+                 name="q"
+                 placeholder="Search {{ display_provider_label }}..."
+                 class="w-full h-10 px-3 bg-[#39404b] rounded-md text-white text-sm border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[#4a9eff]"
+                 hx-get="{% url 'search_remap_candidates' source=identity_provider media_type=media_type media_id=metadata_item.media_id %}?provider={{ display_provider }}&return_url={{ return_url|urlencode }}"
+                 hx-trigger="input changed delay:400ms, keyup[key=='Enter']"
+                 hx-target="#remap-search-results">
+          <div id="remap-search-results"></div>
+        </div>
+      {% endif %}
     </section>
   {% endif %}
 

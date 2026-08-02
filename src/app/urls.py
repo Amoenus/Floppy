@@ -108,6 +108,16 @@ urlpatterns = [
         name="update_metadata_provider_preference",
     ),
     path(
+        "details/remap-search/<source:source>/<media_type:media_type>/<path:media_id>",
+        views.search_remap_candidates,
+        name="search_remap_candidates",
+    ),
+    path(
+        "details/remap/<source:source>/<media_type:media_type>/<path:media_id>",
+        views.remap_metadata_provider,
+        name="remap_metadata_provider",
+    ),
+    path(
         "details/image/<int:item_id>",
         views.update_item_image,
         name="update_item_image",

@@ -9,10 +9,10 @@ from django.contrib.auth.decorators import login_required
 from django.core.cache import cache
 from django.db.models import Max, Min
 from django.http import HttpResponse
-from django.shortcuts import get_object_or_404, redirect
+from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_GET, require_POST
 
 from app import (
     credits,  # noqa: A004  # app.credits module, not the site builtin
@@ -55,13 +55,8 @@ YAMTRACK_RATING_SCALE_MAX = 10
 PLEX_RATING_SCALE_MAX = 100
 
 
-@login_required
-@require_POST
-def update_metadata_provider_preference(request, source, media_type, media_id):
-    """Persist a per-item metadata display-provider override."""
-    provider = (request.POST.get("provider") or "").strip()
-    return_url = helpers.normalize_navigation_url(request.POST.get("return_url"))
-
+def _lookup_item_for_metadata_route(media_type, source, media_id):
+    """Resolve the tracked Item backing a metadata-provider route."""
     tracking_media_type = metadata_resolution.get_tracking_media_type(
         media_type,
         source=source,
@@ -73,8 +68,17 @@ def update_metadata_provider_preference(request, source, media_type, media_id):
     }
     if metadata_resolution.is_grouped_anime_route(media_type, source=source):
         lookup["library_media_type"] = MediaTypes.ANIME.value
+    return get_object_or_404(Item, **lookup)
 
-    item = get_object_or_404(Item, **lookup)
+
+@login_required
+@require_POST
+def update_metadata_provider_preference(request, source, media_type, media_id):
+    """Persist a per-item metadata display-provider override."""
+    provider = (request.POST.get("provider") or "").strip()
+    return_url = helpers.normalize_navigation_url(request.POST.get("return_url"))
+
+    item = _lookup_item_for_metadata_route(media_type, source, media_id)
     allowed_providers = {
         choice.value
         for choice in metadata_resolution.available_metadata_provider_options(
@@ -106,6 +110,100 @@ def update_metadata_provider_preference(request, source, media_type, media_id):
             defaults={"provider": provider},
         )
         messages.success(request, "Metadata provider updated.")
+
+    if return_url and (
+        return_url.startswith("/")
+        or url_has_allowed_host_and_scheme(
+            return_url,
+            allowed_hosts={request.get_host()},
+            require_https=request.is_secure(),
+        )
+    ):
+        return redirect(return_url)
+
+    return redirect(
+        "media_details",
+        source=source,
+        media_type=media_type,
+        media_id=media_id,
+        title=title if (title := item.get_display_title(request.user)) else "item",
+    )
+
+
+@login_required
+@require_GET
+def search_remap_candidates(request, source, media_type, media_id):
+    """Search a target provider for a manual remap candidate."""
+    item = _lookup_item_for_metadata_route(media_type, source, media_id)
+    provider = (request.GET.get("provider") or "").strip()
+    query = (request.GET.get("q") or "").strip()
+
+    allowed_providers = {
+        choice.value
+        for choice in metadata_resolution.available_metadata_provider_options(
+            media_type,
+            identity_provider=item.source,
+        )
+    }
+    results = []
+    if provider in allowed_providers and provider != item.source and query:
+        response = services.search(media_type, query, page=1, source=provider)
+        results = (response or {}).get("results") or []
+
+    return render(
+        request,
+        "app/components/remap_search_results.html",
+        {
+            "results": results,
+            "provider": provider,
+            "source": source,
+            "media_type": media_type,
+            "media_id": media_id,
+            "return_url": helpers.normalize_navigation_url(
+                request.GET.get("return_url")
+            ),
+        },
+    )
+
+
+@login_required
+@require_POST
+def remap_metadata_provider(request, source, media_type, media_id):
+    """Persist a user-picked cross-provider ID mapping for an item."""
+    item = _lookup_item_for_metadata_route(media_type, source, media_id)
+    return_url = helpers.normalize_navigation_url(request.POST.get("return_url"))
+    provider = (request.POST.get("provider") or "").strip()
+    provider_media_id = (request.POST.get("provider_media_id") or "").strip()
+
+    allowed_providers = {
+        choice.value
+        for choice in metadata_resolution.available_metadata_provider_options(
+            media_type,
+            identity_provider=item.source,
+        )
+    }
+    if (
+        provider not in allowed_providers
+        or provider == item.source
+        or not provider_media_id
+    ):
+        messages.error(request, "That remap target is not valid for this title.")
+    else:
+        metadata_resolution.upsert_provider_links(
+            item,
+            {"media_id": provider_media_id},
+            provider=provider,
+            provider_media_type=metadata_resolution.provider_route_media_type(
+                media_type,
+                provider,
+            ),
+        )
+        MetadataProviderPreference.objects.update_or_create(
+            user=request.user,
+            item=item,
+            defaults={"provider": provider},
+        )
+        messages.success(request, "Remapped to the selected match.")
 
     if return_url and (
         return_url.startswith("/")
