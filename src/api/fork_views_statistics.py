@@ -103,9 +103,14 @@ def _resolve_range(request):
         start = parse_date(start_date_str)
         end = parse_date(end_date_str)
         if start is None or end is None:
-            return None, None, None, Response(
-                {"detail": "Invalid date format (expected YYYY-MM-DD or 'all')."},
-                status=HTTP.BAD_REQUEST,
+            return (
+                None,
+                None,
+                None,
+                Response(
+                    {"detail": "Invalid date format (expected YYYY-MM-DD or 'all')."},
+                    status=HTTP.BAD_REQUEST,
+                ),
             )
         tz = timezone.get_current_timezone()
         start_date = timezone.make_aware(

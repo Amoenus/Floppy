@@ -36,6 +36,7 @@ from lists.models import CustomList, CustomListItem
 from users.home_screen import ensure_home_screen_rows
 from users.models import HomeScreenRowTypeChoices
 
+
 def setUpModule():
     """Silence log noise for this module only."""
     logging.disable(logging.DEBUG)
@@ -45,6 +46,7 @@ def tearDownModule():
     """Restore logging so other modules' assertLogs still see records."""
     logging.disable(logging.NOTSET)
 
+
 SHOW_COUNT = 10
 SEASONS_PER_SHOW = 4
 EPISODES_PER_SEASON = 5
@@ -52,13 +54,19 @@ EPISODES_PER_SEASON = 5
 # Query budgets. Exact counts are pinned so regressions fail loudly;
 # update deliberately when page behavior changes.
 HOME_PAGE_MAX_QUERIES = 120
-TV_LIST_RUNTIME_SORT_MAX_QUERIES = 38  # +3 from prefetch on all_media (prevents N+1 for duplicate-watch users)
-TV_LIST_TABLE_PAGE_MAX_QUERIES = 35   # +3 from same prefetch
-TV_LIST_DEFAULT_SORT_MAX_QUERIES = 24   # pinned after Fix 1+2+3 (was 2642 in production)
-TV_LIST_TIME_LEFT_SORT_MAX_QUERIES = 26  # pinned after Fix 4 bulk runtime load (was ~400+ per-season queries)
+TV_LIST_RUNTIME_SORT_MAX_QUERIES = (
+    38  # +3 from prefetch on all_media (prevents N+1 for duplicate-watch users)
+)
+TV_LIST_TABLE_PAGE_MAX_QUERIES = 35  # +3 from same prefetch
+TV_LIST_DEFAULT_SORT_MAX_QUERIES = 24  # pinned after Fix 1+2+3 (was 2642 in production)
+TV_LIST_TIME_LEFT_SORT_MAX_QUERIES = (
+    26  # pinned after Fix 4 bulk runtime load (was ~400+ per-season queries)
+)
 MOVIE_LIST_DEFAULT_SORT_MAX_QUERIES = 14
 ANIME_LIST_DEFAULT_SORT_MAX_QUERIES = 20
-ANIME_LIST_GROUPED_MAX_QUERIES = 18  # grouped (TV-backed) anime adds no per-show runtime queries (24 when broken)
+ANIME_LIST_GROUPED_MAX_QUERIES = (
+    18  # grouped (TV-backed) anime adds no per-show runtime queries (24 when broken)
+)
 MANGA_LIST_DEFAULT_SORT_MAX_QUERIES = 14
 MANGA_LIST_NO_STATUS_MAX_QUERIES = 18
 GAME_LIST_DEFAULT_SORT_MAX_QUERIES = 18

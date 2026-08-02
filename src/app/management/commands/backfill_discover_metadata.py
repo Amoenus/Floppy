@@ -43,7 +43,11 @@ class Command(BaseCommand):
 
     def _parse_media_types(self, raw_value: str) -> list[str]:
         parts = [part.strip() for part in raw_value.split(",") if part.strip()]
-        return [part for part in parts if part in {MediaTypes.MOVIE.value, MediaTypes.TV.value}]
+        return [
+            part
+            for part in parts
+            if part in {MediaTypes.MOVIE.value, MediaTypes.TV.value}
+        ]
 
     def _tmdb_fetch(self, media_type: str, media_id: str):
         endpoint = f"/{media_type}/{media_id}"
@@ -72,14 +76,18 @@ class Command(BaseCommand):
         limit = options.get("limit")
         dry_run = bool(options.get("dry_run"))
 
-        queryset = Item.objects.filter(
-            source=Sources.TMDB.value,
-            media_type__in=media_types,
-        ).filter(
-            provider_popularity__isnull=True,
-            provider_rating__isnull=True,
-            provider_rating_count__isnull=True,
-        ).order_by("id")
+        queryset = (
+            Item.objects.filter(
+                source=Sources.TMDB.value,
+                media_type__in=media_types,
+            )
+            .filter(
+                provider_popularity__isnull=True,
+                provider_rating__isnull=True,
+                provider_rating_count__isnull=True,
+            )
+            .order_by("id")
+        )
 
         if limit:
             queryset = queryset[:limit]
@@ -137,6 +145,14 @@ class Command(BaseCommand):
                 )
 
         if dry_run:
-            self.stdout.write(self.style.WARNING(f"Dry run complete: would update {updated} items, failed {failed}."))
+            self.stdout.write(
+                self.style.WARNING(
+                    f"Dry run complete: would update {updated} items, failed {failed}."
+                )
+            )
         else:
-            self.stdout.write(self.style.SUCCESS(f"Backfill complete: updated {updated} items, failed {failed}."))
+            self.stdout.write(
+                self.style.SUCCESS(
+                    f"Backfill complete: updated {updated} items, failed {failed}."
+                )
+            )

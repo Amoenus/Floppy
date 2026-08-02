@@ -503,7 +503,9 @@ class PocketCastsImportFlowTests(TestCase):
         podcasts = Podcast.objects.filter(user=self.user).order_by("item__media_id")
         self.assertEqual(podcasts.count(), 2)
         self.assertEqual(
-            PodcastShowTracker.objects.filter(user=self.user, show__podcast_uuid="show-1").count(),
+            PodcastShowTracker.objects.filter(
+                user=self.user, show__podcast_uuid="show-1"
+            ).count(),
             1,
         )
         self.assertEqual(
@@ -563,18 +565,29 @@ class PocketCastsImportFlowTests(TestCase):
             self._artwork_patches(),
             patch.object(PocketCastsImporter, "_ensure_valid_token"),
             patch.object(PocketCastsImporter, "_get_access_token", return_value="fake"),
-            patch("integrations.pocketcasts_api.get_podcast_list", return_value=podcast_list),
-            patch.object(PocketCastsImporter, "_fetch_show_play_states", return_value=play_states),
-            patch.object(PocketCastsImporter, "_fetch_show_full_metadata", return_value=metadata),
+            patch(
+                "integrations.pocketcasts_api.get_podcast_list",
+                return_value=podcast_list,
+            ),
+            patch.object(
+                PocketCastsImporter, "_fetch_show_play_states", return_value=play_states
+            ),
+            patch.object(
+                PocketCastsImporter, "_fetch_show_full_metadata", return_value=metadata
+            ),
         ):
             importer = PocketCastsImporter(self.user, "new")
             importer.import_data()
 
-        tracker = PodcastShowTracker.objects.get(user=self.user, show__podcast_uuid="show-1")
+        tracker = PodcastShowTracker.objects.get(
+            user=self.user, show__podcast_uuid="show-1"
+        )
         self.assertEqual(PodcastEpisode.objects.filter(show=tracker.show).count(), 2)
         self.assertEqual(Podcast.objects.filter(user=self.user).count(), 0)
 
-    def test_import_large_first_sync_keeps_full_catalog_but_only_tracks_listened_episodes(self):
+    def test_import_large_first_sync_keeps_full_catalog_but_only_tracks_listened_episodes(
+        self,
+    ):
         """A large first sync keeps the full catalog while only tracking listened episodes."""
         podcast_list = {
             "podcasts": [
@@ -623,17 +636,28 @@ class PocketCastsImportFlowTests(TestCase):
             self._artwork_patches(),
             patch.object(PocketCastsImporter, "_ensure_valid_token"),
             patch.object(PocketCastsImporter, "_get_access_token", return_value="fake"),
-            patch("integrations.pocketcasts_api.get_podcast_list", return_value=podcast_list),
-            patch.object(PocketCastsImporter, "_fetch_show_play_states", return_value=play_states),
-            patch.object(PocketCastsImporter, "_fetch_show_full_metadata", return_value=metadata),
+            patch(
+                "integrations.pocketcasts_api.get_podcast_list",
+                return_value=podcast_list,
+            ),
+            patch.object(
+                PocketCastsImporter, "_fetch_show_play_states", return_value=play_states
+            ),
+            patch.object(
+                PocketCastsImporter, "_fetch_show_full_metadata", return_value=metadata
+            ),
         ):
             importer = PocketCastsImporter(self.user, "new")
             importer.import_data()
 
-        tracker = PodcastShowTracker.objects.get(user=self.user, show__podcast_uuid="show-1")
+        tracker = PodcastShowTracker.objects.get(
+            user=self.user, show__podcast_uuid="show-1"
+        )
         self.assertEqual(PodcastEpisode.objects.filter(show=tracker.show).count(), 25)
         tracked_ids = set(
-            Podcast.objects.filter(user=self.user).values_list("item__media_id", flat=True),
+            Podcast.objects.filter(user=self.user).values_list(
+                "item__media_id", flat=True
+            ),
         )
         self.assertEqual(tracked_ids, {"uuid-00", "uuid-01"})
 
@@ -734,11 +758,16 @@ class PocketCastsImportFlowTests(TestCase):
         with (
             patch.object(PocketCastsImporter, "_ensure_valid_token"),
             patch.object(PocketCastsImporter, "_get_access_token", return_value="fake"),
-            patch("integrations.pocketcasts_api.get_podcast_list", return_value={"podcasts": []}),
+            patch(
+                "integrations.pocketcasts_api.get_podcast_list",
+                return_value={"podcasts": []},
+            ),
         ):
             imported_counts, warnings = self.importer.import_data()
 
         self.importer.account.refresh_from_db()
         self.assertEqual(imported_counts, {})
         self.assertEqual(warnings, "")
-        self.assertGreater(self.importer.account.last_sync_at, datetime(2026, 1, 1, tzinfo=UTC))
+        self.assertGreater(
+            self.importer.account.last_sync_at, datetime(2026, 1, 1, tzinfo=UTC)
+        )

@@ -48,8 +48,16 @@ class Command(BaseCommand):
         # Get items that need runtime data (exclude manual items as they don't have provider data)
         items_to_update = Item.objects.filter(
             runtime_minutes__isnull=True,
-            media_type__in=[MediaTypes.MOVIE.value, MediaTypes.ANIME.value, MediaTypes.EPISODE.value],
-            source__in=["tmdb", "mal", "simkl"],  # Only process items from providers that have runtime data
+            media_type__in=[
+                MediaTypes.MOVIE.value,
+                MediaTypes.ANIME.value,
+                MediaTypes.EPISODE.value,
+            ],
+            source__in=[
+                "tmdb",
+                "mal",
+                "simkl",
+            ],  # Only process items from providers that have runtime data
         ).order_by("id")
 
         total_items = items_to_update.count()
@@ -69,8 +77,10 @@ class Command(BaseCommand):
         error_count = 0
 
         for i in range(0, total_items, batch_size):
-            batch = items_to_update[i:i + batch_size]
-            self.stdout.write(f"Processing batch {i//batch_size + 1} ({len(batch)} items)")
+            batch = items_to_update[i : i + batch_size]
+            self.stdout.write(
+                f"Processing batch {i // batch_size + 1} ({len(batch)} items)"
+            )
 
             for item in batch:
                 try:
@@ -87,7 +97,9 @@ class Command(BaseCommand):
                     self.stdout.write(f"  ✗ Error updating {item.title}: {e}")
                     logger.error(f"Error updating runtime for {item.title}: {e}")
 
-        self.stdout.write(f"\nCompleted! Updated {updated_count} items, {error_count} errors")
+        self.stdout.write(
+            f"\nCompleted! Updated {updated_count} items, {error_count} errors"
+        )
 
     def _update_item_runtime(self, item):
         """Update runtime for a single item."""
@@ -112,6 +124,7 @@ class Command(BaseCommand):
 
             # Parse runtime to minutes
             from app.statistics import parse_runtime_to_minutes
+
             runtime_minutes = parse_runtime_to_minutes(runtime_str)
 
             if runtime_minutes is None:

@@ -371,7 +371,9 @@ class YamtrackImporter:
         list_tags = _parse_tags(row.get("list_tags"))
         list_is_smart = _parse_bool(row.get("list_is_smart"))
         list_smart_media_types = _parse_tags(row.get("list_smart_media_types"))
-        list_smart_excluded_media_types = _parse_tags(row.get("list_smart_excluded_media_types"))
+        list_smart_excluded_media_types = _parse_tags(
+            row.get("list_smart_excluded_media_types")
+        )
         list_smart_filters = _parse_json_dict(row.get("list_smart_filters"))
 
         existing = None
@@ -382,7 +384,9 @@ class YamtrackImporter:
                 source_id=list_source_id,
             ).first()
         if not existing:
-            existing = CustomList.objects.filter(owner=self.user, name=list_name).first()
+            existing = CustomList.objects.filter(
+                owner=self.user, name=list_name
+            ).first()
 
         seen_key = list_uid or list_name
         already_seen = bool(seen_key and seen_key in self.list_map)
@@ -449,10 +453,13 @@ class YamtrackImporter:
         if list_uid:
             custom_list = self.list_map.get(list_uid)
         if not custom_list and list_name:
-            custom_list = self.list_map.get(list_name) or CustomList.objects.filter(
-                owner=self.user,
-                name=list_name,
-            ).first()
+            custom_list = (
+                self.list_map.get(list_name)
+                or CustomList.objects.filter(
+                    owner=self.user,
+                    name=list_name,
+                ).first()
+            )
         if not custom_list and list_name:
             custom_list = CustomList.objects.create(
                 name=list_name,
@@ -475,9 +482,7 @@ class YamtrackImporter:
 
         library_media_type = (row.get("library_media_type") or "").strip().lower()
 
-        season_number = (
-            int(row["season_number"]) if row.get("season_number") else None
-        )
+        season_number = int(row["season_number"]) if row.get("season_number") else None
         episode_number = (
             int(row["episode_number"]) if row.get("episode_number") else None
         )
@@ -554,9 +559,7 @@ class YamtrackImporter:
         row["source"] = (row.get("source") or "").strip().lower()
         library_media_type = (row.get("library_media_type") or "").strip().lower()
 
-        season_number = (
-            int(row["season_number"]) if row.get("season_number") else None
-        )
+        season_number = int(row["season_number"]) if row.get("season_number") else None
         episode_number = (
             int(row["episode_number"]) if row.get("episode_number") else None
         )
@@ -714,7 +717,11 @@ class YamtrackImporter:
 
         try:
             release_id = musicbrainz.get_release_for_group(release_group_id)
-            release_data = musicbrainz.get_release(release_id, skip_cover_art=True) if release_id else None
+            release_data = (
+                musicbrainz.get_release(release_id, skip_cover_art=True)
+                if release_id
+                else None
+            )
         except Exception:
             logger.exception(
                 "Failed to fetch release for group %s from MusicBrainz during import",
@@ -730,7 +737,9 @@ class YamtrackImporter:
         if artist_id:
             artist = Artist.objects.filter(musicbrainz_id=artist_id).first()
             if artist is None:
-                artist = self._create_artist_from_musicbrainz(artist_id, artist_name or "")
+                artist = self._create_artist_from_musicbrainz(
+                    artist_id, artist_name or ""
+                )
         if artist is None and artist_name:
             artist = Artist.objects.filter(name=artist_name).first()
             if artist is None:
@@ -763,7 +772,9 @@ class YamtrackImporter:
 
         artist = Artist.objects.filter(musicbrainz_id=musicbrainz_id).first()
         if artist is None:
-            artist = self._create_artist_from_musicbrainz(musicbrainz_id, row.get("title") or "")
+            artist = self._create_artist_from_musicbrainz(
+                musicbrainz_id, row.get("title") or ""
+            )
         if artist is None:
             self.warnings.append(
                 f"Skipping music_artist row: could not fetch artist musicbrainz_id={musicbrainz_id}."
@@ -776,13 +787,19 @@ class YamtrackImporter:
         except InvalidOperation:
             score = None
 
-        normalized_status = _normalize_status(row.get("status")) or Status.IN_PROGRESS.value
+        normalized_status = (
+            _normalize_status(row.get("status")) or Status.IN_PROGRESS.value
+        )
         tracker_defaults = {
             "status": normalized_status,
             "score": score,
             "notes": row.get("notes") or "",
-            "start_date": parse_datetime(row.get("start_date") or "") if row.get("start_date") else None,
-            "end_date": parse_datetime(row.get("end_date") or "") if row.get("end_date") else None,
+            "start_date": parse_datetime(row.get("start_date") or "")
+            if row.get("start_date")
+            else None,
+            "end_date": parse_datetime(row.get("end_date") or "")
+            if row.get("end_date")
+            else None,
         }
 
         if self.mode == "overwrite":
@@ -807,9 +824,13 @@ class YamtrackImporter:
             self.warnings.append("Skipping music_album row with empty media_id.")
             return
 
-        album = Album.objects.filter(musicbrainz_release_group_id=release_group_id).first()
+        album = Album.objects.filter(
+            musicbrainz_release_group_id=release_group_id
+        ).first()
         if album is None:
-            album = self._create_album_from_musicbrainz(release_group_id, row.get("title") or "")
+            album = self._create_album_from_musicbrainz(
+                release_group_id, row.get("title") or ""
+            )
         if album is None:
             self.warnings.append(
                 f"Skipping music_album row: could not fetch release_group_id={release_group_id}."
@@ -822,13 +843,19 @@ class YamtrackImporter:
         except InvalidOperation:
             score = None
 
-        normalized_status = _normalize_status(row.get("status")) or Status.IN_PROGRESS.value
+        normalized_status = (
+            _normalize_status(row.get("status")) or Status.IN_PROGRESS.value
+        )
         tracker_defaults = {
             "status": normalized_status,
             "score": score,
             "notes": row.get("notes") or "",
-            "start_date": parse_datetime(row.get("start_date") or "") if row.get("start_date") else None,
-            "end_date": parse_datetime(row.get("end_date") or "") if row.get("end_date") else None,
+            "start_date": parse_datetime(row.get("start_date") or "")
+            if row.get("start_date")
+            else None,
+            "end_date": parse_datetime(row.get("end_date") or "")
+            if row.get("end_date")
+            else None,
         }
 
         if self.mode == "overwrite":

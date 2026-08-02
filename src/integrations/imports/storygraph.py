@@ -426,7 +426,11 @@ class StoryGraphImporter:
         self._record_date_gaps(item, row)
         tracked_dates, tracked_statuses = self._tracked_state(source, media_id)
         for instance in self._build_entries(
-            item, row, metadata, tracked_dates, tracked_statuses,
+            item,
+            row,
+            metadata,
+            tracked_dates,
+            tracked_statuses,
         ):
             self.bulk_media[MediaTypes.BOOK.value].append(instance)
 
@@ -596,14 +600,24 @@ class StoryGraphImporter:
                     tracked_dates.add(None)
                     instances.append(
                         self._build_instance(
-                            item, status, None, None, progress, fallback_date,
+                            item,
+                            status,
+                            None,
+                            None,
+                            progress,
+                            fallback_date,
                         ),
                     )
             elif status not in tracked_statuses:
                 tracked_statuses.add(status)
                 instances.append(
                     self._build_instance(
-                        item, status, None, None, progress, fallback_date,
+                        item,
+                        status,
+                        None,
+                        None,
+                        progress,
+                        fallback_date,
                     ),
                 )
 
@@ -619,7 +633,13 @@ class StoryGraphImporter:
         return instances
 
     def _build_instance(
-        self, item, status, start_date, end_date, progress, fallback_date,
+        self,
+        item,
+        status,
+        start_date,
+        end_date,
+        progress,
+        fallback_date,
     ):
         """Build a single unsaved Book instance for one read."""
         model = apps.get_model(app_label="app", model_name=MediaTypes.BOOK.value)

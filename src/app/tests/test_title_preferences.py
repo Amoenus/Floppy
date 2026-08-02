@@ -10,7 +10,9 @@ from users.models import TitleDisplayPreferenceChoices
 class ItemTitlePreferenceTests(TestCase):
     """Tests for item title preference resolution."""
 
-    def _build_item(self, title="Localized", original_title="Original", localized_title="Localized"):
+    def _build_item(
+        self, title="Localized", original_title="Original", localized_title="Localized"
+    ):
         return Item(
             media_id="1",
             source=Sources.TMDB.value,
@@ -45,7 +47,9 @@ class ItemTitlePreferenceTests(TestCase):
         self.assertEqual(display, "Localized")
         self.assertEqual(alternative, "Original")
 
-    def test_resolve_title_preference_hides_non_latin_alternative_for_english_locale(self):
+    def test_resolve_title_preference_hides_non_latin_alternative_for_english_locale(
+        self,
+    ):
         item = self._build_item(
             title="The Sound of Music",
             original_title="サウンド・オブ・ミュージック",

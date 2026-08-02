@@ -56,6 +56,7 @@ from app.statistics_highlights import _normalize_history_highlight_images
 
 logger = logging.getLogger(__name__)
 
+
 def _range_day_bounds(start_date, end_date):
     start_day = _normalize_day_value(start_date)
     end_day = _normalize_day_value(end_date)
@@ -77,7 +78,9 @@ def _range_cache_covers_days(range_name: str, start_day, end_day) -> bool:
     return cached_start_day <= start_day and cached_end_day >= end_day
 
 
-def _has_covering_range_cache(user_id: int, range_name: str, start_date, end_date, history_version: str) -> bool:
+def _has_covering_range_cache(
+    user_id: int, range_name: str, start_date, end_date, history_version: str
+) -> bool:
     start_day, end_day = _range_day_bounds(start_date, end_date)
     if not start_day or not end_day:
         return False
@@ -95,11 +98,15 @@ def _has_covering_range_cache(user_id: int, range_name: str, start_date, end_dat
     return False
 
 
-def _build_predefined_range_from_day_caches(user, start_date, end_date, range_name: str, history_version: str):
+def _build_predefined_range_from_day_caches(
+    user, start_date, end_date, range_name: str, history_version: str
+):
     day_list = _resolve_day_list(user, start_date, end_date)
     if not day_list:
         data = _get_empty_statistics_data()
-        cache_statistics_data(user.id, range_name, data, history_version=history_version)
+        cache_statistics_data(
+            user.id, range_name, data, history_version=history_version
+        )
         return data
 
     data = _aggregate_statistics_from_days(
@@ -153,10 +160,10 @@ def invalidate_all_statistics_days(user_id: int, reason: str | None = None) -> i
 
 def invalidate_statistics_cache(user_id: int, range_name: str = None):
     """Remove cached statistics for a user.
-    
+
     If a refresh is in progress, keep the old cache so users can see it
     while the refresh completes. Otherwise, delete the cache.
-    
+
     Args:
         user_id: User ID
         range_name: Specific range to invalidate, or None to invalidate all ranges
@@ -168,7 +175,11 @@ def invalidate_statistics_cache(user_id: int, range_name: str = None):
             if refresh_lock is None:
                 # No refresh in progress, safe to delete cache
                 cache.delete(_cache_key(user_id, range_name))
-                logger.debug("Invalidated statistics cache for user %s, range %s", user_id, range_name)
+                logger.debug(
+                    "Invalidated statistics cache for user %s, range %s",
+                    user_id,
+                    range_name,
+                )
             # If refresh is in progress, keep the old cache - it will be replaced when refresh completes
             _set_history_version(user_id)
     else:
@@ -194,7 +205,9 @@ def _get_predefined_range_dates(range_name: str):
         return start, end
     if range_name == "Yesterday":
         yesterday = today - timedelta(days=1)
-        start = timezone.make_aware(datetime.combine(yesterday, datetime.min.time()), tz)
+        start = timezone.make_aware(
+            datetime.combine(yesterday, datetime.min.time()), tz
+        )
         end = timezone.make_aware(datetime.combine(yesterday, datetime.max.time()), tz)
         return start, end
     if range_name == "This Week":
@@ -203,39 +216,57 @@ def _get_predefined_range_dates(range_name: str):
         end = timezone.make_aware(datetime.combine(today, datetime.max.time()), tz)
         return start, end
     if range_name == "Last 7 Days":
-        start = timezone.make_aware(datetime.combine(today - timedelta(days=6), datetime.min.time()), tz)
+        start = timezone.make_aware(
+            datetime.combine(today - timedelta(days=6), datetime.min.time()), tz
+        )
         end = timezone.make_aware(datetime.combine(today, datetime.max.time()), tz)
         return start, end
     if range_name == "This Month":
         month_start = today.replace(day=1)
-        start = timezone.make_aware(datetime.combine(month_start, datetime.min.time()), tz)
+        start = timezone.make_aware(
+            datetime.combine(month_start, datetime.min.time()), tz
+        )
         end = timezone.make_aware(datetime.combine(today, datetime.max.time()), tz)
         return start, end
     if range_name == "Last 30 Days":
-        start = timezone.make_aware(datetime.combine(today - timedelta(days=29), datetime.min.time()), tz)
+        start = timezone.make_aware(
+            datetime.combine(today - timedelta(days=29), datetime.min.time()), tz
+        )
         end = timezone.make_aware(datetime.combine(today, datetime.max.time()), tz)
         return start, end
     if range_name == "Last 90 Days":
-        start = timezone.make_aware(datetime.combine(today - timedelta(days=89), datetime.min.time()), tz)
+        start = timezone.make_aware(
+            datetime.combine(today - timedelta(days=89), datetime.min.time()), tz
+        )
         end = timezone.make_aware(datetime.combine(today, datetime.max.time()), tz)
         return start, end
     if range_name == "This Year":
         year_start = today.replace(month=1, day=1)
-        start = timezone.make_aware(datetime.combine(year_start, datetime.min.time()), tz)
+        start = timezone.make_aware(
+            datetime.combine(year_start, datetime.min.time()), tz
+        )
         end = timezone.make_aware(datetime.combine(today, datetime.max.time()), tz)
         return start, end
     if range_name == "Last 6 Months":
         six_months_start = today - relativedelta(months=6)
         if six_months_start.day != today.day:
-            six_months_start = (six_months_start.replace(day=1) + relativedelta(months=1)) - timedelta(days=1)
-        start = timezone.make_aware(datetime.combine(six_months_start, datetime.min.time()), tz)
+            six_months_start = (
+                six_months_start.replace(day=1) + relativedelta(months=1)
+            ) - timedelta(days=1)
+        start = timezone.make_aware(
+            datetime.combine(six_months_start, datetime.min.time()), tz
+        )
         end = timezone.make_aware(datetime.combine(today, datetime.max.time()), tz)
         return start, end
     if range_name == "Last 12 Months":
         twelve_months_start = today - relativedelta(months=12)
         if twelve_months_start.day != today.day:
-            twelve_months_start = (twelve_months_start.replace(day=1) + relativedelta(months=1)) - timedelta(days=1)
-        start = timezone.make_aware(datetime.combine(twelve_months_start, datetime.min.time()), tz)
+            twelve_months_start = (
+                twelve_months_start.replace(day=1) + relativedelta(months=1)
+            ) - timedelta(days=1)
+        start = timezone.make_aware(
+            datetime.combine(twelve_months_start, datetime.min.time()), tz
+        )
         end = timezone.make_aware(datetime.combine(today, datetime.max.time()), tz)
         return start, end
     return None, None
@@ -281,7 +312,14 @@ def _get_activity_bounds(user):
     ).aggregate(min_date=Min("end_date"), max_date=Max("end_date"))
     _add_bounds(podcast_bounds.get("min_date"), podcast_bounds.get("max_date"))
 
-    for media_type in (MediaTypes.ANIME.value, MediaTypes.GAME.value, MediaTypes.BOARDGAME.value, MediaTypes.MANGA.value, MediaTypes.BOOK.value, MediaTypes.COMIC.value):
+    for media_type in (
+        MediaTypes.ANIME.value,
+        MediaTypes.GAME.value,
+        MediaTypes.BOARDGAME.value,
+        MediaTypes.MANGA.value,
+        MediaTypes.BOOK.value,
+        MediaTypes.COMIC.value,
+    ):
         model = apps.get_model("app", media_type)
         media_bounds = model.objects.filter(user=user).aggregate(
             min_end=Min("end_date"),
@@ -326,58 +364,91 @@ def _get_sparse_activity_days(user):
         for offset in range((end_day - start_day).days + 1):
             days.add(start_day + timedelta(days=offset))
 
-    if MediaTypes.TV.value in active_media_types or MediaTypes.SEASON.value in active_media_types:
+    if (
+        MediaTypes.TV.value in active_media_types
+        or MediaTypes.SEASON.value in active_media_types
+    ):
         Episode = apps.get_model("app", "Episode")
-        episode_days = Episode.objects.filter(
-            related_season__user=user,
-            end_date__isnull=False,
-        ).annotate(
-            day=TruncDate("end_date", tzinfo=tz),
-        ).values_list("day", flat=True).distinct()
+        episode_days = (
+            Episode.objects.filter(
+                related_season__user=user,
+                end_date__isnull=False,
+            )
+            .annotate(
+                day=TruncDate("end_date", tzinfo=tz),
+            )
+            .values_list("day", flat=True)
+            .distinct()
+        )
         days.update(day for day in episode_days if day)
 
     if MediaTypes.MOVIE.value in active_media_types:
         Movie = apps.get_model("app", "Movie")
         movie_qs = Movie.objects.filter(user=user)
-        movie_end_days = movie_qs.filter(
-            end_date__isnull=False,
-        ).annotate(
-            day=TruncDate("end_date", tzinfo=tz),
-        ).values_list("day", flat=True).distinct()
-        movie_start_days = movie_qs.filter(
-            end_date__isnull=True,
-            start_date__isnull=False,
-        ).annotate(
-            day=TruncDate("start_date", tzinfo=tz),
-        ).values_list("day", flat=True).distinct()
-        movie_created_days = movie_qs.filter(
-            end_date__isnull=True,
-            start_date__isnull=True,
-        ).annotate(
-            day=TruncDate("created_at", tzinfo=tz),
-        ).values_list("day", flat=True).distinct()
+        movie_end_days = (
+            movie_qs.filter(
+                end_date__isnull=False,
+            )
+            .annotate(
+                day=TruncDate("end_date", tzinfo=tz),
+            )
+            .values_list("day", flat=True)
+            .distinct()
+        )
+        movie_start_days = (
+            movie_qs.filter(
+                end_date__isnull=True,
+                start_date__isnull=False,
+            )
+            .annotate(
+                day=TruncDate("start_date", tzinfo=tz),
+            )
+            .values_list("day", flat=True)
+            .distinct()
+        )
+        movie_created_days = (
+            movie_qs.filter(
+                end_date__isnull=True,
+                start_date__isnull=True,
+            )
+            .annotate(
+                day=TruncDate("created_at", tzinfo=tz),
+            )
+            .values_list("day", flat=True)
+            .distinct()
+        )
         days.update(day for day in movie_end_days if day)
         days.update(day for day in movie_start_days if day)
         days.update(day for day in movie_created_days if day)
 
     if MediaTypes.MUSIC.value in active_media_types:
         HistoricalMusic = apps.get_model("app", "HistoricalMusic")
-        music_days = HistoricalMusic.objects.filter(
-            Q(history_user=user) | Q(history_user__isnull=True),
-            end_date__isnull=False,
-        ).annotate(
-            day=TruncDate("end_date", tzinfo=tz),
-        ).values_list("day", flat=True).distinct()
+        music_days = (
+            HistoricalMusic.objects.filter(
+                Q(history_user=user) | Q(history_user__isnull=True),
+                end_date__isnull=False,
+            )
+            .annotate(
+                day=TruncDate("end_date", tzinfo=tz),
+            )
+            .values_list("day", flat=True)
+            .distinct()
+        )
         days.update(day for day in music_days if day)
 
     if MediaTypes.PODCAST.value in active_media_types:
         HistoricalPodcast = apps.get_model("app", "HistoricalPodcast")
-        podcast_days = HistoricalPodcast.objects.filter(
-            Q(history_user=user) | Q(history_user__isnull=True),
-            end_date__isnull=False,
-        ).annotate(
-            day=TruncDate("end_date", tzinfo=tz),
-        ).values_list("day", flat=True).distinct()
+        podcast_days = (
+            HistoricalPodcast.objects.filter(
+                Q(history_user=user) | Q(history_user__isnull=True),
+                end_date__isnull=False,
+            )
+            .annotate(
+                day=TruncDate("end_date", tzinfo=tz),
+            )
+            .values_list("day", flat=True)
+            .distinct()
+        )
         days.update(day for day in podcast_days if day)
 
     for media_type in (
@@ -391,12 +462,16 @@ def _get_sparse_activity_days(user):
         if media_type not in active_media_types:
             continue
         model = apps.get_model("app", media_type)
-        rows = model.objects.filter(user=user).values(
-            "start_date",
-            "end_date",
-            "created_at",
-            "progress",
-        ).iterator(chunk_size=500)
+        rows = (
+            model.objects.filter(user=user)
+            .values(
+                "start_date",
+                "end_date",
+                "created_at",
+                "progress",
+            )
+            .iterator(chunk_size=500)
+        )
         for row in rows:
             start_dt = row.get("start_date")
             end_dt = row.get("end_date")
@@ -439,7 +514,9 @@ def _enqueue_collected_backfills(user_id: int, collector: dict) -> None:
         if collector["episode_runtime_keys"]:
             enqueue_episode_runtime_backfill(sorted(collector["episode_runtime_keys"]))
         if collector["credit_item_ids"]:
-            enqueue_credits_backfill_items(sorted(collector["credit_item_ids"]), countdown=3)
+            enqueue_credits_backfill_items(
+                sorted(collector["credit_item_ids"]), countdown=3
+            )
     except Exception as exc:  # pragma: no cover - best-effort scheduling
         logger.debug(
             "stats_backfill_schedule_failed user_id=%s error=%s",
@@ -455,7 +532,9 @@ def refresh_statistics_cache(user_id: int, range_name: str):
     try:
         user = user_model.objects.get(id=user_id)
         if range_name not in PREDEFINED_RANGES:
-            logger.warning("Attempted to refresh cache for non-predefined range: %s", range_name)
+            logger.warning(
+                "Attempted to refresh cache for non-predefined range: %s", range_name
+            )
             return None
 
         start_date, end_date = _get_predefined_range_dates(range_name)
@@ -464,7 +543,7 @@ def refresh_statistics_cache(user_id: int, range_name: str):
 
         dirty_days = _load_dirty_days(user_id)
         dirty_set = {day for day in dirty_days if day}
-        dirty_dates = { _normalize_day_value(day) for day in dirty_set }
+        dirty_dates = {_normalize_day_value(day) for day in dirty_set}
 
         warm_days = []
         if STATISTICS_WARM_DAYS and day_list:
@@ -487,7 +566,9 @@ def refresh_statistics_cache(user_id: int, range_name: str):
         days_to_refresh = set(warm_days)
         days_to_refresh.update(missing_days)
         days_to_refresh.update(day for day in dirty_dates if day in day_list)
-        stale_score_days = _collect_stale_reading_score_days(user, day_whitelist=day_list_set)
+        stale_score_days = _collect_stale_reading_score_days(
+            user, day_whitelist=day_list_set
+        )
         days_to_refresh.update(stale_score_days)
 
         refreshed_days = 0
@@ -531,9 +612,15 @@ def refresh_statistics_cache(user_id: int, range_name: str):
                 credit_backfill_hints += int(
                     day_stats.get("backfill", {}).get("missing_credits") or 0,
                 )
-                plays_total = sum(day_stats.get("totals", {}).get("plays_by_type", {}).values())
-                minutes_total = sum(day_stats.get("totals", {}).get("minutes_by_type", {}).values())
-                daily_minutes_total = sum(day_stats.get("daily_minutes_by_type", {}).values())
+                plays_total = sum(
+                    day_stats.get("totals", {}).get("plays_by_type", {}).values()
+                )
+                minutes_total = sum(
+                    day_stats.get("totals", {}).get("minutes_by_type", {}).values()
+                )
+                daily_minutes_total = sum(
+                    day_stats.get("daily_minutes_by_type", {}).values()
+                )
                 if plays_total or minutes_total or daily_minutes_total:
                     nonempty_days += 1
         if pending_writes:
@@ -550,7 +637,9 @@ def refresh_statistics_cache(user_id: int, range_name: str):
             credit_backfill_hints=credit_backfill_hints,
             prebuilt_days=built_days,
         )
-        cache_statistics_data(user_id, range_name, stats_data, history_version=history_version)
+        cache_statistics_data(
+            user_id, range_name, stats_data, history_version=history_version
+        )
 
         processed = {day.isoformat() for day in days_to_refresh if day}
         if processed:
@@ -592,7 +681,7 @@ def schedule_statistics_refresh(
     priority: int | None = None,
 ):
     """Queue a background refresh for a user's statistics cache.
-    
+
     Args:
         user_id: User ID
         range_name: Predefined range name
@@ -641,9 +730,7 @@ def schedule_statistics_refresh(
             args=[user_id, range_name],
             countdown=countdown,
             priority=(
-                STATISTICS_TASK_PRIORITY_INTERACTIVE
-                if priority is None
-                else priority
+                STATISTICS_TASK_PRIORITY_INTERACTIVE if priority is None else priority
             ),
         )
         return True

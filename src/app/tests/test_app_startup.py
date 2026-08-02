@@ -53,8 +53,12 @@ class AppStartupTests(TestCase):
 
         with (
             patch.object(config, "_repair_celery_redis_bindings"),
-            patch.object(config, "_schedule_history_day_coverage_warmup") as mock_history,
-            patch.object(config, "_schedule_imdb_game_person_profile_backfill") as mock_imdb,
+            patch.object(
+                config, "_schedule_history_day_coverage_warmup"
+            ) as mock_history,
+            patch.object(
+                config, "_schedule_imdb_game_person_profile_backfill"
+            ) as mock_imdb,
             patch.object(config, "_schedule_genre_backfill_reconcile") as mock_genre,
             patch.object(config, "_schedule_trakt_popularity_reconcile") as mock_trakt,
         ):
@@ -121,7 +125,9 @@ class AppStartupTests(TestCase):
             with patch("app.apps.sys.argv", argv):
                 self.assertEqual(_is_management_command_process(), expected, argv)
 
-    @patch("app.tasks_imdb.schedule_imdb_game_person_profile_backfill_if_needed.apply_async")
+    @patch(
+        "app.tasks_imdb.schedule_imdb_game_person_profile_backfill_if_needed.apply_async"
+    )
     def test_schedule_imdb_game_person_profile_backfill_uses_background_priority(
         self,
         mock_apply_async,
@@ -138,7 +144,9 @@ class AppStartupTests(TestCase):
             priority=settings.CELERY_TASK_PRIORITY_BACKGROUND,
         )
 
-    @patch("app.services.imdb_game_credits.count_people_missing_profiles", return_value=12)
+    @patch(
+        "app.services.imdb_game_credits.count_people_missing_profiles", return_value=12
+    )
     @patch("app.tasks_imdb.refresh_imdb_game_credits_from_datasets.apply_async")
     def test_schedule_imdb_game_person_profile_backfill_task_queues_refresh_when_missing(
         self,
@@ -153,7 +161,9 @@ class AppStartupTests(TestCase):
 
         mock_apply_async.assert_called_once_with()
 
-    @patch("app.services.imdb_game_credits.count_people_missing_profiles", return_value=0)
+    @patch(
+        "app.services.imdb_game_credits.count_people_missing_profiles", return_value=0
+    )
     @patch("app.tasks_imdb.refresh_imdb_game_credits_from_datasets.apply_async")
     def test_schedule_imdb_game_person_profile_backfill_task_skips_when_nothing_missing(
         self,
@@ -234,9 +244,9 @@ class AppStartupTests(TestCase):
             settings.CELERY_TASK_PRIORITY_BACKGROUND,
         )
         self.assertEqual(
-            settings.CELERY_TASK_ROUTES[
-                "Repair History Day Cache Coverage"
-            ]["priority"],
+            settings.CELERY_TASK_ROUTES["Repair History Day Cache Coverage"][
+                "priority"
+            ],
             settings.CELERY_TASK_PRIORITY_BACKGROUND,
         )
 

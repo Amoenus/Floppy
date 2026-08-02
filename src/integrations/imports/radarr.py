@@ -87,7 +87,9 @@ class RadarrImporter:
         except MediaImportError as error:
             self.account.connection_broken = True
             self.account.last_error_message = str(error)
-            self.account.save(update_fields=["connection_broken", "last_error_message", "updated_at"])
+            self.account.save(
+                update_fields=["connection_broken", "last_error_message", "updated_at"]
+            )
             raise
 
         for row in movies:
@@ -99,10 +101,9 @@ class RadarrImporter:
                 imported_counts["skipped_missing_ids"] += 1
                 continue
 
-            quality_label = (
-                (row.get("movieFile") or {}).get("quality", {}).get("quality", {}).get("name")
-                or ""
-            )
+            quality_label = (row.get("movieFile") or {}).get("quality", {}).get(
+                "quality", {}
+            ).get("name") or ""
             updated_at = self._parse_source_timestamp(row)
             upsert_collection_source_state(
                 user=self.user,
@@ -117,7 +118,14 @@ class RadarrImporter:
         self.account.last_sync_at = timezone.now()
         self.account.connection_broken = False
         self.account.last_error_message = ""
-        self.account.save(update_fields=["last_sync_at", "connection_broken", "last_error_message", "updated_at"])
+        self.account.save(
+            update_fields=[
+                "last_sync_at",
+                "connection_broken",
+                "last_error_message",
+                "updated_at",
+            ]
+        )
 
         return dict(imported_counts), "\n".join(dict.fromkeys(self.warnings))
 
@@ -183,7 +191,9 @@ class RadarrImporter:
             if not value:
                 continue
             try:
-                return timezone.datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+                return timezone.datetime.fromisoformat(
+                    str(value).replace("Z", "+00:00")
+                )
             except ValueError:
                 continue
         return timezone.now()

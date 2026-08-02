@@ -20,7 +20,9 @@ logger = logging.getLogger(__name__)
 # Queue constants — moved from tasks.py (only used by this module's tasks).
 TRAKT_POPULARITY_BACKFILL_QUEUE_TTL = 60 * 60  # 1 hour
 TRAKT_POPULARITY_BACKFILL_ITEMS_QUEUE_KEY = "trakt_popularity_backfill_items_queue"
-TRAKT_POPULARITY_BACKFILL_ITEMS_SCHEDULED_KEY = "trakt_popularity_backfill_items_scheduled"
+TRAKT_POPULARITY_BACKFILL_ITEMS_SCHEDULED_KEY = (
+    "trakt_popularity_backfill_items_scheduled"
+)
 
 
 def enqueue_trakt_popularity_backfill_items(item_ids, countdown=10, *, force=False):
@@ -32,7 +34,9 @@ def enqueue_trakt_popularity_backfill_items(item_ids, countdown=10, *, force=Fal
     )
 
     normalized = _normalize_item_ids(item_ids)
-    normalized = _filter_backfill_item_ids(normalized, MetadataBackfillField.TRAKT_POPULARITY)
+    normalized = _filter_backfill_item_ids(
+        normalized, MetadataBackfillField.TRAKT_POPULARITY
+    )
     if not normalized:
         return 0
     try:
@@ -49,7 +53,9 @@ def enqueue_trakt_popularity_backfill_items(item_ids, countdown=10, *, force=Fal
                 countdown=countdown,
             )
     except Exception as exc:  # pragma: no cover - cache unavailable
-        logger.debug("Trakt popularity backfill queue unavailable: %s", exception_summary(exc))
+        logger.debug(
+            "Trakt popularity backfill queue unavailable: %s", exception_summary(exc)
+        )
         populate_trakt_popularity_data_for_items.apply_async(
             args=[normalized],
             kwargs={"force": force},
@@ -74,7 +80,9 @@ def populate_trakt_popularity_data_for_items(
     )
 
     normalized = _normalize_item_ids(item_ids)
-    normalized = _filter_backfill_item_ids(normalized, MetadataBackfillField.TRAKT_POPULARITY)
+    normalized = _filter_backfill_item_ids(
+        normalized, MetadataBackfillField.TRAKT_POPULARITY
+    )
     if not normalized:
         return {"updated": 0, "errors": 0, "message": "No item IDs provided"}
     if not trakt_popularity_service.trakt_provider.is_configured():
@@ -87,7 +95,11 @@ def populate_trakt_popularity_data_for_items(
         items = [item for item in items if trakt_popularity_service.needs_refresh(item)]
     if not items:
         logger.info("No targeted items need Trakt popularity data")
-        return {"updated": 0, "errors": 0, "message": "No targeted items need Trakt popularity data"}
+        return {
+            "updated": 0,
+            "errors": 0,
+            "message": "No targeted items need Trakt popularity data",
+        }
 
     updated_count = 0
     error_count = 0
@@ -96,7 +108,9 @@ def populate_trakt_popularity_data_for_items(
         try:
             trakt_popularity_service.refresh_trakt_popularity(
                 item,
-                route_media_type=trakt_popularity_service.route_media_type_for_item(item),
+                route_media_type=trakt_popularity_service.route_media_type_for_item(
+                    item
+                ),
                 force=force,
             )
             _record_backfill_success(
@@ -214,13 +228,20 @@ def populate_trakt_episode_ratings_for_season(
         ).first()
     )
     if not anchor:
-        return {"updated": 0, "message": "No show/season Item found for Trakt ID resolution"}
+        return {
+            "updated": 0,
+            "message": "No show/season Item found for Trakt ID resolution",
+        }
 
-    show_lookup = trakt_pop.lookup_item_summary(anchor, route_media_type=MediaTypes.TV.value)
+    show_lookup = trakt_pop.lookup_item_summary(
+        anchor, route_media_type=MediaTypes.TV.value
+    )
     if not show_lookup:
         return {"updated": 0, "message": "Could not resolve Trakt show ID"}
 
-    episode_numbers = [ep.episode_number for ep in episode_items if ep.episode_number is not None]
+    episode_numbers = [
+        ep.episode_number for ep in episode_items if ep.episode_number is not None
+    ]
     try:
         ratings = trakt_provider.fetch_episode_ratings_for_season(
             show_lookup,
@@ -246,7 +267,9 @@ def populate_trakt_episode_ratings_for_season(
             updated_items.append(ep)
 
     if updated_items:
-        Item.objects.bulk_update(updated_items, ["trakt_rating", "trakt_rating_count"], batch_size=100)
+        Item.objects.bulk_update(
+            updated_items, ["trakt_rating", "trakt_rating_count"], batch_size=100
+        )
 
     logger.info(
         "trakt_episode_ratings_complete media_id=%s season=%s updated=%d",
@@ -254,7 +277,10 @@ def populate_trakt_episode_ratings_for_season(
         season_number,
         len(updated_items),
     )
-    return {"updated": len(updated_items), "message": f"Updated {len(updated_items)} episodes"}
+    return {
+        "updated": len(updated_items),
+        "message": f"Updated {len(updated_items)} episodes",
+    }
 
 
 @shared_task(name="app.tasks.reconcile_trakt_popularity")
@@ -271,7 +297,9 @@ def reconcile_trakt_popularity(score_version: int | None = None):
     """
     from app.models import Item  # noqa: PLC0415
 
-    all_items = list(trakt_popularity_service.tracked_items_queryset().iterator(chunk_size=500))
+    all_items = list(
+        trakt_popularity_service.tracked_items_queryset().iterator(chunk_size=500)
+    )
 
     recomputed = 0
     never_fetched_ids = []
@@ -294,7 +322,9 @@ def reconcile_trakt_popularity(score_version: int | None = None):
 
     enqueued = 0
     if never_fetched_ids and trakt_popularity_service.trakt_provider.is_configured():
-        enqueued = enqueue_trakt_popularity_backfill_items(never_fetched_ids, countdown=10)
+        enqueued = enqueue_trakt_popularity_backfill_items(
+            never_fetched_ids, countdown=10
+        )
 
     # Mark this formula version as fully reconciled so restarts don't re-run it.
     if score_version is not None:

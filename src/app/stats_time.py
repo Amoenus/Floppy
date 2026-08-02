@@ -5,6 +5,7 @@ covering TV episodes, movies, anime, games, and music.  Also re-houses
 the music runtime lookup helper that was previously scattered across
 statistics.py and stats_music.py.
 """
+
 import logging
 
 from django.db import transaction
@@ -27,6 +28,7 @@ logger = logging.getLogger(__name__)
 # Game time
 # ---------------------------------------------------------------------------
 
+
 def _calculate_game_time_in_range(media, start_date, end_date):
     """Return game minutes to count within the requested date range."""
     game_total_minutes = getattr(media, "progress", 0) or 0
@@ -42,7 +44,9 @@ def _calculate_game_time_in_range(media, start_date, end_date):
             game_total_days = 1
 
         if start_date and end_date:
-            filter_start = start_date.date() if hasattr(start_date, "date") else start_date
+            filter_start = (
+                start_date.date() if hasattr(start_date, "date") else start_date
+            )
             filter_end = end_date.date() if hasattr(end_date, "date") else end_date
 
             intersection_start = max(game_start_date, filter_start)
@@ -67,6 +71,7 @@ def _calculate_game_time_in_range(media, start_date, end_date):
 # Season / episode helpers
 # ---------------------------------------------------------------------------
 
+
 def _get_season_metadata(media, season, season_metadata_cache, logger):
     """Get season metadata, using cache if available."""
     if season.item.season_number not in season_metadata_cache:
@@ -79,7 +84,12 @@ def _get_season_metadata(media, season, season_metadata_cache, logger):
             )
             season_metadata_cache[season.item.season_number] = season_metadata
         except Exception as e:
-            logger.warning("Failed to get season %s metadata for %s: %s", season.item.season_number, media.item.title, e)
+            logger.warning(
+                "Failed to get season %s metadata for %s: %s",
+                season.item.season_number,
+                media.item.title,
+                e,
+            )
             season_metadata_cache[season.item.season_number] = None
 
     return season_metadata_cache[season.item.season_number]
@@ -97,7 +107,11 @@ def _get_season_metadata_with_episodes(media, season, logger):
         )
 
         if not season_metadata:
-            logger.error("No season metadata available for %s S%s", media.item.title, season.item.season_number)
+            logger.error(
+                "No season metadata available for %s S%s",
+                media.item.title,
+                season.item.season_number,
+            )
             return None
 
         # Get episodes from database for this season
@@ -105,6 +119,7 @@ def _get_season_metadata_with_episodes(media, season, logger):
 
         # Process episodes through TMDB to get runtime data
         from app.providers import tmdb  # noqa: PLC0415
+
         season_metadata["episodes"] = tmdb.process_episodes(
             season_metadata,
             episodes_in_db,
@@ -113,20 +128,29 @@ def _get_season_metadata_with_episodes(media, season, logger):
         return season_metadata
 
     except Exception as e:
-        logger.error("Failed to get season metadata with episodes for %s S%s: %s", media.item.title, season.item.season_number, e)
+        logger.error(
+            "Failed to get season metadata with episodes for %s S%s: %s",
+            media.item.title,
+            season.item.season_number,
+            e,
+        )
         return None
 
 
 def _calculate_episode_time_from_data(episode_data, logger):
     """Calculate episode time from processed episode data."""
     if "runtime" not in episode_data or not episode_data["runtime"]:
-        raise ValueError(f"Runtime data missing for episode {episode_data.get('episode_number', 'unknown')}")
+        raise ValueError(
+            f"Runtime data missing for episode {episode_data.get('episode_number', 'unknown')}"
+        )
 
     runtime_str = episode_data["runtime"]
     episode_minutes = parse_runtime_to_minutes(runtime_str)
 
     if episode_minutes is None:
-        raise ValueError(f"Failed to parse runtime '{runtime_str}' for episode {episode_data.get('episode_number', 'unknown')}")
+        raise ValueError(
+            f"Failed to parse runtime '{runtime_str}' for episode {episode_data.get('episode_number', 'unknown')}"
+        )
 
     return episode_minutes
 
@@ -135,7 +159,10 @@ def _calculate_episode_time_from_cache(episode, logger):
     """Calculate episode time from cached runtime data."""
     runtime_minutes = getattr(getattr(episode, "item", None), "runtime_minutes", None)
     if not runtime_minutes:
-        logger.warning("Runtime data missing for episode %s, skipping", episode.item.episode_number if episode.item else "unknown")
+        logger.warning(
+            "Runtime data missing for episode %s, skipping",
+            episode.item.episode_number if episode.item else "unknown",
+        )
         return 0  # Skip this episode instead of failing
 
     if runtime_minutes >= 999998:
@@ -163,6 +190,7 @@ def _is_episode_in_range(episode, start_date, end_date):
 # TV / anime time
 # ---------------------------------------------------------------------------
 
+
 def _calculate_tv_time(media, start_date, end_date, logger):
     """Calculate total time for TV shows using cached runtime data."""
     total_time_minutes = 0
@@ -182,7 +210,9 @@ def _calculate_tv_time(media, start_date, end_date, logger):
 
             try:
                 episode_count += 1
-                total_time_minutes += _calculate_episode_time_from_cache(episode, logger)
+                total_time_minutes += _calculate_episode_time_from_cache(
+                    episode, logger
+                )
             except ValueError as e:
                 logger.warning("Skipping episode due to missing runtime: %s", e)
                 # Continue processing other episodes instead of failing completely
@@ -200,11 +230,15 @@ def _calculate_anime_time(media, start_date, end_date, logger):
     if media.end_date and start_date and end_date:
         if start_date <= media.end_date <= end_date:
             episode_count = media.progress
-            total_time_minutes = _get_anime_runtime_from_cache(media, episode_count, logger, "(date range)")
+            total_time_minutes = _get_anime_runtime_from_cache(
+                media, episode_count, logger, "(date range)"
+            )
     elif not start_date and not end_date:
         # All time
         episode_count = media.progress
-        total_time_minutes = _get_anime_runtime_from_cache(media, episode_count, logger, "(all time)")
+        total_time_minutes = _get_anime_runtime_from_cache(
+            media, episode_count, logger, "(all time)"
+        )
 
     return total_time_minutes, episode_count
 
@@ -216,16 +250,26 @@ def _get_anime_runtime_from_cache(media, episode_count, logger, context=""):
         return 0  # Skip this anime instead of failing
 
     if not media.item.runtime_minutes:
-        logger.warning("Runtime data missing for anime '%s' %s, skipping", media.item.title, context)
+        logger.warning(
+            "Runtime data missing for anime '%s' %s, skipping",
+            media.item.title,
+            context,
+        )
         return 0  # Skip this anime instead of failing
 
-    logger.debug("Anime '%s' %s: using cached runtime %s minutes per episode", media.item.title, context, media.item.runtime_minutes)
+    logger.debug(
+        "Anime '%s' %s: using cached runtime %s minutes per episode",
+        media.item.title,
+        context,
+        media.item.runtime_minutes,
+    )
     return episode_count * media.item.runtime_minutes
 
 
 # ---------------------------------------------------------------------------
 # Movie / generic media time
 # ---------------------------------------------------------------------------
+
 
 def _get_media_metadata_for_statistics(media):
     """Get media metadata for statistics calculations."""
@@ -250,16 +294,31 @@ def _get_media_runtime_from_cache(media, logger, context=""):
     runtime_minutes = getattr(media.item, "runtime_minutes", None)
     # Exclude fallback values: 999998 (aired but runtime unknown) and 999999 (unknown runtime)
     if runtime_minutes and runtime_minutes < 999998:
-        logger.debug("Media '%s' %s: using cached runtime %s minutes", media.item.title, context, runtime_minutes)
+        logger.debug(
+            "Media '%s' %s: using cached runtime %s minutes",
+            media.item.title,
+            context,
+            runtime_minutes,
+        )
         return runtime_minutes
 
     # Check database directly to see if another task just saved runtime
     # This helps prevent race conditions when multiple tasks run in parallel
     from app.models import Item  # noqa: PLC0415
-    db_runtime = Item.objects.filter(id=media.item.id).values_list("runtime_minutes", flat=True).first()
+
+    db_runtime = (
+        Item.objects.filter(id=media.item.id)
+        .values_list("runtime_minutes", flat=True)
+        .first()
+    )
     # Exclude fallback values: 999998 (aired but runtime unknown) and 999999 (unknown runtime)
     if db_runtime and db_runtime < 999998:
-        logger.debug("Media '%s' %s: using database runtime %s minutes (saved by another task)", media.item.title, context, db_runtime)
+        logger.debug(
+            "Media '%s' %s: using database runtime %s minutes (saved by another task)",
+            media.item.title,
+            context,
+            db_runtime,
+        )
         # Update in-memory object to reflect database state
         media.item.runtime_minutes = db_runtime
         return db_runtime
@@ -295,7 +354,12 @@ def _get_media_runtime_from_cache(media, logger, context=""):
 
     # Exclude fallback values: 999998 (aired but runtime unknown) and 999999 (unknown runtime)
     if metadata_runtime and metadata_runtime < 999998:
-        logger.debug("Media '%s' %s: fetched runtime %s minutes", media.item.title, context, metadata_runtime)
+        logger.debug(
+            "Media '%s' %s: fetched runtime %s minutes",
+            media.item.title,
+            context,
+            metadata_runtime,
+        )
         if hasattr(media.item, "runtime_minutes"):
             try:
                 with transaction.atomic():
@@ -303,7 +367,12 @@ def _get_media_runtime_from_cache(media, logger, context=""):
                     media.item.save(update_fields=["runtime_minutes"])
                     media.item.refresh_from_db()  # Ensure consistency
             except Exception as exc:
-                logger.warning("Failed to save runtime for '%s' %s: %s", media.item.title, context, exc)
+                logger.warning(
+                    "Failed to save runtime for '%s' %s: %s",
+                    media.item.title,
+                    context,
+                    exc,
+                )
                 # Continue with metadata_runtime value even if save fails
         return metadata_runtime
 
@@ -322,7 +391,9 @@ def _calculate_movie_time(media, start_date, end_date, normalized_type, logger):
     # Check if media is within date range
     if media.end_date and start_date and end_date:
         if start_date <= media.end_date <= end_date:
-            total_time_minutes = _get_media_runtime_from_cache(media, logger, "(date range)")
+            total_time_minutes = _get_media_runtime_from_cache(
+                media, logger, "(date range)"
+            )
     elif not start_date and not end_date:
         # All time
         total_time_minutes = _get_media_runtime_from_cache(media, logger, "(all time)")
@@ -333,6 +404,7 @@ def _calculate_movie_time(media, start_date, end_date, normalized_type, logger):
 # ---------------------------------------------------------------------------
 # Music time
 # ---------------------------------------------------------------------------
+
 
 def _get_music_runtime_minutes(music_entry, track_duration_cache=None):
     """Get runtime in minutes from a Music entry, checking track and item.
@@ -429,12 +501,16 @@ def _calculate_music_time(media, start_date, end_date, logger):
             # Prefer the history record where history_date is closest to end_date
             # (within reason - if history_date is way after end_date, it's likely a metadata update)
             existing_history_date = plays_by_end_date[history_end_date][1]
-            time_diff_existing = abs((existing_history_date - history_end_date).total_seconds())
+            time_diff_existing = abs(
+                (existing_history_date - history_end_date).total_seconds()
+            )
             time_diff_current = abs((history_date - history_end_date).total_seconds())
 
             # Prefer the one closer to end_date, but only if it's within 24 hours
             # (metadata updates can happen days/weeks later)
-            if time_diff_current < time_diff_existing and time_diff_current < 86400:  # 24 hours
+            if (
+                time_diff_current < time_diff_existing and time_diff_current < 86400
+            ):  # 24 hours
                 plays_by_end_date[history_end_date] = (history_record, history_date)
 
     # Count unique plays within date range
@@ -454,6 +530,7 @@ def _calculate_music_time(media, start_date, end_date, logger):
 # Main aggregator
 # ---------------------------------------------------------------------------
 
+
 def calculate_minutes_per_media_type(user_media, start_date, end_date, user=None):
     """Return total minutes watched per media type within the date range."""
     minutes_per_type = {}
@@ -467,6 +544,7 @@ def calculate_minutes_per_media_type(user_media, start_date, end_date, user=None
                 _collect_podcast_play_data,
                 _get_podcast_history_data,
             )
+
             podcast_user = user or _infer_user_from_user_media(user_media)
             podcast_history_records, podcasts_lookup = _get_podcast_history_data(
                 podcast_user,
@@ -494,16 +572,24 @@ def calculate_minutes_per_media_type(user_media, start_date, end_date, user=None
             if media_type == MediaTypes.ANIME.value:
                 # Grouped anime uses TV model (seasons + episodes); flat anime uses progress field
                 if hasattr(media, "seasons"):
-                    anime_minutes, _ = _calculate_tv_time(media, start_date, end_date, logger)
+                    anime_minutes, _ = _calculate_tv_time(
+                        media, start_date, end_date, logger
+                    )
                 else:
-                    anime_minutes, _ = _calculate_anime_time(media, start_date, end_date, logger)
+                    anime_minutes, _ = _calculate_anime_time(
+                        media, start_date, end_date, logger
+                    )
                 total_minutes += anime_minutes
                 continue
 
             if media_type == MediaTypes.MOVIE.value:
                 activity_dt = _get_activity_datetime(media)
                 if start_date and end_date:
-                    if not activity_dt or activity_dt < start_date or activity_dt > end_date:
+                    if (
+                        not activity_dt
+                        or activity_dt < start_date
+                        or activity_dt > end_date
+                    ):
                         continue
                 total_minutes += _calculate_movie_time(
                     media,
@@ -526,22 +612,28 @@ def calculate_minutes_per_media_type(user_media, start_date, end_date, user=None
 
             if media_type == MediaTypes.BOARDGAME.value:
                 if (
-                    media.end_date
-                    and start_date
-                    and end_date
-                    and start_date <= media.end_date <= end_date
-                ) or (
-                    media.start_date
-                    and start_date
-                    and end_date
-                    and start_date <= media.start_date <= end_date
-                ) or (not start_date and not end_date):
+                    (
+                        media.end_date
+                        and start_date
+                        and end_date
+                        and start_date <= media.end_date <= end_date
+                    )
+                    or (
+                        media.start_date
+                        and start_date
+                        and end_date
+                        and start_date <= media.start_date <= end_date
+                    )
+                    or (not start_date and not end_date)
+                ):
                     total_minutes += media.progress
                 continue
 
             if media_type == MediaTypes.MUSIC.value:
                 # Music: sum up runtime for each play (history record) within date range
-                music_minutes = _calculate_music_time(media, start_date, end_date, logger)
+                music_minutes = _calculate_music_time(
+                    media, start_date, end_date, logger
+                )
                 total_minutes += music_minutes
                 continue
 
@@ -555,14 +647,24 @@ def calculate_minutes_per_media_type(user_media, start_date, end_date, user=None
     return minutes_per_type
 
 
-def get_hours_per_media_type(user_media, start_date, end_date, minutes_per_type=None, duration_format="hours_minutes"):
+def get_hours_per_media_type(
+    user_media,
+    start_date,
+    end_date,
+    minutes_per_type=None,
+    duration_format="hours_minutes",
+):
     """Calculate total hours watched per media type within the date range."""
     if minutes_per_type is None:
-        minutes_per_type = calculate_minutes_per_media_type(user_media, start_date, end_date)
+        minutes_per_type = calculate_minutes_per_media_type(
+            user_media, start_date, end_date
+        )
     hours = {}
     for media_type, total_minutes in minutes_per_type.items():
         if media_type == MediaTypes.BOARDGAME.value:
-            hours[media_type] = f"{total_minutes} play{'s' if total_minutes != 1 else ''}"
+            hours[media_type] = (
+                f"{total_minutes} play{'s' if total_minutes != 1 else ''}"
+            )
         else:
             hours[media_type] = _format_hours_minutes(total_minutes, duration_format)
     return hours

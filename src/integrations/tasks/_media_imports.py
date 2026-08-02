@@ -84,6 +84,7 @@ def import_media(importer_func, identifier, user_id, mode, oauth_username=None):
     # the newly imported media without requiring a manual page reload or waiting for the
     # next scheduled Celery beat.
     from app import statistics_cache as _statistics_cache
+
     _statistics_cache.schedule_all_ranges_refresh(user.id)
 
     # Queue collection metadata update task for media server imports
@@ -111,13 +112,16 @@ def _queue_post_import_collection_update(user_id, importer_func):
     # Check if this is a media server import that supports collection updates
     # Compare by function reference
     import integrations.imports.plex as plex_import_module
+
     if importer_func == plex_import_module.importer:
         # Queue Plex collection update (run after calendar reload with a delay)
         update_collection_metadata_from_plex.apply_async(
             args=("all", user_id),
             countdown=60,  # Run 60 seconds after import to allow calendar reload to complete
         )
-        logger.info("Queued post-import collection metadata update for user %s", user_id)
+        logger.info(
+            "Queued post-import collection metadata update for user %s", user_id
+        )
     # TODO: Add Jellyfin and Emby when their importers are available
 
 
@@ -395,7 +399,9 @@ def import_pocketcasts(user_id, mode="new"):
     """Celery task for importing podcast history from Pocket Casts."""
     lock_key = f"pocketcasts_import_lock_{user_id}"
     if not cache.add(lock_key, "1", timeout=600):
-        logger.info("Pocket Casts import already running for user %s, skipping", user_id)
+        logger.info(
+            "Pocket Casts import already running for user %s, skipping", user_id
+        )
         return "Skipped: import already in progress"
     try:
         return import_media(pocketcasts.importer, None, user_id, mode)
@@ -408,7 +414,9 @@ def import_pocketcasts_history(user_id):
     """Recurring import task for Pocket Casts (called every 2 hours via Celery beat)."""
     lock_key = f"pocketcasts_import_lock_{user_id}"
     if not cache.add(lock_key, "1", timeout=600):
-        logger.info("Pocket Casts import already running for user %s, skipping", user_id)
+        logger.info(
+            "Pocket Casts import already running for user %s, skipping", user_id
+        )
         return "Skipped: import already in progress"
     try:
         return import_media(pocketcasts.importer, None, user_id, "new")
@@ -440,4 +448,3 @@ def import_gpodder_recurring(user_id):
         return import_media(gpodder.importer, None, user_id, "new")
     finally:
         cache.delete(lock_key)
-

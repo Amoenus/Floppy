@@ -966,9 +966,7 @@ class MediaTypeListView(drf_views.APIView):
         # library bucket (grouped anime) or raise MultipleObjectsReturned, and
         # raw title/image defaults would drop original/localized titles.
         library_media_type = (
-            body.get("library_media_type")
-            or metadata.get("library_media_type")
-            or None
+            body.get("library_media_type") or metadata.get("library_media_type") or None
         )
         item = resolve_item_queryset(
             media_id,
@@ -1871,8 +1869,7 @@ class MediaSeasonsView(drf_views.APIView):
                 library_media_type=MediaTypes.ANIME.value,
             )
         items_by_number = {
-            item.season_number: item
-            for item in season_items_qs.order_by("id")
+            item.season_number: item for item in season_items_qs.order_by("id")
         }
 
         tracked_by_number = {}

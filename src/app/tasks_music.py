@@ -56,8 +56,12 @@ def enrich_music_library_task(user_id: int):
     artists_with_mbid = [a for a in artists if a.musicbrainz_id]
 
     # Log sample names to verify we're seeing the full set (not just "A" names)
-    sample_without_mbid = [a.name for a in artists_without_mbid[:10]] if artists_without_mbid else []
-    sample_with_mbid = [a.name for a in artists_with_mbid[:10]] if artists_with_mbid else []
+    sample_without_mbid = (
+        [a.name for a in artists_without_mbid[:10]] if artists_without_mbid else []
+    )
+    sample_with_mbid = (
+        [a.name for a in artists_with_mbid[:10]] if artists_with_mbid else []
+    )
 
     logger.info(
         "enrich_music_library_task: Found %d total artists (%d without MBID, %d with MBID). "
@@ -101,7 +105,9 @@ def enrich_music_library_task(user_id: int):
                 items_to_update_runtime.append(music.item)
 
     if items_to_update_runtime:
-        Item.objects.bulk_update(items_to_update_runtime, ["runtime_minutes"], batch_size=500)
+        Item.objects.bulk_update(
+            items_to_update_runtime, ["runtime_minutes"], batch_size=500
+        )
         logger.info(
             "enrich_music_library_task: Backfilled %d runtimes from existing tracks",
             len(items_to_update_runtime),
@@ -197,7 +203,9 @@ def enrich_music_library_task(user_id: int):
                                 merged += 1
                                 logger.info(
                                     "enrich_music_library_task: SUCCESS - merged artist '%s' (id=%s) into '%s' (id=%s, MBID=%s) via variant '%s'",
-                                    artist.name if hasattr(artist, "name") else "Unknown",
+                                    artist.name
+                                    if hasattr(artist, "name")
+                                    else "Unknown",
                                     artist.id if hasattr(artist, "id") else "Unknown",
                                     existing.name,
                                     existing.id,
@@ -207,7 +215,9 @@ def enrich_music_library_task(user_id: int):
                             except Exception as merge_exc:
                                 logger.warning(
                                     "enrich_music_library_task: merge FAILED for '%s' (id=%s) into '%s' (id=%s, MBID=%s): %s",
-                                    artist.name if hasattr(artist, "name") else "Unknown",
+                                    artist.name
+                                    if hasattr(artist, "name")
+                                    else "Unknown",
                                     artist.id if hasattr(artist, "id") else "Unknown",
                                     existing.name,
                                     existing.id,
@@ -219,7 +229,9 @@ def enrich_music_library_task(user_id: int):
                                 if not artist.pk:
                                     logger.warning(
                                         "enrich_music_library_task: artist '%s' invalid after failed merge, skipping remaining processing for this artist, continuing with next",
-                                        artist.name if hasattr(artist, "name") else "Unknown",
+                                        artist.name
+                                        if hasattr(artist, "name")
+                                        else "Unknown",
                                     )
                                     continue
                         else:
@@ -262,13 +274,19 @@ def enrich_music_library_task(user_id: int):
                 sync_artist_discography(artist, force=False)
                 synced += 1
             except Exception as exc:  # pragma: no cover - defensive
-                logger.debug("Discography sync failed for %s: %s", artist.name, exception_summary(exc))
+                logger.debug(
+                    "Discography sync failed for %s: %s",
+                    artist.name,
+                    exception_summary(exc),
+                )
 
         try:
             dedupe_artist_albums(artist)
             deduped += 1
         except Exception as exc:  # pragma: no cover - defensive
-            logger.debug("Album dedupe failed for %s: %s", artist.name, exception_summary(exc))
+            logger.debug(
+                "Album dedupe failed for %s: %s", artist.name, exception_summary(exc)
+            )
 
         # Collect albums that need track population (defer to background for speed)
         # Only collect albums with MBIDs - can't populate tracks without them
@@ -279,7 +297,11 @@ def enrich_music_library_task(user_id: int):
             try:
                 Artist.objects.get(pk=artist.pk)
             except Artist.DoesNotExist:
-                logger.debug("Artist %s (pk=%s) no longer exists, skipping album collection", artist.name, artist.pk)
+                logger.debug(
+                    "Artist %s (pk=%s) no longer exists, skipping album collection",
+                    artist.name,
+                    artist.pk,
+                )
             else:
                 for album in Album.objects.filter(
                     artist_id=artist.pk,
@@ -322,7 +344,11 @@ def enrich_music_library_task(user_id: int):
                 if to_update:
                     Music.objects.bulk_update(to_update, ["track"])
         except Exception as exc:  # pragma: no cover - defensive
-            logger.debug("Music->Track relink failed for artist %s: %s", artist.id, exception_summary(exc))
+            logger.debug(
+                "Music->Track relink failed for artist %s: %s",
+                artist.id,
+                exception_summary(exc),
+            )
 
         # Either queue cover prefetch for later or do it inline (configurable)
         if defer_covers and artist.musicbrainz_id:
@@ -331,7 +357,11 @@ def enrich_music_library_task(user_id: int):
             try:
                 prefetch_album_covers(artist, limit=None)
             except Exception as exc:  # pragma: no cover - defensive
-                logger.debug("Cover prefetch failed for artist %s: %s", artist.id, exception_summary(exc))
+                logger.debug(
+                    "Cover prefetch failed for artist %s: %s",
+                    artist.id,
+                    exception_summary(exc),
+                )
 
     # Phase 3: Final runtime backfill from newly populated/linked tracks (if any)
     # This catches tracks that got duration_ms during enrichment
@@ -350,7 +380,9 @@ def enrich_music_library_task(user_id: int):
                 items_final_runtime.append(music.item)
 
     if items_final_runtime:
-        Item.objects.bulk_update(items_final_runtime, ["runtime_minutes"], batch_size=500)
+        Item.objects.bulk_update(
+            items_final_runtime, ["runtime_minutes"], batch_size=500
+        )
         logger.info(
             "enrich_music_library_task: Backfilled %d additional runtimes from newly linked tracks",
             len(items_final_runtime),
@@ -358,7 +390,9 @@ def enrich_music_library_task(user_id: int):
 
     cover_task_id = None
     if defer_covers and artists_for_covers:
-        result = prefetch_album_covers_batch.delay(artists_for_covers, limit_per_artist=5)
+        result = prefetch_album_covers_batch.delay(
+            artists_for_covers, limit_per_artist=5
+        )
         cover_task_id = result.id
 
     # Queue track population as background task (only for albums with MBIDs)
@@ -457,14 +491,11 @@ def fast_runtime_backfill_task(user_id: int):
         return {"backfilled": 0}
 
     # Strategy 1: Backfill from linked Track.duration_ms (fastest path)
-    music_with_track_duration = (
-        Music.objects.filter(
-            user=user,
-            item__runtime_minutes__isnull=True,
-            track__duration_ms__isnull=False,
-        )
-        .select_related("item", "track")
-    )
+    music_with_track_duration = Music.objects.filter(
+        user=user,
+        item__runtime_minutes__isnull=True,
+        track__duration_ms__isnull=False,
+    ).select_related("item", "track")
 
     items_to_update = []
     for music in music_with_track_duration:
@@ -561,16 +592,25 @@ def populate_album_tracks_batch(album_ids: list[int], user_id: int | None = None
                 continue
 
             # Skip albums without MBIDs - can't populate tracks without them
-            if not album.musicbrainz_release_id and not album.musicbrainz_release_group_id:
+            if (
+                not album.musicbrainz_release_id
+                and not album.musicbrainz_release_group_id
+            ):
                 continue
 
             count = populate_album_tracks(album)
             if count > 0:
                 populated += 1
-            elif album.musicbrainz_release_group_id and not album.musicbrainz_release_id:
+            elif (
+                album.musicbrainz_release_group_id and not album.musicbrainz_release_id
+            ):
                 skipped_no_release_id += 1
         except Exception as exc:
-            logger.warning("Track populate failed for album %s: %s", album_id, exception_summary(exc))
+            logger.warning(
+                "Track populate failed for album %s: %s",
+                album_id,
+                exception_summary(exc),
+            )
 
     if skipped_no_release_id > 0:
         logger.info(
@@ -604,9 +644,15 @@ def populate_album_tracks_batch(album_ids: list[int], user_id: int | None = None
                 backfill_result.get("backfilled", 0),
             )
         except User.DoesNotExist:
-            logger.warning("populate_album_tracks_batch: User %s not found, skipping track linking", user_id)
+            logger.warning(
+                "populate_album_tracks_batch: User %s not found, skipping track linking",
+                user_id,
+            )
         except Exception as exc:
-            logger.warning("Failed to link tracks/backfill runtime after track population: %s", exception_summary(exc))
+            logger.warning(
+                "Failed to link tracks/backfill runtime after track population: %s",
+                exception_summary(exc),
+            )
 
     return {
         "albums": len(album_ids),
@@ -661,19 +707,23 @@ def enrich_albums_task(user_id: int):
         if not a.musicbrainz_release_id and not a.musicbrainz_release_group_id
     ]
     albums_with_mbid = [
-        a
-        for a in albums
-        if a.musicbrainz_release_id or a.musicbrainz_release_group_id
+        a for a in albums if a.musicbrainz_release_id or a.musicbrainz_release_group_id
     ]
 
     # Log sample names to verify we're seeing the full set
     sample_without_mbid = (
-        [f"{a.title} - {a.artist.name if a.artist else 'Unknown'}" for a in albums_without_mbid[:10]]
+        [
+            f"{a.title} - {a.artist.name if a.artist else 'Unknown'}"
+            for a in albums_without_mbid[:10]
+        ]
         if albums_without_mbid
         else []
     )
     sample_with_mbid = (
-        [f"{a.title} - {a.artist.name if a.artist else 'Unknown'}" for a in albums_with_mbid[:10]]
+        [
+            f"{a.title} - {a.artist.name if a.artist else 'Unknown'}"
+            for a in albums_with_mbid[:10]
+        ]
         if albums_with_mbid
         else []
     )
@@ -712,7 +762,9 @@ def enrich_albums_task(user_id: int):
                 items_to_update_runtime.append(music.item)
 
     if items_to_update_runtime:
-        Item.objects.bulk_update(items_to_update_runtime, ["runtime_minutes"], batch_size=500)
+        Item.objects.bulk_update(
+            items_to_update_runtime, ["runtime_minutes"], batch_size=500
+        )
         logger.info(
             "enrich_albums_task: Backfilled %d runtimes from existing tracks",
             len(items_to_update_runtime),
@@ -798,13 +850,21 @@ def enrich_albums_task(user_id: int):
                         # Find existing album with this release_group_id
                         existing = None
                         if release_group_id:
-                            existing = Album.objects.filter(
-                                musicbrainz_release_group_id=release_group_id,
-                            ).exclude(id=album.id).first()
+                            existing = (
+                                Album.objects.filter(
+                                    musicbrainz_release_group_id=release_group_id,
+                                )
+                                .exclude(id=album.id)
+                                .first()
+                            )
                         if not existing and release_id:
-                            existing = Album.objects.filter(
-                                musicbrainz_release_id=release_id,
-                            ).exclude(id=album.id).first()
+                            existing = (
+                                Album.objects.filter(
+                                    musicbrainz_release_id=release_id,
+                                )
+                                .exclude(id=album.id)
+                                .first()
+                            )
 
                         if existing:
                             logger.info(
@@ -817,17 +877,30 @@ def enrich_albums_task(user_id: int):
                                 # Merge album into existing (similar to _merge_album_into_target logic)
                                 updates = set()
                                 if (
-                                    (not existing.image or existing.image == settings.IMG_NONE)
+                                    (
+                                        not existing.image
+                                        or existing.image == settings.IMG_NONE
+                                    )
                                     and album.image
                                     and album.image != settings.IMG_NONE
                                 ):
                                     existing.image = album.image
                                     updates.add("image")
-                                if not existing.musicbrainz_release_id and album.musicbrainz_release_id:
-                                    existing.musicbrainz_release_id = album.musicbrainz_release_id
+                                if (
+                                    not existing.musicbrainz_release_id
+                                    and album.musicbrainz_release_id
+                                ):
+                                    existing.musicbrainz_release_id = (
+                                        album.musicbrainz_release_id
+                                    )
                                     updates.add("musicbrainz_release_id")
-                                if not existing.musicbrainz_release_group_id and album.musicbrainz_release_group_id:
-                                    existing.musicbrainz_release_group_id = album.musicbrainz_release_group_id
+                                if (
+                                    not existing.musicbrainz_release_group_id
+                                    and album.musicbrainz_release_group_id
+                                ):
+                                    existing.musicbrainz_release_group_id = (
+                                        album.musicbrainz_release_group_id
+                                    )
                                     updates.add("musicbrainz_release_group_id")
                                 if not existing.release_date and album.release_date:
                                     existing.release_date = album.release_date
@@ -845,22 +918,26 @@ def enrich_albums_task(user_id: int):
                                         album=existing,
                                     ).first()
                                     if existing_tracker:
-                                        if (
-                                            tracker.start_date
-                                            and (
-                                                not existing_tracker.start_date
-                                                or tracker.start_date < existing_tracker.start_date
-                                            )
+                                        if tracker.start_date and (
+                                            not existing_tracker.start_date
+                                            or tracker.start_date
+                                            < existing_tracker.start_date
                                         ):
-                                            existing_tracker.start_date = tracker.start_date
-                                            existing_tracker.save(update_fields=["start_date"])
+                                            existing_tracker.start_date = (
+                                                tracker.start_date
+                                            )
+                                            existing_tracker.save(
+                                                update_fields=["start_date"]
+                                            )
                                         tracker.delete()
                                     else:
                                         tracker.album = existing
                                         tracker.save(update_fields=["album"])
 
                                 # Re-point music entries to the canonical album
-                                Music.objects.filter(album=album).update(album=existing, track=None)
+                                Music.objects.filter(album=album).update(
+                                    album=existing, track=None
+                                )
 
                                 # Delete the source album
                                 album.delete()
@@ -868,7 +945,9 @@ def enrich_albums_task(user_id: int):
                                 merged += 1
                                 logger.info(
                                     "enrich_albums_task: SUCCESS - merged album '%s' (id=%s) into '%s' (id=%s, release_group_id=%s) via variant '%s'",
-                                    album.title if hasattr(album, "title") else "Unknown",
+                                    album.title
+                                    if hasattr(album, "title")
+                                    else "Unknown",
                                     album.id if hasattr(album, "id") else "Unknown",
                                     existing.title,
                                     existing.id,
@@ -878,7 +957,9 @@ def enrich_albums_task(user_id: int):
                             except Exception as merge_exc:
                                 logger.warning(
                                     "enrich_albums_task: merge FAILED for '%s' (id=%s) into '%s' (id=%s): %s",
-                                    album.title if hasattr(album, "title") else "Unknown",
+                                    album.title
+                                    if hasattr(album, "title")
+                                    else "Unknown",
                                     album.id if hasattr(album, "id") else "Unknown",
                                     existing.title,
                                     existing.id,
@@ -889,7 +970,9 @@ def enrich_albums_task(user_id: int):
                                 if not album.pk:
                                     logger.warning(
                                         "enrich_albums_task: album '%s' invalid after failed merge, skipping remaining processing",
-                                        album.title if hasattr(album, "title") else "Unknown",
+                                        album.title
+                                        if hasattr(album, "title")
+                                        else "Unknown",
                                     )
                                     continue
                         else:
@@ -927,7 +1010,9 @@ def enrich_albums_task(user_id: int):
             continue
 
         # Collect albums that need track population (only albums with MBIDs)
-        if album.pk and (album.musicbrainz_release_id or album.musicbrainz_release_group_id):
+        if album.pk and (
+            album.musicbrainz_release_id or album.musicbrainz_release_group_id
+        ):
             if not album.tracks_populated:
                 albums_to_populate.append(album.id)
 
@@ -941,14 +1026,21 @@ def enrich_albums_task(user_id: int):
             if album.tracks_populated:
                 continue
             # Skip albums without MBIDs - can't populate tracks without them
-            if not album.musicbrainz_release_id and not album.musicbrainz_release_group_id:
+            if (
+                not album.musicbrainz_release_id
+                and not album.musicbrainz_release_group_id
+            ):
                 continue
 
             count = populate_album_tracks(album)
             if count > 0:
                 populated_count += 1
         except Exception as exc:
-            logger.warning("Track populate failed for album %s: %s", album_id, exception_summary(exc))
+            logger.warning(
+                "Track populate failed for album %s: %s",
+                album_id,
+                exception_summary(exc),
+            )
 
     logger.info(
         "enrich_albums_task: Populated tracks for %d albums",
@@ -970,7 +1062,10 @@ def enrich_albums_task(user_id: int):
                 backfill_result.get("backfilled", 0),
             )
         except Exception as exc:
-            logger.warning("Failed to link tracks/backfill runtime after track population: %s", exception_summary(exc))
+            logger.warning(
+                "Failed to link tracks/backfill runtime after track population: %s",
+                exception_summary(exc),
+            )
 
     # Phase 5: Final runtime backfill from newly populated/linked tracks
     music_with_new_runtime = (
@@ -988,7 +1083,9 @@ def enrich_albums_task(user_id: int):
                 items_final_runtime.append(music.item)
 
     if items_final_runtime:
-        Item.objects.bulk_update(items_final_runtime, ["runtime_minutes"], batch_size=500)
+        Item.objects.bulk_update(
+            items_final_runtime, ["runtime_minutes"], batch_size=500
+        )
         logger.info(
             "enrich_albums_task: Backfilled %d additional runtimes from newly linked tracks",
             len(items_final_runtime),
@@ -1022,7 +1119,9 @@ def enrich_albums_task(user_id: int):
 
 
 @shared_task(name="app.tasks.prefetch_album_covers_batch")
-def prefetch_album_covers_batch(artist_ids: list[int], limit_per_artist: int | None = 10):
+def prefetch_album_covers_batch(
+    artist_ids: list[int], limit_per_artist: int | None = 10
+):
     """Prefetch album covers for a batch of artists (run after enrichment)."""
     from app.models import Artist
     from app.services.music import get_artist_hero_image, prefetch_album_covers
@@ -1040,7 +1139,11 @@ def prefetch_album_covers_batch(artist_ids: list[int], limit_per_artist: int | N
                     artist.image = hero
                     artist.save(update_fields=["image"])
         except Exception as exc:  # pragma: no cover - defensive
-            logger.debug("Cover batch prefetch failed for artist %s: %s", artist_id, exception_summary(exc))
+            logger.debug(
+                "Cover batch prefetch failed for artist %s: %s",
+                artist_id,
+                exception_summary(exc),
+            )
     return {"artists": len(artist_ids), "covers_updated": updated}
 
 
@@ -1084,5 +1187,9 @@ def prefetch_artist_images_batch(artist_ids: list[int]):
                 artist.image = settings.IMG_NONE
             artist.save(update_fields=["image"])
         except Exception as exc:  # pragma: no cover - defensive
-            logger.debug("Artist image prefetch failed for artist %s: %s", artist_id, exception_summary(exc))
+            logger.debug(
+                "Artist image prefetch failed for artist %s: %s",
+                artist_id,
+                exception_summary(exc),
+            )
     return {"artists": len(artist_ids), "images_updated": updated}

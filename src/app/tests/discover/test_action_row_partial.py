@@ -44,7 +44,9 @@ class DiscoverActionRowPartialTests(TestCase):
     @patch("app.views.discover_tab_cache.update_undo_snapshot")
     @patch("app.views.discover_tab_cache.apply_cached_action")
     @patch("app.views.discover_tab_cache.invalidate_for_feedback_change")
-    @patch("app.views.discover_tab_cache.store_undo_snapshot", return_value="undo-dismiss")
+    @patch(
+        "app.views.discover_tab_cache.store_undo_snapshot", return_value="undo-dismiss"
+    )
     def test_discover_action_returns_only_updated_row_fragment(
         self,
         _mock_store_undo_snapshot,
@@ -87,7 +89,9 @@ class DiscoverActionRowPartialTests(TestCase):
         self.assertNotIn("Comfort Rewatches", content)
         trigger = json.loads(response["HX-Trigger"])
         self.assertEqual(trigger["discoverActionComplete"]["action"], "dismiss")
-        self.assertEqual(trigger["discoverActionComplete"]["undo_token"], "undo-dismiss")
+        self.assertEqual(
+            trigger["discoverActionComplete"]["undo_token"], "undo-dismiss"
+        )
         mock_invalidate_for_feedback_change.assert_called_once_with(
             self.user.id,
             MediaTypes.MOVIE.value,

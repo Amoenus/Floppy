@@ -251,8 +251,8 @@ class StorytellerImporterTests(TestCase):
                 "details": {"author": "Jim Butcher"},
             },
         }
-        mock_get_media_metadata.side_effect = (
-            lambda _mt, media_id, _src: metadata_by_id[media_id]
+        mock_get_media_metadata.side_effect = lambda _mt, media_id, _src: (
+            metadata_by_id[media_id]
         )
 
         importer = StorytellerImporter(self.user)

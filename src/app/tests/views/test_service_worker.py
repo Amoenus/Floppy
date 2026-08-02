@@ -28,14 +28,18 @@ class ServiceWorkerViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response["Service-Worker-Allowed"], "/")
-        self.assertEqual(response["Cache-Control"], "no-cache, no-store, must-revalidate")
+        self.assertEqual(
+            response["Cache-Control"], "no-cache, no-store, must-revalidate"
+        )
         self.assertEqual(response["Pragma"], "no-cache")
         self.assertEqual(response["Expires"], "0")
 
         body = response.content.decode()
         self.assertIn('const CACHE_NAME = "floppy-v1";', body)
         self.assertIn("const isSameOrigin = url.origin === self.location.origin;", body)
-        self.assertIn('const isHtmxRequest = request.headers.get("HX-Request") === "true";', body)
+        self.assertIn(
+            'const isHtmxRequest = request.headers.get("HX-Request") === "true";', body
+        )
         self.assertIn('!url.pathname.startsWith("/static/")', body)
         self.assertIn("if (networkResponse.ok) {", body)
         self.assertIn("caches.match(request)", body)

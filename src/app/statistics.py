@@ -10,6 +10,7 @@ The heavy lifting has been extracted into focused submodules:
 Re-exports at the bottom of this file keep all callers that use
 `from app import statistics as stats` fully transparent.
 """
+
 import logging
 
 from django.apps import apps
@@ -66,9 +67,8 @@ def get_user_media(user, start_date, end_date):
 
     _tv_ids = None  # saved for grouped-anime pass after the main loop
     _genre_anime_tv_ids = set()
-    _split_tv_anime = (
-        not getattr(user, "anime_enabled", True)
-        and getattr(user, "stats_split_tv_anime", False)
+    _split_tv_anime = not getattr(user, "anime_enabled", True) and getattr(
+        user, "stats_split_tv_anime", False
     )
 
     for model in media_models:
@@ -110,10 +110,17 @@ def get_user_media(user, start_date, end_date):
                 Prefetch(
                     "seasons",
                     queryset=Season.objects.filter(
-                        status__in=[Status.IN_PROGRESS.value, Status.COMPLETED.value, Status.DROPPED.value, Status.PAUSED.value],
-                    ).select_related(
+                        status__in=[
+                            Status.IN_PROGRESS.value,
+                            Status.COMPLETED.value,
+                            Status.DROPPED.value,
+                            Status.PAUSED.value,
+                        ],
+                    )
+                    .select_related(
                         "item",
-                    ).prefetch_related(
+                    )
+                    .prefetch_related(
                         Prefetch(
                             "episodes",
                             queryset=base_episodes.filter(
@@ -141,12 +148,22 @@ def get_user_media(user, start_date, end_date):
             # No date filtering for "All Time"
             queryset = model.objects.filter(
                 user=user,
-                status__in=[Status.IN_PROGRESS.value, Status.COMPLETED.value, Status.DROPPED.value, Status.PAUSED.value],
+                status__in=[
+                    Status.IN_PROGRESS.value,
+                    Status.COMPLETED.value,
+                    Status.DROPPED.value,
+                    Status.PAUSED.value,
+                ],
             )
         else:
             queryset = model.objects.filter(
                 user=user,
-                status__in=[Status.IN_PROGRESS.value, Status.COMPLETED.value, Status.DROPPED.value, Status.PAUSED.value],
+                status__in=[
+                    Status.IN_PROGRESS.value,
+                    Status.COMPLETED.value,
+                    Status.DROPPED.value,
+                    Status.PAUSED.value,
+                ],
             ).filter(
                 # Case 1: Media has both start_date and end_date
                 # Include if ranges overlap
@@ -224,8 +241,12 @@ def get_user_media(user, start_date, end_date):
             anime_key = MediaTypes.ANIME.value
             if anime_key in user_media:
                 # Combine with flat anime (MAL) queryset already in the bucket
-                user_media[anime_key] = _CombinedMediaBucket(user_media[anime_key], _grouped_anime_qs)
-                media_count[anime_key] = media_count.get(anime_key, 0) + _grouped_anime_count
+                user_media[anime_key] = _CombinedMediaBucket(
+                    user_media[anime_key], _grouped_anime_qs
+                )
+                media_count[anime_key] = (
+                    media_count.get(anime_key, 0) + _grouped_anime_count
+                )
             else:
                 user_media[anime_key] = _grouped_anime_qs
                 media_count[anime_key] = _grouped_anime_count
@@ -271,8 +292,12 @@ def get_user_media(user, start_date, end_date):
         if _genre_anime_count > 0:
             anime_key = MediaTypes.ANIME.value
             if anime_key in user_media:
-                user_media[anime_key] = _CombinedMediaBucket(user_media[anime_key], _genre_anime_qs)
-                media_count[anime_key] = media_count.get(anime_key, 0) + _genre_anime_count
+                user_media[anime_key] = _CombinedMediaBucket(
+                    user_media[anime_key], _genre_anime_qs
+                )
+                media_count[anime_key] = (
+                    media_count.get(anime_key, 0) + _genre_anime_count
+                )
             else:
                 user_media[anime_key] = _genre_anime_qs
                 media_count[anime_key] = _genre_anime_count
@@ -309,7 +334,11 @@ def get_media_type_distribution(media_count, minutes_per_type=None):
 
         ordered_types = list(MEDIA_TYPE_HOURS_ORDER)
         ordered_types.extend(
-            [media_type for media_type in minutes_per_type if media_type not in ordered_types],
+            [
+                media_type
+                for media_type in minutes_per_type
+                if media_type not in ordered_types
+            ],
         )
 
         for media_type in ordered_types:
@@ -412,6 +441,7 @@ def get_status_color(status):
         return config.get_status_stats_color(status)
     except KeyError:
         return "rgba(201, 203, 207)"
+
 
 # ---------------------------------------------------------------------------
 # Re-exports from extracted submodules — keeps all callers using

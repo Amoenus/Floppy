@@ -28,9 +28,18 @@ logger = logging.getLogger(__name__)
 
 # Mirrors GENRE_PALETTE in statistics-charts.js for consistent genre coloring.
 GENRE_PALETTE = [
-    "#6366f1", "#ec4899", "#10b981", "#f59e0b", "#3b82f6",
-    "#8b5cf6", "#ef4444", "#14b8a6", "#f97316", "#a855f7",
-    "#06b6d4", "#84cc16",
+    "#6366f1",
+    "#ec4899",
+    "#10b981",
+    "#f59e0b",
+    "#3b82f6",
+    "#8b5cf6",
+    "#ef4444",
+    "#14b8a6",
+    "#f97316",
+    "#a855f7",
+    "#06b6d4",
+    "#84cc16",
 ]
 
 # One color per "Known for" pill role — kept in sync with the role
@@ -227,7 +236,12 @@ def _media_strip_from_totals(totals, limit=25, sort_by="plays"):
         )
 
     if sort_by == "titles":
-        strip.sort(key=lambda entry: ((entry.get("title") or "").lower(), entry.get("year") or 0))
+        strip.sort(
+            key=lambda entry: (
+                (entry.get("title") or "").lower(),
+                entry.get("year") or 0,
+            )
+        )
 
     return strip
 
@@ -354,7 +368,9 @@ def build_media_strip_row(
         "time": "time watched",
         "titles": "title",
     }.get(sort_by, "plays")
-    summary = f"{title_count} title{'s' if title_count != 1 else ''} · sorted by {sort_label}"
+    summary = (
+        f"{title_count} title{'s' if title_count != 1 else ''} · sorted by {sort_label}"
+    )
     return {
         "row_id": row_id,
         "title": title,
@@ -393,9 +409,9 @@ def _run_comparison_studio_delta(
         return None
 
     comparison_by_sort = comparison_talent.get("by_sort") or {}
-    comparison_studios = (
-        (comparison_by_sort.get("plays") or {}).get("top_studios") or []
-    )
+    comparison_studios = (comparison_by_sort.get("plays") or {}).get(
+        "top_studios"
+    ) or []
     comparison_appearances = sum(
         studio.get("plays", 0) for studio in comparison_studios
     )
@@ -559,5 +575,3 @@ def get_era_spotlight(
         row["formatted_duration"] = helpers.minutes_to_hhmm(row["minutes"])
 
     return ranked
-
-

@@ -3,6 +3,7 @@
 Extracted from statistics.py.  Self-contained: only depends on the ORM,
 heapq, and stats_utils helpers.
 """
+
 import heapq
 import itertools
 from collections import defaultdict
@@ -85,10 +86,14 @@ def get_score_distribution(user_media):
 
                 all_entries_by_item_id: dict = defaultdict(list)
                 for model_cls, item_ids_for_model in _ids_by_model.items():
-                    _entries_q = model_cls.objects.filter(
-                        user=user,
-                        item_id__in=item_ids_for_model,
-                    ).select_related("item").order_by("-created_at")
+                    _entries_q = (
+                        model_cls.objects.filter(
+                            user=user,
+                            item_id__in=item_ids_for_model,
+                        )
+                        .select_related("item")
+                        .order_by("-created_at")
+                    )
                     for entry in _entries_q:
                         _item = getattr(entry, "item", None)
                         if _item:
@@ -111,7 +116,9 @@ def get_score_distribution(user_media):
                     if not all_entries:
                         continue
 
-                    display_media = display_entries[0]  # Use first entry from date range as display
+                    display_media = display_entries[
+                        0
+                    ]  # Use first entry from date range as display
 
                     # Aggregate score from ALL entries (regardless of date)
                     latest_rating = None
@@ -129,7 +136,10 @@ def get_score_distribution(user_media):
                                 entry_activity = entry.created_at
 
                             # If this entry has more recent activity, use its rating
-                            if latest_activity is None or entry_activity > latest_activity:
+                            if (
+                                latest_activity is None
+                                or entry_activity > latest_activity
+                            ):
                                 latest_activity = entry_activity
                                 latest_rating = entry.score
 
@@ -140,8 +150,14 @@ def get_score_distribution(user_media):
 
                     # Only include if there's a score
                     if score_to_use is not None:
-                        dates = [d for d in (display_media.end_date, display_media.start_date) if d]
-                        activity_date = max(dates) if dates else display_media.created_at
+                        dates = [
+                            d
+                            for d in (display_media.end_date, display_media.start_date)
+                            if d
+                        ]
+                        activity_date = (
+                            max(dates) if dates else display_media.created_at
+                        )
                         deduped_scored[key] = {
                             "media": display_media,
                             "activity_date": activity_date,
@@ -173,7 +189,10 @@ def get_score_distribution(user_media):
                                     entry_activity = entry.created_at
 
                                 # If this entry has more recent activity, use its rating
-                                if latest_activity is None or entry_activity > latest_activity:
+                                if (
+                                    latest_activity is None
+                                    or entry_activity > latest_activity
+                                ):
                                     latest_activity = entry_activity
                                     latest_rating = entry.score
 
@@ -184,8 +203,14 @@ def get_score_distribution(user_media):
 
                     # Only include if there's a score
                     if score_to_use is not None:
-                        dates = [d for d in (display_media.end_date, display_media.start_date) if d]
-                        activity_date = max(dates) if dates else display_media.created_at
+                        dates = [
+                            d
+                            for d in (display_media.end_date, display_media.start_date)
+                            if d
+                        ]
+                        activity_date = (
+                            max(dates) if dates else display_media.created_at
+                        )
                         deduped_scored[item_id] = {
                             "media": display_media,
                             "activity_date": activity_date,
@@ -217,7 +242,10 @@ def get_score_distribution(user_media):
                                 entry_activity = entry.created_at
 
                             # If this entry has more recent activity, use its rating
-                            if latest_activity is None or entry_activity > latest_activity:
+                            if (
+                                latest_activity is None
+                                or entry_activity > latest_activity
+                            ):
                                 latest_activity = entry_activity
                                 latest_rating = entry.score
 
@@ -228,7 +256,11 @@ def get_score_distribution(user_media):
 
                 # Only include if there's a score
                 if score_to_use is not None:
-                    dates = [d for d in (display_media.end_date, display_media.start_date) if d]
+                    dates = [
+                        d
+                        for d in (display_media.end_date, display_media.start_date)
+                        if d
+                    ]
                     activity_date = max(dates) if dates else display_media.created_at
                     deduped_scored[item_id] = {
                         "media": display_media,
@@ -297,20 +329,24 @@ def get_score_distribution(user_media):
 
     top_rated_media = _annotate_top_rated_media(top_rated_media)
 
-    return {
-        "labels": [str(score) for score in score_range],
-        "datasets": [
-            {
-                "label": app_tags.media_type_readable(media_type),
-                "data": [distribution[media_type][score] for score in score_range],
-                "background_color": config.get_stats_color(media_type),
-            }
-            for media_type in distribution
-        ],
-        "average_score": average_score,
-        "total_scored": total_scored,
-        "scale_max": score_scale_max,
-    }, top_rated_media, top_rated_by_type
+    return (
+        {
+            "labels": [str(score) for score in score_range],
+            "datasets": [
+                {
+                    "label": app_tags.media_type_readable(media_type),
+                    "data": [distribution[media_type][score] for score in score_range],
+                    "background_color": config.get_stats_color(media_type),
+                }
+                for media_type in distribution
+            ],
+            "average_score": average_score,
+            "total_scored": total_scored,
+            "scale_max": score_scale_max,
+        },
+        top_rated_media,
+        top_rated_by_type,
+    )
 
 
 def _annotate_top_rated_media(top_rated_media):

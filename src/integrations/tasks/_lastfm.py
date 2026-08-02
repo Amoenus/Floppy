@@ -197,7 +197,9 @@ def _run_incremental_lastfm_sync(account) -> dict:
     if sync_result["complete"]:
         latest_timestamp_uts = account.last_fetch_timestamp_uts or 0
         if sync_result["max_seen_uts"] is not None:
-            latest_timestamp_uts = max(latest_timestamp_uts, sync_result["max_seen_uts"])
+            latest_timestamp_uts = max(
+                latest_timestamp_uts, sync_result["max_seen_uts"]
+            )
         account.last_fetch_timestamp_uts = latest_timestamp_uts
         account.failure_count = 0
         account.last_error_code = ""
@@ -233,9 +235,13 @@ def poll_lastfm_for_user(user_id):
     """Poll new Last.fm scrobbles for a single user."""
     from integrations.models import LastFMAccount
 
-    account = LastFMAccount.objects.filter(user_id=user_id).select_related("user").first()
+    account = (
+        LastFMAccount.objects.filter(user_id=user_id).select_related("user").first()
+    )
     if not account or not account.is_connected:
-        logger.debug("Skipping per-user Last.fm poll for user %s: no connected account", user_id)
+        logger.debug(
+            "Skipping per-user Last.fm poll for user %s: no connected account", user_id
+        )
         return {"processed": 0, "errors": 0, "message": "No connected Last.fm account."}
 
     result = _run_incremental_lastfm_sync(account)
@@ -252,7 +258,9 @@ def import_lastfm_history(user_id, reset=False):
     from integrations import lastfm_api, lastfm_sync
     from integrations.models import LastFMAccount, LastFMHistoryImportStatus
 
-    account = LastFMAccount.objects.filter(user_id=user_id).select_related("user").first()
+    account = (
+        LastFMAccount.objects.filter(user_id=user_id).select_related("user").first()
+    )
     if not account or not account.is_connected:
         logger.debug(
             "Skipping Last.fm history import for user %s: no connected account",
@@ -277,8 +285,12 @@ def import_lastfm_history(user_id, reset=False):
 
     if not getattr(account.user, "music_enabled", False):
         account.history_import_status = LastFMHistoryImportStatus.FAILED
-        account.history_import_last_error_message = "Enable music tracking before importing Last.fm history."
-        account.save(update_fields=["history_import_status", "history_import_last_error_message"])
+        account.history_import_last_error_message = (
+            "Enable music tracking before importing Last.fm history."
+        )
+        account.save(
+            update_fields=["history_import_status", "history_import_last_error_message"]
+        )
         raise ValueError("Enable music tracking before importing Last.fm history.")
 
     if account.history_import_cutoff_uts is None:
@@ -352,14 +364,21 @@ def import_lastfm_history(user_id, reset=False):
             account.refresh_from_db()
             account.history_import_status = LastFMHistoryImportStatus.FAILED
             account.history_import_last_error_message = str(exc)[:500]
-            account.save(update_fields=["history_import_status", "history_import_last_error_message"])
+            account.save(
+                update_fields=[
+                    "history_import_status",
+                    "history_import_last_error_message",
+                ]
+            )
             raise
 
         _refresh_lastfm_statistics(user_id, sync_result["affected_day_keys"])
 
         account.refresh_from_db()
         account.history_import_total_pages = sync_result["total_pages"]
-        account.history_import_next_page = account.history_import_next_page + sync_result["pages_fetched"]
+        account.history_import_next_page = (
+            account.history_import_next_page + sync_result["pages_fetched"]
+        )
 
         if sync_result["interrupted"]:
             account.history_import_status = LastFMHistoryImportStatus.FAILED
@@ -417,7 +436,9 @@ def poll_all_lastfm_scrobbles():
     """Global task to poll Last.fm for all connected users."""
     from integrations.models import LastFMAccount
 
-    accounts = LastFMAccount.objects.filter(connection_broken=False).select_related("user")
+    accounts = LastFMAccount.objects.filter(connection_broken=False).select_related(
+        "user"
+    )
     if not accounts.exists():
         logger.debug("No Last.fm accounts to poll")
         return {"processed": 0, "errors": 0, "message": "No accounts to poll"}

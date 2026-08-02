@@ -52,14 +52,21 @@ def _row_requires_artwork_rebuild(
     row_definition: RowDefinition,
     row: RowResult,
 ) -> bool:
-    if media_type in {MediaTypes.MOVIE.value, MediaTypes.TV.value, MediaTypes.ANIME.value} and row_definition.key in {
+    if media_type in {
+        MediaTypes.MOVIE.value,
+        MediaTypes.TV.value,
+        MediaTypes.ANIME.value,
+    } and row_definition.key in {
         "trending_right_now",
         "all_time_greats_unseen",
         "coming_soon",
     }:
         return any(_is_missing_image(item) for item in row.items[:MAX_ITEMS_PER_ROW])
 
-    if row_definition.source == "provider" and row_definition.key in PROVIDER_ARTWORK_HYDRATION_ROW_KEYS:
+    if (
+        row_definition.source == "provider"
+        and row_definition.key in PROVIDER_ARTWORK_HYDRATION_ROW_KEYS
+    ):
         return any(
             _supports_provider_artwork_hydration(item) and _is_missing_image(item)
             for item in row.items[:MAX_ITEMS_PER_ROW]
@@ -93,7 +100,9 @@ def _is_row_cache_compatible(
     row_definition: RowDefinition,
     cached_payload: dict,
 ) -> bool:
-    required_schema_version = _required_row_cache_schema_version(media_type, row_definition.key)
+    required_schema_version = _required_row_cache_schema_version(
+        media_type, row_definition.key
+    )
     if required_schema_version is None:
         return True
 
@@ -120,4 +129,6 @@ def _row_cache_matches_activity_version(
     if not cached_activity_version:
         return True
 
-    return cached_activity_version == tab_cache.get_activity_version(user_id, media_type)
+    return cached_activity_version == tab_cache.get_activity_version(
+        user_id, media_type
+    )

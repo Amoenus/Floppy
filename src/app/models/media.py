@@ -142,7 +142,11 @@ class Media(models.Model):
                         self.item.media_id,
                         self.item.source,
                     )["max_progress"]
-                except (providers.services.ProviderAPIError, RequestException, ValueError):
+                except (
+                    providers.services.ProviderAPIError,
+                    RequestException,
+                    ValueError,
+                ):
                     logger.warning(
                         "Unable to fetch max progress for %s (%s/%s)",
                         self.item.media_type,
@@ -159,14 +163,20 @@ class Media(models.Model):
 
                     # For podcasts, don't set end_date here - it's calculated from published date + duration in import
                     # For other media types, set end_date if not already set
-                    if self.item.media_type != MediaTypes.PODCAST.value and not self.end_date:
+                    if (
+                        self.item.media_type != MediaTypes.PODCAST.value
+                        and not self.end_date
+                    ):
                         self.end_date = timezone.now()
 
     def process_status(self):
         """Update fields depending on the status of the media."""
         if self.status == Status.COMPLETED.value:
             # Music and board game progress are play-count based; don't overwrite on status changes.
-            if self.item.media_type in (MediaTypes.MUSIC.value, MediaTypes.BOARDGAME.value):
+            if self.item.media_type in (
+                MediaTypes.MUSIC.value,
+                MediaTypes.BOARDGAME.value,
+            ):
                 max_progress = None
             # For podcasts, use runtime_minutes from Item instead of external metadata.
             elif self.item.media_type == MediaTypes.PODCAST.value:
@@ -178,7 +188,11 @@ class Media(models.Model):
                         self.item.media_id,
                         self.item.source,
                     )["max_progress"]
-                except (providers.services.ProviderAPIError, RequestException, ValueError):
+                except (
+                    providers.services.ProviderAPIError,
+                    RequestException,
+                    ValueError,
+                ):
                     logger.warning(
                         "Unable to fetch max progress for %s (%s/%s)",
                         self.item.media_type,
@@ -190,7 +204,10 @@ class Media(models.Model):
             if max_progress:
                 self.progress = max_progress
 
-        if self.item.media_type not in (MediaTypes.MUSIC.value, MediaTypes.PODCAST.value):
+        if self.item.media_type not in (
+            MediaTypes.MUSIC.value,
+            MediaTypes.PODCAST.value,
+        ):
             self.item.fetch_releases(delay=True)
 
     @property
@@ -217,7 +234,10 @@ class Media(models.Model):
     @property
     def formatted_aggregated_progress(self):
         """Return formatted aggregated progress string."""
-        if hasattr(self, "aggregated_progress") and self.aggregated_progress is not None:
+        if (
+            hasattr(self, "aggregated_progress")
+            and self.aggregated_progress is not None
+        ):
             # Format based on media type
             if hasattr(self, "item") and self.item.media_type == MediaTypes.GAME.value:
                 return app.helpers.minutes_to_hhmm(self.aggregated_progress)
@@ -310,7 +330,9 @@ class Media(models.Model):
         if len(episode_runtimes) == total_episodes:
             return sum(episode_runtimes)
         avg_runtime = sum(episode_runtimes) / len(episode_runtimes)
-        return sum(episode_runtimes) + int((total_episodes - len(episode_runtimes)) * avg_runtime)
+        return sum(episode_runtimes) + int(
+            (total_episodes - len(episode_runtimes)) * avg_runtime
+        )
 
     @property
     def total_runtime_minutes(self):
@@ -429,20 +451,25 @@ class Media(models.Model):
             # For a Season: query episodes in this season where episode_number > progress
             # Only count episodes that have actually been released (have aired)
             current_datetime = timezone.now()
-            unwatched_episodes = Item.objects.filter(
-                media_id=self.item.media_id,
-                source=self.item.source,
-                media_type=MediaTypes.EPISODE.value,
-                season_number=season_number,
-                episode_number__gt=self.progress,
-                runtime_minutes__isnull=False,
-                release_datetime__isnull=False,  # Only count episodes with air dates
-                release_datetime__lte=current_datetime,  # Only count episodes that have aired
-            ).exclude(
-                runtime_minutes=999999,  # Exclude placeholder for unknown runtime
-            ).exclude(
-                runtime_minutes=999998,  # Exclude 999998 marker for "aired but runtime unknown"
-            ).values_list("runtime_minutes", flat=True)
+            unwatched_episodes = (
+                Item.objects.filter(
+                    media_id=self.item.media_id,
+                    source=self.item.source,
+                    media_type=MediaTypes.EPISODE.value,
+                    season_number=season_number,
+                    episode_number__gt=self.progress,
+                    runtime_minutes__isnull=False,
+                    release_datetime__isnull=False,  # Only count episodes with air dates
+                    release_datetime__lte=current_datetime,  # Only count episodes that have aired
+                )
+                .exclude(
+                    runtime_minutes=999999,  # Exclude placeholder for unknown runtime
+                )
+                .exclude(
+                    runtime_minutes=999998,  # Exclude 999998 marker for "aired but runtime unknown"
+                )
+                .values_list("runtime_minutes", flat=True)
+            )
 
             runtimes = list(unwatched_episodes)
             if runtimes:
@@ -479,7 +506,9 @@ class Media(models.Model):
                         if episode_runtime_index is not None:
                             runtimes = [
                                 rt
-                                for ep_num, rt in episode_runtime_index.get(season_num, [])
+                                for ep_num, rt in episode_runtime_index.get(
+                                    season_num, []
+                                )
                                 if ep_num > watched_in_season
                             ]
                         else:
@@ -529,7 +558,9 @@ class Media(models.Model):
             season_cache_key = f"tmdb_season_{self.item.media_id}_1"
             cached_season_data = cache.get(season_cache_key)
 
-            if cached_season_data and cached_season_data.get("details", {}).get("runtime"):
+            if cached_season_data and cached_season_data.get("details", {}).get(
+                "runtime"
+            ):
                 runtime_str = cached_season_data["details"]["runtime"]
                 runtime_minutes = parse_runtime_to_minutes(runtime_str)
             else:
@@ -537,7 +568,9 @@ class Media(models.Model):
                 for season_num in [2, 3, 4, 5]:
                     season_cache_key = f"tmdb_season_{self.item.media_id}_{season_num}"
                     cached_season_data = cache.get(season_cache_key)
-                    if cached_season_data and cached_season_data.get("details", {}).get("runtime"):
+                    if cached_season_data and cached_season_data.get("details", {}).get(
+                        "runtime"
+                    ):
                         runtime_str = cached_season_data["details"]["runtime"]
                         runtime_minutes = parse_runtime_to_minutes(runtime_str)
                         break
@@ -714,7 +747,8 @@ class Anime(Media):
         except Exception:
             logger.warning(
                 "Auto-migrate crashed for MAL anime %s",
-                getattr(self.item, "media_id", None), exc_info=True,
+                getattr(self.item, "media_id", None),
+                exc_info=True,
             )
 
     def _migrate_completed_flat_anime(self):
@@ -724,7 +758,8 @@ class Anime(Media):
         providers_to_try = []
         default_source = (
             metadata_resolution.metadata_default_source(
-                self.user, MediaTypes.ANIME.value,
+                self.user,
+                MediaTypes.ANIME.value,
             )
             if self.user_id
             else None
@@ -739,29 +774,37 @@ class Anime(Media):
 
         for provider in providers_to_try:
             if not anime_mapping.resolve_provider_series_id(
-                self.item.media_id, provider,
+                self.item.media_id,
+                provider,
             ):
                 continue
             try:
                 anime_migration.migrate_flat_anime_to_grouped(
-                    self.user, self.item, provider,
+                    self.user,
+                    self.item,
+                    provider,
                 )
             except anime_migration.AnimeMigrationError as error:
                 logger.info(
                     "Auto-migrate skipped for MAL anime %s via %s: %s",
-                    self.item.media_id, provider, error,
+                    self.item.media_id,
+                    provider,
+                    error,
                 )
                 continue
             except Exception:
                 logger.warning(
                     "Auto-migrate failed for MAL anime %s via %s",
-                    self.item.media_id, provider, exc_info=True,
+                    self.item.media_id,
+                    provider,
+                    exc_info=True,
                 )
                 return
             else:
                 logger.info(
                     "Auto-migrated completed flat MAL anime %s to grouped %s tracking",
-                    self.item.media_id, provider,
+                    self.item.media_id,
+                    provider,
                 )
                 return
 
@@ -871,5 +914,3 @@ class ComicIssue(Media):
     """Model for individual comic issues."""
 
     tracker = FieldTracker()
-
-

@@ -112,7 +112,9 @@ urlpatterns = [
         views_mdblist.mdblist_import_url,
         name="mdblist_import_url",
     ),
-    path("list_item_toggle", views_list_actions.list_item_toggle, name="list_item_toggle"),
+    path(
+        "list_item_toggle", views_list_actions.list_item_toggle, name="list_item_toggle"
+    ),
     # Recommendation URLs
     path(
         "list/<int:list_id>/recommend",

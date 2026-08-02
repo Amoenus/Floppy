@@ -29,13 +29,21 @@ def _sort_tv_media_by_time_left(media_list, direction="asc"):
     if _all_keys:
         _all_media_ids = {mid for mid, _ in _all_keys}
         _all_sources = {src for _, src in _all_keys}
-        _rows = Item.objects.filter(
-            media_type=MediaTypes.EPISODE.value,
-            media_id__in=_all_media_ids,
-            source__in=_all_sources,
-            runtime_minutes__isnull=False,
-        ).exclude(runtime_minutes__in=[999998, 999999]).values(
-            "media_id", "source", "season_number", "episode_number", "runtime_minutes",
+        _rows = (
+            Item.objects.filter(
+                media_type=MediaTypes.EPISODE.value,
+                media_id__in=_all_media_ids,
+                source__in=_all_sources,
+                runtime_minutes__isnull=False,
+            )
+            .exclude(runtime_minutes__in=[999998, 999999])
+            .values(
+                "media_id",
+                "source",
+                "season_number",
+                "episode_number",
+                "runtime_minutes",
+            )
         )
         for row in _rows:
             show_key = (row["media_id"], row["source"])
@@ -81,7 +89,9 @@ def _sort_tv_media_by_time_left(media_list, direction="asc"):
                 remaining_progress = 0
 
                 show_key = (media.item.media_id, media.item.source)
-                season_ep_runtimes = _episode_runtime_index.get(show_key, {}).get(season_num, {})
+                season_ep_runtimes = _episode_runtime_index.get(show_key, {}).get(
+                    season_num, {}
+                )
                 runtimes = [
                     rt
                     for ep_num, rt in season_ep_runtimes.items()
@@ -107,9 +117,13 @@ def _sort_tv_media_by_time_left(media_list, direction="asc"):
             # Exclude fallback values: 999998 (aired but runtime unknown) and 999999 (unknown runtime)
             if media.item.runtime_minutes < 999998:
                 runtime_minutes = media.item.runtime_minutes
-                logger.debug(f"Using stored runtime for {media.item.title}: {runtime_minutes}min")
+                logger.debug(
+                    f"Using stored runtime for {media.item.title}: {runtime_minutes}min"
+                )
             else:
-                logger.debug(f"Skipping invalid runtime marker ({media.item.runtime_minutes}min) for {media.item.title}")
+                logger.debug(
+                    f"Skipping invalid runtime marker ({media.item.runtime_minutes}min) for {media.item.title}"
+                )
 
         if not runtime_minutes:
             # SECOND: Check pre-loaded episode runtime index (avoids per-show DB query)
@@ -130,21 +144,29 @@ def _sort_tv_media_by_time_left(media_list, direction="asc"):
             # THIRD: Check cached season data (avg_runtime field from season metadata)
             season_cache_key = f"tmdb_season_{media.item.media_id}_1"
             cached_season_data = cache.get(season_cache_key)
-            if cached_season_data and cached_season_data.get("details", {}).get("runtime"):
+            if cached_season_data and cached_season_data.get("details", {}).get(
+                "runtime"
+            ):
                 runtime_str = cached_season_data["details"]["runtime"]
                 runtime_minutes = parse_runtime_to_minutes(runtime_str)
                 if runtime_minutes and runtime_minutes > 0:
-                    logger.debug(f"Using cached season avg runtime for {media.item.title}: {runtime_minutes}min")
+                    logger.debug(
+                        f"Using cached season avg runtime for {media.item.title}: {runtime_minutes}min"
+                    )
             # Try other seasons if season 1 didn't work
             if not runtime_minutes:
                 for season_num in [2, 3, 4, 5]:
                     season_cache_key = f"tmdb_season_{media.item.media_id}_{season_num}"
                     cached_season_data = cache.get(season_cache_key)
-                    if cached_season_data and cached_season_data.get("details", {}).get("runtime"):
+                    if cached_season_data and cached_season_data.get("details", {}).get(
+                        "runtime"
+                    ):
                         runtime_str = cached_season_data["details"]["runtime"]
                         runtime_minutes = parse_runtime_to_minutes(runtime_str)
                         if runtime_minutes and runtime_minutes > 0:
-                            logger.debug(f"Using cached season {season_num} avg runtime for {media.item.title}: {runtime_minutes}min")
+                            logger.debug(
+                                f"Using cached season {season_num} avg runtime for {media.item.title}: {runtime_minutes}min"
+                            )
                             break
 
         # FOURTH: Use industry standard fallback
@@ -155,7 +177,9 @@ def _sort_tv_media_by_time_left(media_list, direction="asc"):
                 runtime_minutes = 23
             else:
                 runtime_minutes = 30
-            logger.debug(f"Using fallback runtime for {media.item.title}: {runtime_minutes}min")
+            logger.debug(
+                f"Using fallback runtime for {media.item.title}: {runtime_minutes}min"
+            )
         return runtime_minutes
 
     def _get_total_time_left(
@@ -203,7 +227,12 @@ def _sort_tv_media_by_time_left(media_list, direction="asc"):
 
     def _end_date_for_sort(media):
         # Prefer aggregated_end_date when present, else media.end_date
-        return getattr(media, "aggregated_end_date", None) or getattr(media, "end_date", None) or getattr(media, "progressed_at", None) or getattr(media, "created_at", None)
+        return (
+            getattr(media, "aggregated_end_date", None)
+            or getattr(media, "end_date", None)
+            or getattr(media, "progressed_at", None)
+            or getattr(media, "created_at", None)
+        )
 
     def _effective_max_progress(media):
         """Prefer annotated max_progress; fallback to DB episodes to avoid negatives."""
@@ -213,7 +242,9 @@ def _sort_tv_media_by_time_left(media_list, direction="asc"):
             # Use prefetched seasons/episodes when available
             if hasattr(media, "seasons"):
                 for season in media.seasons.all():
-                    if getattr(season.item, "season_number", 0) and hasattr(season, "episodes"):
+                    if getattr(season.item, "season_number", 0) and hasattr(
+                        season, "episodes"
+                    ):
                         max_ep_num = 0
                         for ep in season.episodes.all():
                             ep_num = getattr(ep.item, "episode_number", 0) or 0
@@ -270,18 +301,24 @@ def _sort_tv_media_by_time_left(media_list, direction="asc"):
             sorted(dropped_season_numbers),
         )
         return {
-            "episodes_left": max(sum(filtered_breakdown.values()) - included_progress, 0),
+            "episodes_left": max(
+                sum(filtered_breakdown.values()) - included_progress, 0
+            ),
             "progress": included_progress,
             "breakdown": filtered_breakdown,
         }
 
     # Explicit bucketing for deterministic grouping
-    active_statuses = {Status.IN_PROGRESS.value, Status.PLANNING.value, Status.PAUSED.value}
-    group_active = []           # episodes_left > 0 and status in active_statuses
-    group_inprog_zero = []      # status == IN_PROGRESS and episodes_left == 0
-    group_completed = []        # status == COMPLETED and episodes_left == 0
-    group_dropped = []          # status == DROPPED
-    group_tail = []             # everything else (unreleased/unknown)
+    active_statuses = {
+        Status.IN_PROGRESS.value,
+        Status.PLANNING.value,
+        Status.PAUSED.value,
+    }
+    group_active = []  # episodes_left > 0 and status in active_statuses
+    group_inprog_zero = []  # status == IN_PROGRESS and episodes_left == 0
+    group_completed = []  # status == COMPLETED and episodes_left == 0
+    group_dropped = []  # status == DROPPED
+    group_tail = []  # everything else (unreleased/unknown)
 
     for media in media_list:
         # Compute effective episodes_left
@@ -305,8 +342,15 @@ def _sort_tv_media_by_time_left(media_list, direction="asc"):
         episodes_left = time_left_context["episodes_left"]
 
         # Debug shows that should have episodes left but show 0
-        if media.progress > 0 and episodes_left == 0 and media.item.title in ["Taskmaster", "Rent-a-Girlfriend", "The Last of Us"]:
-            logger.debug(f"DEBUG 0 episodes: {media.item.title} - progress={media.progress}, max_progress={effective_max}, episodes_left={episodes_left}")
+        if (
+            media.progress > 0
+            and episodes_left == 0
+            and media.item.title
+            in ["Taskmaster", "Rent-a-Girlfriend", "The Last of Us"]
+        ):
+            logger.debug(
+                f"DEBUG 0 episodes: {media.item.title} - progress={media.progress}, max_progress={effective_max}, episodes_left={episodes_left}"
+            )
 
         status = getattr(media, "status", Status.IN_PROGRESS.value)
 
@@ -350,8 +394,11 @@ def _sort_tv_media_by_time_left(media_list, direction="asc"):
             else:
                 media.time_left_display = f"{minutes}m"
         else:
-            media.time_left_display = f"{episodes_left} ep" if episodes_left > 0 else "-"
+            media.time_left_display = (
+                f"{episodes_left} ep" if episodes_left > 0 else "-"
+            )
         return (total, media.item.title.lower())
+
     group_active_sorted = [m for (m, _) in sorted(group_active, key=_active_key)]
 
     # 2) In-Progress caught-up by newest end_date
@@ -360,7 +407,14 @@ def _sort_tv_media_by_time_left(media_list, direction="asc"):
         m.time_left_display = "0m"
     group_inprog_zero_sorted = sorted(
         group_inprog_zero,
-        key=lambda m: (-( _end_date_for_sort(m).timestamp() if _end_date_for_sort(m) else float("-inf") ), m.item.title.lower()),
+        key=lambda m: (
+            -(
+                _end_date_for_sort(m).timestamp()
+                if _end_date_for_sort(m)
+                else float("-inf")
+            ),
+            m.item.title.lower(),
+        ),
     )
 
     # 3) Completed by newest end_date
@@ -369,7 +423,14 @@ def _sort_tv_media_by_time_left(media_list, direction="asc"):
         m.time_left_display = "0m"
     group_completed_sorted = sorted(
         group_completed,
-        key=lambda m: (-( _end_date_for_sort(m).timestamp() if _end_date_for_sort(m) else float("-inf") ), m.item.title.lower()),
+        key=lambda m: (
+            -(
+                _end_date_for_sort(m).timestamp()
+                if _end_date_for_sort(m)
+                else float("-inf")
+            ),
+            m.item.title.lower(),
+        ),
     )
 
     # 4) Dropped - show remaining content (sorted by least time left)
@@ -377,7 +438,9 @@ def _sort_tv_media_by_time_left(media_list, direction="asc"):
         # Debug logging for first few dropped shows
         if not hasattr(m, "_debug_logged"):
             m._debug_logged = True
-            logger.debug(f"Dropped show: {m.item.title} - progress={m.progress}, max_progress={getattr(m, 'max_progress', 'MISSING')}, hasattr={hasattr(m, 'max_progress')}")
+            logger.debug(
+                f"Dropped show: {m.item.title} - progress={m.progress}, max_progress={getattr(m, 'max_progress', 'MISSING')}, hasattr={hasattr(m, 'max_progress')}"
+            )
 
         # Calculate episodes remaining (not watched)
         if hasattr(m, "max_progress") and hasattr(m, "progress") and m.max_progress > 0:
@@ -426,14 +489,24 @@ def _sort_tv_media_by_time_left(media_list, direction="asc"):
     )
     logger.debug(
         "DEBUG: Group counts -> active: %d, inprog_zero: %d, completed: %d, dropped: %d, tail: %d",
-        len(group_active_sorted), len(group_inprog_zero_sorted), len(group_completed_sorted), len(group_dropped_sorted), len(group_tail),
+        len(group_active_sorted),
+        len(group_inprog_zero_sorted),
+        len(group_completed_sorted),
+        len(group_dropped_sorted),
+        len(group_tail),
     )
 
     # Log first 10 items for debugging
     logger.debug("DEBUG: First 10 sorted shows:")
     for i, media in enumerate(sorted_list[:10]):
-        episodes_left = (media.max_progress or 0) - (media.progress or 0) if hasattr(media, "max_progress") else 0
-        logger.debug(f"  {i+1}. {media.item.title} - Episodes left: {episodes_left}, Status: {getattr(media, 'status', 'Unknown')}")
+        episodes_left = (
+            (media.max_progress or 0) - (media.progress or 0)
+            if hasattr(media, "max_progress")
+            else 0
+        )
+        logger.debug(
+            f"  {i + 1}. {media.item.title} - Episodes left: {episodes_left}, Status: {getattr(media, 'status', 'Unknown')}"
+        )
 
     if direction == "desc":
         return list(reversed(sorted_list))

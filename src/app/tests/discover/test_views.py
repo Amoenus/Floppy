@@ -65,9 +65,7 @@ class DiscoverViewTests(TestCase):
         return RowResult(
             key=row_key,
             title=(
-                "Top Picks For You"
-                if row_key == "top_picks_for_you"
-                else "Coming Soon"
+                "Top Picks For You" if row_key == "top_picks_for_you" else "Coming Soon"
             ),
             mission=(
                 "Personal Taste Match"
@@ -681,7 +679,9 @@ class DiscoverViewTests(TestCase):
     @patch("app.views.discover_tab_cache.update_undo_snapshot")
     @patch("app.views.discover_tab_cache.apply_cached_action")
     @patch("app.views.discover_tab_cache.invalidate_for_feedback_change")
-    @patch("app.views.discover_tab_cache.store_undo_snapshot", return_value="undo-dismiss")
+    @patch(
+        "app.views.discover_tab_cache.store_undo_snapshot", return_value="undo-dismiss"
+    )
     @patch("app.views.ensure_item_metadata")
     def test_discover_action_dismiss_returns_rows_and_trigger(
         self,
@@ -697,7 +697,9 @@ class DiscoverViewTests(TestCase):
             metadata={},
             created=False,
         )
-        mock_apply_cached_action.return_value = [self._row(title="Dismissed Replacement")]
+        mock_apply_cached_action.return_value = [
+            self._row(title="Dismissed Replacement")
+        ]
 
         response = self.client.post(
             reverse("discover_action"),
@@ -727,7 +729,9 @@ class DiscoverViewTests(TestCase):
         self.assertIn("X-Discover-Activity-Version", response)
         trigger = json.loads(response["HX-Trigger"])
         self.assertEqual(trigger["discoverActionComplete"]["action"], "dismiss")
-        self.assertEqual(trigger["discoverActionComplete"]["undo_token"], "undo-dismiss")
+        self.assertEqual(
+            trigger["discoverActionComplete"]["undo_token"], "undo-dismiss"
+        )
         mock_invalidate_for_feedback_change.assert_called_once_with(
             self.user.id,
             MediaTypes.MOVIE.value,
@@ -755,7 +759,9 @@ class DiscoverViewTests(TestCase):
                 "feedback_id": feedback.id,
             },
         }
-        mock_restore_undo_snapshot.return_value = {"rows": [self._row(title="Restored Movie")]}
+        mock_restore_undo_snapshot.return_value = {
+            "rows": [self._row(title="Restored Movie")]
+        }
 
         response = self.client.post(
             reverse("discover_action"),
@@ -843,7 +849,9 @@ class DiscoverViewTests(TestCase):
 
     @patch("app.models.Item.fetch_releases")
     @patch("app.views.discover_tab_cache.update_undo_snapshot")
-    @patch("app.views.discover_tab_cache.store_undo_snapshot", return_value="undo-debug")
+    @patch(
+        "app.views.discover_tab_cache.store_undo_snapshot", return_value="undo-debug"
+    )
     @patch("app.views.discover.get_discover_rows")
     @patch("app.views.discover_tab_cache.clear_lower_level_cache")
     @patch("app.views.discover_tab_cache.bump_activity_version")
@@ -868,7 +876,9 @@ class DiscoverViewTests(TestCase):
             metadata={},
             created=False,
         )
-        mock_get_discover_rows.return_value = [self._row(title="Debug Planning Replacement")]
+        mock_get_discover_rows.return_value = [
+            self._row(title="Debug Planning Replacement")
+        ]
 
         response = self.client.post(
             reverse("discover_action"),

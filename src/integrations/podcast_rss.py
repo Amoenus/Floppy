@@ -22,10 +22,10 @@ USER_AGENT = "Floppy/1.0 (https://github.com/dannyvfilms/Floppy)"
 
 def fetch_show_metadata_from_rss(rss_feed_url: str) -> dict:
     """Fetch show metadata from RSS feed channel.
-    
+
     Args:
         rss_feed_url: URL to the podcast RSS feed
-        
+
     Returns:
         Dict with show metadata:
         - description: Show description
@@ -33,7 +33,9 @@ def fetch_show_metadata_from_rss(rss_feed_url: str) -> dict:
         - author: Show author (optional)
     """
     try:
-        response = requests.get(rss_feed_url, headers={"User-Agent": USER_AGENT}, timeout=30)
+        response = requests.get(
+            rss_feed_url, headers={"User-Agent": USER_AGENT}, timeout=30
+        )
         response.raise_for_status()
 
         # Parse XML
@@ -104,11 +106,11 @@ def fetch_show_metadata_from_rss(rss_feed_url: str) -> dict:
 
 def fetch_episodes_from_rss(rss_feed_url: str, limit: int | None = None) -> list[dict]:
     """Fetch and parse episodes from RSS feed.
-    
+
     Args:
         rss_feed_url: URL to the podcast RSS feed
         limit: Optional limit on number of episodes to return (None = all)
-        
+
     Returns:
         List of episode dicts with keys:
         - title: Episode title
@@ -121,7 +123,9 @@ def fetch_episodes_from_rss(rss_feed_url: str, limit: int | None = None) -> list
         - description: Episode description (optional)
     """
     try:
-        response = requests.get(rss_feed_url, headers={"User-Agent": USER_AGENT}, timeout=30)
+        response = requests.get(
+            rss_feed_url, headers={"User-Agent": USER_AGENT}, timeout=30
+        )
         response.raise_for_status()
 
         # Parse XML - handle both RSS and Atom feeds
@@ -194,7 +198,9 @@ def _parse_rss_feed(root: ET.Element, limit: int | None) -> list[dict]:
         # GUID
         guid_elem = item.find("guid")
         if guid_elem is not None:
-            guid_text = guid_elem.text if guid_elem.text else guid_elem.get("isPermaLink", "")
+            guid_text = (
+                guid_elem.text if guid_elem.text else guid_elem.get("isPermaLink", "")
+            )
             if guid_text:
                 episode["guid"] = guid_text.strip()
 
@@ -331,7 +337,7 @@ def _parse_atom_feed(root: ET.Element, limit: int | None) -> list[dict]:
 
 def _parse_date(date_str: str) -> datetime | None:
     """Parse date string from RSS feed.
-    
+
     Handles common formats:
     - RFC 822: "Mon, 01 Jan 2024 12:00:00 GMT"
     - ISO 8601: "2024-01-01T12:00:00Z"
@@ -377,7 +383,7 @@ def _parse_date(date_str: str) -> datetime | None:
 
 def _parse_duration(duration_str: str) -> int | None:
     """Parse duration string to seconds.
-    
+
     Handles formats:
     - "3600" (seconds)
     - "60:00" (MM:SS)

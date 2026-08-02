@@ -87,8 +87,7 @@ def build_error_report(
             f"Host: {_safe_request_value(request, 'get_host')}",
             f"Scheme: {_display_value(getattr(request, 'scheme', None))}",
             (
-                "User: "
-                f"{_display_value(getattr(user, 'username', None), 'anonymous')}"
+                f"User: {_display_value(getattr(user, 'username', None), 'anonymous')}"
                 if is_authenticated
                 else "User: anonymous"
             ),

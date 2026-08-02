@@ -403,11 +403,7 @@ class SonarrImporter:
         """Extract the episode file quality label when Sonarr includes it."""
         episode_file = row.get("episodeFile") or {}
         quality = episode_file.get("quality") or {}
-        return (
-            (quality.get("quality") or {}).get("name")
-            or quality.get("name")
-            or ""
-        )
+        return (quality.get("quality") or {}).get("name") or quality.get("name") or ""
 
     def _prune_series_collection_state(self, show_item, *, keep_episode_item_ids=None):
         """Drop stale Sonarr collection ownership for a series."""

@@ -238,7 +238,9 @@ class ExportCSVTest(TestCase):
 
     def test_export_csv_includes_item_entries_for_each_list_membership(self):
         """Items that appear on multiple lists should be exported once per list item."""
-        movie_item = Item.objects.get(media_id="10494", media_type=MediaTypes.MOVIE.value)
+        movie_item = Item.objects.get(
+            media_id="10494", media_type=MediaTypes.MOVIE.value
+        )
         second_list = CustomList.objects.create(
             name="Rewatch",
             description="Need to revisit",
@@ -272,7 +274,9 @@ class ExportCSVTest(TestCase):
         """generate_list_csv should only emit rows for the given list."""
         from integrations import exports
 
-        movie_item = Item.objects.get(media_id="10494", media_type=MediaTypes.MOVIE.value)
+        movie_item = Item.objects.get(
+            media_id="10494", media_type=MediaTypes.MOVIE.value
+        )
         favorites = CustomList.objects.get(owner=self.user, name="Favorites")
         other_list = CustomList.objects.create(
             name="Rewatch",
@@ -292,7 +296,9 @@ class ExportCSVTest(TestCase):
 
         list_rows = [row for row in rows if row["row_type"] == "list"]
         list_item_rows = [row for row in rows if row["row_type"] == "list_item"]
-        media_rows = [row for row in rows if row["row_type"] not in ("list", "list_item")]
+        media_rows = [
+            row for row in rows if row["row_type"] not in ("list", "list_item")
+        ]
 
         self.assertEqual(len(list_rows), 1)
         self.assertEqual(list_rows[0]["list_name"], "Favorites")

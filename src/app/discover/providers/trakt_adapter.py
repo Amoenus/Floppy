@@ -49,7 +49,9 @@ class TraktDiscoverAdapter:
                 params=params,
                 headers=headers,
             )
-            normalized_payload = {"results": response if isinstance(response, list) else []}
+            normalized_payload = {
+                "results": response if isinstance(response, list) else []
+            }
             cache_repo.set_api_cache(
                 self.provider,
                 endpoint,
@@ -120,10 +122,18 @@ class TraktDiscoverAdapter:
                     localized_title=title,
                     image=settings.IMG_NONE,
                     release_date=movie.get("released"),
-                    genres=[str(genre).strip() for genre in (movie.get("genres") or []) if str(genre).strip()],
+                    genres=[
+                        str(genre).strip()
+                        for genre in (movie.get("genres") or [])
+                        if str(genre).strip()
+                    ],
                     popularity=float(popularity) if popularity is not None else None,
-                    rating=float(movie["rating"]) if movie.get("rating") is not None else None,
-                    rating_count=int(movie["votes"]) if movie.get("votes") is not None else None,
+                    rating=float(movie["rating"])
+                    if movie.get("rating") is not None
+                    else None,
+                    rating_count=int(movie["votes"])
+                    if movie.get("votes") is not None
+                    else None,
                     row_key="trending_right_now",
                     source_reason="Trakt watched weekly",
                 ),
@@ -177,10 +187,18 @@ class TraktDiscoverAdapter:
                     localized_title=title,
                     image=settings.IMG_NONE,
                     release_date=movie.get("released"),
-                    genres=[str(genre).strip() for genre in (movie.get("genres") or []) if str(genre).strip()],
+                    genres=[
+                        str(genre).strip()
+                        for genre in (movie.get("genres") or [])
+                        if str(genre).strip()
+                    ],
                     popularity=float(popularity) if popularity is not None else None,
-                    rating=float(movie["rating"]) if movie.get("rating") is not None else None,
-                    rating_count=int(movie["votes"]) if movie.get("votes") is not None else None,
+                    rating=float(movie["rating"])
+                    if movie.get("rating") is not None
+                    else None,
+                    rating_count=int(movie["votes"])
+                    if movie.get("votes") is not None
+                    else None,
                     row_key="all_time_greats_unseen",
                     source_reason="Trakt popular",
                 ),
@@ -188,7 +206,9 @@ class TraktDiscoverAdapter:
 
         return candidates[:page_limit]
 
-    def movie_anticipated(self, *, page: int = 1, limit: int = 100) -> list[CandidateItem]:
+    def movie_anticipated(
+        self, *, page: int = 1, limit: int = 100
+    ) -> list[CandidateItem]:
         """Return Trakt anticipated movies normalized to Discover candidates."""
         if page <= 0 or limit <= 0:
             return []
@@ -238,10 +258,18 @@ class TraktDiscoverAdapter:
                     localized_title=title,
                     image=settings.IMG_NONE,
                     release_date=movie.get("released"),
-                    genres=[str(genre).strip() for genre in (movie.get("genres") or []) if str(genre).strip()],
+                    genres=[
+                        str(genre).strip()
+                        for genre in (movie.get("genres") or [])
+                        if str(genre).strip()
+                    ],
                     popularity=float(popularity) if popularity is not None else None,
-                    rating=float(movie["rating"]) if movie.get("rating") is not None else None,
-                    rating_count=int(movie["votes"]) if movie.get("votes") is not None else None,
+                    rating=float(movie["rating"])
+                    if movie.get("rating") is not None
+                    else None,
+                    rating_count=int(movie["votes"])
+                    if movie.get("votes") is not None
+                    else None,
                     row_key="coming_soon",
                     source_reason="Trakt anticipated",
                 ),
@@ -265,9 +293,7 @@ class TraktDiscoverAdapter:
         if not trakt_genres:
             return None
         normalized = [
-            str(genre).strip().lower()
-            for genre in trakt_genres
-            if str(genre).strip()
+            str(genre).strip().lower() for genre in trakt_genres if str(genre).strip()
         ]
         if not normalized:
             return None

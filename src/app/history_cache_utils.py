@@ -189,6 +189,7 @@ def _localize_datetime(value):
 
 def _coerce_genre_list(value):
     """Normalize a genre field (string, dict, or list) into a list of strings."""
+
     def _coerce_one(v):
         if not v:
             return None

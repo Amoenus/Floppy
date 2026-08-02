@@ -48,7 +48,10 @@ def _delete_history_cache_entries(user_id: int, logging_style: str, day_keys=Non
 
     if normalized_keys:
         cache.delete_many(
-            [_day_cache_key(user_id, logging_style, day_key) for day_key in normalized_keys],
+            [
+                _day_cache_key(user_id, logging_style, day_key)
+                for day_key in normalized_keys
+            ],
         )
     cache.delete(_cache_key(user_id, logging_style))
 
@@ -78,7 +81,10 @@ def invalidate_history_days(
         logging_style = _normalize_logging_style(style)
         if force and normalized_keys:
             cache.delete_many(
-                [_day_cache_key(user_id, logging_style, day_key) for day_key in normalized_keys],
+                [
+                    _day_cache_key(user_id, logging_style, day_key)
+                    for day_key in normalized_keys
+                ],
             )
         logger.info(
             "history_day_invalidate user_id=%s logging_style=%s dates=%s reason=%s deleted=%s",
@@ -254,6 +260,7 @@ def schedule_history_refresh(
         from app.history_cache import (
             refresh_history_cache,  # deferred to avoid circular import
         )
+
         refresh_history_cache(user_id, logging_style=logging_style, warm_days=warm_days)
         return False
 

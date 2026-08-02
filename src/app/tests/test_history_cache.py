@@ -84,7 +84,9 @@ class HistoryMonthCacheTests(TestCase):
         ]
         cached_payloads = cache.get_many(cache_keys)
         self.assertEqual(len(cached_payloads), len(cache_keys))
-        self.assertEqual(len(response.context["history_days"]), len(active_month_day_keys))
+        self.assertEqual(
+            len(response.context["history_days"]), len(active_month_day_keys)
+        )
         mock_schedule_history_day_cache_coverage.assert_called_once_with(
             self.user.id,
             self.logging_style,
@@ -144,7 +146,9 @@ class HistoryMonthCacheTests(TestCase):
         )
 
     def test_refresh_history_cache_repairs_missing_index_day_payloads(self):
-        history_cache.refresh_history_cache(self.user.id, logging_style=self.logging_style)
+        history_cache.refresh_history_cache(
+            self.user.id, logging_style=self.logging_style
+        )
 
         cache.delete(
             history_cache._day_cache_key(
@@ -154,9 +158,13 @@ class HistoryMonthCacheTests(TestCase):
             ),
         )
 
-        history_cache.refresh_history_cache(self.user.id, logging_style=self.logging_style)
+        history_cache.refresh_history_cache(
+            self.user.id, logging_style=self.logging_style
+        )
 
-        index_entry = cache.get(history_cache._cache_key(self.user.id, self.logging_style))
+        index_entry = cache.get(
+            history_cache._cache_key(self.user.id, self.logging_style)
+        )
         self.assertIsNotNone(index_entry)
         self.assertIn(self.today_key, index_entry["days"])
         self.assertIsNotNone(
@@ -174,7 +182,9 @@ class HistoryMonthCacheTests(TestCase):
         self,
         mock_schedule_history_refresh,
     ):
-        history_cache.refresh_history_cache(self.user.id, logging_style=self.logging_style)
+        history_cache.refresh_history_cache(
+            self.user.id, logging_style=self.logging_style
+        )
         cache_key = history_cache._day_cache_key(
             self.user.id,
             self.logging_style,
@@ -211,8 +221,13 @@ class HistoryRefreshSchedulingTests(TestCase):
         """Reset cache state between tests."""
         cache.clear()
 
-    @patch("app.tasks.refresh_history_cache_task.apply_async", side_effect=RuntimeError("broker unavailable"))
-    def test_schedule_history_refresh_clears_locks_when_enqueue_fails(self, _mock_apply_async):
+    @patch(
+        "app.tasks.refresh_history_cache_task.apply_async",
+        side_effect=RuntimeError("broker unavailable"),
+    )
+    def test_schedule_history_refresh_clears_locks_when_enqueue_fails(
+        self, _mock_apply_async
+    ):
         day_key = timezone.localdate().isoformat()
 
         scheduled = history_cache.schedule_history_refresh(
@@ -382,12 +397,16 @@ class MusicHistoryOwnershipTests(TestCase):
 
         self.assertIsNotNone(day)
         music_entries = [
-            entry for entry in day["entries"] if entry["media_type"] == MediaTypes.MUSIC.value
+            entry
+            for entry in day["entries"]
+            if entry["media_type"] == MediaTypes.MUSIC.value
         ]
         self.assertEqual(len(music_entries), 1)
         self.assertEqual(music_entries[0]["title"], "History Album")
         self.assertEqual(music_entries[0]["play_count"], 1)
-        self.assertIn(self.day_key, history_cache.build_history_index(self.user, "repeats"))
+        self.assertIn(
+            self.day_key, history_cache.build_history_index(self.user, "repeats")
+        )
 
     def test_build_history_day_excludes_foreign_music_with_null_history_user(self):
         self._create_music_play(
@@ -397,7 +416,9 @@ class MusicHistoryOwnershipTests(TestCase):
         )
 
         self.assertIsNone(history_cache.build_history_day(self.user, self.day_key))
-        self.assertNotIn(self.day_key, history_cache.build_history_index(self.user, "repeats"))
+        self.assertNotIn(
+            self.day_key, history_cache.build_history_index(self.user, "repeats")
+        )
 
     def test_repair_history_day_cache_coverage_repairs_in_batches(self):
         current_item = Item.objects.create(

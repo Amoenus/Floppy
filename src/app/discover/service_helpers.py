@@ -40,7 +40,14 @@ WORLD_QUALITY_MEDIA_TYPES = {
 }
 
 HOLIDAY_STRONG_TERMS = {"christmas", "xmas", "noel", "grinch", "krampus", "nutcracker"}
-HOLIDAY_SOFT_TERMS = {"holiday", "holidays", "new year", "new years", "jack frost", "santa claus"}
+HOLIDAY_SOFT_TERMS = {
+    "holiday",
+    "holidays",
+    "new year",
+    "new years",
+    "jack frost",
+    "santa claus",
+}
 
 COMFORT_DIVERSITY_DECAY = 0.92
 COMFORT_PHASE_LANE_QUOTA = 4
@@ -66,7 +73,9 @@ def _item_tag_map(user, item_ids: list[int]) -> dict[int, list[str]]:
     if not item_ids:
         return mapping
 
-    for item_tag in ItemTag.objects.filter(item_id__in=item_ids, tag__user=user).select_related("tag"):
+    for item_tag in ItemTag.objects.filter(
+        item_id__in=item_ids, tag__user=user
+    ).select_related("tag"):
         tag_name = (item_tag.tag.name or "").strip()
         if tag_name:
             mapping[item_tag.item_id].append(tag_name)
@@ -74,7 +83,9 @@ def _item_tag_map(user, item_ids: list[int]) -> dict[int, list[str]]:
     return mapping
 
 
-def _item_credit_feature_maps(item_ids: list[int]) -> tuple[dict[int, list[str]], dict[int, list[str]], dict[int, list[str]]]:
+def _item_credit_feature_maps(
+    item_ids: list[int],
+) -> tuple[dict[int, list[str]], dict[int, list[str]], dict[int, list[str]]]:
     people_map: dict[int, list[str]] = defaultdict(list)
     directors_map: dict[int, list[str]] = defaultdict(list)
     lead_cast_map: dict[int, list[str]] = defaultdict(list)
@@ -263,7 +274,9 @@ def _clamp_unit(value: float) -> float:
     return max(0.0, min(1.0, float(value)))
 
 
-def _calibrate_display_score(raw_score: float, *, offset: float, weight: float) -> float:
+def _calibrate_display_score(
+    raw_score: float, *, offset: float, weight: float
+) -> float:
     return _clamp_unit(offset + (raw_score * weight))
 
 
@@ -305,7 +318,9 @@ def _holiday_seasonal_strength(candidate: CandidateItem) -> float:
     return strength
 
 
-def _holiday_seasonal_adjustment(candidate: CandidateItem, *, holiday_window_active: bool) -> tuple[float, float]:
+def _holiday_seasonal_adjustment(
+    candidate: CandidateItem, *, holiday_window_active: bool
+) -> tuple[float, float]:
     holiday_strength = _holiday_seasonal_strength(candidate)
     if holiday_strength <= 0.0:
         return 0.0, 0.0

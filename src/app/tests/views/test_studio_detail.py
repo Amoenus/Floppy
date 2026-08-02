@@ -153,7 +153,11 @@ class StudioDetailViewTests(TestCase):
         self.assertContains(response, "Developer, Publisher")
         self.assertContains(response, "2 games")
         self.assertEqual(response.context["studio"], studio)
-        self.assertEqual(response.context["studio_source_url"], "https://www.cdprojekt.com/")
+        self.assertEqual(
+            response.context["studio_source_url"], "https://www.cdprojekt.com/"
+        )
         self.assertEqual(response.context["studio_games_count"], 2)
         self.assertEqual(len(response.context["credited_titles"]), 2)
-        self.assertEqual(response.context["credited_titles"][0]["title"], "Cyberpunk 2077")
+        self.assertEqual(
+            response.context["credited_titles"][0]["title"], "Cyberpunk 2077"
+        )

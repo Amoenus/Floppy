@@ -69,7 +69,9 @@ def format_import_message(imported_counts, warning_messages=None):
             )
         else:
             # Fallback to standard format if unique tracks not available
-            parts.append(format_media_type_display(music_play_events, MediaTypes.MUSIC.value))
+            parts.append(
+                format_media_type_display(music_play_events, MediaTypes.MUSIC.value)
+            )
 
     # Add other media types (excluding music which we handled above)
     media_type_values = set(MediaTypes.values)

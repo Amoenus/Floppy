@@ -24,10 +24,7 @@ def refresh_imdb_game_credits_from_datasets():
     synced = 0
     error = None
 
-    tconsts = {
-        item.provider_external_ids["imdb_id"]
-        for item in _resolved_game_items()
-    }
+    tconsts = {item.provider_external_ids["imdb_id"] for item in _resolved_game_items()}
     if tconsts:
         try:
             principals = imdb_datasets.download_principals(tconsts)

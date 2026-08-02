@@ -70,7 +70,10 @@ class RefreshImdbGameCreditsTaskTests(TestCase):
             ),
             patch(
                 "app.providers.tmdb.search_person_profile",
-                return_value={"image": "https://image.tmdb.org/t/p/h632/alice.jpg", "gender": "female"},
+                return_value={
+                    "image": "https://image.tmdb.org/t/p/h632/alice.jpg",
+                    "gender": "female",
+                },
             ) as mock_search,
             patch(
                 "app.services.imdb_game_credits.backfill_missing_game_studios",
@@ -100,7 +103,10 @@ class BackfillImdbGamePersonProfilesTaskTests(TestCase):
 
         with patch(
             "app.providers.tmdb.search_person_profile",
-            return_value={"image": "https://image.tmdb.org/t/p/h632/alice.jpg", "gender": "female"},
+            return_value={
+                "image": "https://image.tmdb.org/t/p/h632/alice.jpg",
+                "gender": "female",
+            },
         ):
             result = backfill_imdb_game_person_profiles()
 

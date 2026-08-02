@@ -16,7 +16,9 @@ from app.models import DiscoverApiCache, DiscoverRowCache, DiscoverTasteProfile
 
 
 def _params_hash(params: dict[str, Any] | None) -> str:
-    payload = json.dumps(params or {}, sort_keys=True, separators=(",", ":"), default=str)
+    payload = json.dumps(
+        params or {}, sort_keys=True, separators=(",", ":"), default=str
+    )
     return stable_hmac(payload, namespace="discover_api_cache")
 
 

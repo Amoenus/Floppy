@@ -82,7 +82,9 @@ class SubmitListensView(drf_views.APIView):
             )
 
         if listen_type == "single" and len(payload) != 1:
-            return _error("Submission of type 'single' must contain exactly one listen.")
+            return _error(
+                "Submission of type 'single' must contain exactly one listen."
+            )
 
         # Accept and drop now-playing pings: recording one would mean creating
         # catalog rows for a track the user may never finish.
@@ -124,7 +126,9 @@ class SubmitListensView(drf_views.APIView):
             )
             statistics_cache.schedule_all_ranges_refresh(user.id)
         except Exception:  # noqa: BLE001 - cache refresh must never fail ingest
-            logger.exception("Failed to refresh statistics after ListenBrainz submission")
+            logger.exception(
+                "Failed to refresh statistics after ListenBrainz submission"
+            )
 
 
 @extend_schema(

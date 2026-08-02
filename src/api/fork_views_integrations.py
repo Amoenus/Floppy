@@ -180,9 +180,7 @@ class ExportCsvView(drf_views.APIView):
             ),
             content_type="text/csv",
             headers={
-                "Content-Disposition": (
-                    f'attachment; filename="floppy_{now}.csv"'
-                ),
+                "Content-Disposition": (f'attachment; filename="floppy_{now}.csv"'),
             },
         )
         logger.info("User %s started CSV export via API", request.user.username)

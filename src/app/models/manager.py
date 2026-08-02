@@ -155,7 +155,11 @@ class MediaManager(models.Manager):
         if source:
             queryset = queryset.filter(item__source=source)
 
-        if media_type in (MediaTypes.TV.value, MediaTypes.MOVIE.value, MediaTypes.ANIME.value):
+        if media_type in (
+            MediaTypes.TV.value,
+            MediaTypes.MOVIE.value,
+            MediaTypes.ANIME.value,
+        ):
             language = str(filters.get("language") or "").strip()
             if language:
                 queryset = _filter_queryset_by_item_json_array_ci(
@@ -229,7 +233,9 @@ class MediaManager(models.Manager):
         # surfaced separately by the "No Status" filter.
         if isinstance(status_filter, (list, tuple, set, frozenset)):
             status_filters = [
-                value for value in status_filter if value and value != users.models.MediaStatusChoices.ALL
+                value
+                for value in status_filter
+                if value and value != users.models.MediaStatusChoices.ALL
             ]
         elif status_filter and status_filter != users.models.MediaStatusChoices.ALL:
             status_filters = [status_filter]
@@ -248,7 +254,9 @@ class MediaManager(models.Manager):
                 | models.Q(item__media_id__icontains=search),
             )
 
-        queryset = self._apply_list_sql_filters(queryset, user, media_type, list_sql_filters or {})
+        queryset = self._apply_list_sql_filters(
+            queryset, user, media_type, list_sql_filters or {}
+        )
 
         # Handle duplicate entries by selecting the most recent record for each item
         has_progress_field = any(
@@ -307,19 +315,24 @@ class MediaManager(models.Manager):
         )
         queryset = self._apply_prefetch_related(queryset, media_type, list_mode=True)
 
-        requires_presort_aggregation = (
-            sort_filter in ("progress", "plays", "next_episode_air_date")
-            and media_type not in (MediaTypes.TV.value, MediaTypes.SEASON.value)
-        )
+        requires_presort_aggregation = sort_filter in (
+            "progress",
+            "plays",
+            "next_episode_air_date",
+        ) and media_type not in (MediaTypes.TV.value, MediaTypes.SEASON.value)
 
         # Generic progress sorting uses Python and reads aggregated_progress, so
         # duplicates must be aggregated before sorting in that specific path.
         if requires_presort_aggregation:
-            queryset = self._aggregate_duplicate_data(queryset, user, media_type, dup_state)
+            queryset = self._aggregate_duplicate_data(
+                queryset, user, media_type, dup_state
+            )
 
         # Apply sorting AFTER aggregation
         if sort_filter:
-            queryset = self._sort_media_list(queryset, sort_filter, media_type, direction)
+            queryset = self._sort_media_list(
+                queryset, sort_filter, media_type, direction
+            )
 
         # Re-apply duplicate aggregation because SQL queryset operations in sorting
         # can materialize fresh model instances and drop dynamic aggregated attrs.
@@ -353,7 +366,9 @@ class MediaManager(models.Manager):
                 user=user.id,
                 item_id__in=queried_item_ids,
             ).select_related("item")
-            all_media = self._apply_prefetch_related(all_media, media_type, list_mode=True)
+            all_media = self._apply_prefetch_related(
+                all_media, media_type, list_mode=True
+            )
 
             # Group media by item_id
             media_by_item = {}
@@ -388,7 +403,9 @@ class MediaManager(models.Manager):
         display_media.aggregated_progress = total_progress
 
         # Aggregate start date (earliest start date)
-        start_dates = [entry.start_date for entry in all_media_entries if entry.start_date]
+        start_dates = [
+            entry.start_date for entry in all_media_entries if entry.start_date
+        ]
         if start_dates:
             display_media.aggregated_start_date = min(start_dates)
         else:
@@ -424,14 +441,20 @@ class MediaManager(models.Manager):
                     entry_activity = entry.created_at
 
                 # If this entry has more recent activity, use its rating
-                if latest_rating_activity is None or entry_activity > latest_rating_activity:
+                if (
+                    latest_rating_activity is None
+                    or entry_activity > latest_rating_activity
+                ):
                     latest_rating_activity = entry_activity
                     latest_rating = entry.score
             else:
-                entry_activity = entry.end_date or entry.progressed_at or entry.created_at
+                entry_activity = (
+                    entry.end_date or entry.progressed_at or entry.created_at
+                )
 
             if entry_activity and (
-                latest_status_activity is None or entry_activity > latest_status_activity
+                latest_status_activity is None
+                or entry_activity > latest_status_activity
             ):
                 latest_status_activity = entry_activity
                 latest_status = entry.status
@@ -557,10 +580,13 @@ class MediaManager(models.Manager):
             episodes = [
                 episode
                 for episode in _as_list(getattr(related, "episodes", None))
-                if getattr(getattr(episode, "item", None), "episode_number", None) is not None
+                if getattr(getattr(episode, "item", None), "episode_number", None)
+                is not None
             ]
             episodes.sort(
-                key=lambda episode: getattr(getattr(episode, "item", None), "episode_number", 0) or 0,
+                key=lambda episode: (
+                    getattr(getattr(episode, "item", None), "episode_number", 0) or 0
+                ),
             )
             return episodes
 
@@ -572,15 +598,20 @@ class MediaManager(models.Manager):
             seasons = [
                 season
                 for season in _as_list(getattr(media, "seasons", None))
-                if getattr(getattr(season, "item", None), "season_number", None) not in (None, 0)
+                if getattr(getattr(season, "item", None), "season_number", None)
+                not in (None, 0)
             ]
             seasons.sort(
-                key=lambda season: getattr(getattr(season, "item", None), "season_number", 0) or 0,
+                key=lambda season: (
+                    getattr(getattr(season, "item", None), "season_number", 0) or 0
+                ),
             )
 
             for season in seasons:
                 season_item = getattr(season, "item", None)
-                season_events = _ordered_events_for_item(season_item) if season_item else []
+                season_events = (
+                    _ordered_events_for_item(season_item) if season_item else []
+                )
                 if season_events:
                     candidates.extend(season_events)
                     continue
@@ -616,7 +647,9 @@ class MediaManager(models.Manager):
             candidate = candidates[progress_index]
             air_date = getattr(candidate, "datetime", None)
             if air_date is None:
-                air_date = getattr(getattr(candidate, "item", None), "release_datetime", None)
+                air_date = getattr(
+                    getattr(candidate, "item", None), "release_datetime", None
+                )
             return air_date if _is_usable_datetime(air_date) else None
 
         if media_type == MediaTypes.SEASON.value:
@@ -630,7 +663,9 @@ class MediaManager(models.Manager):
             candidate = candidates[progress_index]
             air_date = getattr(candidate, "datetime", None)
             if air_date is None:
-                air_date = getattr(getattr(candidate, "item", None), "release_datetime", None)
+                air_date = getattr(
+                    getattr(candidate, "item", None), "release_datetime", None
+                )
             return air_date if _is_usable_datetime(air_date) else None
 
         if media_type == MediaTypes.ANIME.value:
@@ -644,7 +679,9 @@ class MediaManager(models.Manager):
             candidate = candidates[progress_index]
             air_date = getattr(candidate, "datetime", None)
             if air_date is None:
-                air_date = getattr(getattr(candidate, "item", None), "release_datetime", None)
+                air_date = getattr(
+                    getattr(candidate, "item", None), "release_datetime", None
+                )
             return air_date if _is_usable_datetime(air_date) else None
 
         return None
@@ -679,7 +716,9 @@ class MediaManager(models.Manager):
             )
 
         without_dates.sort(
-            key=lambda media: getattr(getattr(media, "item", None), "title", "").lower(),
+            key=lambda media: getattr(
+                getattr(media, "item", None), "title", ""
+            ).lower(),
         )
         return [media for media, _air_date in with_dates] + without_dates
 
@@ -716,7 +755,9 @@ class MediaManager(models.Manager):
             return queryset.order_by(order, models.functions.Lower("item__title"))
 
         if sort_filter == "next_episode_air_date":
-            return self._sort_media_items_by_next_episode_air_date(list(queryset), direction)
+            return self._sort_media_items_by_next_episode_air_date(
+                list(queryset), direction
+            )
 
         if sort_filter == "progress":
             # Annotate with the sum of episodes watched (excluding season 0)
@@ -769,7 +810,9 @@ class MediaManager(models.Manager):
             return queryset.order_by(order, models.functions.Lower("item__title"))
 
         if sort_filter == "next_episode_air_date":
-            return self._sort_media_items_by_next_episode_air_date(list(queryset), direction)
+            return self._sort_media_items_by_next_episode_air_date(
+                list(queryset), direction
+            )
 
         if sort_filter == "progress":
             # Annotate with the maximum episode number
@@ -792,7 +835,9 @@ class MediaManager(models.Manager):
             return self._sort_media_list_by_author(list(queryset), direction)
 
         if sort_filter == "next_episode_air_date":
-            return self._sort_media_items_by_next_episode_air_date(list(queryset), direction)
+            return self._sort_media_items_by_next_episode_air_date(
+                list(queryset), direction
+            )
 
         # Handle progress sorting specially to use aggregated progress
         if sort_filter in ("progress", "plays"):
@@ -801,7 +846,10 @@ class MediaManager(models.Manager):
             media_list = list(queryset)
             return sorted(
                 media_list,
-                key=lambda x: (getattr(x, "aggregated_progress", x.progress), x.item.title.lower()),
+                key=lambda x: (
+                    getattr(x, "aggregated_progress", x.progress),
+                    x.item.title.lower(),
+                ),
                 reverse=(direction == "desc"),
             )
 
@@ -892,7 +940,9 @@ class MediaManager(models.Manager):
             reverse=direction == "desc",
         )
         without_author.sort(
-            key=lambda media: getattr(getattr(media, "item", None), "title", "").lower(),
+            key=lambda media: getattr(
+                getattr(media, "item", None), "title", ""
+            ).lower(),
         )
         return with_author + without_author
 
@@ -902,7 +952,11 @@ class MediaManager(models.Manager):
         media_types = self._get_media_types_to_process(user, specific_media_type)
 
         # Get user preference for planned items display mode
-        planned_mode = getattr(user, "show_planned_on_home", users.models.PlannedHomeDisplayChoices.DISABLED)
+        planned_mode = getattr(
+            user,
+            "show_planned_on_home",
+            users.models.PlannedHomeDisplayChoices.DISABLED,
+        )
 
         def filter_by_latest_status(media_list, desired_status):
             """Filter media entries by their most recent status across duplicates."""
@@ -910,7 +964,9 @@ class MediaManager(models.Manager):
                 return media_list
             filtered = []
             for media in media_list:
-                latest_status = getattr(media, "aggregated_status", None) or getattr(media, "status", None)
+                latest_status = getattr(media, "aggregated_status", None) or getattr(
+                    media, "status", None
+                )
                 if latest_status == desired_status:
                     filtered.append(media)
             return filtered
@@ -926,7 +982,9 @@ class MediaManager(models.Manager):
                 sort_filter=None,
             )
             in_progress_list = list(in_progress_list)
-            in_progress_list = filter_by_latest_status(in_progress_list, Status.IN_PROGRESS.value)
+            in_progress_list = filter_by_latest_status(
+                in_progress_list, Status.IN_PROGRESS.value
+            )
 
             # Get planned items if needed
             planned_list = []
@@ -937,7 +995,9 @@ class MediaManager(models.Manager):
                     status_filter=Status.PLANNING.value,
                     sort_filter=None,
                 )
-                planned_list = filter_by_latest_status(list(planned_queryset), Status.PLANNING.value)
+                planned_list = filter_by_latest_status(
+                    list(planned_queryset), Status.PLANNING.value
+                )
 
             # Handle different modes
             if planned_mode == users.models.PlannedHomeDisplayChoices.DISABLED:
@@ -1017,10 +1077,14 @@ class MediaManager(models.Manager):
                     if base_media_type == MediaTypes.SEASON.value:
                         self._fix_missing_season_images(in_progress_processed)
 
-                    sorted_in_progress = self._sort_in_progress_media(in_progress_processed, sort_by)
+                    sorted_in_progress = self._sort_in_progress_media(
+                        in_progress_processed, sort_by
+                    )
                     total_in_progress = len(sorted_in_progress)
 
-                    if specific_media_type and specific_media_type.endswith("_in_progress"):
+                    if specific_media_type and specific_media_type.endswith(
+                        "_in_progress"
+                    ):
                         paginated_in_progress = sorted_in_progress[items_limit:]
                     else:
                         paginated_in_progress = sorted_in_progress[:items_limit]
@@ -1041,7 +1105,9 @@ class MediaManager(models.Manager):
                     if base_media_type == MediaTypes.SEASON.value:
                         self._fix_missing_season_images(planned_processed)
 
-                    sorted_planned = self._sort_in_progress_media(planned_processed, sort_by)
+                    sorted_planned = self._sort_in_progress_media(
+                        planned_processed, sort_by
+                    )
                     total_planned = len(sorted_planned)
 
                     if specific_media_type and specific_media_type.endswith("_planned"):
@@ -1081,14 +1147,11 @@ class MediaManager(models.Manager):
                 score__isnull=False,
             ).values("item_id")
 
-            queryset = (
-                model.objects.filter(
-                    user=user.id,
-                    score__isnull=True,
-                    status=Status.COMPLETED.value,
-                )
-                .exclude(item_id__in=rated_item_ids)
-            )
+            queryset = model.objects.filter(
+                user=user.id,
+                score__isnull=True,
+                status=Status.COMPLETED.value,
+            ).exclude(item_id__in=rated_item_ids)
 
             if media_type == MediaTypes.SEASON.value:
                 queryset = queryset.filter(
@@ -1117,17 +1180,21 @@ class MediaManager(models.Manager):
             elif media_type == MediaTypes.MUSIC.value:
                 select_related_fields.append("album")
 
-            queryset = queryset.annotate(
-                repeats=Window(
-                    expression=Count("id"),
-                    partition_by=[F("item")],
-                ),
-                row_number=Window(
-                    expression=RowNumber(),
-                    partition_by=[F("item")],
-                    order_by=order_by_fields,
-                ),
-            ).filter(row_number=1).select_related(*select_related_fields)
+            queryset = (
+                queryset.annotate(
+                    repeats=Window(
+                        expression=Count("id"),
+                        partition_by=[F("item")],
+                    ),
+                    row_number=Window(
+                        expression=RowNumber(),
+                        partition_by=[F("item")],
+                        order_by=order_by_fields,
+                    ),
+                )
+                .filter(row_number=1)
+                .select_related(*select_related_fields)
+            )
 
             queryset = self._apply_prefetch_related(queryset, media_type)
             items = list(queryset)
@@ -1161,7 +1228,10 @@ class MediaManager(models.Manager):
         ]
 
         # Home should continue to include TV seasons when TV shows are enabled.
-        if getattr(user, "tv_enabled", False) and MediaTypes.SEASON.value not in media_types:
+        if (
+            getattr(user, "tv_enabled", False)
+            and MediaTypes.SEASON.value not in media_types
+        ):
             media_types.insert(0, MediaTypes.SEASON.value)
 
         return media_types
@@ -1296,6 +1366,7 @@ class MediaManager(models.Manager):
             # The metadata value is more accurate as it reflects the actual total episodes
             # from the provider, not just episodes with release_datetime set
             from app.providers import services
+
             for season in media_list:
                 try:
                     season_metadata = services.get_media_metadata(
@@ -1310,7 +1381,9 @@ class MediaManager(models.Manager):
                         season.max_progress = metadata_max_progress
                     else:
                         # Fall back to database annotation if metadata doesn't have max_progress
-                        self._annotate_season_released_episodes([season], current_datetime)
+                        self._annotate_season_released_episodes(
+                            [season], current_datetime
+                        )
                 except Exception:
                     # If metadata fetch fails, fall back to database annotation
                     self._annotate_season_released_episodes([season], current_datetime)
@@ -1478,7 +1551,11 @@ class MediaManager(models.Manager):
         }
         media_ids = {media_id for media_id, _, _ in season_keys}
         media_sources = {source for _, source, _ in season_keys}
-        season_numbers = {season_number for _, _, season_number in season_keys if season_number is not None}
+        season_numbers = {
+            season_number
+            for _, _, season_number in season_keys
+            if season_number is not None
+        }
 
         released_by_season: dict[tuple[str, str, int], int] = {}
 
@@ -1519,7 +1596,11 @@ class MediaManager(models.Manager):
         )
 
         for row in released_events:
-            key = (row["item__media_id"], row["item__source"], row["item__season_number"])
+            key = (
+                row["item__media_id"],
+                row["item__source"],
+                row["item__season_number"],
+            )
             max_episode = row["max_episode"] or 0
             released_by_season[key] = max(released_by_season.get(key, 0), max_episode)
 

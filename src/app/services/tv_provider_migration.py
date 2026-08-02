@@ -149,7 +149,10 @@ def migrate_tv_item_to_tvdb(item: Item) -> TvMigrationResult:
         return TvMigrationResult(migrated=False, reason="no TVDB id resolvable")
 
     if _would_collide(
-        tvdb_id, Sources.TVDB.value, MediaTypes.TV.value, exclude_pk=item.pk,
+        tvdb_id,
+        Sources.TVDB.value,
+        MediaTypes.TV.value,
+        exclude_pk=item.pk,
     ):
         return _pin(item, "a separate item already tracks this show via TVDB")
 

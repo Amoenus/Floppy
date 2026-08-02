@@ -114,7 +114,9 @@ class TMDbDiscoverAdapter:
             return f"https://image.tmdb.org/t/p/w500{path}"
         return settings.IMG_NONE
 
-    def _normalize_results(self, media_type: str, results: list[dict], *, row_key: str) -> list[CandidateItem]:
+    def _normalize_results(
+        self, media_type: str, results: list[dict], *, row_key: str
+    ) -> list[CandidateItem]:
         genre_map = self._genre_id_to_name_map(media_type)
         candidates: list[CandidateItem] = []
         for item in results:
@@ -133,14 +135,21 @@ class TMDbDiscoverAdapter:
                     source=Sources.TMDB.value,
                     media_id=str(item.get("id", "")),
                     title=title,
-                    original_title=item.get("original_title") or item.get("original_name"),
+                    original_title=item.get("original_title")
+                    or item.get("original_name"),
                     localized_title=item.get("title") or item.get("name"),
                     image=self._poster_url(item.get("poster_path")),
                     release_date=release_date,
                     genres=genres,
-                    popularity=float(item["popularity"]) if item.get("popularity") is not None else None,
-                    rating=float(item["vote_average"]) if item.get("vote_average") is not None else None,
-                    rating_count=int(item["vote_count"]) if item.get("vote_count") is not None else None,
+                    popularity=float(item["popularity"])
+                    if item.get("popularity") is not None
+                    else None,
+                    rating=float(item["vote_average"])
+                    if item.get("vote_average") is not None
+                    else None,
+                    rating_count=int(item["vote_count"])
+                    if item.get("vote_count") is not None
+                    else None,
                     row_key=row_key,
                 ),
             )
@@ -251,7 +260,9 @@ class TMDbDiscoverAdapter:
 
         return []
 
-    def related(self, media_type: str, media_id: str, *, limit: int = 50) -> list[CandidateItem]:
+    def related(
+        self, media_type: str, media_id: str, *, limit: int = 50
+    ) -> list[CandidateItem]:
         if not media_id:
             return []
 
@@ -337,7 +348,9 @@ class TMDbDiscoverAdapter:
         }
 
         try:
-            checks["trending_movie"] = bool(self.trending(MediaTypes.MOVIE.value, limit=1))
+            checks["trending_movie"] = bool(
+                self.trending(MediaTypes.MOVIE.value, limit=1)
+            )
         except Exception:  # noqa: BLE001
             checks["trending_movie"] = False
 
@@ -347,7 +360,9 @@ class TMDbDiscoverAdapter:
             checks["trending_tv"] = False
 
         try:
-            checks["top_rated_movie"] = bool(self.top_rated(MediaTypes.MOVIE.value, limit=1))
+            checks["top_rated_movie"] = bool(
+                self.top_rated(MediaTypes.MOVIE.value, limit=1)
+            )
         except Exception:  # noqa: BLE001
             checks["top_rated_movie"] = False
 

@@ -172,9 +172,13 @@ def generate_rows(user, media_types=None, include_lists=True, include_collection
                 "status": tracker.status,
                 "score": tracker.score if tracker.score is not None else "",
                 "notes": tracker.notes,
-                "start_date": tracker.start_date.isoformat() if tracker.start_date else "",
+                "start_date": tracker.start_date.isoformat()
+                if tracker.start_date
+                else "",
                 "end_date": tracker.end_date.isoformat() if tracker.end_date else "",
-                "created_at": tracker.created_at.isoformat() if tracker.created_at else "",
+                "created_at": tracker.created_at.isoformat()
+                if tracker.created_at
+                else "",
             }
             row = (
                 ["media"]
@@ -204,9 +208,13 @@ def generate_rows(user, media_types=None, include_lists=True, include_collection
                 "status": tracker.status,
                 "score": tracker.score if tracker.score is not None else "",
                 "notes": tracker.notes,
-                "start_date": tracker.start_date.isoformat() if tracker.start_date else "",
+                "start_date": tracker.start_date.isoformat()
+                if tracker.start_date
+                else "",
                 "end_date": tracker.end_date.isoformat() if tracker.end_date else "",
-                "created_at": tracker.created_at.isoformat() if tracker.created_at else "",
+                "created_at": tracker.created_at.isoformat()
+                if tracker.created_at
+                else "",
             }
             row = (
                 ["media"]
@@ -258,9 +266,8 @@ def _generate_single_list_rows(custom_list, writer, fields):
     )
     yield writer.writerow(list_row)
 
-    list_items = (
-        custom_list.customlistitem_set.select_related("item")
-        .order_by("date_added", "pk")
+    list_items = custom_list.customlistitem_set.select_related("item").order_by(
+        "date_added", "pk"
     )
     for list_item in list_items:
         item = list_item.item
@@ -469,16 +476,45 @@ SAMPLE_MOVIES = [
 
 # (media_id, title, show poster path, season poster path)
 SAMPLE_TV_SHOWS = [
-    ("1668", "Friends", "2koX1xLkpTQM4IZebYvKysFW1Nh.jpg", "odCW88Cq5hAF0ZFVOkeJmeQv1nV.jpg"),
-    ("1396", "Breaking Bad", "ztkUQFLlC19CCMYHW9o1zWhJRNq.jpg", "ztkUQFLlC19CCMYHW9o1zWhJRNq.jpg"),
-    ("1399", "Game of Thrones", "1XS1oqL89opfnbLl8WnZY1O1uJx.jpg", "1XS1oqL89opfnbLl8WnZY1O1uJx.jpg"),
-    ("2316", "The Office", "7DJKHzAi83BmQrWLrYYOqcoKfhR.jpg", "7DJKHzAi83BmQrWLrYYOqcoKfhR.jpg"),
-    ("60625", "Rick and Morty", "owhkU6KRqdXoUQpjV8uyZGPtX58.jpg", "owhkU6KRqdXoUQpjV8uyZGPtX58.jpg"),
+    (
+        "1668",
+        "Friends",
+        "2koX1xLkpTQM4IZebYvKysFW1Nh.jpg",
+        "odCW88Cq5hAF0ZFVOkeJmeQv1nV.jpg",
+    ),
+    (
+        "1396",
+        "Breaking Bad",
+        "ztkUQFLlC19CCMYHW9o1zWhJRNq.jpg",
+        "ztkUQFLlC19CCMYHW9o1zWhJRNq.jpg",
+    ),
+    (
+        "1399",
+        "Game of Thrones",
+        "1XS1oqL89opfnbLl8WnZY1O1uJx.jpg",
+        "1XS1oqL89opfnbLl8WnZY1O1uJx.jpg",
+    ),
+    (
+        "2316",
+        "The Office",
+        "7DJKHzAi83BmQrWLrYYOqcoKfhR.jpg",
+        "7DJKHzAi83BmQrWLrYYOqcoKfhR.jpg",
+    ),
+    (
+        "60625",
+        "Rick and Morty",
+        "owhkU6KRqdXoUQpjV8uyZGPtX58.jpg",
+        "owhkU6KRqdXoUQpjV8uyZGPtX58.jpg",
+    ),
 ]
 
 SAMPLE_ANIME = [
     ("227", "FLCL", "https://cdn.myanimelist.net/images/anime/7/77356l.jpg"),
-    ("44511", "Chainsaw Man", "https://cdn.myanimelist.net/images/anime/1806/126216l.jpg"),
+    (
+        "44511",
+        "Chainsaw Man",
+        "https://cdn.myanimelist.net/images/anime/1806/126216l.jpg",
+    ),
     ("12189", "Hyouka", "https://cdn.myanimelist.net/images/anime/13/50521l.jpg"),
     ("31043", "Erased", "https://cdn.myanimelist.net/images/anime/1555/106759l.jpg"),
     ("1535", "Death Note", "https://cdn.myanimelist.net/images/anime/1079/138100.jpg"),
@@ -493,7 +529,11 @@ SAMPLE_MANGA = [
 ]
 
 SAMPLE_GAMES = [
-    ("19562", "Resident Evil 7: Biohazard", "https://images.igdb.com/igdb/image/upload/t_original/co545w.jpg"),
+    (
+        "19562",
+        "Resident Evil 7: Biohazard",
+        "https://images.igdb.com/igdb/image/upload/t_original/co545w.jpg",
+    ),
     ("72", "Portal 2", ""),
     ("233", "Half-Life 2", ""),
     ("7346", "The Legend of Zelda: Breath of the Wild", ""),
@@ -501,11 +541,23 @@ SAMPLE_GAMES = [
 ]
 
 SAMPLE_BOOKS = [
-    ("OL21733390M", "Nineteen Eighty-Four", "https://covers.openlibrary.org/b/id/9267242-L.jpg"),
+    (
+        "OL21733390M",
+        "Nineteen Eighty-Four",
+        "https://covers.openlibrary.org/b/id/9267242-L.jpg",
+    ),
     ("OL51711263M", "The Hobbit", "https://covers.openlibrary.org/b/id/14627509-L.jpg"),
-    ("OL40236195M", "Fahrenheit 451", "https://covers.openlibrary.org/b/id/12993656-L.jpg"),
+    (
+        "OL40236195M",
+        "Fahrenheit 451",
+        "https://covers.openlibrary.org/b/id/12993656-L.jpg",
+    ),
     ("OL32848840M", "Dune", "https://covers.openlibrary.org/b/id/11481354-L.jpg"),
-    ("OL22570129M", "The Great Gatsby", "https://covers.openlibrary.org/b/id/10590366-L.jpg"),
+    (
+        "OL22570129M",
+        "The Great Gatsby",
+        "https://covers.openlibrary.org/b/id/10590366-L.jpg",
+    ),
 ]
 
 SAMPLE_COMICS = [
@@ -622,7 +674,11 @@ def generate_sample_template():
     placeholder_image = settings.IMG_NONE
 
     def write_media_row(item_vals, track_vals=None):
-        item_vals = {"source": Sources.MANUAL.value, "image": placeholder_image, **item_vals}
+        item_vals = {
+            "source": Sources.MANUAL.value,
+            "image": placeholder_image,
+            **item_vals,
+        }
         track_vals = track_vals or {}
         writer.writerow(
             ["media"]
@@ -642,7 +698,11 @@ def generate_sample_template():
         )
 
     def write_list_item_row(item_vals, list_vals):
-        item_vals = {"source": Sources.MANUAL.value, "image": placeholder_image, **item_vals}
+        item_vals = {
+            "source": Sources.MANUAL.value,
+            "image": placeholder_image,
+            **item_vals,
+        }
         writer.writerow(
             ["list_item"]
             + [item_vals.get(field, "") for field in fields["item"]]
@@ -679,7 +739,9 @@ def generate_sample_template():
     def tmdb_image(path):
         return f"{TMDB_IMAGE_BASE}{path}" if path else ""
 
-    def write_category_list(media_type, source, list_name, entries, image_fn=lambda x: x):
+    def write_category_list(
+        media_type, source, list_name, entries, image_fn=lambda x: x
+    ):
         list_uid = f"sample-list-{media_type}"
         write_list_row(
             {
@@ -689,7 +751,9 @@ def generate_sample_template():
                 "list_visibility": "private",
             },
         )
-        for (media_id, title, *rest), (status, score) in zip(entries, status_score_sequence):
+        for (media_id, title, *rest), (status, score) in zip(
+            entries, status_score_sequence
+        ):
             track_vals = {"status": status}
             if score:
                 track_vals["score"] = score
@@ -704,7 +768,9 @@ def generate_sample_template():
                 "image": image,
             }
             write_media_row(item_vals, track_vals)
-            write_list_item_row(item_vals, {"list_uid": list_uid, "list_name": list_name})
+            write_list_item_row(
+                item_vals, {"list_uid": list_uid, "list_name": list_name}
+            )
 
     write_category_list("movie", "tmdb", "Sample Movies", SAMPLE_MOVIES, tmdb_image)
 
@@ -730,10 +796,14 @@ def generate_sample_template():
     write_category_list("anime", "mal", "Sample Anime", SAMPLE_ANIME, lambda url: url)
     write_category_list("manga", "mal", "Sample Manga", SAMPLE_MANGA, lambda url: url)
     write_category_list("game", "igdb", "Sample Games", SAMPLE_GAMES, lambda url: url)
-    write_category_list("book", "openlibrary", "Sample Books", SAMPLE_BOOKS, lambda url: url)
+    write_category_list(
+        "book", "openlibrary", "Sample Books", SAMPLE_BOOKS, lambda url: url
+    )
     write_category_list("comic", "comicvine", "Sample Comics", SAMPLE_COMICS)
     write_category_list("boardgame", "bgg", "Sample Board Games", SAMPLE_BOARDGAMES)
-    write_category_list("podcast", "pocketcasts", "Sample Podcasts", SAMPLE_PODCASTS, lambda url: url)
+    write_category_list(
+        "podcast", "pocketcasts", "Sample Podcasts", SAMPLE_PODCASTS, lambda url: url
+    )
 
     # TV shows also get a linked season (season_number=1) per show.
     tv_list_uid = "sample-list-tv"
@@ -778,7 +848,9 @@ def generate_sample_template():
         }
         write_media_row(tv_item_vals, tv_track_vals)
         write_media_row(season_item_vals, tv_track_vals)
-        write_list_item_row(tv_item_vals, {"list_uid": tv_list_uid, "list_name": tv_list_name})
+        write_list_item_row(
+            tv_item_vals, {"list_uid": tv_list_uid, "list_name": tv_list_name}
+        )
         write_list_item_row(
             season_item_vals,
             {"list_uid": season_list_uid, "list_name": season_list_name},
@@ -788,7 +860,10 @@ def generate_sample_template():
     # aren't Item-backed, so they can't belong to a CustomList or the smart
     # list below -- that's a structural constraint of the data model, not an
     # omission.
-    for (artist_mbid, artist_name, release_group_id, album_title), (status, score) in zip(
+    for (artist_mbid, artist_name, release_group_id, album_title), (
+        status,
+        score,
+    ) in zip(
         SAMPLE_MUSIC,
         status_score_sequence,
     ):
@@ -827,7 +902,9 @@ def generate_sample_template():
             ),
             "list_visibility": "private",
             "list_is_smart": "true",
-            "list_smart_filters": json.dumps({"status": "Completed", "rating_min": "8"}),
+            "list_smart_filters": json.dumps(
+                {"status": "Completed", "rating_min": "8"}
+            ),
         },
     )
 

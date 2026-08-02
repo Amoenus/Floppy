@@ -20,7 +20,7 @@ PLAYBACK_CACHE_PREFIX = "active_playback_v2"
 PLAYBACK_CACHE_TIMEOUT_SECONDS = 6 * 60 * 60
 PLAYBACK_HARD_STALE_SECONDS = 4 * 60 * 60
 PLAYBACK_PAUSE_STALE_SECONDS = 45 * 60
-PLAYBACK_SCROBBLE_BUFFER_SECONDS = 30        # small buffer after calculated end time
+PLAYBACK_SCROBBLE_BUFFER_SECONDS = 30  # small buffer after calculated end time
 PLAYBACK_SCROBBLE_FALLBACK_SECONDS = 15 * 60  # fallback when duration unavailable
 PLAYBACK_STOP_GRACE_SECONDS = 60
 
@@ -163,12 +163,15 @@ def apply_playback_event(  # noqa: C901, PLR0912
     now_ts = _now_ts()
 
     if event_type == "media.stop":
-        if existing_state and (_state_matches(
-            existing_state,
-            rating_key=rating_key,
-            media_id=media_id,
-            playback_media_type=playback_media_type,
-        ) or not rating_key):
+        if existing_state and (
+            _state_matches(
+                existing_state,
+                rating_key=rating_key,
+                media_id=media_id,
+                playback_media_type=playback_media_type,
+            )
+            or not rating_key
+        ):
             # Grace period instead of immediate deletion — keeps the
             # card visible across auto-play transitions and brief gaps.
             if view_offset_seconds is not None:
@@ -182,9 +185,7 @@ def apply_playback_event(  # noqa: C901, PLR0912
             existing_state["pause_expires_at_ts"] = None
             existing_state["scrobble_expires_at_ts"] = None
             existing_state["status"] = PLAYBACK_STATUS_STOPPED
-            existing_state["stop_expires_at_ts"] = (
-                now_ts + PLAYBACK_STOP_GRACE_SECONDS
-            )
+            existing_state["stop_expires_at_ts"] = now_ts + PLAYBACK_STOP_GRACE_SECONDS
             set_user_playback_state(user_id, existing_state)
         return
 
@@ -202,11 +203,13 @@ def apply_playback_event(  # noqa: C901, PLR0912
     ):
         if offset_seconds is None:
             offset_seconds = _coerce_int(
-                existing_state.get("view_offset_seconds"), 0,
+                existing_state.get("view_offset_seconds"),
+                0,
             )
         if dur_seconds is None:
             dur_seconds = _coerce_int(
-                existing_state.get("duration_seconds"), 0,
+                existing_state.get("duration_seconds"),
+                0,
             )
 
     started_at_ts = now_ts
@@ -317,13 +320,9 @@ def apply_plex_event(
             if playback_media_type == MediaTypes.EPISODE.value
             else None
         ),
-        season_number=(
-            season_number if season_number is not None
-            else payload_season
-        ),
+        season_number=(season_number if season_number is not None else payload_season),
         episode_number=(
-            episode_number if episode_number is not None
-            else payload_episode
+            episode_number if episode_number is not None else payload_episode
         ),
         view_offset_seconds=_extract_offset_seconds(payload),
         duration_seconds=_extract_duration_seconds(payload),
@@ -376,7 +375,8 @@ def get_user_playback_state(user_id: int, now=None) -> dict | None:
 
     state_copy = dict(state)
     state_copy["estimated_progress_seconds"] = _estimate_progress_seconds(
-        state_copy, now_ts,
+        state_copy,
+        now_ts,
     )
     return state_copy
 
@@ -546,9 +546,13 @@ def _resolve_progress(state, state_item):
     duration = max(0, _coerce_int(state.get("duration_seconds"), 0))
     if not duration and state_item and state_item.runtime_minutes:
         duration = max(0, int(state_item.runtime_minutes) * 60)
-    progress = max(0, _coerce_int(
-        state.get("estimated_progress_seconds"), 0,
-    ))
+    progress = max(
+        0,
+        _coerce_int(
+            state.get("estimated_progress_seconds"),
+            0,
+        ),
+    )
     if duration:
         progress = min(progress, duration)
     if duration:
@@ -605,11 +609,7 @@ def _fetch_episode_still(show_id, season_number, episode_number):
     except Exception:  # noqa: BLE001, S110
         pass
 
-    ttl = (
-        EPISODE_STILL_SUCCESS_SECONDS
-        if result[0]
-        else EPISODE_STILL_FAILURE_SECONDS
-    )
+    ttl = EPISODE_STILL_SUCCESS_SECONDS if result[0] else EPISODE_STILL_FAILURE_SECONDS
     cache.set(cache_key, result, ttl)
     return result
 
@@ -686,10 +686,7 @@ def _resolve_landscape_image(state, state_item):  # noqa: C901
     source = state.get("source") or Sources.TMDB.value
 
     # ── Episode: prefer the episode still ──────────────────────
-    if (
-        media_type == MediaTypes.EPISODE.value
-        and source == Sources.TMDB.value
-    ):
+    if media_type == MediaTypes.EPISODE.value and source == Sources.TMDB.value:
         show_id = _resolve_show_media_id(state, state_item, source)
 
         # 1. Episode Item already in DB → use its stored still unless it is
@@ -745,8 +742,8 @@ def build_home_playback_card(user) -> dict | None:
     state_item = _resolve_state_item(state)
     title = _resolve_card_title(state, state_item)
     episode_code, subtitle = _resolve_card_subtitle(state, title)
-    duration_seconds, _, progress_display, progress_percent = (
-        _resolve_progress(state, state_item)
+    duration_seconds, _, progress_display, progress_percent = _resolve_progress(
+        state, state_item
     )
 
     # Request path: never call metadata providers here.  The image is
@@ -779,15 +776,20 @@ def build_home_playback_card(user) -> dict | None:
         _ep_media_id = state.get("media_id")
         _ep_source = state.get("source") or Sources.TMDB.value
         if _ep_media_id:
-            tv_item = Item.objects.filter(
-                media_id=_ep_media_id,
-                source=_ep_source,
-                media_type=MediaTypes.TV.value,
-            ).values("library_media_type", "genres").first()
+            tv_item = (
+                Item.objects.filter(
+                    media_id=_ep_media_id,
+                    source=_ep_source,
+                    media_type=MediaTypes.TV.value,
+                )
+                .values("library_media_type", "genres")
+                .first()
+            )
             if tv_item:
-                if (
-                    tv_item["library_media_type"] == MediaTypes.ANIME.value
-                    or genre_list_has_name(tv_item["genres"], ANIME_SUPPLEMENT_GENRE)
+                if tv_item[
+                    "library_media_type"
+                ] == MediaTypes.ANIME.value or genre_list_has_name(
+                    tv_item["genres"], ANIME_SUPPLEMENT_GENRE
                 ):
                     library_media_type = MediaTypes.ANIME.value
 

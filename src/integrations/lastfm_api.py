@@ -97,7 +97,7 @@ def _make_api_request(method: str, params: dict[str, Any]) -> dict[str, Any]:
                 if error_code == 29:
                     if attempt < max_retries - 1:
                         # Exponential backoff with jitter
-                        delay = retry_delay * (2 ** attempt) + random.uniform(0, 1)
+                        delay = retry_delay * (2**attempt) + random.uniform(0, 1)
                         logger.info(
                             "Rate limit exceeded, retrying after %.2fs (attempt %d/%d)",
                             delay,
@@ -121,7 +121,7 @@ def _make_api_request(method: str, params: dict[str, Any]) -> dict[str, Any]:
         except requests.exceptions.RequestException as e:
             logger.error("Last.fm API request failed: %s", e)
             if attempt < max_retries - 1:
-                delay = retry_delay * (2 ** attempt) + random.uniform(0, 1)
+                delay = retry_delay * (2**attempt) + random.uniform(0, 1)
                 time.sleep(delay)
                 retry_delay = delay
                 continue

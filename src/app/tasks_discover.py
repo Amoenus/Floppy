@@ -22,7 +22,9 @@ BACKGROUND_TASK_PRIORITY = getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 
 
 
 @shared_task(name="Refresh Discover Rows")
-def refresh_discover_rows(user_id: int, media_type: str, row_keys: list[str], show_more: bool = False):
+def refresh_discover_rows(
+    user_id: int, media_type: str, row_keys: list[str], show_more: bool = False
+):
     """Refresh selected Discover rows for a user."""
     from app.discover import tab_cache as discover_tab_cache
     from app.discover.service import refresh_rows_for_user
@@ -34,10 +36,14 @@ def refresh_discover_rows(user_id: int, media_type: str, row_keys: list[str], sh
         logger.warning("discover_refresh_rows_user_missing user_id=%s", user_id)
         return {"refreshed": 0, "reason": "missing_user"}
 
-    requested_media_type = (media_type or discover_tab_cache.ALL_MEDIA_KEY).strip().lower()
+    requested_media_type = (
+        (media_type or discover_tab_cache.ALL_MEDIA_KEY).strip().lower()
+    )
     if (
         requested_media_type != discover_tab_cache.ALL_MEDIA_KEY
-        and not discover_tab_cache.media_type_is_enabled_for_user(user, requested_media_type)
+        and not discover_tab_cache.media_type_is_enabled_for_user(
+            user, requested_media_type
+        )
     ):
         logger.info(
             "discover_refresh_rows_skipped user_id=%s media_type=%s reason=disabled_media_type",
@@ -85,10 +91,14 @@ def refresh_discover_tab_cache(
         logger.warning("discover_tab_refresh_user_missing user_id=%s", user_id)
         return {"refreshed": False, "reason": "missing_user"}
 
-    requested_media_type = (media_type or discover_tab_cache.ALL_MEDIA_KEY).strip().lower()
+    requested_media_type = (
+        (media_type or discover_tab_cache.ALL_MEDIA_KEY).strip().lower()
+    )
     if (
         requested_media_type != discover_tab_cache.ALL_MEDIA_KEY
-        and not discover_tab_cache.media_type_is_enabled_for_user(user, requested_media_type)
+        and not discover_tab_cache.media_type_is_enabled_for_user(
+            user, requested_media_type
+        )
     ):
         logger.info(
             "discover_tab_refresh_skipped user_id=%s media_type=%s reason=disabled_media_type",
@@ -199,7 +209,9 @@ def warm_history_day_cache_coverage(
 
 
 @shared_task(name="Refresh Discover Profiles")
-def refresh_discover_profiles(user_ids: list[int] | None = None, media_types: list[str] | None = None):
+def refresh_discover_profiles(
+    user_ids: list[int] | None = None, media_types: list[str] | None = None
+):
     """Refresh Discover taste profiles for users and media types."""
     from app.discover.profile import get_or_compute_taste_profile
     from app.discover.registry import ALL_MEDIA_KEY

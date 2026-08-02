@@ -4,6 +4,7 @@ Contains small helpers that are used across multiple stats_* modules and
 some non-stats views (tag_views, media_details_views, etc.).  No database
 writes; no calls to external providers.
 """
+
 import datetime
 
 from django.utils import timezone
@@ -32,6 +33,7 @@ MEDIA_TYPE_HOURS_ORDER = [
 # Combined-queryset helpers (anime bucket)
 # ---------------------------------------------------------------------------
 
+
 class _CombinedMediaBucket:
     """Wraps two querysets (e.g. flat anime + grouped anime TV) into one iterable bucket."""
 
@@ -53,7 +55,9 @@ class _CombinedMediaBucket:
         return None
 
     def select_related(self, *args):
-        return _CombinedMediaBucket(*(qs.select_related(*args) for qs in self._querysets))
+        return _CombinedMediaBucket(
+            *(qs.select_related(*args) for qs in self._querysets)
+        )
 
     def count(self):
         return sum(qs.count() for qs in self._querysets)
@@ -134,6 +138,7 @@ def _infer_user_from_user_media(user_media):
 # Runtime-string parsing
 # ---------------------------------------------------------------------------
 
+
 def parse_runtime_to_minutes(runtime_str):
     """Parse runtime string (e.g., '45m', '1h 30m', '2h', '12 min') to total minutes."""
     if not runtime_str:
@@ -199,6 +204,7 @@ def _is_media_in_date_range(media, start_date, end_date):
 # Duration formatting
 # ---------------------------------------------------------------------------
 
+
 def _format_long_units(total_minutes):
     """Format minutes using the largest applicable units (mo/d/h/min)."""
     total_minutes = int(total_minutes)
@@ -242,6 +248,7 @@ def _format_hours_minutes(total_minutes, duration_format="hours_minutes"):
 # ---------------------------------------------------------------------------
 # Activity datetime helpers
 # ---------------------------------------------------------------------------
+
 
 def _get_activity_datetime(media):
     """Return the most representative datetime for media activity."""
@@ -298,8 +305,10 @@ def _get_entry_play_dates(entry):
 # Genre normalization
 # ---------------------------------------------------------------------------
 
+
 def _coerce_genre_list(value):
     """Normalize a genre field (string, dict, or list) into a list of strings."""
+
     def _coerce_one(v):
         if not v:
             return None

@@ -25,7 +25,11 @@ PROVIDER_ARTWORK_HYDRATION_ROW_KEYS = {
 
 
 def _row_ttl_seconds(row_definition: RowDefinition) -> int:
-    return ROW_CACHE_TTL_LOCAL_SECONDS if row_definition.source == "local" else ROW_CACHE_TTL_SECONDS
+    return (
+        ROW_CACHE_TTL_LOCAL_SECONDS
+        if row_definition.source == "local"
+        else ROW_CACHE_TTL_SECONDS
+    )
 
 
 def _is_missing_image(candidate: CandidateItem) -> bool:
@@ -42,14 +46,11 @@ def _provider_media_type_for_artwork(candidate_media_type: str) -> str | None:
 
 def _supports_provider_artwork_hydration(candidate: CandidateItem) -> bool:
     return (
-        (
-            candidate.media_type == MediaTypes.BOARDGAME.value
-            and candidate.source == Sources.BGG.value
-        )
-        or (
-            candidate.media_type == MediaTypes.MUSIC.value
-            and candidate.source == Sources.MUSICBRAINZ.value
-        )
+        candidate.media_type == MediaTypes.BOARDGAME.value
+        and candidate.source == Sources.BGG.value
+    ) or (
+        candidate.media_type == MediaTypes.MUSIC.value
+        and candidate.source == Sources.MUSICBRAINZ.value
     )
 
 
@@ -68,7 +69,9 @@ def _hydrate_provider_ranked_artwork(
     if not display_candidates:
         return
 
-    missing = [candidate for candidate in display_candidates if _is_missing_image(candidate)]
+    missing = [
+        candidate for candidate in display_candidates if _is_missing_image(candidate)
+    ]
     if not missing:
         return
 
@@ -135,7 +138,9 @@ def _hydrate_trakt_ranked_artwork(
     if not display_candidates:
         return
 
-    missing = [candidate for candidate in display_candidates if _is_missing_image(candidate)]
+    missing = [
+        candidate for candidate in display_candidates if _is_missing_image(candidate)
+    ]
     if not missing:
         return
 

@@ -103,7 +103,9 @@ def _episode_domain_template_payload(domain):
                 "episode_title": episode["episode_title"],
                 "selector_label": episode.get("selector_label", ""),
                 "existing_play_count": episode["existing_play_count"],
-                "air_date": episode["air_date"].isoformat() if episode["air_date"] else "",
+                "air_date": episode["air_date"].isoformat()
+                if episode["air_date"]
+                else "",
             }
             for episode in episodes
         ]
@@ -150,7 +152,8 @@ def _track_modal_field_groups(form, *, hidden_field_names, metadata_field_names=
     return {
         "general_fields": [
             form[field_name]
-            for field_name in ordered_general_field_names + remaining_general_field_names
+            for field_name in ordered_general_field_names
+            + remaining_general_field_names
         ],
         "metadata_fields": [
             form[field_name]
@@ -364,13 +367,17 @@ def _render_standard_track_modal(
 
         # Suggest "In progress" if the user already has an in-progress entry for this media
         if request.user.is_authenticated:
-            existing_in_progress = BasicMedia.objects.filter_media(
-                request.user,
-                media_id,
-                media_type,
-                source,
-                season_number=season_number,
-            ).filter(status=Status.IN_PROGRESS.value).exists()
+            existing_in_progress = (
+                BasicMedia.objects.filter_media(
+                    request.user,
+                    media_id,
+                    media_type,
+                    source,
+                    season_number=season_number,
+                )
+                .filter(status=Status.IN_PROGRESS.value)
+                .exists()
+            )
             if existing_in_progress:
                 initial_data["status"] = Status.IN_PROGRESS.value
 
@@ -380,7 +387,11 @@ def _render_standard_track_modal(
         initial_data["library_media_type"] = route_library_media_type
     if "image_url" not in initial_data:
         preferred_image = None
-        if metadata_item and metadata_item.image and metadata_item.image != settings.IMG_NONE:
+        if (
+            metadata_item
+            and metadata_item.image
+            and metadata_item.image != settings.IMG_NONE
+        ):
             preferred_image = metadata_item.image
         elif (
             base_metadata
@@ -472,9 +483,11 @@ def _render_standard_track_modal(
         grouped_preview = metadata_resolution_result.grouped_preview
         grouped_preview_target = metadata_resolution_result.grouped_preview_target
         metadata_provider_mapping_status = metadata_resolution_result.mapping_status
-        metadata_provider_options = metadata_resolution.available_metadata_provider_options(
-            media_type,
-            identity_provider=identity_provider,
+        metadata_provider_options = (
+            metadata_resolution.available_metadata_provider_options(
+                media_type,
+                identity_provider=identity_provider,
+            )
         )
         can_migrate_grouped_anime = bool(
             metadata_item is not None
@@ -484,10 +497,14 @@ def _render_standard_track_modal(
             and grouped_preview
             and Anime.objects.filter(user=request.user, item=metadata_item).exists()
         )
-    elif metadata_item is not None and custom_metadata.supports_custom_provider(media_type):
-        metadata_provider_options = metadata_resolution.available_metadata_provider_options(
-            media_type,
-            identity_provider=identity_provider,
+    elif metadata_item is not None and custom_metadata.supports_custom_provider(
+        media_type
+    ):
+        metadata_provider_options = (
+            metadata_resolution.available_metadata_provider_options(
+                media_type,
+                identity_provider=identity_provider,
+            )
         )
         preference = MetadataProviderPreference.objects.filter(
             user=request.user,
@@ -542,12 +559,16 @@ def _render_standard_track_modal(
             or request.POST.get("return_url", "")
             or request.POST.get("next", "")
         )
-    home_row_id = request.GET.get("home_row_id") or request.POST.get("home_row_id") or ""
+    home_row_id = (
+        request.GET.get("home_row_id") or request.POST.get("home_row_id") or ""
+    )
     if episode_plays_tab_available:
         if bulk_form_override is not None:
             episode_plays_form = bulk_form_override
         else:
-            bulk_initial = _bulk_episode_form_initial_data(return_url, episode_plays_domain)
+            bulk_initial = _bulk_episode_form_initial_data(
+                return_url, episode_plays_domain
+            )
             bulk_initial["instance_id"] = instance_id or ""
             episode_plays_form = BulkEpisodeTrackForm(
                 initial=bulk_initial,
@@ -655,9 +676,7 @@ def _render_standard_track_modal(
         "episode_plays_submit_label": "Save plays",
         "episode_plays_domain": _episode_domain_template_payload(episode_plays_domain),
         "episode_plays_mode_notice": (
-            episode_plays_domain.get("mode_notice", "")
-            if episode_plays_domain
-            else ""
+            episode_plays_domain.get("mode_notice", "") if episode_plays_domain else ""
         ),
         "episode_plays_domain_script_id": f"{track_form_id}-episode-domain",
         "collection_tab_available": False,
@@ -828,7 +847,8 @@ def track_modal(
     if (
         not standard_modal
         and media_type == MediaTypes.PODCAST.value
-        and source in {
+        and source
+        in {
             Sources.POCKETCASTS.value,
             Sources.GPODDER.value,
             Sources.AUDIOBOOKSHELF.value,
@@ -851,11 +871,13 @@ def track_modal(
 
             # Get all Podcast entries for this episode to aggregate history
             # Each Podcast entry has its own history, so we need to combine them
-            all_podcasts = list(Podcast.objects.filter(
-                user=request.user,
-                show=show,
-                episode=episode,
-            ).order_by("-end_date"))
+            all_podcasts = list(
+                Podcast.objects.filter(
+                    user=request.user,
+                    show=show,
+                    episode=episode,
+                ).order_by("-end_date")
+            )
 
             # Get or create Item for this episode
             item, _ = Item.objects.get_or_create(
@@ -865,7 +887,9 @@ def track_modal(
                 defaults={
                     "title": episode.title,
                     "image": show.image or settings.IMG_NONE,
-                    "runtime_minutes": (episode.duration // 60) if episode.duration else None,
+                    "runtime_minutes": (episode.duration // 60)
+                    if episode.duration
+                    else None,
                 },
             )
 
@@ -876,11 +900,17 @@ def track_modal(
                 def __init__(self, episode):
                     self.title = episode.title
                     self.track_number = episode.episode_number
-                    self.duration_formatted = self._format_duration(episode.duration) if episode.duration else None
+                    self.duration_formatted = (
+                        self._format_duration(episode.duration)
+                        if episode.duration
+                        else None
+                    )
                     self.musicbrainz_recording_id = None  # Not used for podcasts
                     self.id = episode.id
                     self.published = episode.published  # For "Published date" button
-                    self.episode_uuid = episode.episode_uuid  # For form submission when music is None
+                    self.episode_uuid = (
+                        episode.episode_uuid
+                    )  # For form submission when music is None
 
                 def _format_duration(self, seconds):
                     """Format duration in seconds to MM:SS or H:MM:SS."""
@@ -909,16 +939,24 @@ def track_modal(
                 all_history = []
                 for podcast in all_podcasts:
                     # Only include history records with end_date (completed plays)
-                    history = podcast.history.filter(end_date__isnull=False) if hasattr(podcast.history, "filter") else [h for h in podcast.history.all() if h.end_date]
+                    history = (
+                        podcast.history.filter(end_date__isnull=False)
+                        if hasattr(podcast.history, "filter")
+                        else [h for h in podcast.history.all() if h.end_date]
+                    )
                     # Convert queryset to list if needed to ensure proper evaluation
-                    if hasattr(history, "__iter__") and not isinstance(history, (list, tuple)):
+                    if hasattr(history, "__iter__") and not isinstance(
+                        history, (list, tuple)
+                    ):
                         history = list(history)
                     all_history.extend(history)
 
                 # Sort by end_date descending (most recent first) for display
                 # The template filter will re-sort if needed
                 all_history.sort(
-                    key=lambda x: x.end_date if x.end_date else datetime.min.replace(tzinfo=UTC),
+                    key=lambda x: (
+                        x.end_date if x.end_date else datetime.min.replace(tzinfo=UTC)
+                    ),
                     reverse=True,
                 )
 
@@ -952,6 +990,7 @@ def track_modal(
                     @property
                     def history(self):
                         """Return a queryset-like object that aggregates all history."""
+
                         class HistoryProxy:
                             def __init__(self, history_list):
                                 self._history = history_list
@@ -966,7 +1005,12 @@ def track_modal(
                                 # Simple filtering for history_user
                                 if "history_user" in kwargs:
                                     user = kwargs["history_user"]
-                                    filtered = [h for h in self._history if getattr(h, "history_user", None) == user or getattr(h, "history_user", None) is None]
+                                    filtered = [
+                                        h
+                                        for h in self._history
+                                        if getattr(h, "history_user", None) == user
+                                        or getattr(h, "history_user", None) is None
+                                    ]
                                     return HistoryProxy(filtered)
                                 return self
 
@@ -975,12 +1019,20 @@ def track_modal(
                                 if order == "end_date":
                                     sorted_list = sorted(
                                         self._history,
-                                        key=lambda x: x.end_date if x.end_date else datetime.min.replace(tzinfo=UTC),
+                                        key=lambda x: (
+                                            x.end_date
+                                            if x.end_date
+                                            else datetime.min.replace(tzinfo=UTC)
+                                        ),
                                     )
                                 elif order == "-end_date":
                                     sorted_list = sorted(
                                         self._history,
-                                        key=lambda x: x.end_date if x.end_date else datetime.min.replace(tzinfo=UTC),
+                                        key=lambda x: (
+                                            x.end_date
+                                            if x.end_date
+                                            else datetime.min.replace(tzinfo=UTC)
+                                        ),
                                         reverse=True,
                                     )
                                 else:
@@ -998,8 +1050,12 @@ def track_modal(
                 "app/components/fill_track_song.html",
                 {
                     "user": request.user,
-                    "album": PodcastShowAdapter(show),  # Use show as "album" for template compatibility
-                    "track": PodcastEpisodeAdapter(episode),  # Use episode as "track" for template compatibility
+                    "album": PodcastShowAdapter(
+                        show
+                    ),  # Use show as "album" for template compatibility
+                    "track": PodcastEpisodeAdapter(
+                        episode
+                    ),  # Use episode as "track" for template compatibility
                     "music": podcast,  # Use podcast as "music" for template compatibility
                     "request": request,
                     "csrf_token": request.META.get("CSRF_COOKIE", ""),

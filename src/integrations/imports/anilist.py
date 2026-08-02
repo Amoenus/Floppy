@@ -29,7 +29,8 @@ def get_token(request, redirect_uri=None):
         "client_secret": settings.ANILIST_SECRET,
         "code": code,
         "grant_type": "authorization_code",
-        "redirect_uri": redirect_uri or app_helpers.build_absolute_app_url(
+        "redirect_uri": redirect_uri
+        or app_helpers.build_absolute_app_url(
             request,
             reverse("import_anilist_private"),
         ),

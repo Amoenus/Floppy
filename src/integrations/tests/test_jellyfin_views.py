@@ -123,7 +123,9 @@ class JellyfinViewTests(TestCase):
 
         self.assertEqual(response.status_code, 302)
         self.assertFalse(JellyfinAccount.objects.filter(user=self.user).exists())
-        self.assertFalse(PeriodicTask.objects.filter(task=JELLYFIN_PUSH_TASK_NAME).exists())
+        self.assertFalse(
+            PeriodicTask.objects.filter(task=JELLYFIN_PUSH_TASK_NAME).exists()
+        )
 
     def test_settings_toggles_create_and_remove_schedule(self):
         """Toggling scheduled_push_enabled should create/remove the periodic task."""
@@ -144,13 +146,17 @@ class JellyfinViewTests(TestCase):
         self.assertTrue(account.scheduled_push_enabled)
         self.assertTrue(account.push_watched_enabled)
         self.assertFalse(account.push_unwatched_enabled)
-        self.assertTrue(PeriodicTask.objects.filter(task=JELLYFIN_PUSH_TASK_NAME).exists())
+        self.assertTrue(
+            PeriodicTask.objects.filter(task=JELLYFIN_PUSH_TASK_NAME).exists()
+        )
 
         response = self.client.post(reverse("jellyfin_settings"), {})
 
         account.refresh_from_db()
         self.assertFalse(account.scheduled_push_enabled)
-        self.assertFalse(PeriodicTask.objects.filter(task=JELLYFIN_PUSH_TASK_NAME).exists())
+        self.assertFalse(
+            PeriodicTask.objects.filter(task=JELLYFIN_PUSH_TASK_NAME).exists()
+        )
 
     @patch("integrations.views.tasks.push_jellyfin_watched.delay")
     def test_push_now_requires_connected_account(self, mock_delay):

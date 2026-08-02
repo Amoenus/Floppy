@@ -65,7 +65,10 @@ class Command(BaseCommand):
         original_debug = conf.settings.DEBUG
         original_allowed_hosts = conf.settings.ALLOWED_HOSTS
         conf.settings.DEBUG = True
-        conf.settings.ALLOWED_HOSTS = list(original_allowed_hosts) + ["testserver", "localhost"]
+        conf.settings.ALLOWED_HOSTS = list(original_allowed_hosts) + [
+            "testserver",
+            "localhost",
+        ]
 
         client = Client()
         client.force_login(user)
@@ -123,8 +126,7 @@ class Command(BaseCommand):
 
         self.stdout.write(divider)
         self.stdout.write(
-            f"(median of {runs} runs per endpoint; "
-            f"first run warms Django caches)"
+            f"(median of {runs} runs per endpoint; first run warms Django caches)"
         )
         self.stdout.write("")
 

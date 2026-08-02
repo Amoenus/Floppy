@@ -57,7 +57,9 @@ class ListenBrainzAuthTests(ListenBrainzTestCase):
 
     def test_missing_token_rejected(self):
         """No Authorization header returns 401, as the protocol specifies."""
-        response = self.submit({"listen_type": "single", "payload": [_listen()]}, headers={})
+        response = self.submit(
+            {"listen_type": "single", "payload": [_listen()]}, headers={}
+        )
         self.assertEqual(response.status_code, HTTP.UNAUTHORIZED)
 
     def test_invalid_token_rejected(self):
@@ -92,7 +94,10 @@ class ListenBrainzAuthTests(ListenBrainzTestCase):
 
     def test_url_resolves_without_trailing_slash_and_with(self):
         """Both /submit-listens and /submit-listens/ are routed."""
-        self.assertEqual(reverse("listenbrainz_submit_listens"), "/apis/listenbrainz/1/submit-listens")
+        self.assertEqual(
+            reverse("listenbrainz_submit_listens"),
+            "/apis/listenbrainz/1/submit-listens",
+        )
         response = self.submit({"listen_type": "playing_now", "payload": []})
         self.assertEqual(response.status_code, HTTP.OK)
         trailing = self.client.post(
@@ -172,10 +177,17 @@ class ListenBrainzIngestTests(ListenBrainzTestCase):
     def test_playing_now_is_accepted_but_not_recorded(self):
         """Now-playing pings return 200 without writing anything."""
         response = self.submit(
-            {"listen_type": "playing_now", "payload": [{"track_metadata": {
-                "artist_name": "Boards of Canada",
-                "track_name": "Roygbiv",
-            }}]},
+            {
+                "listen_type": "playing_now",
+                "payload": [
+                    {
+                        "track_metadata": {
+                            "artist_name": "Boards of Canada",
+                            "track_name": "Roygbiv",
+                        }
+                    }
+                ],
+            },
         )
         self.assertEqual(response.status_code, HTTP.OK)
         self.assertFalse(Music.objects.filter(user=self.user).exists())
@@ -195,7 +207,10 @@ class ListenBrainzIngestTests(ListenBrainzTestCase):
             {
                 "listen_type": "import",
                 "payload": [
-                    {"listened_at": 1700000000, "track_metadata": {"track_name": "Orphan"}},
+                    {
+                        "listened_at": 1700000000,
+                        "track_metadata": {"track_name": "Orphan"},
+                    },
                     _listen(1700000300),
                 ],
             },

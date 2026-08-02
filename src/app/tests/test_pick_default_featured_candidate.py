@@ -17,14 +17,31 @@ def _entry(name, *, plays=0, watched_minutes=0, unique_titles=0):
 def _top_talent():
     """Nolan North leads on time, Charles Martinet leads on unique titles."""
     nolan = _entry("Nolan North", plays=50, watched_minutes=598 * 60, unique_titles=5)
-    charles = _entry("Charles Martinet", plays=16, watched_minutes=40 * 60, unique_titles=16)
-    plays_bucket = {"top_actors": [nolan, charles], "top_actresses": [], "top_directors": [], "top_writers": []}
+    charles = _entry(
+        "Charles Martinet", plays=16, watched_minutes=40 * 60, unique_titles=16
+    )
+    plays_bucket = {
+        "top_actors": [nolan, charles],
+        "top_actresses": [],
+        "top_directors": [],
+        "top_writers": [],
+    }
     return {
         "sort_by": "plays",
         "by_sort": {
             "plays": plays_bucket,
-            "time": {"top_actors": [nolan, charles], "top_actresses": [], "top_directors": [], "top_writers": []},
-            "titles": {"top_actors": [nolan, charles], "top_actresses": [], "top_directors": [], "top_writers": []},
+            "time": {
+                "top_actors": [nolan, charles],
+                "top_actresses": [],
+                "top_directors": [],
+                "top_writers": [],
+            },
+            "titles": {
+                "top_actors": [nolan, charles],
+                "top_actresses": [],
+                "top_directors": [],
+                "top_writers": [],
+            },
         },
         # _aggregate_top_talent spreads the active sort's bucket at top level too.
         **plays_bucket,

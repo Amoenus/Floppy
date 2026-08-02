@@ -278,21 +278,26 @@ def _world_rating_candidate_count(user, media_type: str) -> int:
         return 0
 
     model = apps.get_model("app", model_name)
-    return model.objects.filter(
-        user=user,
-        status=Status.COMPLETED.value,
-    ).exclude(
-        score__isnull=True,
-    ).filter(
-        Q(
-            item__provider_rating__isnull=False,
-            item__provider_rating_count__isnull=False,
+    return (
+        model.objects.filter(
+            user=user,
+            status=Status.COMPLETED.value,
         )
-        | Q(
-            item__trakt_rating__isnull=False,
-            item__trakt_rating_count__isnull=False,
-        ),
-    ).count()
+        .exclude(
+            score__isnull=True,
+        )
+        .filter(
+            Q(
+                item__provider_rating__isnull=False,
+                item__provider_rating_count__isnull=False,
+            )
+            | Q(
+                item__trakt_rating__isnull=False,
+                item__trakt_rating_count__isnull=False,
+            ),
+        )
+        .count()
+    )
 
 
 def _entry_weight(entry, now, *, activity_dt=None):
@@ -311,14 +316,18 @@ def _entry_weight(entry, now, *, activity_dt=None):
 
 
 def _feedback_weight(entry, now):
-    updated_at = getattr(entry, "updated_at", None) or getattr(entry, "created_at", None)
+    updated_at = getattr(entry, "updated_at", None) or getattr(
+        entry, "created_at", None
+    )
     if not updated_at:
         return 1.0
     days_old = max(0, (now - updated_at).days)
     return max(0.35, 1.0 - (min(days_old, 365) / 365.0))
 
 
-def _item_credit_feature_maps(item_ids: list[int]) -> tuple[dict[int, list[str]], dict[int, list[str]], dict[int, list[str]]]:
+def _item_credit_feature_maps(
+    item_ids: list[int],
+) -> tuple[dict[int, list[str]], dict[int, list[str]], dict[int, list[str]]]:
     people_map: dict[int, list[str]] = defaultdict(list)
     directors_map: dict[int, list[str]] = defaultdict(list)
     lead_cast_map: dict[int, list[str]] = defaultdict(list)
@@ -352,10 +361,7 @@ def _item_credit_feature_maps(item_ids: list[int]) -> tuple[dict[int, list[str]]
             if person_name not in directors_seen[item_id]:
                 directors_seen[item_id].add(person_name)
                 directors_map[item_id].append(person_name)
-        if (
-            role_type == CreditRoleType.CAST.value
-            and lead_cast_count[item_id] < 3
-        ):
+        if role_type == CreditRoleType.CAST.value and lead_cast_count[item_id] < 3:
             if person_name not in lead_cast_seen[item_id]:
                 lead_cast_seen[item_id].add(person_name)
                 lead_cast_map[item_id].append(person_name)
@@ -424,8 +430,11 @@ def _video_feature_families_for_entry(
 ) -> dict[str, list[str]]:
     return {
         "genres": normalize_features(entry.item.genres or [], normalize_person_name),
-        "keywords": normalize_features(entry.item.provider_keywords or [], normalize_keyword),
-        "studios": studio_map.get(entry.item_id) or normalize_features(
+        "keywords": normalize_features(
+            entry.item.provider_keywords or [], normalize_keyword
+        ),
+        "studios": studio_map.get(entry.item_id)
+        or normalize_features(
             entry.item.studios or [],
             normalize_studio,
         ),
@@ -459,17 +468,18 @@ def _build_video_comfort_affinity_bundles(
     lead_cast_map: dict[int, list[str]],
 ) -> tuple[dict[str, dict[str, float]], dict[str, dict[str, float]]]:
     library_weights: dict[str, defaultdict[str, float]] = {
-        family: defaultdict(float)
-        for family in COMFORT_PROFILE_FAMILIES
+        family: defaultdict(float) for family in COMFORT_PROFILE_FAMILIES
     }
     rewatch_weights: dict[str, defaultdict[str, float]] = {
-        family: defaultdict(float)
-        for family in COMFORT_PROFILE_FAMILIES
+        family: defaultdict(float) for family in COMFORT_PROFILE_FAMILIES
     }
     aggregated: dict[int, dict[str, object]] = {}
 
     for entry in entries:
-        if getattr(entry, "status", None) != Status.COMPLETED.value or not entry.item_id:
+        if (
+            getattr(entry, "status", None) != Status.COMPLETED.value
+            or not entry.item_id
+        ):
             continue
         activity_dt = _entry_activity_datetime(entry)
         aggregate = aggregated.setdefault(
@@ -504,20 +514,13 @@ def _build_video_comfort_affinity_bundles(
         latest_activity_dt = aggregate.get("latest_activity_dt")
         latest_score = aggregate.get("latest_score")
         days_since_latest_watch = (
-            max(0, (now - latest_activity_dt).days)
-            if latest_activity_dt
-            else 1825
+            max(0, (now - latest_activity_dt).days) if latest_activity_dt else 1825
         )
         score_weight = max(
             0.45,
             min(
                 1.0,
-                (
-                    float(latest_score)
-                    if latest_score is not None
-                    else 6.0
-                )
-                / 10.0,
+                (float(latest_score) if latest_score is not None else 6.0) / 10.0,
             ),
         )
         repeat_weight = 1.0 + min(1.0, 0.30 * (watch_count - 1))
@@ -673,8 +676,7 @@ def _finalize_alignment_offsets(
             # weights are fractional, so weight-sum shrinkage would let the
             # global mean swamp every label.
             shrunk = (
-                (count * label_mean)
-                + (WORLD_ALIGNMENT_SHRINKAGE_K * global_mean)
+                (count * label_mean) + (WORLD_ALIGNMENT_SHRINKAGE_K * global_mean)
             ) / (count + WORLD_ALIGNMENT_SHRINKAGE_K)
             offsets[family][label] = round(shrunk, 4)
             samples[family][label] = int(count)
@@ -854,9 +856,7 @@ def compute_taste_profile(user, media_type: str) -> ProfilePayload:
             only_fields.append("end_date")
 
         entries = list(
-            model.objects.filter(user=user)
-            .select_related("item")
-            .only(*only_fields),
+            model.objects.filter(user=user).select_related("item").only(*only_fields),
         )
 
         item_ids = [entry.item_id for entry in entries if entry.item_id]
@@ -875,7 +875,9 @@ def compute_taste_profile(user, media_type: str) -> ProfilePayload:
         lead_cast_map: dict[int, list[str]] = defaultdict(list)
         studio_map: dict[int, list[str]] = defaultdict(list)
         if media_type_key in VIDEO_COMFORT_PROFILE_MEDIA_TYPES:
-            person_map, directors_map, lead_cast_map = _item_credit_feature_maps(item_ids)
+            person_map, directors_map, lead_cast_map = _item_credit_feature_maps(
+                item_ids
+            )
             studio_map = _item_studio_feature_map(item_ids)
         if media_type_key in VIDEO_COMFORT_PROFILE_MEDIA_TYPES:
             (
@@ -899,14 +901,12 @@ def compute_taste_profile(user, media_type: str) -> ProfilePayload:
 
         for entry in entries:
             activity_dt = (
-                getattr(entry, "end_date", None)
-                if has_end_date
-                else None
-            ) or (
-                getattr(entry, "progressed_at", None)
-                if has_progressed_at
-                else None
-            ) or getattr(entry, "created_at", None)
+                (getattr(entry, "end_date", None) if has_end_date else None)
+                or (
+                    getattr(entry, "progressed_at", None) if has_progressed_at else None
+                )
+                or getattr(entry, "created_at", None)
+            )
             activity_snapshot = _latest_datetime(
                 activity_snapshot,
                 _entry_activity_snapshot_datetime(
@@ -918,10 +918,17 @@ def compute_taste_profile(user, media_type: str) -> ProfilePayload:
 
             weight = _entry_weight(entry, now, activity_dt=activity_dt)
             genres = normalize_features(entry.item.genres or [], normalize_person_name)
-            tags = normalize_features(tag_map.get(entry.item_id, []), normalize_person_name)
-            keywords = normalize_features(entry.item.provider_keywords or [], normalize_keyword)
+            tags = normalize_features(
+                tag_map.get(entry.item_id, []), normalize_person_name
+            )
+            keywords = normalize_features(
+                entry.item.provider_keywords or [], normalize_keyword
+            )
             collections = normalize_features(
-                [entry.item.provider_collection_name or entry.item.provider_collection_id],
+                [
+                    entry.item.provider_collection_name
+                    or entry.item.provider_collection_id
+                ],
                 normalize_collection,
             )
             studios = studio_map.get(entry.item_id) or normalize_features(
@@ -1160,8 +1167,12 @@ def compute_taste_profile(user, media_type: str) -> ProfilePayload:
 
         feedback_person_map: dict[int, list[str]] = defaultdict(list)
         if media_type_key in VIDEO_COMFORT_PROFILE_MEDIA_TYPES:
-            for credit in ItemPersonCredit.objects.filter(item_id__in=feedback_item_ids).select_related("person"):
-                person_name = normalize_person_name(credit.person.name if credit.person_id else "")
+            for credit in ItemPersonCredit.objects.filter(
+                item_id__in=feedback_item_ids
+            ).select_related("person"):
+                person_name = normalize_person_name(
+                    credit.person.name if credit.person_id else ""
+                )
                 if person_name:
                     feedback_person_map[credit.item_id].append(person_name)
 
@@ -1243,7 +1254,9 @@ def compute_taste_profile(user, media_type: str) -> ProfilePayload:
         recent_studio_affinity=normalize_numeric_map(dict(recent_studio_weights)),
         phase_studio_affinity=normalize_numeric_map(dict(phase_studio_weights)),
         collection_affinity=normalize_numeric_map(dict(collection_weights)),
-        recent_collection_affinity=normalize_numeric_map(dict(recent_collection_weights)),
+        recent_collection_affinity=normalize_numeric_map(
+            dict(recent_collection_weights)
+        ),
         phase_collection_affinity=normalize_numeric_map(dict(phase_collection_weights)),
         director_affinity=normalize_numeric_map(dict(director_weights)),
         recent_director_affinity=normalize_numeric_map(dict(recent_director_weights)),
@@ -1252,11 +1265,19 @@ def compute_taste_profile(user, media_type: str) -> ProfilePayload:
         recent_lead_cast_affinity=normalize_numeric_map(dict(recent_lead_cast_weights)),
         phase_lead_cast_affinity=normalize_numeric_map(dict(phase_lead_cast_weights)),
         certification_affinity=normalize_numeric_map(dict(certification_weights)),
-        recent_certification_affinity=normalize_numeric_map(dict(recent_certification_weights)),
-        phase_certification_affinity=normalize_numeric_map(dict(phase_certification_weights)),
+        recent_certification_affinity=normalize_numeric_map(
+            dict(recent_certification_weights)
+        ),
+        phase_certification_affinity=normalize_numeric_map(
+            dict(phase_certification_weights)
+        ),
         runtime_bucket_affinity=normalize_numeric_map(dict(runtime_bucket_weights)),
-        recent_runtime_bucket_affinity=normalize_numeric_map(dict(recent_runtime_bucket_weights)),
-        phase_runtime_bucket_affinity=normalize_numeric_map(dict(phase_runtime_bucket_weights)),
+        recent_runtime_bucket_affinity=normalize_numeric_map(
+            dict(recent_runtime_bucket_weights)
+        ),
+        phase_runtime_bucket_affinity=normalize_numeric_map(
+            dict(phase_runtime_bucket_weights)
+        ),
         decade_affinity=normalize_numeric_map(dict(decade_weights)),
         recent_decade_affinity=normalize_numeric_map(dict(recent_decade_weights)),
         phase_decade_affinity=normalize_numeric_map(dict(phase_decade_weights)),
@@ -1285,9 +1306,15 @@ def get_or_compute_taste_profile(user, media_type: str, *, force: bool = False) 
     cached_entry, is_stale = cache_repo.get_taste_profile(user.id, media_type)
 
     missing_video_comfort_backfill = False
-    if cached_entry and media_type in VIDEO_COMFORT_PROFILE_MEDIA_TYPES - {MediaTypes.MOVIE.value}:
-        comfort_library_affinity = getattr(cached_entry, "comfort_library_affinity", None) or {}
-        comfort_rewatch_affinity = getattr(cached_entry, "comfort_rewatch_affinity", None) or {}
+    if cached_entry and media_type in VIDEO_COMFORT_PROFILE_MEDIA_TYPES - {
+        MediaTypes.MOVIE.value
+    }:
+        comfort_library_affinity = (
+            getattr(cached_entry, "comfort_library_affinity", None) or {}
+        )
+        comfort_rewatch_affinity = (
+            getattr(cached_entry, "comfort_rewatch_affinity", None) or {}
+        )
         has_cached_video_comfort = any(
             comfort_library_affinity.get(family) or comfort_rewatch_affinity.get(family)
             for family in COMFORT_PROFILE_FAMILIES
@@ -1303,14 +1330,23 @@ def get_or_compute_taste_profile(user, media_type: str, *, force: bool = False) 
 
     missing_world_rating_profile_backfill = False
     if cached_entry and media_type in WORLD_RATING_PROFILE_MEDIA_TYPES:
-        cached_world_rating_profile = getattr(cached_entry, "world_rating_profile", None) or {}
-        cached_world_rating_sample_size = _world_rating_sample_size(cached_world_rating_profile)
-        available_world_rating_candidates = _world_rating_candidate_count(user, media_type)
+        cached_world_rating_profile = (
+            getattr(cached_entry, "world_rating_profile", None) or {}
+        )
+        cached_world_rating_sample_size = _world_rating_sample_size(
+            cached_world_rating_profile
+        )
+        available_world_rating_candidates = _world_rating_candidate_count(
+            user, media_type
+        )
         if cached_world_rating_sample_size <= 0:
-            missing_world_rating_profile_backfill = available_world_rating_candidates > 0
+            missing_world_rating_profile_backfill = (
+                available_world_rating_candidates > 0
+            )
         elif (
             cached_world_rating_sample_size < WORLD_RATING_PROFILE_ACTIVATION_MIN_SAMPLE
-            and available_world_rating_candidates >= WORLD_RATING_PROFILE_ACTIVATION_MIN_SAMPLE
+            and available_world_rating_candidates
+            >= WORLD_RATING_PROFILE_ACTIVATION_MIN_SAMPLE
             and available_world_rating_candidates > cached_world_rating_sample_size
         ):
             missing_world_rating_profile_backfill = True
@@ -1331,47 +1367,133 @@ def get_or_compute_taste_profile(user, media_type: str, *, force: bool = False) 
     ):
         return {
             "genre_affinity": getattr(cached_entry, "genre_affinity", None) or {},
-            "recent_genre_affinity": getattr(cached_entry, "recent_genre_affinity", None) or {},
-            "phase_genre_affinity": getattr(cached_entry, "phase_genre_affinity", None) or {},
-            "genre_primacy_ratio": getattr(cached_entry, "genre_primacy_ratio", None) or {},
+            "recent_genre_affinity": getattr(
+                cached_entry, "recent_genre_affinity", None
+            )
+            or {},
+            "phase_genre_affinity": getattr(cached_entry, "phase_genre_affinity", None)
+            or {},
+            "genre_primacy_ratio": getattr(cached_entry, "genre_primacy_ratio", None)
+            or {},
             "tag_affinity": getattr(cached_entry, "tag_affinity", None) or {},
-            "recent_tag_affinity": getattr(cached_entry, "recent_tag_affinity", None) or {},
-            "phase_tag_affinity": getattr(cached_entry, "phase_tag_affinity", None) or {},
+            "recent_tag_affinity": getattr(cached_entry, "recent_tag_affinity", None)
+            or {},
+            "phase_tag_affinity": getattr(cached_entry, "phase_tag_affinity", None)
+            or {},
             "keyword_affinity": getattr(cached_entry, "keyword_affinity", None) or {},
-            "recent_keyword_affinity": getattr(cached_entry, "recent_keyword_affinity", None) or {},
-            "phase_keyword_affinity": getattr(cached_entry, "phase_keyword_affinity", None) or {},
+            "recent_keyword_affinity": getattr(
+                cached_entry, "recent_keyword_affinity", None
+            )
+            or {},
+            "phase_keyword_affinity": getattr(
+                cached_entry, "phase_keyword_affinity", None
+            )
+            or {},
             "studio_affinity": getattr(cached_entry, "studio_affinity", None) or {},
-            "recent_studio_affinity": getattr(cached_entry, "recent_studio_affinity", None) or {},
-            "phase_studio_affinity": getattr(cached_entry, "phase_studio_affinity", None) or {},
-            "collection_affinity": getattr(cached_entry, "collection_affinity", None) or {},
-            "recent_collection_affinity": getattr(cached_entry, "recent_collection_affinity", None) or {},
-            "phase_collection_affinity": getattr(cached_entry, "phase_collection_affinity", None) or {},
+            "recent_studio_affinity": getattr(
+                cached_entry, "recent_studio_affinity", None
+            )
+            or {},
+            "phase_studio_affinity": getattr(
+                cached_entry, "phase_studio_affinity", None
+            )
+            or {},
+            "collection_affinity": getattr(cached_entry, "collection_affinity", None)
+            or {},
+            "recent_collection_affinity": getattr(
+                cached_entry, "recent_collection_affinity", None
+            )
+            or {},
+            "phase_collection_affinity": getattr(
+                cached_entry, "phase_collection_affinity", None
+            )
+            or {},
             "director_affinity": getattr(cached_entry, "director_affinity", None) or {},
-            "recent_director_affinity": getattr(cached_entry, "recent_director_affinity", None) or {},
-            "phase_director_affinity": getattr(cached_entry, "phase_director_affinity", None) or {},
-            "lead_cast_affinity": getattr(cached_entry, "lead_cast_affinity", None) or {},
-            "recent_lead_cast_affinity": getattr(cached_entry, "recent_lead_cast_affinity", None) or {},
-            "phase_lead_cast_affinity": getattr(cached_entry, "phase_lead_cast_affinity", None) or {},
-            "certification_affinity": getattr(cached_entry, "certification_affinity", None) or {},
-            "recent_certification_affinity": getattr(cached_entry, "recent_certification_affinity", None) or {},
-            "phase_certification_affinity": getattr(cached_entry, "phase_certification_affinity", None) or {},
-            "runtime_bucket_affinity": getattr(cached_entry, "runtime_bucket_affinity", None) or {},
-            "recent_runtime_bucket_affinity": getattr(cached_entry, "recent_runtime_bucket_affinity", None) or {},
-            "phase_runtime_bucket_affinity": getattr(cached_entry, "phase_runtime_bucket_affinity", None) or {},
+            "recent_director_affinity": getattr(
+                cached_entry, "recent_director_affinity", None
+            )
+            or {},
+            "phase_director_affinity": getattr(
+                cached_entry, "phase_director_affinity", None
+            )
+            or {},
+            "lead_cast_affinity": getattr(cached_entry, "lead_cast_affinity", None)
+            or {},
+            "recent_lead_cast_affinity": getattr(
+                cached_entry, "recent_lead_cast_affinity", None
+            )
+            or {},
+            "phase_lead_cast_affinity": getattr(
+                cached_entry, "phase_lead_cast_affinity", None
+            )
+            or {},
+            "certification_affinity": getattr(
+                cached_entry, "certification_affinity", None
+            )
+            or {},
+            "recent_certification_affinity": getattr(
+                cached_entry, "recent_certification_affinity", None
+            )
+            or {},
+            "phase_certification_affinity": getattr(
+                cached_entry, "phase_certification_affinity", None
+            )
+            or {},
+            "runtime_bucket_affinity": getattr(
+                cached_entry, "runtime_bucket_affinity", None
+            )
+            or {},
+            "recent_runtime_bucket_affinity": getattr(
+                cached_entry, "recent_runtime_bucket_affinity", None
+            )
+            or {},
+            "phase_runtime_bucket_affinity": getattr(
+                cached_entry, "phase_runtime_bucket_affinity", None
+            )
+            or {},
             "decade_affinity": getattr(cached_entry, "decade_affinity", None) or {},
-            "recent_decade_affinity": getattr(cached_entry, "recent_decade_affinity", None) or {},
-            "phase_decade_affinity": getattr(cached_entry, "phase_decade_affinity", None) or {},
-            "comfort_library_affinity": getattr(cached_entry, "comfort_library_affinity", None) or {},
-            "comfort_rewatch_affinity": getattr(cached_entry, "comfort_rewatch_affinity", None) or {},
+            "recent_decade_affinity": getattr(
+                cached_entry, "recent_decade_affinity", None
+            )
+            or {},
+            "phase_decade_affinity": getattr(
+                cached_entry, "phase_decade_affinity", None
+            )
+            or {},
+            "comfort_library_affinity": getattr(
+                cached_entry, "comfort_library_affinity", None
+            )
+            or {},
+            "comfort_rewatch_affinity": getattr(
+                cached_entry, "comfort_rewatch_affinity", None
+            )
+            or {},
             "person_affinity": getattr(cached_entry, "person_affinity", None) or {},
-            "negative_genre_affinity": getattr(cached_entry, "negative_genre_affinity", None) or {},
-            "negative_tag_affinity": getattr(cached_entry, "negative_tag_affinity", None) or {},
-            "negative_person_affinity": getattr(cached_entry, "negative_person_affinity", None) or {},
-            "world_rating_profile": getattr(cached_entry, "world_rating_profile", None) or {},
-            "world_alignment_offsets": getattr(cached_entry, "world_alignment_offsets", None) or {},
-            "world_alignment_offset_samples": getattr(cached_entry, "world_alignment_offset_samples", None) or {},
+            "negative_genre_affinity": getattr(
+                cached_entry, "negative_genre_affinity", None
+            )
+            or {},
+            "negative_tag_affinity": getattr(
+                cached_entry, "negative_tag_affinity", None
+            )
+            or {},
+            "negative_person_affinity": getattr(
+                cached_entry, "negative_person_affinity", None
+            )
+            or {},
+            "world_rating_profile": getattr(cached_entry, "world_rating_profile", None)
+            or {},
+            "world_alignment_offsets": getattr(
+                cached_entry, "world_alignment_offsets", None
+            )
+            or {},
+            "world_alignment_offset_samples": getattr(
+                cached_entry, "world_alignment_offset_samples", None
+            )
+            or {},
             "avoidance_offsets": getattr(cached_entry, "avoidance_offsets", None) or {},
-            "avoidance_baselines": getattr(cached_entry, "avoidance_baselines", None) or {},
+            "avoidance_baselines": getattr(cached_entry, "avoidance_baselines", None)
+            or {},
             "activity_snapshot_at": cached_entry.activity_snapshot_at,
         }
 

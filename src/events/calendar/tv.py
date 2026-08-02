@@ -269,8 +269,7 @@ def reopen_completed_tv_with_new_seasons(tv_item, season_items, events_bulk):
             if season_number not in existing_season_numbers
         ]
         has_incomplete_discovered_season = any(
-            season.status != Status.COMPLETED.value
-            for season in existing_new_seasons
+            season.status != Status.COMPLETED.value for season in existing_new_seasons
         )
 
         if not missing_season_numbers and not has_incomplete_discovered_season:
@@ -421,7 +420,9 @@ def process_season_episodes(item, metadata, events_bulk):
 
         runtime_minutes = None
         if episode.get("runtime") is not None:
-            runtime_minutes = int(episode["runtime"]) if episode["runtime"] > 0 else None
+            runtime_minutes = (
+                int(episode["runtime"]) if episode["runtime"] > 0 else None
+            )
         elif release_datetime:
             runtime_minutes = 999998
 

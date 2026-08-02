@@ -4,6 +4,7 @@ Follows the same pattern as stats_podcast.py, stats_game.py, etc.:
 private collectors/helpers at the top, one public get_*_consumption_stats()
 per media type at the bottom.
 """
+
 import logging
 from collections import defaultdict
 
@@ -30,6 +31,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Play-data collection helpers
 # ---------------------------------------------------------------------------
+
 
 def _collect_episode_datetimes(tv_queryset, start_date, end_date):
     """Return localized episode completion datetimes for the queryset."""
@@ -93,6 +95,7 @@ def _collect_movie_play_data(movie_queryset, start_date, end_date):
         return datetimes, play_details
 
     import logging  # noqa: PLC0415
+
     _logger = logging.getLogger(__name__)
 
     for movie in movie_queryset:
@@ -105,7 +108,9 @@ def _collect_movie_play_data(movie_queryset, start_date, end_date):
                 continue
 
         # Get runtime for this movie
-        runtime_minutes = _get_media_runtime_from_cache(movie, _logger, context="movie play data")
+        runtime_minutes = _get_media_runtime_from_cache(
+            movie, _logger, context="movie play data"
+        )
         if runtime_minutes <= 0:
             # Skip if no runtime available
             continue
@@ -130,6 +135,7 @@ def _collect_tv_play_data(tv_queryset, start_date, end_date):
         return datetimes, play_details
 
     import logging  # noqa: PLC0415
+
     _logger = logging.getLogger(__name__)
 
     for tv in tv_queryset:
@@ -149,7 +155,9 @@ def _collect_tv_play_data(tv_queryset, start_date, end_date):
                     continue
 
                 # Get runtime for this episode
-                runtime_minutes = _get_media_runtime_from_cache(episode, _logger, context="TV episode play data")
+                runtime_minutes = _get_media_runtime_from_cache(
+                    episode, _logger, context="TV episode play data"
+                )
                 if runtime_minutes <= 0:
                     # Skip if no runtime available
                     continue
@@ -164,6 +172,7 @@ def _collect_tv_play_data(tv_queryset, start_date, end_date):
 # ---------------------------------------------------------------------------
 # Genre aggregation
 # ---------------------------------------------------------------------------
+
 
 def _compute_movie_tv_top_genres(play_details, limit=STATISTICS_TOP_N):
     """Compute top genres from movie/TV play details.
@@ -192,7 +201,10 @@ def _compute_movie_tv_top_genres(play_details, limit=STATISTICS_TOP_N):
         if isinstance(media, Episode):
             # Episode -> Season -> TV show
             if hasattr(media, "related_season") and media.related_season:
-                if hasattr(media.related_season, "related_tv") and media.related_season.related_tv:
+                if (
+                    hasattr(media.related_season, "related_tv")
+                    and media.related_season.related_tv
+                ):
                     media_to_use = media.related_season.related_tv
                 else:
                     # Skip if we can't get the TV show
@@ -206,7 +218,9 @@ def _compute_movie_tv_top_genres(play_details, limit=STATISTICS_TOP_N):
             try:
                 metadata = _get_media_metadata_for_statistics(media_to_use)
                 if metadata:
-                    details = metadata.get("details") if isinstance(metadata, dict) else None
+                    details = (
+                        metadata.get("details") if isinstance(metadata, dict) else None
+                    )
                     if isinstance(details, dict):
                         genres_raw = details.get("genres", [])
                         if genres_raw:
@@ -218,8 +232,13 @@ def _compute_movie_tv_top_genres(play_details, limit=STATISTICS_TOP_N):
                             genres = _coerce_genre_list(genres_raw)
             except (ValueError, TypeError, KeyError, AttributeError) as e:
                 import logging  # noqa: PLC0415
+
                 _g_logger = logging.getLogger(__name__)
-                _g_logger.debug("Skipping genre calculation for %s: %s", getattr(media_to_use.item, "title", "unknown"), e)
+                _g_logger.debug(
+                    "Skipping genre calculation for %s: %s",
+                    getattr(media_to_use.item, "title", "unknown"),
+                    e,
+                )
                 continue
 
         for genre in genres:
@@ -264,14 +283,19 @@ def _compute_movie_tv_top_decades(play_details, limit=STATISTICS_TOP_N):
         media_to_use = media
         if isinstance(media, Episode):
             if hasattr(media, "related_season") and media.related_season:
-                if hasattr(media.related_season, "related_tv") and media.related_season.related_tv:
+                if (
+                    hasattr(media.related_season, "related_tv")
+                    and media.related_season.related_tv
+                ):
                     media_to_use = media.related_season.related_tv
                 else:
                     continue
             else:
                 continue
 
-        release_datetime = getattr(getattr(media_to_use, "item", None), "release_datetime", None)
+        release_datetime = getattr(
+            getattr(media_to_use, "item", None), "release_datetime", None
+        )
         if not release_datetime:
             continue
 
@@ -295,6 +319,7 @@ def _compute_movie_tv_top_decades(play_details, limit=STATISTICS_TOP_N):
 # ---------------------------------------------------------------------------
 # Per-media-type consumption stats
 # ---------------------------------------------------------------------------
+
 
 def get_tv_consumption_stats(user_media, start_date, end_date, minutes_per_type=None):
     """Return aggregate metrics and chart data for TV episode activity."""
@@ -346,7 +371,9 @@ def get_tv_consumption_stats(user_media, start_date, end_date, minutes_per_type=
     }
 
 
-def get_movie_consumption_stats(user_media, start_date, end_date, minutes_per_type=None):
+def get_movie_consumption_stats(
+    user_media, start_date, end_date, minutes_per_type=None
+):
     """Return aggregate metrics and chart data for movie activity."""
     movie_queryset = (user_media or {}).get(MediaTypes.MOVIE.value)
     movie_datetimes = _collect_movie_datetimes(movie_queryset, start_date, end_date)
@@ -355,7 +382,9 @@ def get_movie_consumption_stats(user_media, start_date, end_date, minutes_per_ty
     _, play_details = _collect_movie_play_data(movie_queryset, start_date, end_date)
 
     if minutes_per_type is None:
-        minutes_per_type = calculate_minutes_per_media_type(user_media or {}, start_date, end_date)
+        minutes_per_type = calculate_minutes_per_media_type(
+            user_media or {}, start_date, end_date
+        )
 
     total_minutes = minutes_per_type.get(MediaTypes.MOVIE.value, 0)
     total_hours = total_minutes / 60 if total_minutes else 0
@@ -392,7 +421,9 @@ def get_movie_consumption_stats(user_media, start_date, end_date, minutes_per_ty
     }
 
 
-def get_anime_consumption_stats(user_media, start_date, end_date, minutes_per_type=None):
+def get_anime_consumption_stats(
+    user_media, start_date, end_date, minutes_per_type=None
+):
     """Return aggregate metrics and chart data for anime (grouped episode-based + standalone)."""
     import logging as _logging  # noqa: PLC0415
 
@@ -400,7 +431,9 @@ def get_anime_consumption_stats(user_media, start_date, end_date, minutes_per_ty
 
     # Episode-level datetimes from grouped anime (TV shows with library_media_type='anime')
     episode_datetimes = _collect_episode_datetimes(anime_queryset, start_date, end_date)
-    _, episode_play_details = _collect_tv_play_data(anime_queryset, start_date, end_date)
+    _, episode_play_details = _collect_tv_play_data(
+        anime_queryset, start_date, end_date
+    )
 
     # Show-level datetimes from standalone Anime model instances
     standalone_datetimes = []
@@ -416,7 +449,9 @@ def get_anime_consumption_stats(user_media, start_date, end_date, minutes_per_ty
             if start_date and end_date:
                 if not (start_date <= activity_date <= end_date):
                     continue
-            runtime = _get_media_runtime_from_cache(media, _logger, context="anime play data")
+            runtime = _get_media_runtime_from_cache(
+                media, _logger, context="anime play data"
+            )
             localized = _localize_datetime(activity_date)
             standalone_datetimes.append(localized)
             if runtime > 0:
@@ -426,19 +461,27 @@ def get_anime_consumption_stats(user_media, start_date, end_date, minutes_per_ty
     all_play_details = episode_play_details + standalone_play_details
 
     if minutes_per_type is None:
-        minutes_per_type = calculate_minutes_per_media_type(user_media or {}, start_date, end_date)
+        minutes_per_type = calculate_minutes_per_media_type(
+            user_media or {}, start_date, end_date
+        )
 
     total_minutes = minutes_per_type.get(MediaTypes.ANIME.value, 0)
     total_hours = total_minutes / 60 if total_minutes else 0
     total_plays = len(all_datetimes)
 
-    hours_breakdown = _compute_metric_breakdown(total_hours, all_datetimes, start_date, end_date)
-    plays_breakdown = _compute_metric_breakdown(total_plays, all_datetimes, start_date, end_date)
+    hours_breakdown = _compute_metric_breakdown(
+        total_hours, all_datetimes, start_date, end_date
+    )
+    plays_breakdown = _compute_metric_breakdown(
+        total_plays, all_datetimes, start_date, end_date
+    )
 
     color = config.get_stats_color(MediaTypes.ANIME.value)
     charts = _build_media_charts(all_datetimes, color, "Anime Plays")
     top_genres = _compute_movie_tv_top_genres(all_play_details, limit=STATISTICS_TOP_N)
-    top_decades = _compute_movie_tv_top_decades(all_play_details, limit=STATISTICS_TOP_N)
+    top_decades = _compute_movie_tv_top_decades(
+        all_play_details, limit=STATISTICS_TOP_N
+    )
 
     return {
         "hours": hours_breakdown,

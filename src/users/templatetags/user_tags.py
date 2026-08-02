@@ -253,7 +253,13 @@ def _parse_datetime_string(datetime_obj):
     if isinstance(datetime_obj, str):
         try:
             # Try to parse common datetime formats
-            for fmt in ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M", "%H:%M:%S", "%H:%M"]:
+            for fmt in [
+                "%Y-%m-%d %H:%M:%S",
+                "%Y-%m-%d %H:%M:%S.%f",
+                "%Y-%m-%d %H:%M",
+                "%H:%M:%S",
+                "%H:%M",
+            ]:
                 try:
                     return datetime.strptime(datetime_obj, fmt)
                 except ValueError:

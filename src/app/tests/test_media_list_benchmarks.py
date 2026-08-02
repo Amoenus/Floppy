@@ -68,7 +68,10 @@ class MediaListBenchmarkTests(TestCase):
             ("movie_default", f"/medialist/{MediaTypes.MOVIE.value}"),
             ("anime_default", f"/medialist/{MediaTypes.ANIME.value}"),
             ("manga_default", f"/medialist/{MediaTypes.MANGA.value}"),
-            ("manga_no_status", f"/medialist/{MediaTypes.MANGA.value}?status=no_status"),
+            (
+                "manga_no_status",
+                f"/medialist/{MediaTypes.MANGA.value}?status=no_status",
+            ),
             ("game_default", f"/medialist/{MediaTypes.GAME.value}"),
             ("book_empty", f"/medialist/{MediaTypes.BOOK.value}"),
             ("comic_empty", f"/medialist/{MediaTypes.COMIC.value}"),

@@ -93,7 +93,9 @@ def _entries_to_candidates(
     for entry in entries:
         item = entry.item
         media_type = override_media_type or item.media_type
-        release_date = item.release_datetime.date().isoformat() if item.release_datetime else None
+        release_date = (
+            item.release_datetime.date().isoformat() if item.release_datetime else None
+        )
         activity_dt = _entry_activity_datetime(entry)
         entry_status = str(getattr(entry, "status", "") or "")
         candidate = CandidateItem(
@@ -106,11 +108,18 @@ def _entries_to_candidates(
             image=item.image,
             release_date=release_date,
             activity_at=activity_dt.isoformat() if activity_dt else None,
-            genres=[str(genre).strip() for genre in (item.genres or []) if str(genre).strip()],
+            genres=[
+                str(genre).strip()
+                for genre in (item.genres or [])
+                if str(genre).strip()
+            ],
             tags=tag_map.get(item.id, []),
             people=people_map.get(item.id, []),
-            keywords=normalize_features(item.provider_keywords or [], normalize_keyword),
-            studios=studio_map.get(item.id) or normalize_features(item.studios or [], normalize_studio),
+            keywords=normalize_features(
+                item.provider_keywords or [], normalize_keyword
+            ),
+            studios=studio_map.get(item.id)
+            or normalize_features(item.studios or [], normalize_studio),
             directors=directors_map.get(item.id, []),
             lead_cast=lead_cast_map.get(item.id, []),
             collection_id=str(item.provider_collection_id or "").strip() or None,
@@ -144,10 +153,18 @@ def _entries_to_candidates(
                 _clamp_unit(recent_history_tag_coverage),
             )
         phase_bucket = phase_pool_bucket_by_item.get(item.id, "")
-        candidate.score_breakdown["phase_pool_strong"] = 1.0 if phase_bucket == "strong_phase" else 0.0
-        candidate.score_breakdown["phase_pool_medium"] = 1.0 if phase_bucket == "medium_phase" else 0.0
-        candidate.score_breakdown["phase_pool_backfill"] = 1.0 if phase_bucket == "weak_backfill" else 0.0
-        candidate.score_breakdown["phase_pool_weak_only"] = 1.0 if phase_bucket == "weak_only" else 0.0
+        candidate.score_breakdown["phase_pool_strong"] = (
+            1.0 if phase_bucket == "strong_phase" else 0.0
+        )
+        candidate.score_breakdown["phase_pool_medium"] = (
+            1.0 if phase_bucket == "medium_phase" else 0.0
+        )
+        candidate.score_breakdown["phase_pool_backfill"] = (
+            1.0 if phase_bucket == "weak_backfill" else 0.0
+        )
+        candidate.score_breakdown["phase_pool_weak_only"] = (
+            1.0 if phase_bucket == "weak_only" else 0.0
+        )
         is_movie_top_picks_planning = (
             row_key == "top_picks_for_you"
             and media_type == MediaTypes.MOVIE.value
@@ -164,13 +181,17 @@ def _entries_to_candidates(
             candidate.score_breakdown["days_since_activity"] = float(
                 max(0, (timezone.now() - activity_dt).days),
             )
-        candidate.score_breakdown.update(_fast_completion_breakdown(entry, entry_status))
+        candidate.score_breakdown.update(
+            _fast_completion_breakdown(entry, entry_status)
+        )
         candidates.append(candidate)
 
     return candidates
 
 
-def _in_progress_candidates(user, media_type: str, *, row_key: str, source_reason: str) -> list[CandidateItem]:
+def _in_progress_candidates(
+    user, media_type: str, *, row_key: str, source_reason: str
+) -> list[CandidateItem]:
     if media_type == MediaTypes.TV.value and row_key == "next_episode":
         entries = (
             Season.objects.filter(user=user, status=Status.IN_PROGRESS.value)
@@ -236,14 +257,12 @@ def _clear_out_next_entries(user, media_type: str):
         return []
 
     BasicMedia.objects.annotate_max_progress(entries, media_type)
-    return [
-        entry
-        for entry in entries
-        if not _is_caught_up_in_progress_entry(entry)
-    ]
+    return [entry for entry in entries if not _is_caught_up_in_progress_entry(entry)]
 
 
-def _planning_candidates(user, media_type: str, *, row_key: str, source_reason: str) -> list[CandidateItem]:
+def _planning_candidates(
+    user, media_type: str, *, row_key: str, source_reason: str
+) -> list[CandidateItem]:
     model = _model_for_media_type(media_type)
     if not model:
         return []
@@ -282,11 +301,7 @@ def _hydrate_movie_candidates_from_items(
         },
     )
     sources = sorted(
-        {
-            str(candidate.source).strip()
-            for candidate in candidates
-            if candidate.source
-        },
+        {str(candidate.source).strip() for candidate in candidates if candidate.source},
     )
     items_by_key = {
         (item.source, str(item.media_id)): item
@@ -302,7 +317,10 @@ def _hydrate_movie_candidates_from_items(
 
     for candidate in candidates:
         item = items_by_key.get(
-            (str(candidate.source or "").strip(), str(candidate.media_id or "").strip()),
+            (
+                str(candidate.source or "").strip(),
+                str(candidate.media_id or "").strip(),
+            ),
         )
         if not item:
             if not candidate.release_decade and candidate.release_date:
@@ -348,8 +366,7 @@ def _hydrate_movie_candidates_from_items(
         if not candidate.image:
             candidate.image = item.image
         candidate.score_breakdown["provider_rating"] = (
-            candidate.score_breakdown.get("provider_rating")
-            or item.provider_rating
+            candidate.score_breakdown.get("provider_rating") or item.provider_rating
         )
         candidate.score_breakdown["provider_rating_count"] = (
             candidate.score_breakdown.get("provider_rating_count")

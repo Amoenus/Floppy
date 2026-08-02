@@ -239,8 +239,12 @@ class ProviderAPIErrorMiddleware:
                 request,
                 "500.html",
                 status_code=503 if is_provider_unreachable else 500,
-                page_title="Service Unavailable" if is_provider_unreachable else "Server Error",
-                heading="Service Unavailable" if is_provider_unreachable else "Something Went Wrong",
+                page_title="Service Unavailable"
+                if is_provider_unreachable
+                else "Server Error",
+                heading="Service Unavailable"
+                if is_provider_unreachable
+                else "Something Went Wrong",
                 error_message=str(exception),
                 exception=exception,
                 extra_lines=extra_lines,

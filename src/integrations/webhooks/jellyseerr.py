@@ -80,10 +80,9 @@ class JellyseerrWebhookProcessor:
             logger.debug("Jellyseerr webhook ignored: default behaviour skips UNKNOWN")
             return
 
-        requester = (
-            (payload.get("requestedBy_username") or "").strip()
-            or (payload.get("notifyuser_username") or "").strip()
-        )
+        requester = (payload.get("requestedBy_username") or "").strip() or (
+            payload.get("notifyuser_username") or ""
+        ).strip()
         allowed_requesters = self._parse_csv_lower(
             getattr(user, "jellyseerr_allowed_usernames", ""),
         )
@@ -183,7 +182,9 @@ class JellyseerrWebhookProcessor:
             item.save(update_fields=updates)
 
         if created:
-            logger.info("Jellyseerr: created Item %s/%s (%s)", media_type, tmdb_id, item.title)
+            logger.info(
+                "Jellyseerr: created Item %s/%s (%s)", media_type, tmdb_id, item.title
+            )
 
         return item
 

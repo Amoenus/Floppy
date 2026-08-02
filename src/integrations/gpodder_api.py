@@ -125,7 +125,9 @@ def subscription_candidates(feed_url: str, action: dict | None = None) -> set[st
     return {candidate for candidate in candidates if candidate}
 
 
-def _request(method: str, server_url: str, path: str, *, username: str, password: str, **kwargs):
+def _request(
+    method: str, server_url: str, path: str, *, username: str, password: str, **kwargs
+):
     url = api_url(server_url, path)
     headers = {"User-Agent": USER_AGENT, **kwargs.pop("headers", {})}
     timeout = kwargs.pop("timeout", settings.REQUEST_TIMEOUT)
@@ -139,7 +141,9 @@ def _request(method: str, server_url: str, path: str, *, username: str, password
             **kwargs,
         )
     except requests.RequestException as exc:
-        logger.warning("GPodder request failed for %s: %s", safe_url(url), exception_summary(exc))
+        logger.warning(
+            "GPodder request failed for %s: %s", safe_url(url), exception_summary(exc)
+        )
         raise GPodderClientError(str(exc)) from exc
 
     if response.status_code in {401, 403}:

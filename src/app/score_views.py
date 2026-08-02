@@ -18,7 +18,9 @@ logger = logging.getLogger(__name__)
 
 def _collect_music_history_day_keys_for_album_ids(user, album_ids):
     """Return distinct history day keys for plays tied to the given album ids."""
-    normalized_album_ids = sorted({album_id for album_id in album_ids or [] if album_id})
+    normalized_album_ids = sorted(
+        {album_id for album_id in album_ids or [] if album_id}
+    )
     if not normalized_album_ids:
         return []
 
@@ -166,7 +168,9 @@ def update_episode_score(request, season_id, episode_number):
     return JsonResponse(
         {
             "success": True,
-            "score": request.user.format_score_for_display(score) if score is not None else None,
+            "score": request.user.format_score_for_display(score)
+            if score is not None
+            else None,
         },
     )
 
@@ -200,10 +204,14 @@ def update_track_score(request, music_id):
     music.save()
     logger.info("%s score updated to %s", music, score)
 
-    return JsonResponse({
-        "success": True,
-        "score": request.user.format_score_for_display(score) if score is not None else None,
-    })
+    return JsonResponse(
+        {
+            "success": True,
+            "score": request.user.format_score_for_display(score)
+            if score is not None
+            else None,
+        }
+    )
 
 
 @require_POST

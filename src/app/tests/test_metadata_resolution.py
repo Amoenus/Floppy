@@ -131,7 +131,9 @@ class MetadataResolutionTests(TestCase):
             "title": "Breaking Bad (TVDB)",
             "image": "https://example.com/breaking-bad-tvdb.jpg",
             "source_url": "https://www.thetvdb.com/dereferrer/series/81189",
-            "external_links": {"TVDB": "https://www.thetvdb.com/dereferrer/series/81189"},
+            "external_links": {
+                "TVDB": "https://www.thetvdb.com/dereferrer/series/81189"
+            },
             "details": {"episodes": 999, "status": "Overlay"},
             "related": {"seasons": [{"season_number": 1}]},
         }
@@ -173,7 +175,9 @@ class MetadataResolutionTests(TestCase):
         self.assertEqual(item.source, Sources.TMDB.value)
 
     @override_settings(TVDB_API_KEY="test-tvdb-key")
-    def test_resolve_detail_metadata_defaults_to_tracking_source_without_preference(self):
+    def test_resolve_detail_metadata_defaults_to_tracking_source_without_preference(
+        self,
+    ):
         """Tracked titles should keep showing metadata from their own source by default."""
         item = Item.objects.create(
             media_id="52991",
@@ -461,7 +465,9 @@ class MetadataResolutionTests(TestCase):
                 "first_air_date": None,
             },
         )
-        self.assertTrue(result.grouped_preview["related"]["seasons"][0]["is_mapped_target"])
+        self.assertTrue(
+            result.grouped_preview["related"]["seasons"][0]["is_mapped_target"]
+        )
         self.assertEqual(
             result.grouped_preview["related"]["seasons"][0]["mapped_episode_start"],
             1,

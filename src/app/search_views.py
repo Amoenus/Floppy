@@ -136,7 +136,9 @@ def media_search(request):
                     .filter(show__title__icontains=query)
                 )
                 local_results_total = show_trackers.count()
-                show_trackers = show_trackers.order_by("show__title")[:local_results_limit]
+                show_trackers = show_trackers.order_by("show__title")[
+                    :local_results_limit
+                ]
 
                 class PodcastShowAdapter:
                     """Adapter to make PodcastShowTracker compatible with media components."""
@@ -162,17 +164,24 @@ def media_search(request):
                             },
                         )
                         show_image = tracker.show.image or settings.IMG_NONE
-                        if self.item.title != tracker.show.title or self.item.image != show_image:
+                        if (
+                            self.item.title != tracker.show.title
+                            or self.item.image != show_image
+                        ):
                             self.item.title = tracker.show.title
                             self.item.image = show_image
                             self.item.save(update_fields=["title", "image"])
 
-                adapted_media = [PodcastShowAdapter(tracker) for tracker in show_trackers]
+                adapted_media = [
+                    PodcastShowAdapter(tracker) for tracker in show_trackers
+                ]
                 local_results = [
                     {
                         "item": media.item,
                         "media": media,
-                        "matched_title": _matched_title(media.item, query, request.user),
+                        "matched_title": _matched_title(
+                            media.item, query, request.user
+                        ),
                     }
                     for media in adapted_media
                 ]
@@ -185,7 +194,9 @@ def media_search(request):
                     .select_related("artist")
                 )
                 local_music_artists_total = artist_trackers.count()
-                local_music_artists = list(artist_trackers.order_by("artist__name")[:local_results_limit])
+                local_music_artists = list(
+                    artist_trackers.order_by("artist__name")[:local_results_limit]
+                )
 
                 album_trackers = (
                     AlbumTracker.objects.filter(user=request.user)
@@ -199,9 +210,13 @@ def media_search(request):
                     .prefetch_related("album__artist_credits__artist")
                 )
                 local_music_albums_total = album_trackers.count()
-                local_music_albums = list(album_trackers.order_by("album__title")[:local_results_limit])
+                local_music_albums = list(
+                    album_trackers.order_by("album__title")[:local_results_limit]
+                )
 
-                local_results_total = local_music_artists_total + local_music_albums_total
+                local_results_total = (
+                    local_music_artists_total + local_music_albums_total
+                )
                 local_results_kind = "music"
             else:
                 local_queryset = BasicMedia.objects.get_media_list(
@@ -213,15 +228,21 @@ def media_search(request):
                     direction="asc",
                 )
                 local_media = list(local_queryset)
-                if media_type == MediaTypes.TV.value and getattr(
-                    request.user,
-                    "anime_library_mode",
-                    MediaTypes.ANIME.value,
-                ) == MediaTypes.ANIME.value:
+                if (
+                    media_type == MediaTypes.TV.value
+                    and getattr(
+                        request.user,
+                        "anime_library_mode",
+                        MediaTypes.ANIME.value,
+                    )
+                    == MediaTypes.ANIME.value
+                ):
                     local_media = [
                         media
                         for media in local_media
-                        if getattr(getattr(media, "item", None), "library_media_type", None)
+                        if getattr(
+                            getattr(media, "item", None), "library_media_type", None
+                        )
                         != MediaTypes.ANIME.value
                     ]
                 elif media_type == MediaTypes.ANIME.value and getattr(
@@ -242,7 +263,9 @@ def media_search(request):
                     grouped_local_media = [
                         media
                         for media in grouped_local_media
-                        if getattr(getattr(media, "item", None), "library_media_type", None)
+                        if getattr(
+                            getattr(media, "item", None), "library_media_type", None
+                        )
                         == MediaTypes.ANIME.value
                     ]
                     _mark_grouped_anime_route(grouped_local_media)
@@ -262,7 +285,9 @@ def media_search(request):
                     {
                         "item": media.item,
                         "media": media,
-                        "matched_title": _matched_title(media.item, query, request.user),
+                        "matched_title": _matched_title(
+                            media.item, query, request.user
+                        ),
                     }
                     for media in local_media
                 ]
@@ -311,7 +336,9 @@ def media_search(request):
             section_name="search",
         )
         for result in data["results"]:
-            result["matched_title"] = _matched_title(result.get("item"), query, request.user)
+            result["matched_title"] = _matched_title(
+                result.get("item"), query, request.user
+            )
 
     context = {
         "user": request.user,
@@ -368,12 +395,14 @@ def get_saved_suggestions(user, media_type, query, limit=8):
                 },
             )
             if url:
-                suggestions.append({
-                    "title": show.title,
-                    "subtitle": None,
-                    "image": show.image or None,
-                    "url": url,
-                })
+                suggestions.append(
+                    {
+                        "title": show.title,
+                        "subtitle": None,
+                        "image": show.image or None,
+                        "url": url,
+                    }
+                )
         return suggestions
 
     if media_type == MediaTypes.MUSIC.value:
@@ -388,12 +417,14 @@ def get_saved_suggestions(user, media_type, query, limit=8):
         for tracker in artist_trackers:
             url = _safe_url(music_artist_url, tracker.artist)
             if url:
-                suggestions.append({
-                    "title": tracker.artist.name,
-                    "subtitle": "Artist",
-                    "image": getattr(tracker.artist, "image", None) or None,
-                    "url": url,
-                })
+                suggestions.append(
+                    {
+                        "title": tracker.artist.name,
+                        "subtitle": "Artist",
+                        "image": getattr(tracker.artist, "image", None) or None,
+                        "url": url,
+                    }
+                )
 
         album_trackers = (
             AlbumTracker.objects.filter(user=user)
@@ -411,12 +442,14 @@ def get_saved_suggestions(user, media_type, query, limit=8):
             if url:
                 album_artist = getattr(tracker.album, "artist", None)
                 artist_name = getattr(album_artist, "name", None)
-                suggestions.append({
-                    "title": tracker.album.title,
-                    "subtitle": artist_name or "Album",
-                    "image": getattr(tracker.album, "image", None) or None,
-                    "url": url,
-                })
+                suggestions.append(
+                    {
+                        "title": tracker.album.title,
+                        "subtitle": artist_name or "Album",
+                        "image": getattr(tracker.album, "image", None) or None,
+                        "url": url,
+                    }
+                )
         return suggestions[:limit]
 
     local_queryset = BasicMedia.objects.get_media_list(
@@ -471,12 +504,14 @@ def get_saved_suggestions(user, media_type, query, limit=8):
         url = _safe_url(media_url, item)
         if not url:
             continue
-        suggestions.append({
-            "title": _display_title_for_user(item, user),
-            "subtitle": _matched_title(item, query, user),
-            "image": getattr(item, "image", None) or None,
-            "url": url,
-        })
+        suggestions.append(
+            {
+                "title": _display_title_for_user(item, user),
+                "subtitle": _matched_title(item, query, user),
+                "image": getattr(item, "image", None) or None,
+                "url": url,
+            }
+        )
     return suggestions
 
 

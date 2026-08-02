@@ -266,7 +266,9 @@ class HelpersTest(TestCase):
 
         next_run_info = helpers.get_next_run_info(periodic_task)
 
-        expected_next_run = datetime(2025, 2, 6, 12, 15, tzinfo=zoneinfo.ZoneInfo("UTC"))
+        expected_next_run = datetime(
+            2025, 2, 6, 12, 15, tzinfo=zoneinfo.ZoneInfo("UTC")
+        )
         self.assertEqual(next_run_info["next_run"], expected_next_run)
         self.assertEqual(next_run_info["frequency"], "Every 15 minutes")
         self.assertEqual(next_run_info["mode"], "Watchlist Sync")
@@ -292,5 +294,7 @@ class HelpersTest(TestCase):
 
         next_run_info = helpers.get_next_run_info(periodic_task)
 
-        expected_next_run = datetime(2025, 2, 6, 12, 45, tzinfo=zoneinfo.ZoneInfo("UTC"))
+        expected_next_run = datetime(
+            2025, 2, 6, 12, 45, tzinfo=zoneinfo.ZoneInfo("UTC")
+        )
         self.assertEqual(next_run_info["next_run"], expected_next_run)

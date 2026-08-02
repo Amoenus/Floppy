@@ -354,7 +354,7 @@ def fetch_section_all_items(
     max_retries: int = 3,
 ) -> tuple[list[dict[str, Any]], int]:
     """Fetch all items from a Plex library section.
-    
+
     Args:
         token: Plex authentication token
         uri: Plex server URI
@@ -362,7 +362,7 @@ def fetch_section_all_items(
         start: Starting offset for pagination
         size: Number of items to fetch per page
         max_retries: Maximum number of retry attempts for network errors
-        
+
     Returns:
         Tuple of (items list, total count)
     """
@@ -395,7 +395,7 @@ def fetch_section_all_items(
             last_exc = exc
             if attempt < max_retries - 1:
                 # Exponential backoff: 1s, 2s, 4s
-                wait_time = 2 ** attempt
+                wait_time = 2**attempt
                 logger.debug(
                     "Plex API request failed (attempt %d/%d), retrying in %ds: %s",
                     attempt + 1,
@@ -411,7 +411,9 @@ def fetch_section_all_items(
                     max_retries,
                     exc,
                 )
-                raise PlexClientError(f"Failed after {max_retries} attempts: {exc}") from exc
+                raise PlexClientError(
+                    f"Failed after {max_retries} attempts: {exc}"
+                ) from exc
 
     if last_exc:
         raise PlexClientError(str(last_exc)) from last_exc
@@ -431,9 +433,11 @@ def fetch_section_all_items(
     return entries, total
 
 
-def fetch_metadata(token: str, uri: str, rating_key: str, timeout: int = 20) -> dict[str, Any] | None:
+def fetch_metadata(
+    token: str, uri: str, rating_key: str, timeout: int = 20
+) -> dict[str, Any] | None:
     """Fetch rich metadata for a history item.
-    
+
     Args:
         token: Plex authentication token
         uri: Plex server URI
@@ -506,7 +510,11 @@ def _fetch_sections_from_connection(
 
     sections: list[dict[str, Any]] = []
     for directory in directories:
-        attrs = directory if isinstance(directory, dict) else getattr(directory, "attrib", {})
+        attrs = (
+            directory
+            if isinstance(directory, dict)
+            else getattr(directory, "attrib", {})
+        )
         sections.append(
             {
                 "id": attrs.get("key"),
@@ -592,7 +600,9 @@ def _parse_history_xml(xml_text: str) -> tuple[list[dict[str, Any]], int]:
         data["Guid"] = [guid.attrib for guid in child.findall("Guid")]
         entries.append(data)
 
-    total_size = _coerce_int(root.attrib.get("totalSize") or root.attrib.get("size"), len(entries))
+    total_size = _coerce_int(
+        root.attrib.get("totalSize") or root.attrib.get("size"), len(entries)
+    )
     return entries, total_size
 
 
@@ -643,12 +653,14 @@ def _coerce_int(value: Any, default: int) -> int:
         return default
 
 
-def extract_external_ids_from_guids(guids: list[dict[str, Any] | str]) -> dict[str, str]:
+def extract_external_ids_from_guids(
+    guids: list[dict[str, Any] | str],
+) -> dict[str, str]:
     """Extract external IDs (TMDB, IMDB, TVDB) from Plex GUIDs.
-    
+
     Args:
         guids: List of GUID dictionaries or strings from Plex metadata
-        
+
     Returns:
         Dictionary with keys: 'tmdb_id', 'imdb_id', 'tvdb_id', 'plex_guid' (if found)
     """

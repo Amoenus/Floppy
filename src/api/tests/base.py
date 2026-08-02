@@ -379,7 +379,6 @@ class FloppyApiTestCase(APITestCase):
             )
         ]
 
-
         self._build_lists_fixtures()
 
         self._build_changes_history_fixtures()

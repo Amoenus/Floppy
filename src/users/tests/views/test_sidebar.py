@@ -76,7 +76,11 @@ class SidebarViewTests(TestCase):
                     MediaTypes.ANIME.value,
                 ],
                 "sidebar_media_type_order": ",".join(
-                    [MediaTypes.ANIME.value, MediaTypes.TV.value, MediaTypes.MOVIE.value],
+                    [
+                        MediaTypes.ANIME.value,
+                        MediaTypes.TV.value,
+                        MediaTypes.MOVIE.value,
+                    ],
                 ),
             },
         )
@@ -143,7 +147,9 @@ class SidebarViewTests(TestCase):
 
     @override_settings(TVDB_API_KEY="")
     @patch("users.views.tmdb.watch_provider_regions")
-    def test_preferences_get_hides_tvdb_when_not_configured(self, mock_watch_provider_regions):
+    def test_preferences_get_hides_tvdb_when_not_configured(
+        self, mock_watch_provider_regions
+    ):
         """TVDB preference controls should stay disabled until credentials exist."""
         mock_watch_provider_regions.return_value = [("UNSET", "Not set")]
 
@@ -156,7 +162,9 @@ class SidebarViewTests(TestCase):
 
     @override_settings(TVDB_API_KEY="test-tvdb-key")
     @patch("users.views.tmdb.watch_provider_regions")
-    def test_preferences_post_updates_metadata_provider_defaults(self, mock_watch_provider_regions):
+    def test_preferences_post_updates_metadata_provider_defaults(
+        self, mock_watch_provider_regions
+    ):
         """Preferences POST should persist metadata provider defaults and library mode."""
         mock_watch_provider_regions.return_value = [("UNSET", "Not set")]
 
@@ -172,12 +180,20 @@ class SidebarViewTests(TestCase):
                 "title_display_preference": self.user.title_display_preference,
                 "top_talent_sort_by": self.user.top_talent_sort_by,
                 "rating_scale": self.user.rating_scale,
-                "hide_completed_recommendations": "1" if self.user.hide_completed_recommendations else "0",
+                "hide_completed_recommendations": "1"
+                if self.user.hide_completed_recommendations
+                else "0",
                 "hide_zero_rating": "1" if self.user.hide_zero_rating else "0",
-                "quick_season_update_mobile": "1" if self.user.quick_season_update_mobile else "0",
-                "book_comic_manga_progress_percentage": "1" if self.user.book_comic_manga_progress_percentage else "0",
+                "quick_season_update_mobile": "1"
+                if self.user.quick_season_update_mobile
+                else "0",
+                "book_comic_manga_progress_percentage": "1"
+                if self.user.book_comic_manga_progress_percentage
+                else "0",
                 "show_planned_on_home": self.user.show_planned_on_home,
-                "auto_pause_enabled": "1" if self.user.auto_pause_in_progress_enabled else "0",
+                "auto_pause_enabled": "1"
+                if self.user.auto_pause_in_progress_enabled
+                else "0",
                 "auto_pause_rules": "[]",
                 "watch_provider_region": "UNSET",
                 "tv_metadata_source_default": MetadataSourceDefaultChoices.TVDB,
@@ -189,6 +205,10 @@ class SidebarViewTests(TestCase):
         self.assertRedirects(response, reverse("preferences"))
 
         self.user.refresh_from_db()
-        self.assertEqual(self.user.tv_metadata_source_default, MetadataSourceDefaultChoices.TVDB)
-        self.assertEqual(self.user.anime_metadata_source_default, MetadataSourceDefaultChoices.TMDB)
+        self.assertEqual(
+            self.user.tv_metadata_source_default, MetadataSourceDefaultChoices.TVDB
+        )
+        self.assertEqual(
+            self.user.anime_metadata_source_default, MetadataSourceDefaultChoices.TMDB
+        )
         self.assertEqual(self.user.anime_library_mode, AnimeLibraryModeChoices.BOTH)

@@ -70,7 +70,9 @@ def update_metadata_provider_preference(request, source, media_type, media_id):
         )
     }
     if provider not in allowed_providers:
-        messages.error(request, "That metadata provider is not available for this title.")
+        messages.error(
+            request, "That metadata provider is not available for this title."
+        )
     else:
         if (
             provider == Sources.MANUAL.value
@@ -162,7 +164,9 @@ def update_manual_item_metadata(request, item_id):
     else:
         owned = media_model.objects.filter(user=request.user, item=item)
     if not owned.exists():
-        messages.error(request, "You can only update metadata for items in your library.")
+        messages.error(
+            request, "You can only update metadata for items in your library."
+        )
         return helpers.redirect_back(request)
 
     if not custom_metadata.supports_custom_metadata(item):
@@ -255,7 +259,9 @@ def migrate_grouped_anime(request, source, media_type, media_id):
     )
     allowed_providers = {Sources.TMDB.value, Sources.TVDB.value}
     if media_type != MediaTypes.ANIME.value or source != Sources.MAL.value:
-        messages.error(request, "Only flat MAL anime can be migrated to grouped series.")
+        messages.error(
+            request, "Only flat MAL anime can be migrated to grouped series."
+        )
     elif provider not in allowed_providers:
         messages.error(request, "Choose TMDB or TVDB before migrating this anime.")
     else:
@@ -360,10 +366,7 @@ def _build_missing_season_metadata(
         if episode_item:
             if episode_item.release_datetime:
                 air_date = episode_item.release_datetime
-            if (
-                episode_item.runtime_minutes
-                and episode_item.runtime_minutes < 999998
-            ):
+            if episode_item.runtime_minutes and episode_item.runtime_minutes < 999998:
                 runtime = tmdb.get_readable_duration(episode_item.runtime_minutes)
             if episode_item.title and episode_item.title != show_title:
                 title = episode_item.title
@@ -596,8 +599,7 @@ def _build_local_tv_with_seasons_metadata(
             or [],
             "related": related,
             "tvdb_id": (
-                tv_metadata.get("tvdb_id")
-                or provider_external_ids.get("tvdb_id")
+                tv_metadata.get("tvdb_id") or provider_external_ids.get("tvdb_id")
             ),
         },
     )
@@ -660,7 +662,11 @@ def _flat_anime_preview_season_numbers(
     if season_number is not None and season_number >= 0:
         return [season_number]
 
-    related = grouped_series_metadata.get("related") if isinstance(grouped_series_metadata, dict) else {}
+    related = (
+        grouped_series_metadata.get("related")
+        if isinstance(grouped_series_metadata, dict)
+        else {}
+    )
     seasons = related.get("seasons") if isinstance(related, dict) else []
     target_total = grouped_preview_target.get("episode_total")
     try:
@@ -720,7 +726,9 @@ def _flat_anime_preview_season_numbers(
 
 def _flat_anime_preview_episode_rows(grouped_preview, grouped_preview_target):
     """Return mapped episode rows for a flat anime preview."""
-    if not isinstance(grouped_preview, dict) or not isinstance(grouped_preview_target, dict):
+    if not isinstance(grouped_preview, dict) or not isinstance(
+        grouped_preview_target, dict
+    ):
         return []
 
     target_total = grouped_preview_target.get("episode_total")
@@ -817,7 +825,10 @@ def _build_flat_anime_episode_preview(
     identity_media_type = (
         detail_item.media_type if detail_item else base_metadata.get("media_type")
     )
-    if identity_source != Sources.MAL.value or identity_media_type != MediaTypes.ANIME.value:
+    if (
+        identity_source != Sources.MAL.value
+        or identity_media_type != MediaTypes.ANIME.value
+    ):
         return None
 
     if base_metadata.get("episodes"):
@@ -934,7 +945,9 @@ def _build_flat_anime_episode_preview(
             grouped_preview_target = preview_target
             break
 
-    if not isinstance(grouped_preview_target, dict) or not isinstance(grouped_preview, dict):
+    if not isinstance(grouped_preview_target, dict) or not isinstance(
+        grouped_preview, dict
+    ):
         return None
 
     preview_rows = _flat_anime_preview_episode_rows(
@@ -949,8 +962,7 @@ def _build_flat_anime_episode_preview(
     collection_entry_by_episode_key = {}
     rating_season_id_by_episode_key = {}
     preview_episode_keys = {
-        (row["season_number"], row["provider_episode_number"])
-        for row in preview_rows
+        (row["season_number"], row["provider_episode_number"]) for row in preview_rows
     }
     preview_season_numbers = sorted({row["season_number"] for row in preview_rows})
 
@@ -1094,6 +1106,7 @@ def _build_flat_anime_episode_preview(
 @require_POST
 def sync_metadata(request, source, media_type, media_id, season_number=None):
     """Refresh the metadata for a media item."""
+
     def _sync_redirect_response():
         if request.headers.get("HX-Request"):
             return HttpResponse(
@@ -1179,7 +1192,9 @@ def sync_metadata(request, source, media_type, media_id, season_number=None):
         # Extract number_of_pages for books
         number_of_pages = None
         if media_type == MediaTypes.BOOK.value:
-            number_of_pages = metadata.get("max_progress") or metadata.get("details", {}).get("number_of_pages")
+            number_of_pages = metadata.get("max_progress") or metadata.get(
+                "details", {}
+            ).get("number_of_pages")
 
         item_qs = Item.objects.filter(
             media_id=media_id,
@@ -1228,7 +1243,11 @@ def sync_metadata(request, source, media_type, media_id, season_number=None):
             item.refresh_from_db()
 
         # Update number_of_pages if it wasn't set but we have it now
-        if media_type == MediaTypes.BOOK.value and not item.number_of_pages and number_of_pages:
+        if (
+            media_type == MediaTypes.BOOK.value
+            and not item.number_of_pages
+            and number_of_pages
+        ):
             item.number_of_pages = number_of_pages
             item.save(update_fields=["number_of_pages"])
 
@@ -1248,7 +1267,9 @@ def sync_metadata(request, source, media_type, media_id, season_number=None):
             item,
             metadata_utils.extract_metadata_genres(metadata),
         )
-        metadata_update_fields.extend(metadata_utils.apply_item_metadata(item, metadata))
+        metadata_update_fields.extend(
+            metadata_utils.apply_item_metadata(item, metadata)
+        )
         if metadata_update_fields:
             metadata_update_fields = list(dict.fromkeys(metadata_update_fields))
             item.metadata_fetched_at = timezone.now()
@@ -1285,6 +1306,7 @@ def sync_metadata(request, source, media_type, media_id, season_number=None):
 
         if source == Sources.TMDB.value and tracking_media_type == MediaTypes.TV.value:
             from app.tasks_genre import populate_genres_for_item_sync  # noqa: PLC0415
+
             populate_genres_for_item_sync(item, metadata)
 
         preferred_provider = metadata_resolution.get_preferred_provider(
@@ -1324,7 +1346,10 @@ def sync_metadata(request, source, media_type, media_id, season_number=None):
                         season_number=season_number,
                     )
                     preferred_provider_synced = True
-                except (requests.exceptions.RequestException, services.ProviderAPIError) as exc:
+                except (
+                    requests.exceptions.RequestException,
+                    services.ProviderAPIError,
+                ) as exc:
                     logger.warning(
                         "preferred_provider_sync_failed item_id=%s preferred_provider=%s preferred_media_id=%s error=%s",
                         item.id,
@@ -1358,7 +1383,10 @@ def sync_metadata(request, source, media_type, media_id, season_number=None):
             MediaTypes.SEASON.value,
         ):
             credits.sync_item_credits_from_metadata(item, metadata)
-        elif source == Sources.IGDB.value and tracking_media_type == MediaTypes.GAME.value:
+        elif (
+            source == Sources.IGDB.value
+            and tracking_media_type == MediaTypes.GAME.value
+        ):
             # No inline metadata payload for cast here — IMDB cast/crew is a
             # separate best-effort match+download pipeline that's too heavy to
             # run synchronously in a request. Queue it so a manual refresh
@@ -1402,10 +1430,7 @@ def sync_metadata(request, source, media_type, media_id, season_number=None):
             episode_count = 0
 
             # Create a lookup for raw episode data by episode_number
-            raw_episode_map = {
-                ep["episode_number"]: ep
-                for ep in raw_episodes
-            }
+            raw_episode_map = {ep["episode_number"]: ep for ep in raw_episodes}
 
             for episode_data in metadata["episodes"]:
                 episode_number = episode_data["episode_number"]
@@ -1578,11 +1603,20 @@ def _sync_plex_rating(request, item, media_type):
 
                     # Check if this matches our item
                     matches = False
-                    if item.source == "tmdb" and external_ids.get("tmdb_id") == str(item.media_id) or item.source == "imdb" and external_ids.get("imdb_id") == item.media_id or item.source == "tvdb" and external_ids.get("tvdb_id") == str(item.media_id):
+                    if (
+                        item.source == "tmdb"
+                        and external_ids.get("tmdb_id") == str(item.media_id)
+                        or item.source == "imdb"
+                        and external_ids.get("imdb_id") == item.media_id
+                        or item.source == "tvdb"
+                        and external_ids.get("tvdb_id") == str(item.media_id)
+                    ):
                         matches = True
 
                     if matches:
-                        rating_key = plex_item.get("ratingKey") or plex_item.get("ratingkey")
+                        rating_key = plex_item.get("ratingKey") or plex_item.get(
+                            "ratingkey"
+                        )
                         plex_uri = section_uri
                         logger.info("Found matching Plex item for rating sync")
                         break
@@ -1617,7 +1651,9 @@ def _sync_plex_rating(request, item, media_type):
         # Try HTTPS if HTTP failed, or vice versa
         if plex_uri.startswith("http://"):
             https_uri = plex_uri.replace("http://", "https://")
-            logger.debug("Retrying Plex rating sync with HTTPS: %s", safe_url(https_uri))
+            logger.debug(
+                "Retrying Plex rating sync with HTTPS: %s", safe_url(https_uri)
+            )
             try:
                 plex_metadata = plex_api.fetch_metadata(
                     plex_account.plex_token,
@@ -1663,11 +1699,16 @@ def _sync_plex_rating(request, item, media_type):
     try:
         rating_float = float(user_rating)
         if rating_float == -1.0:
-            logger.info("Detected Plex rating removal event for media_type=%s", media_type)
+            logger.info(
+                "Detected Plex rating removal event for media_type=%s", media_type
+            )
             # Remove rating from existing instances only
             if media_type == MediaTypes.MOVIE.value:
                 from app.models import Movie
-                movie_instance = Movie.objects.filter(item=item, user=request.user).first()
+
+                movie_instance = Movie.objects.filter(
+                    item=item, user=request.user
+                ).first()
                 if movie_instance:
                     movie_instance.score = None
                     movie_instance.save(update_fields=["score"])
@@ -1676,6 +1717,7 @@ def _sync_plex_rating(request, item, media_type):
                     logger.debug("No movie instance found to remove Plex rating")
             elif media_type == MediaTypes.TV.value:
                 from app.models import TV
+
                 tv_instance = TV.objects.filter(item=item, user=request.user).first()
                 if tv_instance:
                     tv_instance.score = None
@@ -1709,6 +1751,7 @@ def _sync_plex_rating(request, item, media_type):
     # Apply rating to media instance
     if media_type == MediaTypes.MOVIE.value:
         from app.models import Movie
+
         movie_instance = Movie.objects.filter(item=item, user=request.user).first()
         if movie_instance:
             movie_instance.score = normalized_rating
@@ -1726,6 +1769,7 @@ def _sync_plex_rating(request, item, media_type):
             logger.info("Created movie instance from Plex rating sync")
     elif media_type == MediaTypes.TV.value:
         from app.models import TV
+
         tv_instance = TV.objects.filter(item=item, user=request.user).first()
         if tv_instance:
             tv_instance.score = normalized_rating

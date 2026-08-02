@@ -59,7 +59,9 @@ def genre_list_has_name(genres, name: str) -> bool:
     target = str(name or "").strip().lower()
     if not target:
         return False
-    return any(str(genre).strip().lower() == target for genre in normalize_genres(genres))
+    return any(
+        str(genre).strip().lower() == target for genre in normalize_genres(genres)
+    )
 
 
 def extract_metadata_genres(metadata: dict | None) -> list[str]:
@@ -133,9 +135,7 @@ def extract_item_metadata_values(metadata: dict | None) -> dict[str, object]:
     if isinstance(publishers, list):
         publishers = publishers[0] if publishers else ""
 
-    raw_number_of_pages = (
-        payload.get("max_progress") or details.get("number_of_pages")
-    )
+    raw_number_of_pages = payload.get("max_progress") or details.get("number_of_pages")
     try:
         number_of_pages = (
             int(raw_number_of_pages) if raw_number_of_pages is not None else None

@@ -29,9 +29,7 @@ class PreferencesTests(FloppyApiTestCase):
             "api_user_preferences",
             headers=self.auth_headers,
         ).json()["choices"]["rating_scale"]
-        target = next(
-            value for value in choices if value != self.user1.rating_scale
-        )
+        target = next(value for value in choices if value != self.user1.rating_scale)
         response = self.call_api(
             "patch",
             "api_user_preferences",

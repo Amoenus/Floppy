@@ -59,11 +59,7 @@ def _resolve_detail_tag_implied_genres(
         details = media_metadata.get("details")
         implied_genres = stats._coerce_genre_list(
             media_metadata.get("implied_genres")
-            or (
-                details.get("implied_genres")
-                if isinstance(details, dict)
-                else None
-            ),
+            or (details.get("implied_genres") if isinstance(details, dict) else None),
         )
     if not implied_genres and fallback_implied_genres:
         implied_genres = stats._coerce_genre_list(fallback_implied_genres)
@@ -300,7 +296,9 @@ def tags_modal(
     if preview_genres and list(item.genres or []) != list(preview_genres):
         item.genres = list(preview_genres)
         item_updates.append("genres")
-    if preview_implied_genres and list(getattr(item, "implied_genres", None) or []) != list(preview_implied_genres):
+    if preview_implied_genres and list(
+        getattr(item, "implied_genres", None) or []
+    ) != list(preview_implied_genres):
         item.implied_genres = list(preview_implied_genres)
         item_updates.append("implied_genres")
     if item_updates:

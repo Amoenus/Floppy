@@ -53,9 +53,7 @@ def _format_list_success_result(result):
     """Render a list-based Celery success payload."""
     if result and all(isinstance(item, str) for item in result):
         summary = result[0].strip() or "Task completed successfully."
-        error_lines = [
-            item.strip() for item in result[1:] if item and item.strip()
-        ]
+        error_lines = [item.strip() for item in result[1:] if item and item.strip()]
         return summary, "\n".join(error_lines) or None
 
     return "Queued follow-up import task.", None
@@ -246,7 +244,15 @@ def get_export_next_run_info(periodic_task):
     # Determine frequency
     if cron.day_of_week == "*/2":
         frequency = "Every 2 Days"
-    elif cron.day_of_month == "*/7" or cron.day_of_week in ("0", "1", "2", "3", "4", "5", "6"):
+    elif cron.day_of_month == "*/7" or cron.day_of_week in (
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+    ):
         frequency = "Weekly"
     else:
         frequency = "Daily"

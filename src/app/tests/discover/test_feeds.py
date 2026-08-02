@@ -16,7 +16,9 @@ class GetExternalRowDefinitionsTests(SimpleTestCase):
     def test_returns_only_trakt_and_provider_rows(self):
         rows = get_external_row_definitions(MediaTypes.MOVIE.value)
         keys = [row.key for row in rows]
-        self.assertEqual(keys, ["trending_right_now", "all_time_greats_unseen", "coming_soon"])
+        self.assertEqual(
+            keys, ["trending_right_now", "all_time_greats_unseen", "coming_soon"]
+        )
         for row in rows:
             self.assertIn(row.source, {"trakt", "provider"})
 
@@ -67,7 +69,9 @@ class GetFeedRowTests(TestCase):
         for patcher in self.signal_patches:
             patcher.start()
 
-        self.user = get_user_model().objects.create_user(username="rss-user", password="testpass")
+        self.user = get_user_model().objects.create_user(
+            username="rss-user", password="testpass"
+        )
 
         planning_item = Item.objects.create(
             media_id="1",
@@ -83,8 +87,13 @@ class GetFeedRowTests(TestCase):
             title="Owned Movie",
             image="http://example.com/2.jpg",
         )
-        with patch("app.models.providers.services.get_media_metadata", return_value={"max_progress": 1}):
-            Movie.objects.create(item=planning_item, user=self.user, status=Status.PLANNING.value)
+        with patch(
+            "app.models.providers.services.get_media_metadata",
+            return_value={"max_progress": 1},
+        ):
+            Movie.objects.create(
+                item=planning_item, user=self.user, status=Status.PLANNING.value
+            )
         CollectionEntry.objects.create(user=self.user, item=owned_item)
 
     def tearDown(self):
@@ -103,7 +112,9 @@ class GetFeedRowTests(TestCase):
 
     @patch("app.discover.service.get_or_compute_taste_profile", return_value={})
     @patch("app.discover.service._build_row_candidates")
-    def test_skip_planning_false_includes_planning_item(self, mock_build, _mock_profile):
+    def test_skip_planning_false_includes_planning_item(
+        self, mock_build, _mock_profile
+    ):
         mock_build.return_value = _candidates()
 
         row = get_feed_row(
@@ -150,7 +161,9 @@ class DiscoverRowFeedViewTests(TestCase):
         ]
         for patcher in self.signal_patches:
             patcher.start()
-        self.user = get_user_model().objects.create_user(username="rss-view-user", password="testpass")
+        self.user = get_user_model().objects.create_user(
+            username="rss-view-user", password="testpass"
+        )
 
     def tearDown(self):
         for patcher in reversed(self.signal_patches):

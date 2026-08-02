@@ -31,18 +31,23 @@ def podcast_show_detail(request, show_id):
 
     tracker = PodcastShowTracker.objects.filter(user=request.user, show=show).first()
 
-    episodes = PodcastEpisode.objects.filter(show=show).annotate(
-        published_or_old=Coalesce(
-            "published",
-            Value(datetime(1970, 1, 1, tzinfo=UTC),
-                  output_field=DateTimeField()),
-        ),
-    ).order_by("-published_or_old", "-episode_number")
+    episodes = (
+        PodcastEpisode.objects.filter(show=show)
+        .annotate(
+            published_or_old=Coalesce(
+                "published",
+                Value(datetime(1970, 1, 1, tzinfo=UTC), output_field=DateTimeField()),
+            ),
+        )
+        .order_by("-published_or_old", "-episode_number")
+    )
 
-    user_podcasts = list(Podcast.objects.filter(
-        user=request.user,
-        show=show,
-    ).select_related("episode", "item"))
+    user_podcasts = list(
+        Podcast.objects.filter(
+            user=request.user,
+            show=show,
+        ).select_related("episode", "item")
+    )
 
     total_episodes = episodes.count()
     total_listened = len(user_podcasts)
@@ -93,23 +98,30 @@ def podcast_episodes_api(request, show_id):
         page = 1
         page_size = 20
 
-    episodes_qs = PodcastEpisode.objects.filter(show=show).annotate(
-        published_or_old=Coalesce(
-            "published",
-            Value(datetime(1970, 1, 1, tzinfo=UTC),
-                  output_field=DateTimeField()),
-        ),
-    ).order_by("-published_or_old", "-episode_number")
+    episodes_qs = (
+        PodcastEpisode.objects.filter(show=show)
+        .annotate(
+            published_or_old=Coalesce(
+                "published",
+                Value(datetime(1970, 1, 1, tzinfo=UTC), output_field=DateTimeField()),
+            ),
+        )
+        .order_by("-published_or_old", "-episode_number")
+    )
     total_count = episodes_qs.count()
 
     start = (page - 1) * page_size
     end = start + page_size
     episodes = episodes_qs[start:end]
 
-    user_podcasts = list(Podcast.objects.filter(
-        user=request.user,
-        show=show,
-    ).select_related("episode", "item").order_by("episode_id", "-created_at"))
+    user_podcasts = list(
+        Podcast.objects.filter(
+            user=request.user,
+            show=show,
+        )
+        .select_related("episode", "item")
+        .order_by("episode_id", "-created_at")
+    )
 
     episode_podcast_map = {}
     for podcast in user_podcasts:
@@ -132,11 +144,13 @@ def podcast_episodes_api(request, show_id):
         if item.title != episode.title:
             item.title = episode.title
             item.save(update_fields=["title"])
-        episode_items_data.append({
-            "media_id": episode.episode_uuid,
-            "source": show.source,
-            "media_type": MediaTypes.PODCAST.value,
-        })
+        episode_items_data.append(
+            {
+                "media_id": episode.episode_uuid,
+                "source": show.source,
+                "media_type": MediaTypes.PODCAST.value,
+            }
+        )
         episode_items_map[episode.episode_uuid] = item
 
     enriched_episodes_raw = helpers.enrich_items_with_user_data(
@@ -174,7 +188,11 @@ def podcast_episodes_api(request, show_id):
                 def __init__(self, episode):
                     self.title = episode.title
                     self.track_number = episode.episode_number
-                    self.duration_formatted = self._format_duration(episode.duration) if episode.duration else None
+                    self.duration_formatted = (
+                        self._format_duration(episode.duration)
+                        if episode.duration
+                        else None
+                    )
                     self.musicbrainz_recording_id = None
                     self.id = episode.id
                     self.published = episode.published
@@ -196,14 +214,20 @@ def podcast_episodes_api(request, show_id):
 
             all_history = []
             if user_podcast:
-                all_history = list(user_podcast.history.filter(end_date__isnull=False).order_by("-end_date")[:10])
+                all_history = list(
+                    user_podcast.history.filter(end_date__isnull=False).order_by(
+                        "-end_date"
+                    )[:10]
+                )
 
                 class PodcastHistoryWrapper:
                     def __init__(self, podcast, item, history_list):
                         self.item = item
                         self.id = podcast.id
                         self._history_list = history_list
-                        self.in_progress_instance_id = podcast.id if not podcast.end_date else None
+                        self.in_progress_instance_id = (
+                            podcast.id if not podcast.end_date else None
+                        )
 
                     @property
                     def completed_play_count(self):
@@ -228,28 +252,34 @@ def podcast_episodes_api(request, show_id):
                         return HistoryProxy(self._history_list)
 
                 item = episode_items_map.get(episode_obj.episode_uuid)
-                podcast_wrapper = PodcastHistoryWrapper(user_podcast, enriched["item"] if enriched else item, all_history)
+                podcast_wrapper = PodcastHistoryWrapper(
+                    user_podcast, enriched["item"] if enriched else item, all_history
+                )
             else:
                 item = episode_items_map.get(episode_obj.episode_uuid)
-                podcast_wrapper = _DummyPodcastWrapper(enriched["item"] if enriched else item)
+                podcast_wrapper = _DummyPodcastWrapper(
+                    enriched["item"] if enriched else item
+                )
 
-            episode_list.append({
-                "title": episode_obj.title,
-                "episode_number": episode_obj.episode_number or 0,
-                "image": show.image or settings.IMG_NONE,
-                "air_date": episode_obj.published,
-                "runtime": duration_str,
-                "overview": "",
-                "history": all_history,
-                "media": enriched["media"] if enriched else None,
-                "item": enriched["item"] if enriched else item,
-                "media_id": episode_obj.episode_uuid,
-                "source": show.source,
-                "media_type": MediaTypes.PODCAST.value,
-                "track_adapter": PodcastEpisodeAdapter(episode_obj),
-                "album_adapter": PodcastShowAdapter(show),
-                "music_wrapper": podcast_wrapper,
-            })
+            episode_list.append(
+                {
+                    "title": episode_obj.title,
+                    "episode_number": episode_obj.episode_number or 0,
+                    "image": show.image or settings.IMG_NONE,
+                    "air_date": episode_obj.published,
+                    "runtime": duration_str,
+                    "overview": "",
+                    "history": all_history,
+                    "media": enriched["media"] if enriched else None,
+                    "item": enriched["item"] if enriched else item,
+                    "media_id": episode_obj.episode_uuid,
+                    "source": show.source,
+                    "media_type": MediaTypes.PODCAST.value,
+                    "track_adapter": PodcastEpisodeAdapter(episode_obj),
+                    "album_adapter": PodcastShowAdapter(show),
+                    "music_wrapper": podcast_wrapper,
+                }
+            )
 
         html = render_to_string(
             "app/components/podcast_episode_list.html",
@@ -295,7 +325,9 @@ def podcast_episodes_api(request, show_id):
         episode_data = {
             "id": episode_obj.id,
             "title": episode_obj.title,
-            "published": episode_obj.published.isoformat() if episode_obj.published else None,
+            "published": episode_obj.published.isoformat()
+            if episode_obj.published
+            else None,
             "duration": duration_str,
             "duration_seconds": episode_obj.duration,
             "episode_number": episode_obj.episode_number,
@@ -306,16 +338,18 @@ def podcast_episodes_api(request, show_id):
 
     total_pages = (total_count + page_size - 1) // page_size
 
-    return JsonResponse({
-        "episodes": episode_list,
-        "pagination": {
-            "page": page,
-            "page_size": page_size,
-            "total_count": total_count,
-            "total_pages": total_pages,
-            "has_more": has_more,
-        },
-    })
+    return JsonResponse(
+        {
+            "episodes": episode_list,
+            "pagination": {
+                "page": page,
+                "page_size": page_size,
+                "total_count": total_count,
+                "total_pages": total_pages,
+                "has_more": has_more,
+            },
+        }
+    )
 
 
 @require_POST
@@ -400,7 +434,9 @@ def podcast_mark_all_played(request, show_id):
     )
 
     if created_count == 0:
-        messages.info(request, f"All episodes of {show.title} are already marked as played")
+        messages.info(
+            request, f"All episodes of {show.title} are already marked as played"
+        )
     else:
         episode_word = "episodes" if created_count != 1 else "episode"
         messages.success(
@@ -408,7 +444,13 @@ def podcast_mark_all_played(request, show_id):
             f"Marked {created_count} {episode_word} of {show.title} as played",
         )
 
-    return redirect("media_details", source=show.source, media_type=MediaTypes.PODCAST.value, media_id=show.podcast_uuid, title=show.slug or show.title)
+    return redirect(
+        "media_details",
+        source=show.source,
+        media_type=MediaTypes.PODCAST.value,
+        media_id=show.podcast_uuid,
+        title=show.slug or show.title,
+    )
 
 
 @require_POST
@@ -438,7 +480,9 @@ def podcast_save(request):
             parsed_date = parse_date(end_date_str)
             if parsed_date:
                 end_date = timezone.make_aware(
-                    timezone.datetime.combine(parsed_date, timezone.datetime.min.time()),
+                    timezone.datetime.combine(
+                        parsed_date, timezone.datetime.min.time()
+                    ),
                 )
 
     show = get_object_or_404(PodcastShow, id=show_id)
@@ -456,9 +500,14 @@ def podcast_save(request):
     )
     item = recorded_podcast.item
     if duplicate:
-        messages.info(request, f"Play already recorded for {episode.title if episode else 'episode'}")
+        messages.info(
+            request,
+            f"Play already recorded for {episode.title if episode else 'episode'}",
+        )
     else:
-        messages.success(request, f"Added play for {episode.title if episode else 'episode'}")
+        messages.success(
+            request, f"Added play for {episode.title if episode else 'episode'}"
+        )
 
     if request.headers.get("HX-Request"):
         from django.template.loader import render_to_string
@@ -467,23 +516,33 @@ def podcast_save(request):
         if not episode_obj:
             return HttpResponse("Episode not found", status=404)
 
-        user_podcast = Podcast.objects.filter(
-            user=request.user,
-            show=show,
-            episode=episode_obj,
-        ).order_by("-created_at").first()
+        user_podcast = (
+            Podcast.objects.filter(
+                user=request.user,
+                show=show,
+                episode=episode_obj,
+            )
+            .order_by("-created_at")
+            .first()
+        )
 
-        episode_items_data = [{
-            "media_id": episode_obj.episode_uuid,
-            "source": show.source,
-            "media_type": MediaTypes.PODCAST.value,
-        }]
+        episode_items_data = [
+            {
+                "media_id": episode_obj.episode_uuid,
+                "source": show.source,
+                "media_type": MediaTypes.PODCAST.value,
+            }
+        ]
         enriched_episodes_raw = helpers.enrich_items_with_user_data(
             request,
             episode_items_data,
             user=request.user,
         )
-        enriched = enriched_episodes_raw[0] if enriched_episodes_raw else {"item": {"media_id": episode_obj.episode_uuid}, "media": None}
+        enriched = (
+            enriched_episodes_raw[0]
+            if enriched_episodes_raw
+            else {"item": {"media_id": episode_obj.episode_uuid}, "media": None}
+        )
 
         duration_str = ""
         if episode_obj.duration:
@@ -496,14 +555,20 @@ def podcast_save(request):
 
         all_history = []
         if user_podcast:
-            all_history = list(user_podcast.history.filter(end_date__isnull=False).order_by("-end_date")[:10])
+            all_history = list(
+                user_podcast.history.filter(end_date__isnull=False).order_by(
+                    "-end_date"
+                )[:10]
+            )
 
             class PodcastHistoryWrapper:
                 def __init__(self, podcast, item, history_list):
                     self.item = item
                     self.id = podcast.id
                     self._history_list = history_list
-                    self.in_progress_instance_id = podcast.id if not podcast.end_date else None
+                    self.in_progress_instance_id = (
+                        podcast.id if not podcast.end_date else None
+                    )
 
                 @property
                 def completed_play_count(self):
@@ -535,7 +600,11 @@ def podcast_save(request):
             def __init__(self, episode):
                 self.title = episode.title
                 self.track_number = episode.episode_number
-                self.duration_formatted = self._format_duration(episode.duration) if episode.duration else None
+                self.duration_formatted = (
+                    self._format_duration(episode.duration)
+                    if episode.duration
+                    else None
+                )
                 self.musicbrainz_recording_id = None
                 self.id = episode.id
                 self.published = episode.published

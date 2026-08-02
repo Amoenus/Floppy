@@ -285,7 +285,9 @@ class AppTagsTests(TestCase):
         )
 
     @patch("app.templatetags.app_tags.date")
-    def test_format_date_range_display_prefers_this_month_over_last_7_days(self, mock_date):
+    def test_format_date_range_display_prefers_this_month_over_last_7_days(
+        self, mock_date
+    ):
         """Month-to-date ranges should keep the month label even when they span 7 days."""
         today = timezone.datetime(2026, 5, 7).date()
         mock_date.today.return_value = today

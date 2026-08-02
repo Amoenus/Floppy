@@ -15,26 +15,39 @@ class SeasonCompletedOnCreateTests(TestCase):
     def setUp(self):
         self.user = get_user_model().objects.create_user(username="u", password="x")
         self.tv_item = Item.objects.create(
-            media_id="123", source=Sources.TMDB.value,
-            media_type=MediaTypes.TV.value, title="Show",
+            media_id="123",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Show",
         )
         self.tv = TV.objects.create(
-            item=self.tv_item, user=self.user, status=Status.PLANNING.value,
+            item=self.tv_item,
+            user=self.user,
+            status=Status.PLANNING.value,
         )
         self.season_item = Item.objects.create(
-            media_id="123", source=Sources.TMDB.value,
-            media_type=MediaTypes.SEASON.value, title="Show", season_number=1,
+            media_id="123",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Show",
+            season_number=1,
         )
 
     @patch(METADATA_PATH)
     def test_season_created_completed_creates_episodes(self, mock_meta):
         mock_meta.return_value = {
-            "episodes": [{"episode_number": 1}, {"episode_number": 2}, {"episode_number": 3}],
+            "episodes": [
+                {"episode_number": 1},
+                {"episode_number": 2},
+                {"episode_number": 3},
+            ],
             "image": "s.jpg",
             "max_progress": 3,
         }
         season = Season.objects.create(
-            item=self.season_item, user=self.user, related_tv=self.tv,
+            item=self.season_item,
+            user=self.user,
+            related_tv=self.tv,
             status=Status.COMPLETED.value,
         )
         self.assertEqual(season.episodes.count(), 3)
@@ -42,9 +55,14 @@ class SeasonCompletedOnCreateTests(TestCase):
     @patch(METADATA_PATH)
     def test_season_created_planning_creates_no_episodes(self, mock_meta):
         # Guard against regressions: non-completed create must not fan out.
-        mock_meta.return_value = {"episodes": [{"episode_number": 1}], "max_progress": 1}
+        mock_meta.return_value = {
+            "episodes": [{"episode_number": 1}],
+            "max_progress": 1,
+        }
         season = Season.objects.create(
-            item=self.season_item, user=self.user, related_tv=self.tv,
+            item=self.season_item,
+            user=self.user,
+            related_tv=self.tv,
             status=Status.PLANNING.value,
         )
         self.assertEqual(season.episodes.count(), 0)
@@ -58,7 +76,9 @@ class SeasonCompletedOnCreateTests(TestCase):
             "max_progress": 2,
         }
         season = Season.objects.create(
-            item=self.season_item, user=self.user, related_tv=self.tv,
+            item=self.season_item,
+            user=self.user,
+            related_tv=self.tv,
             status=Status.PLANNING.value,
         )
         self.assertEqual(season.episodes.count(), 0)
@@ -73,8 +93,10 @@ class TVCompletedOnCreateTests(TestCase):
     def setUp(self):
         self.user = get_user_model().objects.create_user(username="u2", password="x")
         self.tv_item = Item.objects.create(
-            media_id="777", source=Sources.TMDB.value,
-            media_type=MediaTypes.TV.value, title="Show",
+            media_id="777",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Show",
         )
 
     @patch(METADATA_PATH)
@@ -82,17 +104,35 @@ class TVCompletedOnCreateTests(TestCase):
         # One dict serves both the tv metadata and the per-season lookups.
         mock_meta.return_value = {
             "max_progress": 6,
-            "related": {"seasons": [
-                {"season_number": 1, "image": "i1.jpg"},
-                {"season_number": 2, "image": "i2.jpg"},
-            ]},
-            "season/1": {"season_number": 1, "image": "i1.jpg",
-                         "episodes": [{"episode_number": 1}, {"episode_number": 2}, {"episode_number": 3}]},
-            "season/2": {"season_number": 2, "image": "i2.jpg",
-                         "episodes": [{"episode_number": 1}, {"episode_number": 2}, {"episode_number": 3}]},
+            "related": {
+                "seasons": [
+                    {"season_number": 1, "image": "i1.jpg"},
+                    {"season_number": 2, "image": "i2.jpg"},
+                ]
+            },
+            "season/1": {
+                "season_number": 1,
+                "image": "i1.jpg",
+                "episodes": [
+                    {"episode_number": 1},
+                    {"episode_number": 2},
+                    {"episode_number": 3},
+                ],
+            },
+            "season/2": {
+                "season_number": 2,
+                "image": "i2.jpg",
+                "episodes": [
+                    {"episode_number": 1},
+                    {"episode_number": 2},
+                    {"episode_number": 3},
+                ],
+            },
         }
         tv = TV.objects.create(
-            item=self.tv_item, user=self.user, status=Status.COMPLETED.value,
+            item=self.tv_item,
+            user=self.user,
+            status=Status.COMPLETED.value,
         )
         self.assertEqual(tv.seasons.filter(status=Status.COMPLETED.value).count(), 2)
         for season in tv.seasons.all():

@@ -120,7 +120,9 @@ class PlexWatchlistProviderTests(TestCase):
 
 class PlexWatchlistSyncServiceTests(TestCase):
     def setUp(self):
-        self.user = get_user_model().objects.create_user(username="watcher", password="pw")
+        self.user = get_user_model().objects.create_user(
+            username="watcher", password="pw"
+        )
         self.account = PlexAccount.objects.create(
             user=self.user,
             plex_token="token",
@@ -159,7 +161,9 @@ class PlexWatchlistSyncServiceTests(TestCase):
 
     @patch("integrations.plex_watchlist.services.get_media_metadata")
     @patch("integrations.plex_watchlist.plex_api.fetch_watchlist")
-    def test_first_sync_creates_planning_media_and_ledger(self, mock_fetch_watchlist, mock_metadata):
+    def test_first_sync_creates_planning_media_and_ledger(
+        self, mock_fetch_watchlist, mock_metadata
+    ):
         mock_fetch_watchlist.return_value = (
             [self._movie_entry(), self._show_entry()],
             2,
@@ -172,17 +176,24 @@ class PlexWatchlistSyncServiceTests(TestCase):
         self.assertEqual(counts["created"], 2)
         self.assertEqual(counts[MediaTypes.MOVIE.value], 1)
         self.assertEqual(counts[MediaTypes.TV.value], 1)
-        self.assertEqual(Movie.objects.get(user=self.user).status, Status.PLANNING.value)
+        self.assertEqual(
+            Movie.objects.get(user=self.user).status, Status.PLANNING.value
+        )
         self.assertEqual(TV.objects.get(user=self.user).status, Status.PLANNING.value)
         self.assertEqual(PlexWatchlistSyncItem.objects.count(), 2)
         self.assertTrue(
-            PlexWatchlistSyncItem.objects.filter(user=self.user, created_by_sync=True, is_active=True).count(),
+            PlexWatchlistSyncItem.objects.filter(
+                user=self.user, created_by_sync=True, is_active=True
+            ).count(),
         )
 
     @patch("integrations.plex_watchlist.services.get_media_metadata")
     @patch("integrations.plex_watchlist.plex_api.fetch_watchlist")
     def test_repeat_sync_is_idempotent(self, mock_fetch_watchlist, mock_metadata):
-        mock_fetch_watchlist.return_value = ([self._movie_entry(), self._show_entry()], 2)
+        mock_fetch_watchlist.return_value = (
+            [self._movie_entry(), self._show_entry()],
+            2,
+        )
         mock_metadata.side_effect = self._metadata_side_effect
 
         service = PlexWatchlistSyncService(self.user, self.account)
@@ -197,7 +208,9 @@ class PlexWatchlistSyncServiceTests(TestCase):
 
     @patch("integrations.plex_watchlist.services.get_media_metadata")
     @patch("integrations.plex_watchlist.plex_api.fetch_watchlist")
-    def test_existing_media_is_linked_without_status_overwrite(self, mock_fetch_watchlist, mock_metadata):
+    def test_existing_media_is_linked_without_status_overwrite(
+        self, mock_fetch_watchlist, mock_metadata
+    ):
         mock_metadata.side_effect = self._metadata_side_effect
         item = Item.objects.create(
             media_id="123",
@@ -224,7 +237,9 @@ class PlexWatchlistSyncServiceTests(TestCase):
 
     @patch("integrations.plex_watchlist.services.get_media_metadata")
     @patch("integrations.plex_watchlist.plex_api.fetch_watchlist")
-    def test_removal_deletes_pristine_synced_media(self, mock_fetch_watchlist, mock_metadata):
+    def test_removal_deletes_pristine_synced_media(
+        self, mock_fetch_watchlist, mock_metadata
+    ):
         mock_fetch_watchlist.side_effect = [
             ([self._movie_entry()], 1),
             ([], 0),
@@ -243,7 +258,9 @@ class PlexWatchlistSyncServiceTests(TestCase):
 
     @patch("integrations.plex_watchlist.services.get_media_metadata")
     @patch("integrations.plex_watchlist.plex_api.fetch_watchlist")
-    def test_removal_preserves_modified_media_and_deactivates_link(self, mock_fetch_watchlist, mock_metadata):
+    def test_removal_preserves_modified_media_and_deactivates_link(
+        self, mock_fetch_watchlist, mock_metadata
+    ):
         mock_fetch_watchlist.side_effect = [
             ([self._movie_entry()], 1),
             ([], 0),
@@ -315,7 +332,9 @@ class PlexWatchlistSyncServiceTests(TestCase):
         self.assertEqual(warnings, "")
         self.assertEqual(counts["created"], 1)
         self.assertEqual(Movie.objects.get(user=self.user).item.media_id, "123")
-        mock_fetch_watchlist_metadata.assert_called_once_with(self.account.plex_token, "rk-movie")
+        mock_fetch_watchlist_metadata.assert_called_once_with(
+            self.account.plex_token, "rk-movie"
+        )
 
     @patch("integrations.plex_watchlist.plex_api.fetch_watchlist_metadata")
     @patch("integrations.plex_watchlist.plex_api.fetch_watchlist")
@@ -342,8 +361,13 @@ class PlexWatchlistSyncServiceTests(TestCase):
         counts, warnings = PlexWatchlistSyncService(self.user, self.account).sync()
 
         self.assertEqual(counts["skipped_missing_ids"], 1)
-        self.assertIn("Could not load Plex watchlist metadata for Movie Title", warnings)
-        self.assertIn("Skipped Plex watchlist entry without resolvable IDs: Movie Title.", warnings)
+        self.assertIn(
+            "Could not load Plex watchlist metadata for Movie Title", warnings
+        )
+        self.assertIn(
+            "Skipped Plex watchlist entry without resolvable IDs: Movie Title.",
+            warnings,
+        )
         self.assertFalse(Movie.objects.filter(user=self.user).exists())
 
 
@@ -388,7 +412,9 @@ class PlexWatchlistViewTests(TestCase):
         self.assertIn('"mode": "watchlist"', task.kwargs)
         self.assertGreaterEqual(
             task.start_time,
-            before_request + timedelta(minutes=WATCHLIST_SYNC_INTERVAL_MINUTES) - timedelta(seconds=5),
+            before_request
+            + timedelta(minutes=WATCHLIST_SYNC_INTERVAL_MINUTES)
+            - timedelta(seconds=5),
         )
 
     def test_disable_watchlist_sync_removes_schedule(self):
@@ -441,7 +467,9 @@ class PlexWatchlistViewTests(TestCase):
         self.assertContains(response, "Watchlist Sync")
 
     @patch("users.views.plex.fetch_account")
-    def test_import_page_hides_disable_action_when_watchlist_sync_disabled(self, mock_fetch_account):
+    def test_import_page_hides_disable_action_when_watchlist_sync_disabled(
+        self, mock_fetch_account
+    ):
         mock_fetch_account.return_value = {"username": "watchview", "id": "acct-1"}
 
         response = self.client.get(reverse("import_data"))

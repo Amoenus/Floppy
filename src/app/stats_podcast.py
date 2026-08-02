@@ -37,6 +37,7 @@ def _get_podcast_history_data(user, start_date, end_date):
         return [], {}
 
     from app.models import Podcast
+
     HistoricalPodcast = apps.get_model("app", "HistoricalPodcast")
 
     podcast_history_records = HistoricalPodcast.objects.filter(
@@ -45,7 +46,9 @@ def _get_podcast_history_data(user, start_date, end_date):
     )
 
     if start_date:
-        podcast_history_records = podcast_history_records.filter(end_date__gte=start_date)
+        podcast_history_records = podcast_history_records.filter(
+            end_date__gte=start_date
+        )
     if end_date:
         podcast_history_records = podcast_history_records.filter(end_date__lte=end_date)
 
@@ -65,7 +68,9 @@ def _get_podcast_history_data(user, start_date, end_date):
     return podcast_history_records, podcasts_lookup
 
 
-def _collect_podcast_play_data(podcast_history_records, podcasts_lookup, start_date, end_date):
+def _collect_podcast_play_data(
+    podcast_history_records, podcasts_lookup, start_date, end_date
+):
     """Collect podcast play datetimes and per-play runtime from history records.
 
     We deduplicate by end_date per podcast entry to avoid counting metadata updates.
@@ -90,7 +95,9 @@ def _collect_podcast_play_data(podcast_history_records, podcasts_lookup, start_d
     )
 
     # Group history records by podcast id and end_date to deduplicate plays
-    plays_by_podcast = defaultdict(dict)  # podcast_id -> end_date -> (history_record, history_date)
+    plays_by_podcast = defaultdict(
+        dict
+    )  # podcast_id -> end_date -> (history_record, history_date)
 
     for history_record in podcast_history_records:
         podcast_id = getattr(history_record, "id", None)
@@ -108,7 +115,9 @@ def _collect_podcast_play_data(podcast_history_records, podcasts_lookup, start_d
             plays_for_podcast[history_end_date] = (history_record, history_date)
         else:
             existing_history_date = plays_for_podcast[history_end_date][1]
-            time_diff_existing = abs((existing_history_date - history_end_date).total_seconds())
+            time_diff_existing = abs(
+                (existing_history_date - history_end_date).total_seconds()
+            )
             time_diff_current = abs((history_date - history_end_date).total_seconds())
 
             if time_diff_current < time_diff_existing and time_diff_current < 86400:
@@ -145,28 +154,32 @@ def _compute_podcast_top_lists(play_details, limit=STATISTICS_TOP_N):
     from app.helpers import minutes_to_hhmm
 
     # Aggregate by show for most_played and most_listened
-    show_stats = defaultdict(lambda: {
-        "minutes": 0,
-        "plays": 0,
-        "title": "",
-        "show": "",
-        "show_id": None,
-        "podcast_uuid": None,
-        "slug": "",
-        "image": "",
-    })
+    show_stats = defaultdict(
+        lambda: {
+            "minutes": 0,
+            "plays": 0,
+            "title": "",
+            "show": "",
+            "show_id": None,
+            "podcast_uuid": None,
+            "slug": "",
+            "image": "",
+        }
+    )
 
     # Aggregate by episode for longest_episodes
-    episode_stats = defaultdict(lambda: {
-        "title": "",
-        "show": "",
-        "show_id": None,
-        "podcast_uuid": None,
-        "slug": "",
-        "episode_id": None,
-        "image": "",
-        "duration_seconds": 0,
-    })
+    episode_stats = defaultdict(
+        lambda: {
+            "title": "",
+            "show": "",
+            "show_id": None,
+            "podcast_uuid": None,
+            "slug": "",
+            "episode_id": None,
+            "image": "",
+            "duration_seconds": 0,
+        }
+    )
 
     for podcast, dt, runtime in play_details:
         # Aggregate by show for most_played and most_listened
@@ -174,7 +187,9 @@ def _compute_podcast_top_lists(play_details, limit=STATISTICS_TOP_N):
             show_key = podcast.show.id
             show_stats[show_key]["show_id"] = show_key
             show_stats[show_key]["show"] = podcast.show.title
-            show_stats[show_key]["title"] = podcast.show.title  # Use show title as display title
+            show_stats[show_key]["title"] = (
+                podcast.show.title
+            )  # Use show title as display title
             # Always set podcast_uuid if available (it should be the same for all podcasts of the same show)
             if podcast.show.podcast_uuid:
                 show_stats[show_key]["podcast_uuid"] = podcast.show.podcast_uuid
@@ -185,7 +200,9 @@ def _compute_podcast_top_lists(play_details, limit=STATISTICS_TOP_N):
             show_key = podcast.id
             show_stats[show_key]["show_id"] = None
             show_stats[show_key]["show"] = "Unknown Show"
-            show_stats[show_key]["title"] = podcast.item.title if podcast.item else "Unknown Show"
+            show_stats[show_key]["title"] = (
+                podcast.item.title if podcast.item else "Unknown Show"
+            )
             show_stats[show_key]["image"] = podcast.item.image if podcast.item else ""
 
         # Aggregate show stats
@@ -197,15 +214,21 @@ def _compute_podcast_top_lists(play_details, limit=STATISTICS_TOP_N):
             episode_key = podcast.episode.id
             episode_stats[episode_key]["episode_id"] = episode_key
             episode_stats[episode_key]["title"] = podcast.episode.title
-            episode_stats[episode_key]["duration_seconds"] = podcast.episode.duration or 0
+            episode_stats[episode_key]["duration_seconds"] = (
+                podcast.episode.duration or 0
+            )
         else:
             # Fallback to podcast.id if no episode link
             episode_key = podcast.id
             episode_stats[episode_key]["episode_id"] = episode_key
-            episode_stats[episode_key]["title"] = podcast.item.title if podcast.item else "Unknown Episode"
+            episode_stats[episode_key]["title"] = (
+                podcast.item.title if podcast.item else "Unknown Episode"
+            )
             # Try to get duration from item
             if podcast.item and podcast.item.runtime_minutes:
-                episode_stats[episode_key]["duration_seconds"] = podcast.item.runtime_minutes * 60
+                episode_stats[episode_key]["duration_seconds"] = (
+                    podcast.item.runtime_minutes * 60
+                )
 
         # Get show info for episode stats
         if podcast.show:
@@ -221,6 +244,7 @@ def _compute_podcast_top_lists(play_details, limit=STATISTICS_TOP_N):
 
     # Ensure podcast_uuid is populated for all shows (look up from show_id if missing)
     from app.models import PodcastShow
+
     for show_stat in show_stats.values():
         if show_stat["show_id"] and not show_stat["podcast_uuid"]:
             try:
@@ -283,7 +307,9 @@ def _compute_podcast_top_lists(play_details, limit=STATISTICS_TOP_N):
     }
 
 
-def get_podcast_consumption_stats(user_media, start_date, end_date, minutes_per_type=None, user=None):
+def get_podcast_consumption_stats(
+    user_media, start_date, end_date, minutes_per_type=None, user=None
+):
     """Return aggregate metrics and chart data for podcast activity.
 
     This is similar to music consumption stats but for podcasts.
@@ -306,11 +332,15 @@ def get_podcast_consumption_stats(user_media, start_date, end_date, minutes_per_
         user = _infer_user_from_user_media(user_media)
 
     if not user:
-        logger.warning("get_podcast_consumption_stats: No user available, returning empty stats")
+        logger.warning(
+            "get_podcast_consumption_stats: No user available, returning empty stats"
+        )
         return {
             "minutes": _compute_metric_breakdown(0, [], start_date, end_date),
             "plays": _compute_metric_breakdown(0, [], start_date, end_date),
-            "charts": _build_media_charts([], config.get_stats_color(MediaTypes.PODCAST.value), "Podcast Plays"),
+            "charts": _build_media_charts(
+                [], config.get_stats_color(MediaTypes.PODCAST.value), "Podcast Plays"
+            ),
             "has_data": False,
             "most_played": [],
             "most_listened": [],
@@ -335,7 +365,9 @@ def get_podcast_consumption_stats(user_media, start_date, end_date, minutes_per_
     )
 
     if minutes_per_type is None:
-        minutes_per_type = calculate_minutes_per_media_type(user_media or {}, start_date, end_date)
+        minutes_per_type = calculate_minutes_per_media_type(
+            user_media or {}, start_date, end_date
+        )
 
     total_minutes = minutes_per_type.get(MediaTypes.PODCAST.value, 0)
     total_plays = len(podcast_datetimes)

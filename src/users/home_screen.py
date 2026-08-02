@@ -73,6 +73,8 @@ def _canonical_music_subview(value, default: str = MUSIC_SUBVIEW_DEFAULT) -> str
     """Normalize a music subview value to a known choice."""
     raw_value = str(value or "").strip().lower()
     return raw_value if raw_value in MUSIC_SUBVIEW_VALUES else default
+
+
 AUTHOR_MEDIA_TYPES = {
     MediaTypes.BOOK.value,
     MediaTypes.MANGA.value,
@@ -125,8 +127,12 @@ HOME_SCREEN_FILTER_KEYS = tuple(
 STATUS_FILTER_VALUES = {"all", *Status.values}
 STATUS_FILTER_ALIASES = {"all": "all"}
 for _status_choice in Status:
-    STATUS_FILTER_ALIASES[str(_status_choice.value).strip().casefold()] = _status_choice.value
-    STATUS_FILTER_ALIASES[str(_status_choice.label).strip().casefold()] = _status_choice.value
+    STATUS_FILTER_ALIASES[str(_status_choice.value).strip().casefold()] = (
+        _status_choice.value
+    )
+    STATUS_FILTER_ALIASES[str(_status_choice.label).strip().casefold()] = (
+        _status_choice.value
+    )
 
 HOME_QUERY_DEFAULT_FILTERS = {
     "status": [Status.IN_PROGRESS.value],
@@ -373,8 +379,15 @@ def get_allowed_sort_choices(media_type: str, row_type: str) -> list[dict]:
         sort_choices.append((MediaSortChoices.TIME_TO_BEAT, "Time to Beat"))
     if media_type == MediaTypes.TV.value:
         sort_choices.append((MediaSortChoices.TIME_LEFT, "Time Left"))
-    if media_type not in HOME_PROGRESS_MEDIA_TYPES and media_type != MediaTypes.SEASON.value:
-        sort_choices = [choice for choice in sort_choices if choice[0] != MediaSortChoices.NEXT_EPISODE_AIR_DATE]
+    if (
+        media_type not in HOME_PROGRESS_MEDIA_TYPES
+        and media_type != MediaTypes.SEASON.value
+    ):
+        sort_choices = [
+            choice
+            for choice in sort_choices
+            if choice[0] != MediaSortChoices.NEXT_EPISODE_AIR_DATE
+        ]
 
     if row_type == HomeScreenRowTypeChoices.LIBRARY_QUERY:
         sort_choices.extend(
@@ -404,7 +417,12 @@ def _media_type_group_label(media_type: str) -> str:
 
 def _default_library_sort(user, media_type: str) -> str:
     requested = getattr(user, "home_sort", HomeSortChoices.TITLE)
-    allowed = {choice["value"] for choice in get_allowed_sort_choices(media_type, HomeScreenRowTypeChoices.LIBRARY_QUERY)}
+    allowed = {
+        choice["value"]
+        for choice in get_allowed_sort_choices(
+            media_type, HomeScreenRowTypeChoices.LIBRARY_QUERY
+        )
+    }
     if requested in allowed:
         return requested
     return MediaSortChoices.TITLE
@@ -580,7 +598,9 @@ def _single_query_default_rows_for_media_type(
     return defaults
 
 
-def _legacy_default_row_variants_for_media_type(user, media_type: str) -> list[list[HomeScreenRow]]:
+def _legacy_default_row_variants_for_media_type(
+    user, media_type: str
+) -> list[list[HomeScreenRow]]:
     """Return historical seeded row layouts that should upgrade in place."""
     return [
         _legacy_default_rows_for_media_type(user, media_type),
@@ -617,7 +637,9 @@ def ensure_home_screen_rows(user) -> list[HomeScreenRow]:
     """Ensure each enabled media type has a default Home row set."""
     enabled_media_types = get_enabled_home_media_types(user)
     rows = list(
-        user.home_screen_rows.select_related("custom_list").order_by("media_type", "position", "id"),
+        user.home_screen_rows.select_related("custom_list").order_by(
+            "media_type", "position", "id"
+        ),
     )
     rows_by_media_type: dict[str, list[HomeScreenRow]] = defaultdict(list)
     for row in rows:
@@ -637,7 +659,9 @@ def ensure_home_screen_rows(user) -> list[HomeScreenRow]:
                 media_type,
                 ignore_direction=ignore_legacy_direction,
             )
-            for legacy_defaults in _legacy_default_row_variants_for_media_type(user, media_type)
+            for legacy_defaults in _legacy_default_row_variants_for_media_type(
+                user, media_type
+            )
         ):
             continue
         desired_defaults = _build_default_rows_for_media_type(user, media_type)
@@ -655,7 +679,9 @@ def ensure_home_screen_rows(user) -> list[HomeScreenRow]:
             if replacement_rows:
                 HomeScreenRow.objects.bulk_create(replacement_rows)
         rows = list(
-            user.home_screen_rows.select_related("custom_list").order_by("media_type", "position", "id"),
+            user.home_screen_rows.select_related("custom_list").order_by(
+                "media_type", "position", "id"
+            ),
         )
 
     existing_media_types = {row.media_type for row in rows}
@@ -673,7 +699,9 @@ def ensure_home_screen_rows(user) -> list[HomeScreenRow]:
             ],
         )
         rows = list(
-            user.home_screen_rows.select_related("custom_list").order_by("media_type", "position", "id"),
+            user.home_screen_rows.select_related("custom_list").order_by(
+                "media_type", "position", "id"
+            ),
         )
     return rows
 
@@ -697,9 +725,7 @@ def build_filter_field_data(
     tags_fingerprint = hashlib.md5(  # noqa: S324 - cache key, not security
         "\x1f".join(precomputed_tags or ()).encode(),
     ).hexdigest()[:12]
-    cache_key = (
-        f"home_filter_fields_v1_{user.id}_{media_type}_{tags_fingerprint}"
-    )
+    cache_key = f"home_filter_fields_v1_{user.id}_{media_type}_{tags_fingerprint}"
     cached = cache.get(cache_key)
     if cached is not None:
         return cached
@@ -766,7 +792,8 @@ def build_filter_field_data(
         {
             "key": "genre",
             "label": "Genre",
-            "options": [{"value": "", "label": "Any"}] + [
+            "options": [{"value": "", "label": "Any"}]
+            + [
                 {"value": value, "label": value}
                 for value in filter_data.get("genres", [])
             ],
@@ -793,19 +820,22 @@ def build_filter_field_data(
         {
             "key": "language",
             "label": "Language",
-            "options": [{"value": "", "label": "Any"}] + filter_data.get("languages", []),
+            "options": [{"value": "", "label": "Any"}]
+            + filter_data.get("languages", []),
             "visible": filter_data.get("show_languages", False),
         },
         {
             "key": "country",
             "label": "Country",
-            "options": [{"value": "", "label": "Any"}] + filter_data.get("countries", []),
+            "options": [{"value": "", "label": "Any"}]
+            + filter_data.get("countries", []),
             "visible": filter_data.get("show_countries", False),
         },
         {
             "key": "platform",
             "label": "Platform",
-            "options": [{"value": "", "label": "Any"}] + filter_data.get("platforms", []),
+            "options": [{"value": "", "label": "Any"}]
+            + filter_data.get("platforms", []),
             "visible": filter_data.get("show_platforms", False),
         },
         {
@@ -981,7 +1011,9 @@ def serialize_settings_sections(user) -> list[dict]:
             {
                 "media_type": media_type,
                 "label": _media_type_group_label(media_type),
-                "icon_svg": str(app_tags.icon(media_type, False, "w-5 h-5 text-slate-300")),
+                "icon_svg": str(
+                    app_tags.icon(media_type, False, "w-5 h-5 text-slate-300")
+                ),
                 "sort_choices": {
                     HomeScreenRowTypeChoices.LIBRARY_QUERY: get_allowed_sort_choices(
                         media_type,
@@ -992,7 +1024,9 @@ def serialize_settings_sections(user) -> list[dict]:
                         HomeScreenRowTypeChoices.CUSTOM_LIST,
                     ),
                 },
-                "filter_fields": build_filter_field_data(user, media_type, precomputed_tags=tag_names),
+                "filter_fields": build_filter_field_data(
+                    user, media_type, precomputed_tags=tag_names
+                ),
                 "rows": [
                     {
                         "id": row.id,
@@ -1000,7 +1034,9 @@ def serialize_settings_sections(user) -> list[dict]:
                         "enabled": row.enabled,
                         "row_type": row.row_type,
                         "custom_list_id": row.custom_list_id,
-                        "custom_list_name": row.custom_list.name if row.custom_list_id else "",
+                        "custom_list_name": row.custom_list.name
+                        if row.custom_list_id
+                        else "",
                         "sort_by": row.sort_by,
                         "direction": row.direction,
                         "filters": _normalized_filter_payload(row.filters, media_type),
@@ -1042,7 +1078,9 @@ def row_summary(row: HomeScreenRow, user) -> str:
         for choice in get_allowed_sort_choices(row.media_type, row.row_type)
     }
     sort_label = sort_choices.get(row.sort_by, row.sort_by.replace("_", " ").title())
-    direction_label = "Ascending" if row.direction == DirectionChoices.ASC else "Descending"
+    direction_label = (
+        "Ascending" if row.direction == DirectionChoices.ASC else "Descending"
+    )
     return f"Sorted by {sort_label} • {direction_label}"
 
 
@@ -1155,7 +1193,9 @@ def _normalized_filter_payload(filters: dict | None, media_type: str) -> dict:
     return payload
 
 
-def _row_payload_to_model(user, media_type: str, row_payload: dict, position: int) -> HomeScreenRow:
+def _row_payload_to_model(
+    user, media_type: str, row_payload: dict, position: int
+) -> HomeScreenRow:
     row_type = str(row_payload.get("row_type") or "").strip()
     if row_type not in HomeScreenRowTypeChoices.values:
         raise HomeScreenValidationError(f"Unsupported row type for {media_type}.")
@@ -1170,12 +1210,12 @@ def _row_payload_to_model(user, media_type: str, row_payload: dict, position: in
         except (TypeError, ValueError):
             custom_list_id = 0
         custom_list = (
-            CustomList.objects.get_user_lists(user)
-            .filter(id=custom_list_id)
-            .first()
+            CustomList.objects.get_user_lists(user).filter(id=custom_list_id).first()
         )
         if not custom_list:
-            raise HomeScreenValidationError(f"Choose an accessible list for {media_type}.")
+            raise HomeScreenValidationError(
+                f"Choose an accessible list for {media_type}."
+            )
         sort_choices = get_allowed_sort_choices(media_type, row_type)
     elif row_type == HomeScreenRowTypeChoices.RECENTLY_UNRATED:
         sort_choices = []
@@ -1223,22 +1263,34 @@ def validate_library_row_filters(raw_filters: dict | None, media_type: str) -> d
         supported = supported | {"tag_mode"}
     for key, value in raw_filters.items():
         if key not in HOME_SCREEN_FILTER_KEYS:
-            raise HomeScreenValidationError(f"Unsupported filter '{key}' for {media_type}.")
+            raise HomeScreenValidationError(
+                f"Unsupported filter '{key}' for {media_type}."
+            )
         if key not in supported and str(value or "").strip():
             if key == "progress" and _canonical_progress_filter(value, "all") == "all":
                 continue
-            raise HomeScreenValidationError(f"Filter '{key}' is not available for {media_type}.")
+            raise HomeScreenValidationError(
+                f"Filter '{key}' is not available for {media_type}."
+            )
 
     normalized = _normalized_filter_payload(raw_filters, media_type)
     if "status" in raw_filters:
         for raw_status in _as_list(raw_filters.get("status")):
             canonical_status = _canonical_status_filter(raw_status, None)
             if canonical_status not in STATUS_FILTER_VALUES:
-                raise HomeScreenValidationError(f"Unsupported status filter for {media_type}.")
-    raw_rating = str(raw_filters.get("rating", normalized["rating"]) or "").strip().lower()
+                raise HomeScreenValidationError(
+                    f"Unsupported status filter for {media_type}."
+                )
+    raw_rating = (
+        str(raw_filters.get("rating", normalized["rating"]) or "").strip().lower()
+    )
     if raw_rating and raw_rating not in {"all", "rated", "not_rated"}:
         raise HomeScreenValidationError(f"Unsupported rating filter for {media_type}.")
-    raw_progress_value = str(raw_filters.get("progress", normalized["progress"]) or "").strip().casefold()
+    raw_progress_value = (
+        str(raw_filters.get("progress", normalized["progress"]) or "")
+        .strip()
+        .casefold()
+    )
     if raw_progress_value and raw_progress_value not in {
         "all",
         "caught up",
@@ -1246,20 +1298,38 @@ def validate_library_row_filters(raw_filters: dict | None, media_type: str) -> d
         "not caught up",
         "not_caught_up",
     }:
-        raise HomeScreenValidationError(f"Unsupported progress filter for {media_type}.")
+        raise HomeScreenValidationError(
+            f"Unsupported progress filter for {media_type}."
+        )
     raw_progress = _canonical_progress_filter(raw_progress_value, None)
-    if raw_progress and raw_progress not in {"all"} and media_type not in HOME_PROGRESS_MEDIA_TYPES:
-        raise HomeScreenValidationError(f"Filter 'progress' is not available for {media_type}.")
-    raw_collection = str(raw_filters.get("collection", normalized["collection"]) or "").strip().lower()
+    if (
+        raw_progress
+        and raw_progress not in {"all"}
+        and media_type not in HOME_PROGRESS_MEDIA_TYPES
+    ):
+        raise HomeScreenValidationError(
+            f"Filter 'progress' is not available for {media_type}."
+        )
+    raw_collection = (
+        str(raw_filters.get("collection", normalized["collection"]) or "")
+        .strip()
+        .lower()
+    )
     if raw_collection and raw_collection not in {"all", "collected", "not_collected"}:
-        raise HomeScreenValidationError(f"Unsupported collection filter for {media_type}.")
-    raw_release = str(raw_filters.get("release", normalized["release"]) or "").strip().lower()
+        raise HomeScreenValidationError(
+            f"Unsupported collection filter for {media_type}."
+        )
+    raw_release = (
+        str(raw_filters.get("release", normalized["release"]) or "").strip().lower()
+    )
     if raw_release and raw_release not in {"all", "released", "not_released"}:
         raise HomeScreenValidationError(f"Unsupported release filter for {media_type}.")
     raw_year = str(raw_filters.get("year", normalized["year"]) or "").strip().lower()
     if raw_year and raw_year != "unknown" and not raw_year.isdigit():
         raise HomeScreenValidationError(f"Unsupported year filter for {media_type}.")
-    raw_source = str(raw_filters.get("source", normalized["source"]) or "").strip().lower()
+    raw_source = (
+        str(raw_filters.get("source", normalized["source"]) or "").strip().lower()
+    )
     if raw_source and raw_source not in Sources.values:
         raise HomeScreenValidationError(f"Unsupported source filter for {media_type}.")
     raw_subview = str(raw_filters.get("subview", "") or "").strip().lower()
@@ -1273,7 +1343,9 @@ def save_home_screen_configuration(user, raw_payload: str) -> None:
     try:
         parsed_payload = json.loads(raw_payload or "[]")
     except (TypeError, ValueError) as exc:
-        raise HomeScreenValidationError("Home Screen settings payload is invalid JSON.") from exc
+        raise HomeScreenValidationError(
+            "Home Screen settings payload is invalid JSON."
+        ) from exc
 
     if not isinstance(parsed_payload, list):
         raise HomeScreenValidationError("Home Screen settings payload must be a list.")
@@ -1292,11 +1364,15 @@ def save_home_screen_configuration(user, raw_payload: str) -> None:
         media_type_order.append(media_type)
         rows = section.get("rows")
         if not isinstance(rows, list):
-            raise HomeScreenValidationError(f"Rows payload for {media_type} must be a list.")
+            raise HomeScreenValidationError(
+                f"Rows payload for {media_type} must be a list."
+            )
 
         for index, row_payload in enumerate(rows):
             if not isinstance(row_payload, dict):
-                raise HomeScreenValidationError(f"Row {index + 1} for {media_type} is invalid.")
+                raise HomeScreenValidationError(
+                    f"Row {index + 1} for {media_type} is invalid."
+                )
             model_row = _row_payload_to_model(user, media_type, row_payload, index)
             if model_row.row_type == HomeScreenRowTypeChoices.RECENTLY_UNRATED:
                 if media_type in seen_recent_rows:
@@ -1307,7 +1383,9 @@ def save_home_screen_configuration(user, raw_payload: str) -> None:
             replacement_rows.append(model_row)
 
     with transaction.atomic():
-        HomeScreenRow.objects.filter(user=user, media_type__in=allowed_media_types).delete()
+        HomeScreenRow.objects.filter(
+            user=user, media_type__in=allowed_media_types
+        ).delete()
         HomeScreenRow.objects.bulk_create(replacement_rows)
         user.home_screen_media_type_order = media_type_order
         user.save(update_fields=["home_screen_media_type_order"])
@@ -1340,7 +1418,8 @@ def _annotate_home_card_images(media_items):
     season_items = [
         media
         for media in media_items
-        if getattr(getattr(media, "item", None), "media_type", None) == MediaTypes.SEASON.value
+        if getattr(getattr(media, "item", None), "media_type", None)
+        == MediaTypes.SEASON.value
     ]
     if season_items:
         BasicMedia.objects._fix_missing_season_images(season_items)
@@ -1366,7 +1445,9 @@ def _music_shell_item(media_id: str, title: str, image: str | None) -> Item:
     return item
 
 
-def _music_shell_items_bulk(specs: list[tuple[str, str, str | None]]) -> dict[str, Item]:
+def _music_shell_items_bulk(
+    specs: list[tuple[str, str, str | None]],
+) -> dict[str, Item]:
     """Batch version of _music_shell_item — fetches/creates all shell items in 1-3 queries."""
     if not specs:
         return {}
@@ -1427,8 +1508,8 @@ class _MusicTrackerAdapter:
         self.start_date = getattr(tracker, "start_date", None)
         self.end_date = getattr(tracker, "end_date", None)
         self.created_at = getattr(tracker, "created_at", None)
-        self.last_played_at = (
-            getattr(tracker, "end_date", None) or getattr(tracker, "created_at", None)
+        self.last_played_at = getattr(tracker, "end_date", None) or getattr(
+            tracker, "created_at", None
         )
         self.title = item.title
 
@@ -1460,17 +1541,22 @@ def _apply_music_tracker_rating_filter(trackers, rating_filter: str):
     return trackers
 
 
-def _build_album_home_entries(user, filters: dict, sort_by: str, direction: str) -> list[HomeRowEntry]:
+def _build_album_home_entries(
+    user, filters: dict, sort_by: str, direction: str
+) -> list[HomeRowEntry]:
     """Build Home entries from the user's tracked albums (AlbumTracker)."""
     from app.models import AlbumTracker  # noqa: PLC0415
 
     status_filter = filters.get("status") or []
     trackers = AlbumTracker.objects.filter(user=user).select_related(
-        "album", "album__artist",
+        "album",
+        "album__artist",
     )
     if status_filter:
         trackers = trackers.filter(status__in=status_filter)
-    trackers = list(_apply_music_tracker_rating_filter(trackers, filters.get("rating", "all")))
+    trackers = list(
+        _apply_music_tracker_rating_filter(trackers, filters.get("rating", "all"))
+    )
 
     specs = [
         (f"album_{t.album.id}", t.album.title, t.album.image)
@@ -1497,7 +1583,9 @@ def _build_album_home_entries(user, filters: dict, sort_by: str, direction: str)
     return sort_home_entries(entries, sort_by, direction)
 
 
-def _build_artist_home_entries(user, filters: dict, sort_by: str, direction: str) -> list[HomeRowEntry]:
+def _build_artist_home_entries(
+    user, filters: dict, sort_by: str, direction: str
+) -> list[HomeRowEntry]:
     """Build Home entries from the user's tracked artists (ArtistTracker)."""
     from app.models import ArtistTracker  # noqa: PLC0415
 
@@ -1510,7 +1598,9 @@ def _build_artist_home_entries(user, filters: dict, sort_by: str, direction: str
     )
     if status_filter:
         trackers = trackers.filter(status__in=status_filter)
-    trackers = list(_apply_music_tracker_rating_filter(trackers, filters.get("rating", "all")))
+    trackers = list(
+        _apply_music_tracker_rating_filter(trackers, filters.get("rating", "all"))
+    )
 
     specs = [
         (f"artist_{t.artist.id}", t.artist.name, getattr(t.artist, "image", None))
@@ -1551,8 +1641,13 @@ def _build_recent_music_album_entries(media_items: list[object]) -> list[HomeRow
         albums_by_id[album_id] = album
         play_count = getattr(track, "repeats", None) or 1
         album_play_counts[album_id] += play_count
-        last_played = getattr(track, "last_played_at", None) or getattr(track, "created_at", None)
-        if album_id not in album_last_played or last_played > album_last_played[album_id]:
+        last_played = getattr(track, "last_played_at", None) or getattr(
+            track, "created_at", None
+        )
+        if (
+            album_id not in album_last_played
+            or last_played > album_last_played[album_id]
+        ):
             album_last_played[album_id] = last_played
             album_primary_track[album_id] = track
 
@@ -1588,8 +1683,10 @@ def _build_recent_music_album_entries(media_items: list[object]) -> list[HomeRow
         ]
     ]
     entries.sort(
-        key=lambda entry: getattr(entry.media, "last_played_at", None)
-        or getattr(entry.media, "created_at", None),
+        key=lambda entry: (
+            getattr(entry.media, "last_played_at", None)
+            or getattr(entry.media, "created_at", None)
+        ),
         reverse=True,
     )
     return entries
@@ -1624,7 +1721,9 @@ def _media_lookup_for_items(
             queryset = queryset.select_related("show", "episode")
         if actual_media_type == MediaTypes.MUSIC.value:
             queryset = queryset.select_related("album")
-        queryset = BasicMedia.objects._apply_prefetch_related(queryset, actual_media_type)
+        queryset = BasicMedia.objects._apply_prefetch_related(
+            queryset, actual_media_type
+        )
         media_entries = list(queryset)
 
         grouped_entries: dict[int, list[object]] = defaultdict(list)
@@ -1634,21 +1733,29 @@ def _media_lookup_for_items(
         candidate_entries = []
         for item_id, entries in grouped_entries.items():
             if actual_media_type == MediaTypes.PODCAST.value:
-                entries = sorted(entries, key=lambda entry: entry.created_at, reverse=True)
+                entries = sorted(
+                    entries, key=lambda entry: entry.created_at, reverse=True
+                )
             else:
-                entries = sorted(entries, key=lambda entry: entry.created_at, reverse=True)
+                entries = sorted(
+                    entries, key=lambda entry: entry.created_at, reverse=True
+                )
             primary_entry = entries[0]
             if actual_media_type != MediaTypes.PODCAST.value and len(entries) > 1:
                 BasicMedia.objects._aggregate_item_data(primary_entry, entries)
             candidate_entries.append(primary_entry)
 
         if candidate_entries:
-            BasicMedia.objects.annotate_max_progress(candidate_entries, actual_media_type)
+            BasicMedia.objects.annotate_max_progress(
+                candidate_entries, actual_media_type
+            )
             if actual_media_type == MediaTypes.SEASON.value:
                 for primary_entry in candidate_entries:
                     if len(grouped_entries.get(primary_entry.item_id, [])) != 1:
                         continue
-                    effective_status = primary_entry.derived_status_from_episode_progress()
+                    effective_status = (
+                        primary_entry.derived_status_from_episode_progress()
+                    )
                     if (
                         effective_status == Status.COMPLETED.value
                         and primary_entry.status != Status.COMPLETED.value
@@ -1661,11 +1768,15 @@ def _media_lookup_for_items(
             _annotate_home_card_images(candidate_entries)
 
             for primary_entry in candidate_entries:
-                latest_status = getattr(primary_entry, "aggregated_status", None) or getattr(primary_entry, "status", None)
+                latest_status = getattr(
+                    primary_entry, "aggregated_status", None
+                ) or getattr(primary_entry, "status", None)
                 if status_filter and latest_status not in status_filter:
                     continue
                 if actual_media_type == MediaTypes.PODCAST.value:
-                    primary_entry.use_podcast_show = bool(getattr(primary_entry, "show", None))
+                    primary_entry.use_podcast_show = bool(
+                        getattr(primary_entry, "show", None)
+                    )
                 lookup[primary_entry.item_id] = primary_entry
 
     return lookup
@@ -1751,7 +1862,9 @@ def _entry_start_timestamp(entry: HomeRowEntry):
     media = _entry_media(entry)
     if not media:
         return None
-    candidate = getattr(media, "aggregated_start_date", None) or getattr(media, "start_date", None)
+    candidate = getattr(media, "aggregated_start_date", None) or getattr(
+        media, "start_date", None
+    )
     dt_value = _coerce_datetime(candidate)
     return dt_value.timestamp() if dt_value else None
 
@@ -1760,7 +1873,9 @@ def _entry_end_timestamp(entry: HomeRowEntry):
     media = _entry_media(entry)
     if not media:
         return None
-    candidate = getattr(media, "aggregated_end_date", None) or getattr(media, "end_date", None)
+    candidate = getattr(media, "aggregated_end_date", None) or getattr(
+        media, "end_date", None
+    )
     dt_value = _coerce_datetime(candidate)
     return dt_value.timestamp() if dt_value else None
 
@@ -1776,7 +1891,9 @@ def _entry_date_added_timestamp(entry: HomeRowEntry):
 def _entry_release_date(item):
     if not item:
         return None
-    return getattr(item, "release_datetime", None) or getattr(item, "release_date", None)
+    return getattr(item, "release_datetime", None) or getattr(
+        item, "release_date", None
+    )
 
 
 def _entry_release_timestamp(entry: HomeRowEntry):
@@ -1810,32 +1927,50 @@ def _is_caught_up_media(media) -> bool:
     return is_caught_up_media(media)
 
 
-def _apply_progress_filter(entries: list[HomeRowEntry], media_type: str, progress_filter: str) -> list[HomeRowEntry]:
+def _apply_progress_filter(
+    entries: list[HomeRowEntry], media_type: str, progress_filter: str
+) -> list[HomeRowEntry]:
     normalized_progress = _canonical_progress_filter(progress_filter, "all")
     if normalized_progress == "all" or media_type not in HOME_PROGRESS_MEDIA_TYPES:
         return entries
 
     media_objects = [entry.media for entry in entries if entry.media]
-    if media_objects and any(getattr(media, "max_progress", None) is None for media in media_objects):
+    if media_objects and any(
+        getattr(media, "max_progress", None) is None for media in media_objects
+    ):
         BasicMedia.objects.annotate_max_progress(media_objects, media_type)
 
     if normalized_progress == "caught_up":
-        return [entry for entry in entries if entry.media and _is_caught_up_media(entry.media)]
+        return [
+            entry
+            for entry in entries
+            if entry.media and _is_caught_up_media(entry.media)
+        ]
     if normalized_progress == "not_caught_up":
-        return [entry for entry in entries if entry.media and not _is_caught_up_media(entry.media)]
+        return [
+            entry
+            for entry in entries
+            if entry.media and not _is_caught_up_media(entry.media)
+        ]
     return entries
 
 
-def _sort_numeric(entries: list[HomeRowEntry], value_fn, direction: str) -> list[HomeRowEntry]:
+def _sort_numeric(
+    entries: list[HomeRowEntry], value_fn, direction: str
+) -> list[HomeRowEntry]:
     descending = direction == DirectionChoices.DESC
     with_value = [e for e in entries if value_fn(e) is not None]
     without_value = [e for e in entries if value_fn(e) is None]
     with_value.sort(key=lambda entry: value_fn(entry), reverse=descending)
-    without_value.sort(key=lambda entry: _entry_title(entry).lower(), reverse=descending)
+    without_value.sort(
+        key=lambda entry: _entry_title(entry).lower(), reverse=descending
+    )
     return with_value + without_value
 
 
-def _sort_string(entries: list[HomeRowEntry], value_fn, direction: str) -> list[HomeRowEntry]:
+def _sort_string(
+    entries: list[HomeRowEntry], value_fn, direction: str
+) -> list[HomeRowEntry]:
     with_value = []
     without_value = []
     for entry in entries:
@@ -1855,7 +1990,9 @@ def _sort_string(entries: list[HomeRowEntry], value_fn, direction: str) -> list[
     return with_value + without_value
 
 
-def sort_home_entries(entries: list[HomeRowEntry], sort_by: str, direction: str) -> list[HomeRowEntry]:
+def sort_home_entries(
+    entries: list[HomeRowEntry], sort_by: str, direction: str
+) -> list[HomeRowEntry]:
     """Sort Home row wrappers with graceful handling for list rows lacking media."""
     media_entries = [entry.media for entry in entries if entry.media]
     if sort_by == HomeSortChoices.UPCOMING and media_entries:
@@ -1895,6 +2032,7 @@ def sort_home_entries(entries: list[HomeRowEntry], sort_by: str, direction: str)
     if sort_by == HomeSortChoices.RECENT:
         return _sort_numeric(entries, _entry_recent_timestamp, direction)
     if sort_by == HomeSortChoices.COMPLETION:
+
         def completion_value(entry):
             media = _entry_media(entry)
             progress = _entry_progress(entry)
@@ -1905,6 +2043,7 @@ def sort_home_entries(entries: list[HomeRowEntry], sort_by: str, direction: str)
 
         return _sort_numeric(entries, completion_value, direction)
     if sort_by == HomeSortChoices.EPISODES_LEFT:
+
         def episodes_left(entry):
             media = _entry_media(entry)
             if not media:
@@ -1919,35 +2058,79 @@ def sort_home_entries(entries: list[HomeRowEntry], sort_by: str, direction: str)
     if sort_by == MediaSortChoices.SCORE:
         return _sort_numeric(entries, _entry_score, direction)
     if sort_by == MediaSortChoices.CRITIC_RATING:
-        return _sort_numeric(entries, lambda entry: _coerce_numeric(getattr(entry.item, "provider_rating", None)), direction)
+        return _sort_numeric(
+            entries,
+            lambda entry: _coerce_numeric(getattr(entry.item, "provider_rating", None)),
+            direction,
+        )
     if sort_by == MediaSortChoices.TITLE:
-        return sorted(entries, key=lambda entry: _entry_title(entry).lower(), reverse=direction == DirectionChoices.DESC)
+        return sorted(
+            entries,
+            key=lambda entry: _entry_title(entry).lower(),
+            reverse=direction == DirectionChoices.DESC,
+        )
     if sort_by == MediaSortChoices.AUTHOR:
-        return _sort_string(entries, lambda entry: _entry_authors(entry)[0] if _entry_authors(entry) else "", direction)
+        return _sort_string(
+            entries,
+            lambda entry: _entry_authors(entry)[0] if _entry_authors(entry) else "",
+            direction,
+        )
     if sort_by == MediaSortChoices.POPULARITY:
         return _sort_numeric(
             entries,
-            lambda entry: _coerce_numeric(getattr(entry.item, "provider_popularity", None))
-            if getattr(entry.item, "provider_popularity", None) is not None
-            else (
-                None
-                if getattr(entry.item, "trakt_popularity_rank", None) is None
-                else -float(getattr(entry.item, "trakt_popularity_rank"))
+            lambda entry: (
+                _coerce_numeric(getattr(entry.item, "provider_popularity", None))
+                if getattr(entry.item, "provider_popularity", None) is not None
+                else (
+                    None
+                    if getattr(entry.item, "trakt_popularity_rank", None) is None
+                    else -float(getattr(entry.item, "trakt_popularity_rank"))
+                )
             ),
             direction,
         )
     if sort_by == MediaSortChoices.PROGRESS:
         return _sort_numeric(entries, _entry_progress, direction)
     if sort_by == MediaSortChoices.RUNTIME:
-        prefill_episode_runtime_index([_entry_media(entry) for entry in entries if _entry_media(entry) is not None])
-        return _sort_numeric(entries, lambda entry: _coerce_numeric(getattr(_entry_media(entry), "total_runtime_minutes", None)), direction)
+        prefill_episode_runtime_index(
+            [
+                _entry_media(entry)
+                for entry in entries
+                if _entry_media(entry) is not None
+            ]
+        )
+        return _sort_numeric(
+            entries,
+            lambda entry: _coerce_numeric(
+                getattr(_entry_media(entry), "total_runtime_minutes", None)
+            ),
+            direction,
+        )
     if sort_by == MediaSortChoices.TIME_TO_BEAT:
-        return _sort_numeric(entries, lambda entry: _coerce_numeric(getattr(entry.item, "game_time_to_beat_minutes", None)), direction)
+        return _sort_numeric(
+            entries,
+            lambda entry: _coerce_numeric(
+                getattr(entry.item, "game_time_to_beat_minutes", None)
+            ),
+            direction,
+        )
     if sort_by == MediaSortChoices.PLAYS:
         return _sort_numeric(entries, _entry_progress, direction)
     if sort_by == MediaSortChoices.TIME_WATCHED:
-        prefill_episode_runtime_index([_entry_media(entry) for entry in entries if _entry_media(entry) is not None])
-        return _sort_numeric(entries, lambda entry: _coerce_numeric(getattr(_entry_media(entry), "time_watched_minutes", None)), direction)
+        prefill_episode_runtime_index(
+            [
+                _entry_media(entry)
+                for entry in entries
+                if _entry_media(entry) is not None
+            ]
+        )
+        return _sort_numeric(
+            entries,
+            lambda entry: _coerce_numeric(
+                getattr(_entry_media(entry), "time_watched_minutes", None)
+            ),
+            direction,
+        )
     if sort_by == MediaSortChoices.RELEASE_DATE:
         return _sort_numeric(entries, _entry_release_timestamp, direction)
     if sort_by == MediaSortChoices.DATE_ADDED:
@@ -1957,6 +2140,7 @@ def sort_home_entries(entries: list[HomeRowEntry], sort_by: str, direction: str)
     if sort_by == MediaSortChoices.END_DATE:
         return _sort_numeric(entries, _entry_end_timestamp, direction)
     if sort_by == MediaSortChoices.TIME_LEFT:
+
         def time_left(entry):
             media = _entry_media(entry)
             if not media:
@@ -1968,7 +2152,11 @@ def sort_home_entries(entries: list[HomeRowEntry], sort_by: str, direction: str)
             return max_progress - progress
 
         return _sort_numeric(entries, time_left, direction)
-    return sorted(entries, key=lambda entry: _entry_title(entry).lower(), reverse=direction == DirectionChoices.DESC)
+    return sorted(
+        entries,
+        key=lambda entry: _entry_title(entry).lower(),
+        reverse=direction == DirectionChoices.DESC,
+    )
 
 
 def _library_query_entries(user, row: HomeScreenRow) -> list[HomeRowEntry]:
@@ -1977,11 +2165,17 @@ def _library_query_entries(user, row: HomeScreenRow) -> list[HomeRowEntry]:
         subview = _canonical_music_subview(normalized_filters.get("subview"))
         if subview == MUSIC_SUBVIEW_ALBUMS:
             return _build_album_home_entries(
-                user, normalized_filters, row.sort_by, row.direction,
+                user,
+                normalized_filters,
+                row.sort_by,
+                row.direction,
             )
         if subview == MUSIC_SUBVIEW_ARTISTS:
             return _build_artist_home_entries(
-                user, normalized_filters, row.sort_by, row.direction,
+                user,
+                normalized_filters,
+                row.sort_by,
+                row.direction,
             )
         # MUSIC_SUBVIEW_TRACKS falls through to the standard Music/Item query below.
     status_filter = normalized_filters.get("status") or []
@@ -2007,7 +2201,9 @@ def _library_query_entries(user, row: HomeScreenRow) -> list[HomeRowEntry]:
         HomeRowEntry(
             item=item,
             media=media_lookup.get(item.id),
-            use_podcast_show=bool(getattr(media_lookup.get(item.id), "use_podcast_show", False)),
+            use_podcast_show=bool(
+                getattr(media_lookup.get(item.id), "use_podcast_show", False)
+            ),
             podcast_show=getattr(media_lookup.get(item.id), "show", None),
             show_progress_controls=media_lookup.get(item.id) is not None,
             subtitle_override=_entry_release_date(item)
@@ -2019,7 +2215,9 @@ def _library_query_entries(user, row: HomeScreenRow) -> list[HomeRowEntry]:
     ]
     if status_filter:
         entries = [entry for entry in entries if entry.media is not None]
-    entries = _apply_progress_filter(entries, row.media_type, normalized_filters.get("progress", "all"))
+    entries = _apply_progress_filter(
+        entries, row.media_type, normalized_filters.get("progress", "all")
+    )
     return sort_home_entries(entries, row.sort_by, row.direction)
 
 
@@ -2041,7 +2239,9 @@ def _custom_list_entries(user, row: HomeScreenRow) -> list[HomeRowEntry]:
             .order_by("customlistitem__date_added", "id"),
         )
 
-    items = [item for item in items if _item_matches_home_media_type(item, row.media_type)]
+    items = [
+        item for item in items if _item_matches_home_media_type(item, row.media_type)
+    ]
     if not items:
         return []
 
@@ -2050,7 +2250,9 @@ def _custom_list_entries(user, row: HomeScreenRow) -> list[HomeRowEntry]:
         HomeRowEntry(
             item=item,
             media=media_lookup.get(item.id),
-            use_podcast_show=bool(getattr(media_lookup.get(item.id), "use_podcast_show", False)),
+            use_podcast_show=bool(
+                getattr(media_lookup.get(item.id), "use_podcast_show", False)
+            ),
             podcast_show=getattr(media_lookup.get(item.id), "show", None),
             show_progress_controls=media_lookup.get(item.id) is not None,
         )
@@ -2112,7 +2314,9 @@ def _recently_unrated_entries(user, row: HomeScreenRow) -> list[HomeRowEntry]:
         return sort_home_entries(entries, row.sort_by, row.direction)
     media_items = [
         media
-        for media in BasicMedia.objects.get_recently_unrated(user, days=RECENTLY_UNRATED_DAYS)
+        for media in BasicMedia.objects.get_recently_unrated(
+            user, days=RECENTLY_UNRATED_DAYS
+        )
         if _item_matches_home_media_type(media.item, row.media_type)
     ]
     if row.media_type == MediaTypes.MUSIC.value:
@@ -2205,7 +2409,9 @@ def _build_row_section(
     title_main, title_detail = home_row_header_title_parts(row, user)
 
     def _entry_missing_cover(entry):
-        if getattr(entry, "use_podcast_show", False) and getattr(entry, "podcast_show", None):
+        if getattr(entry, "use_podcast_show", False) and getattr(
+            entry, "podcast_show", None
+        ):
             image = entry.podcast_show.image
         else:
             image = entry.item.image

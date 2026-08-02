@@ -382,9 +382,6 @@ from users.models import (
 logger = logging.getLogger(__name__)
 
 
-
-
-
 def home(request):
     """Home page with media items in progress."""
     try:
@@ -438,7 +435,9 @@ def home(request):
             "user": request.user,
             "home_groups": home_groups,
             "items_limit": items_limit,
-            "active_playback_card": live_playback.build_home_playback_card(request.user),
+            "active_playback_card": live_playback.build_home_playback_card(
+                request.user
+            ),
             "MediaTypes": MediaTypes,
             "IMG_NONE": settings.IMG_NONE,
             "defer_remaining_groups": defer_remaining_groups and bool(home_groups),
@@ -596,12 +595,7 @@ def home_rows_artwork_refresh(request):
         only_row_ids=row_ids,
         refresh_row_cache=True,
     )
-    rows = [
-        r
-        for group in home_groups
-        for r in group["rows"]
-        if r["row_id"] in row_ids
-    ]
+    rows = [r for group in home_groups for r in group["rows"] if r["row_id"] in row_ids]
 
     if any(row.get("poll_for_covers") for row in rows):
         _queue_missing_cover_prefetch(request.user)
@@ -711,9 +705,13 @@ def active_playback_fragment(request):
     card = live_playback.build_home_playback_card(request.user)
     if not card:
         return HttpResponse("")
-    return render(request, "app/components/active_playback_card.html", {
-        "active_playback_card": card,
-    })
+    return render(
+        request,
+        "app/components/active_playback_card.html",
+        {
+            "active_playback_card": card,
+        },
+    )
 
 
 @require_POST
@@ -749,7 +747,15 @@ def progress_edit(request, media_type, instance_id):
 
 @never_cache
 @require_GET
-def episode_details(request, source, media_id, title, season_number, episode_number, parent_media_type=None):
+def episode_details(
+    request,
+    source,
+    media_id,
+    title,
+    season_number,
+    episode_number,
+    parent_media_type=None,
+):
     """Return the details page for a single episode."""
     is_anonymous = not request.user.is_authenticated
     public_view = is_anonymous
@@ -783,7 +789,10 @@ def episode_details(request, source, media_id, title, season_number, episode_num
     if season_metadata.get("episodes"):
         if source == Sources.MANUAL.value:
             from app.providers import manual
-            processed_episodes = manual.process_episodes(season_metadata, episodes_in_db)
+
+            processed_episodes = manual.process_episodes(
+                season_metadata, episodes_in_db
+            )
         else:
             processed_episodes = tmdb.process_episodes(season_metadata, episodes_in_db)
 
@@ -812,7 +821,9 @@ def episode_details(request, source, media_id, title, season_number, episode_num
         episode_data["item"] = episode_item
 
     season_url = reverse(
-        "anime_season_details" if parent_media_type == MediaTypes.ANIME.value else "season_details",
+        "anime_season_details"
+        if parent_media_type == MediaTypes.ANIME.value
+        else "season_details",
         kwargs={
             "source": source,
             "media_id": media_id,
@@ -860,10 +871,11 @@ def episode_details(request, source, media_id, title, season_number, episode_num
         "season_number": season_number,
         "episode_number": episode_number,
         "show_title": tv_with_seasons_metadata.get("title") or title,
-        "season_title": season_metadata.get("season_title") or f"Season {season_number}",
+        "season_title": season_metadata.get("season_title")
+        or f"Season {season_number}",
         "episode_title": episode_metadata.get("episode_title")
-            or (episode_data or {}).get("title")
-            or f"Episode {episode_number}",
+        or (episode_data or {}).get("title")
+        or f"Episode {episode_number}",
         "detail_return_url": request.build_absolute_uri(),
     }
     return render(request, "app/episode_details.html", context)
@@ -914,12 +926,15 @@ def anime_next_episode(request, media_id, title):
         return redirect(detail_url)
 
     try:
-        preview_episodes = _build_flat_anime_episode_preview(
-            request,
-            detail_item=detail_item,
-            media_id=media_id,
-            base_metadata=base_metadata,
-        ) or []
+        preview_episodes = (
+            _build_flat_anime_episode_preview(
+                request,
+                detail_item=detail_item,
+                media_id=media_id,
+                base_metadata=base_metadata,
+            )
+            or []
+        )
     except Exception:
         logger.warning(
             "Failed to resolve next-episode mapping for MAL anime %s",
@@ -930,7 +945,8 @@ def anime_next_episode(request, media_id, title):
 
     next_ep = next(
         (
-            ep for ep in preview_episodes
+            ep
+            for ep in preview_episodes
             if ep.get("display_episode_number") == progress + 1
         ),
         None,
@@ -971,12 +987,14 @@ def music_bulk_save(request):
     if not start_date_str or not end_date_str:
         if request.headers.get("HX-Request"):
             response = HttpResponse(status=422)
-            response["HX-Trigger"] = json.dumps({
-                "showToast": {
-                    "message": "Start and end dates are required.",
-                    "type": "error",
-                },
-            })
+            response["HX-Trigger"] = json.dumps(
+                {
+                    "showToast": {
+                        "message": "Start and end dates are required.",
+                        "type": "error",
+                    },
+                }
+            )
             return response
         messages.error(request, "Start and end dates are required.")
         return redirect(request.POST.get("return_url") or "/")
@@ -989,12 +1007,14 @@ def music_bulk_save(request):
     except (KeyError, ValueError):
         if request.headers.get("HX-Request"):
             response = HttpResponse(status=422)
-            response["HX-Trigger"] = json.dumps({
-                "showToast": {
-                    "message": "Invalid track range.",
-                    "type": "error",
-                },
-            })
+            response["HX-Trigger"] = json.dumps(
+                {
+                    "showToast": {
+                        "message": "Invalid track range.",
+                        "type": "error",
+                    },
+                }
+            )
             return response
         messages.error(request, "Invalid track range.")
         return redirect(request.POST.get("return_url") or "/")
@@ -1032,13 +1052,15 @@ def music_bulk_save(request):
     if request.headers.get("HX-Request"):
         plural = "s" if track_count != 1 else ""
         response = HttpResponse(status=204)
-        response["HX-Trigger"] = json.dumps({
-            "closeModal": {},
-            "showToast": {
-                "message": f"Adding plays to {track_count} track{plural}.",
-                "type": "info",
-            },
-        })
+        response["HX-Trigger"] = json.dumps(
+            {
+                "closeModal": {},
+                "showToast": {
+                    "message": f"Adding plays to {track_count} track{plural}.",
+                    "type": "info",
+                },
+            }
+        )
         return response
 
     messages.info(request, f"Adding plays to {track_count} tracks.")
@@ -1384,7 +1406,9 @@ def delete_history_record(request, media_type, history_id):
 
             # Verify deletion succeeded by checking if the record still exists
             try:
-                verification_query = historical_model.objects.filter(history_id=history_id)
+                verification_query = historical_model.objects.filter(
+                    history_id=history_id
+                )
                 if verification_query.exists():
                     logger.error(
                         "Deletion verification failed: history record %s still exists after delete() call",
@@ -1413,7 +1437,9 @@ def delete_history_record(request, media_type, history_id):
         if media_type_lower in ("game", "boardgame"):
             start_dt = start_date or end_date
             end_dt = end_date or start_date
-            history_day_keys = history_cache.history_day_keys_for_range(start_dt, end_dt)
+            history_day_keys = history_cache.history_day_keys_for_range(
+                start_dt, end_dt
+            )
         else:
             activity_dt = end_date or start_date or created_at
             history_day_key = history_cache.history_day_key(activity_dt)
@@ -1442,11 +1468,15 @@ def delete_history_record(request, media_type, history_id):
             try:
                 music = Music.objects.get(id=music_id, user=request.user)
                 # Get remaining history records (filtered by user or null)
-                remaining_history = list(music.history.filter(
-                    history_user=request.user,
-                ).order_by("-end_date")) or list(music.history.filter(
-                    history_user__isnull=True,
-                ).order_by("-end_date"))
+                remaining_history = list(
+                    music.history.filter(
+                        history_user=request.user,
+                    ).order_by("-end_date")
+                ) or list(
+                    music.history.filter(
+                        history_user__isnull=True,
+                    ).order_by("-end_date")
+                )
 
                 remaining_count = len(remaining_history)
 
@@ -1455,7 +1485,11 @@ def delete_history_record(request, media_type, history_id):
                     last_entry = remaining_history[0]
 
                     # Format the date using the same filter as the template
-                    last_date_formatted = user_date_format(last_entry.end_date, request.user) if last_entry.end_date else "No date provided"
+                    last_date_formatted = (
+                        user_date_format(last_entry.end_date, request.user)
+                        if last_entry.end_date
+                        else "No date provided"
+                    )
 
                     if remaining_count == 1:
                         history_text = f"Last listened: {last_date_formatted}"
@@ -1465,15 +1499,27 @@ def delete_history_record(request, media_type, history_id):
                     # Return response with out-of-band swaps for both album page and modal
                     response = HttpResponse()
                     # Update the count on the album detail page
-                    response.write(f'<p id="track-history-{music_id}" hx-swap-oob="true" class="text-xs text-gray-400 mt-2 px-4">{history_text}</p>')
+                    response.write(
+                        f'<p id="track-history-{music_id}" hx-swap-oob="true" class="text-xs text-gray-400 mt-2 px-4">{history_text}</p>'
+                    )
                     # Update the count in the modal
-                    modal_text = "Listened once" if remaining_count == 1 else f"Listened {remaining_count} times"
-                    response.write(f'<p id="modal-listen-count-{music_id}" hx-swap-oob="true" class="text-sm text-gray-400 mt-1">{modal_text}</p>')
+                    modal_text = (
+                        "Listened once"
+                        if remaining_count == 1
+                        else f"Listened {remaining_count} times"
+                    )
+                    response.write(
+                        f'<p id="modal-listen-count-{music_id}" hx-swap-oob="true" class="text-sm text-gray-400 mt-1">{modal_text}</p>'
+                    )
                     return response
                 # No history left, hide the album page element and update modal
                 response = HttpResponse()
-                response.write(f'<p id="track-history-{music_id}" hx-swap-oob="true" class="text-xs text-gray-400 mt-2 px-4" style="display: none;"></p>')
-                response.write(f'<p id="modal-listen-count-{music_id}" hx-swap-oob="true" class="text-sm text-gray-400 mt-1">Not listened yet</p>')
+                response.write(
+                    f'<p id="track-history-{music_id}" hx-swap-oob="true" class="text-xs text-gray-400 mt-2 px-4" style="display: none;"></p>'
+                )
+                response.write(
+                    f'<p id="modal-listen-count-{music_id}" hx-swap-oob="true" class="text-sm text-gray-400 mt-1">Not listened yet</p>'
+                )
                 return response
             except Music.DoesNotExist:
                 pass
@@ -1486,11 +1532,15 @@ def delete_history_record(request, media_type, history_id):
             try:
                 podcast = Podcast.objects.get(id=podcast_id, user=request.user)
                 # Get remaining history records (filtered by user or null)
-                remaining_history = list(podcast.history.filter(
-                    history_user=request.user,
-                ).order_by("-end_date")) or list(podcast.history.filter(
-                    history_user__isnull=True,
-                ).order_by("-end_date"))
+                remaining_history = list(
+                    podcast.history.filter(
+                        history_user=request.user,
+                    ).order_by("-end_date")
+                ) or list(
+                    podcast.history.filter(
+                        history_user__isnull=True,
+                    ).order_by("-end_date")
+                )
 
                 remaining_count = len(remaining_history)
 
@@ -1499,7 +1549,11 @@ def delete_history_record(request, media_type, history_id):
                     last_entry = remaining_history[0]
 
                     # Format the date using the same filter as the template
-                    last_date_formatted = user_date_format(last_entry.end_date, request.user) if last_entry.end_date else "No date provided"
+                    last_date_formatted = (
+                        user_date_format(last_entry.end_date, request.user)
+                        if last_entry.end_date
+                        else "No date provided"
+                    )
 
                     if remaining_count == 1:
                         history_text = f"Last played: {last_date_formatted}"
@@ -1509,13 +1563,21 @@ def delete_history_record(request, media_type, history_id):
                     # Return response with out-of-band swaps for both show page and modal
                     response = HttpResponse()
                     # Update the count in the modal
-                    modal_text = "Played once" if remaining_count == 1 else f"Played {remaining_count} times"
-                    response.write(f'<p id="modal-listen-count-{podcast_id}" hx-swap-oob="true" class="text-sm text-gray-400 mt-1">{modal_text}</p>')
+                    modal_text = (
+                        "Played once"
+                        if remaining_count == 1
+                        else f"Played {remaining_count} times"
+                    )
+                    response.write(
+                        f'<p id="modal-listen-count-{podcast_id}" hx-swap-oob="true" class="text-sm text-gray-400 mt-1">{modal_text}</p>'
+                    )
                     response["HX-Trigger"] = "history-refresh-start"
                     return response
                 # No history left, update modal
                 response = HttpResponse()
-                response.write(f'<p id="modal-listen-count-{podcast_id}" hx-swap-oob="true" class="text-sm text-gray-400 mt-1">Not played yet</p>')
+                response.write(
+                    f'<p id="modal-listen-count-{podcast_id}" hx-swap-oob="true" class="text-sm text-gray-400 mt-1">Not played yet</p>'
+                )
                 response["HX-Trigger"] = "history-refresh-start"
                 return response
             except Podcast.DoesNotExist:
@@ -1535,17 +1597,15 @@ def delete_history_record(request, media_type, history_id):
         return HttpResponse("Record not found", status=404)
 
 
-
-
 @require_GET
 def cache_status(request):
     """Return cache status metadata for history, statistics, or discover cache.
-    
+
     Query params:
         cache_type: 'history', 'statistics', or 'discover'
         range_name: Required for statistics, ignored for history
         logging_style: Optional for history, defaults to 'repeats'
-    
+
     Returns JSON with:
         exists: bool - Whether cache exists
         built_at: str - ISO format timestamp when cache was built (or None)
@@ -1556,7 +1616,9 @@ def cache_status(request):
     cache_type = request.GET.get("cache_type")
     if cache_type not in ("history", "statistics", "discover"):
         return JsonResponse(
-            {"error": "Invalid cache_type. Must be 'history', 'statistics', or 'discover'"},
+            {
+                "error": "Invalid cache_type. Must be 'history', 'statistics', or 'discover'"
+            },
             status=400,
         )
 
@@ -1564,10 +1626,16 @@ def cache_status(request):
         logging_style = request.GET.get("logging_style")
         if logging_style not in ("sessions", "repeats"):
             logging_style = "repeats"
-        cache_entry = cache.get(history_cache._cache_key(request.user.id, logging_style))
-        refresh_lock_key = history_cache._refresh_lock_key(request.user.id, logging_style)
+        cache_entry = cache.get(
+            history_cache._cache_key(request.user.id, logging_style)
+        )
+        refresh_lock_key = history_cache._refresh_lock_key(
+            request.user.id, logging_style
+        )
         refresh_lock = history_cache._clean_refresh_lock(refresh_lock_key)
-        lock_has_day_keys = isinstance(refresh_lock, dict) and bool(refresh_lock.get("day_keys"))
+        lock_has_day_keys = isinstance(refresh_lock, dict) and bool(
+            refresh_lock.get("day_keys")
+        )
 
         # Also check dedupe_key if lock has day_keys (for page_days refreshes)
         dedupe_key = None
@@ -1612,38 +1680,48 @@ def cache_status(request):
                     cache.delete(refresh_lock_key)
                     refresh_lock = None
 
-            return JsonResponse({
-                "exists": True,
-                "built_at": built_at.isoformat() if built_at else None,
-                "is_stale": is_stale,
+            return JsonResponse(
+                {
+                    "exists": True,
+                    "built_at": built_at.isoformat() if built_at else None,
+                    "is_stale": is_stale,
+                    "is_refreshing": refresh_lock is not None,
+                    "recently_built": recently_built,
+                }
+            )
+        return JsonResponse(
+            {
+                "exists": False,
+                "built_at": None,
+                "is_stale": False,
                 "is_refreshing": refresh_lock is not None,
-                "recently_built": recently_built,
-            })
-        return JsonResponse({
-            "exists": False,
-            "built_at": None,
-            "is_stale": False,
-            "is_refreshing": refresh_lock is not None,
-            "recently_built": False,
-        })
+                "recently_built": False,
+            }
+        )
 
     if cache_type == "statistics":
         range_name = request.GET.get("range_name")
         if not range_name:
-            return JsonResponse({"error": "range_name is required for statistics cache"}, status=400)
+            return JsonResponse(
+                {"error": "range_name is required for statistics cache"}, status=400
+            )
 
         if range_name not in statistics_cache.PREDEFINED_RANGES:
-            return JsonResponse({
-                "exists": False,
-                "built_at": None,
-                "is_stale": False,
-                "is_refreshing": False,
-                "recently_built": False,
-                "any_range_refreshing": False,
-            })
+            return JsonResponse(
+                {
+                    "exists": False,
+                    "built_at": None,
+                    "is_stale": False,
+                    "is_refreshing": False,
+                    "recently_built": False,
+                    "any_range_refreshing": False,
+                }
+            )
 
         cache_key = statistics_cache._cache_key(request.user.id, range_name)
-        refresh_lock_key = statistics_cache._refresh_lock_key(request.user.id, range_name)
+        refresh_lock_key = statistics_cache._refresh_lock_key(
+            request.user.id, range_name
+        )
         cache_entry = cache.get(cache_key)
         refresh_lock = cache.get(refresh_lock_key)
         if refresh_lock and statistics_cache._lock_is_stale(refresh_lock):
@@ -1683,34 +1761,46 @@ def cache_status(request):
                     range_name,
                     allow_inline=False,
                 )
-                refresh_lock = cache.get(refresh_lock_key) if refresh_scheduled else refresh_lock
+                refresh_lock = (
+                    cache.get(refresh_lock_key) if refresh_scheduled else refresh_lock
+                )
 
-            is_refreshing = refresh_lock is not None or refresh_scheduled or metadata_refreshing
-            return JsonResponse({
-                "exists": True,
-                "built_at": built_at.isoformat() if built_at else None,
-                "is_stale": is_stale,
-                "is_refreshing": is_refreshing,
-                "recently_built": recently_built,
-                "any_range_refreshing": any_range_refreshing,
-                "refresh_scheduled": refresh_scheduled,
-                "metadata_refreshing": metadata_refreshing,
-                "metadata_built_at": metadata_built_at.isoformat() if metadata_built_at else None,
-                "metadata_recently_built": metadata_recently_built,
-            })
+            is_refreshing = (
+                refresh_lock is not None or refresh_scheduled or metadata_refreshing
+            )
+            return JsonResponse(
+                {
+                    "exists": True,
+                    "built_at": built_at.isoformat() if built_at else None,
+                    "is_stale": is_stale,
+                    "is_refreshing": is_refreshing,
+                    "recently_built": recently_built,
+                    "any_range_refreshing": any_range_refreshing,
+                    "refresh_scheduled": refresh_scheduled,
+                    "metadata_refreshing": metadata_refreshing,
+                    "metadata_built_at": metadata_built_at.isoformat()
+                    if metadata_built_at
+                    else None,
+                    "metadata_recently_built": metadata_recently_built,
+                }
+            )
         is_refreshing = refresh_lock is not None or metadata_refreshing
-        return JsonResponse({
-            "exists": False,
-            "built_at": None,
-            "is_stale": False,
-            "is_refreshing": is_refreshing,
-            "recently_built": False,
-            "any_range_refreshing": any_range_refreshing,
-            "refresh_scheduled": False,
-            "metadata_refreshing": metadata_refreshing,
-            "metadata_built_at": metadata_built_at.isoformat() if metadata_built_at else None,
-            "metadata_recently_built": metadata_recently_built,
-        })
+        return JsonResponse(
+            {
+                "exists": False,
+                "built_at": None,
+                "is_stale": False,
+                "is_refreshing": is_refreshing,
+                "recently_built": False,
+                "any_range_refreshing": any_range_refreshing,
+                "refresh_scheduled": False,
+                "metadata_refreshing": metadata_refreshing,
+                "metadata_built_at": metadata_built_at.isoformat()
+                if metadata_built_at
+                else None,
+                "metadata_recently_built": metadata_recently_built,
+            }
+        )
 
     media_type = _resolve_discover_media_type_for_user(
         request.user,

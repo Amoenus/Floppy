@@ -381,7 +381,9 @@ def apply_full_order(custom_list, item_ids):
         return 400
 
     all_items = list(
-        CustomListItem.objects.filter(custom_list=custom_list).order_by("date_added", "id"),
+        CustomListItem.objects.filter(custom_list=custom_list).order_by(
+            "date_added", "id"
+        ),
     )
     submitted_set = {str(i) for i in item_ids}
     item_map = {str(li.item_id): li for li in all_items}

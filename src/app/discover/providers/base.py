@@ -22,7 +22,9 @@ class DiscoverProviderAdapter(Protocol):
     def current_cycle(self, media_type: str, *, limit: int = 50) -> list[CandidateItem]:
         """Return currently active releases (now playing/on air/seasonal)."""
 
-    def related(self, media_type: str, media_id: str, *, limit: int = 50) -> list[CandidateItem]:
+    def related(
+        self, media_type: str, media_id: str, *, limit: int = 50
+    ) -> list[CandidateItem]:
         """Return recommendation candidates related to an anchor title."""
 
     def genre_discovery(

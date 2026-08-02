@@ -25,7 +25,9 @@ def _format_detail_activity_duration(total_minutes, suffix):
     return f"{total_minutes}min {suffix}"
 
 
-def _build_detail_activity_subtitle(media_type, media_metadata, current_instance=None, play_stats=None):
+def _build_detail_activity_subtitle(
+    media_type, media_metadata, current_instance=None, play_stats=None
+):
     """Return a shared subtitle payload for tracked detail pages."""
     if not current_instance and not play_stats:
         return None
@@ -70,7 +72,9 @@ def _build_detail_activity_subtitle(media_type, media_metadata, current_instance
         total_plays = play_stats.get("total_plays")
         if not total_plays:
             return None
-        primary_text = "Watched once" if total_plays == 1 else f"Watched {total_plays} times"
+        primary_text = (
+            "Watched once" if total_plays == 1 else f"Watched {total_plays} times"
+        )
         duration_text = _format_detail_activity_duration(
             play_stats.get("total_minutes"),
             "watched",
@@ -181,7 +185,9 @@ def _build_detail_activity_state(
 
                     # Get runtime for this episode
                     try:
-                        runtime_minutes = stats._calculate_episode_time_from_cache(episode, logger)
+                        runtime_minutes = stats._calculate_episode_time_from_cache(
+                            episode, logger
+                        )
                         if runtime_minutes > 0:
                             total_minutes += runtime_minutes
                             episode_count += 1
@@ -442,7 +448,10 @@ def _should_queue_game_lengths_refresh(detail_item):
     """Return whether a background game-length refresh should be queued."""
     if not detail_item:
         return False
-    if detail_item.source != Sources.IGDB.value or detail_item.media_type != MediaTypes.GAME.value:
+    if (
+        detail_item.source != Sources.IGDB.value
+        or detail_item.media_type != MediaTypes.GAME.value
+    ):
         return False
     if not detail_item.provider_game_lengths:
         return True
@@ -463,7 +472,9 @@ def _get_game_lengths_refresh_lock(detail_item, *, force=False, fetch_hltb=True)
     if refresh_lock is None:
         return None
 
-    if refresh_lock is True or game_length_services.is_game_lengths_refresh_lock_stale(refresh_lock):
+    if refresh_lock is True or game_length_services.is_game_lengths_refresh_lock_stale(
+        refresh_lock
+    ):
         cache.delete(lock_key)
         return None
     return refresh_lock
@@ -479,7 +490,10 @@ def _queue_game_lengths_refresh(detail_item, *, force=False, fetch_hltb=True):
         force=force,
         fetch_hltb=fetch_hltb,
     )
-    if _get_game_lengths_refresh_lock(detail_item, force=force, fetch_hltb=fetch_hltb) is not None:
+    if (
+        _get_game_lengths_refresh_lock(detail_item, force=force, fetch_hltb=fetch_hltb)
+        is not None
+    ):
         return False
 
     lock_payload = game_length_services.build_game_lengths_refresh_lock(
@@ -491,7 +505,12 @@ def _queue_game_lengths_refresh(detail_item, *, force=False, fetch_hltb=True):
         lock_payload,
         timeout=game_length_services.GAME_LENGTHS_REFRESH_TTL,
     ):
-        if _get_game_lengths_refresh_lock(detail_item, force=force, fetch_hltb=fetch_hltb) is not None:
+        if (
+            _get_game_lengths_refresh_lock(
+                detail_item, force=force, fetch_hltb=fetch_hltb
+            )
+            is not None
+        ):
             return False
         if not cache.add(
             lock_key,
@@ -525,7 +544,8 @@ def _annotate_home_card_images(media_items):
     season_items = [
         media
         for media in media_items
-        if getattr(getattr(media, "item", None), "media_type", None) == MediaTypes.SEASON.value
+        if getattr(getattr(media, "item", None), "media_type", None)
+        == MediaTypes.SEASON.value
     ]
     if season_items:
         BasicMedia.objects._fix_missing_season_images(season_items)

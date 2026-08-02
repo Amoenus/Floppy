@@ -600,11 +600,7 @@ class StorytellerImporter:
             verdict = self._author_verdict(authors, metadata)
             if verdict == "conflict":
                 continue
-            tier = (
-                (3 if self._has_cover(metadata) else 2)
-                if verdict == "match"
-                else 1
-            )
+            tier = (3 if self._has_cover(metadata) else 2) if verdict == "match" else 1
 
             if tier > best_tier:
                 best_tier = tier

@@ -125,9 +125,17 @@ def _parse_source_descriptor_to_link(descriptor, ranges):
             pass
 
     if provider == "tvdb_show":
-        return {"tvdb_id": series_id, "season_number": season, "episode_offset": episode_offset}
+        return {
+            "tvdb_id": series_id,
+            "season_number": season,
+            "episode_offset": episode_offset,
+        }
     if provider == "tmdb_show":
-        return {"tmdb_id": series_id, "season_number": season, "episode_offset": episode_offset}
+        return {
+            "tmdb_id": series_id,
+            "season_number": season,
+            "episode_offset": episode_offset,
+        }
 
     return None
 

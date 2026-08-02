@@ -282,7 +282,9 @@ class ProviderAPIError(Exception):
                 )
             else:
                 response_text = getattr(response, "text", "")
-                body_length = len(response_text) if isinstance(response_text, str) else 0
+                body_length = (
+                    len(response_text) if isinstance(response_text, str) else 0
+                )
                 log_method(
                     "%s api error status=%s content_type=%s body_length=%s",
                     provider_label,
@@ -490,7 +492,9 @@ def get_media_metadata(
         if media_type == MediaTypes.SEASON.value:
             return _ensure_title_fields(manual.season(media_id, season_numbers[0]))
         if media_type == MediaTypes.EPISODE.value:
-            return _ensure_title_fields(manual.episode(media_id, season_numbers[0], episode_number))
+            return _ensure_title_fields(
+                manual.episode(media_id, season_numbers[0], episode_number)
+            )
         if media_type == "tv_with_seasons":
             media_type = MediaTypes.TV.value
         return _ensure_title_fields(manual.metadata(media_id, media_type))
@@ -545,7 +549,8 @@ def get_media_metadata(
         MediaTypes.ANIME.value: lambda: (
             mal.anime(media_id)
             if source == Sources.MAL.value
-            else tmdb.tv(media_id) | {
+            else tmdb.tv(media_id)
+            | {
                 "media_type": MediaTypes.ANIME.value,
                 "identity_media_type": MediaTypes.TV.value,
                 "library_media_type": MediaTypes.ANIME.value,
@@ -956,7 +961,12 @@ def search(media_type, query, page, source=None, limit=None, offset=None, user=N
     """Search for media based on the query and return the results."""
     if source == Sources.MANUAL.value:
         return manual.search(
-            media_type, query, page=page, limit=limit, offset=offset, user=user,
+            media_type,
+            query,
+            page=page,
+            limit=limit,
+            offset=offset,
+            user=user,
         )
 
     source = _resolve_search_source(media_type, source)
@@ -967,10 +977,7 @@ def search(media_type, query, page, source=None, limit=None, offset=None, user=N
         if id_result is not None:
             return id_result
 
-        if (
-            media_type == MediaTypes.BOOK.value
-            and source != Sources.OPENLIBRARY.value
-        ):
+        if media_type == MediaTypes.BOOK.value and source != Sources.OPENLIBRARY.value:
             isbn_result = _resolve_hardcover_isbn_search(query, page)
             if isbn_result is not None:
                 return isbn_result

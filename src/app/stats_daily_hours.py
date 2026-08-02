@@ -1,4 +1,5 @@
 """stats_daily_hours.py — Stacked bar chart of hours by media type per day."""
+
 import datetime
 import logging
 
@@ -69,7 +70,10 @@ def get_daily_hours_by_media_type(user_media, start_date, end_date):
 
     # Build list of date labels in ISO format (YYYY-MM-DD)
     num_days = (end_date_dt - start_date_dt).days + 1
-    labels = [(start_date_dt + datetime.timedelta(days=i)).isoformat() for i in range(num_days)]
+    labels = [
+        (start_date_dt + datetime.timedelta(days=i)).isoformat()
+        for i in range(num_days)
+    ]
 
     # Prepare per-media-type mapping of date -> minutes
     per_type_minutes = {mt: dict.fromkeys(labels, 0) for mt in user_media.keys()}
@@ -87,7 +91,9 @@ def get_daily_hours_by_media_type(user_media, start_date, end_date):
                     continue
 
                 # Get runtime in minutes from cache (will attempt metadata fetch if missing)
-                minutes = _get_media_runtime_from_cache(media, logger, "(daily aggregation)")
+                minutes = _get_media_runtime_from_cache(
+                    media, logger, "(daily aggregation)"
+                )
                 if not minutes or minutes <= 0:
                     continue
 
@@ -113,12 +119,17 @@ def get_daily_hours_by_media_type(user_media, start_date, end_date):
                             continue
                         # runtime from cached episode data
                         try:
-                            minutes = _calculate_episode_time_from_cache(episode, logger)
+                            minutes = _calculate_episode_time_from_cache(
+                                episode, logger
+                            )
                         except Exception:
                             minutes = 0
                         if minutes and minutes > 0:
                             label = ep_date.isoformat()
-                            if media_type in per_type_minutes and label in per_type_minutes[media_type]:
+                            if (
+                                media_type in per_type_minutes
+                                and label in per_type_minutes[media_type]
+                            ):
                                 per_type_minutes[media_type][label] += minutes
 
         # Anime: grouped anime uses episode-level data; flat anime uses progress * runtime
@@ -140,19 +151,26 @@ def get_daily_hours_by_media_type(user_media, start_date, end_date):
                             if ep_date < start_date_dt or ep_date > end_date_dt:
                                 continue
                             try:
-                                ep_minutes = _calculate_episode_time_from_cache(episode, logger)
+                                ep_minutes = _calculate_episode_time_from_cache(
+                                    episode, logger
+                                )
                             except Exception:
                                 ep_minutes = 0
                             if ep_minutes and ep_minutes > 0:
                                 label = ep_date.isoformat()
-                                if media_type in per_type_minutes and label in per_type_minutes[media_type]:
+                                if (
+                                    media_type in per_type_minutes
+                                    and label in per_type_minutes[media_type]
+                                ):
                                     per_type_minutes[media_type][label] += ep_minutes
                 else:
                     # Flat anime (Anime model) — total minutes from cached runtime * progress
                     episode_count = getattr(media, "progress", 0) or 0
                     if episode_count <= 0:
                         continue
-                    minutes = _get_anime_runtime_from_cache(media, episode_count, logger, "(daily aggregation)")
+                    minutes = _get_anime_runtime_from_cache(
+                        media, episode_count, logger, "(daily aggregation)"
+                    )
                     if not minutes or minutes <= 0:
                         continue
 
@@ -167,14 +185,20 @@ def get_daily_hours_by_media_type(user_media, start_date, end_date):
                         per_day = minutes / days
                         for i in range(days):
                             d = (ds + datetime.timedelta(days=i)).isoformat()
-                            if media_type in per_type_minutes and d in per_type_minutes[media_type]:
+                            if (
+                                media_type in per_type_minutes
+                                and d in per_type_minutes[media_type]
+                            ):
                                 per_type_minutes[media_type][d] += per_day
                     else:
                         activity_dt = _get_activity_datetime(media)
                         if not activity_dt:
                             continue
                         label = _localize_datetime(activity_dt).date().isoformat()
-                        if media_type in per_type_minutes and label in per_type_minutes[media_type]:
+                        if (
+                            media_type in per_type_minutes
+                            and label in per_type_minutes[media_type]
+                        ):
                             per_type_minutes[media_type][label] += minutes
 
         # Music: assign runtime to each play date from history records
@@ -195,7 +219,10 @@ def get_daily_hours_by_media_type(user_media, start_date, end_date):
                         continue
 
                     label = play_date.isoformat()
-                    if media_type in per_type_minutes and label in per_type_minutes[media_type]:
+                    if (
+                        media_type in per_type_minutes
+                        and label in per_type_minutes[media_type]
+                    ):
                         per_type_minutes[media_type][label] += runtime_minutes
 
         # Podcasts: use history records so deleted plays don't appear
@@ -222,7 +249,10 @@ def get_daily_hours_by_media_type(user_media, start_date, end_date):
                     continue
 
                 label = completion_date.isoformat()
-                if media_type in per_type_minutes and label in per_type_minutes[media_type]:
+                if (
+                    media_type in per_type_minutes
+                    and label in per_type_minutes[media_type]
+                ):
                     per_type_minutes[media_type][label] += runtime_minutes
 
         # Manga, Games, Books, Comics: use progress field and distribute evenly across item's date span
@@ -252,21 +282,31 @@ def get_daily_hours_by_media_type(user_media, start_date, end_date):
                     per_day = total_minutes / days
                     for i in range(days):
                         d = (ds + datetime.timedelta(days=i)).isoformat()
-                        if media_type in per_type_minutes and d in per_type_minutes[media_type]:
+                        if (
+                            media_type in per_type_minutes
+                            and d in per_type_minutes[media_type]
+                        ):
                             per_type_minutes[media_type][d] += per_day
                 else:
                     activity_dt = _get_activity_datetime(media)
                     if not activity_dt:
                         continue
                     label = _localize_datetime(activity_dt).date().isoformat()
-                    if media_type in per_type_minutes and label in per_type_minutes[media_type]:
+                    if (
+                        media_type in per_type_minutes
+                        and label in per_type_minutes[media_type]
+                    ):
                         per_type_minutes[media_type][label] += total_minutes
 
     # Build datasets for Chart.js: convert minutes -> hours (float)
     datasets = []
     ordered_types = list(MEDIA_TYPE_HOURS_ORDER)
     ordered_types.extend(
-        [media_type for media_type in per_type_minutes.keys() if media_type not in ordered_types]
+        [
+            media_type
+            for media_type in per_type_minutes.keys()
+            if media_type not in ordered_types
+        ]
     )
     for media_type in ordered_types:
         date_map = per_type_minutes.get(media_type)
@@ -277,11 +317,13 @@ def get_daily_hours_by_media_type(user_media, start_date, end_date):
         if total == 0:
             continue
 
-        datasets.append({
-            "label": app_tags.media_type_readable(media_type),
-            "media_type": media_type,
-            "data": [round(date_map[d] / 60, 2) for d in labels],
-            "background_color": config.get_stats_color(media_type),
-        })
+        datasets.append(
+            {
+                "label": app_tags.media_type_readable(media_type),
+                "media_type": media_type,
+                "data": [round(date_map[d] / 60, 2) for d in labels],
+                "background_color": config.get_stats_color(media_type),
+            }
+        )
 
     return {"labels": labels, "datasets": datasets}

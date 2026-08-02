@@ -108,8 +108,7 @@ def bulk_episode_plays_task(
 
     all_episodes = episode_domain.get("episodes", [])
     episode_lookup = {
-        (ep["season_number"], ep["episode_number"]): ep
-        for ep in all_episodes
+        (ep["season_number"], ep["episode_number"]): ep for ep in all_episodes
     }
     first_ep = episode_lookup.get((first_season_number, first_episode_number))
     last_ep = episode_lookup.get((last_season_number, last_episode_number))
@@ -124,11 +123,14 @@ def bulk_episode_plays_task(
         return
 
     selected_episodes = [
-        ep for ep in all_episodes
+        ep
+        for ep in all_episodes
         if first_ep["order"] <= ep["order"] <= last_ep["order"]
     ]
 
-    start_date = date.fromisoformat(start_date_str.split("T")[0]) if start_date_str else None
+    start_date = (
+        date.fromisoformat(start_date_str.split("T")[0]) if start_date_str else None
+    )
     end_date = date.fromisoformat(end_date_str.split("T")[0]) if end_date_str else None
 
     result = bulk_episode_tracking.apply_bulk_episode_plays(
@@ -205,8 +207,7 @@ def bulk_music_plays_task(
 
     all_episodes = bulk_domain.get("episodes", [])
     episode_lookup = {
-        (ep["season_number"], ep["episode_number"]): ep
-        for ep in all_episodes
+        (ep["season_number"], ep["episode_number"]): ep for ep in all_episodes
     }
     first_ep = episode_lookup.get((first_season_number, first_episode_number))
     last_ep = episode_lookup.get((last_season_number, last_episode_number))
@@ -221,11 +222,14 @@ def bulk_music_plays_task(
         return
 
     selected_episodes = [
-        ep for ep in all_episodes
+        ep
+        for ep in all_episodes
         if first_ep["order"] <= ep["order"] <= last_ep["order"]
     ]
 
-    start_date = date.fromisoformat(start_date_str.split("T")[0]) if start_date_str else None
+    start_date = (
+        date.fromisoformat(start_date_str.split("T")[0]) if start_date_str else None
+    )
     end_date = date.fromisoformat(end_date_str.split("T")[0]) if end_date_str else None
 
     result = bulk_music_tracking.apply_bulk_music_plays(

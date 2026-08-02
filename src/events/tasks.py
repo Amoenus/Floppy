@@ -53,7 +53,9 @@ def reload_calendar(user_id=None, item_ids=None, user=None, items_to_process=Non
         User = get_user_model()
         resolved_user = User.objects.filter(id=normalized_user_id).first()
         if resolved_user is None:
-            logger.warning("Skipping calendar reload for missing user_id=%s", normalized_user_id)
+            logger.warning(
+                "Skipping calendar reload for missing user_id=%s", normalized_user_id
+            )
             return "User not found"
         logger.info("Reloading calendar for user: %s", resolved_user.username)
     else:
@@ -92,7 +94,9 @@ def reload_calendar(user_id=None, item_ids=None, user=None, items_to_process=Non
                 count_release_backfill_items,
             )
 
-            remaining_metadata_count = Item.objects.filter(metadata_fetched_at__isnull=True).count()
+            remaining_metadata_count = Item.objects.filter(
+                metadata_fetched_at__isnull=True
+            ).count()
             remaining_release_count = count_release_backfill_items()
 
             # Use larger batch for initial metadata imports, then keep release backfill
@@ -153,11 +157,10 @@ def send_daily_digest_notifications():
     return notifications.send_daily_digest()
 
 
-
 @shared_task(name="Refresh podcast episodes")
 def refresh_podcast_episodes():
     """Refresh episode lists from RSS feeds for all podcast shows.
-    
+
     Fetches latest episodes from RSS feeds and updates the database.
     This ensures we have the complete episode list, including new episodes
     that haven't been listened to yet.
@@ -168,7 +171,9 @@ def refresh_podcast_episodes():
     logger.info("Starting podcast episode refresh task")
 
     # Get all shows with RSS feed URLs
-    shows = PodcastShow.objects.filter(rss_feed_url__isnull=False).exclude(rss_feed_url="")
+    shows = PodcastShow.objects.filter(rss_feed_url__isnull=False).exclude(
+        rss_feed_url=""
+    )
 
     if not shows.exists():
         logger.info("No podcast shows with RSS feed URLs found")
@@ -191,6 +196,7 @@ def refresh_podcast_episodes():
 
             # Get existing episodes
             from app.models import PodcastEpisode
+
             existing_episodes = {
                 episode.episode_uuid: episode
                 for episode in PodcastEpisode.objects.filter(show=show)
@@ -214,8 +220,15 @@ def refresh_podcast_episodes():
                     matched_episode = existing_episodes.get(rss_ep["guid"])
 
                 # Try by title + date
-                if not matched_episode and rss_ep.get("title") and rss_ep.get("published"):
-                    title_key = (rss_ep["title"].lower().strip(), rss_ep["published"].date())
+                if (
+                    not matched_episode
+                    and rss_ep.get("title")
+                    and rss_ep.get("published")
+                ):
+                    title_key = (
+                        rss_ep["title"].lower().strip(),
+                        rss_ep["published"].date(),
+                    )
                     matched_episode = existing_by_title_date.get(title_key)
 
                 if matched_episode:
@@ -226,10 +239,16 @@ def refresh_podcast_episodes():
                     # If UUID differs and we have RSS GUID, update to RSS GUID
                     # This ensures consistency when Pocket Casts UUID and RSS GUID differ
                     # But prefer keeping Pocket Casts UUID format if it looks like one
-                    if rss_ep.get("guid") and matched_episode.episode_uuid != rss_ep["guid"]:
+                    if (
+                        rss_ep.get("guid")
+                        and matched_episode.episode_uuid != rss_ep["guid"]
+                    ):
                         # Only update if the matched episode doesn't look like a Pocket Casts UUID
                         # Pocket Casts UUIDs typically have hyphens in specific positions
-                        is_pocketcasts_uuid = len(matched_episode.episode_uuid) == 36 and matched_episode.episode_uuid.count("-") == 4
+                        is_pocketcasts_uuid = (
+                            len(matched_episode.episode_uuid) == 36
+                            and matched_episode.episode_uuid.count("-") == 4
+                        )
                         if not is_pocketcasts_uuid:
                             logger.info(
                                 "Updating episode UUID from %s to %s for episode %s (RSS GUID)",
@@ -245,23 +264,38 @@ def refresh_podcast_episodes():
                         matched_episode.title = rss_ep["title"]
                         updated = True
                         update_fields.append("title")
-                    if rss_ep.get("published") and matched_episode.published != rss_ep["published"]:
+                    if (
+                        rss_ep.get("published")
+                        and matched_episode.published != rss_ep["published"]
+                    ):
                         matched_episode.published = rss_ep["published"]
                         updated = True
                         update_fields.append("published")
-                    if rss_ep.get("duration") and matched_episode.duration != rss_ep["duration"]:
+                    if (
+                        rss_ep.get("duration")
+                        and matched_episode.duration != rss_ep["duration"]
+                    ):
                         matched_episode.duration = rss_ep["duration"]
                         updated = True
                         update_fields.append("duration")
-                    if rss_ep.get("audio_url") and matched_episode.audio_url != rss_ep["audio_url"]:
+                    if (
+                        rss_ep.get("audio_url")
+                        and matched_episode.audio_url != rss_ep["audio_url"]
+                    ):
                         matched_episode.audio_url = rss_ep["audio_url"]
                         updated = True
                         update_fields.append("audio_url")
-                    if rss_ep.get("episode_number") is not None and matched_episode.episode_number != rss_ep["episode_number"]:
+                    if (
+                        rss_ep.get("episode_number") is not None
+                        and matched_episode.episode_number != rss_ep["episode_number"]
+                    ):
                         matched_episode.episode_number = rss_ep["episode_number"]
                         updated = True
                         update_fields.append("episode_number")
-                    if rss_ep.get("season_number") is not None and matched_episode.season_number != rss_ep["season_number"]:
+                    if (
+                        rss_ep.get("season_number") is not None
+                        and matched_episode.season_number != rss_ep["season_number"]
+                    ):
                         matched_episode.season_number = rss_ep["season_number"]
                         updated = True
                         update_fields.append("season_number")
@@ -272,9 +306,12 @@ def refresh_podcast_episodes():
                 else:
                     # Create new episode
                     import hashlib
+
                     episode_uuid = rss_ep.get("guid")
                     if not episode_uuid:
-                        uuid_str = f"{rss_ep.get('title', '')}{rss_ep.get('published', '')}"
+                        uuid_str = (
+                            f"{rss_ep.get('title', '')}{rss_ep.get('published', '')}"
+                        )
                         episode_uuid = hashlib.md5(uuid_str.encode()).hexdigest()[:36]
 
                     if episode_uuid in existing_episodes:
@@ -293,7 +330,11 @@ def refresh_podcast_episodes():
                         )
                         created_count += 1
                     except Exception:
-                        logger.debug("Skipping duplicate episode UUID %s for show %s", episode_uuid, show.title)
+                        logger.debug(
+                            "Skipping duplicate episode UUID %s for show %s",
+                            episode_uuid,
+                            show.title,
+                        )
 
             if created_count > 0 or updated_count_show > 0:
                 logger.info(
@@ -305,7 +346,12 @@ def refresh_podcast_episodes():
                 updated_count += 1
 
         except Exception as e:
-            logger.error("Failed to refresh episodes for show %s: %s", show.title, e, exc_info=True)
+            logger.error(
+                "Failed to refresh episodes for show %s: %s",
+                show.title,
+                e,
+                exc_info=True,
+            )
             error_count += 1
 
     # Clean up duplicate episodes after refreshing

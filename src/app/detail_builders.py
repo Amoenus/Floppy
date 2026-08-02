@@ -90,12 +90,18 @@ def _build_game_lengths_context(detail_item):
 
     payload = detail_item.provider_game_lengths or {}
     external_ids = detail_item.provider_external_ids or {}
-    active_source = detail_item.provider_game_lengths_source or payload.get("active_source")
+    active_source = detail_item.provider_game_lengths_source or payload.get(
+        "active_source"
+    )
     if active_source == "hltb":
         hltb_payload = payload.get("hltb") or {}
         cards = []
         card_specs = [
-            ("Main Story", hltb_payload.get("summary", {}).get("main_minutes"), hltb_payload.get("counts", {}).get("main")),
+            (
+                "Main Story",
+                hltb_payload.get("summary", {}).get("main_minutes"),
+                hltb_payload.get("counts", {}).get("main"),
+            ),
             (
                 "Main + Extras",
                 hltb_payload.get("summary", {}).get("main_plus_minutes"),
@@ -115,7 +121,11 @@ def _build_game_lengths_context(detail_item):
         for label, minutes, count in card_specs:
             if (minutes or 0) <= 0:
                 continue
-            cards.append(_build_game_length_card(label, _format_game_length_minutes(minutes), count))
+            cards.append(
+                _build_game_length_card(
+                    label, _format_game_length_minutes(minutes), count
+                )
+            )
 
         single_player_rows = []
         for row in hltb_payload.get("single_player_table") or []:
@@ -137,8 +147,12 @@ def _build_game_lengths_context(detail_item):
                     "platform": row.get("platform") or "",
                     "count": row.get("count") or 0,
                     "main": _format_game_length_minutes(row.get("main_minutes")),
-                    "main_plus": _format_game_length_minutes(row.get("main_plus_minutes")),
-                    "completionist": _format_game_length_minutes(row.get("completionist_minutes")),
+                    "main_plus": _format_game_length_minutes(
+                        row.get("main_plus_minutes")
+                    ),
+                    "completionist": _format_game_length_minutes(
+                        row.get("completionist_minutes")
+                    ),
                     "fastest": _format_game_length_minutes(row.get("fastest_minutes")),
                     "slowest": _format_game_length_minutes(row.get("slowest_minutes")),
                 },
@@ -156,7 +170,8 @@ def _build_game_lengths_context(detail_item):
             ),
             "match": detail_item.provider_game_lengths_match,
             "cards": cards,
-            "submission_count": (hltb_payload.get("counts") or {}).get("all_styles") or 0,
+            "submission_count": (hltb_payload.get("counts") or {}).get("all_styles")
+            or 0,
             "single_player_rows": single_player_rows,
             "platform_rows": platform_rows,
         }
@@ -317,9 +332,9 @@ def _build_series_graph_data(
         episode_query = episode_query.exclude(**{f"{rating_field}__isnull": True})
 
     episodes = list(
-        episode_query
-        .order_by("season_number", "episode_number")
-        .values("season_number", "episode_number", rating_field, count_field)
+        episode_query.order_by("season_number", "episode_number").values(
+            "season_number", "episode_number", rating_field, count_field
+        )
     )
 
     if not episodes:
@@ -340,9 +355,7 @@ def _build_series_graph_data(
         }
 
     sorted_seasons = sorted(seasons_map.keys())
-    all_ep_numbers = sorted(
-        {en for sn in sorted_seasons for en in seasons_map[sn]}
-    )
+    all_ep_numbers = sorted({en for sn in sorted_seasons for en in seasons_map[sn]})
 
     seasons = [
         {
@@ -509,10 +522,7 @@ def _build_season_scores_graph(related_seasons, source):
 
     return {
         "seasons": [{"label": "Rating", "episodes": cells}],
-        "episode_rows": [
-            {"ep": cell["ep"], "cells": [cell]}
-            for cell in cells
-        ],
+        "episode_rows": [{"ep": cell["ep"], "cells": [cell]} for cell in cells],
         "legend": _SERIES_GRAPH_LEGEND,
         "row_label": "S",
         "title": "Season Ratings",
@@ -558,10 +568,7 @@ def _build_stored_season_scores_graph(source, media_id, *, use_trakt=False):
 
     return {
         "seasons": [{"label": "Rating", "episodes": cells}],
-        "episode_rows": [
-            {"ep": cell["ep"], "cells": [cell]}
-            for cell in cells
-        ],
+        "episode_rows": [{"ep": cell["ep"], "cells": [cell]} for cell in cells],
         "legend": _SERIES_GRAPH_LEGEND,
         "row_label": "S",
         "title": "Season Ratings",
@@ -572,7 +579,8 @@ def _build_trakt_popularity_context(detail_item, route_media_type):
     """Return template-ready stored Trakt popularity metadata for a detail item."""
     if (
         not detail_item
-        or route_media_type not in (
+        or route_media_type
+        not in (
             MediaTypes.MOVIE.value,
             MediaTypes.TV.value,
             MediaTypes.ANIME.value,
@@ -616,11 +624,15 @@ def _apply_cached_hltb_link(media_metadata, detail_item):
         external_links = {}
         media_metadata["external_links"] = external_links
 
-    hltb_game_id = ((detail_item.provider_external_ids or {}).get("hltb_game_id"))
+    hltb_game_id = (detail_item.provider_external_ids or {}).get("hltb_game_id")
     if hltb_game_id:
-        external_links["HowLongToBeat"] = f"https://howlongtobeat.com/game/{hltb_game_id}"
+        external_links["HowLongToBeat"] = (
+            f"https://howlongtobeat.com/game/{hltb_game_id}"
+        )
     elif "HowLongToBeat" not in external_links:
-        search_url = game_length_services.get_hltb_search_url(media_metadata.get("title"))
+        search_url = game_length_services.get_hltb_search_url(
+            media_metadata.get("title")
+        )
         if search_url:
             external_links["HowLongToBeat"] = search_url
 
@@ -815,7 +827,11 @@ def _build_detail_link_entry(label, url, brand_key):
         _normalize_detail_link_brand_key(brand_key),
         _DEFAULT_DETAIL_LINK_BRAND,
     )
-    fallback_text = brand.get("fallback_text") or slugify(label).replace("-", "")[:4].upper() or "LINK"
+    fallback_text = (
+        brand.get("fallback_text")
+        or slugify(label).replace("-", "")[:4].upper()
+        or "LINK"
+    )
     return {
         "label": label,
         "url": url,
@@ -827,7 +843,9 @@ def _build_detail_link_entry(label, url, brand_key):
     }
 
 
-def _build_detail_link_sections(media_metadata, media_type, identity_provider, display_provider, item=None):
+def _build_detail_link_sections(
+    media_metadata, media_type, identity_provider, display_provider, item=None
+):
     """Return grouped source and external link chips for the media detail action row."""
     if not isinstance(media_metadata, dict):
         return []
@@ -846,7 +864,9 @@ def _build_detail_link_sections(media_metadata, media_type, identity_provider, d
         seen_urls.add(url)
         collection.append(entry)
 
-    primary_source_url = media_metadata.get("tracking_source_url") or media_metadata.get("source_url")
+    primary_source_url = media_metadata.get(
+        "tracking_source_url"
+    ) or media_metadata.get("source_url")
     if primary_source_url:
         append_entry(
             tracking_source_entries,
@@ -918,7 +938,15 @@ def _build_detail_link_sections(media_metadata, media_type, identity_provider, d
     return sections
 
 
-def _build_static_row(row_id, title, items, *, view_all_url=None, view_all_text=None, card_width_class="w-32"):
+def _build_static_row(
+    row_id,
+    title,
+    items,
+    *,
+    view_all_url=None,
+    view_all_text=None,
+    card_width_class="w-32",
+):
     """Build a row dict for _scrollable_row.html with no HTMX loading (all items pre-rendered)."""
     shown = list(items)
     return {
@@ -982,7 +1010,9 @@ def _build_detail_person_rows(media_metadata, item=None):
         and item.source == Sources.IGDB.value
     ):
         cast, crew = _game_cast_and_crew_from_credits(item)
-    raw_recommendations = (media_metadata.get("related") or {}).get("recommendations") or []
+    raw_recommendations = (media_metadata.get("related") or {}).get(
+        "recommendations"
+    ) or []
     # enrich_items_with_user_data wraps each item as {"item": <dict>, "media": <model>}.
     # Unwrap those so the card template receives the original metadata dicts.
     recommendations = [
@@ -1000,11 +1030,17 @@ def _build_detail_person_rows(media_metadata, item=None):
 
     return {
         "cast_row": _build_static_row(
-            "detail-cast", "Cast", cast[:20],
-            view_all_url=view_all_url, view_all_text=view_all_text,
+            "detail-cast",
+            "Cast",
+            cast[:20],
+            view_all_url=view_all_url,
+            view_all_text=view_all_text,
         ),
         "crew_row": _build_static_row("detail-crew", "Crew", crew[:20]),
         "recommendations_row": _build_static_row(
-            "detail-recommendations", "Recommendations", recommendations, card_width_class="w-36",
+            "detail-recommendations",
+            "Recommendations",
+            recommendations,
+            card_width_class="w-36",
         ),
     }

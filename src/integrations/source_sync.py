@@ -134,6 +134,7 @@ def upsert_collection_source_state(
 
 def remove_collection_source_state(*, user, item, source: str):
     """Remove a source-specific collection snapshot and reconcile the durable entry."""
+
     def _remove_state():
         CollectionSourceState.objects.filter(
             user=user,

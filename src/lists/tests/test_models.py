@@ -141,7 +141,6 @@ class CustomListManagerTest(TestCase):
 
         self.assertEqual(resolved, self.list1)
 
-
     def test_smart_list_sync_items(self):
         """Smart list should sync matching items from saved filters."""
         item = Item.objects.create(
@@ -199,17 +198,23 @@ class CustomListManagerTest(TestCase):
             self.user,
         )
 
-        with patch(
-            "lists.smart_rules._collection_filter_context",
-            side_effect=AssertionError("collection context should not be built"),
-        ), patch(
-            "lists.smart_rules._filter_item_ids_by_rating",
-            side_effect=AssertionError("rating filter scan should not run"),
-        ), patch(
-            "lists.smart_rules._matches_item_filters",
-            side_effect=AssertionError("simple status rules should not scan items"),
+        with (
+            patch(
+                "lists.smart_rules._collection_filter_context",
+                side_effect=AssertionError("collection context should not be built"),
+            ),
+            patch(
+                "lists.smart_rules._filter_item_ids_by_rating",
+                side_effect=AssertionError("rating filter scan should not run"),
+            ),
+            patch(
+                "lists.smart_rules._matches_item_filters",
+                side_effect=AssertionError("simple status rules should not scan items"),
+            ),
         ):
-            matched_ids = smart_rules.collect_matching_item_ids(self.user, normalized_rules)
+            matched_ids = smart_rules.collect_matching_item_ids(
+                self.user, normalized_rules
+            )
 
         self.assertEqual(matched_ids, {completed_item.id})
 
@@ -239,10 +244,18 @@ class CustomListManagerTest(TestCase):
             media_type=MediaTypes.MOVIE.value,
             source=Sources.TMDB.value,
         )
-        Movie.objects.create(item=both_item, user=self.user, status=Status.COMPLETED.value)
-        Movie.objects.create(item=action_item, user=self.user, status=Status.DROPPED.value)
-        Movie.objects.create(item=comedy_item, user=self.user, status=Status.PLANNING.value)
-        Movie.objects.create(item=plain_item, user=self.user, status=Status.PAUSED.value)
+        Movie.objects.create(
+            item=both_item, user=self.user, status=Status.COMPLETED.value
+        )
+        Movie.objects.create(
+            item=action_item, user=self.user, status=Status.DROPPED.value
+        )
+        Movie.objects.create(
+            item=comedy_item, user=self.user, status=Status.PLANNING.value
+        )
+        Movie.objects.create(
+            item=plain_item, user=self.user, status=Status.PAUSED.value
+        )
         action_tag = Tag.objects.create(user=self.user, name="Action")
         comedy_tag = Tag.objects.create(user=self.user, name="Comedy")
         ItemTag.objects.create(item=both_item, tag=action_tag)
@@ -602,8 +615,12 @@ class CustomListManagerTest(TestCase):
             image="https://example.com/twothousands.jpg",
             release_datetime=timezone.make_aware(datetime.datetime(2005, 6, 1, 12, 0)),
         )
-        Movie.objects.create(item=older_item, user=self.user, status=Status.COMPLETED.value)
-        Movie.objects.create(item=newer_item, user=self.user, status=Status.COMPLETED.value)
+        Movie.objects.create(
+            item=older_item, user=self.user, status=Status.COMPLETED.value
+        )
+        Movie.objects.create(
+            item=newer_item, user=self.user, status=Status.COMPLETED.value
+        )
 
         smart_list = CustomList.objects.create(
             name="2000s Movies",
@@ -658,7 +675,9 @@ class CustomListManagerTest(TestCase):
             is_smart=True,
             smart_media_types=[MediaTypes.MOVIE.value],
             smart_filters={
-                "date_added_from": (timezone.localdate() - timedelta(days=7)).isoformat(),
+                "date_added_from": (
+                    timezone.localdate() - timedelta(days=7)
+                ).isoformat(),
                 "date_added_to": timezone.localdate().isoformat(),
             },
         )

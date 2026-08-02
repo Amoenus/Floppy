@@ -206,12 +206,9 @@ GENERIC_PHASE_TERMS = {
 }
 
 
-
 def _comfort_bucket_key(candidate: CandidateItem) -> str:
     tags = sorted(
-        str(tag).strip().lower()
-        for tag in (candidate.tags or [])
-        if str(tag).strip()
+        str(tag).strip().lower() for tag in (candidate.tags or []) if str(tag).strip()
     )
     if tags:
         return f"tag:{tags[0]}"
@@ -241,7 +238,9 @@ def _top_affinity_keys(values: dict[str, float], *, limit: int = 5) -> set[str]:
     return {key for key, _ in ranked[:limit]}
 
 
-def _phase_affinity_maps(profile_payload: dict | None) -> tuple[dict[str, float], dict[str, float]]:
+def _phase_affinity_maps(
+    profile_payload: dict | None,
+) -> tuple[dict[str, float], dict[str, float]]:
     profile = profile_payload or {}
     phase_genre_affinity = {
         str(key).strip().lower(): float(value)
@@ -278,7 +277,9 @@ def _profile_affinity_map(profile_payload: dict | None, *keys: str) -> dict[str,
     return {}
 
 
-def _profile_exact_affinity_map(profile_payload: dict | None, key: str) -> dict[str, float]:
+def _profile_exact_affinity_map(
+    profile_payload: dict | None, key: str
+) -> dict[str, float]:
     values = (profile_payload or {}).get(key) or {}
     return {
         str(raw_key).strip().lower(): float(raw_value)
@@ -316,9 +317,15 @@ def _movie_comfort_candidate_families(candidate: CandidateItem) -> dict[str, lis
         "genres": normalize_features(candidate.genres, normalize_person_name),
         "directors": normalize_features(candidate.directors, normalize_person_name),
         "lead_cast": normalize_features(candidate.lead_cast, normalize_person_name),
-        "certifications": normalize_features([candidate.certification], normalize_certification),
-        "runtime_buckets": normalize_features([candidate.runtime_bucket], normalize_person_name),
-        "decades": normalize_features([candidate.release_decade], normalize_person_name),
+        "certifications": normalize_features(
+            [candidate.certification], normalize_certification
+        ),
+        "runtime_buckets": normalize_features(
+            [candidate.runtime_bucket], normalize_person_name
+        ),
+        "decades": normalize_features(
+            [candidate.release_decade], normalize_person_name
+        ),
     }
 
 
@@ -349,7 +356,12 @@ def _affinity_fit_from_vector(
     affinity_map: dict[str, float],
     affinity_norm: float,
 ) -> float:
-    if not feature_vector or not affinity_map or feature_vector_norm <= 0.0 or affinity_norm <= 0.0:
+    if (
+        not feature_vector
+        or not affinity_map
+        or feature_vector_norm <= 0.0
+        or affinity_norm <= 0.0
+    ):
         return 0.0
     dot = sum(
         float(value) * float(affinity_map.get(key, 0.0))
@@ -358,7 +370,9 @@ def _affinity_fit_from_vector(
     return _clamp_unit(dot / (feature_vector_norm * affinity_norm))
 
 
-def phase_fit_family(profile_payload: dict | None, family: str, values: list[str]) -> float:
+def phase_fit_family(
+    profile_payload: dict | None, family: str, values: list[str]
+) -> float:
     return _affinity_fit(
         values,
         _profile_exact_affinity_map(
@@ -368,7 +382,9 @@ def phase_fit_family(profile_payload: dict | None, family: str, values: list[str
     )
 
 
-def recent_fit_family(profile_payload: dict | None, family: str, values: list[str]) -> float:
+def recent_fit_family(
+    profile_payload: dict | None, family: str, values: list[str]
+) -> float:
     return _affinity_fit(
         values,
         _profile_exact_affinity_map(
@@ -378,7 +394,9 @@ def recent_fit_family(profile_payload: dict | None, family: str, values: list[st
     )
 
 
-def library_fit_family(profile_payload: dict | None, family: str, values: list[str]) -> float:
+def library_fit_family(
+    profile_payload: dict | None, family: str, values: list[str]
+) -> float:
     return _affinity_fit(
         values,
         _movie_comfort_bundle_map(
@@ -389,7 +407,9 @@ def library_fit_family(profile_payload: dict | None, family: str, values: list[s
     )
 
 
-def rewatch_fit_family(profile_payload: dict | None, family: str, values: list[str]) -> float:
+def rewatch_fit_family(
+    profile_payload: dict | None, family: str, values: list[str]
+) -> float:
     return _affinity_fit(
         values,
         _movie_comfort_bundle_map(
@@ -459,14 +479,12 @@ def _movie_reason_label_strength(
         family_layers.get("rewatch") or {},
         float(family_norms.get("rewatch", 0.0)),
     )
-    recency_phase_fit = (
-        (phase_fit * MOVIE_COMFORT_PROFILE_LAYER_WEIGHTS["phase"])
-        + (recent_fit * MOVIE_COMFORT_PROFILE_LAYER_WEIGHTS["recent"])
+    recency_phase_fit = (phase_fit * MOVIE_COMFORT_PROFILE_LAYER_WEIGHTS["phase"]) + (
+        recent_fit * MOVIE_COMFORT_PROFILE_LAYER_WEIGHTS["recent"]
     )
     library_bundle_fit = (
-        (library_fit * MOVIE_COMFORT_PROFILE_LAYER_WEIGHTS["library"])
-        + (rewatch_fit * MOVIE_COMFORT_PROFILE_LAYER_WEIGHTS["rewatch"])
-    )
+        library_fit * MOVIE_COMFORT_PROFILE_LAYER_WEIGHTS["library"]
+    ) + (rewatch_fit * MOVIE_COMFORT_PROFILE_LAYER_WEIGHTS["rewatch"])
     strength = _clamp_unit((library_bundle_fit * 0.55) + (recency_phase_fit * 0.45))
     if strength_cache is not None:
         strength_cache[cache_key] = strength
@@ -530,7 +548,9 @@ def _movie_item_feature_families(
         ],
         "directors": directors,
         "lead_cast": lead_cast,
-        "certifications": normalize_features([item.provider_certification], normalize_certification),
+        "certifications": normalize_features(
+            [item.provider_certification], normalize_certification
+        ),
         "runtime_buckets": normalize_features([runtime_bucket], normalize_person_name),
         "decades": normalize_features([release_decade], normalize_person_name),
     }
@@ -556,9 +576,7 @@ def _movie_cadence_signal(
         for earlier, later in zip(ordered, ordered[1:], strict=False)
     ]
     median_gap_days = (
-        float(statistics.median(gaps))
-        if gaps
-        else MOVIE_COMFORT_COOLDOWN_DEFAULT_DAYS
+        float(statistics.median(gaps)) if gaps else MOVIE_COMFORT_COOLDOWN_DEFAULT_DAYS
     )
     recent_90_cutoff = now - timedelta(days=MOVIE_COMFORT_SATURATION_WINDOW_90D)
     recent_180_cutoff = now - timedelta(days=MOVIE_COMFORT_SATURATION_WINDOW_180D)
@@ -566,18 +584,15 @@ def _movie_cadence_signal(
     recent_180_activity = [dt for dt in ordered if dt >= recent_180_cutoff]
     recent_gaps = [
         float(max(0, (earlier - later).days))
-        for earlier, later in zip(recent_180_activity, recent_180_activity[1:], strict=False)
+        for earlier, later in zip(
+            recent_180_activity, recent_180_activity[1:], strict=False
+        )
     ]
     recent_gap_median_days = (
-        float(statistics.median(recent_gaps))
-        if recent_gaps
-        else 0.0
+        float(statistics.median(recent_gaps)) if recent_gaps else 0.0
     )
     burstiness = _clamp_unit(
-        (
-            sum(1 for gap in gaps if gap <= MOVIE_COMFORT_BURST_GAP_DAYS)
-            / len(gaps)
-        )
+        (sum(1 for gap in gaps if gap <= MOVIE_COMFORT_BURST_GAP_DAYS) / len(gaps))
         if gaps
         else 0.0,
     )
@@ -620,10 +635,7 @@ def _movie_title_saturation_signal(
     plays_180_pressure = _clamp_unit((recent_play_count_180d - 2.0) / 4.0)
     if recent_gap_count > 0:
         recent_gap_pressure = _clamp_unit(
-            (
-                MOVIE_COMFORT_SATURATION_GAP_TARGET_DAYS
-                - recent_gap_median_days
-            )
+            (MOVIE_COMFORT_SATURATION_GAP_TARGET_DAYS - recent_gap_median_days)
             / MOVIE_COMFORT_SATURATION_GAP_RANGE_DAYS,
         )
     else:
@@ -666,7 +678,9 @@ def _movie_top_picks_planning_confidence(
             "generic_history_family_count": 0,
         }
 
-    history_items_by_family_label = cooldown_context.get("history_items_by_family_label") or {}
+    history_items_by_family_label = (
+        cooldown_context.get("history_items_by_family_label") or {}
+    )
     if not history_items_by_family_label:
         return {
             "planning_confidence": 0.0,
@@ -694,9 +708,8 @@ def _movie_top_picks_planning_confidence(
             continue
         matched_history_families.append(family)
         matched_history_items.update(family_match_items)
-        weighted_history_fit += (
-            MOVIE_COMFORT_FAMILY_WEIGHTS[family]
-            * float(family_layer_fits.get(family, {}).get("blended", 0.0))
+        weighted_history_fit += MOVIE_COMFORT_FAMILY_WEIGHTS[family] * float(
+            family_layer_fits.get(family, {}).get("blended", 0.0)
         )
         if family in MOVIE_COMFORT_RICH_FAMILIES:
             rich_history_family_count += 1
@@ -730,7 +743,9 @@ def _movie_top_picks_planning_confidence(
         + (history_neighbor_norm * 0.25)
         + (generic_history_coverage * 0.10),
     )
-    planning_confidence_bonus = planning_confidence * MOVIE_TOP_PICKS_PLANNING_CONFIDENCE_WEIGHT
+    planning_confidence_bonus = (
+        planning_confidence * MOVIE_TOP_PICKS_PLANNING_CONFIDENCE_WEIGHT
+    )
 
     return {
         "planning_confidence": round(planning_confidence, 6),
@@ -750,9 +765,7 @@ def _movie_comfort_cooldown_context(
         return {"title": {}, "family": {}, "history_items_by_family_label": {}}
 
     candidate_media_types = {
-        candidate.media_type
-        for candidate in candidates
-        if candidate.media_type
+        candidate.media_type for candidate in candidates if candidate.media_type
     }
     if len(candidate_media_types) != 1:
         return {"title": {}, "family": {}, "history_items_by_family_label": {}}
@@ -849,7 +862,10 @@ def _movie_ready_now_signal(
     *,
     apply_rotation_inversion: bool = False,
 ) -> dict[str, float]:
-    title_key = (str(candidate.source or "").strip(), str(candidate.media_id or "").strip())
+    title_key = (
+        str(candidate.source or "").strip(),
+        str(candidate.media_id or "").strip(),
+    )
     title_signal = (cooldown_context.get("title") or {}).get(title_key, {})
     title_history_present = 1.0 if title_signal else 0.0
     release_status = _candidate_release_status(candidate)
@@ -885,7 +901,9 @@ def _movie_ready_now_signal(
             family_signal = family_signal_map.get(value)
             if not family_signal:
                 continue
-            lane_burstiness = max(lane_burstiness, float(family_signal.get("burstiness", 0.0)))
+            lane_burstiness = max(
+                lane_burstiness, float(family_signal.get("burstiness", 0.0))
+            )
             lane_days_since_watch = min(
                 lane_days_since_watch,
                 float(family_signal.get("days_since_last_watch", 9999.0)),
@@ -966,7 +984,9 @@ def _movie_ready_now_signal(
         "recent_play_count_90d": float(saturation_signal["recent_play_count_90d"]),
         "recent_play_count_180d": float(saturation_signal["recent_play_count_180d"]),
         "recent_gap_median_days": float(saturation_signal["recent_gap_median_days"]),
-        "title_saturation_penalty": float(saturation_signal["title_saturation_penalty"]),
+        "title_saturation_penalty": float(
+            saturation_signal["title_saturation_penalty"]
+        ),
         "saturation_multiplier": float(saturation_signal["saturation_multiplier"]),
         "title_history_present": round(title_history_present, 6),
         "release_ready_score": round(release_ready_score, 6),
@@ -994,7 +1014,9 @@ def _entry_phase_evidence(
         for tag in (tag_map.get(entry.item_id, []) or [])
         if str(tag).strip()
     ]
-    best_genre = max((phase_genre_affinity.get(genre, 0.0) for genre in genres), default=0.0)
+    best_genre = max(
+        (phase_genre_affinity.get(genre, 0.0) for genre in genres), default=0.0
+    )
     best_tag = max((phase_tag_affinity.get(tag, 0.0) for tag in tags), default=0.0)
     return _clamp_unit((best_genre * 0.45) + (best_tag * 0.55))
 
@@ -1047,7 +1069,9 @@ def _format_phase_label(value: str) -> str:
         lower, upper = key.split("_", 1)
         if lower.isdigit() and upper.isdigit():
             return f"{int(lower)}-{int(upper)} Minutes"
-    return " ".join(part.capitalize() for part in key.replace("_", " ").replace("-", " ").split())
+    return " ".join(
+        part.capitalize() for part in key.replace("_", " ").replace("-", " ").split()
+    )
 
 
 def _top_phase_labels(
@@ -1088,15 +1112,32 @@ def _top_phase_labels(
     return labels
 
 
-def _signal_phase_feature_maps(profile_payload: dict | None) -> list[tuple[str, dict[str, float]]]:
+def _signal_phase_feature_maps(
+    profile_payload: dict | None,
+) -> list[tuple[str, dict[str, float]]]:
     return [
         ("keywords", _profile_affinity_map(profile_payload, "phase_keyword_affinity")),
-        ("collections", _profile_affinity_map(profile_payload, "phase_collection_affinity")),
+        (
+            "collections",
+            _profile_affinity_map(profile_payload, "phase_collection_affinity"),
+        ),
         ("studios", _profile_affinity_map(profile_payload, "phase_studio_affinity")),
-        ("directors", _profile_affinity_map(profile_payload, "phase_director_affinity")),
-        ("lead_cast", _profile_affinity_map(profile_payload, "phase_lead_cast_affinity")),
-        ("certifications", _profile_affinity_map(profile_payload, "phase_certification_affinity")),
-        ("runtime_buckets", _profile_affinity_map(profile_payload, "phase_runtime_bucket_affinity")),
+        (
+            "directors",
+            _profile_affinity_map(profile_payload, "phase_director_affinity"),
+        ),
+        (
+            "lead_cast",
+            _profile_affinity_map(profile_payload, "phase_lead_cast_affinity"),
+        ),
+        (
+            "certifications",
+            _profile_affinity_map(profile_payload, "phase_certification_affinity"),
+        ),
+        (
+            "runtime_buckets",
+            _profile_affinity_map(profile_payload, "phase_runtime_bucket_affinity"),
+        ),
         ("decades", _profile_affinity_map(profile_payload, "phase_decade_affinity")),
         ("tags", _profile_affinity_map(profile_payload, "phase_tag_affinity")),
         ("genres", _profile_affinity_map(profile_payload, "phase_genre_affinity")),
@@ -1110,9 +1151,15 @@ def _candidate_signal_labels(candidate: CandidateItem) -> dict[str, set[str]]:
         "studios": set(candidate.studios or []),
         "directors": set(candidate.directors or []),
         "lead_cast": set(candidate.lead_cast or []),
-        "certifications": set(normalize_features([candidate.certification], normalize_certification)),
-        "runtime_buckets": set(normalize_features([candidate.runtime_bucket], normalize_person_name)),
-        "decades": set(normalize_features([candidate.release_decade], normalize_person_name)),
+        "certifications": set(
+            normalize_features([candidate.certification], normalize_certification)
+        ),
+        "runtime_buckets": set(
+            normalize_features([candidate.runtime_bucket], normalize_person_name)
+        ),
+        "decades": set(
+            normalize_features([candidate.release_decade], normalize_person_name)
+        ),
         "tags": {
             str(tag).strip().lower()
             for tag in (candidate.tags or [])
@@ -1146,7 +1193,9 @@ def _movie_comfort_bucket_sort_key(
     )
 
 
-def _movie_comfort_legacy_sort_key(candidate: CandidateItem) -> tuple[float, float, float, float]:
+def _movie_comfort_legacy_sort_key(
+    candidate: CandidateItem,
+) -> tuple[float, float, float, float]:
     return (
         float(candidate.score_breakdown.get("legacy_final_score", 0.0)),
         float(candidate.score_breakdown.get("library_fit", 0.0)),
@@ -1184,24 +1233,14 @@ def _candidate_world_quality_signal(candidate: CandidateItem) -> dict[str, float
     trakt_rating_count = score.get("trakt_rating_count")
     return blended_world_quality(
         provider_rating=(
-            float(provider_rating)
-            if provider_rating is not None
-            else None
+            float(provider_rating) if provider_rating is not None else None
         ),
         provider_votes=(
-            int(provider_rating_count)
-            if provider_rating_count is not None
-            else None
+            int(provider_rating_count) if provider_rating_count is not None else None
         ),
-        trakt_rating=(
-            float(trakt_rating)
-            if trakt_rating is not None
-            else None
-        ),
+        trakt_rating=(float(trakt_rating) if trakt_rating is not None else None),
         trakt_votes=(
-            int(trakt_rating_count)
-            if trakt_rating_count is not None
-            else None
+            int(trakt_rating_count) if trakt_rating_count is not None else None
         ),
     )
 
@@ -1346,7 +1385,9 @@ def _aligned_world_quality(
 
 
 def _movie_comfort_reason_bucket_parts(candidate: CandidateItem) -> tuple[str, str]:
-    bucket = str(candidate.score_breakdown.get("primary_reason_bucket", "broad:general"))
+    bucket = str(
+        candidate.score_breakdown.get("primary_reason_bucket", "broad:general")
+    )
     if ":" in bucket:
         source, label = bucket.split(":", 1)
         return source, label
@@ -1368,9 +1409,13 @@ def _apply_movie_reason_bucket_quotas(
     target_count = min(target, len(ordered))
 
     for candidate in ordered:
-        bucket = str(candidate.score_breakdown.get("primary_reason_bucket", "broad:general"))
+        bucket = str(
+            candidate.score_breakdown.get("primary_reason_bucket", "broad:general")
+        )
         if len(selected) >= target_count:
-            candidate.score_breakdown.setdefault("reason_bucket_quota_action", "reserve")
+            candidate.score_breakdown.setdefault(
+                "reason_bucket_quota_action", "reserve"
+            )
             continue
         base_limit = 2 if len(selected) < 8 else 3
         if counts[bucket] >= base_limit:
@@ -1387,7 +1432,9 @@ def _apply_movie_reason_bucket_quotas(
         for candidate in remaining:
             if len(selected) >= target_count:
                 break
-            bucket = str(candidate.score_breakdown.get("primary_reason_bucket", "broad:general"))
+            bucket = str(
+                candidate.score_breakdown.get("primary_reason_bucket", "broad:general")
+            )
             base_limit = 2 if len(selected) < 8 else 3
             relaxed_limit = base_limit + MOVIE_COMFORT_REASON_BUCKET_RELAX_INCREMENT
             if counts[bucket] >= relaxed_limit:
@@ -1402,7 +1449,9 @@ def _apply_movie_reason_bucket_quotas(
         for candidate in remaining:
             if len(selected) >= target_count:
                 break
-            bucket = str(candidate.score_breakdown.get("primary_reason_bucket", "broad:general"))
+            bucket = str(
+                candidate.score_breakdown.get("primary_reason_bucket", "broad:general")
+            )
             counts[bucket] += 1
             candidate.score_breakdown["reason_bucket_quota_action"] = "forced_fill"
             selected.append(candidate)
@@ -1432,9 +1481,7 @@ def _is_phase_lane_candidate(
     phase_tags: set[str],
 ) -> bool:
     candidate_tags = {
-        str(tag).strip().lower()
-        for tag in (candidate.tags or [])
-        if str(tag).strip()
+        str(tag).strip().lower() for tag in (candidate.tags or []) if str(tag).strip()
     }
     if phase_tags and candidate_tags.intersection(phase_tags):
         return True
@@ -1477,7 +1524,9 @@ def _promote_phase_lane_candidates(
         return candidates
 
     needed = quota - len(phase_in_top)
-    replacement_indices = [idx for idx, item in enumerate(top_slice) if not is_phase_lane(item)]
+    replacement_indices = [
+        idx for idx, item in enumerate(top_slice) if not is_phase_lane(item)
+    ]
     if not replacement_indices:
         return candidates
     replacement_indices = replacement_indices[-needed:]
@@ -1492,7 +1541,9 @@ def _promote_phase_lane_candidates(
         return candidates
 
     for promoted, target_idx in zip(promotable, replacement_indices):
-        current_idx = next((idx for idx, item in enumerate(candidates) if item is promoted), None)
+        current_idx = next(
+            (idx for idx, item in enumerate(candidates) if item is promoted), None
+        )
         if current_idx is None or current_idx <= target_idx:
             continue
         displaced = candidates[target_idx]
@@ -1518,7 +1569,9 @@ def _prefer_strong_phase_opening_window(
     used_strong_indices: set[int] = set()
     for index in range(opening_window):
         candidate = candidates[index]
-        is_medium = float(candidate.score_breakdown.get("phase_pool_medium", 0.0)) >= 1.0
+        is_medium = (
+            float(candidate.score_breakdown.get("phase_pool_medium", 0.0)) >= 1.0
+        )
         if not is_medium:
             continue
 
@@ -1526,7 +1579,12 @@ def _prefer_strong_phase_opening_window(
         for down_idx in range(opening_window, len(candidates)):
             if down_idx in used_strong_indices:
                 continue
-            if float(candidates[down_idx].score_breakdown.get("phase_pool_strong", 0.0)) >= 1.0:
+            if (
+                float(
+                    candidates[down_idx].score_breakdown.get("phase_pool_strong", 0.0)
+                )
+                >= 1.0
+            ):
                 replacement_idx = down_idx
                 break
         if replacement_idx is None:
@@ -1544,7 +1602,9 @@ def _prefer_strong_phase_opening_window(
             candidates[index],
         )
         candidates[index].score_breakdown["strong_phase_promoted_opening"] = 1.0
-        candidates[replacement_idx].score_breakdown["medium_phase_demoted_opening"] = 1.0
+        candidates[replacement_idx].score_breakdown["medium_phase_demoted_opening"] = (
+            1.0
+        )
         used_strong_indices.add(replacement_idx)
 
     return candidates
@@ -1598,8 +1658,12 @@ def _apply_movie_comfort_confidence(
         return candidates
 
     cooldown_context = _movie_comfort_cooldown_context(user, candidates)
-    popularity_norm = normalize_values([candidate.popularity for candidate in candidates])
-    rating_count_norm = normalize_values([candidate.rating_count for candidate in candidates])
+    popularity_norm = normalize_values(
+        [candidate.popularity for candidate in candidates]
+    )
+    rating_count_norm = normalize_values(
+        [candidate.rating_count for candidate in candidates]
+    )
     holiday_window_active = _is_holiday_window()
     reason_label_strength_cache: dict[tuple[str, str], float] = {}
 
@@ -1729,9 +1793,7 @@ def _apply_movie_comfort_confidence(
                     min(IMPLICIT_RATING_CONFIDENCE_MAX, implicit),
                 )
         rewatch_strength = _clamp_unit(
-            math.log1p(rewatch_count - 1) / math.log(6)
-            if rewatch_count > 1
-            else 0.0,
+            math.log1p(rewatch_count - 1) / math.log(6) if rewatch_count > 1 else 0.0,
         )
         rewatch_strength_raw = rewatch_strength
         if is_comfort_rewatch_row:
@@ -1739,7 +1801,9 @@ def _apply_movie_comfort_confidence(
             # is already being rewatched on its own.
             rewatch_strength = _clamp_unit(
                 rewatch_strength
-                * (1.0 - MOVIE_COMFORT_ROTATION_REWATCH_ATTENUATION * rotation_pressure),
+                * (
+                    1.0 - MOVIE_COMFORT_ROTATION_REWATCH_ATTENUATION * rotation_pressure
+                ),
             )
         inactivity_norm = _clamp_unit(
             float(candidate.score_breakdown.get("days_since_activity", 0.0)) / 730.0,
@@ -1783,9 +1847,7 @@ def _apply_movie_comfort_confidence(
         runtime_fit = family_layer_fits["runtime_buckets"]["blended"]
         decade_fit = family_layer_fits["decades"]["blended"]
         comfort_safety = _clamp_unit(
-            (certification_fit * 0.50)
-            + (runtime_fit * 0.25)
-            + (quality_score * 0.25),
+            (certification_fit * 0.50) + (runtime_fit * 0.25) + (quality_score * 0.25),
         )
         legacy_comfort_safety = _clamp_unit(
             (certification_fit * 0.50)
@@ -1798,11 +1860,7 @@ def _apply_movie_comfort_confidence(
             for family in MOVIE_COMFORT_RICH_FAMILIES
         }
         shape_coverage = _clamp_unit(
-            sum(
-                1
-                for family_fit in rich_family_fits.values()
-                if family_fit >= 0.20
-            )
+            sum(1 for family_fit in rich_family_fits.values() if family_fit >= 0.20)
             / 4.0,
         )
         generic_only_match = (
@@ -1843,7 +1901,10 @@ def _apply_movie_comfort_confidence(
             )
             core_affinity_score = _clamp_unit(
                 (top_picks_library_fit * MOVIE_TOP_PICKS_CORE_WEIGHTS["library"])
-                + (top_picks_recency_fit * MOVIE_TOP_PICKS_CORE_WEIGHTS["recency_phase"])
+                + (
+                    top_picks_recency_fit
+                    * MOVIE_TOP_PICKS_CORE_WEIGHTS["recency_phase"]
+                )
                 + (quality_score * MOVIE_TOP_PICKS_CORE_WEIGHTS["quality"])
                 + (comfort_safety * MOVIE_TOP_PICKS_CORE_WEIGHTS["comfort_safety"])
                 + (shape_coverage * MOVIE_TOP_PICKS_CORE_WEIGHTS["shape_coverage"]),
@@ -1865,11 +1926,7 @@ def _apply_movie_comfort_confidence(
             + (legacy_quality_score * 0.10)
             + (shape_coverage * 0.05),
         )
-        if (
-            generic_only_match >= 1.0
-            and library_fit < 0.40
-            and rewatch_strength < 0.35
-        ):
+        if generic_only_match >= 1.0 and library_fit < 0.40 and rewatch_strength < 0.35:
             core_affinity_score = _clamp_unit(core_affinity_score * 0.86)
             legacy_core_affinity_score = _clamp_unit(legacy_core_affinity_score * 0.86)
             for family in MOVIE_COMFORT_GENERIC_SOURCES:
@@ -1893,8 +1950,7 @@ def _apply_movie_comfort_confidence(
                 # A conservative prior only: strong explicit evidence that the
                 # user likes this title overrides inferred avoidance entirely.
                 override_evidence = _clamp_unit(
-                    max(library_fit, rewatch_strength)
-                    / MOVIE_AVOIDANCE_OVERRIDE_FIT,
+                    max(library_fit, rewatch_strength) / MOVIE_AVOIDANCE_OVERRIDE_FIT,
                 )
                 applied_avoidance = avoidance_prior * (1.0 - override_evidence)
                 core_affinity_score = _clamp_unit(
@@ -1948,7 +2004,10 @@ def _apply_movie_comfort_confidence(
 
         saturation_multiplier = float(cooldown_signal["saturation_multiplier"])
         saturation_penalty_contribution = 0.0
-        if candidate.media_type == MediaTypes.MOVIE.value and saturation_multiplier < 0.999:
+        if (
+            candidate.media_type == MediaTypes.MOVIE.value
+            and saturation_multiplier < 0.999
+        ):
             raw_before_saturation = raw_final_score
             raw_final_score = _clamp_unit(raw_final_score * saturation_multiplier)
             legacy_raw_final_score = _clamp_unit(
@@ -1986,8 +2045,7 @@ def _apply_movie_comfort_confidence(
                     MOVIE_COMFORT_ABSENCE_BOOST_WEIGHT
                     * (absence_norm**MOVIE_COMFORT_ABSENCE_BOOST_EXPONENT)
                     * _clamp_unit(
-                        core_affinity_score
-                        / MOVIE_COMFORT_ABSENCE_AFFINITY_REFERENCE,
+                        core_affinity_score / MOVIE_COMFORT_ABSENCE_AFFINITY_REFERENCE,
                     )
                 )
                 raw_final_score = _clamp_unit(raw_final_score + absence_boost)
@@ -2019,20 +2077,28 @@ def _apply_movie_comfort_confidence(
         final_score = _clamp_unit(raw_final_score + seasonal_adjustment)
         legacy_final_score = _clamp_unit(legacy_raw_final_score + seasonal_adjustment)
 
-        primary_reason_bucket, primary_reason_source, primary_reason_label = _movie_reason_bucket_label(
-            family_profile_maps,
-            family_profile_norms,
-            candidate_families,
-            rewatch_strength=rewatch_strength,
-            strength_cache=reason_label_strength_cache,
+        primary_reason_bucket, primary_reason_source, primary_reason_label = (
+            _movie_reason_bucket_label(
+                family_profile_maps,
+                family_profile_norms,
+                candidate_families,
+                rewatch_strength=rewatch_strength,
+                strength_cache=reason_label_strength_cache,
+            )
         )
         for family in MOVIE_COMFORT_RICH_FAMILIES:
             if family == primary_reason_source:
                 continue
-            if family_layer_fits[family]["blended"] >= 0.20 and family not in suppressed_map:
+            if (
+                family_layer_fits[family]["blended"] >= 0.20
+                and family not in suppressed_map
+            ):
                 suppressed_map[family] = "not_selected_in_bucket"
 
-        if primary_reason_source in MOVIE_COMFORT_RICH_FAMILIES and primary_reason_source not in active_signal_families:
+        if (
+            primary_reason_source in MOVIE_COMFORT_RICH_FAMILIES
+            and primary_reason_source not in active_signal_families
+        ):
             active_signal_families.append(primary_reason_source)
         active_signal_families = [
             family
@@ -2045,7 +2111,9 @@ def _apply_movie_comfort_confidence(
         candidate.score_breakdown["recency_phase_fit"] = round(recency_phase_fit, 6)
         candidate.score_breakdown["behavior_score"] = round(behavior_score, 6)
         candidate.score_breakdown["quality_score"] = round(quality_score, 6)
-        candidate.score_breakdown["legacy_quality_score"] = round(legacy_quality_score, 6)
+        candidate.score_breakdown["legacy_quality_score"] = round(
+            legacy_quality_score, 6
+        )
         candidate.score_breakdown["shape_coverage"] = round(shape_coverage, 6)
         candidate.score_breakdown["generic_only_match"] = float(generic_only_match)
         candidate.score_breakdown["core_affinity_score"] = round(core_affinity_score, 6)
@@ -2075,11 +2143,11 @@ def _apply_movie_comfort_confidence(
         candidate.score_breakdown["absence_gate_days"] = MOVIE_COMFORT_ABSENCE_GATE_DAYS
         candidate.score_breakdown["absence_norm"] = round(absence_norm, 6)
         candidate.score_breakdown["absence_boost"] = round(absence_boost, 6)
-        candidate.score_breakdown["absence_boost_contribution"] = round(absence_boost, 6)
+        candidate.score_breakdown["absence_boost_contribution"] = round(
+            absence_boost, 6
+        )
         candidate.score_breakdown["rotation_rewatch_attenuation_applied"] = (
-            1.0
-            if is_comfort_rewatch_row and rotation_pressure > 0.0
-            else 0.0
+            1.0 if is_comfort_rewatch_row and rotation_pressure > 0.0 else 0.0
         )
         candidate.score_breakdown["family_coverage_weight"] = round(
             family_coverage_weight,
@@ -2156,16 +2224,28 @@ def _apply_movie_comfort_confidence(
         candidate.score_breakdown["generic_history_family_count"] = int(
             planning_confidence_signal["generic_history_family_count"],
         )
-        candidate.score_breakdown["keyword_fit"] = round(family_layer_fits["keywords"]["blended"], 6)
-        candidate.score_breakdown["collection_fit"] = round(family_layer_fits["collections"]["blended"], 6)
-        candidate.score_breakdown["studio_fit"] = round(family_layer_fits["studios"]["blended"], 6)
-        candidate.score_breakdown["genre_fit"] = round(family_layer_fits["genres"]["blended"], 6)
+        candidate.score_breakdown["keyword_fit"] = round(
+            family_layer_fits["keywords"]["blended"], 6
+        )
+        candidate.score_breakdown["collection_fit"] = round(
+            family_layer_fits["collections"]["blended"], 6
+        )
+        candidate.score_breakdown["studio_fit"] = round(
+            family_layer_fits["studios"]["blended"], 6
+        )
+        candidate.score_breakdown["genre_fit"] = round(
+            family_layer_fits["genres"]["blended"], 6
+        )
         candidate.score_breakdown["genre_backstop_fit"] = round(
             family_layer_fits["genres"]["blended"],
             6,
         )
-        candidate.score_breakdown["director_fit"] = round(family_layer_fits["directors"]["blended"], 6)
-        candidate.score_breakdown["lead_cast_fit"] = round(family_layer_fits["lead_cast"]["blended"], 6)
+        candidate.score_breakdown["director_fit"] = round(
+            family_layer_fits["directors"]["blended"], 6
+        )
+        candidate.score_breakdown["lead_cast_fit"] = round(
+            family_layer_fits["lead_cast"]["blended"], 6
+        )
         candidate.score_breakdown["certification_fit"] = round(certification_fit, 6)
         candidate.score_breakdown["runtime_fit"] = round(runtime_fit, 6)
         candidate.score_breakdown["decade_fit"] = round(decade_fit, 6)
@@ -2215,8 +2295,12 @@ def _apply_movie_comfort_confidence(
         candidate.score_breakdown["rating_confidence_source"] = rating_confidence_source
         candidate.score_breakdown["rating_confidence"] = round(rating_confidence, 6)
         candidate.score_breakdown["rewatch_strength"] = round(rewatch_strength, 6)
-        candidate.score_breakdown["rewatch_strength_raw"] = round(rewatch_strength_raw, 6)
-        candidate.score_breakdown["legacy_behavior_score"] = round(legacy_behavior_score, 6)
+        candidate.score_breakdown["rewatch_strength_raw"] = round(
+            rewatch_strength_raw, 6
+        )
+        candidate.score_breakdown["legacy_behavior_score"] = round(
+            legacy_behavior_score, 6
+        )
         candidate.score_breakdown["rewatch_bonus"] = round(rewatch_strength, 6)
         candidate.score_breakdown["inactivity_norm"] = round(inactivity_norm, 6)
         candidate.score_breakdown["phase_evidence"] = round(
@@ -2234,7 +2318,9 @@ def _apply_movie_comfort_confidence(
         candidate.score_breakdown["hot_recency_base"] = round(recency_phase_fit, 6)
         candidate.score_breakdown["hot_recency_mode_multiplier"] = 1.0
         candidate.score_breakdown["family_layer_fits"] = family_layer_fits
-        candidate.score_breakdown["evaluated_signal_families"] = evaluated_signal_families
+        candidate.score_breakdown["evaluated_signal_families"] = (
+            evaluated_signal_families
+        )
         candidate.score_breakdown["active_signal_families"] = active_signal_families
         candidate.score_breakdown["suppressed_signal_families"] = [
             {
@@ -2303,19 +2389,37 @@ def _apply_movie_comfort_confidence(
             )
         else:
             candidate.score_breakdown["core_weight_profile"] = "comfort_default"
-            candidate.score_breakdown["library_contribution"] = round(library_fit * 0.30, 6)
-            candidate.score_breakdown["recency_phase_contribution"] = round(recency_phase_fit * 0.25, 6)
-            candidate.score_breakdown["behavior_contribution"] = round(behavior_score * 0.20, 6)
-            candidate.score_breakdown["comfort_safety_contribution"] = round(comfort_safety * 0.10, 6)
-            candidate.score_breakdown["quality_contribution"] = round(quality_score * 0.10, 6)
-            candidate.score_breakdown["shape_coverage_contribution"] = round(shape_coverage * 0.05, 6)
+            candidate.score_breakdown["library_contribution"] = round(
+                library_fit * 0.30, 6
+            )
+            candidate.score_breakdown["recency_phase_contribution"] = round(
+                recency_phase_fit * 0.25, 6
+            )
+            candidate.score_breakdown["behavior_contribution"] = round(
+                behavior_score * 0.20, 6
+            )
+            candidate.score_breakdown["comfort_safety_contribution"] = round(
+                comfort_safety * 0.10, 6
+            )
+            candidate.score_breakdown["quality_contribution"] = round(
+                quality_score * 0.10, 6
+            )
+            candidate.score_breakdown["shape_coverage_contribution"] = round(
+                shape_coverage * 0.05, 6
+            )
             candidate.score_breakdown["ready_now_contribution"] = round(
                 ready_now_score * MOVIE_COMFORT_READY_NOW_WEIGHT,
                 6,
             )
-            candidate.score_breakdown["phase_family_contribution"] = round(recency_phase_fit * 0.25, 6)
-            candidate.score_breakdown["rating_contribution"] = round(quality_score * 0.10, 6)
-            candidate.score_breakdown["rewatch_contribution"] = round(behavior_score * 0.20, 6)
+            candidate.score_breakdown["phase_family_contribution"] = round(
+                recency_phase_fit * 0.25, 6
+            )
+            candidate.score_breakdown["rating_contribution"] = round(
+                quality_score * 0.10, 6
+            )
+            candidate.score_breakdown["rewatch_contribution"] = round(
+                behavior_score * 0.20, 6
+            )
             candidate.score_breakdown["background_contribution"] = round(
                 (library_fit * 0.30) + (shape_coverage * 0.05),
                 6,
@@ -2359,9 +2463,7 @@ def _apply_movie_comfort_confidence(
 
         if phase_genre_affinity:
             cand_genres = {
-                genre.strip().lower()
-                for genre in (candidate.genres or [])
-                if genre
+                genre.strip().lower() for genre in (candidate.genres or []) if genre
             }
             overlap = [
                 genre
@@ -2384,7 +2486,8 @@ def _apply_movie_comfort_confidence(
         if (
             candidate.media_type == MediaTypes.MOVIE.value
             and candidate.row_key == "top_picks_for_you"
-            and float(candidate.score_breakdown.get("title_history_present", 0.0)) >= 1.0
+            and float(candidate.score_breakdown.get("title_history_present", 0.0))
+            >= 1.0
         ):
             # "New-to-you" means exactly that; rewatch suggestions belong to
             # Comfort Rewatches.
@@ -2410,9 +2513,12 @@ def _apply_movie_comfort_confidence(
             and candidate.row_key == "top_picks_for_you"
             and candidate.score_breakdown.get("pool_source") == "taste_discovery"
         ):
-            target_genres = candidate.score_breakdown.get(
-                "taste_discovery_target_genres",
-            ) or []
+            target_genres = (
+                candidate.score_breakdown.get(
+                    "taste_discovery_target_genres",
+                )
+                or []
+            )
             candidate_genres_lower = [
                 str(genre).strip().lower() for genre in (candidate.genres or [])
             ]
@@ -2427,9 +2533,13 @@ def _apply_movie_comfort_confidence(
                 # what stopped an anime whose real genre is Action/Adventure
                 # from surfacing under "Matches your Comedy taste" just
                 # because Comedy trailed somewhere in its tag list.
-                candidate.score_breakdown["filtered_provider_secondary_genre_mismatch"] = 1.0
+                candidate.score_breakdown[
+                    "filtered_provider_secondary_genre_mismatch"
+                ] = 1.0
                 continue
-        is_unrated = float(candidate.score_breakdown.get("candidate_is_unrated", 0.0)) >= 1.0
+        is_unrated = (
+            float(candidate.score_breakdown.get("candidate_is_unrated", 0.0)) >= 1.0
+        )
         if (
             is_unrated
             and float(candidate.score_breakdown.get("rewatch_strength", 0.0)) < 0.35
@@ -2441,7 +2551,8 @@ def _apply_movie_comfort_confidence(
                 float(candidate.score_breakdown.get("genre_fit", 0.0)),
                 float(candidate.score_breakdown.get("director_fit", 0.0)),
                 float(candidate.score_breakdown.get("lead_cast_fit", 0.0)),
-            ) < 0.20
+            )
+            < 0.20
         ):
             candidate.score_breakdown["filtered_unrated_weak_shape"] = 1.0
             continue
@@ -2463,7 +2574,9 @@ def _apply_movie_comfort_confidence(
         for position, candidate in enumerate(legacy_order, start=1)
     }
     for candidate in candidates:
-        candidate.score_breakdown["legacy_rank"] = legacy_positions.get(id(candidate), 0)
+        candidate.score_breakdown["legacy_rank"] = legacy_positions.get(
+            id(candidate), 0
+        )
 
     candidates.sort(key=_movie_comfort_bucket_sort_key, reverse=True)
     _apply_movie_reason_bucket_quotas(candidates)
@@ -2471,5 +2584,3 @@ def _apply_movie_comfort_confidence(
         legacy_rank = int(candidate.score_breakdown.get("legacy_rank", 0) or 0)
         candidate.score_breakdown["rank_delta"] = legacy_rank - current_rank
     return candidates
-
-

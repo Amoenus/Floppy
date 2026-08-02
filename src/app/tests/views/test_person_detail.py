@@ -71,7 +71,9 @@ class PersonDetailViewTests(TestCase):
                 },
             )
 
-    def _create_tmdb_tv_show(self, media_id, title, studio, show_credits, seasons, base_time):
+    def _create_tmdb_tv_show(
+        self, media_id, title, studio, show_credits, seasons, base_time
+    ):
         tv_item = Item.objects.create(
             media_id=media_id,
             source=Sources.TMDB.value,
@@ -125,8 +127,10 @@ class PersonDetailViewTests(TestCase):
                     media_id=media_id,
                     source=Sources.TMDB.value,
                     media_type=MediaTypes.EPISODE.value,
-                    title=episode_spec.get("title") or f"{title} Episode {season_number}-{episode_number}",
-                    image=episode_spec.get("image") or f"http://example.com/{media_id}-s{season_number}e{episode_number}.jpg",
+                    title=episode_spec.get("title")
+                    or f"{title} Episode {season_number}-{episode_number}",
+                    image=episode_spec.get("image")
+                    or f"http://example.com/{media_id}-s{season_number}e{episode_number}.jpg",
                     season_number=season_number,
                     episode_number=episode_number,
                     runtime_minutes=episode_spec.get("runtime_minutes", 45),
@@ -134,7 +138,8 @@ class PersonDetailViewTests(TestCase):
                 Episode.objects.create(
                     item=episode_item,
                     related_season=season,
-                    end_date=base_time + timedelta(minutes=episode_spec.get("offset_minutes", 0)),
+                    end_date=base_time
+                    + timedelta(minutes=episode_spec.get("offset_minutes", 0)),
                 )
                 for credit in episode_spec.get("credits", []):
                     ItemPersonCredit.objects.create(
@@ -485,7 +490,9 @@ class PersonDetailViewTests(TestCase):
             role_type=CreditRoleType.CAST.value,
             role="Guest",
         )
-        self._mark_tmdb_credits_current(show_item, season_item, first_episode_item, second_episode_item)
+        self._mark_tmdb_credits_current(
+            show_item, season_item, first_episode_item, second_episode_item
+        )
 
         mock_person.return_value = {
             "person_id": "123",
@@ -632,14 +639,20 @@ class PersonDetailViewTests(TestCase):
         self.assertEqual(response.context["tracked_hours_count"], "0h 45min")
         self.assertEqual(response.context["watched_show_count"], 1)
         self.assertEqual(len(response.context["watched_filmography"]), 1)
-        self.assertEqual(response.context["watched_filmography"][0]["title"], "Season Ladder Show")
         self.assertEqual(
-            response.context["watched_filmography"][0]["watched_person_runtime_display"],
+            response.context["watched_filmography"][0]["title"], "Season Ladder Show"
+        )
+        self.assertEqual(
+            response.context["watched_filmography"][0][
+                "watched_person_runtime_display"
+            ],
             "45min",
         )
 
     @patch("app.providers.openlibrary.author_profile")
-    def test_person_detail_openlibrary_author_uses_bibliography(self, mock_author_profile):
+    def test_person_detail_openlibrary_author_uses_bibliography(
+        self, mock_author_profile
+    ):
         person = Person.objects.create(
             source=Sources.OPENLIBRARY.value,
             source_person_id="OL1A",
@@ -709,7 +722,9 @@ class PersonDetailViewTests(TestCase):
         self.assertContains(response, "?person_source=openlibrary&amp;person_id=OL1A")
 
     @patch("app.providers.hardcover.author_profile")
-    def test_person_detail_hardcover_author_uses_bibliography(self, mock_author_profile):
+    def test_person_detail_hardcover_author_uses_bibliography(
+        self, mock_author_profile
+    ):
         person = Person.objects.create(
             source=Sources.HARDCOVER.value,
             source_person_id="78661",
@@ -851,7 +866,9 @@ class PersonDetailViewTests(TestCase):
         self.assertContains(response, "A Clash of Kings")
 
     @patch("app.providers.comicvine.person_profile")
-    def test_person_detail_comicvine_falls_back_to_local_credited_items(self, mock_person_profile):
+    def test_person_detail_comicvine_falls_back_to_local_credited_items(
+        self, mock_person_profile
+    ):
         person = Person.objects.create(
             source=Sources.COMICVINE.value,
             source_person_id="44",
@@ -908,8 +925,12 @@ class PersonDetailViewTests(TestCase):
         self.assertEqual(response.context["tracked_plays_count"], 1)
         self.assertEqual(response.context["watched_book_count"], 1)
         self.assertEqual(len(response.context["watched_filmography"]), 1)
-        self.assertEqual(response.context["filmography"][0]["title"], "Ultimate Spider-Man")
-        self.assertEqual(response.context["watched_filmography"][0]["title"], "Ultimate Spider-Man")
+        self.assertEqual(
+            response.context["filmography"][0]["title"], "Ultimate Spider-Man"
+        )
+        self.assertEqual(
+            response.context["watched_filmography"][0]["title"], "Ultimate Spider-Man"
+        )
         self.assertContains(response, "Ultimate Spider-Man")
 
     @patch("app.providers.mangaupdates.author_profile")
@@ -981,7 +1002,9 @@ class PersonDetailViewTests(TestCase):
         self.assertEqual(response.context["tracked_plays_count"], 1)
         self.assertEqual(response.context["watched_book_count"], 1)
         self.assertEqual(len(response.context["watched_filmography"]), 1)
-        self.assertEqual(response.context["watched_filmography"][0]["title"], "Manga Title")
+        self.assertEqual(
+            response.context["watched_filmography"][0]["title"], "Manga Title"
+        )
         self.assertContains(response, "Manga Title")
 
     def test_person_detail_rejects_unsupported_source(self):

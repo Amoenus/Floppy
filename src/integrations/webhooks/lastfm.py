@@ -13,7 +13,9 @@ logger = logging.getLogger(__name__)
 class LastFMScrobbleProcessor:
     """Processor for Last.fm scrobble data."""
 
-    def process_track(self, track_data: dict, user, *, fast_mode: bool = False) -> music_scrobble.Music | None:
+    def process_track(
+        self, track_data: dict, user, *, fast_mode: bool = False
+    ) -> music_scrobble.Music | None:
         """Process a single Last.fm track and record it as a scrobble.
 
         Args:
@@ -39,9 +41,13 @@ class LastFMScrobbleProcessor:
         # Extract basic track info
         track_title = track_data.get("name", "Unknown Track")
         artist_data = track_data.get("artist", {})
-        artist_name = artist_data.get("#text") or artist_data.get("name") or "Unknown Artist"
+        artist_name = (
+            artist_data.get("#text") or artist_data.get("name") or "Unknown Artist"
+        )
         album_data = track_data.get("album", {})
-        album_title = album_data.get("#text") or album_data.get("name") or "Unknown Album"
+        album_title = (
+            album_data.get("#text") or album_data.get("name") or "Unknown Album"
+        )
 
         # Extract MBIDs if present
         external_ids = {}
@@ -69,7 +75,9 @@ class LastFMScrobbleProcessor:
             return None
 
         # Check for exact duplicate before processing
-        if self._is_duplicate(user, played_at_uts, artist_name, track_title, album_title):
+        if self._is_duplicate(
+            user, played_at_uts, artist_name, track_title, album_title
+        ):
             logger.debug(
                 "Skipping duplicate scrobble: %s - %s (%s)",
                 artist_name,
@@ -134,7 +142,9 @@ class LastFMScrobbleProcessor:
             album_title,
         )
 
-    def process_tracks(self, tracks: list[dict], user, *, fast_mode: bool = False) -> dict[str, int | set]:
+    def process_tracks(
+        self, tracks: list[dict], user, *, fast_mode: bool = False
+    ) -> dict[str, int | set]:
         """Process multiple Last.fm tracks.
 
         Args:

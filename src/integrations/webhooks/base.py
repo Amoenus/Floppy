@@ -67,7 +67,7 @@ class BaseWebhookProcessor:
 
     def _extract_season_episode_from_payload(self, payload):
         """Extract season and episode numbers from payload.
-        
+
         Override in subclasses if payload structure differs.
         Returns (season_number, episode_number) or (None, None) if not found.
         """
@@ -75,7 +75,7 @@ class BaseWebhookProcessor:
 
     def _extract_series_title(self, payload):
         """Extract TV series title from payload for title-based TMDB search.
-        
+
         Override in subclasses if payload structure differs.
         Returns series title string or None if not found.
         """
@@ -97,7 +97,7 @@ class BaseWebhookProcessor:
 
     def _process_tv(self, payload, user, ids, season_number=None, episode_number=None):
         """Process TV episode webhook.
-        
+
         Args:
             payload: Webhook payload
             user: User instance
@@ -208,17 +208,22 @@ class BaseWebhookProcessor:
             if not fallback_media_id and not tv_metadata:
                 series_title = self._extract_series_title(payload)
                 if series_title:
-                    logger.info("Attempting title-based TMDB search for webhook payload")
+                    logger.info(
+                        "Attempting title-based TMDB search for webhook payload"
+                    )
                     try:
                         search_results = app.providers.tmdb.search(
-                            MediaTypes.TV.value, series_title, page=1,
+                            MediaTypes.TV.value,
+                            series_title,
+                            page=1,
                         )
                         if search_results and search_results.get("results"):
                             top_result = search_results["results"][0]
                             media_id = top_result.get("media_id")
                             if media_id:
                                 tv_metadata = app.providers.tmdb.tv_with_seasons(
-                                    media_id, [season_number],
+                                    media_id,
+                                    [season_number],
                                 )
                                 logger.info("Recovered TMDB lookup using title search")
                     except Exception as search_exc:
@@ -289,18 +294,24 @@ class BaseWebhookProcessor:
 
         if user.anime_enabled:
             link_sources = [
-                ("stored TMDB", *self._get_mal_id_from_provider_links(
-                    Sources.TMDB.value,
-                    media_id,
-                    season_number,
-                    episode_number,
-                )),
-                ("stored TVDB", *self._get_mal_id_from_provider_links(
-                    Sources.TVDB.value,
-                    tvdb_id,
-                    season_number,
-                    episode_number,
-                )),
+                (
+                    "stored TMDB",
+                    *self._get_mal_id_from_provider_links(
+                        Sources.TMDB.value,
+                        media_id,
+                        season_number,
+                        episode_number,
+                    ),
+                ),
+                (
+                    "stored TVDB",
+                    *self._get_mal_id_from_provider_links(
+                        Sources.TVDB.value,
+                        tvdb_id,
+                        season_number,
+                        episode_number,
+                    ),
+                ),
             ]
             for mapping_source, mal_id, mapped_episode in link_sources:
                 if not mal_id:
@@ -316,12 +327,15 @@ class BaseWebhookProcessor:
 
             mapping_data = anime_mappings.fetch_mapping_data()
             mapping_sources = [
-                ("TVDB", *anime_mappings.get_mal_id_from_tvdb(
-                    mapping_data,
-                    tvdb_id,
-                    season_number,
-                    episode_number,
-                )),
+                (
+                    "TVDB",
+                    *anime_mappings.get_mal_id_from_tvdb(
+                        mapping_data,
+                        tvdb_id,
+                        season_number,
+                        episode_number,
+                    ),
+                ),
             ]
             for mapping_source, mal_id, mapped_episode in mapping_sources:
                 if not mal_id:
@@ -371,11 +385,14 @@ class BaseWebhookProcessor:
         ).exists():
             return True
 
-        if tvdb_id not in (None, "") and app.models.ItemProviderLink.objects.filter(
-            provider=Sources.TVDB.value,
-            provider_media_type=MediaTypes.TV.value,
-            provider_media_id=str(tvdb_id),
-        ).exists():
+        if (
+            tvdb_id not in (None, "")
+            and app.models.ItemProviderLink.objects.filter(
+                provider=Sources.TVDB.value,
+                provider_media_type=MediaTypes.TV.value,
+                provider_media_id=str(tvdb_id),
+            ).exists()
+        ):
             return True
 
         return False
@@ -596,7 +613,9 @@ class BaseWebhookProcessor:
             resolved_tmdb_id = tmdb_id
 
             if tmdb_id:
-                mal_id = anime_mappings.get_mal_id_from_tmdb_movie(mapping_data, tmdb_id)
+                mal_id = anime_mappings.get_mal_id_from_tmdb_movie(
+                    mapping_data, tmdb_id
+                )
                 source = "TMDB"
 
             if not mal_id and imdb_id:
@@ -708,10 +727,14 @@ class BaseWebhookProcessor:
             return None, None, None
 
         # Title search fallback when all ID-based resolution fails
-        logger.debug("TV ID missing; attempting title fallback search for: %s", series_title)
+        logger.debug(
+            "TV ID missing; attempting title fallback search for: %s", series_title
+        )
         try:
             search_results = app.providers.tmdb.search(
-                MediaTypes.TV.value, series_title, page=1,
+                MediaTypes.TV.value,
+                series_title,
+                page=1,
             )
             results = (search_results or {}).get("results") or []
             found_id = self._pick_title_search_result(results, year)
@@ -723,7 +746,9 @@ class BaseWebhookProcessor:
             clean_title = re.sub(r"\s*\(\d{4}\)$", "", series_title[:500])
             if clean_title != series_title:
                 search_results = app.providers.tmdb.search(
-                    MediaTypes.TV.value, clean_title, page=1,
+                    MediaTypes.TV.value,
+                    clean_title,
+                    page=1,
                 )
                 results = (search_results or {}).get("results") or []
                 found_id = self._pick_title_search_result(results, year)
@@ -732,7 +757,8 @@ class BaseWebhookProcessor:
                     return str(found_id), None, None
         except Exception as exc:
             logger.warning(
-                "Title search failed during TV resolution: %s", exception_summary(exc),
+                "Title search failed during TV resolution: %s",
+                exception_summary(exc),
             )
 
         return None, None, None
@@ -814,7 +840,8 @@ class BaseWebhookProcessor:
                 logger.info("Marked movie as unplayed: %s", media_id)
             else:
                 logger.debug(
-                    "Movie marked as unplayed but no instance exists: %s", media_id,
+                    "Movie marked as unplayed but no instance exists: %s",
+                    media_id,
                 )
             return
 
@@ -850,7 +877,8 @@ class BaseWebhookProcessor:
 
         progress = 1 if movie_played else 0
         now = self._get_played_at(payload) or timezone.now().replace(
-            second=0, microsecond=0,
+            second=0,
+            microsecond=0,
         )
 
         if current_instance and current_instance.status != Status.COMPLETED.value:
@@ -906,13 +934,14 @@ class BaseWebhookProcessor:
         runtime = None
         try:
             runtime_minutes = int(duration_ms) // 60000 if duration_ms else None
-            runtime = runtime_minutes if runtime_minutes and runtime_minutes > 0 else None
+            runtime = (
+                runtime_minutes if runtime_minutes and runtime_minutes > 0 else None
+            )
         except (TypeError, ValueError):
             runtime = None
 
-        air_date = (
-            metadata.get("originallyAvailableAt")
-            or metadata.get("originally_available_at")
+        air_date = metadata.get("originallyAvailableAt") or metadata.get(
+            "originally_available_at"
         )
 
         return {
@@ -1123,7 +1152,8 @@ class BaseWebhookProcessor:
 
         show_tvdb_id = tv_metadata.get("tvdb_id")
         preferred_source = metadata_resolution.metadata_default_source(
-            user, MediaTypes.TV.value,
+            user,
+            MediaTypes.TV.value,
         )
         if (
             preferred_source == Sources.TVDB.value
@@ -1132,7 +1162,8 @@ class BaseWebhookProcessor:
         ):
             try:
                 tvdb_show_metadata = app.providers.tvdb.tv_with_seasons(
-                    show_tvdb_id, [season_number],
+                    show_tvdb_id,
+                    [season_number],
                 )
                 tvdb_season_metadata = tvdb_show_metadata.get(f"season/{season_number}")
             except Exception as exc:  # pragma: no cover - defensive network guard
@@ -1181,8 +1212,7 @@ class BaseWebhookProcessor:
                 )
             else:
                 logger.debug(
-                    "Episode marked as unplayed but no instance exists: "
-                    "%s S%02dE%02d",
+                    "Episode marked as unplayed but no instance exists: %s S%02dE%02d",
                     media_id,
                     season_number,
                     episode_number,
@@ -1278,7 +1308,9 @@ class BaseWebhookProcessor:
             return
 
         existing_tv_item = self._find_existing_tracked_tv_item(
-            user, external_ids, media_id,
+            user,
+            external_ids,
+            media_id,
         )
         if existing_tv_item:
             tv_item = existing_tv_item
@@ -1468,12 +1500,14 @@ class BaseWebhookProcessor:
             )
 
         episode_item = season_instance.get_episode_item(
-            episode_number, item_season_metadata,
+            episode_number,
+            item_season_metadata,
         )
 
         if self._is_played(payload):
             now = self._get_played_at(payload) or timezone.now().replace(
-                second=0, microsecond=0,
+                second=0,
+                microsecond=0,
             )
             latest_episode = (
                 app.models.Episode.objects.filter(
@@ -1563,7 +1597,9 @@ class BaseWebhookProcessor:
         )
 
         anibridge_data = anime_mappings.fetch_mapping_data()
-        for mapping_entry in anime_mappings.find_entries_for_mal_id(anibridge_data, media_id):
+        for mapping_entry in anime_mappings.find_entries_for_mal_id(
+            anibridge_data, media_id
+        ):
             tmdb_id = mapping_entry.get("tmdb_id")
             tvdb_id = mapping_entry.get("tvdb_id")
             season_number = mapping_entry.get("season_number")
@@ -1649,7 +1685,7 @@ class BaseWebhookProcessor:
 
     def _queue_collection_metadata_update(self, payload, user, item):
         """Queue collection metadata update task if media server info is available.
-        
+
         This is a no-op by default. Subclasses should override to implement
         collection metadata extraction for their specific media server.
         """

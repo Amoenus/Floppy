@@ -157,9 +157,11 @@ def _apply_discover_response_headers(
     response["X-Discover-Media-Type"] = selected_media_type
     response["X-Discover-Show-More"] = "1" if show_more else "0"
     if not discover_debug and selected_media_type != DISCOVER_HIDDEN_SECTION:
-        response["X-Discover-Activity-Version"] = discover_tab_cache.get_activity_version(
-            user_id,
-            selected_media_type,
+        response["X-Discover-Activity-Version"] = (
+            discover_tab_cache.get_activity_version(
+                user_id,
+                selected_media_type,
+            )
         )
     return response
 
@@ -552,10 +554,14 @@ def discover_action(request):
     if action not in {"planning", "dismiss"}:
         return HttpResponseBadRequest("Invalid action")
 
-    candidate_media_type = (request.POST.get("candidate_media_type") or "").strip().lower()
+    candidate_media_type = (
+        (request.POST.get("candidate_media_type") or "").strip().lower()
+    )
     source = (request.POST.get("source") or "").strip()
     media_id = (request.POST.get("media_id") or "").strip()
-    identity_media_type = (request.POST.get("identity_media_type") or "").strip() or None
+    identity_media_type = (
+        request.POST.get("identity_media_type") or ""
+    ).strip() or None
     library_media_type = (request.POST.get("library_media_type") or "").strip() or None
     if (
         candidate_media_type not in DISCOVER_ALLOWED_MEDIA_TYPES

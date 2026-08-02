@@ -80,16 +80,34 @@ STATISTICS_HISTORY_VERSION_PREFIX = "stats:history_version"
 STATISTICS_SCHEDULE_DEDUPE_PREFIX = "stats:refresh:scheduled"
 STATISTICS_METADATA_REFRESH_PREFIX = "stats:metadata_refresh"
 STATISTICS_METADATA_REFRESH_BUILT_PREFIX = "stats:metadata_refresh_built"
-STATISTICS_DAY_CACHE_TIMEOUT = getattr(settings, "STATISTICS_DAY_CACHE_TIMEOUT", 60 * 60 * 24 * 30)
+STATISTICS_DAY_CACHE_TIMEOUT = getattr(
+    settings, "STATISTICS_DAY_CACHE_TIMEOUT", 60 * 60 * 24 * 30
+)
 STATISTICS_WARM_DAYS = getattr(settings, "STATISTICS_CACHE_WARM_DAYS", 2)
-STATISTICS_SCHEDULE_DEDUPE_TTL = getattr(settings, "STATISTICS_SCHEDULE_DEDUPE_TTL", 60 * 10)
-STATISTICS_REFRESH_LOCK_MAX_AGE = getattr(settings, "STATISTICS_REFRESH_LOCK_MAX_AGE", timedelta(minutes=5))
-STATISTICS_METADATA_REFRESH_TTL = getattr(settings, "STATISTICS_METADATA_REFRESH_TTL", 60 * 10)
-STATISTICS_METADATA_REFRESH_RECENT_SECONDS = getattr(settings, "STATISTICS_METADATA_REFRESH_RECENT_SECONDS", 60)
-STATISTICS_TASK_PRIORITY_INTERACTIVE = getattr(settings, "CELERY_TASK_PRIORITY_INTERACTIVE", 9)
-STATISTICS_TASK_PRIORITY_FOLLOWUP = getattr(settings, "CELERY_TASK_PRIORITY_FOLLOWUP", 7)
-STATISTICS_TASK_PRIORITY_BACKGROUND = getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 1)
-STATISTICS_ALL_TIME_REFRESH_DELAY = getattr(settings, "STATISTICS_ALL_TIME_REFRESH_DELAY", 45)
+STATISTICS_SCHEDULE_DEDUPE_TTL = getattr(
+    settings, "STATISTICS_SCHEDULE_DEDUPE_TTL", 60 * 10
+)
+STATISTICS_REFRESH_LOCK_MAX_AGE = getattr(
+    settings, "STATISTICS_REFRESH_LOCK_MAX_AGE", timedelta(minutes=5)
+)
+STATISTICS_METADATA_REFRESH_TTL = getattr(
+    settings, "STATISTICS_METADATA_REFRESH_TTL", 60 * 10
+)
+STATISTICS_METADATA_REFRESH_RECENT_SECONDS = getattr(
+    settings, "STATISTICS_METADATA_REFRESH_RECENT_SECONDS", 60
+)
+STATISTICS_TASK_PRIORITY_INTERACTIVE = getattr(
+    settings, "CELERY_TASK_PRIORITY_INTERACTIVE", 9
+)
+STATISTICS_TASK_PRIORITY_FOLLOWUP = getattr(
+    settings, "CELERY_TASK_PRIORITY_FOLLOWUP", 7
+)
+STATISTICS_TASK_PRIORITY_BACKGROUND = getattr(
+    settings, "CELERY_TASK_PRIORITY_BACKGROUND", 1
+)
+STATISTICS_ALL_TIME_REFRESH_DELAY = getattr(
+    settings, "STATISTICS_ALL_TIME_REFRESH_DELAY", 45
+)
 
 # Predefined ranges that can be cached
 PREDEFINED_RANGES = [
@@ -144,14 +162,18 @@ def _lock_is_stale(value) -> bool:
         if not isinstance(started_at, datetime):
             return True
         if timezone.is_naive(started_at):
-            started_at = timezone.make_aware(started_at, timezone.get_current_timezone())
+            started_at = timezone.make_aware(
+                started_at, timezone.get_current_timezone()
+            )
         return timezone.now() - started_at > STATISTICS_REFRESH_LOCK_MAX_AGE
     return True
 
 
 def _schedule_dedupe_key(user_id: int, range_name: str, history_version: str) -> str:
     normalized = _normalize_range_name(range_name)
-    return f"{STATISTICS_SCHEDULE_DEDUPE_PREFIX}:{user_id}:{history_version}:{normalized}"
+    return (
+        f"{STATISTICS_SCHEDULE_DEDUPE_PREFIX}:{user_id}:{history_version}:{normalized}"
+    )
 
 
 def _preferred_range_for_user(user_id: int) -> str:
@@ -298,7 +320,11 @@ def _parse_cached_datetime(value):
 
 def mark_metadata_refreshing(user_id: int, reason: str | None = None) -> None:
     payload = {"started_at": timezone.now().isoformat(), "reason": reason or ""}
-    cache.set(_metadata_refresh_lock_key(user_id), payload, timeout=STATISTICS_METADATA_REFRESH_TTL)
+    cache.set(
+        _metadata_refresh_lock_key(user_id),
+        payload,
+        timeout=STATISTICS_METADATA_REFRESH_TTL,
+    )
 
 
 def clear_metadata_refreshing(user_id: int) -> None:
@@ -320,7 +346,9 @@ def _metadata_refresh_status(user_id: int):
         built_at = timezone.make_aware(built_at, timezone.get_current_timezone())
     recently_built = False
     if built_at:
-        recently_built = timezone.now() - built_at < timedelta(seconds=STATISTICS_METADATA_REFRESH_RECENT_SECONDS)
+        recently_built = timezone.now() - built_at < timedelta(
+            seconds=STATISTICS_METADATA_REFRESH_RECENT_SECONDS
+        )
     return lock, built_at, recently_built
 
 
@@ -383,7 +411,9 @@ def _get_history_version(user_id: int) -> str:
     if version:
         return version
     version = timezone.now().isoformat()
-    cache.set(_history_version_key(user_id), version, timeout=STATISTICS_DAY_CACHE_TIMEOUT)
+    cache.set(
+        _history_version_key(user_id), version, timeout=STATISTICS_DAY_CACHE_TIMEOUT
+    )
     return version
 
 
@@ -398,7 +428,9 @@ def get_history_version(user_id: int) -> str:
 
 def _set_history_version(user_id: int, value: str | None = None) -> str:
     version = value or timezone.now().isoformat()
-    cache.set(_history_version_key(user_id), version, timeout=STATISTICS_DAY_CACHE_TIMEOUT)
+    cache.set(
+        _history_version_key(user_id), version, timeout=STATISTICS_DAY_CACHE_TIMEOUT
+    )
     return version
 
 
@@ -412,10 +444,14 @@ def _load_dirty_days(user_id: int) -> set[str]:
 
 
 def _store_dirty_days(user_id: int, days: set[str]) -> None:
-    cache.set(_dirty_days_key(user_id), sorted(days), timeout=STATISTICS_DAY_CACHE_TIMEOUT)
+    cache.set(
+        _dirty_days_key(user_id), sorted(days), timeout=STATISTICS_DAY_CACHE_TIMEOUT
+    )
 
 
-def invalidate_statistics_days(user_id: int, day_values, reason: str | None = None) -> None:
+def invalidate_statistics_days(
+    user_id: int, day_values, reason: str | None = None
+) -> None:
     day_keys = []
     normalized_days = set()
     for value in day_values or []:
@@ -444,27 +480,38 @@ def invalidate_statistics_days(user_id: int, day_values, reason: str | None = No
         )
 
 
-def _collect_stale_reading_score_days(user, day_whitelist: set[date] | None = None) -> set[date]:
+def _collect_stale_reading_score_days(
+    user, day_whitelist: set[date] | None = None
+) -> set[date]:
     """Return reading activity days where cached score metadata is stale."""
     active_media_types = set(getattr(user, "get_active_media_types", lambda: [])())
     if not active_media_types:
         active_media_types = set(MediaTypes.values)
 
     expected_by_day: dict[date, list[tuple[str, int, float]]] = defaultdict(list)
-    for media_type in (MediaTypes.ANIME.value, MediaTypes.BOOK.value, MediaTypes.COMIC.value, MediaTypes.MANGA.value):
+    for media_type in (
+        MediaTypes.ANIME.value,
+        MediaTypes.BOOK.value,
+        MediaTypes.COMIC.value,
+        MediaTypes.MANGA.value,
+    ):
         if media_type not in active_media_types:
             continue
         model = apps.get_model("app", media_type)
-        rows = model.objects.filter(
-            user=user,
-            score__isnull=False,
-        ).values(
-            "item_id",
-            "score",
-            "start_date",
-            "end_date",
-            "created_at",
-        ).iterator(chunk_size=500)
+        rows = (
+            model.objects.filter(
+                user=user,
+                score__isnull=False,
+            )
+            .values(
+                "item_id",
+                "score",
+                "start_date",
+                "end_date",
+                "created_at",
+            )
+            .iterator(chunk_size=500)
+        )
         for row in rows:
             item_id = row.get("item_id")
             if not item_id:
@@ -523,7 +570,7 @@ def _collect_stale_reading_score_days(user, day_whitelist: set[date] | None = No
 
 def build_statistics_data(user, start_date, end_date):
     """Build statistics data for a user and date range.
-    
+
     This extracts the computation logic from the statistics() view.
     Returns a dictionary with all statistics data needed for the view.
     """
@@ -554,7 +601,9 @@ def build_statistics_data(user, start_date, end_date):
         media_count,
         minutes_per_media_type,
     )
-    score_distribution, top_rated, top_rated_by_type = stats.get_score_distribution(user_media)
+    score_distribution, top_rated, top_rated_by_type = stats.get_score_distribution(
+        user_media
+    )
     status_distribution = stats.get_status_distribution(user_media)
     status_pie_chart_data = stats.get_status_pie_chart_data(
         status_distribution,
@@ -666,7 +715,7 @@ def build_statistics_data(user, start_date, end_date):
 
 def _get_empty_statistics_data():
     """Return an empty statistics data structure with all required keys.
-    
+
     Used when cache is missing and refresh is in progress to avoid
     expensive inline rebuilds that cause page load delays.
     """
@@ -728,7 +777,11 @@ def _get_empty_statistics_data():
             "charts": {
                 "by_year": {"labels": [], "datasets": []},
                 "by_month": {"labels": [], "datasets": []},
-                "by_daily_average": {"labels": [], "datasets": [], "top_games_per_band": {}},
+                "by_daily_average": {
+                    "labels": [],
+                    "datasets": [],
+                    "top_games_per_band": {},
+                },
             },
             "has_data": False,
             "top_genres": [],
@@ -755,8 +808,9 @@ def _get_empty_statistics_data():
     }
 
 
-
-def cache_statistics_data(user_id: int, range_name: str, data: dict, history_version: str | None = None):
+def cache_statistics_data(
+    user_id: int, range_name: str, data: dict, history_version: str | None = None
+):
     """Persist the statistics data in cache."""
     cache_key = _cache_key(user_id, range_name)
     _normalize_hours_per_media_type(data.get("hours_per_media_type"))
@@ -770,7 +824,13 @@ def cache_statistics_data(user_id: int, range_name: str, data: dict, history_ver
 
 
 def _top_talent_bucket_has_game_counts(bucket: dict) -> bool:
-    for entries_key in ("top_actors", "top_actresses", "top_directors", "top_writers", "top_studios"):
+    for entries_key in (
+        "top_actors",
+        "top_actresses",
+        "top_directors",
+        "top_writers",
+        "top_studios",
+    ):
         entries = bucket.get(entries_key)
         if entries:
             return "unique_games" in entries[0]
@@ -860,7 +920,9 @@ def get_person_talent_context(user, start_date=None, end_date=None):
     return context
 
 
-def get_person_talent_totals(user, person_source, person_id, start_date=None, end_date=None):
+def get_person_talent_totals(
+    user, person_source, person_id, start_date=None, end_date=None
+):
     """Return cached per-person talent totals for the watched range."""
     if not user or not person_source or person_id is None:
         return None
@@ -978,19 +1040,18 @@ def get_statistics_minutes_by_type(user, start_date, end_date, range_name=None):
     return result
 
 
-
 def get_statistics_data(user, start_date, end_date, range_name=None):
     """Return cached statistics, rebuilding if needed.
-    
+
     Always returns cached data if available (even if stale) to avoid timeouts.
     Schedules background refresh if cache is stale.
-    
+
     Args:
         user: User instance
         start_date: Start date for statistics (datetime or None)
         end_date: End date for statistics (datetime or None)
         range_name: Predefined range name (e.g., "Last 12 Months") or None
-    
+
     Returns:
         Dictionary with statistics data
     """
@@ -1032,7 +1093,9 @@ def get_statistics_data(user, start_date, end_date, range_name=None):
                 if data:
                     _normalize_hours_per_media_type(data.get("hours_per_media_type"))
                     _normalize_history_highlight_images(data.get("history_highlights"))
-                    _normalize_history_highlights_by_type(data.get("history_highlights_by_type"))
+                    _normalize_history_highlights_by_type(
+                        data.get("history_highlights_by_type")
+                    )
                     return data
             schedule_statistics_refresh(user.id, range_name, allow_inline=False)
         elif not history_version:
@@ -1040,9 +1103,15 @@ def get_statistics_data(user, start_date, end_date, range_name=None):
                 if eager_mode:
                     data = refresh_statistics_cache(user.id, range_name)
                     if data:
-                        _normalize_hours_per_media_type(data.get("hours_per_media_type"))
-                        _normalize_history_highlight_images(data.get("history_highlights"))
-                        _normalize_history_highlights_by_type(data.get("history_highlights_by_type"))
+                        _normalize_hours_per_media_type(
+                            data.get("hours_per_media_type")
+                        )
+                        _normalize_history_highlight_images(
+                            data.get("history_highlights")
+                        )
+                        _normalize_history_highlights_by_type(
+                            data.get("history_highlights_by_type")
+                        )
                         return data
                 schedule_statistics_refresh(user.id, range_name, allow_inline=False)
         data = cache_entry.get("data", {})
@@ -1063,12 +1132,18 @@ def get_statistics_data(user, start_date, end_date, range_name=None):
             if data:
                 _normalize_hours_per_media_type(data.get("hours_per_media_type"))
                 _normalize_history_highlight_images(data.get("history_highlights"))
-                _normalize_history_highlights_by_type(data.get("history_highlights_by_type"))
+                _normalize_history_highlights_by_type(
+                    data.get("history_highlights_by_type")
+                )
                 return data
         # Refresh is in progress, return minimal empty data structure
         # Frontend will poll and update when refresh completes
         # Don't build full statistics here - that's expensive and causes delays
-        logger.debug("Statistics cache miss but refresh in progress for user %s, range %s, returning empty structure", user.id, range_name)
+        logger.debug(
+            "Statistics cache miss but refresh in progress for user %s, range %s, returning empty structure",
+            user.id,
+            range_name,
+        )
         return _get_empty_statistics_data()
 
     current_version = _get_history_version(user.id)
@@ -1094,13 +1169,14 @@ def get_statistics_data(user, start_date, end_date, range_name=None):
         if data:
             _normalize_hours_per_media_type(data.get("hours_per_media_type"))
             _normalize_history_highlight_images(data.get("history_highlights"))
-            _normalize_history_highlights_by_type(data.get("history_highlights_by_type"))
+            _normalize_history_highlights_by_type(
+                data.get("history_highlights_by_type")
+            )
             return data
         return _get_empty_statistics_data()
 
     schedule_statistics_refresh(user.id, range_name, allow_inline=False)
     return _get_empty_statistics_data()
-
 
 
 # Re-exports — keep all public symbols importable from this module.

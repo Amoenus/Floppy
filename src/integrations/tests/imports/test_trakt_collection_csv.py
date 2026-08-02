@@ -213,7 +213,7 @@ class ImportTraktCollectionCsv(TestCase):
         "integrations.imports.trakt_collection.TraktCollectionCsvImporter._get_metadata",
     )
     def test_new_mode_does_not_overwrite_existing_entry(self, mock_get_metadata):
-        """"new" mode must leave an existing CollectionEntry's fields untouched."""
+        """ "new" mode must leave an existing CollectionEntry's fields untouched."""
         mock_get_metadata.return_value = {"title": "Movie One", "image": "movie.jpg"}
 
         item = Item.objects.get_or_create(
@@ -242,7 +242,7 @@ class ImportTraktCollectionCsv(TestCase):
         "integrations.imports.trakt_collection.TraktCollectionCsvImporter._get_metadata",
     )
     def test_overwrite_mode_updates_existing_entry(self, mock_get_metadata):
-        """"overwrite" mode should update an existing CollectionEntry's fields."""
+        """ "overwrite" mode should update an existing CollectionEntry's fields."""
         mock_get_metadata.return_value = {"title": "Movie One", "image": "movie.jpg"}
 
         item = Item.objects.get_or_create(

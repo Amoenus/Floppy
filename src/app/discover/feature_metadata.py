@@ -121,4 +121,7 @@ def is_director_credit(role_type: str, role: str, department: str) -> bool:
     """Return True when the credit identifies a director."""
     if role_type != CreditRoleType.CREW.value:
         return False
-    return normalize_person_name(role) == "director" or normalize_person_name(department) == "directing"
+    return (
+        normalize_person_name(role) == "director"
+        or normalize_person_name(department) == "directing"
+    )

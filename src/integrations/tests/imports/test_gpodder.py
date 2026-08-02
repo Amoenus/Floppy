@@ -22,7 +22,9 @@ class GPodderImporterTests(TestCase):
     """Tests for the GPodder importer."""
 
     def setUp(self):
-        self.user = get_user_model().objects.create_user(username="listener", password="pass")  # noqa: S106
+        self.user = get_user_model().objects.create_user(
+            username="listener", password="pass"
+        )  # noqa: S106
         self.account = GPodderAccount.objects.create(
             user=self.user,
             server_url=encrypt("https://gpodder.net"),
@@ -81,7 +83,9 @@ class GPodderImporterTests(TestCase):
         self.assertEqual(counts[MediaTypes.PODCAST.value], 1)
         show = PodcastShow.objects.get()
         self.assertEqual(show.source, Sources.GPODDER.value)
-        item = Item.objects.get(source=Sources.GPODDER.value, media_type=MediaTypes.PODCAST.value)
+        item = Item.objects.get(
+            source=Sources.GPODDER.value, media_type=MediaTypes.PODCAST.value
+        )
         podcast = Podcast.objects.get(item=item, user=self.user)
         self.assertEqual(podcast.status, Status.IN_PROGRESS.value)
         self.assertEqual(podcast.played_up_to_seconds, 120)
@@ -176,10 +180,15 @@ class GPodderImporterTests(TestCase):
         podcast = Podcast.objects.get(user=self.user, item=item)
         self.assertEqual(counts[MediaTypes.PODCAST.value], 1)
         self.assertEqual(podcast.status, Status.COMPLETED.value)
-        self.assertEqual(podcast.end_date.isoformat().replace("+00:00", "Z"), "2026-01-01T12:05:00Z")
+        self.assertEqual(
+            podcast.end_date.isoformat().replace("+00:00", "Z"), "2026-01-01T12:05:00Z"
+        )
         self.assertEqual(Podcast.objects.filter(user=self.user, item=item).count(), 1)
 
-    @patch("integrations.imports.gpodder.GPodderImporter._process_action", side_effect=RuntimeError("boom"))
+    @patch(
+        "integrations.imports.gpodder.GPodderImporter._process_action",
+        side_effect=RuntimeError("boom"),
+    )
     @patch(
         "integrations.imports.gpodder.gpodder_api.fetch_episode_actions",
         return_value=(
@@ -194,7 +203,9 @@ class GPodderImporterTests(TestCase):
             91,
         ),
     )
-    @patch("integrations.imports.gpodder.gpodder_api.fetch_subscriptions", return_value=[])
+    @patch(
+        "integrations.imports.gpodder.gpodder_api.fetch_subscriptions", return_value=[]
+    )
     @patch("integrations.imports.gpodder.gpodder_api.verify_login")
     @patch("integrations.imports.gpodder.gpodder_api.register_device")
     def test_failed_processing_does_not_advance_cursor(

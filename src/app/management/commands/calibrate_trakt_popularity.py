@@ -77,7 +77,9 @@ class Command(BaseCommand):
                                 vote_offset=vote_offset,
                                 vote_exponent=vote_exponent,
                             )
-                            scored.append((score or 0.0, item["title"], item["expected_rank"]))
+                            scored.append(
+                                (score or 0.0, item["title"], item["expected_rank"])
+                            )
 
                         predicted = sorted(
                             scored,
@@ -85,13 +87,19 @@ class Command(BaseCommand):
                         )
                         predicted_ranks = {
                             title: index
-                            for index, (_score, title, _rank) in enumerate(predicted, start=1)
+                            for index, (_score, title, _rank) in enumerate(
+                                predicted, start=1
+                            )
                         }
                         absolute_errors = [
                             abs(predicted_ranks[title] - expected_rank)
                             for _score, title, expected_rank in scored
                         ]
-                        mae = sum(absolute_errors) / len(absolute_errors) if absolute_errors else math.inf
+                        mae = (
+                            sum(absolute_errors) / len(absolute_errors)
+                            if absolute_errors
+                            else math.inf
+                        )
                         result = (
                             mae,
                             max(absolute_errors) if absolute_errors else math.inf,
@@ -107,7 +115,9 @@ class Command(BaseCommand):
             self.stdout.write(self.style.ERROR("No calibration data available."))
             return
 
-        mae, max_abs_error, prior_mean, prior_votes, vote_offset, vote_exponent = best_result
+        mae, max_abs_error, prior_mean, prior_votes, vote_offset, vote_exponent = (
+            best_result
+        )
         self.stdout.write(
             self.style.SUCCESS(
                 f"best_mae={mae:.2f} max_abs_error={max_abs_error} "

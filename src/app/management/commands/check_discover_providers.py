@@ -29,7 +29,9 @@ class Command(BaseCommand):
             self.stdout.write(f"{status:>4} | {name}")
 
         if ok_count == len(checks):
-            self.stdout.write(self.style.SUCCESS("All Discover provider checks passed."))
+            self.stdout.write(
+                self.style.SUCCESS("All Discover provider checks passed.")
+            )
             return
 
         self.stdout.write(

@@ -39,7 +39,13 @@ from app.templatetags import app_tags
 
 logger = logging.getLogger(__name__)
 
-def _build_today_card(today_in_history, today_in_history_year, today_in_user_history, today_in_user_history_year):
+
+def _build_today_card(
+    today_in_history,
+    today_in_history_year,
+    today_in_user_history,
+    today_in_user_history_year,
+):
     if today_in_history and today_in_user_history:
         use_user = _random.random() < 0.5
     elif today_in_user_history:
@@ -99,7 +105,10 @@ def _compute_metric_breakdown_for_range(total_value, start_date, end_date):
 
 
 def _sum_top_played_plays(top_played_by_type, media_type):
-    return sum(entry.get("plays", 0) for entry in top_played_by_type.get(media_type, {}).values())
+    return sum(
+        entry.get("plays", 0)
+        for entry in top_played_by_type.get(media_type, {}).values()
+    )
 
 
 def _avg_daily_playtime_hours(total_hours, day_minutes_map):
@@ -107,7 +116,9 @@ def _avg_daily_playtime_hours(total_hours, day_minutes_map):
     return round(total_hours / days_active, 2) if days_active else 0
 
 
-def _build_media_charts_from_counts(day_counts, hour_counts, color, dataset_label, *, to_hours=False):
+def _build_media_charts_from_counts(
+    day_counts, hour_counts, color, dataset_label, *, to_hours=False
+):
     empty_chart = {"labels": [], "datasets": []}
     if not day_counts:
         return {
@@ -142,16 +153,26 @@ def _build_media_charts_from_counts(day_counts, hour_counts, color, dataset_labe
     weekday_map = {0: "Mon", 1: "Tue", 2: "Wed", 3: "Thu", 4: "Fri", 5: "Sat", 6: "Sun"}
     weekday_order = [6, 0, 1, 2, 3, 4, 5]
     weekday_labels = [weekday_map[index] for index in weekday_order]
-    weekday_values = [_transform(weekday_counts.get(index, 0)) for index in weekday_order]
+    weekday_values = [
+        _transform(weekday_counts.get(index, 0)) for index in weekday_order
+    ]
 
     hour_labels = [stats._format_hour_label(hour) for hour in range(24)]
     hour_values = [_transform(hour_counts.get(str(hour), 0)) for hour in range(24)]
 
     return {
-        "by_year": stats._build_single_series_chart(year_labels, year_values, color, dataset_label),
-        "by_month": stats._build_single_series_chart(month_labels, month_values, color, dataset_label),
-        "by_weekday": stats._build_single_series_chart(weekday_labels, weekday_values, color, dataset_label),
-        "by_time_of_day": stats._build_single_series_chart(hour_labels, hour_values, color, dataset_label),
+        "by_year": stats._build_single_series_chart(
+            year_labels, year_values, color, dataset_label
+        ),
+        "by_month": stats._build_single_series_chart(
+            month_labels, month_values, color, dataset_label
+        ),
+        "by_weekday": stats._build_single_series_chart(
+            weekday_labels, weekday_values, color, dataset_label
+        ),
+        "by_time_of_day": stats._build_single_series_chart(
+            hour_labels, hour_values, color, dataset_label
+        ),
     }
 
 
@@ -168,7 +189,11 @@ def _build_daily_hours_chart(day_minutes_by_type, day_list):
     datasets = []
     ordered_types = list(stats.MEDIA_TYPE_HOURS_ORDER)
     ordered_types.extend(
-        [media_type for media_type in day_minutes_by_type.keys() if media_type not in ordered_types]
+        [
+            media_type
+            for media_type in day_minutes_by_type.keys()
+            if media_type not in ordered_types
+        ]
     )
     for media_type in ordered_types:
         minutes_map = day_minutes_by_type.get(media_type)
@@ -177,16 +202,26 @@ def _build_daily_hours_chart(day_minutes_by_type, day_list):
         totals = [minutes_map.get(label, 0) for label in labels]
         if not totals or sum(totals) == 0:
             continue
-        datasets.append({
-            "label": app_tags.media_type_readable(media_type),
-            "media_type": media_type,
-            "data": [round(minutes / 60, 2) for minutes in totals],
-            "background_color": config.get_stats_color(media_type),
-        })
+        datasets.append(
+            {
+                "label": app_tags.media_type_readable(media_type),
+                "media_type": media_type,
+                "data": [round(minutes / 60, 2) for minutes in totals],
+                "background_color": config.get_stats_color(media_type),
+            }
+        )
     return {"labels": labels, "datasets": datasets}
 
 
-def _build_activity_data(date_counts, day_minutes_by_type, day_list, start_date, end_date, *, week_start_sunday=False):
+def _build_activity_data(
+    date_counts,
+    day_minutes_by_type,
+    day_list,
+    start_date,
+    end_date,
+    *,
+    week_start_sunday=False,
+):
     """Build activity data for the calendar heatmap and stats cards.
 
     Args:
@@ -203,7 +238,9 @@ def _build_activity_data(date_counts, day_minutes_by_type, day_list, start_date,
         min_date = min(date_counts)
         start_date = _day_boundary_datetime(min_date)
 
-    start_date_aligned = stats.get_aligned_week_start(start_date, week_start_sunday=week_start_sunday)
+    start_date_aligned = stats.get_aligned_week_start(
+        start_date, week_start_sunday=week_start_sunday
+    )
     if start_date_aligned is None:
         return {
             "calendar_weeks": [],
@@ -247,7 +284,9 @@ def _build_activity_data(date_counts, day_minutes_by_type, day_list, start_date,
     calendar_weeks = [activity_data[i : i + 7] for i in range(0, len(activity_data), 7)]
 
     base_weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-    weekday_labels = [base_weekdays[6], *base_weekdays[:6]] if week_start_sunday else base_weekdays
+    weekday_labels = (
+        [base_weekdays[6], *base_weekdays[:6]] if week_start_sunday else base_weekdays
+    )
     week_start_weekday = 6 if week_start_sunday else 0
 
     months = []
@@ -338,7 +377,9 @@ def _aggregate_minutes_per_media_type_from_days(user, day_list, *, build_missing
             if not day_stats:
                 continue
 
-            for media_type, minutes in day_stats.get("totals", {}).get("minutes_by_type", {}).items():
+            for media_type, minutes in (
+                day_stats.get("totals", {}).get("minutes_by_type", {}).items()
+            ):
                 minutes_by_type[media_type] += minutes or 0
 
     return dict(minutes_by_type)
@@ -397,7 +438,6 @@ def _empty_reading_consumption(unit_name="Unit", completion_label="Items Finishe
     }
 
 
-
 def _aggregate_statistics_from_days(
     user,
     day_list,
@@ -419,18 +459,28 @@ def _aggregate_statistics_from_days(
     movie_genres = defaultdict(lambda: {"minutes": 0, "plays": 0, "name": ""})
     tv_genres = defaultdict(lambda: {"minutes": 0, "plays": 0, "name": ""})
     anime_genres = defaultdict(lambda: {"minutes": 0, "plays": 0, "name": ""})
-    game_genres = defaultdict(lambda: {"minutes": 0, "plays": 0, "name": "", "game_ids": set()})
+    game_genres = defaultdict(
+        lambda: {"minutes": 0, "plays": 0, "name": "", "game_ids": set()}
+    )
     movie_decades = defaultdict(lambda: {"minutes": 0, "plays": 0, "label": ""})
     tv_decades = defaultdict(lambda: {"minutes": 0, "plays": 0, "label": ""})
     anime_decades = defaultdict(lambda: {"minutes": 0, "plays": 0, "label": ""})
     game_decades = defaultdict(lambda: {"minutes": 0, "label": "", "game_ids": set()})
     reading_genres = {
-        MediaTypes.BOOK.value: defaultdict(lambda: {"units": 0, "titles": 0, "name": ""}),
-        MediaTypes.COMIC.value: defaultdict(lambda: {"units": 0, "titles": 0, "name": ""}),
-        MediaTypes.MANGA.value: defaultdict(lambda: {"units": 0, "titles": 0, "name": ""}),
+        MediaTypes.BOOK.value: defaultdict(
+            lambda: {"units": 0, "titles": 0, "name": ""}
+        ),
+        MediaTypes.COMIC.value: defaultdict(
+            lambda: {"units": 0, "titles": 0, "name": ""}
+        ),
+        MediaTypes.MANGA.value: defaultdict(
+            lambda: {"units": 0, "titles": 0, "name": ""}
+        ),
     }
     music_rollups = {
-        "artists": defaultdict(lambda: {"minutes": 0, "plays": 0, "name": "", "image": "", "id": None}),
+        "artists": defaultdict(
+            lambda: {"minutes": 0, "plays": 0, "name": "", "image": "", "id": None}
+        ),
         "albums": defaultdict(
             lambda: {
                 "minutes": 0,
@@ -459,11 +509,35 @@ def _aggregate_statistics_from_days(
         ),
         "genres": defaultdict(lambda: {"minutes": 0, "plays": 0, "name": ""}),
         "decades": defaultdict(lambda: {"minutes": 0, "plays": 0, "label": ""}),
-        "countries": defaultdict(lambda: {"minutes": 0, "plays": 0, "code": "", "name": ""}),
+        "countries": defaultdict(
+            lambda: {"minutes": 0, "plays": 0, "code": "", "name": ""}
+        ),
     }
     podcast_rollups = {
-        "shows": defaultdict(lambda: {"minutes": 0, "plays": 0, "title": "", "show": "", "show_id": None, "podcast_uuid": None, "slug": "", "image": ""}),
-        "episodes": defaultdict(lambda: {"title": "", "show": "", "show_id": None, "episode_id": None, "podcast_uuid": None, "slug": "", "image": "", "duration_seconds": 0}),
+        "shows": defaultdict(
+            lambda: {
+                "minutes": 0,
+                "plays": 0,
+                "title": "",
+                "show": "",
+                "show_id": None,
+                "podcast_uuid": None,
+                "slug": "",
+                "image": "",
+            }
+        ),
+        "episodes": defaultdict(
+            lambda: {
+                "title": "",
+                "show": "",
+                "show_id": None,
+                "episode_id": None,
+                "podcast_uuid": None,
+                "slug": "",
+                "image": "",
+                "duration_seconds": 0,
+            }
+        ),
     }
     game_rollups = {}
     activity_counts = {}
@@ -526,14 +600,20 @@ def _aggregate_statistics_from_days(
                         continue
 
                     existing_activity = existing.get("activity_dt")
-                    if activity_dt and (not existing_activity or activity_dt > existing_activity):
-                        existing["media_id"] = meta.get("media_id") or existing.get("media_id")
+                    if activity_dt and (
+                        not existing_activity or activity_dt > existing_activity
+                    ):
+                        existing["media_id"] = meta.get("media_id") or existing.get(
+                            "media_id"
+                        )
                         existing["status"] = meta.get("status")
                         existing["activity_dt"] = activity_dt
 
                     if meta.get("score") is not None:
                         existing_score_dt = existing.get("score_dt")
-                        if existing_score_dt is None or (score_dt and score_dt > existing_score_dt):
+                        if existing_score_dt is None or (
+                            score_dt and score_dt > existing_score_dt
+                        ):
                             existing["score"] = meta.get("score")
                             existing["score_dt"] = score_dt
 
@@ -560,14 +640,21 @@ def _aggregate_statistics_from_days(
                     aggregate["plays"] += entry.get("plays") or 0
                     aggregate["episode_count"] += entry.get("episode_count") or 0
                     activity_dt = _parse_activity_dt(entry.get("activity_dt"))
-                    if activity_dt and (aggregate["activity_dt"] is None or activity_dt > aggregate["activity_dt"]):
+                    if activity_dt and (
+                        aggregate["activity_dt"] is None
+                        or activity_dt > aggregate["activity_dt"]
+                    ):
                         aggregate["activity_dt"] = activity_dt
                         if entry.get("media_id"):
                             aggregate["media_id"] = entry.get("media_id")
 
-            for media_type, minutes in day_stats.get("totals", {}).get("minutes_by_type", {}).items():
+            for media_type, minutes in (
+                day_stats.get("totals", {}).get("minutes_by_type", {}).items()
+            ):
                 minutes_by_type[media_type] += minutes or 0
-            for media_type, plays in day_stats.get("totals", {}).get("plays_by_type", {}).items():
+            for media_type, plays in (
+                day_stats.get("totals", {}).get("plays_by_type", {}).items()
+            ):
                 plays_by_type[media_type] += plays or 0
                 day_play_counts[media_type][day.isoformat()] = plays
 
@@ -580,7 +667,9 @@ def _aggregate_statistics_from_days(
                 for hour, minutes in hours.items():
                     hour_minutes[media_type][hour] += minutes or 0
 
-            for media_type, minutes in day_stats.get("daily_minutes_by_type", {}).items():
+            for media_type, minutes in day_stats.get(
+                "daily_minutes_by_type", {}
+            ).items():
                 day_minutes_by_type[media_type][day.isoformat()] = minutes
 
             for genre, payload in day_stats.get("genres", {}).get("movie", {}).items():
@@ -626,11 +715,23 @@ def _aggregate_statistics_from_days(
                 for game_id in payload.get("game_ids", []):
                     game_decades[label]["game_ids"].add(str(game_id))
 
-            for reading_type in (MediaTypes.BOOK.value, MediaTypes.COMIC.value, MediaTypes.MANGA.value):
-                for genre, payload in day_stats.get("genres", {}).get(reading_type, {}).items():
-                    reading_genres[reading_type][genre]["units"] += payload.get("units", 0)
-                    reading_genres[reading_type][genre]["titles"] += payload.get("titles", 0)
-                    reading_genres[reading_type][genre]["name"] = payload.get("name") or genre
+            for reading_type in (
+                MediaTypes.BOOK.value,
+                MediaTypes.COMIC.value,
+                MediaTypes.MANGA.value,
+            ):
+                for genre, payload in (
+                    day_stats.get("genres", {}).get(reading_type, {}).items()
+                ):
+                    reading_genres[reading_type][genre]["units"] += payload.get(
+                        "units", 0
+                    )
+                    reading_genres[reading_type][genre]["titles"] += payload.get(
+                        "titles", 0
+                    )
+                    reading_genres[reading_type][genre]["name"] = (
+                        payload.get("name") or genre
+                    )
 
             for key, value in day_stats.get("music", {}).items():
                 for item_id_str, payload in value.items():
@@ -662,36 +763,63 @@ def _aggregate_statistics_from_days(
                     if key == "shows":
                         existing["minutes"] += payload.get("minutes", 0)
                         existing["plays"] += payload.get("plays", 0)
-                        for field in ("title", "show", "show_id", "podcast_uuid", "slug", "image"):
+                        for field in (
+                            "title",
+                            "show",
+                            "show_id",
+                            "podcast_uuid",
+                            "slug",
+                            "image",
+                        ):
                             if payload.get(field) and not existing.get(field):
                                 existing[field] = payload.get(field)
                     else:
                         duration = payload.get("duration_seconds", 0) or 0
                         if duration > existing.get("duration_seconds", 0):
                             existing["duration_seconds"] = duration
-                        for field in ("title", "show", "show_id", "episode_id", "podcast_uuid", "slug", "image"):
+                        for field in (
+                            "title",
+                            "show",
+                            "show_id",
+                            "episode_id",
+                            "podcast_uuid",
+                            "slug",
+                            "image",
+                        ):
                             if payload.get(field) and not existing.get(field):
                                 existing[field] = payload.get(field)
 
-            for item_id_str, payload in day_stats.get("game", {}).get("by_game", {}).items():
+            for item_id_str, payload in (
+                day_stats.get("game", {}).get("by_game", {}).items()
+            ):
                 try:
                     item_id = int(item_id_str)
                 except (TypeError, ValueError):
                     continue
                 existing = game_rollups.get(item_id)
                 if not existing:
-                    existing = {"minutes_total": 0, "days": 0, "activity_dt": None, "media_id": payload.get("media_id")}
+                    existing = {
+                        "minutes_total": 0,
+                        "days": 0,
+                        "activity_dt": None,
+                        "media_id": payload.get("media_id"),
+                    }
                     game_rollups[item_id] = existing
                 existing["minutes_total"] += payload.get("minutes_total", 0)
                 existing["days"] += payload.get("days", 0)
                 activity_dt = _parse_activity_dt(payload.get("activity_dt"))
-                if activity_dt and (existing["activity_dt"] is None or activity_dt > existing["activity_dt"]):
+                if activity_dt and (
+                    existing["activity_dt"] is None
+                    or activity_dt > existing["activity_dt"]
+                ):
                     existing["activity_dt"] = activity_dt
                     if payload.get("media_id"):
                         existing["media_id"] = payload.get("media_id")
 
             daily_minutes = day_stats.get("daily_minutes_by_type", {}) or {}
-            plays_total = sum(day_stats.get("totals", {}).get("plays_by_type", {}).values())
+            plays_total = sum(
+                day_stats.get("totals", {}).get("plays_by_type", {}).values()
+            )
             activity_total = plays_total
             for media_type in non_play_activity_types:
                 if daily_minutes.get(media_type, 0):
@@ -718,9 +846,14 @@ def _aggregate_statistics_from_days(
     # computed properties derived from Episode rows, not real DB columns, so
     # they can't be filtered on directly and raise FieldError if added back.
     undated_models = [
-        MediaTypes.MOVIE.value, MediaTypes.ANIME.value,
-        MediaTypes.MANGA.value, MediaTypes.GAME.value, MediaTypes.BOARDGAME.value,
-        MediaTypes.MUSIC.value, MediaTypes.PODCAST.value, MediaTypes.BOOK.value,
+        MediaTypes.MOVIE.value,
+        MediaTypes.ANIME.value,
+        MediaTypes.MANGA.value,
+        MediaTypes.GAME.value,
+        MediaTypes.BOARDGAME.value,
+        MediaTypes.MUSIC.value,
+        MediaTypes.PODCAST.value,
+        MediaTypes.BOOK.value,
         MediaTypes.COMIC.value,
     ]
     for media_type in undated_models:
@@ -757,14 +890,18 @@ def _aggregate_statistics_from_days(
                 continue
 
             existing_activity = existing.get("activity_dt")
-            if activity_dt and (not existing_activity or activity_dt > existing_activity):
+            if activity_dt and (
+                not existing_activity or activity_dt > existing_activity
+            ):
                 existing["media_id"] = row["id"] or existing.get("media_id")
                 existing["status"] = row.get("status")
                 existing["activity_dt"] = activity_dt
 
             if score is not None:
                 existing_score_dt = existing.get("score_dt")
-                if existing_score_dt is None or (score_dt and score_dt > existing_score_dt):
+                if existing_score_dt is None or (
+                    score_dt and score_dt > existing_score_dt
+                ):
                     existing["score"] = float(score)
                     existing["score_dt"] = score_dt
 
@@ -780,8 +917,13 @@ def _aggregate_statistics_from_days(
     # TV Seasons roll up into their parent TV Show bar here, matching how
     # Media Type Distribution already merges season minutes into "tv".
     distribution_types = list(active_types)
-    if MediaTypes.SEASON.value in distribution_types and MediaTypes.TV.value in distribution_types:
-        distribution_types = [mt for mt in distribution_types if mt != MediaTypes.SEASON.value]
+    if (
+        MediaTypes.SEASON.value in distribution_types
+        and MediaTypes.TV.value in distribution_types
+    ):
+        distribution_types = [
+            mt for mt in distribution_types if mt != MediaTypes.SEASON.value
+        ]
 
     no_status_label = "No status"
     status_order = [*Status.values, no_status_label]
@@ -806,9 +948,15 @@ def _aggregate_statistics_from_days(
         "datasets": [
             {
                 "label": status,
-                "data": [status_distribution[media_type][status] for media_type in status_distribution],
+                "data": [
+                    status_distribution[media_type][status]
+                    for media_type in status_distribution
+                ],
                 "background_color": stats.get_status_color(status),
-                "total": sum(status_distribution[media_type][status] for media_type in status_distribution),
+                "total": sum(
+                    status_distribution[media_type][status]
+                    for media_type in status_distribution
+                ),
             }
             for status in status_order
         ],
@@ -844,7 +992,9 @@ def _aggregate_statistics_from_days(
             if score is None:
                 continue
             score_value = float(score)
-            score_value_scaled = score_value / 2 if score_scale_max == 5 else score_value
+            score_value_scaled = (
+                score_value / 2 if score_scale_max == 5 else score_value
+            )
             binned = int(score_value_scaled)
             binned = max(binned, 0)
             binned = min(binned, score_scale_max)
@@ -855,9 +1005,13 @@ def _aggregate_statistics_from_days(
             if media_id is None:
                 continue
             if len(top_rated_heap) < STATISTICS_TOP_RATED_OVERALL:
-                heapq.heappush(top_rated_heap, (score_value, next(global_counter), meta))
+                heapq.heappush(
+                    top_rated_heap, (score_value, next(global_counter), meta)
+                )
             else:
-                heapq.heappushpop(top_rated_heap, (score_value, next(global_counter), meta))
+                heapq.heappushpop(
+                    top_rated_heap, (score_value, next(global_counter), meta)
+                )
             if len(type_heap) < STATISTICS_TOP_N:
                 heapq.heappush(type_heap, (score_value, next(type_counter), meta))
             else:
@@ -867,8 +1021,12 @@ def _aggregate_statistics_from_days(
             meta for _, _, meta in sorted(type_heap, key=lambda x: (-x[0], x[1]))
         ]
 
-    average_score = round(total_score_sum / total_scored, 2) if total_scored > 0 else None
-    top_rated_meta = [meta for _, _, meta in sorted(top_rated_heap, key=lambda x: (-x[0], x[1]))]
+    average_score = (
+        round(total_score_sum / total_scored, 2) if total_scored > 0 else None
+    )
+    top_rated_meta = [
+        meta for _, _, meta in sorted(top_rated_heap, key=lambda x: (-x[0], x[1]))
+    ]
 
     media_refs = []
     for meta in top_rated_meta:
@@ -878,7 +1036,10 @@ def _aggregate_statistics_from_days(
             media_refs.append((meta.get("media_type"), meta.get("media_id")))
 
     media_map = _fetch_media_objects(set(media_refs))
-    top_rated_media = [media_map.get((meta.get("media_type"), meta.get("media_id"))) for meta in top_rated_meta]
+    top_rated_media = [
+        media_map.get((meta.get("media_type"), meta.get("media_id")))
+        for meta in top_rated_meta
+    ]
     top_rated_media = [media for media in top_rated_media if media]
     top_rated_media = stats._annotate_top_rated_media(top_rated_media)
 
@@ -889,7 +1050,9 @@ def _aggregate_statistics_from_days(
             for meta in metas
         ]
         media_list = [media for media in media_list if media]
-        top_rated_by_type_media[media_type] = stats._annotate_top_rated_media(media_list)
+        top_rated_by_type_media[media_type] = stats._annotate_top_rated_media(
+            media_list
+        )
 
     top_rated_score_map = {}
     for meta in top_rated_meta:
@@ -921,7 +1084,9 @@ def _aggregate_statistics_from_days(
         "datasets": [
             {
                 "label": app_tags.media_type_readable(media_type),
-                "data": [score_distribution[media_type][score] for score in score_range],
+                "data": [
+                    score_distribution[media_type][score] for score in score_range
+                ],
                 "background_color": config.get_stats_color(media_type),
             }
             for media_type in score_distribution
@@ -939,7 +1104,10 @@ def _aggregate_statistics_from_days(
         entries = [entry for entry in entries if entry.get("minutes", 0) > 0]
         baseline_dt = datetime(1970, 1, 1, tzinfo=timezone.get_current_timezone())
         entries.sort(
-            key=lambda entry: (entry.get("minutes", 0), entry.get("activity_dt") or baseline_dt),
+            key=lambda entry: (
+                entry.get("minutes", 0),
+                entry.get("activity_dt") or baseline_dt,
+            ),
             reverse=True,
         )
         limit = STATISTICS_TOP_N
@@ -958,23 +1126,31 @@ def _aggregate_statistics_from_days(
             total_minutes = entry.get("minutes", 0)
             formatted_duration = helpers.minutes_to_hhmm(total_minutes)
             if media_type == "boardgame":
-                formatted_duration = f"{int(total_minutes)} play{'s' if int(total_minutes) != 1 else ''}"
-            enriched.append({
-                "media": media,
-                "total_time_minutes": total_minutes,
-                "formatted_duration": formatted_duration,
-                "episode_count": entry.get("episode_count", 0),
-                "last_activity": entry.get("activity_dt"),
-                "play_count": entry.get("plays", 0),
-            })
+                formatted_duration = (
+                    f"{int(total_minutes)} play{'s' if int(total_minutes) != 1 else ''}"
+                )
+            enriched.append(
+                {
+                    "media": media,
+                    "total_time_minutes": total_minutes,
+                    "formatted_duration": formatted_duration,
+                    "episode_count": entry.get("episode_count", 0),
+                    "last_activity": entry.get("activity_dt"),
+                    "play_count": entry.get("plays", 0),
+                }
+            )
         top_played[media_type] = enriched
 
     hours_per_media_type = {}
     for media_type, total_minutes in minutes_by_type.items():
         if media_type == MediaTypes.BOARDGAME.value:
-            hours_per_media_type[media_type] = f"{int(total_minutes)} play{'s' if int(total_minutes) != 1 else ''}"
+            hours_per_media_type[media_type] = (
+                f"{int(total_minutes)} play{'s' if int(total_minutes) != 1 else ''}"
+            )
         else:
-            hours_per_media_type[media_type] = stats._format_hours_minutes(total_minutes, user.duration_format)
+            hours_per_media_type[media_type] = stats._format_hours_minutes(
+                total_minutes, user.duration_format
+            )
 
     if start_date is None and end_date is None and day_list:
         start_date = _day_boundary_datetime(day_list[0])
@@ -984,6 +1160,7 @@ def _aggregate_statistics_from_days(
     from users.models import (
         WeekStartDayChoices,  # noqa: PLC0415 - avoid circular import
     )
+
     week_start_sunday = user.week_start_day == WeekStartDayChoices.SUNDAY
     activity_data = _build_activity_data(
         activity_counts_by_date,
@@ -1046,73 +1223,133 @@ def _aggregate_statistics_from_days(
     game_total_hours = game_total_minutes / 60 if game_total_minutes else 0
 
     tv_consumption = {
-        "hours": _compute_metric_breakdown_for_range(tv_total_hours, start_date, end_date),
-        "plays": _compute_metric_breakdown_for_range(plays_by_type.get(MediaTypes.TV.value, 0), start_date, end_date),
+        "hours": _compute_metric_breakdown_for_range(
+            tv_total_hours, start_date, end_date
+        ),
+        "plays": _compute_metric_breakdown_for_range(
+            plays_by_type.get(MediaTypes.TV.value, 0), start_date, end_date
+        ),
         "charts": tv_chart,
         "has_data": plays_by_type.get(MediaTypes.TV.value, 0) > 0,
         "top_genres": [
             {**item, "formatted_duration": helpers.minutes_to_hhmm(item["minutes"])}
-            for item in sorted(tv_genres.values(), key=lambda x: (x["minutes"], x["plays"]), reverse=True)[:STATISTICS_TOP_N]
+            for item in sorted(
+                tv_genres.values(),
+                key=lambda x: (x["minutes"], x["plays"]),
+                reverse=True,
+            )[:STATISTICS_TOP_N]
         ],
         "top_decades": [
             {**item, "formatted_duration": helpers.minutes_to_hhmm(item["minutes"])}
-            for item in sorted(tv_decades.values(), key=lambda x: (x["minutes"], x["plays"]), reverse=True)[:STATISTICS_TOP_N]
+            for item in sorted(
+                tv_decades.values(),
+                key=lambda x: (x["minutes"], x["plays"]),
+                reverse=True,
+            )[:STATISTICS_TOP_N]
         ],
     }
 
     movie_consumption = {
-        "hours": _compute_metric_breakdown_for_range(movie_total_hours, start_date, end_date),
-        "plays": _compute_metric_breakdown_for_range(plays_by_type.get(MediaTypes.MOVIE.value, 0), start_date, end_date),
+        "hours": _compute_metric_breakdown_for_range(
+            movie_total_hours, start_date, end_date
+        ),
+        "plays": _compute_metric_breakdown_for_range(
+            plays_by_type.get(MediaTypes.MOVIE.value, 0), start_date, end_date
+        ),
         "charts": movie_chart,
         "has_data": plays_by_type.get(MediaTypes.MOVIE.value, 0) > 0,
         "top_genres": [
             {**item, "formatted_duration": helpers.minutes_to_hhmm(item["minutes"])}
-            for item in sorted(movie_genres.values(), key=lambda x: (x["minutes"], x["plays"]), reverse=True)[:STATISTICS_TOP_N]
+            for item in sorted(
+                movie_genres.values(),
+                key=lambda x: (x["minutes"], x["plays"]),
+                reverse=True,
+            )[:STATISTICS_TOP_N]
         ],
         "top_decades": [
             {**item, "formatted_duration": helpers.minutes_to_hhmm(item["minutes"])}
-            for item in sorted(movie_decades.values(), key=lambda x: (x["minutes"], x["plays"]), reverse=True)[:STATISTICS_TOP_N]
+            for item in sorted(
+                movie_decades.values(),
+                key=lambda x: (x["minutes"], x["plays"]),
+                reverse=True,
+            )[:STATISTICS_TOP_N]
         ],
     }
 
     anime_consumption = {
-        "hours": _compute_metric_breakdown_for_range(anime_total_hours, start_date, end_date),
-        "plays": _compute_metric_breakdown_for_range(plays_by_type.get(MediaTypes.ANIME.value, 0), start_date, end_date),
+        "hours": _compute_metric_breakdown_for_range(
+            anime_total_hours, start_date, end_date
+        ),
+        "plays": _compute_metric_breakdown_for_range(
+            plays_by_type.get(MediaTypes.ANIME.value, 0), start_date, end_date
+        ),
         "charts": anime_chart,
         "has_data": plays_by_type.get(MediaTypes.ANIME.value, 0) > 0,
         "top_genres": [
             {**item, "formatted_duration": helpers.minutes_to_hhmm(item["minutes"])}
-            for item in sorted(anime_genres.values(), key=lambda x: (x["minutes"], x["plays"]), reverse=True)[:STATISTICS_TOP_N]
+            for item in sorted(
+                anime_genres.values(),
+                key=lambda x: (x["minutes"], x["plays"]),
+                reverse=True,
+            )[:STATISTICS_TOP_N]
         ],
         "top_decades": [
             {**item, "formatted_duration": helpers.minutes_to_hhmm(item["minutes"])}
-            for item in sorted(anime_decades.values(), key=lambda x: (x["minutes"], x["plays"]), reverse=True)[:STATISTICS_TOP_N]
+            for item in sorted(
+                anime_decades.values(),
+                key=lambda x: (x["minutes"], x["plays"]),
+                reverse=True,
+            )[:STATISTICS_TOP_N]
         ],
     }
 
     def _top_items(values, key_fields=("minutes", "plays"), limit=STATISTICS_TOP_N):
-        items = sorted(values, key=lambda x: tuple(x.get(field, 0) for field in key_fields), reverse=True)[:limit]
+        items = sorted(
+            values,
+            key=lambda x: tuple(x.get(field, 0) for field in key_fields),
+            reverse=True,
+        )[:limit]
         for item in items:
             if "minutes" in item:
                 item["formatted_duration"] = helpers.minutes_to_hhmm(item["minutes"])
         return items
 
     music_consumption = {
-        "minutes": _compute_metric_breakdown_for_range(music_total_minutes, start_date, end_date),
-        "plays": _compute_metric_breakdown_for_range(plays_by_type.get(MediaTypes.MUSIC.value, 0), start_date, end_date),
+        "minutes": _compute_metric_breakdown_for_range(
+            music_total_minutes, start_date, end_date
+        ),
+        "plays": _compute_metric_breakdown_for_range(
+            plays_by_type.get(MediaTypes.MUSIC.value, 0), start_date, end_date
+        ),
         "charts": music_chart,
         "has_data": plays_by_type.get(MediaTypes.MUSIC.value, 0) > 0,
-        "top_artists": _top_items(list(music_rollups["artists"].values()), ("minutes", "plays")),
-        "top_albums": _top_items(list(music_rollups["albums"].values()), ("minutes", "plays")),
-        "top_tracks": _top_items(list(music_rollups["tracks"].values()), ("minutes", "plays")),
-        "top_genres": _top_items(list(music_rollups["genres"].values()), ("minutes", "plays")),
-        "top_decades": _top_items(list(music_rollups["decades"].values()), ("minutes", "plays")),
-        "top_countries": _top_items(list(music_rollups["countries"].values()), ("minutes", "plays")),
+        "top_artists": _top_items(
+            list(music_rollups["artists"].values()), ("minutes", "plays")
+        ),
+        "top_albums": _top_items(
+            list(music_rollups["albums"].values()), ("minutes", "plays")
+        ),
+        "top_tracks": _top_items(
+            list(music_rollups["tracks"].values()), ("minutes", "plays")
+        ),
+        "top_genres": _top_items(
+            list(music_rollups["genres"].values()), ("minutes", "plays")
+        ),
+        "top_decades": _top_items(
+            list(music_rollups["decades"].values()), ("minutes", "plays")
+        ),
+        "top_countries": _top_items(
+            list(music_rollups["countries"].values()), ("minutes", "plays")
+        ),
     }
 
     podcast_consumption = {
-        "minutes": _compute_metric_breakdown_for_range(podcast_total_minutes, start_date, end_date),
-        "plays": _compute_metric_breakdown_for_range(plays_by_type.get(MediaTypes.PODCAST.value, 0), start_date, end_date),
+        "minutes": _compute_metric_breakdown_for_range(
+            podcast_total_minutes, start_date, end_date
+        ),
+        "plays": _compute_metric_breakdown_for_range(
+            plays_by_type.get(MediaTypes.PODCAST.value, 0), start_date, end_date
+        ),
         "charts": podcast_chart,
         "has_data": plays_by_type.get(MediaTypes.PODCAST.value, 0) > 0,
     }
@@ -1128,7 +1365,11 @@ def _aggregate_statistics_from_days(
         reverse=True,
     )[:STATISTICS_TOP_N]
     longest_episodes = sorted(
-        [ep for ep in podcast_rollups["episodes"].values() if ep.get("duration_seconds", 0) > 0],
+        [
+            ep
+            for ep in podcast_rollups["episodes"].values()
+            if ep.get("duration_seconds", 0) > 0
+        ],
         key=lambda x: x["duration_seconds"],
         reverse=True,
     )[:STATISTICS_TOP_N]
@@ -1138,11 +1379,13 @@ def _aggregate_statistics_from_days(
         hours = item["duration_seconds"] // 3600
         minutes = (item["duration_seconds"] % 3600) // 60
         item["formatted_duration"] = f"{hours}h {minutes}m" if hours else f"{minutes}m"
-    podcast_consumption.update({
-        "most_played": most_played,
-        "most_listened": most_listened,
-        "longest_episodes": longest_episodes,
-    })
+    podcast_consumption.update(
+        {
+            "most_played": most_played,
+            "most_listened": most_listened,
+            "longest_episodes": longest_episodes,
+        }
+    )
 
     game_hours_by_year = defaultdict(float)
     game_hours_by_month = defaultdict(float)
@@ -1160,8 +1403,18 @@ def _aggregate_statistics_from_days(
     month_labels = [calendar.month_abbr[i] for i in range(1, 13)]
     month_values = [game_hours_by_month.get(i, 0) for i in range(1, 13)]
     game_hours_charts = {
-        "by_year": stats._build_single_series_chart(year_labels, year_values, config.get_stats_color(MediaTypes.GAME.value), "Game Hours"),
-        "by_month": stats._build_single_series_chart(month_labels, month_values, config.get_stats_color(MediaTypes.GAME.value), "Game Hours"),
+        "by_year": stats._build_single_series_chart(
+            year_labels,
+            year_values,
+            config.get_stats_color(MediaTypes.GAME.value),
+            "Game Hours",
+        ),
+        "by_month": stats._build_single_series_chart(
+            month_labels,
+            month_values,
+            config.get_stats_color(MediaTypes.GAME.value),
+            "Game Hours",
+        ),
     }
 
     game_data = []
@@ -1171,16 +1424,20 @@ def _aggregate_statistics_from_days(
         if days <= 0 or minutes_total <= 0:
             continue
         daily_avg_hours = (minutes_total / days) / 60
-        game_data.append({
-            "item_id": item_id_str,
-            "media_id": payload.get("media_id"),
-            "daily_average": daily_avg_hours,
-            "hours": minutes_total / 60,
-            "activity_dt": payload.get("activity_dt"),
-        })
+        game_data.append(
+            {
+                "item_id": item_id_str,
+                "media_id": payload.get("media_id"),
+                "daily_average": daily_avg_hours,
+                "hours": minutes_total / 60,
+                "activity_dt": payload.get("activity_dt"),
+            }
+        )
 
     # --- Collect item_ids needed for chart tooltip and platform breakdown ---
-    all_item_ids = [item["item_id"] for item in game_data if item.get("item_id") is not None]
+    all_item_ids = [
+        item["item_id"] for item in game_data if item.get("item_id") is not None
+    ]
 
     # Determine which item_ids are needed for the top-5-per-band tooltip
     bands = stats.DAILY_AVERAGE_BANDS
@@ -1200,7 +1457,9 @@ def _aggregate_statistics_from_days(
     if all_item_ids:
         item_info_map = {
             row["id"]: row
-            for row in Item.objects.filter(id__in=all_item_ids).values("id", "title", "image", "platforms")
+            for row in Item.objects.filter(id__in=all_item_ids).values(
+                "id", "title", "image", "platforms"
+            )
         }
 
     # Fetch CollectionEntry resolution for platform breakdown
@@ -1218,11 +1477,13 @@ def _aggregate_statistics_from_days(
     enriched_game_data = []
     for item in game_data:
         info = item_info_map.get(item.get("item_id"), {})
-        enriched_game_data.append({
-            **item,
-            "title": info.get("title", ""),
-            "image": info.get("image", ""),
-        })
+        enriched_game_data.append(
+            {
+                **item,
+                "title": info.get("title", ""),
+                "image": info.get("image", ""),
+            }
+        )
 
     daily_avg_chart = stats._build_daily_average_distribution_chart(
         enriched_game_data,
@@ -1232,42 +1493,57 @@ def _aggregate_statistics_from_days(
 
     game_genre_items = []
     for genre, payload in game_genres.items():
-        game_genre_items.append({
-            "minutes": payload["minutes"],
-            "games": len(payload["game_ids"]),
-            "plays": len(payload["game_ids"]),
-            "name": genre,
-            "formatted_duration": helpers.minutes_to_hhmm(payload["minutes"]),
-        })
-    game_genre_items = sorted(game_genre_items, key=lambda x: (x["minutes"], x["games"]), reverse=True)[:STATISTICS_TOP_N]
+        game_genre_items.append(
+            {
+                "minutes": payload["minutes"],
+                "games": len(payload["game_ids"]),
+                "plays": len(payload["game_ids"]),
+                "name": genre,
+                "formatted_duration": helpers.minutes_to_hhmm(payload["minutes"]),
+            }
+        )
+    game_genre_items = sorted(
+        game_genre_items, key=lambda x: (x["minutes"], x["games"]), reverse=True
+    )[:STATISTICS_TOP_N]
 
     game_decade_items = []
     for label, payload in game_decades.items():
-        game_decade_items.append({
-            "minutes": payload["minutes"],
-            "games": len(payload["game_ids"]),
-            "plays": len(payload["game_ids"]),
-            "label": label,
-            "formatted_duration": helpers.minutes_to_hhmm(payload["minutes"]),
-        })
-    game_decade_items = sorted(game_decade_items, key=lambda x: (x["minutes"], x["games"]), reverse=True)[:STATISTICS_TOP_N]
+        game_decade_items.append(
+            {
+                "minutes": payload["minutes"],
+                "games": len(payload["game_ids"]),
+                "plays": len(payload["game_ids"]),
+                "label": label,
+                "formatted_duration": helpers.minutes_to_hhmm(payload["minutes"]),
+            }
+        )
+    game_decade_items = sorted(
+        game_decade_items, key=lambda x: (x["minutes"], x["games"]), reverse=True
+    )[:STATISTICS_TOP_N]
 
-    top_daily_avg_games = sorted(game_data, key=lambda x: x["daily_average"], reverse=True)[:STATISTICS_TOP_N]
-    game_media_map = _fetch_media_objects({(MediaTypes.GAME.value, item["media_id"]) for item in top_daily_avg_games})
+    top_daily_avg_games = sorted(
+        game_data, key=lambda x: x["daily_average"], reverse=True
+    )[:STATISTICS_TOP_N]
+    game_media_map = _fetch_media_objects(
+        {(MediaTypes.GAME.value, item["media_id"]) for item in top_daily_avg_games}
+    )
     top_daily_avg_payload = []
     for item in top_daily_avg_games:
         media = game_media_map.get((MediaTypes.GAME.value, item["media_id"]))
         if not media:
             continue
         daily_avg_minutes = item["daily_average"] * 60
-        top_daily_avg_payload.append({
-            "game": media,
-            "daily_average_hours": item["daily_average"],
-            "daily_average_minutes": daily_avg_minutes,
-            "formatted_daily_average": helpers.minutes_to_hhmm(daily_avg_minutes) + "/day",
-            "total_hours": item["hours"],
-            "formatted_total": helpers.minutes_to_hhmm(item["hours"] * 60),
-        })
+        top_daily_avg_payload.append(
+            {
+                "game": media,
+                "daily_average_hours": item["daily_average"],
+                "daily_average_minutes": daily_avg_minutes,
+                "formatted_daily_average": helpers.minutes_to_hhmm(daily_avg_minutes)
+                + "/day",
+                "total_hours": item["hours"],
+                "formatted_total": helpers.minutes_to_hhmm(item["hours"] * 60),
+            }
+        )
 
     # --- Platform breakdown ---
     platform_hours = defaultdict(float)
@@ -1308,12 +1584,17 @@ def _aggregate_statistics_from_days(
     )
 
     game_consumption = {
-        "hours": _compute_metric_breakdown_for_range(game_total_hours, start_date, end_date),
+        "hours": _compute_metric_breakdown_for_range(
+            game_total_hours, start_date, end_date
+        ),
         "plays": _compute_metric_breakdown_for_range(
-            _sum_top_played_plays(top_played_by_type, MediaTypes.GAME.value), start_date, end_date,
+            _sum_top_played_plays(top_played_by_type, MediaTypes.GAME.value),
+            start_date,
+            end_date,
         ),
         "average_daily_playtime_hours": _avg_daily_playtime_hours(
-            game_total_hours, day_minutes_by_type.get(MediaTypes.GAME.value, {}),
+            game_total_hours,
+            day_minutes_by_type.get(MediaTypes.GAME.value, {}),
         ),
         "charts": {
             "by_year": game_hours_charts["by_year"],
@@ -1328,16 +1609,24 @@ def _aggregate_statistics_from_days(
     }
 
     boardgame_total_minutes = minutes_by_type.get(MediaTypes.BOARDGAME.value, 0)
-    boardgame_total_hours = boardgame_total_minutes / 60 if boardgame_total_minutes else 0
+    boardgame_total_hours = (
+        boardgame_total_minutes / 60 if boardgame_total_minutes else 0
+    )
     boardgame_consumption = {
-        "hours": _compute_metric_breakdown_for_range(boardgame_total_hours, start_date, end_date),
+        "hours": _compute_metric_breakdown_for_range(
+            boardgame_total_hours, start_date, end_date
+        ),
         "plays": _compute_metric_breakdown_for_range(
-            _sum_top_played_plays(top_played_by_type, MediaTypes.BOARDGAME.value), start_date, end_date,
+            _sum_top_played_plays(top_played_by_type, MediaTypes.BOARDGAME.value),
+            start_date,
+            end_date,
         ),
         "average_daily_playtime_hours": _avg_daily_playtime_hours(
-            boardgame_total_hours, day_minutes_by_type.get(MediaTypes.BOARDGAME.value, {}),
+            boardgame_total_hours,
+            day_minutes_by_type.get(MediaTypes.BOARDGAME.value, {}),
         ),
-        "has_data": boardgame_total_minutes > 0 or bool(top_played_by_type.get(MediaTypes.BOARDGAME.value)),
+        "has_data": boardgame_total_minutes > 0
+        or bool(top_played_by_type.get(MediaTypes.BOARDGAME.value)),
     }
 
     def _build_cached_reading_consumption(media_type):
@@ -1365,7 +1654,9 @@ def _aggregate_statistics_from_days(
             if meta.get("item_id")
         ]
         top_entries = list(top_played_by_type.get(media_type, {}).values())
-        has_any_reading_data = bool(unit_total or completion_total or item_ids or top_entries)
+        has_any_reading_data = bool(
+            unit_total or completion_total or item_ids or top_entries
+        )
         if not has_any_reading_data:
             return _empty_reading_consumption(
                 unit_name=unit_name,
@@ -1400,24 +1691,37 @@ def _aggregate_statistics_from_days(
             ]
         completed_lengths = []
         model = apps.get_model("app", media_type)
-        completed_queryset = model.objects.filter(user=user, status=Status.COMPLETED.value).select_related("item")
+        completed_queryset = model.objects.filter(
+            user=user, status=Status.COMPLETED.value
+        ).select_related("item")
         for entry in completed_queryset.iterator(chunk_size=500):
             if not stats._reading_entry_in_range(entry, start_date, end_date):
                 continue
-            completed_length = entry.progress or getattr(entry.item, "number_of_pages", 0) or 0
+            completed_length = (
+                entry.progress or getattr(entry.item, "number_of_pages", 0) or 0
+            )
             if completed_length > 0:
                 completed_lengths.append(completed_length)
 
         average_completed_length = (
-            round(sum(completed_lengths) / len(completed_lengths), 1) if completed_lengths else 0
+            round(sum(completed_lengths) / len(completed_lengths), 1)
+            if completed_lengths
+            else 0
         )
 
-        release_chart = stats._build_release_year_chart(release_datetimes, color, release_label)
-        completed_length_chart = stats._build_completed_length_distribution_chart(completed_lengths, unit_name, color)
+        release_chart = stats._build_release_year_chart(
+            release_datetimes, color, release_label
+        )
+        completed_length_chart = stats._build_completed_length_distribution_chart(
+            completed_lengths, unit_name, color
+        )
 
         baseline_dt = datetime(1970, 1, 1, tzinfo=timezone.get_current_timezone())
         top_entries.sort(
-            key=lambda entry: (entry.get("minutes", 0), entry.get("activity_dt") or baseline_dt),
+            key=lambda entry: (
+                entry.get("minutes", 0),
+                entry.get("activity_dt") or baseline_dt,
+            ),
             reverse=True,
         )
         top_authors = stats._build_reading_top_authors(
@@ -1433,7 +1737,11 @@ def _aggregate_statistics_from_days(
             limit=STATISTICS_TOP_N,
         )
         top_entries = top_entries[:STATISTICS_TOP_N]
-        top_media_refs = {(media_type, entry.get("media_id")) for entry in top_entries if entry.get("media_id")}
+        top_media_refs = {
+            (media_type, entry.get("media_id"))
+            for entry in top_entries
+            if entry.get("media_id")
+        }
         top_media_map = _fetch_media_objects(top_media_refs)
         top_items = []
         for entry in top_entries:
@@ -1464,7 +1772,9 @@ def _aggregate_statistics_from_days(
                     "formatted_units": f"{int(round(units))} {unit_name.lower()}{'' if int(round(units)) == 1 else 's'}",
                 }
             )
-        genre_items = sorted(genre_items, key=lambda item: (item["units"], item["titles"]), reverse=True)[:STATISTICS_TOP_N]
+        genre_items = sorted(
+            genre_items, key=lambda item: (item["units"], item["titles"]), reverse=True
+        )[:STATISTICS_TOP_N]
 
         item_lengths = []
         scored_values = []
@@ -1486,11 +1796,17 @@ def _aggregate_statistics_from_days(
                 scored_values.append(float(score_value))
 
         average_length = average_completed_length
-        average_rating = round(sum(scored_values) / len(scored_values), 2) if scored_values else None
+        average_rating = (
+            round(sum(scored_values) / len(scored_values), 2) if scored_values else None
+        )
 
         return {
-            "units": _compute_metric_breakdown_for_range(unit_total, start_date, end_date),
-            "completions": _compute_metric_breakdown_for_range(completion_total, start_date, end_date),
+            "units": _compute_metric_breakdown_for_range(
+                unit_total, start_date, end_date
+            ),
+            "completions": _compute_metric_breakdown_for_range(
+                completion_total, start_date, end_date
+            ),
             "charts": charts,
             "completion_charts": {
                 "by_year": completion_charts["by_year"],
@@ -1522,7 +1838,8 @@ def _aggregate_statistics_from_days(
     reading_types_with_data = {
         media_type
         for media_type in reading_media_types
-        if media_type in active_types and (
+        if media_type in active_types
+        and (
             minutes_by_type.get(media_type)
             or items_by_type.get(media_type)
             or top_played_by_type.get(media_type)
@@ -1554,7 +1871,9 @@ def _aggregate_statistics_from_days(
     if first_highlight_day and last_highlight_day:
         first_day_payload = _get_history_day_payload(user, first_highlight_day)
         last_day_payload = _get_history_day_payload(user, last_highlight_day)
-        first_play = _select_history_entry_for_day(first_day_payload, pick_earliest=True)
+        first_play = _select_history_entry_for_day(
+            first_day_payload, pick_earliest=True
+        )
         last_play = _select_history_entry_for_day(last_day_payload, pick_latest=True)
 
     today_in_user_history, today_in_user_history_year = _get_today_history_entries(user)
@@ -1564,8 +1883,10 @@ def _aggregate_statistics_from_days(
         "first_play": first_play,
         "last_play": last_play,
         "today_card": _build_today_card(
-            today_in_history, today_in_history_year,
-            today_in_user_history, today_in_user_history_year,
+            today_in_history,
+            today_in_history_year,
+            today_in_user_history,
+            today_in_user_history_year,
         ),
         "today_month": today.month,
         "today_day": today.day,
@@ -1581,14 +1902,24 @@ def _aggregate_statistics_from_days(
         _last_day = date_type.fromisoformat(_active_days[-1])
         _first_payload = _get_history_day_payload(user, _first_day)
         _last_payload = _get_history_day_payload(user, _last_day)
-        _type_today_user_h, _type_today_user_year = _get_today_history_entries(user, media_type_filter=_mt)
-        _type_today_h, _type_today_year = _get_today_release_entry(user, media_type_filter=_mt)
+        _type_today_user_h, _type_today_user_year = _get_today_history_entries(
+            user, media_type_filter=_mt
+        )
+        _type_today_h, _type_today_year = _get_today_release_entry(
+            user, media_type_filter=_mt
+        )
         history_highlights_by_type[_mt] = {
-            "first_play": _select_history_entry_for_day(_first_payload, pick_earliest=True, media_type_filter=_mt),
-            "last_play": _select_history_entry_for_day(_last_payload, pick_latest=True, media_type_filter=_mt),
+            "first_play": _select_history_entry_for_day(
+                _first_payload, pick_earliest=True, media_type_filter=_mt
+            ),
+            "last_play": _select_history_entry_for_day(
+                _last_payload, pick_latest=True, media_type_filter=_mt
+            ),
             "today_card": _build_today_card(
-                _type_today_h, _type_today_year,
-                _type_today_user_h, _type_today_user_year,
+                _type_today_h,
+                _type_today_year,
+                _type_today_user_h,
+                _type_today_user_year,
             ),
             "today_month": today.month,
             "today_day": today.day,
@@ -1609,7 +1940,9 @@ def _aggregate_statistics_from_days(
                 _sv = _sv / 2
             _mt_sum += _sv
             _mt_count += 1
-        _average_score_by_type[_mt] = round(_mt_sum / _mt_count, 2) if _mt_count > 0 else None
+        _average_score_by_type[_mt] = (
+            round(_mt_sum / _mt_count, 2) if _mt_count > 0 else None
+        )
 
     _end_date_for_streak = end_date.date() if hasattr(end_date, "date") else end_date
 
@@ -1624,20 +1957,29 @@ def _aggregate_statistics_from_days(
             "average_score": average_score,
             "has_score": bool(total_scored),
             "most_active_day": activity_data["stats"].get("most_active_day"),
-            "most_active_day_percentage": activity_data["stats"].get("most_active_day_percentage", 0),
+            "most_active_day_percentage": activity_data["stats"].get(
+                "most_active_day_percentage", 0
+            ),
             "current_streak": activity_data["stats"].get("current_streak", 0),
             "longest_streak": activity_data["stats"].get("longest_streak", 0),
-            "longest_streak_start": _date_to_iso(activity_data["stats"].get("longest_streak_start")),
-            "longest_streak_end": _date_to_iso(activity_data["stats"].get("longest_streak_end")),
+            "longest_streak_start": _date_to_iso(
+                activity_data["stats"].get("longest_streak_start")
+            ),
+            "longest_streak_end": _date_to_iso(
+                activity_data["stats"].get("longest_streak_end")
+            ),
         }
     }
     for _mt, _day_map in day_minutes_by_type.items():
         _mt_date_counts = {
-            date_type.fromisoformat(d): 1
-            for d, m in _day_map.items() if m > 0
+            date_type.fromisoformat(d): 1 for d, m in _day_map.items() if m > 0
         }
-        _mt_most_active, _mt_day_pct = stats.calculate_most_active_weekday({_mt: _day_map}, day_list)
-        _mt_streaks = stats.calculate_streak_details(_mt_date_counts, _end_date_for_streak)
+        _mt_most_active, _mt_day_pct = stats.calculate_most_active_weekday(
+            {_mt: _day_map}, day_list
+        )
+        _mt_streaks = stats.calculate_streak_details(
+            _mt_date_counts, _end_date_for_streak
+        )
         _mt_completed = status_distribution.get(_mt, {}).get(Status.COMPLETED.value, 0)
         _mt_total = media_count.get(_mt, 0)
         _mt_minutes = minutes_by_type.get(_mt, 0)
@@ -1651,7 +1993,9 @@ def _aggregate_statistics_from_days(
             "most_active_day_percentage": _mt_day_pct,
             "current_streak": _mt_streaks.get("current_streak", 0),
             "longest_streak": _mt_streaks.get("longest_streak", 0),
-            "longest_streak_start": _date_to_iso(_mt_streaks.get("longest_streak_start")),
+            "longest_streak_start": _date_to_iso(
+                _mt_streaks.get("longest_streak_start")
+            ),
             "longest_streak_end": _date_to_iso(_mt_streaks.get("longest_streak_end")),
         }
 
@@ -1732,10 +2076,19 @@ def _aggregate_statistics_from_days(
     def _pack_metric(breakdown, label, unit, icon, *, total_decimals=1):
         if not breakdown:
             return None
-        return {"label": label, "unit": unit, "icon": icon, "total_decimals": total_decimals, **breakdown}
+        return {
+            "label": label,
+            "unit": unit,
+            "icon": icon,
+            "total_decimals": total_decimals,
+            **breakdown,
+        }
 
     def _minutes_breakdown_to_hours(breakdown):
-        return {**breakdown, **{k: v / 60 for k, v in breakdown.items() if k != "label"}}
+        return {
+            **breakdown,
+            **{k: v / 60 for k, v in breakdown.items() if k != "label"},
+        }
 
     def _sum_breakdowns(breakdowns):
         keys = ("total", "per_year", "per_month", "per_day")
@@ -1748,12 +2101,17 @@ def _aggregate_statistics_from_days(
     combined_games_day_minutes: defaultdict = defaultdict(float)
     for day_str, minutes in day_minutes_by_type.get(MediaTypes.GAME.value, {}).items():
         combined_games_day_minutes[day_str] += minutes or 0
-    for day_str, minutes in day_minutes_by_type.get(MediaTypes.BOARDGAME.value, {}).items():
+    for day_str, minutes in day_minutes_by_type.get(
+        MediaTypes.BOARDGAME.value, {}
+    ).items():
         combined_games_day_minutes[day_str] += minutes or 0
-    games_avg_daily_playtime = _avg_daily_playtime_hours(combined_games_hours, combined_games_day_minutes)
+    games_avg_daily_playtime = _avg_daily_playtime_hours(
+        combined_games_hours, combined_games_day_minutes
+    )
     games_bonus = (
         {"kind": "playtime", "icon": "gamepad", "value": games_avg_daily_playtime}
-        if games_avg_daily_playtime and (game_consumption["has_data"] or boardgame_consumption["has_data"])
+        if games_avg_daily_playtime
+        and (game_consumption["has_data"] or boardgame_consumption["has_data"])
         else None
     )
 
@@ -1763,7 +2121,9 @@ def _aggregate_statistics_from_days(
         + manga_consumption.get("completed_lengths", [])
     )
     reading_avg_length = (
-        round(sum(all_reading_lengths) / len(all_reading_lengths), 1) if all_reading_lengths else 0
+        round(sum(all_reading_lengths) / len(all_reading_lengths), 1)
+        if all_reading_lengths
+        else 0
     )
     reading_bonus = (
         {"kind": "length", "icon": "book-open", "value": reading_avg_length}
@@ -1773,80 +2133,128 @@ def _aggregate_statistics_from_days(
 
     consumption_stats_by_type = {
         MediaTypes.TV.value: {
-            "primary": _pack_metric(tv_consumption["hours"], "Hours Watched", "Hours", "clock"),
-            "secondary": _pack_metric(tv_consumption["plays"], "Episode Plays", "Episodes", "repeat"),
+            "primary": _pack_metric(
+                tv_consumption["hours"], "Hours Watched", "Hours", "clock"
+            ),
+            "secondary": _pack_metric(
+                tv_consumption["plays"], "Episode Plays", "Episodes", "repeat"
+            ),
             "bonuses": [],
             "has_data": tv_consumption["has_data"],
         },
         MediaTypes.MOVIE.value: {
-            "primary": _pack_metric(movie_consumption["hours"], "Hours Watched", "Hours", "clock"),
-            "secondary": _pack_metric(movie_consumption["plays"], "Movie Plays", "Movies", "repeat"),
+            "primary": _pack_metric(
+                movie_consumption["hours"], "Hours Watched", "Hours", "clock"
+            ),
+            "secondary": _pack_metric(
+                movie_consumption["plays"], "Movie Plays", "Movies", "repeat"
+            ),
             "bonuses": [],
             "has_data": movie_consumption["has_data"],
         },
         MediaTypes.ANIME.value: {
-            "primary": _pack_metric(anime_consumption["hours"], "Hours Watched", "Hours", "clock"),
-            "secondary": _pack_metric(anime_consumption["plays"], "Episode Plays", "Episodes", "repeat"),
+            "primary": _pack_metric(
+                anime_consumption["hours"], "Hours Watched", "Hours", "clock"
+            ),
+            "secondary": _pack_metric(
+                anime_consumption["plays"], "Episode Plays", "Episodes", "repeat"
+            ),
             "bonuses": [],
             "has_data": anime_consumption["has_data"],
         },
         MediaTypes.MUSIC.value: {
             "primary": _pack_metric(
-                _minutes_breakdown_to_hours(music_consumption["minutes"]), "Hours Listened", "Hours", "clock",
+                _minutes_breakdown_to_hours(music_consumption["minutes"]),
+                "Hours Listened",
+                "Hours",
+                "clock",
             ),
-            "secondary": _pack_metric(music_consumption["plays"], "Music Plays", "Plays", "repeat"),
+            "secondary": _pack_metric(
+                music_consumption["plays"], "Music Plays", "Plays", "repeat"
+            ),
             "bonuses": [],
             "has_data": music_consumption["has_data"],
         },
         MediaTypes.PODCAST.value: {
             "primary": _pack_metric(
-                _minutes_breakdown_to_hours(podcast_consumption["minutes"]), "Hours Listened", "Hours", "clock",
+                _minutes_breakdown_to_hours(podcast_consumption["minutes"]),
+                "Hours Listened",
+                "Hours",
+                "clock",
             ),
-            "secondary": _pack_metric(podcast_consumption["plays"], "Podcast Plays", "Plays", "repeat"),
+            "secondary": _pack_metric(
+                podcast_consumption["plays"], "Podcast Plays", "Plays", "repeat"
+            ),
             "bonuses": [],
             "has_data": podcast_consumption["has_data"],
         },
         MediaTypes.GAME.value: {
-            "primary": _pack_metric(game_consumption["hours"], "Hours Played", "Hours", "clock"),
-            "secondary": _pack_metric(game_consumption["plays"], "Game Plays", "Plays", "repeat"),
+            "primary": _pack_metric(
+                game_consumption["hours"], "Hours Played", "Hours", "clock"
+            ),
+            "secondary": _pack_metric(
+                game_consumption["plays"], "Game Plays", "Plays", "repeat"
+            ),
             "bonuses": [games_bonus] if games_bonus else [],
             "has_data": game_consumption["has_data"],
         },
         MediaTypes.BOARDGAME.value: {
-            "primary": _pack_metric(boardgame_consumption["hours"], "Hours Played", "Hours", "clock"),
-            "secondary": _pack_metric(boardgame_consumption["plays"], "Board Game Plays", "Plays", "repeat"),
+            "primary": _pack_metric(
+                boardgame_consumption["hours"], "Hours Played", "Hours", "clock"
+            ),
+            "secondary": _pack_metric(
+                boardgame_consumption["plays"], "Board Game Plays", "Plays", "repeat"
+            ),
             "bonuses": [games_bonus] if games_bonus else [],
             "has_data": boardgame_consumption["has_data"],
         },
         MediaTypes.BOOK.value: {
             "primary": _pack_metric(
-                book_consumption["units"], book_consumption["unit_label"],
-                book_consumption["unit_name"] + "s", "book-open", total_decimals=0,
+                book_consumption["units"],
+                book_consumption["unit_label"],
+                book_consumption["unit_name"] + "s",
+                "book-open",
+                total_decimals=0,
             ),
             "secondary": _pack_metric(
-                book_consumption["completions"], book_consumption["completion_label"], "Books", "checkmark",
+                book_consumption["completions"],
+                book_consumption["completion_label"],
+                "Books",
+                "checkmark",
             ),
             "bonuses": [reading_bonus] if reading_bonus else [],
             "has_data": book_consumption["has_data"],
         },
         MediaTypes.COMIC.value: {
             "primary": _pack_metric(
-                comic_consumption["units"], comic_consumption["unit_label"],
-                comic_consumption["unit_name"] + "s", "book-open", total_decimals=0,
+                comic_consumption["units"],
+                comic_consumption["unit_label"],
+                comic_consumption["unit_name"] + "s",
+                "book-open",
+                total_decimals=0,
             ),
             "secondary": _pack_metric(
-                comic_consumption["completions"], comic_consumption["completion_label"], "Comics", "checkmark",
+                comic_consumption["completions"],
+                comic_consumption["completion_label"],
+                "Comics",
+                "checkmark",
             ),
             "bonuses": [reading_bonus] if reading_bonus else [],
             "has_data": comic_consumption["has_data"],
         },
         MediaTypes.MANGA.value: {
             "primary": _pack_metric(
-                manga_consumption["units"], manga_consumption["unit_label"],
-                manga_consumption["unit_name"] + "s", "book-open", total_decimals=0,
+                manga_consumption["units"],
+                manga_consumption["unit_label"],
+                manga_consumption["unit_name"] + "s",
+                "book-open",
+                total_decimals=0,
             ),
             "secondary": _pack_metric(
-                manga_consumption["completions"], manga_consumption["completion_label"], "Manga", "checkmark",
+                manga_consumption["completions"],
+                manga_consumption["completion_label"],
+                "Manga",
+                "checkmark",
             ),
             "bonuses": [reading_bonus] if reading_bonus else [],
             "has_data": manga_consumption["has_data"],
@@ -1860,15 +2268,26 @@ def _aggregate_statistics_from_days(
         # 60-min-per-completed-unit proxy (see statistics_day_builder.py), same as the
         # hero already does today.
         "primary": _pack_metric(
-            _compute_metric_breakdown_for_range(_all_total_minutes / 60, start_date, end_date),
-            "Hours Logged", "Hours", "clock",
+            _compute_metric_breakdown_for_range(
+                _all_total_minutes / 60, start_date, end_date
+            ),
+            "Hours Logged",
+            "Hours",
+            "clock",
         ),
         "secondary": _pack_metric(
-            _sum_breakdowns([
-                tv_consumption["plays"], anime_consumption["plays"], movie_consumption["plays"],
-                music_consumption["plays"], podcast_consumption["plays"],
-            ]),
-            "Total Plays", "Plays", "repeat",
+            _sum_breakdowns(
+                [
+                    tv_consumption["plays"],
+                    anime_consumption["plays"],
+                    movie_consumption["plays"],
+                    music_consumption["plays"],
+                    podcast_consumption["plays"],
+                ]
+            ),
+            "Total Plays",
+            "Plays",
+            "repeat",
         ),
         "bonuses": [b for b in [games_bonus, reading_bonus] if b],
         "has_data": _all_total_minutes > 0,
@@ -1905,4 +2324,3 @@ def _aggregate_statistics_from_days(
         "weekday_hour_chart_data": weekday_hour_chart_data,
         "combined_plays_charts": combined_hours_charts,
     }
-

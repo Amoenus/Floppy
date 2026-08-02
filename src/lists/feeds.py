@@ -31,7 +31,9 @@ class FloppyRssFeed(Rss201rev2Feed):
         super().add_item_elements(handler, item)
         handler.addQuickElement("yamtrack:status", item.get("status", ""))
         handler.addQuickElement("yamtrack:image_url", item.get("image_url", ""))
-        handler.addQuickElement("yamtrack:description", item.get("feed_description", ""))
+        handler.addQuickElement(
+            "yamtrack:description", item.get("feed_description", "")
+        )
 
 
 class PublicListFeed(Feed):
@@ -45,7 +47,9 @@ class PublicListFeed(Feed):
         item_ids_by_media_type = {}
 
         for list_item in list_items:
-            item_ids_by_media_type.setdefault(list_item.item.media_type, []).append(list_item.item_id)
+            item_ids_by_media_type.setdefault(list_item.item.media_type, []).append(
+                list_item.item_id
+            )
 
         status_by_item_id = {}
         for media_type, item_ids in item_ids_by_media_type.items():
@@ -114,7 +118,9 @@ class PublicListFeed(Feed):
 
     def link(self, obj):
         """Return the list detail URL."""
-        return self.request.build_absolute_uri(reverse("list_detail", args=[obj.public_reference]))
+        return self.request.build_absolute_uri(
+            reverse("list_detail", args=[obj.public_reference])
+        )
 
     def description(self, obj):
         """Return the feed description."""
@@ -136,7 +142,9 @@ class PublicListFeed(Feed):
 
     def item_description(self, item):
         """Return the item description."""
-        return getattr(item, "feed_description", self._build_item_description(item.item))
+        return getattr(
+            item, "feed_description", self._build_item_description(item.item)
+        )
 
     def item_link(self, item):
         """Return the item URL."""
@@ -175,7 +183,9 @@ def list_json(request, list_reference):
     arr_type = request.GET.get("arr", "").lower()
     if arr_type not in ("radarr", "sonarr"):
         return JsonResponse(
-            {"error": "Invalid or missing 'arr' parameter. Use ?arr=radarr or ?arr=sonarr"},
+            {
+                "error": "Invalid or missing 'arr' parameter. Use ?arr=radarr or ?arr=sonarr"
+            },
             status=400,
         )
 

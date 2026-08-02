@@ -629,7 +629,9 @@ def _season_related_entry(series_data: dict, season_data: dict, *, media_type: s
     first_air = None
     last_air = None
     if episode_rows:
-        air_dates = [air for air in (_parse_date(ep.get("aired")) for ep in episode_rows) if air]
+        air_dates = [
+            air for air in (_parse_date(ep.get("aired")) for ep in episode_rows) if air
+        ]
         if air_dates:
             first_air = min(air_dates)
             last_air = max(air_dates)
@@ -641,7 +643,8 @@ def _season_related_entry(series_data: dict, season_data: dict, *, media_type: s
         "media_id": str(series_data.get("id")),
         **_get_title_fields(series_data),
         "season_number": season_no,
-        "season_title": _get_name(season_data) or ("Specials" if season_no == 0 else f"Season {season_no}"),
+        "season_title": _get_name(season_data)
+        or ("Specials" if season_no == 0 else f"Season {season_no}"),
         "first_air_date": first_air,
         "last_air_date": last_air,
         "max_progress": episode_count,
@@ -685,8 +688,12 @@ def _normalize_characters(series_data: dict | None):
         else:
             row["department"] = character.get("type") or "Crew"
             crew_rows.append(row)
-    cast_rows.sort(key=lambda value: (value.get("order") is None, value.get("order") or 999999))
-    crew_rows.sort(key=lambda value: (value.get("department") or "", value.get("order") or 999999))
+    cast_rows.sort(
+        key=lambda value: (value.get("order") is None, value.get("order") or 999999)
+    )
+    crew_rows.sort(
+        key=lambda value: (value.get("department") or "", value.get("order") or 999999)
+    )
     return cast_rows, crew_rows
 
 
@@ -775,23 +782,32 @@ def _normalize_episode_rows(season_data: dict | None):
     normalized.sort(
         key=lambda episode: (
             episode.get("episode_number") is None,
-            episode.get("episode_number") if episode.get("episode_number") is not None else 999999,
+            episode.get("episode_number")
+            if episode.get("episode_number") is not None
+            else 999999,
         ),
     )
     return normalized
 
 
-def _normalize_season_metadata(series_data: dict, season_data: dict, *, media_type: str):
+def _normalize_season_metadata(
+    series_data: dict, season_data: dict, *, media_type: str
+):
     """Return normalized season metadata."""
     episodes = _normalize_episode_rows(season_data)
-    runtimes = [episode["runtime"] for episode in episodes if isinstance(episode.get("runtime"), int)]
+    runtimes = [
+        episode["runtime"]
+        for episode in episodes
+        if isinstance(episode.get("runtime"), int)
+    ]
     total_runtime = sum(runtimes) if runtimes else 0
     air_dates = [episode["air_date"] for episode in episodes if episode.get("air_date")]
     season_no = _season_number(season_data)
     return {
         "source": Sources.TVDB.value,
         "media_type": MediaTypes.SEASON.value,
-        "season_title": _get_name(season_data) or ("Specials" if season_no == 0 else f"Season {season_no}"),
+        "season_title": _get_name(season_data)
+        or ("Specials" if season_no == 0 else f"Season {season_no}"),
         "max_progress": episodes[-1]["episode_number"] if episodes else 0,
         "image": _get_image(season_data) or _get_image(series_data),
         "season_number": season_no,
@@ -802,8 +818,12 @@ def _normalize_season_metadata(series_data: dict, season_data: dict, *, media_ty
             "first_air_date": min(air_dates) if air_dates else None,
             "last_air_date": max(air_dates) if air_dates else None,
             "episodes": len(episodes),
-            "runtime": tmdb.get_readable_duration(sum(runtimes) / len(runtimes)) if runtimes else None,
-            "total_runtime": tmdb.get_readable_duration(total_runtime) if total_runtime else None,
+            "runtime": tmdb.get_readable_duration(sum(runtimes) / len(runtimes))
+            if runtimes
+            else None,
+            "total_runtime": tmdb.get_readable_duration(total_runtime)
+            if total_runtime
+            else None,
         },
         "episodes": episodes,
         "providers": {},
@@ -866,12 +886,15 @@ def search(media_type, query, page):
             "library_media_type": media_type,
             **title_fields,
             "image": _get_image(row),
-            "year": row.get("year") or tmdb.get_year({"first_air_date": row.get("firstAired")}),
+            "year": row.get("year")
+            or tmdb.get_year({"first_air_date": row.get("firstAired")}),
         }
         if result["media_id"]:
             normalized_results.append(result)
 
-    data = helpers.format_search_response(page, 20, len(normalized_results), normalized_results)
+    data = helpers.format_search_response(
+        page, 20, len(normalized_results), normalized_results
+    )
     cache.set(cache_key, data)
     return data
 
@@ -941,7 +964,9 @@ def tv_with_seasons(media_id, season_numbers, *, routed_media_type=MediaTypes.TV
     return series_metadata | season_payloads
 
 
-def episode(media_id, season_number, episode_number, *, routed_media_type=MediaTypes.TV.value):
+def episode(
+    media_id, season_number, episode_number, *, routed_media_type=MediaTypes.TV.value
+):
     """Return normalized episode metadata from a TVDB season payload."""
     season_payload = tv_with_seasons(
         media_id,
@@ -958,8 +983,10 @@ def episode(media_id, season_number, episode_number, *, routed_media_type=MediaT
     matched_episode = matched_episode or {}
     return {
         "title": season_payload.get("title") or series_payload.get("title") or "",
-        "original_title": season_payload.get("original_title") or series_payload.get("original_title"),
-        "localized_title": season_payload.get("localized_title") or series_payload.get("localized_title"),
+        "original_title": season_payload.get("original_title")
+        or series_payload.get("original_title"),
+        "localized_title": season_payload.get("localized_title")
+        or series_payload.get("localized_title"),
         "season_title": season_payload.get("season_title") or f"Season {season_number}",
         "episode_title": matched_episode.get("name") or f"Episode {episode_number}",
         "image": matched_episode.get("image") or settings.IMG_NONE,
@@ -975,20 +1002,31 @@ def get_episode_airstamp_map(tvdb_id):
     if cached is not None:
         return cached
 
-    response = _unwrap_data(
-        _request(
-            f"series/{tvdb_id}/episodes/default",
-            params={"page": 0},
-        ),
-    ) or {}
+    response = (
+        _unwrap_data(
+            _request(
+                f"series/{tvdb_id}/episodes/default",
+                params={"page": 0},
+            ),
+        )
+        or {}
+    )
     episode_rows = response.get("episodes") or response.get("data") or []
     result = {}
     for row in episode_rows:
         if not isinstance(row, dict):
             continue
-        season_number = row.get("seasonNumber") or row.get("season") or row.get("airedSeason")
-        episode_number = row.get("number") or row.get("episodeNumber") or row.get("airedEpisodeNumber")
-        air_date = _parse_date(row.get("aired") or row.get("firstAired") or row.get("airDate"))
+        season_number = (
+            row.get("seasonNumber") or row.get("season") or row.get("airedSeason")
+        )
+        episode_number = (
+            row.get("number")
+            or row.get("episodeNumber")
+            or row.get("airedEpisodeNumber")
+        )
+        air_date = _parse_date(
+            row.get("aired") or row.get("firstAired") or row.get("airDate")
+        )
         if season_number is None or episode_number is None or air_date is None:
             continue
         result[f"{int(season_number)}_{int(episode_number)}"] = air_date.isoformat()
@@ -1014,10 +1052,20 @@ def build_specials_season(tvdb_id, *, media_id, source, tv_data):
     season_payload["title"] = tv_data.get("title") or season_payload.get("title") or ""
     season_payload["original_title"] = tv_data.get("original_title")
     season_payload["localized_title"] = tv_data.get("localized_title")
-    season_payload["image"] = season_payload.get("image") or tv_data.get("image") or settings.IMG_NONE
-    season_payload["synopsis"] = season_payload.get("synopsis") or tv_data.get("synopsis") or "No synopsis available."
+    season_payload["image"] = (
+        season_payload.get("image") or tv_data.get("image") or settings.IMG_NONE
+    )
+    season_payload["synopsis"] = (
+        season_payload.get("synopsis")
+        or tv_data.get("synopsis")
+        or "No synopsis available."
+    )
     season_payload["genres"] = tv_data.get("genres") or season_payload.get("genres")
-    season_payload["source_url"] = tv_data.get("external_links", {}).get("TVDB") or season_payload.get("source_url")
-    season_payload["external_links"] = tv_data.get("external_links") or season_payload.get("external_links") or {}
+    season_payload["source_url"] = tv_data.get("external_links", {}).get(
+        "TVDB"
+    ) or season_payload.get("source_url")
+    season_payload["external_links"] = (
+        tv_data.get("external_links") or season_payload.get("external_links") or {}
+    )
     season_payload["tvdb_id"] = str(tvdb_id)
     return season_payload

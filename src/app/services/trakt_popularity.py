@@ -231,7 +231,11 @@ def evaluate_calibration_fixture() -> dict[str, Any]:
     for item in scored_items:
         predicted_rank = predicted_rank_map.get(str(item.get("title")))
         expected_rank = int(item.get("expected_rank") or 0)
-        abs_error = abs(predicted_rank - expected_rank) if predicted_rank and expected_rank else 0
+        abs_error = (
+            abs(predicted_rank - expected_rank)
+            if predicted_rank and expected_rank
+            else 0
+        )
         abs_errors.append(abs_error)
         enriched_items.append(
             {
@@ -246,10 +250,7 @@ def evaluate_calibration_fixture() -> dict[str, Any]:
         for item in raw_items
         if int(item.get("expected_rank") or 0) <= 10
     }
-    top_ten_predicted = {
-        str(item.get("title"))
-        for item in predicted_order[:10]
-    }
+    top_ten_predicted = {str(item.get("title")) for item in predicted_order[:10]}
 
     return {
         "count": len(enriched_items),
@@ -339,7 +340,9 @@ def needs_refresh(
     if force or not has_popularity_data(item):
         return True
     now = now or timezone.now()
-    return item.trakt_popularity_fetched_at <= (now - refresh_interval_for_item(item, now=now))
+    return item.trakt_popularity_fetched_at <= (
+        now - refresh_interval_for_item(item, now=now)
+    )
 
 
 def tracked_items_queryset(*, media_types: list[str] | tuple[str, ...] | None = None):

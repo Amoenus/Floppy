@@ -68,12 +68,30 @@ urlpatterns = [
     path("import/goodreads", views.import_goodreads, name="import_goodreads"),
     path("import/hardcover", views.import_hardcover, name="import_hardcover"),
     path("import/storygraph", views.import_storygraph, name="import_storygraph"),
-    path("import/audiobookshelf/connect", views.audiobookshelf_connect, name="audiobookshelf_connect"),
-    path("import/audiobookshelf/disconnect", views.audiobookshelf_disconnect, name="audiobookshelf_disconnect"),
-    path("import/audiobookshelf", views.import_audiobookshelf, name="import_audiobookshelf"),
-    path("import/storyteller/connect", views.storyteller_connect, name="storyteller_connect"),
+    path(
+        "import/audiobookshelf/connect",
+        views.audiobookshelf_connect,
+        name="audiobookshelf_connect",
+    ),
+    path(
+        "import/audiobookshelf/disconnect",
+        views.audiobookshelf_disconnect,
+        name="audiobookshelf_disconnect",
+    ),
+    path(
+        "import/audiobookshelf",
+        views.import_audiobookshelf,
+        name="import_audiobookshelf",
+    ),
+    path(
+        "import/storyteller/connect",
+        views.storyteller_connect,
+        name="storyteller_connect",
+    ),
     path("import/storyteller/poll", views.storyteller_poll, name="storyteller_poll"),
-    path("import/storyteller/cancel", views.storyteller_cancel, name="storyteller_cancel"),
+    path(
+        "import/storyteller/cancel", views.storyteller_cancel, name="storyteller_cancel"
+    ),
     path(
         "import/storyteller/disconnect",
         views.storyteller_disconnect,
@@ -81,17 +99,33 @@ urlpatterns = [
     ),
     path("import/storyteller", views.import_storyteller, name="import_storyteller"),
     path("import/stremio/connect", views.stremio_connect, name="stremio_connect"),
-    path("import/stremio/disconnect", views.stremio_disconnect, name="stremio_disconnect"),
+    path(
+        "import/stremio/disconnect", views.stremio_disconnect, name="stremio_disconnect"
+    ),
     path("import/stremio", views.import_stremio, name="import_stremio"),
-    path("import/pocketcasts/connect", views.pocketcasts_connect, name="pocketcasts_connect"),
-    path("import/pocketcasts/disconnect", views.pocketcasts_disconnect, name="pocketcasts_disconnect"),
+    path(
+        "import/pocketcasts/connect",
+        views.pocketcasts_connect,
+        name="pocketcasts_connect",
+    ),
+    path(
+        "import/pocketcasts/disconnect",
+        views.pocketcasts_disconnect,
+        name="pocketcasts_disconnect",
+    ),
     path("import/pocketcasts", views.import_pocketcasts, name="import_pocketcasts"),
     path("import/gpodder/connect", views.gpodder_connect, name="gpodder_connect"),
-    path("import/gpodder/disconnect", views.gpodder_disconnect, name="gpodder_disconnect"),
+    path(
+        "import/gpodder/disconnect", views.gpodder_disconnect, name="gpodder_disconnect"
+    ),
     path("import/gpodder", views.import_gpodder, name="import_gpodder"),
     path("import/lastfm/connect", views.lastfm_connect, name="lastfm_connect"),
     path("import/lastfm/disconnect", views.lastfm_disconnect, name="lastfm_disconnect"),
-    path("import/lastfm/history", views.import_lastfm_history_manual, name="import_lastfm_history"),
+    path(
+        "import/lastfm/history",
+        views.import_lastfm_history_manual,
+        name="import_lastfm_history",
+    ),
     path("import/lastfm/poll", views.poll_lastfm_manual, name="poll_lastfm_manual"),
     path("import/koito/connect", views.koito_connect, name="koito_connect"),
     path("import/koito/disconnect", views.koito_disconnect, name="koito_disconnect"),
@@ -102,7 +136,11 @@ urlpatterns = [
     ),
     path("import/koito/poll", views.poll_koito_manual, name="poll_koito_manual"),
     path("export/csv", views.export_csv, name="export_csv"),
-    path("import/yamtrack/template", views.import_template_csv, name="import_template_csv"),
+    path(
+        "import/yamtrack/template",
+        views.import_template_csv,
+        name="import_template_csv",
+    ),
     path(
         "webhook/jellyfin/<str:token>",
         views.jellyfin_webhook,

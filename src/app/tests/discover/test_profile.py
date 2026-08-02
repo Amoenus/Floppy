@@ -40,7 +40,9 @@ class DiscoverProfileTests(TestCase):
         for patcher in self.signal_patches:
             patcher.start()
 
-        self.user = get_user_model().objects.create_user(username="profile-user", password="testpass")
+        self.user = get_user_model().objects.create_user(
+            username="profile-user", password="testpass"
+        )
 
     def tearDown(self):
         for patcher in reversed(self.signal_patches):
@@ -64,7 +66,10 @@ class DiscoverProfileTests(TestCase):
             genres=["Romance"],
         )
 
-        with patch("app.models.providers.services.get_media_metadata", return_value={"max_progress": 1}):
+        with patch(
+            "app.models.providers.services.get_media_metadata",
+            return_value={"max_progress": 1},
+        ):
             Movie.objects.create(
                 item=recent_item,
                 user=self.user,
@@ -86,7 +91,9 @@ class DiscoverProfileTests(TestCase):
         profile = compute_taste_profile(self.user, MediaTypes.MOVIE.value)
 
         self.assertIn("action", profile.genre_affinity)
-        self.assertGreater(profile.genre_affinity["action"], profile.genre_affinity.get("romance", 0))
+        self.assertGreater(
+            profile.genre_affinity["action"], profile.genre_affinity.get("romance", 0)
+        )
         self.assertIn("heist", profile.tag_affinity)
 
     def test_compute_taste_profile_tv_works_without_end_date_field(self):
@@ -135,7 +142,10 @@ class DiscoverProfileTests(TestCase):
             genres=["Western"],
         )
 
-        with patch("app.models.providers.services.get_media_metadata", return_value={"max_progress": 1}):
+        with patch(
+            "app.models.providers.services.get_media_metadata",
+            return_value={"max_progress": 1},
+        ):
             Movie.objects.create(
                 item=recent_item,
                 user=self.user,
@@ -179,7 +189,9 @@ class DiscoverProfileTests(TestCase):
         self.assertIn("singalong", profile.phase_tag_affinity)
         self.assertNotIn("classic", profile.phase_tag_affinity)
 
-    def test_compute_taste_profile_includes_negative_affinities_for_same_media_type(self):
+    def test_compute_taste_profile_includes_negative_affinities_for_same_media_type(
+        self,
+    ):
         movie_item = Item.objects.create(
             media_id="701",
             source=Sources.TMDB.value,
@@ -274,7 +286,10 @@ class DiscoverProfileTests(TestCase):
         )
         ItemStudioCredit.objects.create(item=item, studio=studio)
 
-        with patch("app.models.providers.services.get_media_metadata", return_value={"max_progress": 1}):
+        with patch(
+            "app.models.providers.services.get_media_metadata",
+            return_value={"max_progress": 1},
+        ):
             Movie.objects.create(
                 item=item,
                 user=self.user,
@@ -295,7 +310,9 @@ class DiscoverProfileTests(TestCase):
         self.assertIn("2020s", profile.decade_affinity)
         self.assertIn("whodunit", profile.phase_keyword_affinity)
 
-    def test_compute_taste_profile_builds_movie_comfort_library_and_rewatch_bundles(self):
+    def test_compute_taste_profile_builds_movie_comfort_library_and_rewatch_bundles(
+        self,
+    ):
         item = Item.objects.create(
             media_id="802",
             source=Sources.TMDB.value,
@@ -342,7 +359,10 @@ class DiscoverProfileTests(TestCase):
         )
         ItemStudioCredit.objects.create(item=item, studio=studio)
 
-        with patch("app.models.providers.services.get_media_metadata", return_value={"max_progress": 1}):
+        with patch(
+            "app.models.providers.services.get_media_metadata",
+            return_value={"max_progress": 1},
+        ):
             Movie.objects.create(
                 item=item,
                 user=self.user,
@@ -362,7 +382,9 @@ class DiscoverProfileTests(TestCase):
 
         self.assertIn("whodunit", profile.comfort_library_affinity["keywords"])
         self.assertIn("pixar", profile.comfort_library_affinity["studios"])
-        self.assertIn("mystery collection", profile.comfort_library_affinity["collections"])
+        self.assertIn(
+            "mystery collection", profile.comfort_library_affinity["collections"]
+        )
         self.assertIn("pete docter", profile.comfort_library_affinity["directors"])
         self.assertIn("PG", profile.comfort_library_affinity["certifications"])
         self.assertIn("90_109", profile.comfort_library_affinity["runtime_buckets"])
@@ -416,7 +438,10 @@ class DiscoverProfileTests(TestCase):
         )
         ItemStudioCredit.objects.create(item=item, studio=studio)
 
-        with patch("app.models.providers.services.get_media_metadata", return_value={"max_progress": 1}):
+        with patch(
+            "app.models.providers.services.get_media_metadata",
+            return_value={"max_progress": 1},
+        ):
             TV.objects.create(
                 item=item,
                 user=self.user,
@@ -436,12 +461,16 @@ class DiscoverProfileTests(TestCase):
         self.assertIn("2020s", profile.decade_affinity)
         self.assertIn("whodunit", profile.comfort_library_affinity["keywords"])
         self.assertIn("pixar", profile.comfort_library_affinity["studios"])
-        self.assertIn("mystery collection", profile.comfort_library_affinity["collections"])
+        self.assertIn(
+            "mystery collection", profile.comfort_library_affinity["collections"]
+        )
         self.assertIn("pete docter", profile.comfort_library_affinity["directors"])
         self.assertIn("PG", profile.comfort_library_affinity["certifications"])
         self.assertIn("<90", profile.comfort_library_affinity["runtime_buckets"])
 
-    def test_compute_taste_profile_builds_anime_comfort_library_and_rewatch_bundles(self):
+    def test_compute_taste_profile_builds_anime_comfort_library_and_rewatch_bundles(
+        self,
+    ):
         item = Item.objects.create(
             media_id="anime-802",
             source=Sources.MAL.value,
@@ -488,7 +517,10 @@ class DiscoverProfileTests(TestCase):
         )
         ItemStudioCredit.objects.create(item=item, studio=studio)
 
-        with patch("app.models.providers.services.get_media_metadata", return_value={"max_progress": 1}):
+        with patch(
+            "app.models.providers.services.get_media_metadata",
+            return_value={"max_progress": 1},
+        ):
             Anime.objects.create(
                 item=item,
                 user=self.user,
@@ -516,7 +548,9 @@ class DiscoverProfileTests(TestCase):
         self.assertIn("2020s", profile.decade_affinity)
         self.assertIn("found family", profile.comfort_library_affinity["keywords"])
         self.assertIn("studio pierrot", profile.comfort_library_affinity["studios"])
-        self.assertIn("magic collection", profile.comfort_library_affinity["collections"])
+        self.assertIn(
+            "magic collection", profile.comfort_library_affinity["collections"]
+        )
         self.assertIn("hayao miyazaki", profile.comfort_library_affinity["directors"])
         self.assertIn("PG", profile.comfort_library_affinity["certifications"])
         self.assertIn("<90", profile.comfort_library_affinity["runtime_buckets"])
@@ -532,7 +566,10 @@ class DiscoverProfileTests(TestCase):
             image="http://example.com/cached-profile.jpg",
             genres=["Comedy"],
         )
-        with patch("app.models.providers.services.get_media_metadata", return_value={"max_progress": 1}):
+        with patch(
+            "app.models.providers.services.get_media_metadata",
+            return_value={"max_progress": 1},
+        ):
             movie = Movie.objects.create(
                 item=item,
                 user=self.user,
@@ -561,7 +598,10 @@ class DiscoverProfileTests(TestCase):
 
     def test_get_or_compute_taste_profile_returns_cached_world_rating_profile(self):
         now = timezone.now()
-        with patch("app.models.providers.services.get_media_metadata", return_value={"max_progress": 1}):
+        with patch(
+            "app.models.providers.services.get_media_metadata",
+            return_value={"max_progress": 1},
+        ):
             for index, (user_score, provider_rating) in enumerate(
                 [(9, 8.9), (8, 8.2), (7, 7.5), (6, 6.8), (5, 6.1)],
                 start=1,
@@ -610,9 +650,14 @@ class DiscoverProfileTests(TestCase):
             0.4,
         )
 
-    def test_get_or_compute_taste_profile_recomputes_missing_world_rating_profile_backfill(self):
+    def test_get_or_compute_taste_profile_recomputes_missing_world_rating_profile_backfill(
+        self,
+    ):
         now = timezone.now()
-        with patch("app.models.providers.services.get_media_metadata", return_value={"max_progress": 1}):
+        with patch(
+            "app.models.providers.services.get_media_metadata",
+            return_value={"max_progress": 1},
+        ):
             for index, (user_score, provider_rating) in enumerate(
                 [(9, 8.9), (8, 8.2), (7, 7.5), (6, 6.8), (5, 6.1)],
                 start=1,
@@ -698,7 +743,10 @@ class DiscoverProfileTests(TestCase):
             image="http://example.com/feedback-snapshot.jpg",
             genres=["Mystery"],
         )
-        with patch("app.models.providers.services.get_media_metadata", return_value={"max_progress": 1}):
+        with patch(
+            "app.models.providers.services.get_media_metadata",
+            return_value={"max_progress": 1},
+        ):
             Movie.objects.create(
                 item=item,
                 user=self.user,

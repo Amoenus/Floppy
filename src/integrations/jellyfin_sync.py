@@ -98,7 +98,9 @@ class JellyfinPushSyncService:
 
     def _build_client(self) -> JellyfinClient:
         api_key = decrypt_or_raise(self.account.api_key)
-        client = JellyfinClient(self.account.base_url, api_key, self.account.jellyfin_user_id or None)
+        client = JellyfinClient(
+            self.account.base_url, api_key, self.account.jellyfin_user_id or None
+        )
 
         if not self.account.jellyfin_user_id:
             try:
@@ -160,7 +162,9 @@ class JellyfinPushSyncService:
                 continue
             indexed_episode_count += 1
             for provider, value in series_keys:
-                episode_index[(provider, value, season_number, episode_number)] = jf_item
+                episode_index[(provider, value, season_number, episode_number)] = (
+                    jf_item
+                )
 
         logger.info(
             "Indexed %d Jellyfin movies, %d episodes (%d series) for push sync",
@@ -257,7 +261,9 @@ class JellyfinPushSyncService:
             watched = episode.end_date is not None and not episode.dropped
             self._apply_state(client, jf_item, watched=watched)
 
-    def _apply_state(self, client: JellyfinClient, jf_item: dict, *, watched: bool) -> None:
+    def _apply_state(
+        self, client: JellyfinClient, jf_item: dict, *, watched: bool
+    ) -> None:
         currently_played = bool((jf_item.get("UserData") or {}).get("Played"))
         jellyfin_id = jf_item.get("Id")
         if not jellyfin_id:

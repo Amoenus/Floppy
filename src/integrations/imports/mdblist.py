@@ -576,10 +576,7 @@ class MDBListImporter(TraktMetadataResolverMixin):
             if history_date is not None:
                 tv_obj._history_date = history_date
             self.bulk_media[MediaTypes.TV.value].append(tv_obj)
-        elif (
-            tmdb_id in self.dropped_tmdb_ids
-            and tv_obj.status != Status.DROPPED.value
-        ):
+        elif tmdb_id in self.dropped_tmdb_ids and tv_obj.status != Status.DROPPED.value:
             tv_obj.status = Status.DROPPED.value
             self.dropped_tvs.append(tv_obj)
         self.media_instances[MediaTypes.TV.value][tv_key] = [tv_obj]
@@ -671,9 +668,7 @@ class MDBListImporter(TraktMetadataResolverMixin):
 
         item = self._get_or_create_item(media_type, tmdb_id, metadata)
         model_class = (
-            app.models.Movie
-            if media_type == MediaTypes.MOVIE.value
-            else app.models.TV
+            app.models.Movie if media_type == MediaTypes.MOVIE.value else app.models.TV
         )
         media_obj = model_class(
             item=item,
@@ -741,9 +736,7 @@ class MDBListImporter(TraktMetadataResolverMixin):
 
         season_key = f"{tmdb_id}:{season_number}"
         if season_key in self.media_instances[MediaTypes.SEASON.value]:
-            for season_obj in self.media_instances[MediaTypes.SEASON.value][
-                season_key
-            ]:
+            for season_obj in self.media_instances[MediaTypes.SEASON.value][season_key]:
                 season_obj.score = entry["rating"]
             return
 

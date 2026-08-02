@@ -144,8 +144,7 @@ def distribute_target_timestamps(
 
     fallback_dt = fallback_dt or end_dt or start_dt or timezone.now()
     normalized_targets = [
-        coerce_episode_datetime(value) or fallback_dt
-        for value in target_datetimes
+        coerce_episode_datetime(value) or fallback_dt for value in target_datetimes
     ]
     if not start_dt or not end_dt:
         return ensure_increasing_datetimes(normalized_targets)
@@ -229,11 +228,7 @@ def _season_title_from_payload(payload, season_number):
 
 
 def _episode_title_from_payload(payload, episode_number):
-    return (
-        payload.get("name")
-        or payload.get("title")
-        or f"Episode {episode_number}"
-    )
+    return payload.get("name") or payload.get("title") or f"Episode {episode_number}"
 
 
 def _podcast_selector_label(episode, selector_number):
@@ -317,8 +312,7 @@ def _podcast_domain(user, show):
         "season_payloads": {},
         "episodes": selector_episodes,
         "episode_lookup": {
-            (1, episode["episode_number"]): episode
-            for episode in selector_episodes
+            (1, episode["episode_number"]): episode for episode in selector_episodes
         },
         "season_episode_map": {1: selector_episodes},
         "seasons": [
@@ -580,9 +574,7 @@ def _build_domain_payload(
         "tracking_media_id": media_id,
         "tracking_media_type": MediaTypes.TV.value,
         "identity_media_type": (
-            MediaTypes.TV.value
-            if route_media_type == MediaTypes.ANIME.value
-            else None
+            MediaTypes.TV.value if route_media_type == MediaTypes.ANIME.value else None
         ),
         "library_media_type": library_media_type,
         "season_payloads": season_payloads,
@@ -746,9 +738,7 @@ def _season_item_defaults(grouped_tv, season_payload, *, library_media_type):
         ),
         "library_media_type": library_media_type,
         "image": (
-            season_payload.get("image")
-            or grouped_tv.item.image
-            or settings.IMG_NONE
+            season_payload.get("image") or grouped_tv.item.image or settings.IMG_NONE
         ),
     }
 
@@ -779,9 +769,7 @@ def _get_or_create_season_tracker(
         season_item.library_media_type = library_media_type
         update_fields.append("library_media_type")
     season_image = (
-        season_payload.get("image")
-        or grouped_tv.item.image
-        or settings.IMG_NONE
+        season_payload.get("image") or grouped_tv.item.image or settings.IMG_NONE
     )
     if season_image and season_item.image != season_image:
         season_item.image = season_image
@@ -892,8 +880,7 @@ def _apply_bulk_podcast_plays(
         )
 
     selected_episode_ids = [
-        episode["podcast_episode_id"]
-        for episode in selected_episodes
+        episode["podcast_episode_id"] for episode in selected_episodes
     ]
     episode_map = PodcastEpisode.objects.in_bulk(selected_episode_ids)
     created_count = 0
@@ -902,7 +889,11 @@ def _apply_bulk_podcast_plays(
     affected_day_keys = set()
     affected_items = []
 
-    with transaction.atomic(), disable_fetch_releases(), suppress_media_change_side_effects():
+    with (
+        transaction.atomic(),
+        disable_fetch_releases(),
+        suppress_media_change_side_effects(),
+    ):
         if write_mode == "replace" and selected_episode_ids:
             existing_entries = list(
                 Podcast.objects.filter(
@@ -914,15 +905,21 @@ def _apply_bulk_podcast_plays(
             replaced_episode_count = len(existing_entries)
             if replaced_episode_count:
                 for entry in existing_entries:
-                    day_key = history_cache.history_day_key(getattr(entry, "end_date", None))
+                    day_key = history_cache.history_day_key(
+                        getattr(entry, "end_date", None)
+                    )
                     if day_key:
                         affected_day_keys.add(day_key)
                     if entry.item_id:
                         affected_items.append(entry.item)
-                Podcast.objects.filter(id__in=[entry.id for entry in existing_entries]).delete()
+                Podcast.objects.filter(
+                    id__in=[entry.id for entry in existing_entries]
+                ).delete()
 
         episodes_to_create = []
-        for episode_payload, watched_at in zip(selected_episodes, timestamps, strict=False):
+        for episode_payload, watched_at in zip(
+            selected_episodes, timestamps, strict=False
+        ):
             episode = episode_map.get(episode_payload["podcast_episode_id"])
             if episode is None:
                 continue
@@ -975,11 +972,7 @@ def _apply_bulk_podcast_plays(
 
 def _enqueue_bulk_episode_credits_backfill(grouped_tv, episode_item_ids):
     """Queue one deduped credits backfill pass for bulk episode saves."""
-    item_ids = {
-        item_id
-        for item_id in episode_item_ids or []
-        if item_id
-    }
+    item_ids = {item_id for item_id in episode_item_ids or [] if item_id}
     if getattr(grouped_tv, "item_id", None):
         item_ids.add(grouped_tv.item_id)
     if not item_ids:
@@ -1038,7 +1031,11 @@ def apply_bulk_episode_plays(
             fallback_dt=timezone.now().replace(second=0, microsecond=0),
         )
 
-    with transaction.atomic(), disable_fetch_releases(), suppress_media_change_side_effects():
+    with (
+        transaction.atomic(),
+        disable_fetch_releases(),
+        suppress_media_change_side_effects(),
+    ):
         for episode in selected_episodes:
             season_number = episode["season_number"]
             season_payload = domain["season_payloads"][season_number]
@@ -1058,12 +1055,16 @@ def apply_bulk_episode_plays(
                 existing_entries = list(
                     Episode.objects.filter(
                         related_season__in=touched_seasons.values(),
-                    ).filter(delete_filters).select_related("item")
+                    )
+                    .filter(delete_filters)
+                    .select_related("item")
                 )
                 replaced_episode_count = len(existing_entries)
                 if existing_entries:
                     for entry in existing_entries:
-                        day_key = history_cache.history_day_key(getattr(entry, "end_date", None))
+                        day_key = history_cache.history_day_key(
+                            getattr(entry, "end_date", None)
+                        )
                         if day_key:
                             affected_day_keys.add(day_key)
                     Episode.objects.filter(

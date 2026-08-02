@@ -180,9 +180,13 @@ class PasswordRecoveryForm(SetPasswordForm):
         if user is None:
             raise ValidationError(self.error_messages["invalid_recovery"])
 
-        has_valid_authenticator_code = user.has_authenticator_configured and bool(
-            authenticator_code,
-        ) and user.verify_totp_code(authenticator_code)
+        has_valid_authenticator_code = (
+            user.has_authenticator_configured
+            and bool(
+                authenticator_code,
+            )
+            and user.verify_totp_code(authenticator_code)
+        )
 
         matching_recovery = None
         if recovery_code:

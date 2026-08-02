@@ -31,6 +31,7 @@ ROW_MATCH_SIGNAL_ROWS = {
     "comfort_picks",
 }
 
+
 def _comfort_match_signal(profile_payload: dict) -> str:
     """Build a row-level signal string from phase tag/genre activity."""
     feature_maps = _signal_phase_feature_maps(profile_payload)
@@ -39,8 +40,22 @@ def _comfort_match_signal(profile_payload: dict) -> str:
     # Prefer specific labels first, then broader generic tags/metadata, and use
     # plain genres only as the final fallback.
     for allow_generic_terms, allowed_sources in (
-        (False, {source_name for source_name, _map in feature_maps if source_name != "genres"}),
-        (True, {source_name for source_name, _map in feature_maps if source_name != "genres"}),
+        (
+            False,
+            {
+                source_name
+                for source_name, _map in feature_maps
+                if source_name != "genres"
+            },
+        ),
+        (
+            True,
+            {
+                source_name
+                for source_name, _map in feature_maps
+                if source_name != "genres"
+            },
+        ),
         (True, {"genres"}),
     ):
         for source_name, affinity_map in feature_maps:
@@ -79,12 +94,15 @@ def _movie_comfort_match_signal_with_details(
     for index, candidate in enumerate(candidates_window):
         score = candidate.score_breakdown
         rank_weight = 1.0 - ((index / window_size) * 0.35)
-        evidence_weight = max(
-            0.2,
-            float(score.get("library_fit", 0.0)),
-            float(score.get("recency_phase_fit", 0.0)),
-            float(candidate.final_score or 0.0),
-        ) * rank_weight
+        evidence_weight = (
+            max(
+                0.2,
+                float(score.get("library_fit", 0.0)),
+                float(score.get("recency_phase_fit", 0.0)),
+                float(candidate.final_score or 0.0),
+            )
+            * rank_weight
+        )
 
         bucket_source, bucket_label = _movie_comfort_reason_bucket_parts(candidate)
         if (
@@ -205,10 +223,18 @@ def _row_match_signal_with_details(
     if (
         row_key == "comfort_rewatches"
         and candidates
-        and all(candidate.media_type in BEHAVIOR_FIRST_MEDIA_TYPES for candidate in candidates)
-        and any("primary_reason_bucket" in candidate.score_breakdown for candidate in candidates)
+        and all(
+            candidate.media_type in BEHAVIOR_FIRST_MEDIA_TYPES
+            for candidate in candidates
+        )
+        and any(
+            "primary_reason_bucket" in candidate.score_breakdown
+            for candidate in candidates
+        )
     ):
-        movie_signal, movie_details = _movie_comfort_match_signal_with_details(candidates)
+        movie_signal, movie_details = _movie_comfort_match_signal_with_details(
+            candidates
+        )
         if movie_signal:
             return movie_signal, movie_details
 
@@ -334,19 +360,13 @@ def _wildcard_genres(profile_payload: dict) -> list[str]:
         return []
 
     ranked = sorted(
-        (
-            (str(genre), float(value))
-            for genre, value in genre_affinity.items()
-        ),
+        ((str(genre), float(value)) for genre, value in genre_affinity.items()),
         key=lambda item: item[1],
         reverse=True,
     )
 
     top_genres = [genre for genre, _ in ranked[:3]]
     less_used_genres = [
-        genre
-        for genre, _ in sorted(ranked[3:], key=lambda item: item[1])
+        genre for genre, _ in sorted(ranked[3:], key=lambda item: item[1])
     ][:2]
     return top_genres + less_used_genres
-
-

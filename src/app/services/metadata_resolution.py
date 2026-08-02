@@ -158,12 +158,8 @@ def get_tracking_media_type(
     identity_media_type: str | None = None,
 ) -> str:
     """Return the persisted Item/media model type for a route."""
-    if (
-        media_type == MediaTypes.ANIME.value
-        and (
-            identity_media_type == MediaTypes.TV.value
-            or source in GROUPED_ANIME_PROVIDERS
-        )
+    if media_type == MediaTypes.ANIME.value and (
+        identity_media_type == MediaTypes.TV.value or source in GROUPED_ANIME_PROVIDERS
     ):
         return MediaTypes.TV.value
     return media_type
@@ -254,11 +250,7 @@ def get_preferred_provider(
         allowed_set.add(identity_provider)
 
     preference = None
-    if (
-        user
-        and getattr(user, "is_authenticated", False)
-        and item is not None
-    ):
+    if user and getattr(user, "is_authenticated", False) and item is not None:
         preference = MetadataProviderPreference.objects.filter(
             user=user,
             item=item,
@@ -340,9 +332,7 @@ def upsert_provider_links(
     external_ids = _normalize_external_ids(metadata, provider=normalized_provider)
     metadata_payload = dict(extra_metadata) if extra_metadata else {}
     retry_kwargs = (
-        {"max_retries": retry_max_retries}
-        if retry_max_retries is not None
-        else {}
+        {"max_retries": retry_max_retries} if retry_max_retries is not None else {}
     )
 
     if normalized_provider and metadata.get("media_id"):
@@ -381,6 +371,7 @@ def upsert_provider_links(
         external_id = external_ids.get(external_key)
         if not external_id:
             continue
+
         def _upsert_external_provider_link(
             candidate_provider=candidate_provider,
             external_id=external_id,
@@ -514,8 +505,7 @@ def _heal_stray_season_duplicates(
         )
     except Exception:  # self-heal must never break the caller
         logger.exception(
-            "Season-item self-heal lookup failed for media_id=%s source=%s "
-            "season=%s",
+            "Season-item self-heal lookup failed for media_id=%s source=%s season=%s",
             media_id,
             source,
             season_number,
@@ -653,9 +643,7 @@ def resolve_provider_media_id(
         return str(item.media_id)
 
     retry_kwargs = (
-        {"max_retries": retry_max_retries}
-        if retry_max_retries is not None
-        else {}
+        {"max_retries": retry_max_retries} if retry_max_retries is not None else {}
     )
 
     provider_link = (
@@ -722,11 +710,7 @@ def _overlay_header_metadata(
     display_external_links = dict(overlay_metadata.get("external_links") or {})
     merged_external_links = dict(tracking_external_links)
     merged_external_links.update(
-        {
-            name: url
-            for name, url in display_external_links.items()
-            if name and url
-        },
+        {name: url for name, url in display_external_links.items() if name and url},
     )
 
     merged = dict(base_metadata)
@@ -773,11 +757,15 @@ def _provider_series_id(entry: dict, provider: str) -> str | None:
 
 def _provider_season_number(entry: dict, provider: str) -> int | None:
     """Return the mapped grouped-season number for a mapping entry."""
-    keys = ["tvdb_season"] if provider == Sources.TVDB.value else [
-        "tmdb_season",
-        "tvdb_season",
-        "season",
-    ]
+    keys = (
+        ["tvdb_season"]
+        if provider == Sources.TVDB.value
+        else [
+            "tmdb_season",
+            "tvdb_season",
+            "season",
+        ]
+    )
     for key in keys:
         value = entry.get(key)
         if value in (None, ""):
@@ -791,10 +779,14 @@ def _provider_season_number(entry: dict, provider: str) -> int | None:
 
 def _provider_episode_offset(entry: dict, provider: str) -> int:
     """Return the mapped grouped-season episode offset for a mapping entry."""
-    keys = ["tvdb_epoffset"] if provider == Sources.TVDB.value else [
-        "tmdb_epoffset",
-        "tvdb_epoffset",
-    ]
+    keys = (
+        ["tvdb_epoffset"]
+        if provider == Sources.TVDB.value
+        else [
+            "tmdb_epoffset",
+            "tvdb_epoffset",
+        ]
+    )
     for key in keys:
         value = entry.get(key)
         if value in (None, ""):
@@ -853,10 +845,9 @@ def _enrich_grouped_preview(grouped_preview: dict | None) -> dict | None:
                     or season_payload.get("max_progress")
                 )
             if merged.get("first_air_date") in (None, ""):
-                merged["first_air_date"] = (
-                    merged_details.get("first_air_date")
-                    or payload_details.get("first_air_date")
-                )
+                merged["first_air_date"] = merged_details.get(
+                    "first_air_date"
+                ) or payload_details.get("first_air_date")
             merged["details"] = merged_details
 
         enriched_seasons.append(merged)
@@ -933,19 +924,17 @@ def _grouped_preview_target(
 
     if isinstance(season_payload, dict):
         payload_details = season_payload.get("details") or {}
-        target["season_title"] = (
-            season_payload.get("season_title")
-            or ("Specials" if season_number == 0 else f"Season {season_number}")
+        target["season_title"] = season_payload.get("season_title") or (
+            "Specials" if season_number == 0 else f"Season {season_number}"
         )
         target["season_episode_count"] = (
             _safe_int(season_payload.get("episode_count"))
             or _safe_int(payload_details.get("episodes"))
             or _safe_int(season_payload.get("max_progress"))
         )
-        target["first_air_date"] = (
-            season_payload.get("first_air_date")
-            or payload_details.get("first_air_date")
-        )
+        target["first_air_date"] = season_payload.get(
+            "first_air_date"
+        ) or payload_details.get("first_air_date")
     else:
         target["season_title"] = (
             "Specials" if season_number == 0 else f"Season {season_number}"
@@ -1033,9 +1022,7 @@ def resolve_detail_metadata(
             item,
         )
         mapping_status = (
-            "identity"
-            if identity_provider == Sources.MANUAL.value
-            else "custom"
+            "identity" if identity_provider == Sources.MANUAL.value else "custom"
         )
     elif provider != identity_provider:
         provider_media_id = resolve_provider_media_id(
@@ -1062,9 +1049,9 @@ def resolve_detail_metadata(
                 route_media_type == MediaTypes.ANIME.value
                 and provider in GROUPED_ANIME_PROVIDERS
             ):
-                related_seasons = (
-                    overlay_metadata.get("related", {}) or {}
-                ).get("seasons", [])
+                related_seasons = (overlay_metadata.get("related", {}) or {}).get(
+                    "seasons", []
+                )
                 grouped_preview = services.get_media_metadata(
                     "tv_with_seasons",
                     provider_media_id,

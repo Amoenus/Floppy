@@ -326,7 +326,9 @@ class ServicesTests(TestCase):
                     "name": "The Witcher 3: Wild Hunt",
                     "url": "https://www.igdb.com/games/the-witcher-3-wild-hunt",
                     "game_type": 0,
-                    "external_games": [{"url": "https://store.steampowered.com/app/292030"}],
+                    "external_games": [
+                        {"url": "https://store.steampowered.com/app/292030"}
+                    ],
                 },
             ]
 
@@ -376,7 +378,9 @@ class ServicesTests(TestCase):
                     "name": "",
                     "url": "https://www.igdb.com/games/the-witcher-3-wild-hunt",
                     "game_type": 0,
-                    "external_games": [{"url": "https://store.steampowered.com/app/292030"}],
+                    "external_games": [
+                        {"url": "https://store.steampowered.com/app/292030"}
+                    ],
                 },
             ]
 

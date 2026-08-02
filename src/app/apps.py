@@ -256,7 +256,9 @@ class AppConfig(AppConfig):
                 IGDB_RATINGS_BACKFILL_VERSION,
             )
         except Exception as error:  # noqa: BLE001
-            logger.warning("Failed to schedule IGDB ratings backfill reconcile: %s", error)
+            logger.warning(
+                "Failed to schedule IGDB ratings backfill reconcile: %s", error
+            )
 
     def _schedule_trakt_popularity_reconcile(self):
         """Schedule Trakt popularity reconciliation on startup.
@@ -271,13 +273,12 @@ class AppConfig(AppConfig):
             )
 
             version_key = (
-                "trakt_popularity_reconciled_"
-                f"v{TRAKT_POPULARITY_SCORE_VERSION}"
+                f"trakt_popularity_reconciled_v{TRAKT_POPULARITY_SCORE_VERSION}"
             )
             daily_key = "trakt_popularity_reconcile_daily"
 
-            version_status = cache.get(version_key)   # None | "pending" | "done"
-            daily_status = cache.get(daily_key)        # None | 1
+            version_status = cache.get(version_key)  # None | "pending" | "done"
+            daily_status = cache.get(daily_key)  # None | 1
 
             version_done = version_status == "done"
             version_pending = version_status == "pending"

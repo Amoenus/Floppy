@@ -66,9 +66,7 @@ def _serialize_artist(artist, tracker=None, *, include_albums=False):
         "tracker": _serialize_tracker(tracker),
     }
     if include_albums:
-        payload["albums"] = [
-            _serialize_album(album) for album in artist.albums.all()
-        ]
+        payload["albums"] = [_serialize_album(album) for album in artist.albums.all()]
     return payload
 
 
@@ -131,9 +129,7 @@ class MusicArtistsView(drf_views.APIView):
         trackers = ArtistTracker.objects.filter(user=request.user).select_related(
             "artist",
         )
-        results = [
-            _serialize_artist(tracker.artist, tracker) for tracker in trackers
-        ]
+        results = [_serialize_artist(tracker.artist, tracker) for tracker in trackers]
         return Response(
             paginate_data(request, results, limit, offset),
             status=HTTP.OK,

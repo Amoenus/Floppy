@@ -388,9 +388,7 @@ def get_publisher_comics(publisher_id, current_id, limit=15):
 
 def search_issues(query, page):
     """Search for individual comic issues on Comic Vine."""
-    cache_key = (
-        f"search_{Sources.COMICVINE.value}_{MediaTypes.COMIC_ISSUE.value}_{query}_{page}"
-    )
+    cache_key = f"search_{Sources.COMICVINE.value}_{MediaTypes.COMIC_ISSUE.value}_{query}_{page}"
     data = cache.get(cache_key)
 
     if data is None:
@@ -535,11 +533,7 @@ def _get_issue_people(response):
         person["name"]
         for person in credits[:5]
         if isinstance(person, dict) and _is_writer_role(person.get("role") or "")
-    ] or [
-        person["name"]
-        for person in credits[:5]
-        if isinstance(person, dict)
-    ]
+    ] or [person["name"] for person in credits[:5] if isinstance(person, dict)]
 
 
 def _get_issue_people_full(response):
@@ -616,8 +610,7 @@ def person_profile(person_id):
         "api_key": settings.COMICVINE_API,
         "format": "json",
         "field_list": (
-            "id,name,image,deck,description,birth,death,hometown,"
-            "site_detail_url"
+            "id,name,image,deck,description,birth,death,hometown,site_detail_url"
         ),
     }
     try:

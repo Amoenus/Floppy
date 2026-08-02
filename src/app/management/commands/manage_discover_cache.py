@@ -54,7 +54,9 @@ class Command(BaseCommand):
             raise CommandError(f"Unsupported media_type '{media_type}'")
         return [media_type]
 
-    def _resolve_row_keys(self, media_type: str, raw_row_keys: list[str] | None) -> list[str]:
+    def _resolve_row_keys(
+        self, media_type: str, raw_row_keys: list[str] | None
+    ) -> list[str]:
         if not raw_row_keys:
             if media_type == ALL_MEDIA_KEY:
                 return []

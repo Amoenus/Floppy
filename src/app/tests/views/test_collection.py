@@ -60,7 +60,10 @@ class CollectionListViewTest(TestCase):
 
         # Filter by movie
         response = self.client.get(
-            reverse("collection_list_filtered", kwargs={"media_type": MediaTypes.MOVIE.value}),
+            reverse(
+                "collection_list_filtered",
+                kwargs={"media_type": MediaTypes.MOVIE.value},
+            ),
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.context["collection_entries"]), 1)
@@ -108,7 +111,9 @@ class CollectionAddViewTest(TestCase):
 
         # Should redirect or return success
         self.assertIn(response.status_code, [200, 302])
-        self.assertTrue(CollectionEntry.objects.filter(user=self.user, item=self.item).exists())
+        self.assertTrue(
+            CollectionEntry.objects.filter(user=self.user, item=self.item).exists()
+        )
 
     def test_collection_add_existing_entry_creates_additional_copy(self):
         """Test POST with existing entry creates another collection copy."""
@@ -137,8 +142,14 @@ class CollectionAddViewTest(TestCase):
         self.assertEqual(entry.resolution, "")
 
         # A second entry should be created for the new copy
-        self.assertEqual(CollectionEntry.objects.filter(user=self.user, item=self.item).count(), 2)
-        new_entry = CollectionEntry.objects.filter(user=self.user, item=self.item).exclude(id=entry.id).first()
+        self.assertEqual(
+            CollectionEntry.objects.filter(user=self.user, item=self.item).count(), 2
+        )
+        new_entry = (
+            CollectionEntry.objects.filter(user=self.user, item=self.item)
+            .exclude(id=entry.id)
+            .first()
+        )
         self.assertIsNotNone(new_entry)
         self.assertEqual(new_entry.media_type, "bluray")
         self.assertEqual(new_entry.resolution, "1080p")
@@ -218,7 +229,9 @@ class CollectionAddViewTest(TestCase):
         )
 
         self.assertEqual(response.status_code, 302)
-        self.assertTrue(CollectionEntry.objects.filter(user=self.user, item=game_item).exists())
+        self.assertTrue(
+            CollectionEntry.objects.filter(user=self.user, item=game_item).exists()
+        )
         game_tracker = Game.objects.get(user=self.user, item=game_item)
         self.assertEqual(game_tracker.status, Status.PLANNING.value)
         self.assertEqual(game_tracker.progress, 0)
@@ -747,7 +760,9 @@ class CollectionModalViewTest(TestCase):
             reverse(
                 "collection_remove_season",
                 kwargs={
-                    "season_item_id": response.context["season_audit_entries"][0]["season_item_id"],
+                    "season_item_id": response.context["season_audit_entries"][0][
+                        "season_item_id"
+                    ],
                 },
             ),
         )
@@ -838,7 +853,9 @@ class CollectionModalViewTest(TestCase):
         self.assertContains(response, "S01E01 - Season One Episode")
         self.assertNotContains(response, "S02E01 - Season Two Episode")
 
-    def test_collection_modal_season_keeps_manual_entries_visible_with_sonarr_audit_rows(self):
+    def test_collection_modal_season_keeps_manual_entries_visible_with_sonarr_audit_rows(
+        self,
+    ):
         """Manual season copies should stay visible alongside Sonarr episode rows."""
         self.client.login(**self.credentials)
 
@@ -906,7 +923,12 @@ class CollectionModalViewTest(TestCase):
         self.assertContains(response, "WebDL-1080p")
         self.assertContains(
             response,
-            reverse("collection_remove", kwargs={"entry_id": response.context["episode_audit_entries"][0]["entry"].id}),
+            reverse(
+                "collection_remove",
+                kwargs={
+                    "entry_id": response.context["episode_audit_entries"][0]["entry"].id
+                },
+            ),
         )
         self.assertContains(response, 'aria-label="Remove collection entry"', count=2)
         self.assertNotContains(response, ">Collection Entry<", html=True)

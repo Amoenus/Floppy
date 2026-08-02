@@ -76,7 +76,9 @@ def _fallback_metadata(
     normalized.setdefault("source", source)
     normalized.setdefault("media_type", media_type)
 
-    title_fields = Item.title_fields_from_metadata(normalized, fallback_title=fallback_title)
+    title_fields = Item.title_fields_from_metadata(
+        normalized, fallback_title=fallback_title
+    )
     normalized.update(title_fields)
     if not normalized.get("image"):
         normalized["image"] = fallback_image or settings.IMG_NONE
@@ -85,7 +87,9 @@ def _fallback_metadata(
     return normalized
 
 
-def _enrich_podcast_lookup(metadata: dict, media_id: str) -> tuple[dict, PodcastShow | None]:
+def _enrich_podcast_lookup(
+    metadata: dict, media_id: str
+) -> tuple[dict, PodcastShow | None]:
     if not str(media_id).isdigit():
         return metadata, None
 
@@ -118,7 +122,9 @@ def _enrich_podcast_lookup(metadata: dict, media_id: str) -> tuple[dict, Podcast
         show, _ = PodcastShow.objects.get_or_create(
             podcast_uuid=podcast_uuid,
             defaults={
-                "title": lookup.get("title", "") or enriched.get("title", "") or f"Podcast {media_id}",
+                "title": lookup.get("title", "")
+                or enriched.get("title", "")
+                or f"Podcast {media_id}",
                 "author": lookup.get("author", ""),
                 "image": lookup.get("artwork_url", "") or enriched.get("image", ""),
                 "description": lookup.get("description", ""),
@@ -198,7 +204,12 @@ def _hydrate_music_relations(
             },
         )
         update_fields: list[str] = []
-        if not created and image_url and image_url != settings.IMG_NONE and not album_instance.image:
+        if (
+            not created
+            and image_url
+            and image_url != settings.IMG_NONE
+            and not album_instance.image
+        ):
             album_instance.image = image_url
             update_fields.append("image")
         if not album_instance.release_date and release_date:
@@ -296,7 +307,9 @@ def ensure_item_metadata(
     studios = [value for value in _coerce_list(details.get("studios")) if value]
     themes = [value for value in _coerce_list(details.get("themes")) if value]
 
-    raw_authors = details.get("authors") or details.get("author") or details.get("people")
+    raw_authors = (
+        details.get("authors") or details.get("author") or details.get("people")
+    )
     authors: list[str] = []
     for raw_author in _coerce_list(raw_authors):
         if isinstance(raw_author, dict):
@@ -371,7 +384,9 @@ def ensure_item_metadata(
     )
 
     update_fields: list[str] = []
-    title_fields = Item.title_fields_from_metadata(metadata, fallback_title=fallback_title)
+    title_fields = Item.title_fields_from_metadata(
+        metadata, fallback_title=fallback_title
+    )
     if not created:
         item.metadata_fetched_at = timezone.now()
         update_fields.append("metadata_fetched_at")
@@ -433,10 +448,16 @@ def ensure_item_metadata(
     if not item.runtime and runtime:
         item.runtime = runtime
         update_fields.append("runtime")
-    if title_fields["original_title"] and item.original_title != title_fields["original_title"]:
+    if (
+        title_fields["original_title"]
+        and item.original_title != title_fields["original_title"]
+    ):
         item.original_title = title_fields["original_title"]
         update_fields.append("original_title")
-    if title_fields["localized_title"] and item.localized_title != title_fields["localized_title"]:
+    if (
+        title_fields["localized_title"]
+        and item.localized_title != title_fields["localized_title"]
+    ):
         item.localized_title = title_fields["localized_title"]
         update_fields.append("localized_title")
     if update_fields:
@@ -496,7 +517,9 @@ def ensure_item_metadata_from_discover_seed(
         fallback_image=fallback_image,
         fallback_release_date=fallback_release_date,
     )
-    title_fields = Item.title_fields_from_metadata(metadata, fallback_title=fallback_title)
+    title_fields = Item.title_fields_from_metadata(
+        metadata, fallback_title=fallback_title
+    )
     release_datetime = helpers.extract_release_datetime(metadata)
     tracking_media_type = get_tracking_media_type(
         media_type,

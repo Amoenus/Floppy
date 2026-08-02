@@ -96,7 +96,10 @@ class TVDBProviderTests(TestCase):
                 "data": {
                     "id": 259640,
                     "name": {"language": "jpn", "name": "ソードアート・オンライン"},
-                    "originalName": {"language": "jpn", "name": "ソードアート・オンライン"},
+                    "originalName": {
+                        "language": "jpn",
+                        "name": "ソードアート・オンライン",
+                    },
                     "overview": "日本語の概要",
                     "firstAired": "2012-07-08",
                     "status": {"name": "Ended"},
@@ -259,10 +262,17 @@ class TVDBProviderTests(TestCase):
                 },
             },
             {"data": {}},
-            {"data": {"name": "To You, in 2000 Years", "overview": "English episode overview."}},
+            {
+                "data": {
+                    "name": "To You, in 2000 Years",
+                    "overview": "English episode overview.",
+                }
+            },
         ]
 
-        result = tvdb.tv_with_seasons("120089", [1], routed_media_type=MediaTypes.ANIME.value)
+        result = tvdb.tv_with_seasons(
+            "120089", [1], routed_media_type=MediaTypes.ANIME.value
+        )
 
         self.assertEqual(
             result["season/1"]["episodes"][0]["name"],

@@ -34,7 +34,9 @@ def mapping_keys(value: Any) -> list[str]:
     return sorted(str(key) for key in value.keys())
 
 
-def presence_map(values: Mapping[str, Any] | None, keys: Iterable[str]) -> dict[str, bool]:
+def presence_map(
+    values: Mapping[str, Any] | None, keys: Iterable[str]
+) -> dict[str, bool]:
     """Return whether selected keys are present/truthy without exposing values."""
     mapping = values if isinstance(values, Mapping) else {}
     return {str(key): bool(mapping.get(key)) for key in keys}

@@ -129,5 +129,7 @@ class DiscoverScoringTests(SimpleTestCase):
         self.assertEqual(trakt_only["world_source_blend"], "trakt_only")
         self.assertGreater(trakt_only["world_quality"], 0.7)
         self.assertEqual(blended["world_source_blend"], "tmdb_trakt_blend")
-        self.assertGreater(blended["world_quality"], blended["tmdb_world_quality"] - 0.01)
+        self.assertGreater(
+            blended["world_quality"], blended["tmdb_world_quality"] - 0.01
+        )
         self.assertLess(blended["world_quality"], blended["trakt_world_quality"] + 0.01)

@@ -44,7 +44,9 @@ class SeerrGlobalWebhookTests(TestCase):
         self.assertEqual(resp.status_code, 400)
 
     def test_invalid_json_returns_400(self):
-        resp = self.client.post(self._url(), data="{notjson", content_type="application/json")
+        resp = self.client.post(
+            self._url(), data="{notjson", content_type="application/json"
+        )
         self.assertEqual(resp.status_code, 400)
 
     def test_wrong_secret_returns_401(self):

@@ -44,8 +44,7 @@ def prefill_display_release_years(entries: Iterable[object]) -> None:
     media_ids = {media_id for media_id, _source, _season_number in season_keys}
     sources = {source for _media_id, source, _season_number in season_keys}
     season_numbers = {
-        season_number
-        for _media_id, _source, season_number in season_keys
+        season_number for _media_id, _source, season_number in season_keys
     }
     season_years: dict[tuple[str, str, int], int] = {}
     for media_id, source, season_number, release_dt in (

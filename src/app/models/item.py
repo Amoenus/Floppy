@@ -45,25 +45,51 @@ class Item(CalendarTriggerMixin, models.Model):
     image = models.URLField()  # if add default, custom media entry will show the value
     season_number = models.PositiveIntegerField(null=True, blank=True)
     episode_number = models.PositiveIntegerField(null=True, blank=True)
-    runtime_minutes = models.PositiveIntegerField(null=True, blank=True, help_text="Runtime in minutes")
-    number_of_pages = models.PositiveIntegerField(null=True, blank=True, help_text="Number of pages for books")
+    runtime_minutes = models.PositiveIntegerField(
+        null=True, blank=True, help_text="Runtime in minutes"
+    )
+    number_of_pages = models.PositiveIntegerField(
+        null=True, blank=True, help_text="Number of pages for books"
+    )
     release_datetime = models.DateTimeField(null=True, blank=True)
     genres = models.JSONField(default=list, blank=True)
     implied_genres = models.JSONField(default=list, blank=True)
     # Metadata fields for filtering, sorting, and statistics
-    country = models.CharField(max_length=255, blank=True, default="", help_text="Origin country")
-    languages = models.JSONField(default=list, blank=True, help_text="Array of languages")
-    platforms = models.JSONField(default=list, blank=True, help_text="Array of platforms (Games)")
-    format = models.CharField(max_length=100, blank=True, default="", help_text="Media format type")
-    status = models.CharField(max_length=100, blank=True, default="", help_text="Production status")
-    studios = models.JSONField(default=list, blank=True, help_text="Array of production studios")
-    themes = models.JSONField(default=list, blank=True, help_text="Array of themes (Games)")
+    country = models.CharField(
+        max_length=255, blank=True, default="", help_text="Origin country"
+    )
+    languages = models.JSONField(
+        default=list, blank=True, help_text="Array of languages"
+    )
+    platforms = models.JSONField(
+        default=list, blank=True, help_text="Array of platforms (Games)"
+    )
+    format = models.CharField(
+        max_length=100, blank=True, default="", help_text="Media format type"
+    )
+    status = models.CharField(
+        max_length=100, blank=True, default="", help_text="Production status"
+    )
+    studios = models.JSONField(
+        default=list, blank=True, help_text="Array of production studios"
+    )
+    themes = models.JSONField(
+        default=list, blank=True, help_text="Array of themes (Games)"
+    )
     authors = models.JSONField(default=list, blank=True, help_text="Array of authors")
-    publishers = models.CharField(max_length=255, blank=True, default="", help_text="Publisher name")
+    publishers = models.CharField(
+        max_length=255, blank=True, default="", help_text="Publisher name"
+    )
     isbn = models.JSONField(default=list, blank=True, help_text="Array of ISBN numbers")
-    source_material = models.CharField(max_length=100, blank=True, default="", help_text="Source material (Anime)")
-    creators = models.JSONField(default=list, blank=True, help_text="Array of creators (Comics)")
-    runtime = models.CharField(max_length=50, blank=True, default="", help_text="Formatted runtime string")
+    source_material = models.CharField(
+        max_length=100, blank=True, default="", help_text="Source material (Anime)"
+    )
+    creators = models.JSONField(
+        default=list, blank=True, help_text="Array of creators (Comics)"
+    )
+    runtime = models.CharField(
+        max_length=50, blank=True, default="", help_text="Formatted runtime string"
+    )
     provider_popularity = models.FloatField(
         null=True,
         blank=True,
@@ -114,7 +140,9 @@ class Item(CalendarTriggerMixin, models.Model):
         blank=True,
         help_text="When Trakt popularity metadata was last fetched",
     )
-    provider_keywords = models.JSONField(default=list, blank=True, help_text="Provider keywords")
+    provider_keywords = models.JSONField(
+        default=list, blank=True, help_text="Provider keywords"
+    )
     provider_certification = models.CharField(
         max_length=20,
         blank=True,
@@ -133,7 +161,9 @@ class Item(CalendarTriggerMixin, models.Model):
         default="",
         help_text="Provider collection/franchise name",
     )
-    provider_external_ids = models.JSONField(default=dict, blank=True, help_text="Resolved external ids")
+    provider_external_ids = models.JSONField(
+        default=dict, blank=True, help_text="Resolved external ids"
+    )
     provider_game_lengths = models.JSONField(
         default=dict,
         blank=True,
@@ -169,7 +199,9 @@ class Item(CalendarTriggerMixin, models.Model):
         blank=True,
         help_text="When game length metadata was last fetched",
     )
-    metadata_fetched_at = models.DateTimeField(null=True, blank=True, help_text="When metadata was last fetched")
+    metadata_fetched_at = models.DateTimeField(
+        null=True, blank=True, help_text="When metadata was last fetched"
+    )
     manual_metadata = models.JSONField(
         blank=True,
         default=dict,
@@ -214,7 +246,13 @@ class Item(CalendarTriggerMixin, models.Model):
             ),
             # Ensures seasons are unique within a show per library type
             UniqueConstraint(
-                fields=["media_id", "source", "media_type", "library_media_type", "season_number"],
+                fields=[
+                    "media_id",
+                    "source",
+                    "media_type",
+                    "library_media_type",
+                    "season_number",
+                ],
                 condition=Q(season_number__isnull=False, episode_number__isnull=True),
                 name="unique_item_with_season",
             ),
@@ -277,7 +315,8 @@ class Item(CalendarTriggerMixin, models.Model):
                 name="%(app_label)s_%(class)s_media_type_valid",
             ),
             CheckConstraint(
-                condition=Q(library_media_type="") | Q(library_media_type__in=MediaTypes.values),
+                condition=Q(library_media_type="")
+                | Q(library_media_type__in=MediaTypes.values),
                 name="%(app_label)s_%(class)s_library_media_type_valid",
             ),
         ]
@@ -385,7 +424,9 @@ class Item(CalendarTriggerMixin, models.Model):
         """Build item title fields for an episode payload."""
         metadata = metadata or {}
         episode_title = cls._normalize_title_value(
-            metadata.get("episode_title") or metadata.get("name") or metadata.get("title"),
+            metadata.get("episode_title")
+            or metadata.get("name")
+            or metadata.get("title"),
         )
         if episode_title:
             return cls.title_fields_from_metadata(
@@ -518,15 +559,11 @@ class Item(CalendarTriggerMixin, models.Model):
         """Resolve display and alternate titles from raw title fields."""
         preference = (preference or "localized").lower()
         original_title = cls._normalize_title_value(original_title)
-        localized_title = (
-            cls._normalize_title_value(localized_title)
-            or cls._normalize_title_value(title)
-        )
+        localized_title = cls._normalize_title_value(
+            localized_title
+        ) or cls._normalize_title_value(title)
         fallback_title = (
-            cls._normalize_title_value(title)
-            or localized_title
-            or original_title
-            or ""
+            cls._normalize_title_value(title) or localized_title or original_title or ""
         )
 
         if preference == "original":
@@ -581,11 +618,11 @@ class Item(CalendarTriggerMixin, models.Model):
         """Return the persisted time-to-beat value in minutes for a source."""
         payload = self.provider_game_lengths or {}
         if source == "hltb":
-            summary = ((payload.get("hltb") or {}).get("summary") or {})
+            summary = (payload.get("hltb") or {}).get("summary") or {}
             return self._coerce_positive_int(summary.get("all_styles_minutes"))
 
         if source == "igdb":
-            summary = ((payload.get("igdb") or {}).get("summary") or {})
+            summary = (payload.get("igdb") or {}).get("summary") or {}
             seconds = self._coerce_positive_int(summary.get("normally_seconds"))
             return round(seconds / 60) if seconds else None
 
@@ -598,7 +635,9 @@ class Item(CalendarTriggerMixin, models.Model):
             return None
 
         payload = self.provider_game_lengths or {}
-        active_source = self.provider_game_lengths_source or payload.get("active_source") or ""
+        active_source = (
+            self.provider_game_lengths_source or payload.get("active_source") or ""
+        )
         sources = []
         if active_source in {"hltb", "igdb"}:
             sources.append(active_source)

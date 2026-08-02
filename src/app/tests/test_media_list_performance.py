@@ -31,6 +31,7 @@ from app.models import (
 )
 from users.models import MediaStatusChoices
 
+
 # Suppress noisy debug logging during tests
 def setUpModule():
     """Silence log noise for this module only."""
@@ -178,7 +179,9 @@ class FullViewWallClockTests(TestCase):
             pk__in=Item.objects.filter(
                 media_id__startswith="perf_",
                 media_type=MediaTypes.MOVIE.value,
-            ).order_by("id").values_list("id", flat=True)[:500],
+            )
+            .order_by("id")
+            .values_list("id", flat=True)[:500],
         ).update(genres=["Comedy"])
 
         from app.views import media_list
@@ -220,9 +223,7 @@ class CacheLookupOverheadTests(TestCase):
 
     def test_cache_lookups_without_db_fields(self):
         """Items without DB-level metadata should not spam cache.get for facets."""
-        _bulk_create_movie_items_and_entries(
-            self.user, 500, populate_languages=False
-        )
+        _bulk_create_movie_items_and_entries(self.user, 500, populate_languages=False)
 
         from app.views import media_list
 
@@ -252,9 +253,7 @@ class CacheLookupOverheadTests(TestCase):
 
     def test_cache_lookups_with_db_fields(self):
         """Items WITH DB-level metadata skip cache lookups."""
-        _bulk_create_movie_items_and_entries(
-            self.user, 500, populate_languages=True
-        )
+        _bulk_create_movie_items_and_entries(self.user, 500, populate_languages=True)
 
         from app.views import media_list
 
@@ -299,9 +298,7 @@ class CollectionFilterN1Tests(TestCase):
 
         from app.views import media_list
 
-        request = self.factory.get(
-            "/medialist/movie", {"collection": "not_collected"}
-        )
+        request = self.factory.get("/medialist/movie", {"collection": "not_collected"})
         request.user = self.user
 
         with override_settings(DEBUG=True):
@@ -312,8 +309,7 @@ class CollectionFilterN1Tests(TestCase):
             queries = connection.queries[:]
 
         collection_queries = [
-            q for q in queries
-            if "app_collectionentry" in q["sql"].lower()
+            q for q in queries if "app_collectionentry" in q["sql"].lower()
         ]
         print("\n[PERF] Collection filter (50 movies, 'not_collected'):")
         print(f"  Total SQL queries: {len(queries)}")
@@ -355,13 +351,13 @@ class DuplicateAggregationTests(TestCase):
             )
             queries = connection.queries[:]
 
-        select_queries = [
-            q for q in queries if q["sql"].startswith("SELECT")
-        ]
+        select_queries = [q for q in queries if q["sql"].startswith("SELECT")]
         # Identify the aggregation query (fetches app_movie with item join)
         agg_queries = [
-            q for q in select_queries
-            if "app_movie" in q["sql"] and "row_number" not in q["sql"]
+            q
+            for q in select_queries
+            if "app_movie" in q["sql"]
+            and "row_number" not in q["sql"]
             and "events_event" not in q["sql"]
         ]
         print("\n[PERF] Aggregation overhead (500 items, no duplicates):")

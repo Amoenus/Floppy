@@ -93,7 +93,9 @@ class CollectionEntryModelTest(TestCase):
         )
 
         self.assertNotEqual(first_entry.id, second_entry.id)
-        self.assertEqual(CollectionEntry.objects.filter(user=self.user, item=self.item).count(), 2)
+        self.assertEqual(
+            CollectionEntry.objects.filter(user=self.user, item=self.item).count(), 2
+        )
 
     def test_collection_entry_field_defaults(self):
         """Test that all metadata fields have correct defaults."""
@@ -163,7 +165,9 @@ class CollectionEntryModelTest(TestCase):
         resolution_max = CollectionEntry._meta.get_field("resolution").max_length
         hdr_max = CollectionEntry._meta.get_field("hdr").max_length
         audio_codec_max = CollectionEntry._meta.get_field("audio_codec").max_length
-        audio_channels_max = CollectionEntry._meta.get_field("audio_channels").max_length
+        audio_channels_max = CollectionEntry._meta.get_field(
+            "audio_channels"
+        ).max_length
 
         entry = CollectionEntry.objects.create(
             user=self.user,

@@ -30,8 +30,7 @@ def _demo_user_schema_ready():
         return False
 
     required_columns = {
-        field.column
-        for field in user_model._meta.local_concrete_fields
+        field.column for field in user_model._meta.local_concrete_fields
     }
     return required_columns.issubset(columns)
 

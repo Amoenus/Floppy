@@ -3,6 +3,7 @@
 Pure data-transform functions; no database access, no I/O.  All functions
 return dicts ready to be serialised as Chart.js chart configs.
 """
+
 import calendar
 import datetime
 from collections import Counter, defaultdict
@@ -12,6 +13,7 @@ from app.stats_utils import _localize_datetime
 # ---------------------------------------------------------------------------
 # Metric breakdown (rates over time)
 # ---------------------------------------------------------------------------
+
 
 def _compute_metric_breakdown(total_value, datetimes, start_date, end_date):
     """Return aggregate totals alongside per-year/month/day rates."""
@@ -55,6 +57,7 @@ def _compute_metric_breakdown(total_value, datetimes, start_date, end_date):
 # ---------------------------------------------------------------------------
 # Single-series and grouped chart builders
 # ---------------------------------------------------------------------------
+
 
 def _build_single_series_chart(labels, values, color, dataset_label):
     """Return a Chart.js-friendly dataset for a single-series bar chart."""
@@ -154,6 +157,7 @@ def _build_media_charts(datetimes, color, dataset_label):
 # ---------------------------------------------------------------------------
 # Specialised distribution charts
 # ---------------------------------------------------------------------------
+
 
 def _build_completed_length_distribution_chart(values, unit_name, color):
     """Build chart showing distribution of completed item lengths."""

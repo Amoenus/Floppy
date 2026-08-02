@@ -96,6 +96,7 @@ class PlexWebhookTests(TestCase):
             side_effect=fake_tv_with_seasons,
         )
         self.tv_with_seasons_patcher.start()
+
         def fake_tmdb_find(external_id, external_source):
             key = (str(external_id), external_source)
             if key in {
@@ -1762,7 +1763,9 @@ class PlexWebhookTests(TestCase):
         self.assertFalse(
             TV.objects.filter(item__media_id="777777", user=self.user).exists(),
         )
-        mock_resolve_tvdb_id.assert_called_once_with("777777", mock_tv_with_seasons.return_value)
+        mock_resolve_tvdb_id.assert_called_once_with(
+            "777777", mock_tv_with_seasons.return_value
+        )
         mock_tvdb_tv.assert_called_once_with("900001")
 
     @patch("app.providers.tmdb.resolve_tvdb_id_for_tmdb_show")
@@ -1922,7 +1925,9 @@ class PlexWebhookTests(TestCase):
         self.assertFalse(
             Anime.objects.filter(item__media_id="52992", user=self.user).exists(),
         )
-        mock_resolve_tvdb_id.assert_called_once_with("777780", mock_tv_with_seasons.return_value)
+        mock_resolve_tvdb_id.assert_called_once_with(
+            "777780", mock_tv_with_seasons.return_value
+        )
         mock_tvdb_tv.assert_called_once_with("900002")
 
     def test_ignored_event_types(self):
@@ -2053,7 +2058,9 @@ class PlexWebhookTests(TestCase):
                 "duration": 200000,
                 "ratingKey": "987",
                 "Guid": [
-                    {"id": "musicbrainz://recording/00000000-1111-2222-3333-444444444444"},
+                    {
+                        "id": "musicbrainz://recording/00000000-1111-2222-3333-444444444444"
+                    },
                 ],
             },
         }
@@ -2620,7 +2627,7 @@ class LivePlaybackScrobbleClearingTests(TestCase):
         """Scrobble with known duration/offset sets expiry from remaining time."""
         now = timezone.now()
         duration = 2666  # seconds (~44 min episode)
-        offset = 2265    # ~85% through -> 401 seconds remaining
+        offset = 2265  # ~85% through -> 401 seconds remaining
 
         live_playback.apply_playback_event(
             user_id=self.user.id,

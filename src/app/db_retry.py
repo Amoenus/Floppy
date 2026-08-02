@@ -104,10 +104,7 @@ def run_retryable_db_operation(
 
             sleep_for = base_delay * (backoff**attempt)
             active_logger.warning(
-                (
-                    "Retrying %s after %s error "
-                    "(attempt %s/%s, sleeping %.2fs)"
-                ),
+                ("Retrying %s after %s error (attempt %s/%s, sleeping %.2fs)"),
                 operation_name,
                 _error_type(error),
                 attempt + 1,

@@ -72,7 +72,9 @@ def resolve_game_imdb_ids() -> int:
     try:
         title_index = imdb_datasets.download_videogame_title_index()
     except Exception:
-        logger.warning("imdb_game_credits: failed to download title index", exc_info=True)
+        logger.warning(
+            "imdb_game_credits: failed to download title index", exc_info=True
+        )
         return 0
 
     by_title_key: dict[str, list[tuple[str, int | None]]] = {}
@@ -144,7 +146,9 @@ def sync_game_credits_from_imdb(
         imdb_id = (item.provider_external_ids or {}).get("imdb_id")
         principals = principals_by_tconst.get(imdb_id)
         if not principals:
-            _record_backfill_failure(item, MetadataBackfillField.CREDITS.value, "no imdb principals")
+            _record_backfill_failure(
+                item, MetadataBackfillField.CREDITS.value, "no imdb principals"
+            )
             continue
 
         cast_rows = []
@@ -175,7 +179,9 @@ def sync_game_credits_from_imdb(
                 )
 
         if not cast_rows and not crew_rows:
-            _record_backfill_failure(item, MetadataBackfillField.CREDITS.value, "no usable principals")
+            _record_backfill_failure(
+                item, MetadataBackfillField.CREDITS.value, "no usable principals"
+            )
             continue
 
         # Suppress per-row credit signals — a bulk sync across many games would
@@ -259,10 +265,7 @@ def backfill_missing_person_profiles() -> int:
             if changed:
                 updated.append(person)
 
-        if (
-            index == len(people)
-            or index % _IMAGE_BACKFILL_PROGRESS_EVERY == 0
-        ):
+        if index == len(people) or index % _IMAGE_BACKFILL_PROGRESS_EVERY == 0:
             logger.info(
                 (
                     "imdb_game_credits: TMDB profile backfill progress %d/%d "
@@ -365,7 +368,9 @@ def backfill_missing_game_studios() -> int:
 
 
 def _apply_credit_backfill_filters(queryset):
-    filtered = _apply_backfill_state_filters(queryset, MetadataBackfillField.CREDITS.value)
+    filtered = _apply_backfill_state_filters(
+        queryset, MetadataBackfillField.CREDITS.value
+    )
     current_ids = credit_helpers.current_credits_backfill_item_ids(
         filtered.values_list("id", flat=True),
     )
@@ -376,6 +381,10 @@ def _apply_credit_backfill_filters(queryset):
 
 def count_people_missing_profiles() -> int:
     """Return the number of IMDB-sourced people still missing image or gender."""
-    return Person.objects.filter(source=Sources.IMDB.value).filter(
-        Q(image="") | Q(gender=PersonGender.UNKNOWN.value),
-    ).count()
+    return (
+        Person.objects.filter(source=Sources.IMDB.value)
+        .filter(
+            Q(image="") | Q(gender=PersonGender.UNKNOWN.value),
+        )
+        .count()
+    )

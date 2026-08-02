@@ -39,10 +39,10 @@ POCKETCASTS_PODCAST_API_BASE_URL = "https://podcast-api.pocketcasts.com"
 
 def _cleanup_duplicate_episodes_global():
     """Clean up duplicate podcast episodes globally (standalone function).
-    
+
     Finds duplicate episodes (same show, title, published date, different UUIDs)
     and merges them. Can be called from tasks that don't have a PocketCastsImporter instance.
-    
+
     Returns:
         dict: Statistics about the cleanup (duplicates_removed, episodes_merged, items_merged)
     """
@@ -75,7 +75,11 @@ def _cleanup_duplicate_episodes_global():
     duplicate_groups = {k: v for k, v in all_episodes_data.items() if len(v) > 1}
 
     with transaction.atomic():
-        for (show_id, title_normalized, published_date), episodes_list in duplicate_groups.items():
+        for (
+            show_id,
+            title_normalized,
+            published_date,
+        ), episodes_list in duplicate_groups.items():
             # Sort episodes by id (higher id = more recent)
             episodes_list_sorted = sorted(episodes_list, key=lambda ep: ep.id)
 
@@ -87,8 +91,8 @@ def _cleanup_duplicate_episodes_global():
             kept_episode = None
             for episode in episodes_list_sorted:
                 is_pocketcasts_uuid = (
-                    len(episode.episode_uuid) == 36 and
-                    episode.episode_uuid.count("-") == 4
+                    len(episode.episode_uuid) == 36
+                    and episode.episode_uuid.count("-") == 4
                 )
                 if is_pocketcasts_uuid:
                     kept_episode = episode
@@ -98,7 +102,9 @@ def _cleanup_duplicate_episodes_global():
             if not kept_episode:
                 kept_episode = episodes_list_sorted[-1]
 
-            duplicate_episodes = [ep for ep in episodes_list_sorted if ep.id != kept_episode.id]
+            duplicate_episodes = [
+                ep for ep in episodes_list_sorted if ep.id != kept_episode.id
+            ]
 
             # Merge each duplicate episode
             for dup_episode in duplicate_episodes:
@@ -122,10 +128,16 @@ def _cleanup_duplicate_episodes_global():
                     )
 
                     # Update all Podcast entries that reference the duplicate episode
-                    podcasts_updated = Podcast.objects.filter(episode=dup_episode).update(episode=kept_episode)
+                    podcasts_updated = Podcast.objects.filter(
+                        episode=dup_episode
+                    ).update(episode=kept_episode)
 
                     # Update all Podcast entries that reference the duplicate item
-                    items_updated = Podcast.objects.filter(item=dup_item).update(item=kept_item) if dup_item else 0
+                    items_updated = (
+                        Podcast.objects.filter(item=dup_item).update(item=kept_item)
+                        if dup_item
+                        else 0
+                    )
 
                     # Delete the duplicate item if it exists and is different from kept item
                     if dup_item and dup_item.id != kept_item.id:
@@ -187,7 +199,9 @@ class PocketCastsImporter:
 
         # We need either credentials (email/password), access token, or refresh token to proceed
         has_credentials = bool(self.account.email and self.account.password)
-        has_access_token = bool(self.account.access_token and self.account.access_token.strip())
+        has_access_token = bool(
+            self.account.access_token and self.account.access_token.strip()
+        )
         has_refresh_token = bool(self.account.refresh_token)
 
         if not has_credentials and not has_access_token and not has_refresh_token:
@@ -203,10 +217,16 @@ class PocketCastsImporter:
 
         # If we have credentials but no access token, try to login immediately
         if not has_access_token and has_credentials:
-            logger.info("No access token but credentials exist, attempting login for user %s", self.user.username)
+            logger.info(
+                "No access token but credentials exist, attempting login for user %s",
+                self.user.username,
+            )
             try:
                 self._login_with_credentials()
-                logger.info("Successfully logged in from credentials for user %s", self.user.username)
+                logger.info(
+                    "Successfully logged in from credentials for user %s",
+                    self.user.username,
+                )
             except Exception as e:
                 logger.error("Failed to login when access token was missing: %s", e)
                 # Mark as broken but don't fail yet - let _ensure_valid_token handle it
@@ -214,12 +234,20 @@ class PocketCastsImporter:
                 self.account.save()
         # If we have a refresh token but no access token (and no credentials), try to refresh immediately
         elif not has_access_token and has_refresh_token:
-            logger.info("No access token but refresh token exists, attempting refresh for user %s", self.user.username)
+            logger.info(
+                "No access token but refresh token exists, attempting refresh for user %s",
+                self.user.username,
+            )
             try:
                 self._refresh_token()
-                logger.info("Successfully refreshed token from refresh token for user %s", self.user.username)
+                logger.info(
+                    "Successfully refreshed token from refresh token for user %s",
+                    self.user.username,
+                )
             except Exception as e:
-                logger.error("Failed to refresh token when access token was missing: %s", e)
+                logger.error(
+                    "Failed to refresh token when access token was missing: %s", e
+                )
                 # Mark as broken but don't fail yet - let _ensure_valid_token handle it
                 self.account.connection_broken = True
                 self.account.save()
@@ -232,7 +260,12 @@ class PocketCastsImporter:
         self.to_delete = defaultdict(lambda: defaultdict(set))
         self.bulk_media = defaultdict(list)
         self.debug_uuid = os.getenv("POCKETCASTS_DEBUG_UUID")
-        self.infer_debug = os.getenv("POCKETCASTS_INFER_DEBUG", "").lower() in {"1", "true", "yes", "on"}
+        self.infer_debug = os.getenv("POCKETCASTS_INFER_DEBUG", "").lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
         self._sync_window_start = None
         self._sync_window_end = None
         self._existing_history_items = None
@@ -264,6 +297,7 @@ class PocketCastsImporter:
 
         # Fetch podcast list to get show metadata (descriptions, images)
         from integrations import pocketcasts_api
+
         access_token = self._get_access_token()
         try:
             podcast_list_data = pocketcasts_api.get_podcast_list(access_token)
@@ -280,13 +314,20 @@ class PocketCastsImporter:
         }
 
         sync_window_end = timezone.now()
-        sync_window_start = self.account.last_sync_at or (sync_window_end - timedelta(hours=2))
+        sync_window_start = self.account.last_sync_at or (
+            sync_window_end - timedelta(hours=2)
+        )
         self._sync_window_start = sync_window_start
         self._sync_window_end = sync_window_end
-        self._existing_history_items = self._get_history_items_in_range(sync_window_start, sync_window_end)
+        self._existing_history_items = self._get_history_items_in_range(
+            sync_window_start, sync_window_end
+        )
 
         if not self.podcast_metadata:
-            logger.info("No subscribed podcasts found for Pocket Casts user %s", self.user.username)
+            logger.info(
+                "No subscribed podcasts found for Pocket Casts user %s",
+                self.user.username,
+            )
             self.account.last_sync_at = timezone.now()
             self.account.save(update_fields=["last_sync_at"])
             return {}, ""
@@ -327,7 +368,9 @@ class PocketCastsImporter:
                 metadata_ep = full_metadata.get(ep_uuid)
                 if not metadata_ep:
                     # Play record exists but episode no longer in public feed (deleted/unlisted).
-                    logger.debug("Episode %s has play state but no metadata; skipping", ep_uuid)
+                    logger.debug(
+                        "Episode %s has play state but no metadata; skipping", ep_uuid
+                    )
                     continue
 
                 episode_data = self._build_episode_data(
@@ -337,10 +380,15 @@ class PocketCastsImporter:
                     continue
                 episode_uuid = ep_uuid
                 # Check if this episode is new (not in existing_podcasts)
-                is_new = (episode_uuid, Sources.POCKETCASTS.value) not in self.existing_podcasts
+                is_new = (
+                    episode_uuid,
+                    Sources.POCKETCASTS.value,
+                ) not in self.existing_podcasts
 
                 # Process the episode (but don't set completion_date yet for new ones)
-                self._process_episode(episode_data, defer_completion_date=not is_first_import and is_new)
+                self._process_episode(
+                    episode_data, defer_completion_date=not is_first_import and is_new
+                )
 
                 # If this is a new completed episode (not first import), collect it for inference
                 if not is_first_import and is_new:
@@ -350,7 +398,9 @@ class PocketCastsImporter:
                     published = None
                     if episode_data.get("published"):
                         try:
-                            published = datetime.fromisoformat(episode_data["published"].replace("Z", "+00:00"))
+                            published = datetime.fromisoformat(
+                                episode_data["published"].replace("Z", "+00:00")
+                            )
                             if published and timezone.is_naive(published):
                                 published = timezone.make_aware(published)
                         except (ValueError, AttributeError):
@@ -360,34 +410,50 @@ class PocketCastsImporter:
                     # (status 3 with significant progress, or played up to duration with 5 second tolerance)
                     epsilon = 5
                     # Only mark as completed if there's significant progress to avoid false positives
-                    significant_progress = duration > 0 and (played_up_to > 60 or played_up_to > duration * 0.1)
-                    is_completed = (
-                        (playing_status == 3 and significant_progress) or
-                        (duration > 0 and played_up_to >= duration - epsilon)
+                    significant_progress = duration > 0 and (
+                        played_up_to > 60 or played_up_to > duration * 0.1
+                    )
+                    is_completed = (playing_status == 3 and significant_progress) or (
+                        duration > 0 and played_up_to >= duration - epsilon
                     )
 
                     if is_completed and published:
-                        new_completed_podcasts.append((episode_data, duration, published))
+                        new_completed_podcasts.append(
+                            (episode_data, duration, published)
+                        )
 
         # Second pass: infer completion dates for new completed podcasts
         if new_completed_podcasts and not is_first_import:
             # Get sync window
             sync_window_end = self._sync_window_end or timezone.now()
-            sync_window_start = self._sync_window_start or self.account.last_sync_at or (sync_window_end - timedelta(hours=2))
+            sync_window_start = (
+                self._sync_window_start
+                or self.account.last_sync_at
+                or (sync_window_end - timedelta(hours=2))
+            )
             previous_sync_at = self.account.last_sync_at
 
             # Get existing history items in the window
-            existing_history = self._existing_history_items or self._get_history_items_in_range(sync_window_start, sync_window_end)
+            existing_history = (
+                self._existing_history_items
+                or self._get_history_items_in_range(sync_window_start, sync_window_end)
+            )
 
             # Sort podcasts by published date for consistent sequencing
-            new_completed_podcasts_sorted = sorted(new_completed_podcasts, key=lambda x: x[2])  # Sort by published_date
+            new_completed_podcasts_sorted = sorted(
+                new_completed_podcasts, key=lambda x: x[2]
+            )  # Sort by published_date
 
             # Track inferred podcast completions as blocked intervals for subsequent inferences
             # This prevents multiple podcasts from getting overlapping completion times
             inferred_podcasts = []  # List of (end_time, buffer_seconds)
 
             # Infer completion dates for each new podcast in order
-            for episode_data, duration_seconds, published_date in new_completed_podcasts_sorted:
+            for (
+                episode_data,
+                duration_seconds,
+                published_date,
+            ) in new_completed_podcasts_sorted:
                 episode_uuid = episode_data.get("uuid")
 
                 # Infer completion date, passing previously inferred podcasts as blocked intervals
@@ -431,11 +497,19 @@ class PocketCastsImporter:
                         # Update pending history timestamp to inferred date for this episode
                         if hasattr(self, "_pending_history"):
                             updated_history = []
-                            for ep_uuid, delta_seconds, history_timestamp in self._pending_history:
+                            for (
+                                ep_uuid,
+                                delta_seconds,
+                                history_timestamp,
+                            ) in self._pending_history:
                                 if ep_uuid == episode_uuid:
-                                    updated_history.append((ep_uuid, delta_seconds, inferred_date))
+                                    updated_history.append(
+                                        (ep_uuid, delta_seconds, inferred_date)
+                                    )
                                 else:
-                                    updated_history.append((ep_uuid, delta_seconds, history_timestamp))
+                                    updated_history.append(
+                                        (ep_uuid, delta_seconds, history_timestamp)
+                                    )
                             self._pending_history = updated_history
                         break
 
@@ -464,12 +538,17 @@ class PocketCastsImporter:
                     item__source=Sources.POCKETCASTS.value,
                 )
                 if not podcasts.exists():
-                    logger.warning("Could not find podcast after bulk create for history recording: %s", episode_uuid)
+                    logger.warning(
+                        "Could not find podcast after bulk create for history recording: %s",
+                        episode_uuid,
+                    )
                     continue
                 if podcasts.count() > 1:
-                    logger.warning("Multiple Podcast records for episode %s; using first", episode_uuid)
+                    logger.warning(
+                        "Multiple Podcast records for episode %s; using first",
+                        episode_uuid,
+                    )
                 self._record_history(podcasts.first(), delta_seconds, history_timestamp)
-
 
         # Update last sync time
         self.account.last_sync_at = timezone.now()
@@ -497,24 +576,36 @@ class PocketCastsImporter:
 
         # Trigger cache refresh if any podcasts were imported
         # (bulk_create doesn't trigger signals, so we need to manually refresh)
-        if MediaTypes.PODCAST.value in imported_counts and imported_counts[MediaTypes.PODCAST.value] > 0:
+        if (
+            MediaTypes.PODCAST.value in imported_counts
+            and imported_counts[MediaTypes.PODCAST.value] > 0
+        ):
             from app import statistics_cache
             from app.history_cache import schedule_history_refresh
 
-            logger.debug("Triggering cache refresh for user %s after podcast import", self.user.username)
+            logger.debug(
+                "Triggering cache refresh for user %s after podcast import",
+                self.user.username,
+            )
             schedule_history_refresh(self.user.id)
             statistics_cache.schedule_all_ranges_refresh(self.user.id)
 
         return imported_counts, "\n".join(self.warnings) if self.warnings else ""
 
-    def _disconnect_account(self, reason="Refresh token failed", clear_credentials=False):
+    def _disconnect_account(
+        self, reason="Refresh token failed", clear_credentials=False
+    ):
         """Mark the Pocket Casts account as disconnected.
-        
+
         Args:
             reason: Reason for disconnection (for logging)
             clear_credentials: If True, clear all tokens. If False, preserve tokens but mark as broken.
         """
-        logger.warning("Marking Pocket Casts account as disconnected for user %s: %s", self.user.username, reason)
+        logger.warning(
+            "Marking Pocket Casts account as disconnected for user %s: %s",
+            self.user.username,
+            reason,
+        )
 
         if clear_credentials:
             # Clear all tokens (full disconnect)
@@ -525,12 +616,16 @@ class PocketCastsImporter:
         else:
             # Just mark as broken, preserve credentials for later refresh
             self.account.connection_broken = True
-            logger.info("Marked connection as broken (credentials preserved) for user %s", self.user.username)
+            logger.info(
+                "Marked connection as broken (credentials preserved) for user %s",
+                self.user.username,
+            )
 
         self.account.save()
 
         # Delete periodic import task
         from django_celery_beat.models import PeriodicTask
+
         PeriodicTask.objects.filter(
             task="Import from Pocket Casts (Recurring)",
             kwargs__contains=f'"user_id": {self.user.id}',
@@ -539,7 +634,7 @@ class PocketCastsImporter:
 
     def _ensure_valid_token(self):
         """Ensure we have a valid access token.
-        
+
         Prefers login with credentials over refresh token when credentials are available,
         as login is more reliable than refresh tokens which may expire or be revoked.
         """
@@ -549,19 +644,30 @@ class PocketCastsImporter:
         if not self.account.access_token:
             if has_credentials:
                 # Prefer login when credentials are available
-                logger.info("No access token available, attempting login with credentials for user %s", self.user.username)
+                logger.info(
+                    "No access token available, attempting login with credentials for user %s",
+                    self.user.username,
+                )
                 try:
                     self._login_with_credentials()
-                    logger.info("Successfully logged in for user %s", self.user.username)
+                    logger.info(
+                        "Successfully logged in for user %s", self.user.username
+                    )
                     return
                 except Exception as e:
                     logger.error("Failed to login when access token was missing: %s", e)
                     # If login fails, try refresh token as fallback (legacy accounts)
                     if self.account.refresh_token:
-                        logger.info("Login failed, attempting refresh token fallback for user %s", self.user.username)
+                        logger.info(
+                            "Login failed, attempting refresh token fallback for user %s",
+                            self.user.username,
+                        )
                         try:
                             self._refresh_token()
-                            logger.info("Successfully refreshed token for user %s", self.user.username)
+                            logger.info(
+                                "Successfully refreshed token for user %s",
+                                self.user.username,
+                            )
                             return
                         except Exception:
                             pass  # Will raise below
@@ -569,13 +675,20 @@ class PocketCastsImporter:
                     raise MediaImportError(msg) from e
             elif self.account.refresh_token:
                 # Legacy: only refresh token available
-                logger.info("No access token available, attempting refresh for user %s", self.user.username)
+                logger.info(
+                    "No access token available, attempting refresh for user %s",
+                    self.user.username,
+                )
                 try:
                     self._refresh_token()
-                    logger.info("Successfully refreshed token for user %s", self.user.username)
+                    logger.info(
+                        "Successfully refreshed token for user %s", self.user.username
+                    )
                     return
                 except Exception as e:
-                    logger.error("Failed to refresh token when access token was missing: %s", e)
+                    logger.error(
+                        "Failed to refresh token when access token was missing: %s", e
+                    )
                     msg = "No access token available and refresh failed"
                     raise MediaImportError(msg) from e
             else:
@@ -586,53 +699,89 @@ class PocketCastsImporter:
         if self.account.is_token_expired:
             if has_credentials:
                 # Prefer login when credentials are available (more reliable)
-                logger.info("Pocket Casts token is expired for user %s. Attempting login with credentials.", self.user.username)
+                logger.info(
+                    "Pocket Casts token is expired for user %s. Attempting login with credentials.",
+                    self.user.username,
+                )
                 try:
                     self._login_with_credentials()
-                    logger.info("Successfully logged in to refresh expired token for user %s", self.user.username)
+                    logger.info(
+                        "Successfully logged in to refresh expired token for user %s",
+                        self.user.username,
+                    )
                     return
                 except Exception as login_error:
-                    logger.warning("Login failed for expired token, trying refresh token fallback: %s", login_error)
+                    logger.warning(
+                        "Login failed for expired token, trying refresh token fallback: %s",
+                        login_error,
+                    )
                     # Fall back to refresh token if login fails
                     if self.account.refresh_token:
                         try:
                             self._refresh_token()
-                            logger.info("Successfully refreshed expired token for user %s", self.user.username)
+                            logger.info(
+                                "Successfully refreshed expired token for user %s",
+                                self.user.username,
+                            )
                             return
                         except Exception:
                             pass  # Will raise below
                     # Both login and refresh failed
-                    raise MediaImportError("Token expired and both login and refresh failed") from login_error
+                    raise MediaImportError(
+                        "Token expired and both login and refresh failed"
+                    ) from login_error
             elif self.account.refresh_token:
                 # Legacy: only refresh token available
-                logger.info("Pocket Casts token is expired for user %s. Attempting to refresh.", self.user.username)
+                logger.info(
+                    "Pocket Casts token is expired for user %s. Attempting to refresh.",
+                    self.user.username,
+                )
                 try:
                     self._refresh_token()
-                    logger.info("Successfully refreshed expired token for user %s", self.user.username)
+                    logger.info(
+                        "Successfully refreshed expired token for user %s",
+                        self.user.username,
+                    )
                     return
                 except requests.HTTPError as e:
                     # If refresh fails with 401, _refresh_token will handle fallback to login if credentials exist
                     # For legacy accounts without credentials, disconnect
-                    if e.response and e.response.status_code == requests.codes.unauthorized:
+                    if (
+                        e.response
+                        and e.response.status_code == requests.codes.unauthorized
+                    ):
                         if not has_credentials:
-                            self._disconnect_account("Refresh token is invalid or expired")
+                            self._disconnect_account(
+                                "Refresh token is invalid or expired"
+                            )
                             msg = "Refresh token is invalid. Please reconnect your Pocket Casts account."
                             raise MediaImportError(msg) from e
                     # For other HTTP errors, log and try to continue
-                    logger.warning("Failed to refresh expired token for user %s: %s", self.user.username, e)
+                    logger.warning(
+                        "Failed to refresh expired token for user %s: %s",
+                        self.user.username,
+                        e,
+                    )
                 except Exception as e:
                     # For non-HTTP errors, log but try to continue
-                    logger.warning("Failed to refresh expired token for user %s: %s", self.user.username, e)
+                    logger.warning(
+                        "Failed to refresh expired token for user %s: %s",
+                        self.user.username,
+                        e,
+                    )
             else:
-                logger.warning("Pocket Casts token is expired for user %s and no refresh token or credentials available. User may need to reconnect.", self.user.username)
+                logger.warning(
+                    "Pocket Casts token is expired for user %s and no refresh token or credentials available. User may need to reconnect.",
+                    self.user.username,
+                )
                 # Try to use it anyway - it might still work or the expiration might be wrong
 
     def _login_with_credentials(self):
         """Login to Pocket Casts using stored email and password credentials.
-        
+
         This method decrypts the stored credentials, calls the login API,
         and stores the resulting tokens.
-        
+
         Raises:
             MediaImportError: If credentials are missing, decryption fails, or login fails
         """
@@ -644,14 +793,19 @@ class PocketCastsImporter:
             decrypted_email = decrypt(self.account.email)
             decrypted_password = decrypt(self.account.password)
         except Exception as e:
-            logger.error("Failed to decrypt credentials for user %s: %s", self.user.username, e)
+            logger.error(
+                "Failed to decrypt credentials for user %s: %s", self.user.username, e
+            )
             msg = "Failed to decrypt stored credentials"
             raise MediaImportError(msg) from e
 
         # Call login API
         from integrations import pocketcasts_api
+
         try:
-            logger.info("Attempting to login with credentials for user %s", self.user.username)
+            logger.info(
+                "Attempting to login with credentials for user %s", self.user.username
+            )
             login_response = pocketcasts_api.login(decrypted_email, decrypted_password)
 
             access_token = login_response["accessToken"]
@@ -675,27 +829,35 @@ class PocketCastsImporter:
             # Clear connection_broken flag on successful login
             self.account.connection_broken = False
             self.account.save()
-            logger.info("Successfully logged in to Pocket Casts for user %s", self.user.username)
+            logger.info(
+                "Successfully logged in to Pocket Casts for user %s", self.user.username
+            )
 
         except pocketcasts_api.PocketCastsAuthError as e:
-            logger.error("Pocket Casts login failed for user %s: %s", self.user.username, e)
+            logger.error(
+                "Pocket Casts login failed for user %s: %s", self.user.username, e
+            )
             # Mark as broken but preserve credentials (user might fix password)
             self.account.connection_broken = True
             self.account.save()
-            msg = "Invalid email or password. Please update your credentials in settings."
+            msg = (
+                "Invalid email or password. Please update your credentials in settings."
+            )
             raise MediaImportError(msg) from e
         except Exception as e:
-            logger.error("Failed to login to Pocket Casts for user %s: %s", self.user.username, e)
+            logger.error(
+                "Failed to login to Pocket Casts for user %s: %s", self.user.username, e
+            )
             msg = f"Failed to login to Pocket Casts: {e}"
             raise MediaImportError(msg) from e
 
     def _get_history_items_in_range(self, start_time, end_time):
         """Get all history items with end_date in the specified time range.
-        
+
         Args:
             start_time: Start of time range (datetime)
             end_time: End of time range (datetime)
-            
+
         Returns:
             List of tuples: (end_date, duration_seconds, media_type, is_scrobbled)
             - end_date: When the item was completed
@@ -778,10 +940,16 @@ class PocketCastsImporter:
 
     def _get_inference_window(self):
         sync_window_end = self._sync_window_end or timezone.now()
-        sync_window_start = self._sync_window_start or self.previous_sync_at or (sync_window_end - timedelta(hours=2))
+        sync_window_start = (
+            self._sync_window_start
+            or self.previous_sync_at
+            or (sync_window_end - timedelta(hours=2))
+        )
         existing_history = self._existing_history_items
         if existing_history is None:
-            existing_history = self._get_history_items_in_range(sync_window_start, sync_window_end)
+            existing_history = self._get_history_items_in_range(
+                sync_window_start, sync_window_end
+            )
         return sync_window_start, sync_window_end, existing_history
 
     def _stable_hash_int(self, value):
@@ -801,9 +969,15 @@ class PocketCastsImporter:
                 merged[-1][1] = end
         return [(start, end) for start, end in merged]
 
-    def _build_blocked_intervals(self, existing_history_items, sync_window_start, sync_window_end, inferred_podcasts=None):
+    def _build_blocked_intervals(
+        self,
+        existing_history_items,
+        sync_window_start,
+        sync_window_end,
+        inferred_podcasts=None,
+    ):
         """Build blocked intervals from scrobbled items and previously inferred podcast completions.
-        
+
         Args:
             existing_history_items: List of (end_date, duration, type, is_scrobbled)
             sync_window_start: Start of the sync window
@@ -846,9 +1020,11 @@ class PocketCastsImporter:
 
         return self._merge_intervals(intervals)
 
-    def _has_gap_of_length(self, duration_seconds, sync_window_start, sync_window_end, blocked_intervals):
+    def _has_gap_of_length(
+        self, duration_seconds, sync_window_start, sync_window_end, blocked_intervals
+    ):
         """Check if there's a gap large enough for the placement buffer.
-        
+
         Uses the same capped duration as _fit_completion_after_blocked for consistency.
         """
         # Use capped duration for gap checking (same as fitting logic)
@@ -874,13 +1050,20 @@ class PocketCastsImporter:
             gaps.append((cursor, sync_window_end))
         return gaps
 
-    def _fit_completion_after_blocked(self, base_completion_time, duration_seconds, sync_window_start, sync_window_end, blocked_intervals):
+    def _fit_completion_after_blocked(
+        self,
+        base_completion_time,
+        duration_seconds,
+        sync_window_start,
+        sync_window_end,
+        blocked_intervals,
+    ):
         """Find a valid completion time that doesn't overlap with blocked intervals.
-        
+
         We're placing an END time, not reserving the full playback span. The duration_seconds
         is used to determine a "virtual start" for overlap checking, but the key is finding
         a completion time within the window that doesn't conflict with blocked intervals.
-        
+
         For non-anchored cases, duration_seconds is already capped to a small value (5 min),
         making this more flexible. For anchored cases, it's the remaining time.
         """
@@ -915,9 +1098,11 @@ class PocketCastsImporter:
 
         return candidate_end
 
-    def _fallback_completion_time(self, episode_uuid, sync_window_start, sync_window_end, blocked_intervals):
+    def _fallback_completion_time(
+        self, episode_uuid, sync_window_start, sync_window_end, blocked_intervals
+    ):
         """Place completion time in an available gap using hash-based distribution.
-        
+
         Applies boundary avoidance to prevent landing exactly on gap start/end,
         which would cause clustering on sync window boundaries.
         """
@@ -931,7 +1116,9 @@ class PocketCastsImporter:
         if gaps:
             # Select a gap using hash (prefer larger gaps by weighting)
             # Sort gaps by size descending for better distribution
-            sorted_gaps = sorted(gaps, key=lambda g: (g[1] - g[0]).total_seconds(), reverse=True)
+            sorted_gaps = sorted(
+                gaps, key=lambda g: (g[1] - g[0]).total_seconds(), reverse=True
+            )
             gap_start, gap_end = sorted_gaps[hash_int % len(sorted_gaps)]
             gap_seconds = int((gap_end - gap_start).total_seconds())
 
@@ -1002,14 +1189,15 @@ class PocketCastsImporter:
 
     def _get_last_in_progress_record(self, episode_uuid):
         """Get the last in-progress history record for an episode.
-        
+
         Args:
             episode_uuid: The episode UUID to search for
-            
+
         Returns:
             tuple: (history_date, progress_minutes) or (None, None) if not found
         """
         from django.apps import apps
+
         HistoricalPodcast = apps.get_model("app", "HistoricalPodcast")
 
         podcast_ids = list(
@@ -1052,13 +1240,13 @@ class PocketCastsImporter:
         inferred_podcasts=None,
     ):
         """Infer completion date for a podcast by fitting it into timeline gaps.
-        
+
         For anchored cases (prior in-progress snapshot exists): uses remaining time
         to calculate when the episode likely completed.
-        
+
         For non-anchored cases (98% of completions): uses hash-based distribution
         across the window since we have no information about when listening started.
-        
+
         Args:
             inferred_podcasts: List of (end_time, buffer_seconds) for already-inferred
                 podcasts in this sync, used to prevent overlapping placements.
@@ -1068,7 +1256,9 @@ class PocketCastsImporter:
         debug_context.setdefault("duration_seconds", duration_seconds)
         inferred_podcasts = inferred_podcasts or []
 
-        last_in_progress_date, last_progress_minutes = self._get_last_in_progress_record(episode_uuid)
+        last_in_progress_date, last_progress_minutes = (
+            self._get_last_in_progress_record(episode_uuid)
+        )
         window_seconds = int((sync_window_end - sync_window_start).total_seconds())
         if window_seconds <= 0:
             completion_time = sync_window_end
@@ -1107,16 +1297,26 @@ class PocketCastsImporter:
             hash_offset = self._stable_hash_int(episode_uuid) % window_seconds
             base_completion_time = sync_window_start + timedelta(seconds=hash_offset)
             # Use a small placement duration for gap-fitting (just needs to "fit" the end time)
-            placement_duration_seconds = min(300, duration_seconds)  # 5 min max for fitting
+            placement_duration_seconds = min(
+                300, duration_seconds
+            )  # 5 min max for fitting
 
         # Build blocked intervals including previously inferred podcast completions
         blocked_intervals = self._build_blocked_intervals(
-            existing_history_items, sync_window_start, sync_window_end, inferred_podcasts
+            existing_history_items,
+            sync_window_start,
+            sync_window_end,
+            inferred_podcasts,
         )
         fallback_reason = None
         completion_time = None
 
-        if not self._has_gap_of_length(placement_duration_seconds, sync_window_start, sync_window_end, blocked_intervals):
+        if not self._has_gap_of_length(
+            placement_duration_seconds,
+            sync_window_start,
+            sync_window_end,
+            blocked_intervals,
+        ):
             fallback_reason = "no_gap_for_duration"
         else:
             completion_time = self._fit_completion_after_blocked(
@@ -1162,7 +1362,9 @@ class PocketCastsImporter:
         except Exception as e:
             logger.error("Failed to decrypt refresh token: %s", e)
             # If we can't decrypt, the token is corrupted - disconnect
-            self._disconnect_account("Refresh token decryption failed - token may be corrupted")
+            self._disconnect_account(
+                "Refresh token decryption failed - token may be corrupted"
+            )
             msg = "Invalid refresh token"
             raise MediaImportError(msg) from e
 
@@ -1173,7 +1375,9 @@ class PocketCastsImporter:
         }
 
         try:
-            response = services.api_request("POCKETCASTS", "POST", url, params=payload, headers=headers)
+            response = services.api_request(
+                "POCKETCASTS", "POST", url, params=payload, headers=headers
+            )
 
             if "accessToken" not in response:
                 msg = "Invalid response from token refresh"
@@ -1186,7 +1390,9 @@ class PocketCastsImporter:
 
             # Parse expiration from JWT
             try:
-                decoded = jwt.decode(response["accessToken"], options={"verify_signature": False})
+                decoded = jwt.decode(
+                    response["accessToken"], options={"verify_signature": False}
+                )
                 exp = decoded.get("exp")
                 if exp:
                     self.account.token_expires_at = datetime.fromtimestamp(exp, tz=UTC)
@@ -1197,21 +1403,33 @@ class PocketCastsImporter:
             # Clear connection_broken flag on successful refresh
             self.account.connection_broken = False
             self.account.save()
-            logger.info("Successfully refreshed Pocket Casts token for user %s", self.user.username)
+            logger.info(
+                "Successfully refreshed Pocket Casts token for user %s",
+                self.user.username,
+            )
 
         except requests.HTTPError as e:
             if e.response.status_code == requests.codes.unauthorized:
                 # Refresh token is invalid - try falling back to login if we have credentials
                 has_credentials = bool(self.account.email and self.account.password)
                 if has_credentials:
-                    logger.warning("Refresh token returned 401, falling back to login with credentials for user %s", self.user.username)
+                    logger.warning(
+                        "Refresh token returned 401, falling back to login with credentials for user %s",
+                        self.user.username,
+                    )
                     try:
                         self._login_with_credentials()
-                        logger.info("Successfully recovered from refresh failure using login for user %s", self.user.username)
+                        logger.info(
+                            "Successfully recovered from refresh failure using login for user %s",
+                            self.user.username,
+                        )
                         return  # Successfully logged in, tokens are now stored
                     except MediaImportError:
                         # Login also failed - mark as broken but preserve credentials
-                        logger.error("Both refresh and login failed for user %s", self.user.username)
+                        logger.error(
+                            "Both refresh and login failed for user %s",
+                            self.user.username,
+                        )
                         self.account.connection_broken = True
                         self.account.save()
                         msg = "Token refresh failed and login with stored credentials also failed. Please update your credentials."
@@ -1255,7 +1473,9 @@ class PocketCastsImporter:
         }
         try:
             response = services.api_request(
-                "POCKETCASTS", "POST", url,
+                "POCKETCASTS",
+                "POST",
+                url,
                 params={"uuid": podcast_uuid},
                 headers=headers,
             )
@@ -1294,7 +1514,10 @@ class PocketCastsImporter:
             params = {} if page == 1 else {"page": page}
             try:
                 data = services.api_request(
-                    "POCKETCASTS", "GET", url, params=params,
+                    "POCKETCASTS",
+                    "GET",
+                    url,
+                    params=params,
                 )
             except requests.HTTPError as e:
                 if e.response is not None and e.response.status_code == 401:
@@ -1302,13 +1525,17 @@ class PocketCastsImporter:
                     raise MediaImportError(msg) from e
                 logger.warning(
                     "HTTP error fetching full metadata for podcast %s (page %d): %s",
-                    podcast_uuid, page, e,
+                    podcast_uuid,
+                    page,
+                    e,
                 )
                 return None
             except Exception as e:  # noqa: BLE001
                 logger.warning(
                     "Failed to fetch full metadata for podcast %s (page %d): %s",
-                    podcast_uuid, page, e,
+                    podcast_uuid,
+                    page,
+                    e,
                 )
                 return None
 
@@ -1325,7 +1552,9 @@ class PocketCastsImporter:
         if page > max_pages:
             logger.warning(
                 "Podcast %s has more than %d pages of episodes; stopped at page %d.",
-                podcast_uuid, max_pages, max_pages,
+                podcast_uuid,
+                max_pages,
+                max_pages,
             )
 
         return all_episodes
@@ -1362,25 +1591,25 @@ class PocketCastsImporter:
             podcast_meta: dict from /user/podcast/list (title, author, slug, ...)
         """
         return {
-            "uuid":          play_state["uuid"],
-            "podcastUuid":   podcast_uuid,
-            "podcastTitle":  podcast_meta.get("title", ""),
-            "author":        podcast_meta.get("author", ""),
-            "podcastSlug":   podcast_meta.get("slug", ""),
-            "title":         metadata_ep.get("title", "Unknown Episode"),
-            "slug":          metadata_ep.get("slug", ""),
-            "published":     metadata_ep.get("published", ""),
-            "url":           metadata_ep.get("url", ""),
-            "fileType":      metadata_ep.get("file_type", ""),
-            "duration":      play_state.get("duration") or metadata_ep.get("duration", 0),  # noqa: E501
-            "episodeType":   metadata_ep.get("type", "full"),
+            "uuid": play_state["uuid"],
+            "podcastUuid": podcast_uuid,
+            "podcastTitle": podcast_meta.get("title", ""),
+            "author": podcast_meta.get("author", ""),
+            "podcastSlug": podcast_meta.get("slug", ""),
+            "title": metadata_ep.get("title", "Unknown Episode"),
+            "slug": metadata_ep.get("slug", ""),
+            "published": metadata_ep.get("published", ""),
+            "url": metadata_ep.get("url", ""),
+            "fileType": metadata_ep.get("file_type", ""),
+            "duration": play_state.get("duration") or metadata_ep.get("duration", 0),  # noqa: E501
+            "episodeType": metadata_ep.get("type", "full"),
             "episodeSeason": metadata_ep.get("season"),
             "episodeNumber": metadata_ep.get("number"),
             "playingStatus": play_state.get("playingStatus", 0),
-            "playedUpTo":    play_state.get("playedUpTo", 0),
-            "starred":       play_state.get("starred", False),
-            "isDeleted":     play_state.get("isDeleted", False),
-            "bookmarks":     play_state.get("bookmarks", []),
+            "playedUpTo": play_state.get("playedUpTo", 0),
+            "starred": play_state.get("starred", False),
+            "isDeleted": play_state.get("isDeleted", False),
+            "bookmarks": play_state.get("bookmarks", []),
         }
 
     def _has_listening_activity(self, episode_data):
@@ -1389,10 +1618,11 @@ class PocketCastsImporter:
         played_up_to = episode_data.get("playedUpTo", 0) or 0
         duration = episode_data.get("duration", 0) or 0
         epsilon = 5
-        significant_progress = duration > 0 and (played_up_to > 60 or played_up_to > duration * 0.1)
-        is_completed = (
-            (playing_status == 3 and significant_progress)
-            or (duration > 0 and played_up_to >= duration - epsilon)
+        significant_progress = duration > 0 and (
+            played_up_to > 60 or played_up_to > duration * 0.1
+        )
+        is_completed = (playing_status == 3 and significant_progress) or (
+            duration > 0 and played_up_to >= duration - epsilon
         )
         return playing_status == 2 or played_up_to > 0 or is_completed
 
@@ -1402,7 +1632,10 @@ class PocketCastsImporter:
         show_author = show_metadata.get("author", "")
 
         from integrations import pocketcasts_api
-        pocketcasts_image_url = pocketcasts_api.get_podcast_image_url(podcast_uuid, size=130)
+
+        pocketcasts_image_url = pocketcasts_api.get_podcast_image_url(
+            podcast_uuid, size=130
+        )
 
         show, _ = PodcastShow.objects.get_or_create(
             podcast_uuid=podcast_uuid,
@@ -1411,7 +1644,8 @@ class PocketCastsImporter:
                 "slug": show_metadata.get("slug", ""),
                 "author": show_author,
                 "image": pocketcasts_image_url,
-                "description": show_metadata.get("description", "") or show_metadata.get("descriptionHtml", ""),
+                "description": show_metadata.get("description", "")
+                or show_metadata.get("descriptionHtml", ""),
             },
         )
 
@@ -1423,7 +1657,9 @@ class PocketCastsImporter:
             show.author = show_author
             updated = True
 
-        description = show_metadata.get("description") or show_metadata.get("descriptionHtml", "")
+        description = show_metadata.get("description") or show_metadata.get(
+            "descriptionHtml", ""
+        )
         if description and (not show.description or show.description != description):
             show.description = description
             updated = True
@@ -1439,10 +1675,14 @@ class PocketCastsImporter:
         if not rss_feed_url and not show.rss_feed_url:
             from integrations import pocketcasts_artwork
 
-            logger.debug("Attempting to discover RSS feed URL from iTunes for %s", show.title)
-            itunes_artwork, itunes_feed_url = pocketcasts_artwork.fetch_podcast_artwork_and_rss(
-                show_title=show.title,
-                author=show.author,
+            logger.debug(
+                "Attempting to discover RSS feed URL from iTunes for %s", show.title
+            )
+            itunes_artwork, itunes_feed_url = (
+                pocketcasts_artwork.fetch_podcast_artwork_and_rss(
+                    show_title=show.title,
+                    author=show.author,
+                )
             )
             if itunes_feed_url:
                 rss_feed_url = itunes_feed_url
@@ -1452,7 +1692,9 @@ class PocketCastsImporter:
                     safe_url(rss_feed_url),
                 )
             else:
-                logger.debug("No RSS feed URL found in iTunes results for %s", show.title)
+                logger.debug(
+                    "No RSS feed URL found in iTunes results for %s", show.title
+                )
 
         if rss_feed_url and not show.rss_feed_url:
             show.rss_feed_url = rss_feed_url
@@ -1479,13 +1721,25 @@ class PocketCastsImporter:
             if alternative_artwork:
                 show.image = alternative_artwork
                 updated = True
-                logger.debug("Fetched alternative artwork for %s: %s", show.title, alternative_artwork)
+                logger.debug(
+                    "Fetched alternative artwork for %s: %s",
+                    show.title,
+                    alternative_artwork,
+                )
             elif not show.image or show.image == "":
                 show.image = pocketcasts_image_url
                 updated = True
 
         if updated:
-            show.save(update_fields=["title", "author", "image", "description", "rss_feed_url"])
+            show.save(
+                update_fields=[
+                    "title",
+                    "author",
+                    "image",
+                    "description",
+                    "rss_feed_url",
+                ]
+            )
 
         from app.models import PodcastShowTracker
 
@@ -1534,7 +1788,9 @@ class PocketCastsImporter:
                 )
                 if matching_episodes.exists():
                     episode = matching_episodes.first()
-                    existing_uuid_episode = PodcastEpisode.objects.filter(episode_uuid=episode_uuid).first()
+                    existing_uuid_episode = PodcastEpisode.objects.filter(
+                        episode_uuid=episode_uuid
+                    ).first()
                     if existing_uuid_episode and existing_uuid_episode.id != episode.id:
                         logger.info(
                             "Found duplicate episode: episode %s (UUID: %s) matches by title+date, "
@@ -1558,9 +1814,17 @@ class PocketCastsImporter:
                             media_type=MediaTypes.PODCAST.value,
                         ).first()
 
-                        Podcast.objects.filter(episode=episode).update(episode=existing_uuid_episode)
-                        if duplicate_item and existing_item and duplicate_item.id != existing_item.id:
-                            Podcast.objects.filter(item=duplicate_item).update(item=existing_item)
+                        Podcast.objects.filter(episode=episode).update(
+                            episode=existing_uuid_episode
+                        )
+                        if (
+                            duplicate_item
+                            and existing_item
+                            and duplicate_item.id != existing_item.id
+                        ):
+                            Podcast.objects.filter(item=duplicate_item).update(
+                                item=existing_item
+                            )
                             duplicate_item.delete()
 
                         episode.delete()
@@ -1604,8 +1868,10 @@ class PocketCastsImporter:
                     published=published,
                     duration=duration,
                     audio_url=episode_data.get("url", ""),
-                    episode_number=episode_data.get("episodeNumber") or episode_data.get("episode_number", 0),
-                    season_number=episode_data.get("episodeSeason") or episode_data.get("season_number", 0),
+                    episode_number=episode_data.get("episodeNumber")
+                    or episode_data.get("episode_number", 0),
+                    season_number=episode_data.get("episodeSeason")
+                    or episode_data.get("season_number", 0),
                     file_type=episode_data.get("fileType", ""),
                     episode_type=episode_data.get("episodeType", ""),
                     is_deleted=is_deleted,
@@ -1635,23 +1901,39 @@ class PocketCastsImporter:
                 episode.title = episode_data["title"]
                 updated = True
                 update_fields.append("title")
-            if episode_data.get("slug") is not None and episode.slug != episode_data.get("slug", ""):
+            if episode_data.get(
+                "slug"
+            ) is not None and episode.slug != episode_data.get("slug", ""):
                 episode.slug = episode_data.get("slug", "")
                 updated = True
                 update_fields.append("slug")
-            if episode_data.get("episodeNumber") is not None and episode.episode_number != episode_data.get("episodeNumber"):
+            if episode_data.get(
+                "episodeNumber"
+            ) is not None and episode.episode_number != episode_data.get(
+                "episodeNumber"
+            ):
                 episode.episode_number = episode_data.get("episodeNumber")
                 updated = True
                 update_fields.append("episode_number")
-            if episode_data.get("episodeSeason") is not None and episode.season_number != episode_data.get("episodeSeason"):
+            if episode_data.get(
+                "episodeSeason"
+            ) is not None and episode.season_number != episode_data.get(
+                "episodeSeason"
+            ):
                 episode.season_number = episode_data.get("episodeSeason")
                 updated = True
                 update_fields.append("season_number")
-            if episode_data.get("fileType") is not None and episode.file_type != episode_data.get("fileType", ""):
+            if episode_data.get(
+                "fileType"
+            ) is not None and episode.file_type != episode_data.get("fileType", ""):
                 episode.file_type = episode_data.get("fileType", "")
                 updated = True
                 update_fields.append("file_type")
-            if episode_data.get("episodeType") is not None and episode.episode_type != episode_data.get("episodeType", ""):
+            if episode_data.get(
+                "episodeType"
+            ) is not None and episode.episode_type != episode_data.get(
+                "episodeType", ""
+            ):
                 episode.episode_type = episode_data.get("episodeType", "")
                 updated = True
                 update_fields.append("episode_type")
@@ -1668,7 +1950,7 @@ class PocketCastsImporter:
 
     def _process_episode(self, episode_data, defer_completion_date=False):
         """Process single episode: create/update show/episode, calculate delta.
-        
+
         Args:
             episode_data: Episode data from API
             defer_completion_date: If True, don't set completion_date (will be inferred later)
@@ -1701,21 +1983,28 @@ class PocketCastsImporter:
             duration = catalog_sync["duration"]
 
             # Get existing podcast or create new
-            existing_podcast = self.existing_podcasts.get((episode_uuid, Sources.POCKETCASTS.value))
+            existing_podcast = self.existing_podcasts.get(
+                (episode_uuid, Sources.POCKETCASTS.value)
+            )
 
             # Check if we should process this media
             if existing_podcast:
                 # Skip processing if episode is already completed to prevent duplicates
-                if existing_podcast.status == Status.COMPLETED.value and existing_podcast.end_date:
+                if (
+                    existing_podcast.status == Status.COMPLETED.value
+                    and existing_podcast.end_date
+                ):
                     logger.debug(
                         "Skipping already-completed episode %s (Podcast ID: %s)",
                         episode_data.get("title", "Unknown"),
-                        existing_podcast.id
+                        existing_podcast.id,
                     )
                     return
                 # In "new" mode we still want to update progress/end_date for existing podcasts
                 if self.mode == "overwrite":
-                    self.to_delete[MediaTypes.PODCAST.value][Sources.POCKETCASTS.value].add(episode_uuid)
+                    self.to_delete[MediaTypes.PODCAST.value][
+                        Sources.POCKETCASTS.value
+                    ].add(episode_uuid)
             elif not helpers.should_process_media(
                 self.existing_media,
                 self.to_delete,
@@ -1755,21 +2044,30 @@ class PocketCastsImporter:
             # This handles cases where episode UUID changed due to duplicate episode merging
             # or where existing_podcasts dict was built with stale UUIDs
             if not existing_podcast:
-                existing_podcast = Podcast.objects.filter(item=item, user=self.user).order_by("-created_at").first()
+                existing_podcast = (
+                    Podcast.objects.filter(item=item, user=self.user)
+                    .order_by("-created_at")
+                    .first()
+                )
                 if existing_podcast:
                     # Cache it in the dict for future lookups in this import
-                    self.existing_podcasts[(episode_uuid, Sources.POCKETCASTS.value)] = existing_podcast
+                    self.existing_podcasts[
+                        (episode_uuid, Sources.POCKETCASTS.value)
+                    ] = existing_podcast
                     logger.debug(
                         "Found existing podcast via fallback lookup by Item for episode %s (UUID: %s)",
                         episode_data.get("title", "Unknown"),
-                        episode_uuid
+                        episode_uuid,
                     )
                     # Skip processing if episode is already completed to prevent duplicates
-                    if existing_podcast.status == Status.COMPLETED.value and existing_podcast.end_date:
+                    if (
+                        existing_podcast.status == Status.COMPLETED.value
+                        and existing_podcast.end_date
+                    ):
                         logger.debug(
                             "Skipping already-completed episode %s (Podcast ID: %s)",
                             episode_data.get("title", "Unknown"),
-                            existing_podcast.id
+                            existing_podcast.id,
                         )
                         return
             if self.debug_uuid and (
@@ -1783,7 +2081,9 @@ class PocketCastsImporter:
                 )
 
             # Extract progress data
-            playing_status = episode_data.get("playingStatus", 0)  # 2=in-progress, 3=completed
+            playing_status = episode_data.get(
+                "playingStatus", 0
+            )  # 2=in-progress, 3=completed
             played_up_to = episode_data.get("playedUpTo", 0)  # in seconds
             duration_seconds = duration or 0
             if playing_status == 3 and duration_seconds and not played_up_to:
@@ -1791,7 +2091,11 @@ class PocketCastsImporter:
 
             latest_podcast = existing_podcast
             if not latest_podcast:
-                latest_podcast = Podcast.objects.filter(user=self.user, item=item).order_by("-created_at").first()
+                latest_podcast = (
+                    Podcast.objects.filter(user=self.user, item=item)
+                    .order_by("-created_at")
+                    .first()
+                )
             if self._is_duplicate_completion(
                 latest_podcast,
                 played_up_to,
@@ -1819,7 +2123,10 @@ class PocketCastsImporter:
                 old_played_up_to = existing_podcast.played_up_to_seconds
                 if old_played_up_to is None:
                     # If we previously marked as completed but never stored played_up_to, treat as fully played
-                    if existing_podcast.status == Status.COMPLETED.value and duration_seconds:
+                    if (
+                        existing_podcast.status == Status.COMPLETED.value
+                        and duration_seconds
+                    ):
                         old_played_up_to = duration_seconds
                     else:
                         old_played_up_to = 0
@@ -1832,16 +2139,20 @@ class PocketCastsImporter:
                 old_played_up_to = 0
                 old_status = None
 
-            delta_seconds, new_status, progress_minutes = self._calculate_progress_delta(
-                old_played_up_to,
-                played_up_to,
-                duration_seconds,
-                playing_status,
-                old_status,
+            delta_seconds, new_status, progress_minutes = (
+                self._calculate_progress_delta(
+                    old_played_up_to,
+                    played_up_to,
+                    duration_seconds,
+                    playing_status,
+                    old_status,
+                )
             )
 
             # If we already marked this episode completed, avoid re-counting plays
-            already_completed = existing_podcast and existing_podcast.status == Status.COMPLETED.value
+            already_completed = (
+                existing_podcast and existing_podcast.status == Status.COMPLETED.value
+            )
             if already_completed:
                 # Always set delta_seconds to 0 for already-completed episodes
                 # regardless of new_status to prevent duplicate history entries
@@ -1866,7 +2177,9 @@ class PocketCastsImporter:
                         or delta_seconds > 0
                     ):
                         episode_uuid = episode_data.get("uuid")
-                        sync_window_start, sync_window_end, existing_history = self._get_inference_window()
+                        sync_window_start, sync_window_end, existing_history = (
+                            self._get_inference_window()
+                        )
                         debug_context = {
                             "played_up_to": played_up_to,
                             "old_played_up_to": old_played_up_to,
@@ -1898,7 +2211,9 @@ class PocketCastsImporter:
                 else:
                     # First import: use published + duration
                     if duration_seconds:
-                        completion_date = published + timedelta(seconds=duration_seconds)
+                        completion_date = published + timedelta(
+                            seconds=duration_seconds
+                        )
                     else:
                         completion_date = published
                     if completion_date and timezone.is_naive(completion_date):
@@ -1978,24 +2293,28 @@ class PocketCastsImporter:
                 # Use completion_date for history timestamp if available, otherwise use published date
                 history_timestamp = completion_date or published or timezone.now()
                 if delta_seconds > 0:
-                    self._record_history(existing_podcast, delta_seconds, history_timestamp)
+                    self._record_history(
+                        existing_podcast, delta_seconds, history_timestamp
+                    )
             else:
                 # Final safety check: if no entry found via dictionary/fallback,
                 # check if ANY completed entry exists for this Item
                 # This prevents duplicates when multiple Podcast entries share the same key
                 # and dictionary lookup fails or only finds one of them
-                existing_completed = Podcast.objects.filter(
-                    item=item,
-                    user=self.user,
-                    status=Status.COMPLETED.value
-                ).exclude(end_date__isnull=True).exists()
+                existing_completed = (
+                    Podcast.objects.filter(
+                        item=item, user=self.user, status=Status.COMPLETED.value
+                    )
+                    .exclude(end_date__isnull=True)
+                    .exists()
+                )
 
                 if existing_completed:
                     logger.debug(
                         "Skipping episode %s - already has completed Podcast entry(ies) for Item %s, "
                         "but not found via dictionary/fallback lookup",
                         episode_data.get("title", "Unknown"),
-                        item.id
+                        item.id,
                     )
                     return
 
@@ -2010,8 +2329,12 @@ class PocketCastsImporter:
                     played_up_to_seconds=played_up_to,
                     last_seen_status=playing_status,
                     position_updated_at=timezone.now() if played_up_to else None,
-                    start_date=published if progress_minutes > 0 else None,  # Use published date as start
-                    end_date=completion_date if new_status == Status.COMPLETED.value else None,
+                    start_date=published
+                    if progress_minutes > 0
+                    else None,  # Use published date as start
+                    end_date=completion_date
+                    if new_status == Status.COMPLETED.value
+                    else None,
                     notes="Imported from Pocket Casts",
                 )
 
@@ -2024,21 +2347,33 @@ class PocketCastsImporter:
                         self._pending_history = []
                     # Store episode_uuid, delta, and timestamp for lookup after bulk create
                     history_timestamp = completion_date or published or timezone.now()
-                    self._pending_history.append((episode_uuid, delta_seconds, history_timestamp))
+                    self._pending_history.append(
+                        (episode_uuid, delta_seconds, history_timestamp)
+                    )
 
         except (ValueError, KeyError, TypeError) as e:
-            logger.warning("Failed to process Pocket Casts episode %s: %s", episode_data.get("uuid"), e)
+            logger.warning(
+                "Failed to process Pocket Casts episode %s: %s",
+                episode_data.get("uuid"),
+                e,
+            )
             self.warnings.append(f"{episode_data.get('title', 'Unknown')}: {e!s}")
 
-    def _calculate_progress_delta(self, old_played_up_to, new_played_up_to, duration, playing_status, old_status):
+    def _calculate_progress_delta(
+        self, old_played_up_to, new_played_up_to, duration, playing_status, old_status
+    ):
         """Calculate time delta between imports, determine status, and return progress.
-        
+
         Returns:
             tuple: (delta_seconds, status, progress_minutes)
         """
         # Clamp values to duration
-        old_played = min(old_played_up_to, duration) if duration > 0 else old_played_up_to
-        new_played = min(new_played_up_to, duration) if duration > 0 else new_played_up_to
+        old_played = (
+            min(old_played_up_to, duration) if duration > 0 else old_played_up_to
+        )
+        new_played = (
+            min(new_played_up_to, duration) if duration > 0 else new_played_up_to
+        )
 
         # Calculate delta (ignore negative deltas - user scrubbed backward)
         delta = max(0, new_played - old_played)
@@ -2049,10 +2384,11 @@ class PocketCastsImporter:
         # 1. Playing status is 3 (completed) AND played_up_to is significant (> 60 seconds or > 10% of duration)
         # 2. OR played_up_to is within 5 seconds of duration
         # This prevents false positives where Pocket Casts marks episodes as completed but played_up_to is 0
-        significant_progress = duration > 0 and (new_played > 60 or new_played > duration * 0.1)
-        is_completed = (
-            (playing_status == 3 and significant_progress) or
-            (duration > 0 and new_played >= duration - epsilon)
+        significant_progress = duration > 0 and (
+            new_played > 60 or new_played > duration * 0.1
+        )
+        is_completed = (playing_status == 3 and significant_progress) or (
+            duration > 0 and new_played >= duration - epsilon
         )
 
         # Determine status
@@ -2070,18 +2406,24 @@ class PocketCastsImporter:
         # Default to in-progress if we have any progress
         elif new_played > 0:
             status = Status.IN_PROGRESS.value
-            progress_minutes = (new_played // 60)
+            progress_minutes = new_played // 60
         else:
             status = Status.PLANNING.value
             progress_minutes = 0
 
         return delta, status, progress_minutes
 
-    def _is_duplicate_completion(self, existing_podcast, played_up_to, duration_seconds, playing_status):
+    def _is_duplicate_completion(
+        self, existing_podcast, played_up_to, duration_seconds, playing_status
+    ):
         """Return True when an incoming completed entry matches an existing completed play."""
         if playing_status != 3:
             return False
-        if not existing_podcast or existing_podcast.status != Status.COMPLETED.value or not existing_podcast.end_date:
+        if (
+            not existing_podcast
+            or existing_podcast.status != Status.COMPLETED.value
+            or not existing_podcast.end_date
+        ):
             return False
 
         epsilon = 5
@@ -2094,14 +2436,17 @@ class PocketCastsImporter:
 
         if duration_seconds:
             duration_minutes = duration_seconds // 60
-            if existing_podcast.progress and existing_podcast.progress >= duration_minutes:
+            if (
+                existing_podcast.progress
+                and existing_podcast.progress >= duration_minutes
+            ):
                 return True
 
         return False
 
     def _record_history(self, podcast, delta_seconds, import_time):
         """Record play history entry for delta time.
-        
+
         Creates a historical record entry for the time listened.
         """
         if delta_seconds <= 0:
@@ -2109,7 +2454,9 @@ class PocketCastsImporter:
 
         # Check for duplicate history entry by comparing end_date (actual play completion time)
         # instead of history_date (when the history record was created)
-        latest_history = podcast.history.filter(end_date__isnull=False).order_by("-end_date").first()
+        latest_history = (
+            podcast.history.filter(end_date__isnull=False).order_by("-end_date").first()
+        )
         if latest_history and latest_history.end_date and import_time:
             # Check if we're trying to record history with the same or very similar end_date
             time_diff = abs((import_time - latest_history.end_date).total_seconds())
@@ -2117,7 +2464,7 @@ class PocketCastsImporter:
                 logger.debug(
                     "Skipping duplicate history entry for podcast %s (end_date difference: %d seconds)",
                     podcast.id,
-                    time_diff
+                    time_diff,
                 )
                 return
 
@@ -2129,7 +2476,9 @@ class PocketCastsImporter:
         # Create history entry by updating progress
         # HistoricalRecords will automatically create a history entry
         old_progress = podcast.progress
-        new_progress = min(podcast.progress + delta_minutes, podcast.item.runtime_minutes or 999999)
+        new_progress = min(
+            podcast.progress + delta_minutes, podcast.item.runtime_minutes or 999999
+        )
 
         if new_progress > old_progress:
             podcast.progress = new_progress
@@ -2144,11 +2493,11 @@ class PocketCastsImporter:
 
     def _sync_episodes_from_rss(self, show, rss_feed_url):
         """Sync episodes from RSS feed and merge with existing episodes.
-        
+
         Fetches all episodes from RSS feed and creates/updates PodcastEpisode
         records. This ensures we have the complete episode list, not just
         what's in Pocket Casts history.
-        
+
         Args:
             show: PodcastShow instance
             rss_feed_url: RSS feed URL to fetch from
@@ -2193,7 +2542,10 @@ class PocketCastsImporter:
 
             # If no GUID match, try by title + published date
             if not matched_episode and rss_ep.get("title") and rss_ep.get("published"):
-                title_key = (rss_ep["title"].lower().strip(), rss_ep["published"].date())
+                title_key = (
+                    rss_ep["title"].lower().strip(),
+                    rss_ep["published"].date(),
+                )
                 matched_episode = existing_by_title_date.get(title_key)
 
             if matched_episode:
@@ -2204,10 +2556,16 @@ class PocketCastsImporter:
                 # If UUID differs and we have RSS GUID, update to RSS GUID
                 # This ensures consistency when Pocket Casts UUID and RSS GUID differ
                 # But prefer keeping Pocket Casts UUID format if it looks like one (has hyphens in UUID format)
-                if rss_ep.get("guid") and matched_episode.episode_uuid != rss_ep["guid"]:
+                if (
+                    rss_ep.get("guid")
+                    and matched_episode.episode_uuid != rss_ep["guid"]
+                ):
                     # Only update if the matched episode doesn't look like a Pocket Casts UUID
                     # Pocket Casts UUIDs typically have hyphens in specific positions
-                    is_pocketcasts_uuid = len(matched_episode.episode_uuid) == 36 and matched_episode.episode_uuid.count("-") == 4
+                    is_pocketcasts_uuid = (
+                        len(matched_episode.episode_uuid) == 36
+                        and matched_episode.episode_uuid.count("-") == 4
+                    )
                     if not is_pocketcasts_uuid:
                         logger.info(
                             "Updating episode UUID from %s to %s for episode %s (RSS GUID)",
@@ -2223,23 +2581,38 @@ class PocketCastsImporter:
                     matched_episode.title = rss_ep["title"]
                     updated = True
                     update_fields.append("title")
-                if rss_ep.get("published") and matched_episode.published != rss_ep["published"]:
+                if (
+                    rss_ep.get("published")
+                    and matched_episode.published != rss_ep["published"]
+                ):
                     matched_episode.published = rss_ep["published"]
                     updated = True
                     update_fields.append("published")
-                if rss_ep.get("duration") and matched_episode.duration != rss_ep["duration"]:
+                if (
+                    rss_ep.get("duration")
+                    and matched_episode.duration != rss_ep["duration"]
+                ):
                     matched_episode.duration = rss_ep["duration"]
                     updated = True
                     update_fields.append("duration")
-                if rss_ep.get("audio_url") and matched_episode.audio_url != rss_ep["audio_url"]:
+                if (
+                    rss_ep.get("audio_url")
+                    and matched_episode.audio_url != rss_ep["audio_url"]
+                ):
                     matched_episode.audio_url = rss_ep["audio_url"]
                     updated = True
                     update_fields.append("audio_url")
-                if rss_ep.get("episode_number") is not None and matched_episode.episode_number != rss_ep["episode_number"]:
+                if (
+                    rss_ep.get("episode_number") is not None
+                    and matched_episode.episode_number != rss_ep["episode_number"]
+                ):
                     matched_episode.episode_number = rss_ep["episode_number"]
                     updated = True
                     update_fields.append("episode_number")
-                if rss_ep.get("season_number") is not None and matched_episode.season_number != rss_ep["season_number"]:
+                if (
+                    rss_ep.get("season_number") is not None
+                    and matched_episode.season_number != rss_ep["season_number"]
+                ):
                     matched_episode.season_number = rss_ep["season_number"]
                     updated = True
                     update_fields.append("season_number")
@@ -2254,6 +2627,7 @@ class PocketCastsImporter:
                 if not episode_uuid:
                     # Use a hash of title + published date as fallback UUID
                     import hashlib
+
                     uuid_str = f"{rss_ep.get('title', '')}{rss_ep.get('published', '')}"
                     episode_uuid = hashlib.md5(uuid_str.encode()).hexdigest()[:36]
 
@@ -2275,7 +2649,11 @@ class PocketCastsImporter:
                     created_count += 1
                     logger.debug("Created new episode from RSS: %s", new_episode.title)
                 except Exception:
-                    logger.debug("Skipping duplicate episode UUID %s for show %s", episode_uuid, show.title)
+                    logger.debug(
+                        "Skipping duplicate episode UUID %s for show %s",
+                        episode_uuid,
+                        show.title,
+                    )
 
         logger.info(
             "Synced episodes from RSS for show %s: %d created, %d updated",
@@ -2286,9 +2664,9 @@ class PocketCastsImporter:
 
     def _cleanup_duplicate_episodes(self):
         """Clean up duplicate podcast episodes.
-        
+
         Calls the global cleanup function and handles warnings.
-        
+
         Returns:
             dict: Statistics about the cleanup (duplicates_removed, episodes_merged, items_merged)
         """
@@ -2343,7 +2721,9 @@ class PocketCastsImporter:
 
     def _is_better_history_entry(self, candidate, existing):
         """Return True if candidate is a better entry than existing."""
-        return self._history_entry_sort_key(candidate) > self._history_entry_sort_key(existing)
+        return self._history_entry_sort_key(candidate) > self._history_entry_sort_key(
+            existing
+        )
 
     def _should_keep_existing_episode_uuid(self, episode):
         """Return True if the episode UUID already has tracked identity we should preserve."""
@@ -2362,7 +2742,8 @@ class PocketCastsImporter:
 
         if self._should_keep_existing_episode_uuid(episode):
             if self.debug_uuid and (
-                incoming_uuid == self.debug_uuid or episode.episode_uuid == self.debug_uuid
+                incoming_uuid == self.debug_uuid
+                or episode.episode_uuid == self.debug_uuid
             ):
                 logger.info(
                     "Keeping existing episode UUID %s for %s (incoming %s)",
@@ -2388,16 +2769,15 @@ class PocketCastsImporter:
 
     def _discover_rss_feed_url(self, show_title, author=None):
         """Discover RSS feed URL from iTunes API.
-        
+
         Args:
             show_title: Podcast show title
             author: Podcast author (optional)
-            
+
         Returns:
             RSS feed URL or None if not found
         """
         try:
-
             import requests
 
             # Build search query
@@ -2417,7 +2797,9 @@ class PocketCastsImporter:
             response = requests.get(
                 ITUNES_API_BASE,
                 params=params,
-                headers={"User-Agent": "Floppy/1.0 (https://github.com/dannyvfilms/Floppy)"},
+                headers={
+                    "User-Agent": "Floppy/1.0 (https://github.com/dannyvfilms/Floppy)"
+                },
                 timeout=10,
             )
             response.raise_for_status()

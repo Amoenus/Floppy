@@ -4,6 +4,7 @@ Contains all datetime-heavy logic for the activity heatmap, month/year
 timeline, streak computation, and day-of-week statistics.  Only external
 dependencies are Django ORM, dateutil, and stats_utils.
 """
+
 import calendar
 import datetime
 import logging
@@ -24,6 +25,7 @@ logger = logging.getLogger(__name__)
 # Timeline
 # ---------------------------------------------------------------------------
 
+
 def get_timeline(user_media):
     """Build a timeline of media consumption organized by month-year."""
     timeline = defaultdict(list)
@@ -42,10 +44,14 @@ def get_timeline(user_media):
                     for media in seasons_qs.all():
                         # media here is a Season instance
                         local_start_date = (
-                            timezone.localdate(media.start_date) if media.start_date else None
+                            timezone.localdate(media.start_date)
+                            if media.start_date
+                            else None
                         )
                         local_end_date = (
-                            timezone.localdate(media.end_date) if media.end_date else None
+                            timezone.localdate(media.end_date)
+                            if media.end_date
+                            else None
                         )
 
                         if media.start_date and media.end_date:
@@ -89,7 +95,9 @@ def get_timeline(user_media):
                     continue
                 for season in seasons_qs.all():
                     _tl_local_start = (
-                        timezone.localdate(season.start_date) if season.start_date else None
+                        timezone.localdate(season.start_date)
+                        if season.start_date
+                        else None
                     )
                     _tl_local_end = (
                         timezone.localdate(season.end_date) if season.end_date else None
@@ -97,13 +105,19 @@ def get_timeline(user_media):
                     if season.start_date and season.end_date:
                         _cur = _tl_local_start
                         while _cur <= _tl_local_end:
-                            timeline[f"{calendar.month_name[_cur.month]} {_cur.year}"].append(season)
+                            timeline[
+                                f"{calendar.month_name[_cur.month]} {_cur.year}"
+                            ].append(season)
                             _cur += relativedelta(months=1)
                             _cur = _cur.replace(day=1)
                     elif season.start_date:
-                        timeline[f"{calendar.month_name[_tl_local_start.month]} {_tl_local_start.year}"].append(season)
+                        timeline[
+                            f"{calendar.month_name[_tl_local_start.month]} {_tl_local_start.year}"
+                        ].append(season)
                     elif season.end_date:
-                        timeline[f"{calendar.month_name[_tl_local_end.month]} {_tl_local_end.year}"].append(season)
+                        timeline[
+                            f"{calendar.month_name[_tl_local_end.month]} {_tl_local_end.year}"
+                        ].append(season)
                 continue
 
             local_start_date = (
@@ -175,6 +189,7 @@ def time_line_sort_key(media):
 # Activity calendar
 # ---------------------------------------------------------------------------
 
+
 def _convert_chart_to_day_minutes(daily_hours_data):
     """Convert Chart.js formatted daily hours data to day_minutes_by_type format.
 
@@ -221,7 +236,9 @@ def get_activity_data(user, start_date, end_date, daily_hours_data=None):
         end_date = timezone.localtime()
 
     week_start_sunday = user.week_start_day == WeekStartDayChoices.SUNDAY
-    start_date_aligned = get_aligned_week_start(start_date, week_start_sunday=week_start_sunday)
+    start_date_aligned = get_aligned_week_start(
+        start_date, week_start_sunday=week_start_sunday
+    )
 
     combined_data = get_filtered_historical_data(start_date_aligned, end_date, user)
 
@@ -232,7 +249,9 @@ def get_activity_data(user, start_date, end_date, daily_hours_data=None):
             min(dates) if dates else timezone.localdate(),
             datetime.time.min,
         )
-        start_date_aligned = get_aligned_week_start(start_date, week_start_sunday=week_start_sunday)
+        start_date_aligned = get_aligned_week_start(
+            start_date, week_start_sunday=week_start_sunday
+        )
 
     # Aggregate counts by date
     date_counts = {}
@@ -386,6 +405,7 @@ def get_filtered_historical_data(start_date, end_date, user):
 # Day-of-week and streak statistics
 # ---------------------------------------------------------------------------
 
+
 def calculate_day_of_week_stats(date_counts, start_date):
     """Calculate the most active day of the week based on activity frequency.
 
@@ -479,7 +499,9 @@ def calculate_streak_details(date_counts, end_date):
             continue
 
         streak_len = (prev_date - streak_start).days + 1
-        if streak_len > longest_streak or (streak_len == longest_streak and prev_date > longest_end):
+        if streak_len > longest_streak or (
+            streak_len == longest_streak and prev_date > longest_end
+        ):
             longest_streak = streak_len
             longest_start = streak_start
             longest_end = prev_date
@@ -488,7 +510,9 @@ def calculate_streak_details(date_counts, end_date):
         prev_date = current_date
 
     streak_len = (prev_date - streak_start).days + 1
-    if streak_len > longest_streak or (streak_len == longest_streak and prev_date > longest_end):
+    if streak_len > longest_streak or (
+        streak_len == longest_streak and prev_date > longest_end
+    ):
         longest_streak = streak_len
         longest_start = streak_start
         longest_end = prev_date

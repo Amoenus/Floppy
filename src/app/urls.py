@@ -13,7 +13,11 @@ urlpatterns = [
     path("discover/rows", views.discover_rows, name="discover_rows"),
     path("discover/refresh", views.refresh_discover, name="refresh_discover"),
     path("discover/action", views.discover_action, name="discover_action"),
-    path("discover/toggle-hidden", views.discover_toggle_hidden, name="discover_toggle_hidden"),
+    path(
+        "discover/toggle-hidden",
+        views.discover_toggle_hidden,
+        name="discover_toggle_hidden",
+    ),
     path(
         "rss/<str:token>/<media_type:media_type>/<str:row_key>.xml",
         discover_feeds.discover_row_feed,
@@ -348,7 +352,11 @@ urlpatterns = [
         name="create_album_from_search",
     ),
     # Podcast show hierarchy navigation
-    path("podcast/show/<int:show_id>/", views.podcast_show_detail, name="podcast_show_detail"),
+    path(
+        "podcast/show/<int:show_id>/",
+        views.podcast_show_detail,
+        name="podcast_show_detail",
+    ),
     path(
         "podcast/show/<int:show_id>/track_modal/",
         views.podcast_show_track_modal,

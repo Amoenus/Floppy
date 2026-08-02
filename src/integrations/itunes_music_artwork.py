@@ -17,11 +17,11 @@ USER_AGENT = "Floppy/1.0 (https://github.com/dannyvfilms/Floppy)"
 
 def fetch_album_artwork(album_title: str, artist_name: str) -> str | None:
     """Fetch album artwork from iTunes API.
-    
+
     Args:
         album_title: Album title
         artist_name: Artist name
-        
+
     Returns:
         Image URL string or None if not found
     """
@@ -82,9 +82,15 @@ def fetch_album_artwork(album_title: str, artist_name: str) -> str | None:
             if album_matches and artist_matches:
                 artwork_url = result.get("artworkUrl600") or result.get("artworkUrl100")
                 if artwork_url:
-                    logger.debug("Found iTunes artwork for album %s by %s", album_title, artist_name)
+                    logger.debug(
+                        "Found iTunes artwork for album %s by %s",
+                        album_title,
+                        artist_name,
+                    )
                     # Cache the result
-                    cache.set(cache_key, artwork_url, 60 * 60 * 24 * 7)  # Cache for 7 days
+                    cache.set(
+                        cache_key, artwork_url, 60 * 60 * 24 * 7
+                    )  # Cache for 7 days
                     return artwork_url
 
         # If no exact match, try first result if artist matches
@@ -93,20 +99,35 @@ def fetch_album_artwork(album_title: str, artist_name: str) -> str | None:
             if artist_name_lower in result_artist or result_artist in artist_name_lower:
                 artwork_url = result.get("artworkUrl600") or result.get("artworkUrl100")
                 if artwork_url:
-                    logger.debug("Using iTunes artwork for album %s by %s (best match)", album_title, artist_name)
+                    logger.debug(
+                        "Using iTunes artwork for album %s by %s (best match)",
+                        album_title,
+                        artist_name,
+                    )
                     cache.set(cache_key, artwork_url, 60 * 60 * 24 * 7)
                     return artwork_url
 
         # Last resort: use first result if available
         if results:
-            artwork_url = results[0].get("artworkUrl600") or results[0].get("artworkUrl100")
+            artwork_url = results[0].get("artworkUrl600") or results[0].get(
+                "artworkUrl100"
+            )
             if artwork_url:
-                logger.debug("Using first iTunes result for album %s by %s", album_title, artist_name)
+                logger.debug(
+                    "Using first iTunes result for album %s by %s",
+                    album_title,
+                    artist_name,
+                )
                 cache.set(cache_key, artwork_url, 60 * 60 * 24 * 7)
                 return artwork_url
 
     except Exception as e:
-        logger.debug("Failed to fetch album artwork from iTunes for %s by %s: %s", album_title, artist_name, e)
+        logger.debug(
+            "Failed to fetch album artwork from iTunes for %s by %s: %s",
+            album_title,
+            artist_name,
+            e,
+        )
 
     # Cache None to avoid repeated lookups
     cache.set(cache_key, None, 60 * 60 * 24 * 7)
@@ -115,15 +136,15 @@ def fetch_album_artwork(album_title: str, artist_name: str) -> str | None:
 
 def fetch_artist_artwork(artist_name: str) -> str | None:
     """Fetch artist artwork from iTunes API.
-    
+
     Note: iTunes doesn't typically have direct artist photos, so this
     function searches for albums by the artist and returns artwork from
     a representative album (preferring early releases which are often
     more iconic).
-    
+
     Args:
         artist_name: Artist name
-        
+
     Returns:
         Image URL string or None if not found
     """
@@ -194,7 +215,9 @@ def fetch_artist_artwork(artist_name: str) -> str | None:
         return artwork_url
 
     except Exception as e:
-        logger.debug("Failed to fetch artist artwork from iTunes for %s: %s", artist_name, e)
+        logger.debug(
+            "Failed to fetch artist artwork from iTunes for %s: %s", artist_name, e
+        )
 
     # Cache None to avoid repeated lookups
     cache.set(cache_key, None, 60 * 60 * 24 * 7)

@@ -59,7 +59,11 @@ def media_save(request):
 
     # Handle percentage conversion for books/comics/manga
     progress_value = request.POST.get("progress")
-    if progress_value and media_type in (MediaTypes.BOOK.value, MediaTypes.COMIC.value, MediaTypes.MANGA.value):
+    if progress_value and media_type in (
+        MediaTypes.BOOK.value,
+        MediaTypes.COMIC.value,
+        MediaTypes.MANGA.value,
+    ):
         if request.user.book_comic_manga_progress_percentage:
             # Make POST mutable for modification
             mutable_post = request.POST.copy()
@@ -84,7 +88,9 @@ def media_save(request):
                     [season_number],
                 )
                 if media_type == MediaTypes.BOOK.value:
-                    number_of_pages = metadata.get("max_progress") or metadata.get("details", {}).get("number_of_pages")
+                    number_of_pages = metadata.get("max_progress") or metadata.get(
+                        "details", {}
+                    ).get("number_of_pages")
                 else:
                     number_of_pages = None
                 item, _ = Item.objects.get_or_create(
@@ -115,7 +121,9 @@ def media_save(request):
                                 item.media_id,
                                 item.source,
                             )
-                            number_of_pages = metadata.get("max_progress") or metadata.get("details", {}).get("number_of_pages")
+                            number_of_pages = metadata.get(
+                                "max_progress"
+                            ) or metadata.get("details", {}).get("number_of_pages")
                             if number_of_pages:
                                 item.number_of_pages = number_of_pages
                                 item.save(update_fields=["number_of_pages"])
@@ -125,8 +133,15 @@ def media_save(request):
                 else:
                     # For comics and manga, need to get max_progress from events
                     from app.models import Comic, Manga
-                    model_class = Manga if media_type == MediaTypes.MANGA.value else Comic
-                    media_list = list(model_class.objects.filter(user=request.user, item=item).select_related("item"))
+
+                    model_class = (
+                        Manga if media_type == MediaTypes.MANGA.value else Comic
+                    )
+                    media_list = list(
+                        model_class.objects.filter(
+                            user=request.user, item=item
+                        ).select_related("item")
+                    )
                     if media_list:
                         BasicMedia.objects.annotate_max_progress(media_list, media_type)
                         if hasattr(media_list[0], "max_progress"):
@@ -164,7 +179,10 @@ def media_save(request):
             instance.artist = hydrated.artist
             instance.album = hydrated.album
             instance.track = hydrated.track
-        if tracking_media_type == MediaTypes.PODCAST.value and hydrated.podcast_show is not None:
+        if (
+            tracking_media_type == MediaTypes.PODCAST.value
+            and hydrated.podcast_show is not None
+        ):
             instance.show = hydrated.podcast_show
 
     # Validate the form and save the instance if it's valid
@@ -172,9 +190,7 @@ def media_save(request):
     form = form_class(request.POST, instance=instance, user=request.user)
     media = instance
     is_htmx = bool(request.headers.get("HX-Request"))
-    track_form_id = request.POST.get("track_form_id") or (
-        f"track-form-{uuid4().hex}"
-    )
+    track_form_id = request.POST.get("track_form_id") or (f"track-form-{uuid4().hex}")
     return_url = quote(
         request.GET.get("next") or request.POST.get("return_url") or "",
         safe="",
@@ -197,7 +213,9 @@ def media_save(request):
         ) or "item"
         if is_htmx:
             user_medias = list(
-                media.__class__.objects.filter(user=request.user, item=media.item).select_related(
+                media.__class__.objects.filter(
+                    user=request.user, item=media.item
+                ).select_related(
                     "item",
                 ),
             )
@@ -390,9 +408,7 @@ def _write_episode_save_oob(
     parsed_next = urlparse(next_path).path
     path_parts = [segment for segment in parsed_next.split("/") if segment]
     is_episode_page = (
-        len(path_parts) >= 2
-        and path_parts[0] == "details"
-        and "episode" in path_parts
+        len(path_parts) >= 2 and path_parts[0] == "details" and "episode" in path_parts
     )
 
     if is_episode_page:
@@ -538,10 +554,14 @@ def episode_save(request):
 
         episode = episode_history[0]
         episode.history = episode_history
-        episode.collection_entry = CollectionEntry.objects.filter(
-            item=episode.item,
-            user=request.user,
-        ).select_related("item").first()
+        episode.collection_entry = (
+            CollectionEntry.objects.filter(
+                item=episode.item,
+                user=request.user,
+            )
+            .select_related("item")
+            .first()
+        )
 
         response = HttpResponse()
         _write_episode_save_oob(
@@ -625,10 +645,14 @@ def episode_drop(request):
 
         episode = episode_history[0]
         episode.history = episode_history
-        episode.collection_entry = CollectionEntry.objects.filter(
-            item=episode.item,
-            user=request.user,
-        ).select_related("item").first()
+        episode.collection_entry = (
+            CollectionEntry.objects.filter(
+                item=episode.item,
+                user=request.user,
+            )
+            .select_related("item")
+            .first()
+        )
 
         response = HttpResponse()
         _write_episode_save_oob(
@@ -691,10 +715,14 @@ def episode_history_poll(request, season_id):
 
         episode = episode_history[0]
         episode.history = episode_history
-        episode.collection_entry = CollectionEntry.objects.filter(
-            item_id=item_id,
-            user=request.user,
-        ).select_related("item").first()
+        episode.collection_entry = (
+            CollectionEntry.objects.filter(
+                item_id=item_id,
+                user=request.user,
+            )
+            .select_related("item")
+            .first()
+        )
 
         response.write(
             render_to_string(
@@ -736,12 +764,14 @@ def episode_bulk_save(request):
     if not start_date_str or not end_date_str:
         if request.headers.get("HX-Request"):
             response = HttpResponse(status=422)
-            response["HX-Trigger"] = json.dumps({
-                "showToast": {
-                    "message": "Start and end dates are required.",
-                    "type": "error",
-                },
-            })
+            response["HX-Trigger"] = json.dumps(
+                {
+                    "showToast": {
+                        "message": "Start and end dates are required.",
+                        "type": "error",
+                    },
+                }
+            )
             return response
         messages.error(request, "Start and end dates are required.")
         return redirect(request.POST.get("return_url") or "/")
@@ -754,12 +784,14 @@ def episode_bulk_save(request):
     except (KeyError, ValueError):
         if request.headers.get("HX-Request"):
             response = HttpResponse(status=422)
-            response["HX-Trigger"] = json.dumps({
-                "showToast": {
-                    "message": "Invalid episode range.",
-                    "type": "error",
-                },
-            })
+            response["HX-Trigger"] = json.dumps(
+                {
+                    "showToast": {
+                        "message": "Invalid episode range.",
+                        "type": "error",
+                    },
+                }
+            )
             return response
         messages.error(request, "Invalid episode range.")
         return redirect(request.POST.get("return_url") or "/")
@@ -799,13 +831,15 @@ def episode_bulk_save(request):
     if request.headers.get("HX-Request"):
         plural = "s" if episode_count != 1 else ""
         response = HttpResponse(status=204)
-        response["HX-Trigger"] = json.dumps({
-            "closeModal": {},
-            "showToast": {
-                "message": f"Adding plays to {episode_count} episode{plural}.",
-                "type": "info",
-            },
-        })
+        response["HX-Trigger"] = json.dumps(
+            {
+                "closeModal": {},
+                "showToast": {
+                    "message": f"Adding plays to {episode_count} episode{plural}.",
+                    "type": "info",
+                },
+            }
+        )
         return response
 
     messages.info(request, f"Adding plays to {episode_count} episodes.")

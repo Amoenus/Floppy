@@ -367,11 +367,12 @@ class Command(BaseCommand):
             if item:
                 matched_ids.add(item.pk)
                 found_count += 1
-                rating = float(item.trakt_rating) if item.trakt_rating is not None else None
+                rating = (
+                    float(item.trakt_rating) if item.trakt_rating is not None else None
+                )
                 votes = item.trakt_rating_count or 0
                 self.stdout.write(
-                    f"\u2713 {rank:3}. {title} "
-                    f"(rating={rating}, votes={votes})"
+                    f"\u2713 {rank:3}. {title} (rating={rating}, votes={votes})"
                 )
                 found_items.append(
                     {
@@ -382,9 +383,7 @@ class Command(BaseCommand):
                     }
                 )
             else:
-                self.stdout.write(
-                    self.style.WARNING(f"\u2717 {rank:3}. {title}")
-                )
+                self.stdout.write(self.style.WARNING(f"\u2717 {rank:3}. {title}"))
 
         total = len(TITLES)
         self.stdout.write(f"\nFound: {found_count}/{total}")
@@ -407,6 +406,4 @@ class Command(BaseCommand):
         with open(abs_output, "w", encoding="utf-8") as fh:
             json.dump(fixture, fh, indent=2, ensure_ascii=False)
 
-        self.stdout.write(
-            self.style.SUCCESS(f"Fixture written to {abs_output}")
-        )
+        self.stdout.write(self.style.SUCCESS(f"Fixture written to {abs_output}"))
