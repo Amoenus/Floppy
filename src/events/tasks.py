@@ -167,6 +167,14 @@ def send_daily_digest_notifications():
     return notifications.send_daily_digest()
 
 
+@shared_task(name="Send premiere digest")
+def send_premiere_digest_notifications():
+    """Send weekly digest of upcoming show and season premieres."""
+    logger.info("Starting premiere digest task")
+
+    return notifications.send_premiere_digest()
+
+
 @shared_task(name="Refresh podcast episodes")
 def refresh_podcast_episodes():
     """Refresh episode lists from RSS feeds for all podcast shows.

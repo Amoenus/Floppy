@@ -26,6 +26,7 @@ class NotificationSettingsFormTests(TestCase):
                 "notification_urls",
                 "daily_digest_enabled",
                 "release_notifications_enabled",
+                "premiere_notifications_enabled",
             ],
         )
 

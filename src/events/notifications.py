@@ -114,13 +114,65 @@ def send_daily_digest():
     return f"Daily digest sent for {result['event_count']} releases"
 
 
-def send_notifications(events, users, title):
+def send_premiere_digest():
+    """Send weekly digest of new show and season premieres."""
+    # Rolling 7-day window starting at local midnight today
+    now_in_current_tz = timezone.localtime()
+    today_start = now_in_current_tz.replace(
+        hour=0,
+        minute=0,
+        second=0,
+        microsecond=0,
+    )
+    week_end = today_start + timezone.timedelta(days=7)
+
+    today_start_utc = today_start.astimezone(UTC)
+    week_end_utc = week_end.astimezone(UTC)
+
+    users = (
+        get_user_model()
+        .objects.filter(
+            ~Q(notification_urls=""),
+            premiere_notifications_enabled=True,
+        )
+        .prefetch_related("notification_excluded_items")
+    )
+
+    if not users.exists():
+        return "No users with premiere notifications enabled"
+
+    # A season's first episode (content_number=1) marks its premiere
+    base_queryset = Event.objects.filter(
+        item__media_type=MediaTypes.SEASON.value,
+        content_number=1,
+        datetime__gte=today_start_utc,
+        datetime__lt=week_end_utc,
+    ).select_related("item")
+
+    events = Event.objects.sort_with_sentinel_last(base_queryset)
+
+    if not events.exists():
+        return "No premieres scheduled this week"
+
+    result = send_notifications(
+        events=events,
+        users=users,
+        title="🎬 Floppy: Premieres This Week 🎬",
+        formatter=format_premiere_notification_html,
+    )
+
+    return f"Premiere digest sent for {result['event_count']} premieres"
+
+
+def send_notifications(events, users, title, formatter=None):
     """Process events and send notifications to appropriate users.
 
     Args:
         events: QuerySet of Event objects
         users: QuerySet of User objects
         title: Notification title
+        formatter: Callable(releases) -> HTML body. Defaults to
+            format_notification_html.
 
     Returns:
         Dictionary with results information
@@ -146,7 +198,7 @@ def send_notifications(events, users, title):
         target_events=events_by_item_and_content,
     )
 
-    deliver_notifications(user_releases, users, title)
+    deliver_notifications(user_releases, users, title, formatter=formatter)
 
     return {
         "event_count": event_count,
@@ -370,14 +422,19 @@ def is_user_tracking_item(user, item, user_tracking_data):
     return media_obj.status not in INACTIVE_TRACKING_STATUSES
 
 
-def deliver_notifications(user_releases, users, title):
+def deliver_notifications(user_releases, users, title, formatter=None):
     """Deliver notifications to users using calendar logic.
 
     Args:
         user_releases: Dictionary mapping user IDs to lists of events
         users: QuerySet of User objects
         title: Notification title
+        formatter: Callable(releases) -> HTML body. Defaults to
+            format_notification_html.
     """
+    if formatter is None:
+        formatter = format_notification_html
+
     # Create user lookup
     users_by_id = {user.id: user for user in users}
 
@@ -398,7 +455,7 @@ def deliver_notifications(user_releases, users, title):
             continue
 
         # Format notification as HTML for richer email output
-        notification_body = format_notification_html(releases=releases)
+        notification_body = formatter(releases=releases)
 
         # Send notification
         send_user_notification(
@@ -492,6 +549,35 @@ def format_notification_html(releases):
                 line = f"{escape(str(event))} ({time_str})"
             notification_html.append(f"<li>{line}</li>")
 
+        notification_html.append("</ul>")
+
+    notification_html.append("<p>Enjoy your media!</p></div>")
+    return "".join(notification_html)
+
+
+def format_premiere_notification_html(releases):
+    """Format premiere digest HTML, grouping new shows vs new seasons."""
+    new_shows = [event for event in releases if event.item.season_number == 1]
+    new_seasons = [event for event in releases if event.item.season_number != 1]
+
+    notification_html = ["<div>"]
+
+    for heading, events in (
+        ("🎬 New Shows", new_shows),
+        ("🆕 New Seasons", new_seasons),
+    ):
+        if not events:
+            continue
+
+        notification_html.append(f"<p><strong>{escape(heading)}</strong></p><ul>")
+        for event in events:
+            if event.is_sentinel_time:
+                line = escape(str(event.item))
+            else:
+                local_dt = timezone.localtime(event.datetime)
+                date_str = local_dt.strftime("%a, %b %d")
+                line = f"{escape(str(event.item))} ({date_str})"
+            notification_html.append(f"<li>{line}</li>")
         notification_html.append("</ul>")
 
     notification_html.append("<p>Enjoy your media!</p></div>")

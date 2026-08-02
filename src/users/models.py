@@ -799,6 +799,10 @@ class User(AbstractUser):
         default=True,
         help_text="Receive a daily digest of upcoming releases",
     )
+    premiere_notifications_enabled = models.BooleanField(
+        default=True,
+        help_text="Receive a weekly digest of new show and season premieres",
+    )
 
     # Account recovery and authenticator settings
     authenticator_secret = models.CharField(

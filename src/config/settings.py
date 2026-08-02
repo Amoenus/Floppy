@@ -1185,6 +1185,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "Send daily digest",
         "schedule": crontab(hour=DAILY_DIGEST_HOUR, minute=0),
     },
+    "send_premiere_digest": {
+        "task": "Send premiere digest",
+        "schedule": crontab(day_of_week="mon", hour=DAILY_DIGEST_HOUR, minute=0),
+    },
     "backfill_item_metadata": {
         "task": "Backfill item metadata",
         "schedule": crontab(hour=3, minute=0),  # every day at 3 AM
