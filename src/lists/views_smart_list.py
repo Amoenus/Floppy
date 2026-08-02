@@ -35,6 +35,7 @@ from lists.views_helpers import (
     _date_sort_value,
     _media_date_value,
     _order_expression,
+    _platform_sort_value,
     _progress_value,
     _rating_value,
     _resolve_list_sort_direction,
@@ -69,7 +70,13 @@ def _smart_list_detail_response(
         request.GET.get("direction", saved_direction) or None,
     )
 
-    layout = request.GET.get("layout", "grid")
+    if request.user.is_authenticated:
+        layout = request.user.update_preference(
+            "list_detail_layout",
+            request.GET.get("layout"),
+        )
+    else:
+        layout = request.GET.get("layout", "grid")
     if layout not in {"grid", "table"}:
         layout = "grid"
 
@@ -177,6 +184,10 @@ def _smart_list_detail_response(
     )
     total_items_count = items.count()
     filtered_media_types = list(items.values_list("media_type", flat=True).distinct())
+    current_media_type = _resolve_list_table_media_type(
+        active_rules["media_types"],
+        filtered_media_types,
+    )
 
     sort_mapping = {
         ListDetailSortChoices.DATE_ADDED: [
@@ -235,6 +246,10 @@ def _smart_list_detail_response(
             ),
             "reverse": direction == "desc",
         },
+        ListDetailSortChoices.PLATFORM: {
+            "key": lambda item: _platform_sort_value(item),
+            "reverse": direction == "desc",
+        },
     }
 
     sort_config = media_sort_config.get(sort_by)
@@ -277,7 +292,15 @@ def _smart_list_detail_response(
             if value != MediaStatusChoices.ALL
         ],
     ]
-    sort_choices = sorted(ListDetailSortChoices.choices, key=lambda x: x[1])
+    sort_choices = sorted(
+        (
+            choice
+            for choice in ListDetailSortChoices.choices
+            if choice[0] != ListDetailSortChoices.PLATFORM
+            or current_media_type == MediaTypes.GAME.value
+        ),
+        key=lambda x: x[1],
+    )
 
     filter_data = smart_rules.build_rule_filter_data(
         owner=custom_list.owner,
@@ -319,10 +342,6 @@ def _smart_list_detail_response(
             active_rules.get("author"),
             active_rules.get("search"),
         ],
-    )
-    current_media_type = _resolve_list_table_media_type(
-        active_rules["media_types"],
-        filtered_media_types,
     )
     context = {
         "user": request.user,

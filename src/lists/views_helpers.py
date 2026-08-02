@@ -50,6 +50,7 @@ ASCENDING_LIST_SORTS = {
     ListDetailSortChoices.MEDIA_TYPE,
     ListDetailSortChoices.RELEASE_DATE,
     ListDetailSortChoices.START_DATE,
+    ListDetailSortChoices.PLATFORM,
 }
 
 
@@ -482,6 +483,7 @@ class _ListTableRowAdapter:
         self.track_media_id = self.id
         self.created_at = getattr(list_item, "list_date_added", None)
         self.repeats = getattr(self._source_media, "repeats", 1) or 1
+        self.display_platform = _extract_display_platform(list_item)
 
     def __getattr__(self, attr):
         if self._source_media is not None and hasattr(self._source_media, attr):
@@ -646,6 +648,23 @@ _STATUS_SORT_ORDER = {
 def _status_value(media):
     status = getattr(media, "status", None) if media else None
     return _STATUS_SORT_ORDER.get(status, len(_STATUS_SORT_ORDER))
+
+
+def _extract_display_platform(item):
+    """Best-effort single platform label (only games populate Item.platforms)."""
+    platforms = getattr(item, "platforms", None)
+    if not platforms:
+        return ""
+    if isinstance(platforms, str):
+        return platforms.strip()
+    if isinstance(platforms, list):
+        return next((str(p).strip() for p in platforms if str(p).strip()), "")
+    return ""
+
+
+def _platform_sort_value(item):
+    platform = _extract_display_platform(item)
+    return platform.lower() if platform else "￿"
 
 
 def _media_date_value(media, attr_name):

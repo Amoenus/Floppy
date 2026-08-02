@@ -35,6 +35,7 @@ from lists.views_helpers import (
     _get_completed_item_ids,
     _media_date_value,
     _order_expression,
+    _platform_sort_value,
     _progress_value,
     _rating_value,
     _resolve_list_sort_direction,
@@ -191,7 +192,13 @@ def list_detail(request, list_reference):
         legacy_media_type = request.GET.get("type", "all")
         if legacy_media_type and legacy_media_type != "all":
             selected_media_types = [legacy_media_type]
-    layout = request.GET.get("layout", "grid")
+    if request.user.is_authenticated:
+        layout = request.user.update_preference(
+            "list_detail_layout",
+            request.GET.get("layout"),
+        )
+    else:
+        layout = request.GET.get("layout", "grid")
     if layout not in {"grid", "table"}:
         layout = "grid"
     valid_media_types = set(MediaTypes.values)
@@ -311,6 +318,10 @@ def list_detail(request, list_reference):
             "key": lambda item: _status_value(item.media),
             "reverse": params["direction"] == "desc",
         },
+        "platform": {
+            "key": lambda item: _platform_sort_value(item),
+            "reverse": params["direction"] == "desc",
+        },
     }
 
     sort_config = media_sort_config.get(params["sort_by"])
@@ -365,6 +376,15 @@ def list_detail(request, list_reference):
         params["media_types"],
         filtered_media_types,
     )
+    sort_choices = sorted(
+        (
+            choice
+            for choice in ListDetailSortChoices.choices
+            if choice[0] != ListDetailSortChoices.PLATFORM
+            or current_media_type == MediaTypes.GAME.value
+        ),
+        key=lambda x: x[1],
+    )
     context = {
         "user": request.user,
         "custom_list": custom_list,
@@ -380,7 +400,7 @@ def list_detail(request, list_reference):
         "chip_sort": chip_sort,
         "current_statuses": params["status_filter"],
         "current_layout": layout,
-        "sort_choices": sorted(ListDetailSortChoices.choices, key=lambda x: x[1]),
+        "sort_choices": sort_choices,
         "status_choices": MediaStatusChoices.choices,
         "public_view": public_view,
         "can_edit": can_edit,
