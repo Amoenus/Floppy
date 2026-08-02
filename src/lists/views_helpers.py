@@ -13,7 +13,7 @@ from django.conf import settings
 from django.db.models import Count, F, Q
 from django.urls import reverse
 
-from app.models import Item, MediaManager, MediaTypes
+from app.models import Item, MediaManager, MediaTypes, Status
 from app.providers import services
 from integrations.imports import helpers as import_helpers
 from integrations.models import TraktAccount
@@ -608,6 +608,20 @@ def _progress_value(media):
     if progress is not None:
         return progress
     return -1
+
+
+_STATUS_SORT_ORDER = {
+    Status.PLANNING: 0,
+    Status.IN_PROGRESS: 1,
+    Status.COMPLETED: 2,
+    Status.PAUSED: 3,
+    Status.DROPPED: 4,
+}
+
+
+def _status_value(media):
+    status = getattr(media, "status", None) if media else None
+    return _STATUS_SORT_ORDER.get(status, len(_STATUS_SORT_ORDER))
 
 
 def _media_date_value(media, attr_name):

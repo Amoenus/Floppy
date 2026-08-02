@@ -604,6 +604,104 @@ class ListDetailViewTests(TestCase):
             MediaTypes.ANIME.value,
         )
 
+    @patch.object(get_user_model(), "update_preference")
+    @patch.object(CustomList, "user_can_view")
+    def test_list_detail_view_sort_by_status(
+        self,
+        mock_user_can_view,
+        mock_update_preference,
+    ):
+        """Status sort defaults to descending: Completed -> In progress -> Planning."""
+        mock_update_preference.side_effect = ["status", None]
+        mock_user_can_view.return_value = True
+
+        Movie.objects.create(
+            item=self.movie_item,
+            status=Status.COMPLETED.value,
+            user=self.user,
+        )
+        TV.objects.create(
+            item=self.tv_item,
+            status=Status.IN_PROGRESS.value,
+            user=self.user,
+        )
+        Anime.objects.create(
+            item=self.anime_item,
+            status=Status.PLANNING.value,
+            user=self.user,
+        )
+
+        response = self.client.get(
+            reverse("list_detail", args=[self.custom_list.id]) + "?sort=status",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [item.media_type for item in response.context["items"]],
+            [
+                MediaTypes.MOVIE.value,
+                MediaTypes.TV.value,
+                MediaTypes.ANIME.value,
+            ],
+        )
+
+        # Ascending should reverse the order.
+        mock_update_preference.side_effect = ["status", None]
+        response = self.client.get(
+            reverse("list_detail", args=[self.custom_list.id])
+            + "?sort=status&direction=asc",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [item.media_type for item in response.context["items"]],
+            [
+                MediaTypes.ANIME.value,
+                MediaTypes.TV.value,
+                MediaTypes.MOVIE.value,
+            ],
+        )
+
+    @patch.object(CustomList, "user_can_view")
+    def test_list_detail_view_status_filter_uses_owner_data_for_public_view(
+        self,
+        mock_user_can_view,
+    ):
+        """A public list's status filter must use the owner's status, not a viewer's."""
+        mock_user_can_view.return_value = True
+        self.custom_list.visibility = "public"
+        self.custom_list.save(update_fields=["visibility"])
+
+        # Owner has the movie marked Completed.
+        Movie.objects.create(
+            item=self.movie_item,
+            status=Status.COMPLETED.value,
+            user=self.user,
+        )
+        # A different (non-collaborator) user has the same movie marked Planning.
+        Movie.objects.create(
+            item=self.movie_item,
+            status=Status.PLANNING.value,
+            user=self.other_user,
+        )
+
+        self.client.logout()
+        response = self.client.get(
+            reverse("list_detail", args=[self.custom_list.id])
+            + f"?status={Status.COMPLETED.value}",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.context["items"]), 1)
+        self.assertEqual(
+            response.context["items"][0].media_type,
+            MediaTypes.MOVIE.value,
+        )
+
+        response = self.client.get(
+            reverse("list_detail", args=[self.custom_list.id])
+            + f"?status={Status.PLANNING.value}",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.context["items"]), 0)
+
     def test_list_detail_view_anonymous_public(self):
         """Ensure anonymous users can view public lists without preference errors."""
         self.custom_list.visibility = "public"
@@ -783,6 +881,14 @@ class ListDetailViewTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["current_sort"], "custom")
+
+        # Test status sorting
+        mock_update_preference.return_value = "status"
+        response = self.client.get(
+            reverse("list_detail", args=[self.custom_list.id]) + "?sort=status",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["current_sort"], "status")
 
     def test_release_date_sort_orders_items_and_renders_subtitles(self):
         """Release-date sort should persist, order items, and render full dates."""

@@ -40,6 +40,7 @@ from lists.views_helpers import (
     _rating_value,
     _resolve_list_sort_direction,
     _resolve_list_table_media_type,
+    _status_value,
 )
 from lists.views_smart_list import _smart_list_detail_response
 from users.models import ListDetailSortChoices, MediaStatusChoices
@@ -282,6 +283,10 @@ def list_detail(request, list_reference):
                 _media_date_value(item.media, "end_date"),
                 params["direction"],
             ),
+            "reverse": params["direction"] == "desc",
+        },
+        "status": {
+            "key": lambda item: _status_value(item.media),
             "reverse": params["direction"] == "desc",
         },
     }
