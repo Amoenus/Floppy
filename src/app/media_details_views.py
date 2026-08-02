@@ -427,7 +427,7 @@ def media_details(
                 except Exception as e:
                     logger.exception(
                         "Failed to enrich podcast from iTunes metadata: %s",
-                        exception_summary(e),
+                        exception_summary(e),  # noqa: TRY401  # exception_summary() is the project's sanitised rendering
                     )
                     messages.error(request, f"Failed to load podcast details: {e}")
                     # Fall through to empty metadata

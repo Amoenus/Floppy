@@ -1451,7 +1451,7 @@ def _aggregate_statistics_from_days(
         if 0 <= idx < len(bands):
             band_game_groups[bands[idx][2]].append(item)
     tooltip_item_ids = set()
-    for label, items in band_game_groups.items():
+    for _label, items in band_game_groups.items():
         for g in sorted(items, key=lambda x: x["daily_average"], reverse=True)[:5]:
             if g.get("item_id") is not None:
                 tooltip_item_ids.add(g["item_id"])

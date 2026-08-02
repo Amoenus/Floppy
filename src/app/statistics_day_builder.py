@@ -1057,62 +1057,54 @@ def build_stats_for_day(
                 )
                 rollup["days"] += 1
                 game_rollup_days_counted.add(row.get("item_id"))
-            if start_local and end_local:
-                if start_local <= day <= end_local:
-                    total_days = (end_local - start_local).days + 1
-                    per_day = (
-                        total_minutes / total_days if total_days else total_minutes
-                    )
-                    daily_minutes_by_type[MediaTypes.GAME.value] += per_day
-                    _update_top_played(
-                        MediaTypes.GAME.value,
+            if (start_local and end_local) and start_local <= day <= end_local:
+                total_days = (end_local - start_local).days + 1
+                per_day = total_minutes / total_days if total_days else total_minutes
+                daily_minutes_by_type[MediaTypes.GAME.value] += per_day
+                _update_top_played(
+                    MediaTypes.GAME.value,
+                    row.get("item_id"),
+                    row.get("id"),
+                    minutes=per_day,
+                    plays=1
+                    if activity_dt
+                    and stats._localize_datetime(activity_dt).date() == day
+                    else 0,
+                    episode_count=0,
+                    activity_dt=activity_dt,
+                )
+                if activity_dt and stats._localize_datetime(activity_dt).date() == day:
+                    rollup = game_rollups.setdefault(
                         row.get("item_id"),
-                        row.get("id"),
-                        minutes=per_day,
-                        plays=1
-                        if activity_dt
-                        and stats._localize_datetime(activity_dt).date() == day
-                        else 0,
-                        episode_count=0,
-                        activity_dt=activity_dt,
+                        {
+                            "minutes_total": 0,
+                            "days": 0,
+                            "activity_dt": None,
+                            "media_id": row.get("id"),
+                        },
                     )
-                    if (
-                        activity_dt
-                        and stats._localize_datetime(activity_dt).date() == day
+                    rollup["minutes_total"] += total_minutes
+                    rollup["activity_dt"] = activity_dt
+                    rollup["media_id"] = row.get("id")
+                    if not _add_genres(
+                        game_genres, row.get("item__genres"), total_minutes
                     ):
-                        rollup = game_rollups.setdefault(
-                            row.get("item_id"),
-                            {
-                                "minutes_total": 0,
-                                "days": 0,
-                                "activity_dt": None,
-                                "media_id": row.get("id"),
-                            },
-                        )
-                        rollup["minutes_total"] += total_minutes
-                        rollup["activity_dt"] = activity_dt
-                        rollup["media_id"] = row.get("id")
-                        if not _add_genres(
-                            game_genres, row.get("item__genres"), total_minutes
-                        ):
-                            missing_genres += 1
-                            item_id = row.get("item_id")
-                            if item_id:
-                                missing_genre_item_ids.add(item_id)
-                        game_id = row.get("item_id")
-                        if game_id:
-                            for genre in stats._coerce_genre_list(
-                                row.get("item__genres")
-                            ):
-                                key = str(genre).title()
-                                game_genres[key]["game_ids"].add(game_id)
-                        _add_game_decade(
-                            game_decades,
-                            row.get("item__release_datetime"),
-                            total_minutes,
-                            game_id,
-                        )
-                    continue
+                        missing_genres += 1
+                        item_id = row.get("item_id")
+                        if item_id:
+                            missing_genre_item_ids.add(item_id)
+                    game_id = row.get("item_id")
+                    if game_id:
+                        for genre in stats._coerce_genre_list(row.get("item__genres")):
+                            key = str(genre).title()
+                            game_genres[key]["game_ids"].add(game_id)
+                    _add_game_decade(
+                        game_decades,
+                        row.get("item__release_datetime"),
+                        total_minutes,
+                        game_id,
+                    )
+                continue
 
             activity_local = stats._localize_datetime(activity_dt)
             if activity_local and activity_local.date() == day:

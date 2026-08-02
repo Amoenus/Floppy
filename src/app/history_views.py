@@ -1044,8 +1044,8 @@ def history(request):
             (time.perf_counter() - view_start) * 1000,
             response_bytes,
         )
-    except OperationalError as error:
-        logger.exception("Database error in history view: %s", error)
+    except OperationalError:
+        logger.exception("Database error in history view")
         context = {
             "user": request.user,
             "history_days": [],

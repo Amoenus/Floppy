@@ -950,7 +950,7 @@ def backfill_item_metadata_task(
                 "metadata_backfill_error item_id=%s media_type=%s error=%s",
                 item.id,
                 item.media_type,
-                exception_summary(e),
+                exception_summary(e),  # noqa: TRY401  # exception_summary() is the project's sanitised rendering
             )
 
     remaining_metadata = _initial_metadata_items_queryset().count()

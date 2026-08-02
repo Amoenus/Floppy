@@ -676,8 +676,8 @@ def statistics(request):
         }
 
         return render(request, "app/statistics.html", context)
-    except OperationalError as error:
-        logger.exception("Database error in statistics view: %s", error)
+    except OperationalError:
+        logger.exception("Database error in statistics view")
         timeformat = "%Y-%m-%d"
         today = timezone.localdate()
         one_year_ago = today.replace(year=today.year - 1)
@@ -1471,11 +1471,12 @@ def update_statistics_preferences(request):
         invalidate_cache = True
 
     week_start_day = request.POST.get("week_start_day")
-    if week_start_day and week_start_day in WeekStartDayChoices.values:
-        if request.user.week_start_day != week_start_day:
-            request.user.week_start_day = week_start_day
-            fields_to_update.append("week_start_day")
-            invalidate_cache = True
+    if (
+        week_start_day and week_start_day in WeekStartDayChoices.values
+    ) and request.user.week_start_day != week_start_day:
+        request.user.week_start_day = week_start_day
+        fields_to_update.append("week_start_day")
+        invalidate_cache = True
 
     rating_scale = request.POST.get("rating_scale")
     if rating_scale and rating_scale in RatingScaleChoices.values:

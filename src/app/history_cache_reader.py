@@ -548,8 +548,8 @@ def refresh_history_cache(
             lock_key,
             verify_lock is not None,
         )
-    except Exception as e:
-        logger.exception("Error refreshing history cache for user %s: %s", user_id, e)
+    except Exception:
+        logger.exception("Error refreshing history cache for user %s", user_id)
         lock_key = _refresh_lock_key(user_id, logging_style)
         refresh_lock = cache.get(lock_key)
         dedupe_key = None

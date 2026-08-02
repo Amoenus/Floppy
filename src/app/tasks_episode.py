@@ -285,7 +285,7 @@ def populate_episode_runtime_data(season_keys: list[str] | None = None):
                 "Episode runtime backfill failed source=%s season=%s error=%s",
                 source,
                 season_number,
-                exception_summary(e),
+                exception_summary(e),  # noqa: TRY401  # exception_summary() is the project's sanitised rendering
             )
             error_count += 1
             continue

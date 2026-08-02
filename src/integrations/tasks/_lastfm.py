@@ -152,9 +152,7 @@ def _run_incremental_lastfm_sync(account) -> dict:
         }
     except Exception as exc:  # pragma: no cover - defensive
         logger.exception(
-            "Unexpected error polling Last.fm for user %s: %s",
-            account.user.username,
-            exc,
+            "Unexpected error polling Last.fm for user %s", account.user.username
         )
         now = timezone.now()
         account.connection_broken = False

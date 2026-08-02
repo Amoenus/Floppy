@@ -688,12 +688,11 @@ def season_details(
                             # remove this reminder once that task/UX overhaul is complete.
                             fetching_collection_data = True
                             item_id_for_polling = show_item.id
-                        except Exception as task_exc:
+                        except Exception:
                             logger.exception(
-                                "Failed to trigger background collection fetch for show %s - %s: %s",
+                                "Failed to trigger background collection fetch for show %s - %s",
                                 request.user.username,
                                 show_item.title,
-                                task_exc,
                             )
                     else:
                         logger.info(
@@ -710,7 +709,7 @@ def season_details(
             except Exception as exc:
                 logger.exception(
                     "Error checking show collection entry in season_details: %s",
-                    exception_summary(exc),
+                    exception_summary(exc),  # noqa: TRY401  # exception_summary() is the project's sanitised rendering
                 )
 
             # Get collection entry for the season item itself (if it exists)

@@ -601,10 +601,10 @@ def _get_or_create_artist(metadata: ResolvedMusicMetadata) -> tuple[Artist, bool
     if metadata.artist_image:
         updates["image"] = metadata.artist_image
 
-    for field, value in updates.items():
-        current = getattr(artist, field)
+    for field_name, value in updates.items():
+        current = getattr(artist, field_name)
         if not current and value:
-            setattr(artist, field, value)
+            setattr(artist, field_name, value)
 
     artist.name = name
     artist.save()
@@ -668,10 +668,10 @@ def _get_or_create_album(
         updates["image"] = metadata.album_image
 
     changed_fields = []
-    for field, value in updates.items():
-        if value and getattr(album, field) != value:
-            setattr(album, field, value)
-            changed_fields.append(field)
+    for field_name, value in updates.items():
+        if value and getattr(album, field_name) != value:
+            setattr(album, field_name, value)
+            changed_fields.append(field_name)
 
     if changed_fields:
         album.save(update_fields=changed_fields)
@@ -746,10 +746,10 @@ def _get_or_create_track(metadata: ResolvedMusicMetadata, album: Album) -> Track
     }
 
     changed_fields = []
-    for field, value in updates.items():
-        if value is not None and getattr(track, field) != value:
-            setattr(track, field, value)
-            changed_fields.append(field)
+    for field_name, value in updates.items():
+        if value is not None and getattr(track, field_name) != value:
+            setattr(track, field_name, value)
+            changed_fields.append(field_name)
 
     if changed_fields:
         track.save(update_fields=changed_fields)
@@ -1568,10 +1568,10 @@ def _sync_artist_metadata(artist: Artist, musicbrainz_id: str, force: bool = Fal
         updates["genres"] = data["genres"]
 
     changed_fields = []
-    for field, value in updates.items():
-        if value and getattr(artist, field) != value:
-            setattr(artist, field, value)
-            changed_fields.append(field)
+    for field_name, value in updates.items():
+        if value and getattr(artist, field_name) != value:
+            setattr(artist, field_name, value)
+            changed_fields.append(field_name)
 
     if changed_fields:
         artist.save(update_fields=changed_fields)

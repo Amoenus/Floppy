@@ -520,7 +520,7 @@ def _calculate_music_time(media, start_date, end_date, logger):
                 plays_by_end_date[history_end_date] = (history_record, history_date)
 
     # Count unique plays within date range
-    for play_end_date, (history_record, _) in plays_by_end_date.items():
+    for play_end_date, (_history_record, _) in plays_by_end_date.items():
         # Check if within date range
         if start_date and end_date:
             if start_date <= play_end_date <= end_date:

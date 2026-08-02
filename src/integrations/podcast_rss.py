@@ -96,14 +96,14 @@ def fetch_show_metadata_from_rss(rss_feed_url: str) -> dict:
         logger.exception(
             "Failed to fetch RSS feed %s: %s",
             safe_url(rss_feed_url),
-            exception_summary(e),
+            exception_summary(e),  # noqa: TRY401  # exception_summary() is the project's sanitised rendering
         )
         return {}
     except Exception as e:
         logger.exception(
             "Unexpected error parsing RSS feed %s: %s",
             safe_url(rss_feed_url),
-            exception_summary(e),
+            exception_summary(e),  # noqa: TRY401  # exception_summary() is the project's sanitised rendering
         )
         return {}
     else:
@@ -159,14 +159,14 @@ def fetch_episodes_from_rss(rss_feed_url: str, limit: int | None = None) -> list
         logger.exception(
             "Failed to fetch RSS feed %s: %s",
             safe_url(rss_feed_url),
-            exception_summary(e),
+            exception_summary(e),  # noqa: TRY401  # exception_summary() is the project's sanitised rendering
         )
         return []
     except Exception as e:
         logger.exception(
             "Unexpected error parsing RSS feed %s: %s",
             safe_url(rss_feed_url),
-            exception_summary(e),
+            exception_summary(e),  # noqa: TRY401  # exception_summary() is the project's sanitised rendering
         )
         return []
     else:

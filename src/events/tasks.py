@@ -358,10 +358,8 @@ def refresh_podcast_episodes():
                 )
                 updated_count += 1
 
-        except Exception as e:
-            logger.exception(
-                "Failed to refresh episodes for show %s: %s", show.title, e
-            )
+        except Exception:
+            logger.exception("Failed to refresh episodes for show %s", show.title)
             error_count += 1
 
     # Clean up duplicate episodes after refreshing
@@ -375,8 +373,8 @@ def refresh_podcast_episodes():
                 "Cleaned up %d duplicate podcast episodes after RSS refresh",
                 cleanup_stats["duplicates_removed"],
             )
-    except Exception as e:
-        logger.exception("Failed to cleanup duplicate episodes: %s", e)
+    except Exception:
+        logger.exception("Failed to cleanup duplicate episodes")
         # Don't fail the whole task if cleanup fails
 
     result = f"Refreshed {updated_count} shows, {error_count} errors"

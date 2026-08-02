@@ -113,13 +113,12 @@ class LastFMScrobbleProcessor:
                     music_entry.status,
                     music_entry.progress,
                 )
-        except Exception as e:
+        except Exception:
             logger.exception(
-                "Error processing Last.fm scrobble for %s: %s - %s: %s",
+                "Error processing Last.fm scrobble for %s: %s - %s",
                 user.username,
                 artist_name,
                 track_title,
-                e,
             )
             return None
         else:
@@ -170,8 +169,8 @@ class LastFMScrobbleProcessor:
                         day_key = history_cache.history_day_key(result.end_date)
                         if day_key:
                             stats["affected_day_keys"].add(day_key)
-            except Exception as e:
-                logger.exception("Error processing Last.fm track: %s", e)
+            except Exception:
+                logger.exception("Error processing Last.fm track")
                 stats["errors"] += 1
 
         return stats

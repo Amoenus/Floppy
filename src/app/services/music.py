@@ -1633,29 +1633,28 @@ def prefetch_album_covers(artist: Artist, limit: int | None = 20) -> int:
             logger.debug("Failed to prefetch cover for %s: %s", album.title, e)
 
         # Try iTunes as fallback if MusicBrainz didn't find artwork
-        if album.image == settings.IMG_NONE or not album.image:
-            if album.title:
-                try:
-                    from integrations import itunes_music_artwork
+        if (album.image == settings.IMG_NONE or not album.image) and album.title:
+            try:
+                from integrations import itunes_music_artwork
 
-                    artist_name = album.artist.name if album.artist else artist.name
-                    itunes_image = itunes_music_artwork.fetch_album_artwork(
-                        album_title=album.title,
-                        artist_name=artist_name,
-                    )
-                    if itunes_image:
-                        album.image = itunes_image
-                        album.save(update_fields=["image"])
-                        updated += 1
-                        logger.debug(
-                            "Prefetched cover for album %s from iTunes", album.title
-                        )
-                except Exception as e:
+                artist_name = album.artist.name if album.artist else artist.name
+                itunes_image = itunes_music_artwork.fetch_album_artwork(
+                    album_title=album.title,
+                    artist_name=artist_name,
+                )
+                if itunes_image:
+                    album.image = itunes_image
+                    album.save(update_fields=["image"])
+                    updated += 1
                     logger.debug(
-                        "Failed to prefetch cover from iTunes for %s: %s",
-                        album.title,
-                        e,
+                        "Prefetched cover for album %s from iTunes", album.title
                     )
+            except Exception as e:
+                logger.debug(
+                    "Failed to prefetch cover from iTunes for %s: %s",
+                    album.title,
+                    e,
+                )
 
         # Both sources failed — mark as confirmed-missing so polling stops
         if not album.image:

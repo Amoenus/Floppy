@@ -437,7 +437,7 @@ class Media(models.Model):
         if total_from_items is not None:
             return total_from_items
 
-        # Fallback: use average runtime × episodes_left
+        # Fallback: use average runtime x episodes_left
         runtime_minutes = self._get_fallback_runtime_minutes()
 
         # Skip shows with unrealistic runtime (999999 fallback)

@@ -256,10 +256,8 @@ def lists(request):
                 user=request.user,
                 available_tags=available_tags,
             )
-        except Exception as e:
-            logger.exception(
-                "Error creating form for list ID %s: %s", custom_list.id, e
-            )
+        except Exception:
+            logger.exception("Error creating form for list ID %s", custom_list.id)
             # Skip form creation for this list
             custom_list.form = None
 

@@ -791,7 +791,7 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
 
         if rating_source in {"userRating", "user_rating", "payload_userRating"}:
             if rating <= RATING_SCALE_MAX:
-                rating = rating
+                pass  # value already in the expected range
             elif rating <= RATING_PERCENTAGE_SCALE_MAX:
                 rating /= 10
             else:
@@ -800,7 +800,7 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
         elif rating <= RATING_HALF_SCALE_MAX:
             rating *= 2
         elif rating <= RATING_SCALE_MAX:
-            rating = rating
+            pass  # value already in the expected range
         elif rating <= RATING_PERCENTAGE_SCALE_MAX:
             rating /= 10
         else:

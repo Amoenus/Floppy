@@ -213,7 +213,7 @@ def _format_long_units(total_minutes):
     total_minutes = int(total_minutes)
     hour_minutes = 60
     day_minutes = 1440
-    month_minutes = 43800  # 30 × 24 × 60
+    month_minutes = 43800  # 30 x 24 x 60
     if total_minutes < hour_minutes:
         return f"{total_minutes}min"
     if total_minutes < day_minutes:  # < 24 h

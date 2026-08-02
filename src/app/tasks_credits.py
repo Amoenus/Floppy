@@ -149,7 +149,9 @@ def _populate_credits_for_items(items, delay_seconds):
         except Exception as exc:
             error_count += 1
             logger.exception(
-                "Error syncing credits for %s: %s", item.title, exception_summary(exc)
+                "Error syncing credits for %s: %s",
+                item.title,
+                exception_summary(exc),  # noqa: TRY401  # exception_summary() is the project's sanitised rendering
             )
             _record_backfill_failure(
                 item,

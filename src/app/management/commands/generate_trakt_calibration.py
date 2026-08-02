@@ -219,7 +219,7 @@ TITLES = [
     (204, "Spectre"),
     (205, "The Hunger Games: Mockingjay - Part 2"),
     (206, "Aladdin"),
-    # rank 207 is also "Aladdin" – skip per spec
+    # rank 207 is also "Aladdin" - skip per spec
     (208, "The Grand Budapest Hotel"),
     (209, "Monsters University"),
     (210, "Dawn of the Planet of the Apes"),

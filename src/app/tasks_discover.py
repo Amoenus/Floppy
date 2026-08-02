@@ -126,7 +126,7 @@ def refresh_discover_tab_cache(
 
 
 # Maximum discover tab tasks enqueued in a single startup warmup. After a
-# Redis restart all freshness locks are gone, so without this cap every user ×
+# Redis restart all freshness locks are gone, so without this cap every user x
 # every media type would be enqueued at once, burying the celery queue.
 # Users whose tabs are not pre-warmed receive them on first page load via the
 # request-time warmup path (maybe_schedule_user_warmup).

@@ -102,9 +102,8 @@ def _collect_movie_play_data(movie_queryset, start_date, end_date):
         if activity_date is None:
             continue
 
-        if start_date and end_date:
-            if not (start_date <= activity_date <= end_date):
-                continue
+        if (start_date and end_date) and not (start_date <= activity_date <= end_date):
+            continue
 
         # Get runtime for this movie
         runtime_minutes = _get_media_runtime_from_cache(

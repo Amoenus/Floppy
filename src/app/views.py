@@ -450,8 +450,8 @@ def home(request):
             ],
         }
         return render(request, "app/home.html", context)
-    except OperationalError as error:
-        logger.exception("Database error in home view: %s", error)
+    except OperationalError:
+        logger.exception("Database error in home view")
         # Return empty state on database error
         context = {
             "user": request.user,
@@ -1355,7 +1355,7 @@ def delete_history_record(request, media_type, history_id):
                     "Failed to delete media instance %s for history record %s: %s",
                     str(media_instance_id),
                     str(history_id),
-                    str(e),
+                    str(e),  # noqa: TRY401  # exception_summary() is the project's sanitised rendering
                 )
                 return HttpResponse("Failed to delete record", status=500)
 
@@ -1394,7 +1394,9 @@ def delete_history_record(request, media_type, history_id):
                 history_record.delete()
             except Exception as e:
                 logger.exception(
-                    "Failed to delete history record %s: %s", str(history_id), str(e)
+                    "Failed to delete history record %s: %s",
+                    str(history_id),
+                    str(e),  # noqa: TRY401  # exception_summary() is the project's sanitised rendering
                 )
                 return HttpResponse("Failed to delete record", status=500)
 

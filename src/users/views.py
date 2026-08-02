@@ -849,11 +849,12 @@ def preferences(request):
             request.user.activity_history_view = activity_history_view
             fields_to_update.append("activity_history_view")
 
-        if duration_format and duration_format in DurationFormatChoices.values:
-            if request.user.duration_format != duration_format:
-                request.user.duration_format = duration_format
-                fields_to_update.append("duration_format")
-                duration_format_changed = True
+        if (
+            duration_format and duration_format in DurationFormatChoices.values
+        ) and request.user.duration_format != duration_format:
+            request.user.duration_format = duration_format
+            fields_to_update.append("duration_format")
+            duration_format_changed = True
 
         if (
             game_logging_style

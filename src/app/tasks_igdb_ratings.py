@@ -99,7 +99,7 @@ def _populate_igdb_ratings_for_items(items):
             logger.exception(
                 "Error backfilling IGDB ratings for %s: %s",
                 item.title,
-                exception_summary(exc),
+                exception_summary(exc),  # noqa: TRY401  # exception_summary() is the project's sanitised rendering
             )
             _record_backfill_failure(
                 item,

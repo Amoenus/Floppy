@@ -94,9 +94,9 @@ def _cleanup_duplicate_episodes_global():
 
     with transaction.atomic():
         for (
-            show_id,
-            title_normalized,
-            published_date,
+            _show_id,
+            _title_normalized,
+            _published_date,
         ), episodes_list in duplicate_groups.items():
             # Sort episodes by id (higher id = more recent)
             episodes_list_sorted = sorted(episodes_list, key=lambda ep: ep.id)
@@ -176,11 +176,9 @@ def _cleanup_duplicate_episodes_global():
                         podcasts_updated + items_updated,
                         items_updated if dup_item else 0,
                     )
-                except Exception as e:
+                except Exception:
                     logger.exception(
-                        "Failed to merge duplicate episode %s: %s",
-                        dup_episode.episode_uuid,
-                        e,
+                        "Failed to merge duplicate episode %s", dup_episode.episode_uuid
                     )
 
     return stats
@@ -2307,16 +2305,17 @@ class PocketCastsImporter:
                             episode_data.get("title", "Unknown"),
                             completion_date,
                         )
-                    elif not already_completed:
-                        # Only update if different AND episode is newly completing (not already completed)
-                        if existing_podcast.end_date != completion_date:
-                            existing_podcast.end_date = completion_date
-                            fields_changed = True
-                            logger.debug(
-                                "Updated end_date for newly completed podcast %s: %s",
-                                episode_data.get("title", "Unknown"),
-                                completion_date,
-                            )
+                    if (
+                        not already_completed
+                        and existing_podcast.end_date != completion_date
+                    ):
+                        existing_podcast.end_date = completion_date
+                        fields_changed = True
+                        logger.debug(
+                            "Updated end_date for newly completed podcast %s: %s",
+                            episode_data.get("title", "Unknown"),
+                            completion_date,
+                        )
 
                 # Only save if there are actual changes to prevent unnecessary history entries
                 if fields_changed:

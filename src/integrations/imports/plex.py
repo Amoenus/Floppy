@@ -1306,7 +1306,7 @@ class PlexHistoryImporter:
             return None
 
         if rating <= RATING_SCALE_MAX:
-            rating = rating
+            pass  # value already in the expected range
         elif rating <= RATING_PERCENTAGE_SCALE_MAX:
             rating /= 10
         else:

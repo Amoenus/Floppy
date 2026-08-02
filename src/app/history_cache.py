@@ -639,11 +639,9 @@ def _build_podcast_entries(user, podcast_history_records, podcasts_lookup):
             }
             _attach_entry_score(entry, podcast)
             entries.append(entry)
-        except Exception as e:
+        except Exception:
             logger.exception(
-                "Error processing podcast history record %s: %s",
-                history_record.history_id,
-                e,
+                "Error processing podcast history record %s", history_record.history_id
             )
     return entries
 
@@ -773,11 +771,10 @@ def _build_game_entries(
             for game in games:
                 if not (game.start_date or game.end_date):
                     continue
-                if genre_filters:
-                    if not {str(g).lower() for g in _resolve_genres(game.item)} & set(
-                        genre_filters
-                    ):
-                        continue
+                if genre_filters and not {
+                    str(g).lower() for g in _resolve_genres(game.item)
+                } & set(genre_filters):
+                    continue
                 total_minutes = game.progress or 0
                 if total_minutes <= 0:
                     continue

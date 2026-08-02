@@ -1977,7 +1977,7 @@ def lastfm_connect(request):
         messages.error(request, f"Failed to connect to Last.fm: {e}")
         return redirect("import_data")
     except Exception as e:
-        logger.exception("Unexpected error validating Last.fm username: %s", e)
+        logger.exception("Unexpected error validating Last.fm username")
         messages.error(request, f"Failed to connect to Last.fm: {e}")
         return redirect("import_data")
 
@@ -2013,7 +2013,7 @@ def lastfm_connect(request):
             ),
         )
     except Exception as e:
-        logger.exception("Failed to store Last.fm connection: %s", e)
+        logger.exception("Failed to store Last.fm connection")
         messages.error(request, f"Failed to save Last.fm connection: {e}")
 
     return redirect("import_data")
