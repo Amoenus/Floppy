@@ -65,12 +65,13 @@ TV_LIST_TIME_LEFT_SORT_MAX_QUERIES = (
 MOVIE_LIST_DEFAULT_SORT_MAX_QUERIES = 14
 ANIME_LIST_DEFAULT_SORT_MAX_QUERIES = 20
 ANIME_LIST_GROUPED_MAX_QUERIES = (
-    18  # grouped (TV-backed) anime adds no per-show runtime queries (24 when broken)
+    22  # grouped (TV-backed) anime adds no per-show runtime queries (24 when broken);
+    # +4 from the Genres/Tags column Prefetch("item__item_tags") added in #457
 )
 MANGA_LIST_DEFAULT_SORT_MAX_QUERIES = 14
 MANGA_LIST_NO_STATUS_MAX_QUERIES = 18
 GAME_LIST_DEFAULT_SORT_MAX_QUERIES = 18
-HOME_ROW_FRAGMENT_MAX_QUERIES = 120
+HOME_ROW_FRAGMENT_MAX_QUERIES = 122  # +2 from the Tags column Prefetch (#457)
 CUSTOM_LIST_DETAIL_MAX_QUERIES = 30
 
 
