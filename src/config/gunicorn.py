@@ -18,11 +18,17 @@ errorlog = "-"
 
 
 def pre_fork(server, worker):  # noqa: ARG001
-    """Close database pools in the master before workers are forked.
+    """Close database and Redis pools in the master before workers are forked.
 
-    Psycopg pools own background threads and must not be inherited by the
-    preloaded workers; inherited pools eventually exhaust their slots (#341).
+    ``preload_app`` runs ``django.setup()`` (and every ``AppConfig.ready()``)
+    once in the master before forking, and ``AppConfig.ready()`` touches the
+    Redis cache (startup-task scheduling keys). Psycopg pools own background
+    threads and must not be inherited by the preloaded workers (#341); the
+    Redis connection likewise must not be inherited, or every forked
+    worker/thread shares one raw socket and corrupts each other's commands -
+    including session writes, which silently fail to persist (#335).
     """
+    from django.core.cache import caches  # noqa: PLC0415
     from django.db import connections  # noqa: PLC0415
 
     connections.close_all()
@@ -31,14 +37,19 @@ def pre_fork(server, worker):  # noqa: ARG001
         if close_pool is not None:
             close_pool()
 
+    for cache in caches.all():
+        client = getattr(cache, "client", None)
+        do_close_clients = getattr(client, "do_close_clients", None)
+        if do_close_clients is not None:
+            do_close_clients()
+
 
 def post_fork(server, worker):  # noqa: ARG001
-    """Drop connections inherited from the preloaded master process.
+    """Drop database connections inherited from the preloaded master process.
 
-    ``preload_app`` runs ``django.setup()`` (and every ``AppConfig.ready()``)
-    once in the master before forking. ``pre_fork`` closes any process-local
-    database pool before the fork; this hook remains as a final guard against
-    inherited connections (issue #335).
+    ``pre_fork`` closes any process-local database/Redis pool before the
+    fork; this hook remains as a final guard against inherited database
+    connections (issue #335).
     """
     from django.db import connections  # noqa: PLC0415
 
