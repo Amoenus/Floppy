@@ -332,10 +332,14 @@ class MediaForm(RatingScaleFormMixin, forms.ModelForm):
                 attrs={"min": 0, "max": 10, "step": 0.1, "placeholder": "0-10"},
             ),
             "progress": forms.NumberInput(attrs={"min": 0}),
-            "start_date": forms.DateTimeInput(attrs={"type": "datetime-local"})
+            "start_date": forms.DateTimeInput(
+                attrs={"type": "datetime-local", "step": "1"},
+            )
             if settings.TRACK_TIME
             else forms.DateInput(attrs={"type": "date"}),
-            "end_date": forms.DateTimeInput(attrs={"type": "datetime-local"})
+            "end_date": forms.DateTimeInput(
+                attrs={"type": "datetime-local", "step": "1"},
+            )
             if settings.TRACK_TIME
             else forms.DateInput(attrs={"type": "date"}),
             "notes": forms.Textarea(
@@ -615,10 +619,10 @@ class EpisodeForm(RatingScaleFormMixin, forms.ModelForm):
 
         if settings.TRACK_TIME:
             self.fields["start_date"].widget = forms.DateTimeInput(
-                attrs={"type": "datetime-local"},
+                attrs={"type": "datetime-local", "step": "1"},
             )
             self.fields["end_date"].widget = forms.DateTimeInput(
-                attrs={"type": "datetime-local"},
+                attrs={"type": "datetime-local", "step": "1"},
             )
         else:
             self.fields["start_date"].widget = forms.DateInput(
