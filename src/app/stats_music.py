@@ -70,7 +70,7 @@ def _collect_music_play_data(music_queryset, start_date, end_date):
                     plays_by_end_date[history_end_date] = (history_record, history_date)
 
         # Process unique plays within date range
-        for play_end_date, (_history_record, _) in plays_by_end_date.items():
+        for play_end_date in plays_by_end_date:
             # Check if within date range
             if (start_date and end_date) and not (
                 start_date <= play_end_date <= end_date

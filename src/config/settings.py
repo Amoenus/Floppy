@@ -1,5 +1,6 @@
 """Django settings for Floppy project."""
 
+import contextlib
 import hashlib
 import json
 import os
@@ -389,11 +390,9 @@ else:
             )
         finally:
             if cursor:
-                try:
+                # Closing a cursor is best-effort; a failure here is not useful.
+                with contextlib.suppress(Exception):
                     cursor.close()
-                except Exception:  # noqa: S110  # deliberate best-effort; failure is non-fatal here
-                    # Ignore errors when closing cursor
-                    pass
 
     connection_created.connect(configure_sqlite_connection)
 

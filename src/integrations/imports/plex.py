@@ -19,6 +19,10 @@ from app.services.music import prefetch_album_covers
 # Suppress InsecureRequestWarning (Plex local connections often use self-signed certs)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+# The imports below deliberately follow the warning filter above so importing
+# plexapi does not emit InsecureRequestWarning at import time.
+# ruff: noqa: E402
+
 from integrations import episode_remap
 from integrations import plex as plex_api
 from integrations.imports import helpers

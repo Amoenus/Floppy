@@ -647,7 +647,7 @@ def populate_album_tracks_batch(album_ids: list[int], user_id: int | None = None
                 link_result.get("linked", 0),
                 backfill_result.get("backfilled", 0),
             )
-        except User.DoesNotExist:
+        except user_model.DoesNotExist:
             logger.warning(
                 "populate_album_tracks_batch: User %s not found, skipping track linking",
                 user_id,

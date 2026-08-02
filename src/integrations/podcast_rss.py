@@ -87,7 +87,7 @@ def fetch_show_metadata_from_rss(rss_feed_url: str) -> dict:
             if lang_elem is not None and lang_elem.text:
                 metadata["language"] = lang_elem.text.strip()
 
-            # Author (iTunes)
+            # Author, from the iTunes namespace.
             author_elem = channel.find("itunes:author", namespaces)
             if author_elem is not None and author_elem.text:
                 metadata["author"] = author_elem.text.strip()
@@ -208,7 +208,7 @@ def _parse_rss_feed(root: Element, limit: int | None) -> list[dict]:
             if guid_text:
                 episode["guid"] = guid_text.strip()
 
-        # Duration (iTunes)
+        # Duration, from the iTunes namespace.
         duration_elem = item.find("itunes:duration", namespaces)
         if duration_elem is not None and duration_elem.text:
             episode["duration"] = _parse_duration(duration_elem.text.strip())
@@ -288,7 +288,7 @@ def _parse_atom_feed(root: Element, limit: int | None) -> list[dict]:
         if id_elem is not None and id_elem.text:
             episode["guid"] = id_elem.text.strip()
 
-        # Duration (iTunes)
+        # Duration, from the iTunes namespace.
         duration_elem = entry.find("itunes:duration", namespaces)
         if duration_elem is not None and duration_elem.text:
             episode["duration"] = _parse_duration(duration_elem.text.strip())
@@ -399,7 +399,7 @@ def _parse_duration(duration_str: str) -> int | None:
     # Try MM:SS or HH:MM:SS format
     parts = duration_str.split(":")
     if len(parts) == DURATION_PARTS_MM_SS:
-        # MM:SS
+        # Format is minutes then seconds.
         try:
             minutes = int(parts[0])
             seconds = int(parts[1])

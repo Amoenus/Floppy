@@ -404,7 +404,7 @@ def _build_series_graph_data(
 
 
 def _build_episode_graph_from_season_cache(source, media_id, related_seasons):
-    """Build a full S×E episode graph by reading per-season TMDB cache entries.
+    """Build a full SxE episode graph by reading per-season TMDB cache entries.
 
     The TMDB season cache (keyed per season_number) already holds the raw
     episode list with vote_average/vote_count — no API call needed.

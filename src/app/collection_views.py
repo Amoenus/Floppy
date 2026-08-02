@@ -864,7 +864,7 @@ def collection_modal(request, source, media_type, media_id):
 @require_GET
 @never_cache
 def collection_status_api(request, item_id):
-    """API endpoint to check if collection entry exists for an item."""
+    """Return whether a collection entry exists for an item."""
     from app.helpers import is_item_collected
 
     try:

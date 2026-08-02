@@ -1798,8 +1798,9 @@ def _person_filmography_entries(combined_credits):
 
 
 def search_person_profile(name):
-    """Best-effort headshot + gender lookup by name (no id cross-reference, just a
-    name match).
+    """Look up a headshot and gender by name, with no id cross-reference.
+
+    This is a name match only.
 
     Used to backfill artwork and gender for people synced from a source with no
     (or unusably sparse) profile data of its own — e.g. IMDB-sourced game cast,

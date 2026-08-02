@@ -1,6 +1,6 @@
-"""
-List management action views: CRUD, column preferences, modal, item toggle,
-and release-year fetch.
+"""List management action views.
+
+Covers CRUD, column preferences, the modal, item toggle and release-year fetch.
 
 None of these views render the list detail page — they mutate state or return
 small fragments. The read-heavy detail views live in views_list_detail.py and

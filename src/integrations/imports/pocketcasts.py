@@ -93,11 +93,7 @@ def _cleanup_duplicate_episodes_global():
     duplicate_groups = {k: v for k, v in all_episodes_data.items() if len(v) > 1}
 
     with transaction.atomic():
-        for (
-            _show_id,
-            _title_normalized,
-            _published_date,
-        ), episodes_list in duplicate_groups.items():
+        for episodes_list in duplicate_groups.values():
             # Sort episodes by id (higher id = more recent)
             episodes_list_sorted = sorted(episodes_list, key=lambda ep: ep.id)
 

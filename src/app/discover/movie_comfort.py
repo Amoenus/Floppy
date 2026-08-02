@@ -51,6 +51,7 @@ import itertools
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from app.models import Item
     from app.discover.schemas import CandidateItem
 
 MOVIE_COMFORT_PROFILE_LAYER_WEIGHTS = {
@@ -716,7 +717,7 @@ def _movie_top_picks_planning_confidence(
     generic_history_family_count = 0
     total_family_weight = sum(MOVIE_COMFORT_FAMILY_WEIGHTS.values()) or 1.0
 
-    for family in MOVIE_COMFORT_FAMILY_WEIGHTS:
+    for family, family_weight in MOVIE_COMFORT_FAMILY_WEIGHTS.items():
         family_values = candidate_families.get(family) or []
         family_history_items = history_items_by_family_label.get(family) or {}
         family_match_items: set[int] = set()
@@ -726,7 +727,7 @@ def _movie_top_picks_planning_confidence(
             continue
         matched_history_families.append(family)
         matched_history_items.update(family_match_items)
-        weighted_history_fit += MOVIE_COMFORT_FAMILY_WEIGHTS[family] * float(
+        weighted_history_fit += family_weight * float(
             family_layer_fits.get(family, {}).get("blended", 0.0)
         )
         if family in MOVIE_COMFORT_RICH_FAMILIES:

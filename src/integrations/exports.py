@@ -373,7 +373,7 @@ def write_backup(user, media_types=None, include_lists=True, include_collection=
     filename = f"floppy_{now.strftime('%Y-%m-%d_%H%M%S')}.csv"
     filepath = backup_dir / filename
 
-    with open(filepath, "w", newline="", encoding="utf-8") as f:
+    with filepath.open("w", newline="", encoding="utf-8") as f:
         f.writelines(
             generate_rows(
                 user,

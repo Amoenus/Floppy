@@ -1976,7 +1976,7 @@ def _sort_numeric(
     descending = direction == DirectionChoices.DESC
     with_value = [e for e in entries if value_fn(e) is not None]
     without_value = [e for e in entries if value_fn(e) is None]
-    with_value.sort(key=lambda entry: value_fn(entry), reverse=descending)
+    with_value.sort(key=value_fn, reverse=descending)
     without_value.sort(
         key=lambda entry: _entry_title(entry).lower(), reverse=descending
     )

@@ -190,6 +190,10 @@ class CustomList(models.Model):
         """Return the name of the custom list."""
         return self.name
 
+    def get_absolute_url(self):
+        """Return the preferred detail URL for this list."""
+        return reverse("list_detail", args=[self.public_reference])
+
     def user_can_view(self, user):
         """Check if the user can view the list."""
         # Public lists are viewable by anyone
@@ -254,10 +258,6 @@ class CustomList(models.Model):
         if self.is_public and self.public_slug:
             return self.public_slug
         return str(self.id)
-
-    def get_absolute_url(self):
-        """Return the preferred detail URL for this list."""
-        return reverse("list_detail", args=[self.public_reference])
 
     def can_recommend(self):
         """Check if recommendations are allowed for this list."""
@@ -637,7 +637,7 @@ class CustomList(models.Model):
                                         media_id,
                                         error_json,
                                     )
-                                except:
+                                except Exception:  # noqa: BLE001
                                     logger.warning(
                                         "IGDB artworks API error for game %s batch: %s",
                                         media_id,

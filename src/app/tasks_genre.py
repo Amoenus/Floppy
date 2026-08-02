@@ -316,7 +316,7 @@ def _populate_genres_for_items(items, delay_seconds):
 
 
 def populate_genres_for_item_sync(item: Item, metadata: dict) -> None:
-    """Synchronously populate genres for a single TMDB TV item during a manual refresh.
+    """Populate genres for one TMDB TV item during a manual refresh.
 
     Runs the full pipeline inline (including TVDB anime check + ID healing) so
     the corrected genres are persisted before the page reloads. Errors are caught

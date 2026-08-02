@@ -1012,10 +1012,12 @@ def preferences(request):
                 session_duration_int = int(session_duration)
             except (ValueError, TypeError):
                 session_duration_int = None
-            if session_duration_int in SessionDurationChoices.values:
-                if request.user.session_duration != session_duration_int:
-                    request.user.session_duration = session_duration_int
-                    fields_to_update.append("session_duration")
+            if (
+                session_duration_int in SessionDurationChoices.values
+                and request.user.session_duration != session_duration_int
+            ):
+                request.user.session_duration = session_duration_int
+                fields_to_update.append("session_duration")
 
         if fields_to_update:
             request.user.save(update_fields=fields_to_update)

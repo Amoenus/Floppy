@@ -478,20 +478,19 @@ def get_reading_consumption_stats(user_media, start_date, end_date, media_type):
         :STATISTICS_TOP_N
     ]
 
-    top_genres = []
-    for payload in sorted(
-        genre_stats.values(),
-        key=lambda item: (item["units"], len(item["title_ids"])),
-        reverse=True,
-    )[:STATISTICS_TOP_N]:
-        top_genres.append(
-            {
-                "name": payload["name"],
-                "units": payload["units"],
-                "titles": len(payload["title_ids"]),
-                "formatted_units": _format_reading_unit(payload["units"], unit_name),
-            }
-        )
+    top_genres = [
+        {
+            "name": payload["name"],
+            "units": payload["units"],
+            "titles": len(payload["title_ids"]),
+            "formatted_units": _format_reading_unit(payload["units"], unit_name),
+        }
+        for payload in sorted(
+            genre_stats.values(),
+            key=lambda item: (item["units"], len(item["title_ids"])),
+            reverse=True,
+        )[:STATISTICS_TOP_N]
+    ]
     top_authors = _build_reading_top_authors(
         author_item_units, unit_name, limit=STATISTICS_TOP_N
     )

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-import os
+from pathlib import Path
 
 from django.core.management.base import BaseCommand
 
@@ -265,8 +265,7 @@ TITLES = [
     (250, "American Sniper"),
 ]
 
-OUTPUT_PATH = os.path.join(
-    os.path.dirname(__file__),
+OUTPUT_PATH = Path(__file__).parent.joinpath(
     "..",
     "..",
     "data",
@@ -347,7 +346,7 @@ class Command(BaseCommand):
 
     def handle(self, *_args, **_options):
         """Match 250 known movie titles against backfilled DB items and write a calibration fixture."""
-        os.makedirs(os.path.dirname(os.path.abspath(OUTPUT_PATH)), exist_ok=True)
+        Path(OUTPUT_PATH).resolve().parent.mkdir(parents=True, exist_ok=True)
 
         found_items = []
         found_count = 0
@@ -400,8 +399,8 @@ class Command(BaseCommand):
             "items": found_items,
         }
 
-        abs_output = os.path.abspath(OUTPUT_PATH)
-        with open(abs_output, "w", encoding="utf-8") as fh:
+        abs_output = Path(OUTPUT_PATH).resolve()
+        with abs_output.open("w", encoding="utf-8") as fh:
             json.dump(fixture, fh, indent=2, ensure_ascii=False)
 
         self.stdout.write(self.style.SUCCESS(f"Fixture written to {abs_output}"))

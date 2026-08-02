@@ -395,8 +395,9 @@ class BaseWebhookProcessor:
         )
 
     def _find_existing_tracked_tv_item(self, user, ids, tmdb_media_id):
-        """Return an existing TV Item this user already tracks that matches any
-        of the incoming external IDs, or None if no match found.
+        """Return a TV Item this user already tracks matching an incoming external ID.
+
+        Returns None when nothing matches.
 
         Checked before creating a new TMDB-sourced item so that users who
         track a show via TVDB don't end up with a duplicate entry.

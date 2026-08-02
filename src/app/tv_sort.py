@@ -248,7 +248,7 @@ def _sort_tv_media_by_time_left(media_list, direction="asc"):
             runtime = 30
         total = episodes_left * runtime
         logger.debug(
-            "%s: Fallback to average - %s eps × %smin = %smin",
+            "%s: Fallback to average - %s eps x %smin = %smin",
             media.item.title,
             episodes_left,
             runtime,

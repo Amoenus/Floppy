@@ -1,5 +1,6 @@
 import logging
 import os
+from pathlib import Path
 import re
 import sys
 import time
@@ -181,7 +182,7 @@ def get_process_role():
     role = role.strip().lower()
     if role in {"web", "interactive", "background"}:
         return role
-    argv0 = os.path.basename(sys.argv[0]).lower() if sys.argv and sys.argv[0] else ""
+    argv0 = Path(sys.argv[0]).name.lower() if sys.argv and sys.argv[0] else ""
     if "celery" in argv0:
         return "background"
     return "web"

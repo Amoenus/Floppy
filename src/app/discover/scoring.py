@@ -47,7 +47,7 @@ def normalize_values(values: list[float | None]) -> list[float]:
     min_value = min(cleaned)
     max_value = max(cleaned)
     if math.isclose(min_value, max_value):
-        return [0.5 if value is not None else 0.5 for value in values]
+        return [0.5 for _ in values]
 
     scale = max_value - min_value
     normalized: list[float] = []

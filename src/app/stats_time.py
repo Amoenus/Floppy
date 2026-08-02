@@ -184,10 +184,8 @@ def _is_episode_in_range(episode, start_date, end_date):
     """Check if episode is within the specified date range."""
     if episode.end_date and start_date and end_date:
         return start_date <= episode.end_date <= end_date
-    if not start_date and not end_date:
-        # All time - include all episodes
-        return True
-    return False
+    # All time: no bounds means every episode qualifies.
+    return not start_date and not end_date
 
 
 # ---------------------------------------------------------------------------
@@ -520,7 +518,7 @@ def _calculate_music_time(media, start_date, end_date, logger):
                 plays_by_end_date[history_end_date] = (history_record, history_date)
 
     # Count unique plays within date range
-    for play_end_date, (_history_record, _) in plays_by_end_date.items():
+    for play_end_date in plays_by_end_date:
         # Check if within date range
         if start_date and end_date:
             if start_date <= play_end_date <= end_date:

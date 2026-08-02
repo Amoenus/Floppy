@@ -150,10 +150,8 @@ from app.history_views import (
     _can_use_cached_month_history,
     _filter_cached_history_days,
     _filter_history_by_enabled_media_types,
-    delete_history_record,
     history,
     history_genres,
-    history_modal,
 )
 from app.log_safety import exception_summary, safe_url
 from app.media_details_views import _get_tv_runtime_display_fallback, media_details

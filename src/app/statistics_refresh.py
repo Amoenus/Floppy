@@ -158,7 +158,7 @@ def invalidate_all_statistics_days(user_id: int, reason: str | None = None) -> i
     return len(day_keys)
 
 
-def invalidate_statistics_cache(user_id: int, range_name: str = None):
+def invalidate_statistics_cache(user_id: int, range_name: str | None = None):
     """Remove cached statistics for a user.
 
     If a refresh is in progress, keep the old cache so users can see it
@@ -664,9 +664,10 @@ def refresh_statistics_cache(user_id: int, range_name: str):
             (time.perf_counter() - build_started) * 1000,
             stats_data.get("hours_per_media_type", {}),
         )
-        return stats_data
     except user_model.DoesNotExist:
         return None
+    else:
+        return stats_data
     finally:
         cache.delete(lock_key)
         _maybe_clear_metadata_refresh(user_id)

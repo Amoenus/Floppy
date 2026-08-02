@@ -452,7 +452,7 @@ def person_detail(request, source, person_id, name):
         sort_dir = "asc" if sort_by == MediaSortChoices.TITLE.value else "desc"
 
     def _apply_common_filters(entries):
-        """Filters that work on all filmography entries (year + department)."""
+        """Build the filters that apply to every filmography entry."""
         result = entries
         if filter_department:
             result = [
@@ -465,7 +465,7 @@ def person_detail(request, source, person_id, name):
         return result
 
     def _apply_watched_filters(entries):
-        """Filters that require tracked_item data; only applied to watched entries."""
+        """Build the filters that need tracked_item data, for watched entries only."""
         result = entries
         if filter_genre:
             result = [

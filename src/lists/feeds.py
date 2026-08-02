@@ -166,7 +166,7 @@ class PublicListFeed(Feed):
 @login_not_required
 @require_GET
 def list_rss_feed(request, list_reference):
-    """Wrapper view for RSS feed to ensure login_not_required is applied."""
+    """Wrap the RSS feed view so login_not_required is applied."""
     feed = PublicListFeed()
     return feed(request, list_reference)
 

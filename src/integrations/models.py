@@ -186,12 +186,8 @@ class PocketCastsAccount(models.Model):
         if not self.is_token_expired:
             return True
 
-        # If token is expired but we have a refresh token, we can still refresh
-        if self.refresh_token:
-            return True
-
-        # Token is expired and no refresh token - not connected
-        return False
+        # An expired token is still usable while a refresh token exists.
+        return bool(self.refresh_token)
 
     @property
     def is_token_expired(self):

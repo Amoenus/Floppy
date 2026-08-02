@@ -530,7 +530,7 @@ def _build_single_player_table(profile: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _build_platform_table(platform_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    table = [
+    return [
         {
             "platform": row.get("platform") or "",
             "count": _coerce_int(row.get("count_comp")) or 0,
@@ -542,7 +542,6 @@ def _build_platform_table(platform_rows: list[dict[str, Any]]) -> list[dict[str,
         }
         for row in platform_rows
     ]
-    return table
 
 
 def _extract_hltb_profile_ids(profile: dict[str, Any]) -> dict[str, Any]:

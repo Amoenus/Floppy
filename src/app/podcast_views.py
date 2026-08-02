@@ -77,7 +77,7 @@ def podcast_show_track_modal(request, show_id):
 
 @require_GET
 def podcast_episodes_api(request, show_id):
-    """API endpoint for paginated podcast episodes.
+    """Return a page of podcast episodes.
 
     Returns HTML fragments for infinite scroll if format=html, otherwise JSON.
     """

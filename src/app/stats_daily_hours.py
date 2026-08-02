@@ -27,8 +27,10 @@ logger = logging.getLogger(__name__)
 
 
 def get_daily_hours_by_media_type(user_media, start_date, end_date):
-    """Build Chart.js-friendly stacked bar data where X axis is dates (inclusive)
-    between start_date and end_date and Y axis is hours per media type per day.
+    """Build Chart.js stacked-bar data for the given date range.
+
+    The X axis is the inclusive dates between start_date and end_date; the Y axis
+    is hours per media type per day.
 
     Currently implemented for movies; other media types included as zeros and can
     be expanded later.

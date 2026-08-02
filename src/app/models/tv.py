@@ -1221,45 +1221,6 @@ class Episode(models.Model):
         """Return the season and episode number."""
         return self.item.__str__()
 
-    @property
-    def progress(self):
-        """Expose episode number as progress for list rendering/sorting fallbacks."""
-        if hasattr(self, "_progress_override"):
-            return self._progress_override
-        item = getattr(self, "item", None)
-        return item.episode_number if item else None
-
-    @progress.setter
-    def progress(self, value):
-        self._progress_override = value
-
-    @property
-    def max_progress(self):
-        """Expose related season max progress when available."""
-        if hasattr(self, "_max_progress_override"):
-            return self._max_progress_override
-        related_season = getattr(self, "related_season", None)
-        return getattr(related_season, "max_progress", None)
-
-    @max_progress.setter
-    def max_progress(self, value):
-        self._max_progress_override = value
-
-    @property
-    def progressed_at(self):
-        """Return the progressed at."""
-        return None
-
-    def _local_season_max_progress(self):
-        """Return the media-server-sourced episode count for this season, if any.
-
-        Only set when the provider has no metadata for the season, so the count
-        is the sole authority available for completion.
-        """
-        season_item = getattr(self.related_season, "item", None)
-        count = getattr(season_item, "local_season_episode_count", None)
-        return count if count and count > 0 else None
-
     def save(self, *args, **kwargs):
         """Save the episode instance."""
         if self.tracker.has_changed("status"):
@@ -1336,3 +1297,42 @@ class Episode(models.Model):
                 TV,
                 fields=["status"],
             )
+
+    @property
+    def progress(self):
+        """Expose episode number as progress for list rendering/sorting fallbacks."""
+        if hasattr(self, "_progress_override"):
+            return self._progress_override
+        item = getattr(self, "item", None)
+        return item.episode_number if item else None
+
+    @progress.setter
+    def progress(self, value):
+        self._progress_override = value
+
+    @property
+    def max_progress(self):
+        """Expose related season max progress when available."""
+        if hasattr(self, "_max_progress_override"):
+            return self._max_progress_override
+        related_season = getattr(self, "related_season", None)
+        return getattr(related_season, "max_progress", None)
+
+    @max_progress.setter
+    def max_progress(self, value):
+        self._max_progress_override = value
+
+    @property
+    def progressed_at(self):
+        """Return the progressed at."""
+        return None
+
+    def _local_season_max_progress(self):
+        """Return the media-server-sourced episode count for this season, if any.
+
+        Only set when the provider has no metadata for the season, so the count
+        is the sole authority available for completion.
+        """
+        season_item = getattr(self.related_season, "item", None)
+        count = getattr(season_item, "local_season_episode_count", None)
+        return count if count and count > 0 else None

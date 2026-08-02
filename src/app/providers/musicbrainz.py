@@ -167,7 +167,7 @@ def get_wikipedia_extract(artist_name):
 
 def _rate_limit():
     """Ensure minimum time between MusicBrainz API requests."""
-    global _last_request_time
+    global _last_request_time  # noqa: PLW0603  # module-level rate limiter state
     current_time = time.time()
     elapsed = current_time - _last_request_time
     if elapsed < MIN_REQUEST_INTERVAL:
@@ -213,7 +213,7 @@ def _mb_request(endpoint, params=None):
 
 
 def _try_fetch_cover_from_url(url):
-    """Helper to fetch cover from a specific Cover Art Archive URL.
+    """Fetch a cover from a specific Cover Art Archive URL.
 
     Returns the best quality image URL or None.
     """
@@ -884,7 +884,7 @@ def get_artist(artist_id):
     end_date = life_span.get("end", "")
     ended = life_span.get("ended", False)
 
-    # Area (country/location)
+    # Area gives the artist's country or location.
     area = response.get("area") or {}
     area_name = area.get("name", "") if isinstance(area, dict) else ""
 
@@ -1315,7 +1315,7 @@ def get_release(release_id, skip_cover_art: bool = False):
 
 
 def search_combined(query, page=1):
-    """Combined search returning artists, albums, and tracks.
+    """Search artists, albums and tracks in one call.
 
     First page returns artists/albums while image files load client-side.
     """

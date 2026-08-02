@@ -1479,11 +1479,12 @@ def update_statistics_preferences(request):
         invalidate_cache = True
 
     rating_scale = request.POST.get("rating_scale")
-    if rating_scale and rating_scale in RatingScaleChoices.values:
-        if request.user.rating_scale != rating_scale:
-            request.user.rating_scale = rating_scale
-            fields_to_update.append("rating_scale")
-            invalidate_cache = True
+    if (
+        rating_scale and rating_scale in RatingScaleChoices.values
+    ) and request.user.rating_scale != rating_scale:
+        request.user.rating_scale = rating_scale
+        fields_to_update.append("rating_scale")
+        invalidate_cache = True
 
     stats_split_tv_anime = request.POST.get("stats_split_tv_anime")
     if stats_split_tv_anime in ("true", "false"):

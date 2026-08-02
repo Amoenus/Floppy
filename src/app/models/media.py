@@ -722,7 +722,7 @@ class Anime(Media):
 
     tracker = FieldTracker()
     objects = ActiveAnimeManager()
-    all_objects = models.Manager()
+    all_objects = models.Manager()  # noqa: DJ012  # manager order is significant; objects must stay the default
 
     def save(self, *args, **kwargs):
         """Save, then auto-migrate a completed flat MAL anime to episode tracking.

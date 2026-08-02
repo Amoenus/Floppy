@@ -444,9 +444,10 @@ def get_anime_consumption_stats(
             activity_date = _get_activity_datetime(media)
             if activity_date is None:
                 continue
-            if start_date and end_date:
-                if not (start_date <= activity_date <= end_date):
-                    continue
+            if (start_date and end_date) and not (
+                start_date <= activity_date <= end_date
+            ):
+                continue
             runtime = _get_media_runtime_from_cache(
                 media, _logger, context="anime play data"
             )

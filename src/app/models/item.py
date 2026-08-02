@@ -353,6 +353,39 @@ class Item(CalendarTriggerMixin, models.Model):
                 name += f"E{self.episode_number}"
         return name
 
+    def save(self, *args, **kwargs):
+        """Save the item, ensuring JSONField arrays are never None."""
+        if not self.library_media_type:
+            self.library_media_type = self.media_type
+
+        # Ensure all JSONField arrays are lists, never None
+        json_array_fields = [
+            "genres",
+            "languages",
+            "platforms",
+            "studios",
+            "themes",
+            "authors",
+            "isbn",
+            "creators",
+        ]
+        for field_name in json_array_fields:
+            value = getattr(self, field_name, None)
+            if value is None:
+                setattr(self, field_name, [])
+
+        json_object_fields = [
+            "manual_metadata",
+            "provider_external_ids",
+            "provider_game_lengths",
+        ]
+        for field_name in json_object_fields:
+            value = getattr(self, field_name, None)
+            if value is None:
+                setattr(self, field_name, {})
+
+        super().save(*args, **kwargs)
+
     @classmethod
     def _normalize_title_value(cls, value):
         """Normalize title values to non-empty strings or None."""
@@ -663,39 +696,6 @@ class Item(CalendarTriggerMixin, models.Model):
     def generate_manual_id(cls):
         """Generate a unique ID for manual items."""
         return str(uuid.uuid4())
-
-    def save(self, *args, **kwargs):
-        """Save the item, ensuring JSONField arrays are never None."""
-        if not self.library_media_type:
-            self.library_media_type = self.media_type
-
-        # Ensure all JSONField arrays are lists, never None
-        json_array_fields = [
-            "genres",
-            "languages",
-            "platforms",
-            "studios",
-            "themes",
-            "authors",
-            "isbn",
-            "creators",
-        ]
-        for field_name in json_array_fields:
-            value = getattr(self, field_name, None)
-            if value is None:
-                setattr(self, field_name, [])
-
-        json_object_fields = [
-            "manual_metadata",
-            "provider_external_ids",
-            "provider_game_lengths",
-        ]
-        for field_name in json_object_fields:
-            value = getattr(self, field_name, None)
-            if value is None:
-                setattr(self, field_name, {})
-
-        super().save(*args, **kwargs)
 
     def fetch_releases(self, delay):
         """Fetch releases for the item."""
