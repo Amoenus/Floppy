@@ -37,6 +37,13 @@ BOOK_METADATA_PROVIDER_ORDER = (
     Sources.OPENLIBRARY.value,
 )
 TITLE_MATCH_THRESHOLD = 0.72
+# (strptime format, characters to feed it) pairs, most specific first.
+PUBLISHED_DATE_FORMATS = (
+    ("%Y-%m-%d", 10),
+    ("%d-%b-%Y", 11),
+    ("%Y-%m", 7),
+    ("%Y", 4),
+)
 
 
 class AudiobookshelfClientError(Exception):
@@ -261,6 +268,8 @@ class AudiobookshelfImporter:
         should_enrich = (
             self._should_prefer_provider_cover(image)
             or not authors_list
+            or not publishers
+            or not genres
         )
         provider_metadata = (
             self._resolve_provider_metadata(
@@ -294,6 +303,8 @@ class AudiobookshelfImporter:
             if isinstance(provider_metadata, dict)
             else None
         )
+        if release_datetime is None:
+            release_datetime = self._extract_published_datetime(metadata)
         if not series_name:
             series_name = provider_metadata.get("series_name") if isinstance(provider_metadata, dict) else None
         if series_position is None:
@@ -891,11 +902,13 @@ class AudiobookshelfImporter:
             return True
 
         image = item.image or ""
+        # A missing ISBN is not a defect for audiobooks: ABS carries an ASIN for
+        # most audio editions and no ISBN at all, so requiring one here marked
+        # those items unhealthy forever and re-repaired them on every sync.
         return any(
             (
                 self._is_stale_abs_cover(image),
                 not item.authors,
-                not item.isbn,
                 not item.publishers,
                 not item.genres,
                 item.release_datetime is None,
@@ -984,6 +997,26 @@ class AudiobookshelfImporter:
         if len(candidate) in (10, 13):
             return candidate
         return ""
+
+    def _extract_published_datetime(self, metadata: dict[str, Any]):
+        """Build a release datetime from the ABS publication fields.
+
+        ABS exposes publishedDate ("2022-08-26") and publishedYear, which is
+        usually a bare year but sometimes carries a full date ("26-Aug-2022").
+        Used as a fallback when provider enrichment supplies no release date,
+        so books keep a release date even without a provider match.
+        """
+        for raw in (metadata.get("publishedDate"), metadata.get("publishedYear")):
+            if not raw:
+                continue
+            value = str(raw).strip()
+            for fmt, length in PUBLISHED_DATE_FORMATS:
+                try:
+                    parsed = datetime.strptime(value[:length], fmt)  # noqa: DTZ007
+                except ValueError:
+                    continue
+                return parsed.replace(tzinfo=UTC)
+        return None
 
     def _extract_publisher(self, metadata: dict[str, Any]):
         raw = metadata.get("publisher") or metadata.get("publishers")
