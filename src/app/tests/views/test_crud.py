@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase, override_settings
+from django.test import TestCase, override_settings, tag
 from django.urls import reverse
 from django.utils import timezone
 
@@ -65,6 +65,7 @@ class CreateMedia(TestCase):
             True,
         )
 
+    @tag("network")
     @override_settings(MEDIA_ROOT=("create_media"))
     def test_create_tv(self):
         """Test the creation of a TV object through views."""
@@ -382,6 +383,7 @@ class CreateMedia(TestCase):
             self.assertEqual(item.genres, expected_genres)
             self.assertTrue(model.objects.filter(item=item, user=self.user).exists())
 
+    @tag("network")
     def test_create_season(self):
         """Test the creation of a Season through views."""
         Item.objects.create(
@@ -471,6 +473,7 @@ class CreateMedia(TestCase):
             1,
         )
 
+    @tag("network")
     def test_create_episodes(self):
         """Test the creation of Episode through views."""
         self.client.post(
@@ -662,6 +665,7 @@ class CreateMedia(TestCase):
             2,
         )
 
+    @tag("network")
     @patch("app.views.ensure_item_metadata")
     def test_create_game_htmx_returns_activity_subtitle_update(
         self, ensure_item_metadata_mock
@@ -1254,6 +1258,7 @@ class EditMedia(TestCase):
         game.refresh_from_db()
         self.assertIsNone(game.start_date)
 
+    @tag("network")
     @patch("app.views.ensure_item_metadata")
     def test_create_movie_htmx_inserts_score_chip_slot(self, ensure_item_metadata_mock):
         """HTMX tracker creation should insert the score chip into the page."""

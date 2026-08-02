@@ -341,7 +341,12 @@ Notes:
 - Quick confidence: `ruff check src`
 - Migration sync confidence: `cd src && python manage.py check_migration_hygiene --strict`
 - Upstream sync replay: `scripts/replay_upgrade_matrix.sh --from-tag <previous_release_tag> --to-ref latest --db sqlite,postgres --with-drift-scenarios`
-- Tag vocabulary: `slow` is the exclusion tag used by the fast suite; `benchmark` and `playwright` are sub-selectors (`scripts/test.sh --slow` runs only tagged tests). Any new benchmark/performance or Playwright test **must** be decorated with `@tag("slow", ...)`.
+- Tag vocabulary: `slow` and `network` are the exclusion tags used by the fast
+  suite. `network` marks tests that call a live provider API: they need keys and
+  internet, they are slow and flaky, and a fork PR cannot read repository secrets,
+  so CI excludes them. Run them with `scripts/test.sh --network`. If you add a test
+  that needs a real provider response, either mock it or tag it.
+- `slow` is the exclusion tag used by the fast suite; `benchmark` and `playwright` are sub-selectors (`scripts/test.sh --slow` runs only tagged tests). Any new benchmark/performance or Playwright test **must** be decorated with `@tag("slow", ...)`.
 - `playwright install` is only needed when actually running Playwright-tagged tests (`scripts/test.sh --full` / `--slow`); the fast suite excludes them.
 - `src/manage.py` sets `DJANGO_SETTINGS_MODULE=config.test_settings` for tests.
 - `config.test_settings` uses fakeredis and sets `CELERY_TASK_ALWAYS_EAGER=True`.

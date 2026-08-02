@@ -2,7 +2,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from django.core.cache import cache
-from django.test import TestCase
+from django.test import TestCase, tag
 
 from app.models import MediaTypes, Sources
 from app.providers import (
@@ -43,6 +43,7 @@ class Search(TestCase):
 
         self.assertEqual(response["results"], [])
 
+    @tag("network")
     def test_mangaupdates(self):
         """Test the search method for manga.
 
@@ -54,12 +55,14 @@ class Search(TestCase):
         for manga in response["results"]:
             self.assertTrue(all(key in manga for key in required_keys))
 
+    @tag("network")
     def test_manga_not_found(self):
         """Test the search method for manga with no results."""
         response = mangaupdates.search("", 1)
 
         self.assertEqual(response["results"], [])
 
+    @tag("network")
     def test_tv(self):
         """Test the search method for TV shows.
 
@@ -71,6 +74,7 @@ class Search(TestCase):
         for tv in response["results"]:
             self.assertTrue(all(key in tv for key in required_keys))
 
+    @tag("network")
     def test_games(self):
         """Test the search method for games.
 
@@ -168,6 +172,7 @@ class Search(TestCase):
         for book in response["results"]:
             self.assertTrue(all(key in book for key in required_keys))
 
+    @tag("network")
     def test_comics(self):
         """Test the search method for comics.
 
