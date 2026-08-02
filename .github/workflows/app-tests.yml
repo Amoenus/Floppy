@@ -154,7 +154,12 @@ jobs:
 
       - name: Run Tests
         run: |
-          coverage run src/manage.py test app users integrations lists events --parallel
+          # Tests tagged "network" call live provider APIs. They are slow and
+          # flaky, and a pull request from a fork cannot read repository secrets,
+          # so they fail there regardless of the change. Run them deliberately
+          # with scripts/test.sh --network.
+          coverage run src/manage.py test app users integrations lists events \
+            --parallel --exclude-tag network
 
       - name: Build Coverage Report
         run: |
