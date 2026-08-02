@@ -144,14 +144,18 @@ def lists(request):
         )
 
     if selected_media_type != "all":
-        custom_lists = custom_lists.annotate(
-            has_media_type=Exists(
-                CustomListItem.objects.filter(
-                    custom_list_id=OuterRef("pk"),
-                    item__media_type=selected_media_type,
+        custom_lists = (
+            custom_lists.annotate(
+                has_media_type=Exists(
+                    CustomListItem.objects.filter(
+                        custom_list_id=OuterRef("pk"),
+                        item__media_type=selected_media_type,
+                    ),
                 ),
-            ),
-        ).filter(has_media_type=True).distinct()
+            )
+            .filter(has_media_type=True)
+            .distinct()
+        )
 
     # Add prefetch after annotations to avoid interfering with counts
     # This is for the list image property which uses items.first()
@@ -159,7 +163,9 @@ def lists(request):
         "collaborators",
         Prefetch(
             "customlistitem_set",
-            queryset=CustomListItem.objects.select_related("item").order_by("-date_added"),
+            queryset=CustomListItem.objects.select_related("item").order_by(
+                "-date_added"
+            ),
         ),
     )
 
@@ -250,18 +256,14 @@ def lists(request):
                 user=request.user,
                 available_tags=available_tags,
             )
-        except Exception as e:
-            logger.error(
-                "Error creating form for list ID %s: %s",
-                custom_list.id,
-                e,
-                exc_info=True,
-            )
+        except Exception:
+            logger.exception("Error creating form for list ID %s", custom_list.id)
             # Skip form creation for this list
             custom_list.form = None
 
     # Add timestamp to context for cache busting
     import time
+
     cache_buster = int(time.time())
 
     # Boosted navigation still sends HX-Request but needs the full page
@@ -306,7 +308,9 @@ def lists(request):
             "current_media_type": selected_media_type,
             "trakt_redirect_uri": trakt_redirect_uri,
             "trakt_account": trakt_account,
-            "trakt_has_credentials": bool(trakt_account and trakt_account.is_configured),
+            "trakt_has_credentials": bool(
+                trakt_account and trakt_account.is_configured
+            ),
             "mdblist_account": mdblist_account,
             "cache_buster": cache_buster,
             "list_url_template": _build_list_url_template(request),

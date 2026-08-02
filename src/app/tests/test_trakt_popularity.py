@@ -119,7 +119,9 @@ class TraktProviderTests(TestCase):
 
 class TraktPopularityServiceTests(TestCase):
     @patch("app.services.trakt_popularity.trakt_provider.lookup_by_external_id")
-    @patch("app.services.trakt_popularity.metadata_resolution.resolve_provider_media_id")
+    @patch(
+        "app.services.trakt_popularity.metadata_resolution.resolve_provider_media_id"
+    )
     def test_mal_anime_lookup_falls_back_to_resolved_tmdb_id(
         self,
         mock_resolve_provider_media_id,
@@ -223,7 +225,9 @@ class TraktPopularityServiceTests(TestCase):
         self.assertIsNotNone(item.trakt_popularity_fetched_at)
 
     @patch("app.services.trakt_popularity.lookup_item_summary")
-    def test_refresh_trakt_popularity_persists_season_fields(self, mock_lookup_item_summary):
+    def test_refresh_trakt_popularity_persists_season_fields(
+        self, mock_lookup_item_summary
+    ):
         item = Item.objects.create(
             media_id="81723",
             source=Sources.TMDB.value,

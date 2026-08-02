@@ -1,4 +1,5 @@
 import logging
+from http import HTTPStatus
 
 from django.conf import settings
 from django.db import transaction
@@ -257,7 +258,7 @@ def _make_trakt_request(access_token, url, client_id=None):
     try:
         return services.api_request("TRAKT", "GET", url, headers=headers)
     except services.ProviderAPIError as error:
-        if error.status_code == 401:
+        if error.status_code == HTTPStatus.UNAUTHORIZED:
             msg = "Trakt authorization expired. Please connect again."
             raise helpers.MediaImportError(msg) from error
         raise
@@ -354,7 +355,7 @@ def _get_metadata(media_type, tmdb_id, title, season_number=None, episode_number
             **metadata_kwargs,
         )
     except services.ProviderAPIError as error:
-        if error.status_code == 404:
+        if error.status_code == HTTPStatus.NOT_FOUND:
             logger.warning(
                 "Trakt list item %s missing in TMDB (%s)",
                 title,

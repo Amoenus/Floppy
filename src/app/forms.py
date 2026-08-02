@@ -33,6 +33,8 @@ from app.models import (
     Status,
 )
 
+CHOICE_PAIR_LENGTH = 2
+
 
 def get_form_class(media_type):
     """Return the form class for the media type."""
@@ -247,7 +249,7 @@ class ManualItemForm(forms.ModelForm):
 
         return cleaned_data
 
-    def save(self, commit=True):  # noqa: FBT002
+    def save(self, commit=True):
         """Save the form and handle manual media ID generation."""
         instance = super().save(commit=False)
         instance.source = Sources.MANUAL.value
@@ -271,6 +273,7 @@ class RatingScaleFormMixin:
     """Apply user rating scale preferences to score fields."""
 
     def __init__(self, *args, **kwargs):
+        """Store the extra keyword arguments this form needs."""
         self.user = kwargs.pop("user", None)
         super().__init__(*args, **kwargs)
         self._apply_rating_scale()
@@ -287,10 +290,17 @@ class RatingScaleFormMixin:
                 "placeholder": f"0-{scale_max}",
             },
         )
-        if not self.is_bound and self.instance and getattr(self.instance, "score", None) is not None:
-            self.initial["score"] = self.user.scale_score_for_display(self.instance.score)
+        if (
+            not self.is_bound
+            and self.instance
+            and getattr(self.instance, "score", None) is not None
+        ):
+            self.initial["score"] = self.user.scale_score_for_display(
+                self.instance.score
+            )
 
     def clean_score(self):
+        """Validate the score field."""
         score = self.cleaned_data.get("score")
         if score is None or not self.user:
             return score
@@ -396,18 +406,15 @@ class MangaForm(MediaForm):
 
     def __init__(self, *args, **kwargs):
         """Initialize the form."""
-        max_progress = kwargs.pop("max_progress", None)
+        kwargs.pop("max_progress", None)
         super().__init__(*args, **kwargs)
 
         # Adjust progress field for percentage mode
         if self.user and self.user.book_comic_manga_progress_percentage:
             self.fields["progress"].label = "Progress (%)"
-            self.fields["progress"].widget.attrs.update({
-                "min": 0,
-                "max": 100,
-                "step": 0.1,
-                "placeholder": "%"
-            })
+            self.fields["progress"].widget.attrs.update(
+                {"min": 0, "max": 100, "step": 0.1, "placeholder": "%"}
+            )
 
 
 class AnimeForm(MediaForm):
@@ -501,18 +508,15 @@ class BookForm(MediaForm):
 
     def __init__(self, *args, **kwargs):
         """Initialize the form."""
-        max_progress = kwargs.pop("max_progress", None)
+        kwargs.pop("max_progress", None)
         super().__init__(*args, **kwargs)
 
         # Adjust progress field for percentage mode
         if self.user and self.user.book_comic_manga_progress_percentage:
             self.fields["progress"].label = "Progress (%)"
-            self.fields["progress"].widget.attrs.update({
-                "min": 0,
-                "max": 100,
-                "step": 0.1,
-                "placeholder": "%"
-            })
+            self.fields["progress"].widget.attrs.update(
+                {"min": 0, "max": 100, "step": 0.1, "placeholder": "%"}
+            )
 
 
 class ComicForm(MediaForm):
@@ -530,18 +534,15 @@ class ComicForm(MediaForm):
 
     def __init__(self, *args, **kwargs):
         """Initialize the form."""
-        max_progress = kwargs.pop("max_progress", None)
+        kwargs.pop("max_progress", None)
         super().__init__(*args, **kwargs)
 
         # Adjust progress field for percentage mode
         if self.user and self.user.book_comic_manga_progress_percentage:
             self.fields["progress"].label = "Progress (%)"
-            self.fields["progress"].widget.attrs.update({
-                "min": 0,
-                "max": 100,
-                "step": 0.1,
-                "placeholder": "%"
-            })
+            self.fields["progress"].widget.attrs.update(
+                {"min": 0, "max": 100, "step": 0.1, "placeholder": "%"}
+            )
 
 
 class ComicissueForm(MediaForm):
@@ -718,7 +719,9 @@ class BulkEpisodeTrackForm(forms.Form):
         self.domain = kwargs.pop("domain", None) or {}
         super().__init__(*args, **kwargs)
 
-        distribution_target_label = self.domain.get("distribution_target_label") or "air date"
+        distribution_target_label = (
+            self.domain.get("distribution_target_label") or "air date"
+        )
         self.fields["distribution_mode"].choices = (
             (
                 self.DISTRIBUTION_MODE_AIR_DATE,
@@ -732,8 +735,7 @@ class BulkEpisodeTrackForm(forms.Form):
 
         seasons = self.domain.get("seasons", [])
         season_choices = [
-            (season["season_number"], season["season_title"])
-            for season in seasons
+            (season["season_number"], season["season_title"]) for season in seasons
         ]
         self.fields["first_season_number"].choices = season_choices
         self.fields["last_season_number"].choices = season_choices
@@ -897,9 +899,7 @@ class BulkEpisodeTrackForm(forms.Form):
 
         if distribution_mode == self.DISTRIBUTION_MODE_AIR_DATE:
             missing_air_dates = [
-                episode
-                for episode in selected_episodes
-                if not episode.get("air_date")
+                episode for episode in selected_episodes if not episode.get("air_date")
             ]
             if missing_air_dates:
                 if (
@@ -928,8 +928,7 @@ class MusicForm(MediaForm):
         model = Music
         labels = {
             "progress": (
-                f"Progress "
-                f"({config.get_unit(MediaTypes.MUSIC.value, short=False)}s)"
+                f"Progress ({config.get_unit(MediaTypes.MUSIC.value, short=False)}s)"
             ),
         }
 
@@ -943,8 +942,7 @@ class PodcastForm(MediaForm):
         model = Podcast
         labels = {
             "progress": (
-                f"Progress "
-                f"({config.get_unit(MediaTypes.PODCAST.value, short=False)}s)"
+                f"Progress ({config.get_unit(MediaTypes.PODCAST.value, short=False)}s)"
             ),
         }
 
@@ -1082,6 +1080,8 @@ class CollectionEntryForm(forms.ModelForm):
     """Form for adding/editing collection entries."""
 
     class Meta:
+        """Model and field configuration."""
+
         model = CollectionEntry
         fields = [
             "item",
@@ -1117,9 +1117,12 @@ class CollectionEntryForm(forms.ModelForm):
         }
 
     def __init__(self, *args, **kwargs):
+        """Store the extra keyword arguments this form needs."""
         self.user = kwargs.pop("user", None)
         collection_media_type = kwargs.pop("collection_media_type", None)
-        collection_choices_override = kwargs.pop("collection_choices_override", None) or {}
+        collection_choices_override = (
+            kwargs.pop("collection_choices_override", None) or {}
+        )
         super().__init__(*args, **kwargs)
         if settings.TRACK_TIME:
             collected_widget = forms.DateTimeInput(attrs={"type": "datetime-local"})
@@ -1155,7 +1158,10 @@ class CollectionEntryForm(forms.ModelForm):
                 continue
             normalized = []
             for option in choices:
-                if isinstance(option, (tuple, list)) and len(option) == 2:
+                if (
+                    isinstance(option, (tuple, list))
+                    and len(option) == CHOICE_PAIR_LENGTH
+                ):
                     normalized.append((option[0], option[1]))
                 else:
                     normalized.append((option, option))

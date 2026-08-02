@@ -160,10 +160,13 @@ class GenericScrobbleProcessPayloadTests(TestCase):
 
     def test_movie_resolution_failure_propagates(self):
         """A provider failure during resolution is not swallowed here."""
-        with patch(
-            "app.providers.tmdb.movie",
-            side_effect=RuntimeError("tmdb down"),
-        ), self.assertRaises(RuntimeError):
+        with (
+            patch(
+                "app.providers.tmdb.movie",
+                side_effect=RuntimeError("tmdb down"),
+            ),
+            self.assertRaises(RuntimeError),
+        ):
             self.processor.process_payload(
                 {
                     "media_type": "movie",

@@ -16,7 +16,9 @@ from app.models import DiscoverApiCache, DiscoverRowCache, DiscoverTasteProfile
 
 
 def _params_hash(params: dict[str, Any] | None) -> str:
-    payload = json.dumps(params or {}, sort_keys=True, separators=(",", ":"), default=str)
+    payload = json.dumps(
+        params or {}, sort_keys=True, separators=(",", ":"), default=str
+    )
     return stable_hmac(payload, namespace="discover_api_cache")
 
 
@@ -220,12 +222,14 @@ def set_taste_profile(
                 media_type=media_type,
                 defaults=defaults,
             )
-            return entry
         except OperationalError as exc:
             if "database is locked" not in str(exc) or attempt >= max_attempts - 1:
                 raise
-            time.sleep(0.2 * (attempt + 1) + random.random() * 0.3)
-    raise RuntimeError("unreachable")
+            time.sleep(0.2 * (attempt + 1) + random.random() * 0.3)  # noqa: S311  # sampling/jitter only, not cryptographic
+        else:
+            return entry
+    msg = "unreachable"
+    raise RuntimeError(msg)
 
 
 def delete_row_caches(user_ids: list[int], media_types: list[str]) -> int:

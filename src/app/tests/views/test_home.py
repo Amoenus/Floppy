@@ -71,11 +71,7 @@ class HomeViewTests(TestCase):
 
     def _get_media_entry(self, response, media_type, media_id):
         row = self._get_first_row(response, media_type)
-        return next(
-            entry
-            for entry in row["items"]
-            if entry.item.media_id == media_id
-        )
+        return next(entry for entry in row["items"] if entry.item.media_id == media_id)
 
     def setUp(self):
         """Create a user and log in."""
@@ -161,11 +157,15 @@ class HomeViewTests(TestCase):
             html=False,
         )
         self.assertContains(response, 'data-home-row-sort-toggle="true"', html=False)
-        self.assertContains(response, 'aria-label="Toggle sort direction for In Progress"', html=False)
+        self.assertContains(
+            response, 'aria-label="Toggle sort direction for In Progress"', html=False
+        )
         self.assertNotContains(response, "Sorted by Title • Ascending", html=False)
         self.assertContains(response, 'class="home-row-card w-44 shrink-0"', html=False)
         self.assertContains(response, 'data-home-row="true"', html=False)
-        self.assertNotContains(response, '<h2 class="text-2xl font-semibold">', html=False)
+        self.assertNotContains(
+            response, '<h2 class="text-2xl font-semibold">', html=False
+        )
         self.assertNotContains(response, "Load All")
 
     def test_home_groups_include_label_and_icon(self):
@@ -272,7 +272,9 @@ class HomeViewTests(TestCase):
         )
 
         response = self._get_hydrated_home()
-        entry = self._get_media_entry(response, MediaTypes.MOVIE.value, "home-prefill-movie")
+        entry = self._get_media_entry(
+            response, MediaTypes.MOVIE.value, "home-prefill-movie"
+        )
 
         self.assertEqual(entry.item.display_release_year, 2024)
         self.assertContains(response, "2024", html=False)
@@ -310,7 +312,11 @@ class HomeViewTests(TestCase):
 
         podcast_row = self._get_first_row(response, MediaTypes.PODCAST.value)
         self.assertEqual(podcast_row["card_width_class"], "w-44")
-        self.assertContains(response, 'class="home-row-card w-44 shrink-0 self-start aspect-square min-h-0"', html=False)
+        self.assertContains(
+            response,
+            'class="home-row-card w-44 shrink-0 self-start aspect-square min-h-0"',
+            html=False,
+        )
         self.assertNotContains(response, 'class="w-52 shrink-0"', html=False)
 
     def test_home_view_hides_disabled_sidebar_media_types_even_when_rows_exist(self):
@@ -699,12 +705,18 @@ class HomeViewTests(TestCase):
         initial_response = self.client.get(reverse("home"))
         season_row = self._get_first_row(initial_response, MediaTypes.SEASON.value)
         self.assertContains(initial_response, 'data-loaded-count="14"', html=False)
-        self.assertContains(initial_response, 'data-home-row-sentinel="true"', html=False)
-        self.assertContains(initial_response, 'data-home-row-prefetch-distance="1152"', html=False)
-        self.assertContains(initial_response, 'hx-trigger="home-row-load-more"', html=False)
+        self.assertContains(
+            initial_response, 'data-home-row-sentinel="true"', html=False
+        )
+        self.assertContains(
+            initial_response, 'data-home-row-prefetch-distance="1152"', html=False
+        )
+        self.assertContains(
+            initial_response, 'hx-trigger="home-row-load-more"', html=False
+        )
         self.assertContains(
             initial_response,
-            "hx-vals=\'js:{offset: Number(event.target.dataset.loadedCount || 0)}\'",
+            "hx-vals='js:{offset: Number(event.target.dataset.loadedCount || 0)}'",
             html=False,
         )
 

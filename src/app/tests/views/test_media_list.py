@@ -221,7 +221,9 @@ class MediaListViewTests(TestCase):
         )
         return item
 
-    def _create_tv_runtime_entry(self, media_id, title, episode_runtimes, *, progress=0):
+    def _create_tv_runtime_entry(
+        self, media_id, title, episode_runtimes, *, progress=0
+    ):
         item = Item.objects.create(
             media_id=str(media_id),
             source=Sources.TMDB.value,
@@ -408,7 +410,9 @@ class MediaListViewTests(TestCase):
         )
 
         watched_at = timezone.now().replace(hour=12, minute=0, second=0, microsecond=0)
-        for episode_number, release_datetime in enumerate(episode_release_datetimes, start=1):
+        for episode_number, release_datetime in enumerate(
+            episode_release_datetimes, start=1
+        ):
             event_datetime = release_datetime
             if event_datetime is None:
                 event_datetime = timezone.datetime.min.replace(
@@ -771,9 +775,13 @@ class MediaListViewTests(TestCase):
 
     def test_supported_media_sort_shows_plays_option(self):
         """Movies, TV, and Anime should expose the plays sort option."""
-        movie_response = self.client.get(reverse("medialist", args=[MediaTypes.MOVIE.value]))
+        movie_response = self.client.get(
+            reverse("medialist", args=[MediaTypes.MOVIE.value])
+        )
         tv_response = self.client.get(reverse("medialist", args=[MediaTypes.TV.value]))
-        anime_response = self.client.get(reverse("medialist", args=[MediaTypes.ANIME.value]))
+        anime_response = self.client.get(
+            reverse("medialist", args=[MediaTypes.ANIME.value])
+        )
 
         self.assertContains(movie_response, "toggleSort('plays')")
         self.assertContains(tv_response, "toggleSort('plays')")
@@ -796,9 +804,13 @@ class MediaListViewTests(TestCase):
 
     def test_supported_media_sort_shows_time_watched_option(self):
         """Movies, TV, and Anime should expose the time watched sort option."""
-        movie_response = self.client.get(reverse("medialist", args=[MediaTypes.MOVIE.value]))
+        movie_response = self.client.get(
+            reverse("medialist", args=[MediaTypes.MOVIE.value])
+        )
         tv_response = self.client.get(reverse("medialist", args=[MediaTypes.TV.value]))
-        anime_response = self.client.get(reverse("medialist", args=[MediaTypes.ANIME.value]))
+        anime_response = self.client.get(
+            reverse("medialist", args=[MediaTypes.ANIME.value])
+        )
 
         self.assertContains(movie_response, "toggleSort('time_watched')")
         self.assertContains(tv_response, "toggleSort('time_watched')")
@@ -820,17 +832,24 @@ class MediaListViewTests(TestCase):
     def test_supported_media_sort_shows_next_episode_air_date_option(self):
         """TV, Season, and Anime should expose the next episode air date sort option."""
         tv_response = self.client.get(reverse("medialist", args=[MediaTypes.TV.value]))
-        season_response = self.client.get(reverse("medialist", args=[MediaTypes.SEASON.value]))
-        anime_response = self.client.get(reverse("medialist", args=[MediaTypes.ANIME.value]))
+        season_response = self.client.get(
+            reverse("medialist", args=[MediaTypes.SEASON.value])
+        )
+        anime_response = self.client.get(
+            reverse("medialist", args=[MediaTypes.ANIME.value])
+        )
 
         self.assertContains(tv_response, "toggleSort('next_episode_air_date')")
         self.assertContains(season_response, "toggleSort('next_episode_air_date')")
         self.assertContains(anime_response, "toggleSort('next_episode_air_date')")
 
-    def test_non_supported_media_sort_hides_next_episode_air_date_option_and_falls_back(self):
+    def test_non_supported_media_sort_hides_next_episode_air_date_option_and_falls_back(
+        self,
+    ):
         """Non show-like media types should hide next-episode air-date sort and fallback."""
         response = self.client.get(
-            reverse("medialist", args=[MediaTypes.BOOK.value]) + "?sort=next_episode_air_date",
+            reverse("medialist", args=[MediaTypes.BOOK.value])
+            + "?sort=next_episode_air_date",
         )
 
         self.assertEqual(response.status_code, 200)
@@ -917,7 +936,8 @@ class MediaListViewTests(TestCase):
 
     def test_non_supported_critic_rating_sort_hides_option_and_falls_back(self):
         response = self.client.get(
-            reverse("medialist", args=[MediaTypes.PODCAST.value]) + "?sort=critic_rating",
+            reverse("medialist", args=[MediaTypes.PODCAST.value])
+            + "?sort=critic_rating",
         )
 
         self.assertEqual(response.status_code, 200)
@@ -962,7 +982,9 @@ class MediaListViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["current_sort"], "plays")
-        self.assertEqual(response.context["media_list"].object_list[0].item.title, "Test Movie 1")
+        self.assertEqual(
+            response.context["media_list"].object_list[0].item.title, "Test Movie 1"
+        )
 
     def test_movie_sort_by_time_watched_orders_by_total_minutes(self):
         """Movie time watched sort should prioritize plays multiplied by runtime."""
@@ -1013,7 +1035,9 @@ class MediaListViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["current_sort"], "time_watched")
-        self.assertEqual(response.context["media_list"].object_list[0].item.title, "Test Movie 1")
+        self.assertEqual(
+            response.context["media_list"].object_list[0].item.title, "Test Movie 1"
+        )
         self.assertContains(response, "2h 00min")
 
     def test_tv_sort_by_plays_orders_by_episode_progress(self):
@@ -1111,12 +1135,15 @@ class MediaListViewTests(TestCase):
         )
 
         response = self.client.get(
-            reverse("medialist", args=[MediaTypes.TV.value]) + "?sort=plays&direction=desc",
+            reverse("medialist", args=[MediaTypes.TV.value])
+            + "?sort=plays&direction=desc",
         )
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["current_sort"], "plays")
-        self.assertEqual(response.context["media_list"].object_list[0].item.title, "TV Plays First")
+        self.assertEqual(
+            response.context["media_list"].object_list[0].item.title, "TV Plays First"
+        )
 
     def test_movie_sort_by_release_date_orders_items(self):
         """Release date sort should order by item.release_datetime."""
@@ -1136,9 +1163,15 @@ class MediaListViewTests(TestCase):
             source=Sources.TMDB.value,
             media_type=MediaTypes.MOVIE.value,
         )
-        Item.objects.filter(id=item1.id).update(release_datetime=now - timedelta(days=90))
-        Item.objects.filter(id=item2.id).update(release_datetime=now - timedelta(days=15))
-        Item.objects.filter(id=item3.id).update(release_datetime=now - timedelta(days=45))
+        Item.objects.filter(id=item1.id).update(
+            release_datetime=now - timedelta(days=90)
+        )
+        Item.objects.filter(id=item2.id).update(
+            release_datetime=now - timedelta(days=15)
+        )
+        Item.objects.filter(id=item3.id).update(
+            release_datetime=now - timedelta(days=45)
+        )
 
         response = self.client.get(
             reverse("medialist", args=[MediaTypes.MOVIE.value])
@@ -1147,7 +1180,9 @@ class MediaListViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["current_sort"], "release_date")
-        self.assertEqual(response.context["media_list"].object_list[0].item.title, "Test Movie 1")
+        self.assertEqual(
+            response.context["media_list"].object_list[0].item.title, "Test Movie 1"
+        )
 
     def test_movie_sort_by_date_added_orders_items(self):
         """Date added sort should order by media.created_at."""
@@ -1169,7 +1204,9 @@ class MediaListViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["current_sort"], "date_added")
-        self.assertEqual(response.context["media_list"].object_list[0].item.title, "Test Movie 1")
+        self.assertEqual(
+            response.context["media_list"].object_list[0].item.title, "Test Movie 1"
+        )
 
     def test_media_list_with_filters(self):
         """Test the media list view with filters."""
@@ -1259,11 +1296,16 @@ class MediaListViewTests(TestCase):
         )
         self.assertEqual(in_progress_response.status_code, 200)
         self.assertEqual(
-            [entry.item.title for entry in in_progress_response.context["media_list"].object_list],
+            [
+                entry.item.title
+                for entry in in_progress_response.context["media_list"].object_list
+            ],
             ["Status All Collected Tracked"],
         )
 
-    def test_no_status_filter_shows_only_collected_untracked_without_persisting_preference(self):
+    def test_no_status_filter_shows_only_collected_untracked_without_persisting_preference(
+        self,
+    ):
         self.user.movie_status = Status.COMPLETED.value
         self.user.save(update_fields=["movie_status"])
 
@@ -1415,13 +1457,22 @@ class MediaListViewTests(TestCase):
             {"search": "Episode Collected Library", "status": "no_status"},
         )
 
-        self.assertEqual(show_item.id, no_status_response.context["media_list"].object_list[0].item.id)
         self.assertEqual(
-            [entry.item.title for entry in all_response.context["media_list"].object_list],
+            show_item.id,
+            no_status_response.context["media_list"].object_list[0].item.id,
+        )
+        self.assertEqual(
+            [
+                entry.item.title
+                for entry in all_response.context["media_list"].object_list
+            ],
             [],
         )
         self.assertEqual(
-            [entry.item.title for entry in no_status_response.context["media_list"].object_list],
+            [
+                entry.item.title
+                for entry in no_status_response.context["media_list"].object_list
+            ],
             ["Episode Collected Library Show"],
         )
 
@@ -1471,9 +1522,13 @@ class MediaListViewTests(TestCase):
 
     def test_progress_filter_is_visible_only_for_tv_and_anime(self):
         """Progress filtering should render only where caught-up semantics are supported."""
-        movie_response = self.client.get(reverse("medialist", args=[MediaTypes.MOVIE.value]))
+        movie_response = self.client.get(
+            reverse("medialist", args=[MediaTypes.MOVIE.value])
+        )
         tv_response = self.client.get(reverse("medialist", args=[MediaTypes.TV.value]))
-        anime_response = self.client.get(reverse("medialist", args=[MediaTypes.ANIME.value]))
+        anime_response = self.client.get(
+            reverse("medialist", args=[MediaTypes.ANIME.value])
+        )
 
         self.assertFalse(movie_response.context["filter_data"]["show_progress"])
         self.assertTrue(tv_response.context["filter_data"]["show_progress"])
@@ -1503,10 +1558,17 @@ class MediaListViewTests(TestCase):
         not_caught_up_response = self.client.get(f"{url}?progress=not_caught_up")
         self.assertEqual(not_caught_up_response.status_code, 200)
         self.assertTrue(not_caught_up_response.context["filter_data"]["show_progress"])
-        self.assertEqual(not_caught_up_response.context["current_progress"], "not_caught_up")
-        self.assertEqual(not_caught_up_response.context["media_list"].paginator.count, 1)
         self.assertEqual(
-            [media.item.title for media in not_caught_up_response.context["media_list"].object_list],
+            not_caught_up_response.context["current_progress"], "not_caught_up"
+        )
+        self.assertEqual(
+            not_caught_up_response.context["media_list"].paginator.count, 1
+        )
+        self.assertEqual(
+            [
+                media.item.title
+                for media in not_caught_up_response.context["media_list"].object_list
+            ],
             ["Not Caught Up TV"],
         )
 
@@ -1515,7 +1577,10 @@ class MediaListViewTests(TestCase):
         self.assertEqual(caught_up_response.context["current_progress"], "caught_up")
         self.assertEqual(caught_up_response.context["media_list"].paginator.count, 1)
         self.assertEqual(
-            [media.item.title for media in caught_up_response.context["media_list"].object_list],
+            [
+                media.item.title
+                for media in caught_up_response.context["media_list"].object_list
+            ],
             ["Caught Up TV"],
         )
 
@@ -1565,16 +1630,26 @@ class MediaListViewTests(TestCase):
         self.assertEqual(caught_up_response.context["current_progress"], "caught_up")
         self.assertEqual(caught_up_response.context["media_list"].paginator.count, 1)
         self.assertEqual(
-            [media.item.title for media in caught_up_response.context["media_list"].object_list],
+            [
+                media.item.title
+                for media in caught_up_response.context["media_list"].object_list
+            ],
             ["Dropped Seasons Caught Up"],
         )
 
         not_caught_up_response = self.client.get(f"{url}?progress=not_caught_up")
         self.assertEqual(not_caught_up_response.status_code, 200)
-        self.assertEqual(not_caught_up_response.context["current_progress"], "not_caught_up")
-        self.assertEqual(not_caught_up_response.context["media_list"].paginator.count, 1)
         self.assertEqual(
-            [media.item.title for media in not_caught_up_response.context["media_list"].object_list],
+            not_caught_up_response.context["current_progress"], "not_caught_up"
+        )
+        self.assertEqual(
+            not_caught_up_response.context["media_list"].paginator.count, 1
+        )
+        self.assertEqual(
+            [
+                media.item.title
+                for media in not_caught_up_response.context["media_list"].object_list
+            ],
             ["Still In Progress TV"],
         )
 
@@ -1600,10 +1675,17 @@ class MediaListViewTests(TestCase):
         not_caught_up_response = self.client.get(f"{url}?progress=not_caught_up")
         self.assertEqual(not_caught_up_response.status_code, 200)
         self.assertTrue(not_caught_up_response.context["filter_data"]["show_progress"])
-        self.assertEqual(not_caught_up_response.context["current_progress"], "not_caught_up")
-        self.assertEqual(not_caught_up_response.context["media_list"].paginator.count, 1)
         self.assertEqual(
-            [media.item.title for media in not_caught_up_response.context["media_list"].object_list],
+            not_caught_up_response.context["current_progress"], "not_caught_up"
+        )
+        self.assertEqual(
+            not_caught_up_response.context["media_list"].paginator.count, 1
+        )
+        self.assertEqual(
+            [
+                media.item.title
+                for media in not_caught_up_response.context["media_list"].object_list
+            ],
             ["Not Caught Up Anime"],
         )
 
@@ -1612,7 +1694,10 @@ class MediaListViewTests(TestCase):
         self.assertEqual(caught_up_response.context["current_progress"], "caught_up")
         self.assertEqual(caught_up_response.context["media_list"].paginator.count, 1)
         self.assertEqual(
-            [media.item.title for media in caught_up_response.context["media_list"].object_list],
+            [
+                media.item.title
+                for media in caught_up_response.context["media_list"].object_list
+            ],
             ["Caught Up Anime"],
         )
 
@@ -1650,8 +1735,12 @@ class MediaListViewTests(TestCase):
             f"{url}?sort=time_left&direction=asc&progress=not_caught_up",
         )
         self.assertEqual(not_caught_up_response.status_code, 200)
-        self.assertEqual(not_caught_up_response.context["current_progress"], "not_caught_up")
-        self.assertEqual(not_caught_up_response.context["media_list"].paginator.count, 1)
+        self.assertEqual(
+            not_caught_up_response.context["current_progress"], "not_caught_up"
+        )
+        self.assertEqual(
+            not_caught_up_response.context["media_list"].paginator.count, 1
+        )
         self.assertEqual(
             not_caught_up_response.context["media_list"].object_list[0].item.title,
             "Not Caught Up Time Left",
@@ -1776,7 +1865,9 @@ class MediaListViewTests(TestCase):
         self.assertContains(response, "9h 15min")
 
     def test_movie_table_renders_runtime_column(self):
-        self._create_movie_runtime_entry("runtime-column-movie", "Runtime Column Movie", 142)
+        self._create_movie_runtime_entry(
+            "runtime-column-movie", "Runtime Column Movie", 142
+        )
 
         response = self.client.get(
             reverse("medialist", args=[MediaTypes.MOVIE.value])
@@ -1829,7 +1920,9 @@ class MediaListViewTests(TestCase):
         self.assertContains(response, "4h 44min")
 
     def test_movie_table_renders_popularity_column(self):
-        self._create_movie_popularity_entry("popularity-column-movie", "Popularity Column Movie", 7)
+        self._create_movie_popularity_entry(
+            "popularity-column-movie", "Popularity Column Movie", 7
+        )
 
         response = self.client.get(
             reverse("medialist", args=[MediaTypes.MOVIE.value])
@@ -1861,8 +1954,12 @@ class MediaListViewTests(TestCase):
         self.assertContains(response, "8.7")
 
     def test_movie_sort_by_runtime_orders_shortest_first(self):
-        self._create_movie_runtime_entry("runtime-sort-movie-1", "Runtime Sort Long", 160)
-        self._create_movie_runtime_entry("runtime-sort-movie-2", "Runtime Sort Short", 95)
+        self._create_movie_runtime_entry(
+            "runtime-sort-movie-1", "Runtime Sort Long", 160
+        )
+        self._create_movie_runtime_entry(
+            "runtime-sort-movie-2", "Runtime Sort Short", 95
+        )
         self._create_movie_runtime_entry("runtime-sort-movie-3", "Runtime Sort Unknown")
 
         response = self.client.get(
@@ -1874,16 +1971,25 @@ class MediaListViewTests(TestCase):
         self.assertEqual(response.context["current_sort"], "runtime")
         self.assertEqual(response.context["current_direction"], "asc")
         self.assertEqual(
-            [media.item.title for media in response.context["media_list"].object_list[:3]],
+            [
+                media.item.title
+                for media in response.context["media_list"].object_list[:3]
+            ],
             ["Runtime Sort Short", "Runtime Sort Long", "Runtime Sort Unknown"],
         )
         self.assertContains(response, "1h 35min")
         self.assertContains(response, "2h 40min")
 
     def test_movie_sort_by_popularity_orders_lowest_rank_first(self):
-        self._create_movie_popularity_entry("popularity-sort-movie-1", "Popularity Rank Two", 2)
-        self._create_movie_popularity_entry("popularity-sort-movie-2", "Popularity Rank One", 1)
-        self._create_movie_popularity_entry("popularity-sort-movie-3", "Popularity Rank Missing", 50)
+        self._create_movie_popularity_entry(
+            "popularity-sort-movie-1", "Popularity Rank Two", 2
+        )
+        self._create_movie_popularity_entry(
+            "popularity-sort-movie-2", "Popularity Rank One", 1
+        )
+        self._create_movie_popularity_entry(
+            "popularity-sort-movie-3", "Popularity Rank Missing", 50
+        )
         Item.objects.filter(media_id="popularity-sort-movie-3").update(
             trakt_popularity_rank=None,
             trakt_popularity_score=None,
@@ -1901,7 +2007,10 @@ class MediaListViewTests(TestCase):
         self.assertEqual(response.context["current_sort"], "popularity")
         self.assertEqual(response.context["current_direction"], "asc")
         self.assertEqual(
-            [media.item.title for media in response.context["media_list"].object_list[:3]],
+            [
+                media.item.title
+                for media in response.context["media_list"].object_list[:3]
+            ],
             ["Popularity Rank One", "Popularity Rank Two", "Popularity Rank Missing"],
         )
 
@@ -1931,7 +2040,10 @@ class MediaListViewTests(TestCase):
         self.assertEqual(response.context["current_sort"], "critic_rating")
         self.assertEqual(response.context["current_direction"], "desc")
         self.assertEqual(
-            [media.item.title for media in response.context["media_list"].object_list[:3]],
+            [
+                media.item.title
+                for media in response.context["media_list"].object_list[:3]
+            ],
             ["Critic Rating High", "Critic Rating Low", "Critic Rating Missing"],
         )
         self.assertContains(response, "9.1/10")
@@ -1950,7 +2062,10 @@ class MediaListViewTests(TestCase):
         self.assertEqual(response.context["current_sort"], "runtime")
         self.assertEqual(response.context["current_direction"], "asc")
         self.assertEqual(
-            [media.item.title for media in response.context["media_list"].object_list[:2]],
+            [
+                media.item.title
+                for media in response.context["media_list"].object_list[:2]
+            ],
             ["TV Runtime Short", "TV Runtime Long"],
         )
         self.assertContains(response, "1h 12min")
@@ -1979,7 +2094,10 @@ class MediaListViewTests(TestCase):
         self.assertEqual(response.context["current_sort"], "runtime")
         self.assertEqual(response.context["current_direction"], "asc")
         self.assertEqual(
-            [media.item.title for media in response.context["media_list"].object_list[:2]],
+            [
+                media.item.title
+                for media in response.context["media_list"].object_list[:2]
+            ],
             ["Anime Runtime Short", "Anime Runtime Long"],
         )
         self.assertContains(response, "4h 48min")
@@ -2021,11 +2139,18 @@ class MediaListViewTests(TestCase):
         self.assertEqual(tv_response.context["current_sort"], "next_episode_air_date")
         self.assertEqual(tv_response.context["current_direction"], "asc")
         self.assertEqual(
-            [media.item.title for media in tv_response.context["media_list"].object_list[:3]],
+            [
+                media.item.title
+                for media in tv_response.context["media_list"].object_list[:3]
+            ],
             ["Zulu Backlog TV", "Alpha Future TV", "Mike Missing TV"],
         )
-        self.assertContains(tv_response, timezone.localtime(backlog_release).date().isoformat())
-        self.assertContains(tv_response, timezone.localtime(future_release).date().isoformat())
+        self.assertContains(
+            tv_response, timezone.localtime(backlog_release).date().isoformat()
+        )
+        self.assertContains(
+            tv_response, timezone.localtime(future_release).date().isoformat()
+        )
 
         season_response = self.client.get(
             reverse("medialist", args=[MediaTypes.SEASON.value])
@@ -2033,10 +2158,15 @@ class MediaListViewTests(TestCase):
         )
 
         self.assertEqual(season_response.status_code, 200)
-        self.assertEqual(season_response.context["current_sort"], "next_episode_air_date")
+        self.assertEqual(
+            season_response.context["current_sort"], "next_episode_air_date"
+        )
         self.assertEqual(season_response.context["current_direction"], "asc")
         self.assertEqual(
-            [media.item.title for media in season_response.context["media_list"].object_list[:3]],
+            [
+                media.item.title
+                for media in season_response.context["media_list"].object_list[:3]
+            ],
             [
                 "Zulu Backlog TV Season 1",
                 "Alpha Future TV Season 1",
@@ -2133,11 +2263,18 @@ class MediaListViewTests(TestCase):
         self.assertEqual(response.context["current_sort"], "next_episode_air_date")
         self.assertEqual(response.context["current_direction"], "asc")
         self.assertEqual(
-            [media.item.title for media in response.context["media_list"].object_list[:3]],
+            [
+                media.item.title
+                for media in response.context["media_list"].object_list[:3]
+            ],
             ["Flat Past Anime", "Grouped Future Anime", "Flat Missing Anime"],
         )
-        self.assertContains(response, timezone.localtime(past_release).date().isoformat())
-        self.assertContains(response, timezone.localtime(future_release).date().isoformat())
+        self.assertContains(
+            response, timezone.localtime(past_release).date().isoformat()
+        )
+        self.assertContains(
+            response, timezone.localtime(future_release).date().isoformat()
+        )
 
     def test_game_sort_by_time_to_beat_orders_by_best_available_value(self):
         self._create_game_entry("910001", "Longest Run", hltb_minutes=555)
@@ -2154,7 +2291,10 @@ class MediaListViewTests(TestCase):
         self.assertEqual(response.context["current_sort"], "time_to_beat")
         self.assertEqual(response.context["current_direction"], "asc")
         self.assertEqual(
-            [media.item.title for media in response.context["media_list"].object_list[:4]],
+            [
+                media.item.title
+                for media in response.context["media_list"].object_list[:4]
+            ],
             ["Quick Quest", "Fallback Route", "Longest Run", "Unknown Length"],
         )
         self.assertContains(response, "2h 00min")
@@ -2177,8 +2317,12 @@ class MediaListViewTests(TestCase):
             image="http://example.com/game.jpg",
             platforms=["Nintendo Switch", "PlayStation 5"],
         )
-        Game.objects.create(item=collection_item, user=self.user, status=Status.PLANNING.value)
-        Game.objects.create(item=fallback_item, user=self.user, status=Status.PLANNING.value)
+        Game.objects.create(
+            item=collection_item, user=self.user, status=Status.PLANNING.value
+        )
+        Game.objects.create(
+            item=fallback_item, user=self.user, status=Status.PLANNING.value
+        )
         CollectionEntry.objects.create(
             user=self.user,
             item=collection_item,
@@ -2193,7 +2337,10 @@ class MediaListViewTests(TestCase):
         self.assertEqual(response.context["current_sort"], "platform")
         self.assertEqual(response.context["current_direction"], "asc")
         self.assertEqual(
-            [media.item.title for media in response.context["media_list"].object_list[:2]],
+            [
+                media.item.title
+                for media in response.context["media_list"].object_list[:2]
+            ],
             ["Fallback Platform", "Collection Platform"],
         )
         self.assertContains(response, "Nintendo Switch")
@@ -2297,8 +2444,7 @@ class MediaListViewTests(TestCase):
         self.assertTrue(response.context["filter_data"]["show_formats"])
         self.assertTrue(
             any(
-                option["value"] == "audiobook"
-                and option["label"] == "Audiobook"
+                option["value"] == "audiobook" and option["label"] == "Audiobook"
                 for option in response.context["filter_data"]["formats"]
             ),
         )
@@ -2397,7 +2543,10 @@ class MediaListViewTests(TestCase):
         self.assertEqual(response.context["current_direction"], "asc")
         self.assertContains(response, "toggleSort('author')")
         self.assertEqual(
-            [media.item.title for media in response.context["media_list"].object_list[:2]],
+            [
+                media.item.title
+                for media in response.context["media_list"].object_list[:2]
+            ],
             ["Alpha Title", "Zulu Title"],
         )
 
@@ -2497,7 +2646,9 @@ class MediaListViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["current_tag"], ["Favorite"])
         self.assertEqual(response.context["current_tag_mode"], "not")
-        self.assertContains(response, "function buildMediaListFilterParams(form, overrides = {})")
+        self.assertContains(
+            response, "function buildMediaListFilterParams(form, overrides = {})"
+        )
         self.assertContains(response, "Array.from(form.elements)")
         self.assertContains(response, "const persistedKeys = Array.from(")
         self.assertNotContains(response, "const persistedKeys = [")
@@ -2584,7 +2735,9 @@ class MediaListViewTests(TestCase):
         )
 
         self.assertContains(response, 'id="column-pref-form"')
-        self.assertContains(response, "this.$refs.form.addEventListener('htmx:afterRequest'")
+        self.assertContains(
+            response, "this.$refs.form.addEventListener('htmx:afterRequest'"
+        )
         self.assertContains(response, "htmx.ajax('GET'")
         self.assertContains(response, "column_refresh_nonce")
         self.assertContains(response, "save_after_request successful=")
@@ -2630,14 +2783,15 @@ class MediaListViewTests(TestCase):
 
         headers = {"HTTP_HX_REQUEST": "true"}
         first_page = self.client.get(
-            reverse("medialist", args=[MediaTypes.MOVIE.value]) + "?layout=table&page=1",
+            reverse("medialist", args=[MediaTypes.MOVIE.value])
+            + "?layout=table&page=1",
             **headers,
         )
         first_html = first_page.content.decode()
         header_count = first_html.count("<th ")
         self.assertGreater(header_count, 0)
 
-        first_rows = re.findall(r"<tr[^>]*>(.*?)</tr>", first_html, flags=re.S)
+        first_rows = re.findall(r"<tr[^>]*>(.*?)</tr>", first_html, flags=re.DOTALL)
         self.assertGreater(len(first_rows), 0)
         for row_html in first_rows:
             if "<td " not in row_html:
@@ -2645,13 +2799,14 @@ class MediaListViewTests(TestCase):
             self.assertEqual(row_html.count("<td "), header_count)
 
         second_page = self.client.get(
-            reverse("medialist", args=[MediaTypes.MOVIE.value]) + "?layout=table&page=2",
+            reverse("medialist", args=[MediaTypes.MOVIE.value])
+            + "?layout=table&page=2",
             **headers,
         )
         second_html = second_page.content.decode()
         self.assertNotIn("<thead", second_html)
 
-        second_rows = re.findall(r"<tr[^>]*>(.*?)</tr>", second_html, flags=re.S)
+        second_rows = re.findall(r"<tr[^>]*>(.*?)</tr>", second_html, flags=re.DOTALL)
         self.assertGreater(len(second_rows), 0)
         for row_html in second_rows:
             self.assertEqual(row_html.count("<td "), header_count)
@@ -2946,11 +3101,18 @@ class MediaListViewTests(TestCase):
         self.user.anime_library_mode = MediaTypes.ANIME.value
         self.user.save(update_fields=["anime_library_mode"])
 
-        anime_response = self.client.get(reverse("medialist", args=[MediaTypes.ANIME.value]))
+        anime_response = self.client.get(
+            reverse("medialist", args=[MediaTypes.ANIME.value])
+        )
         tv_response = self.client.get(reverse("medialist", args=[MediaTypes.TV.value]))
 
-        anime_titles = [media.item.title for media in anime_response.context["media_list"].object_list]
-        tv_titles = [media.item.title for media in tv_response.context["media_list"].object_list]
+        anime_titles = [
+            media.item.title
+            for media in anime_response.context["media_list"].object_list
+        ]
+        tv_titles = [
+            media.item.title for media in tv_response.context["media_list"].object_list
+        ]
 
         self.assertIn("Frieren: Beyond Journey's End", anime_titles)
         self.assertNotIn("Frieren: Beyond Journey's End", tv_titles)
@@ -2958,11 +3120,18 @@ class MediaListViewTests(TestCase):
         self.user.anime_library_mode = MediaTypes.TV.value
         self.user.save(update_fields=["anime_library_mode"])
 
-        anime_response = self.client.get(reverse("medialist", args=[MediaTypes.ANIME.value]))
+        anime_response = self.client.get(
+            reverse("medialist", args=[MediaTypes.ANIME.value])
+        )
         tv_response = self.client.get(reverse("medialist", args=[MediaTypes.TV.value]))
 
-        anime_titles = [media.item.title for media in anime_response.context["media_list"].object_list]
-        tv_titles = [media.item.title for media in tv_response.context["media_list"].object_list]
+        anime_titles = [
+            media.item.title
+            for media in anime_response.context["media_list"].object_list
+        ]
+        tv_titles = [
+            media.item.title for media in tv_response.context["media_list"].object_list
+        ]
 
         self.assertNotIn("Frieren: Beyond Journey's End", anime_titles)
         self.assertIn("Frieren: Beyond Journey's End", tv_titles)
@@ -3016,7 +3185,10 @@ class MediaListViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["current_sort"], "popularity")
         self.assertEqual(
-            [media.item.title for media in response.context["media_list"].object_list[:2]],
+            [
+                media.item.title
+                for media in response.context["media_list"].object_list[:2]
+            ],
             ["Grouped Anime Low Rank", "Grouped Anime High Rank"],
         )
 
@@ -3061,6 +3233,9 @@ class MediaListViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["current_sort"], "critic_rating")
         self.assertEqual(
-            [media.item.title for media in response.context["media_list"].object_list[:2]],
+            [
+                media.item.title
+                for media in response.context["media_list"].object_list[:2]
+            ],
             ["Grouped Anime High Critic", "Grouped Anime Low Critic"],
         )

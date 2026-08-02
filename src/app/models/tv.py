@@ -62,7 +62,9 @@ class TV(Media):
         # A show created directly as COMPLETED (rather than transitioned into it)
         # must still fan out completion to its seasons/episodes.
         completed_on_create = is_create and self.status == Status.COMPLETED.value
-        if (not is_create and self.tracker.has_changed("status")) or completed_on_create:
+        if (
+            not is_create and self.tracker.has_changed("status")
+        ) or completed_on_create:
             if self.status == Status.COMPLETED.value:
                 try:
                     self._completed()
@@ -107,8 +109,7 @@ class TV(Media):
         return sum(
             season.progress
             for season in self.seasons.all()
-            if season.item.season_number != 0
-            and season.status != Status.DROPPED.value
+            if season.item.season_number != 0 and season.status != Status.DROPPED.value
         )
 
     @cached_property
@@ -164,11 +165,7 @@ class TV(Media):
     def _get_quick_update_season(self, operation):
         """Return the season that should handle quick TV progress updates."""
         seasons = sorted(
-            (
-                season
-                for season in self.seasons.all()
-                if season.item.season_number != 0
-            ),
+            (season for season in self.seasons.all() if season.item.season_number != 0),
             key=lambda season: season.item.season_number,
         )
 
@@ -483,7 +480,9 @@ class Season(Media):
         # A season created directly as COMPLETED (rather than transitioned into
         # it) must still create the remaining episode watch records.
         completed_on_create = is_create and self.status == Status.COMPLETED.value
-        if (not is_create and self.tracker.has_changed("status")) or completed_on_create:
+        if (
+            not is_create and self.tracker.has_changed("status")
+        ) or completed_on_create:
             if self.status == Status.COMPLETED.value:
                 try:
                     season_metadata = providers.services.get_media_metadata(
@@ -626,11 +625,10 @@ class Season(Media):
         desired_status = self.derived_status_from_episode_progress(
             max_progress=max_progress,
         )
-        if (
-            desired_status != Status.COMPLETED.value
-            or self.status
-            in {Status.COMPLETED.value, Status.IN_PROGRESS.value}
-        ):
+        if desired_status != Status.COMPLETED.value or self.status in {
+            Status.COMPLETED.value,
+            Status.IN_PROGRESS.value,
+        }:
             return False
 
         self.status = Status.COMPLETED.value
@@ -655,8 +653,10 @@ class Season(Media):
                 episode_counts[ep_num] = episode_counts.get(ep_num, 0) + 1
                 completed_episode_numbers.add(ep_num)
             if (
-                ep.status in {Status.COMPLETED.value, Status.DROPPED.value}
-            ) and ep_num and ep_num > max_episode_number:
+                (ep.status in {Status.COMPLETED.value, Status.DROPPED.value})
+                and ep_num
+                and ep_num > max_episode_number
+            ):
                 max_episode_number = ep_num
 
         cached = {
@@ -836,9 +836,13 @@ class Season(Media):
         if tv and tv.status != Status.DROPPED.value and desired_status:
             if desired_status == Status.COMPLETED.value:
                 # Only mark TV complete if all real seasons are complete
-                has_incomplete = tv.seasons.filter(
-                    item__season_number__gt=0,
-                ).exclude(status=Status.COMPLETED.value).exists()
+                has_incomplete = (
+                    tv.seasons.filter(
+                        item__season_number__gt=0,
+                    )
+                    .exclude(status=Status.COMPLETED.value)
+                    .exists()
+                )
                 tv_target = (
                     Status.COMPLETED.value
                     if not has_incomplete
@@ -895,8 +899,12 @@ class Season(Media):
                 )
                 season_count = tv_metadata.get("details", {}).get("seasons")
                 if season_count is None:
-                    season_count = len(tv_metadata.get("related", {}).get("seasons", []))
-            except Exception as exc:  # pragma: no cover - defensive for test/no-network paths
+                    season_count = len(
+                        tv_metadata.get("related", {}).get("seasons", [])
+                    )
+            except (
+                Exception
+            ) as exc:  # pragma: no cover - defensive for test/no-network paths
                 logger.warning(
                     "Could not fetch TV metadata for media_id=%s while creating season parent: %s",
                     self.item.media_id,
@@ -1059,11 +1067,17 @@ class Season(Media):
                 try:
                     # TMDB returns dates in YYYY-MM-DD format (string)
                     if isinstance(air_date, str):
-                        date_obj = datetime.strptime(air_date, "%Y-%m-%d")
-                        release_datetime = timezone.make_aware(date_obj, timezone.get_current_timezone())
+                        date_obj = datetime.strptime(air_date, "%Y-%m-%d")  # noqa: DTZ007  # date-only value; no timezone applies
+                        release_datetime = timezone.make_aware(
+                            date_obj, timezone.get_current_timezone()
+                        )
                     elif hasattr(air_date, "year"):
                         # Already a datetime object
-                        release_datetime = air_date if timezone.is_aware(air_date) else timezone.make_aware(air_date)
+                        release_datetime = (
+                            air_date
+                            if timezone.is_aware(air_date)
+                            else timezone.make_aware(air_date)
+                        )
                 except (ValueError, TypeError):
                     # If parsing fails, keep release_datetime as None
                     pass
@@ -1207,44 +1221,6 @@ class Episode(models.Model):
         """Return the season and episode number."""
         return self.item.__str__()
 
-    @property
-    def progress(self):
-        """Expose episode number as progress for list rendering/sorting fallbacks."""
-        if hasattr(self, "_progress_override"):
-            return self._progress_override
-        item = getattr(self, "item", None)
-        return item.episode_number if item else None
-
-    @progress.setter
-    def progress(self, value):
-        self._progress_override = value
-
-    @property
-    def max_progress(self):
-        """Expose related season max progress when available."""
-        if hasattr(self, "_max_progress_override"):
-            return self._max_progress_override
-        related_season = getattr(self, "related_season", None)
-        return getattr(related_season, "max_progress", None)
-
-    @max_progress.setter
-    def max_progress(self, value):
-        self._max_progress_override = value
-
-    @property
-    def progressed_at(self):
-        return None
-
-    def _local_season_max_progress(self):
-        """Return the media-server-sourced episode count for this season, if any.
-
-        Only set when the provider has no metadata for the season, so the count
-        is the sole authority available for completion.
-        """
-        season_item = getattr(self.related_season, "item", None)
-        count = getattr(season_item, "local_season_episode_count", None)
-        return count if count and count > 0 else None
-
     def save(self, *args, **kwargs):
         """Save the episode instance."""
         if self.tracker.has_changed("status"):
@@ -1321,3 +1297,42 @@ class Episode(models.Model):
                 TV,
                 fields=["status"],
             )
+
+    @property
+    def progress(self):
+        """Expose episode number as progress for list rendering/sorting fallbacks."""
+        if hasattr(self, "_progress_override"):
+            return self._progress_override
+        item = getattr(self, "item", None)
+        return item.episode_number if item else None
+
+    @progress.setter
+    def progress(self, value):
+        self._progress_override = value
+
+    @property
+    def max_progress(self):
+        """Expose related season max progress when available."""
+        if hasattr(self, "_max_progress_override"):
+            return self._max_progress_override
+        related_season = getattr(self, "related_season", None)
+        return getattr(related_season, "max_progress", None)
+
+    @max_progress.setter
+    def max_progress(self, value):
+        self._max_progress_override = value
+
+    @property
+    def progressed_at(self):
+        """Return the progressed at."""
+        return None
+
+    def _local_season_max_progress(self):
+        """Return the media-server-sourced episode count for this season, if any.
+
+        Only set when the provider has no metadata for the season, so the count
+        is the sole authority available for completion.
+        """
+        season_item = getattr(self.related_season, "item", None)
+        count = getattr(season_item, "local_season_episode_count", None)
+        return count if count and count > 0 else None

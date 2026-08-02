@@ -625,7 +625,9 @@ class JellyfinWebhookTests(TestCase):
     @patch("app.providers.tmdb.tv_with_seasons")
     @patch("app.providers.tmdb.find")
     def test_tv_episode_uses_existing_tvdb_tracked_item(
-        self, mock_find, mock_tv_with_seasons,
+        self,
+        mock_find,
+        mock_tv_with_seasons,
     ):
         """Webhook scrobble lands on an existing TVDB-tracked show rather than
         creating a duplicate TMDB-sourced item.
@@ -641,7 +643,9 @@ class JellyfinWebhookTests(TestCase):
             title="Friends",
             image="https://example.com/friends.jpg",
         )
-        TV.objects.create(item=tvdb_item, user=self.user, status=Status.IN_PROGRESS.value)
+        TV.objects.create(
+            item=tvdb_item, user=self.user, status=Status.IN_PROGRESS.value
+        )
         ItemProviderLink.objects.create(
             item=tvdb_item,
             provider=Sources.TVDB.value,
@@ -667,7 +671,16 @@ class JellyfinWebhookTests(TestCase):
                 "synopsis": "",
                 "image": "https://example.com/friends-s1.jpg",
                 "max_progress": 24,
-                "episodes": [{"episode_number": 1, "runtime": 22, "air_date": None, "still_path": None, "name": "The Pilot", "overview": ""}],
+                "episodes": [
+                    {
+                        "episode_number": 1,
+                        "runtime": 22,
+                        "air_date": None,
+                        "still_path": None,
+                        "name": "The Pilot",
+                        "overview": "",
+                    }
+                ],
                 "details": {"episodes": 24},
                 "providers": {},
             },
@@ -696,7 +709,9 @@ class JellyfinWebhookTests(TestCase):
 
         # No new TMDB-sourced TV item should have been created
         self.assertFalse(
-            Item.objects.filter(source=Sources.TMDB.value, media_type=MediaTypes.TV.value).exists(),
+            Item.objects.filter(
+                source=Sources.TMDB.value, media_type=MediaTypes.TV.value
+            ).exists(),
         )
 
         # Season and episode items should be under the existing TVDB item
@@ -714,7 +729,9 @@ class JellyfinWebhookTests(TestCase):
     @patch("app.providers.tmdb.tv_with_seasons")
     @patch("app.providers.tmdb.find")
     def test_tv_and_season_provider_links_ignore_episode_level_ids(
-        self, mock_find, mock_tv_with_seasons,
+        self,
+        mock_find,
+        mock_tv_with_seasons,
     ):
         """TV/Season provider links must use the validated show-level tvdb_id.
 
@@ -816,7 +833,9 @@ class JellyfinWebhookTests(TestCase):
     @patch("app.providers.tmdb.tv_with_seasons")
     @patch("app.providers.tmdb.find")
     def test_second_episode_of_tracked_season_does_not_duplicate_season_item(
-        self, mock_find, mock_tv_with_seasons,
+        self,
+        mock_find,
+        mock_tv_with_seasons,
     ):
         """A second played episode of a tracked season must reuse that season.
 
@@ -826,7 +845,7 @@ class JellyfinWebhookTests(TestCase):
         tmdb_show_id = "1668"
         show_level_tvdb_id = "76669"
 
-        def find_side_effect(ext_id, ext_type):  # noqa: ARG001
+        def find_side_effect(ext_id, ext_type):
             episode_number = 1 if ext_id == "303821" else 2
             return {
                 "tv_episode_results": [
@@ -933,7 +952,9 @@ class JellyfinWebhookTests(TestCase):
     @patch("app.providers.tmdb.tv_with_seasons")
     @patch("app.providers.tmdb.find")
     def test_webhook_heals_preexisting_stray_season_item_and_avoids_conflict(
-        self, mock_find, mock_tv_with_seasons,
+        self,
+        mock_find,
+        mock_tv_with_seasons,
     ):
         """Reproduces the GitHub issue #326 follow-up report exactly.
 
@@ -1294,7 +1315,8 @@ class JellyfinWebhookTests(TestCase):
         paused_state = live_playback.get_user_playback_state(self.user.id)
         self.assertIsNotNone(paused_state)
         self.assertEqual(
-            paused_state["status"], live_playback.PLAYBACK_STATUS_PAUSED,
+            paused_state["status"],
+            live_playback.PLAYBACK_STATUS_PAUSED,
         )
         self.assertEqual(paused_state["view_offset_seconds"], 721)
 

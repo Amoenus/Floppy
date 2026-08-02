@@ -1,5 +1,6 @@
 """Django settings for Floppy project."""
 
+import contextlib
 import hashlib
 import json
 import os
@@ -110,12 +111,13 @@ if not SECRET_KEY:
     else:
         from django.core.exceptions import ImproperlyConfigured
 
-        raise ImproperlyConfigured(
+        msg = (
             "SECRET env var is not set. To fix, run:\n\n"
-            "  python -c \""
+            '  python -c "'
             "import secrets; print('SECRET=' + secrets.token_urlsafe(50))"
-            "\" >> .env\n"
+            '" >> .env\n'
         )
+        raise ImproperlyConfigured(msg)
 
 
 # SECURITY WARNING: don't run with debug turned on in production!
@@ -161,9 +163,17 @@ if BASE_URL:
 
 USE_X_FORWARDED = config("USE_X_FORWARDED", default=False, cast=bool)
 
-SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https") if (config("USE_X_FORWARDED_PROTO", default=USE_X_FORWARDED, cast=bool)) else None
-USE_X_FORWARDED_HOST = config("USE_X_FORWARDED_HOST", default=USE_X_FORWARDED, cast=bool)
-USE_X_FORWARDED_PORT = config("USE_X_FORWARDED_PORT", default=USE_X_FORWARDED, cast=bool)
+SECURE_PROXY_SSL_HEADER = (
+    ("HTTP_X_FORWARDED_PROTO", "https")
+    if (config("USE_X_FORWARDED_PROTO", default=USE_X_FORWARDED, cast=bool))
+    else None
+)
+USE_X_FORWARDED_HOST = config(
+    "USE_X_FORWARDED_HOST", default=USE_X_FORWARDED, cast=bool
+)
+USE_X_FORWARDED_PORT = config(
+    "USE_X_FORWARDED_PORT", default=USE_X_FORWARDED, cast=bool
+)
 
 # Application definition
 
@@ -372,6 +382,7 @@ else:
             # Log but don't raise - allow connection to proceed even if PRAGMA fails
             # This prevents disk I/O errors during connection setup from blocking all requests
             import logging
+
             logger = logging.getLogger(__name__)
             logger.warning(
                 "Failed to configure SQLite connection PRAGMA settings: %s",
@@ -379,11 +390,9 @@ else:
             )
         finally:
             if cursor:
-                try:
+                # Closing a cursor is best-effort; a failure here is not useful.
+                with contextlib.suppress(Exception):
                     cursor.close()
-                except Exception:
-                    # Ignore errors when closing cursor
-                    pass
 
     connection_created.connect(configure_sqlite_connection)
 
@@ -594,7 +603,7 @@ def _get_local_commit_hash(base_dir=BASE_DIR):
     """Return the current commit hash from the local git checkout if available."""
     git_rev_parse_command = ["git", "rev-parse", "HEAD"]
     try:
-        git_rev = subprocess.run(
+        git_rev = subprocess.run(  # noqa: S603  # static argv, no shell, no user input
             git_rev_parse_command,
             cwd=base_dir,
             check=True,
@@ -636,7 +645,7 @@ def _get_local_version(base_dir=BASE_DIR, commit_sha=None):
     """Return a version string from the local git checkout if available."""
     git_describe_command = ["git", "describe", "--tags", "--always", "--dirty"]
     try:
-        git_describe = subprocess.run(
+        git_describe = subprocess.run(  # noqa: S603  # static argv, no shell, no user input
             git_describe_command,
             cwd=base_dir,
             check=True,
@@ -704,8 +713,7 @@ def _parse_repo_owner(value):
     parsed = urlparse(value)
     repo_path = parsed.path if parsed.netloc else value
     repo_path = repo_path.strip("/")
-    if repo_path.endswith(".git"):
-        repo_path = repo_path[:-4]
+    repo_path = repo_path.removesuffix(".git")
     if not repo_path:
         return None
     return repo_path.split("/", 1)[0]
@@ -720,14 +728,14 @@ def _parse_repo_slug(value):
     parsed = urlparse(value)
     repo_path = parsed.path if parsed.netloc else value
     repo_path = repo_path.strip("/")
-    if repo_path.endswith(".git"):
-        repo_path = repo_path[:-4]
+    repo_path = repo_path.removesuffix(".git")
     if "/" not in repo_path:
         return None
     owner, repo = repo_path.split("/", 1)
     if not owner or not repo:
         return None
     return f"{owner}/{repo}"
+
 
 def _read_fork_owner_file():
     file_paths = []
@@ -749,7 +757,9 @@ def _read_fork_owner_file():
 
 
 def _get_fork_owner():
-    owner = config("FORK_OWNER_NAME", default=None) or config("GITHUB_REPOSITORY_OWNER", default=None)
+    owner = config("FORK_OWNER_NAME", default=None) or config(
+        "GITHUB_REPOSITORY_OWNER", default=None
+    )
     if owner:
         return owner.strip()
 
@@ -763,11 +773,10 @@ def _get_fork_owner():
 
     try:
         git_remote = subprocess.run(
-            ["git", "config", "--get", "remote.origin.url"],
+            ["git", "config", "--get", "remote.origin.url"],  # noqa: S607  # relative path is deliberate; the image resolves it via PATH
             cwd=BASE_DIR,
             check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
             text=True,
         ).stdout.strip()
         return _parse_repo_owner(git_remote)
@@ -791,11 +800,10 @@ def _get_fork_repository():
 
     try:
         git_remote = subprocess.run(
-            ["git", "config", "--get", "remote.origin.url"],
+            ["git", "config", "--get", "remote.origin.url"],  # noqa: S607  # relative path is deliberate; the image resolves it via PATH
             cwd=BASE_DIR,
             check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
             text=True,
         ).stdout.strip()
         return _parse_repo_slug(git_remote)
@@ -819,8 +827,12 @@ TRACK_TIME = config("TRACK_TIME", default=True, cast=bool)
 BACKUP_DIR = config("BACKUP_DIR", default=str(BASE_DIR / "backups"))
 
 # Runtime population settings
-RUNTIME_POPULATION_DISABLED = config("RUNTIME_POPULATION_DISABLED", default=False, cast=bool)
-RUNTIME_POPULATION_ON_STARTUP = config("RUNTIME_POPULATION_ON_STARTUP", default=False, cast=bool)
+RUNTIME_POPULATION_DISABLED = config(
+    "RUNTIME_POPULATION_DISABLED", default=False, cast=bool
+)
+RUNTIME_POPULATION_ON_STARTUP = config(
+    "RUNTIME_POPULATION_ON_STARTUP", default=False, cast=bool
+)
 _DISCOVER_WARMUP_ON_STARTUP = config(
     "DISCOVER_WARMUP_ON_STARTUP",
     default=None,
@@ -999,8 +1011,12 @@ PLEX_HISTORY_PAGE_SIZE = config("PLEX_HISTORY_PAGE_SIZE", default=200, cast=int)
 PLEX_HISTORY_MAX_ITEMS = config("PLEX_HISTORY_MAX_ITEMS", default=0, cast=int)
 
 LASTFM_API_KEY = config("LASTFM_API_KEY", default="")
-LASTFM_POLL_INTERVAL_MINUTES = config("LASTFM_POLL_INTERVAL_MINUTES", default=15, cast=int)
-LASTFM_HISTORY_PAGES_PER_TASK = config("LASTFM_HISTORY_PAGES_PER_TASK", default=5, cast=int)
+LASTFM_POLL_INTERVAL_MINUTES = config(
+    "LASTFM_POLL_INTERVAL_MINUTES", default=15, cast=int
+)
+LASTFM_HISTORY_PAGES_PER_TASK = config(
+    "LASTFM_HISTORY_PAGES_PER_TASK", default=5, cast=int
+)
 
 TESTING = False
 
@@ -1066,8 +1082,8 @@ CELERY_BROKER_TRANSPORT_OPTIONS = {
 if REDIS_PREFIX:
     CELERY_BROKER_TRANSPORT_OPTIONS.update(
         {
-        "global_keyprefix": f"{REDIS_PREFIX}",
-        "queue_prefix": f"{REDIS_PREFIX}",
+            "global_keyprefix": f"{REDIS_PREFIX}",
+            "queue_prefix": f"{REDIS_PREFIX}",
         },
     )
 
@@ -1093,14 +1109,20 @@ CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#task-serializer
 CELERY_TASK_SERIALIZER = "pickle"
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#std-setting-accept_content
-CELERY_ACCEPT_CONTENT = ["application/json", "application/x-python-serialize", "application/x-pickle"]
+CELERY_ACCEPT_CONTENT = [
+    "application/json",
+    "application/x-python-serialize",
+    "application/x-pickle",
+]
 CELERY_TASK_ROUTES = {
     "app.tasks.populate_*": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "app.tasks.reconcile_*": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Backfill item metadata": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Ensure genre backfill reconcile": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Nightly metadata quality backfill": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
-    "Refresh IMDB game credits from datasets": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
+    "Refresh IMDB game credits from datasets": {
+        "priority": CELERY_TASK_PRIORITY_BACKGROUND
+    },
     "Warm Discover API Cache": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Warm Discover Startup Tabs": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Warm History Day Cache Coverage": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
@@ -1196,7 +1218,8 @@ CELERY_BEAT_SCHEDULE = {
     },
     "ensure_genre_backfill_reconcile": {
         "task": "Ensure genre backfill reconcile",
-        "schedule": 60 * 5,  # every 5 minutes until current strategy version is reconciled
+        "schedule": 60
+        * 5,  # every 5 minutes until current strategy version is reconciled
         "kwargs": {
             "batch_size": 1500,
         },

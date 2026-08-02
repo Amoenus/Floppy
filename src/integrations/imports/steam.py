@@ -74,8 +74,7 @@ class SteamImporter:
         # Update existing games
         if self.to_update:
             app.models.Game.objects.bulk_update(
-                self.to_update,
-                fields=["progress", "status"]
+                self.to_update, fields=["progress", "status"]
             )
             logger.info(
                 "Updated %d existing games for user %s",
@@ -86,8 +85,7 @@ class SteamImporter:
         # Update item metadata
         if self.to_update_meta:
             app.models.Item.objects.bulk_update(
-                self.to_update_meta,
-                fields=["title", "image"]
+                self.to_update_meta, fields=["title", "image"]
             )
             logger.info(
                 "Updated metadata for %d items for user %s",
@@ -200,13 +198,20 @@ class SteamImporter:
                 return
 
             media_id = str(igdb_game["media_id"])
-            existing = self.existing_media[MediaTypes.GAME.value][Sources.IGDB.value].get(media_id)
+            existing = self.existing_media[MediaTypes.GAME.value][
+                Sources.IGDB.value
+            ].get(media_id)
             if existing:
                 if self.mode == "overwrite":
                     existing.progress = playtime_forever
                     # Conscious choice: User manually set status to Completed/Dropped, we should not change it
-                    if existing.status not in {Status.COMPLETED.value, Status.DROPPED.value}:
-                        existing.status = self._determine_game_status(playtime_forever, playtime_2weeks)
+                    if existing.status not in {
+                        Status.COMPLETED.value,
+                        Status.DROPPED.value,
+                    }:
+                        existing.status = self._determine_game_status(
+                            playtime_forever, playtime_2weeks
+                        )
                     self.to_update.append(existing)
 
                 item = existing.item
@@ -214,7 +219,7 @@ class SteamImporter:
                 item.image = igdb_game["image"]
                 self.to_update_meta.append(item)
                 # In "new" mode, skip existing games
-            else: 
+            else:
                 item, _ = app.models.Item.objects.get_or_create(
                     media_id=media_id,
                     source=Sources.IGDB.value,
@@ -227,7 +232,9 @@ class SteamImporter:
                 game = app.models.Game(
                     item=item,
                     user=self.user,
-                    status=self._determine_game_status(playtime_forever, playtime_2weeks),
+                    status=self._determine_game_status(
+                        playtime_forever, playtime_2weeks
+                    ),
                     score=None,
                     progress=playtime_forever,
                     notes=IMPORT_NOTE,

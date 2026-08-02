@@ -77,7 +77,8 @@ def search(media_type, query, page):
                 "media_type": media_type,
                 "title": get_localized_title(media["node"]) or media["node"]["title"],
                 "original_title": media["node"]["title"],
-                "localized_title": get_localized_title(media["node"]) or media["node"]["title"],
+                "localized_title": get_localized_title(media["node"])
+                or media["node"]["title"],
                 "image": get_image_url(media["node"]),
                 "year": get_start_year(media["node"]),
             }
@@ -104,7 +105,7 @@ def anime(media_id):
     if data is None:
         url = f"{base_url}/anime/{media_id}"
         params = {
-            "fields": f"{base_fields},num_episodes,average_episode_duration,studios,start_season,broadcast,source,related_anime",  # noqa: E501
+            "fields": f"{base_fields},num_episodes,average_episode_duration,studios,start_season,broadcast,source,related_anime",
         }
 
         try:
@@ -250,7 +251,11 @@ def get_localized_title(response):
 
     if isinstance(english_title, list):
         english_title = next(
-            (title for title in english_title if isinstance(title, str) and title.strip()),
+            (
+                title
+                for title in english_title
+                if isinstance(title, str) and title.strip()
+            ),
             None,
         )
 

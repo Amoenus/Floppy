@@ -74,11 +74,7 @@ def remap_via_tmdb_find(external_ids, actual_tmdb_id, load_season, find_cache=No
             continue
 
         show_id, season_number, episode_number = found
-        if (
-            show_id != actual_tmdb_id
-            or season_number is None
-            or episode_number is None
-        ):
+        if show_id != actual_tmdb_id or season_number is None or episode_number is None:
             continue
 
         season_metadata = load_season(season_number)

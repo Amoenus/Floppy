@@ -17,17 +17,14 @@ def refresh_imdb_game_credits_from_datasets():
     normalized title + release year (see app.services.imdb_game_credits), so
     coverage is intentionally limited to unambiguous matches.
     """
-    from app.providers import imdb_datasets  # noqa: PLC0415
-    from app.services import imdb_game_credits  # noqa: PLC0415
+    from app.providers import imdb_datasets
+    from app.services import imdb_game_credits
 
     resolved = imdb_game_credits.resolve_game_imdb_ids()
     synced = 0
     error = None
 
-    tconsts = {
-        item.provider_external_ids["imdb_id"]
-        for item in _resolved_game_items()
-    }
+    tconsts = {item.provider_external_ids["imdb_id"] for item in _resolved_game_items()}
     if tconsts:
         try:
             principals = imdb_datasets.download_principals(tconsts)
@@ -57,7 +54,7 @@ def refresh_imdb_game_credits_from_datasets():
 @shared_task(name="Backfill IMDB game person profiles")
 def backfill_imdb_game_person_profiles():
     """Backfill TMDB profile data for IMDB-sourced game people."""
-    from app.services import imdb_game_credits  # noqa: PLC0415
+    from app.services import imdb_game_credits
 
     profiles_backfilled = imdb_game_credits.backfill_missing_person_profiles()
     return {"profiles_backfilled": profiles_backfilled}
@@ -71,7 +68,7 @@ def schedule_imdb_game_person_profile_backfill_if_needed():
     ``AppConfig.ready()``, which executes in the Gunicorn master process
     before workers fork (see ``preload_app`` in ``config/gunicorn.py``).
     """
-    from app.services import imdb_game_credits  # noqa: PLC0415
+    from app.services import imdb_game_credits
 
     if imdb_game_credits.count_people_missing_profiles() <= 0:
         return
@@ -80,9 +77,9 @@ def schedule_imdb_game_person_profile_backfill_if_needed():
 
 
 def _resolved_game_items():
-    from app.models import Item, MediaTypes, Sources  # noqa: PLC0415
+    from app.models import Item, MediaTypes, Sources
     from app.services.imdb_game_credits import (
-        _apply_credit_backfill_filters,  # noqa: PLC0415
+        _apply_credit_backfill_filters,
     )
 
     items_qs = Item.objects.filter(

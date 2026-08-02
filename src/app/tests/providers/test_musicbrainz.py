@@ -12,7 +12,9 @@ class MusicBrainzReleaseTests(SimpleTestCase):
 
     def test_capitalize_genre_handles_plain_hyphenated_and_acronym_values(self):
         self.assertEqual(musicbrainz.capitalize_genre("krautrock"), "Krautrock")
-        self.assertEqual(musicbrainz.capitalize_genre("post-industrial"), "Post-Industrial")
+        self.assertEqual(
+            musicbrainz.capitalize_genre("post-industrial"), "Post-Industrial"
+        )
         self.assertEqual(musicbrainz.capitalize_genre("idm"), "IDM")
         self.assertEqual(musicbrainz.capitalize_genre("post-idm"), "Post-IDM")
 
@@ -136,7 +138,9 @@ class MusicBrainzReleaseTests(SimpleTestCase):
         with (
             patch("app.providers.musicbrainz.cache.get", return_value=None),
             patch("app.providers.musicbrainz.cache.set"),
-            patch("app.providers.musicbrainz._mb_request", side_effect=_mock_genre_request),
+            patch(
+                "app.providers.musicbrainz._mb_request", side_effect=_mock_genre_request
+            ),
         ):
             data = musicbrainz.get_genre_parents("Dubstep")
 
@@ -162,7 +166,9 @@ class MusicBrainzReleaseTests(SimpleTestCase):
         with (
             patch("app.providers.musicbrainz.cache.get", return_value=None),
             patch("app.providers.musicbrainz.cache.set"),
-            patch("app.providers.musicbrainz._mb_request", side_effect=_mock_genre_request),
+            patch(
+                "app.providers.musicbrainz._mb_request", side_effect=_mock_genre_request
+            ),
         ):
             data = musicbrainz.get_genre_parents("Art Rock")
 
@@ -192,7 +198,9 @@ class MusicBrainzReleaseTests(SimpleTestCase):
         with (
             patch("app.providers.musicbrainz.cache.get", return_value=None),
             patch("app.providers.musicbrainz.cache.set") as mock_cache_set,
-            patch("app.providers.musicbrainz._mb_request", return_value={"genres": []}) as mock_mb_request,
+            patch(
+                "app.providers.musicbrainz._mb_request", return_value={"genres": []}
+            ) as mock_mb_request,
         ):
             data = musicbrainz.get_genre_parents("Missing Genre")
 
@@ -251,9 +259,13 @@ class MusicBrainzCombinedSearchTests(SimpleTestCase):
                 page=1,
                 skip_cover_art=True,
             )
-            self.assertEqual(data["artists"][0]["image"], "http://example.com/cover.jpg")
+            self.assertEqual(
+                data["artists"][0]["image"], "http://example.com/cover.jpg"
+            )
             self.assertEqual(data["artists"][1]["image"], settings.IMG_NONE)
-            self.assertEqual(data["releases"][0]["image"], "http://example.com/cover.jpg")
+            self.assertEqual(
+                data["releases"][0]["image"], "http://example.com/cover.jpg"
+            )
 
     def test_page_one_builds_async_cover_url_when_cover_missing(self):
         """First page should provide async cover URLs when no art is preloaded."""
@@ -286,9 +298,7 @@ class MusicBrainzCombinedSearchTests(SimpleTestCase):
 
             data = musicbrainz.search_combined("pentatonix", page=1)
 
-            expected_cover = (
-                f"{musicbrainz.COVER_ART_BASE}/release/release-1/front-250"
-            )
+            expected_cover = f"{musicbrainz.COVER_ART_BASE}/release/release-1/front-250"
             self.assertEqual(data["releases"][0]["image"], expected_cover)
             self.assertEqual(data["artists"][0]["image"], expected_cover)
 

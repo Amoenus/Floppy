@@ -109,7 +109,7 @@ class AppConfig(AppConfig):
         """Return whether a once-per-day startup task can be scheduled."""
         try:
             return bool(cache.add(cache_key, 1, timeout=86400))
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.debug(
                 "Cache not available, skipping startup scheduling for %s",
                 cache_key,
@@ -119,7 +119,7 @@ class AppConfig(AppConfig):
     def _repair_celery_redis_bindings(self):
         """Normalize persisted Kombu Redis bindings after separator changes."""
         try:
-            from app.celery_broker import repair_celery_redis_bindings  # noqa: PLC0415
+            from app.celery_broker import repair_celery_redis_bindings
 
             repair_summary = repair_celery_redis_bindings()
             if repair_summary["repaired"] or repair_summary["removed"]:
@@ -133,7 +133,7 @@ class AppConfig(AppConfig):
                     repair_summary["repaired"],
                     repair_summary["removed"],
                 )
-        except Exception as error:  # noqa: BLE001
+        except Exception as error:
             logger.warning("Failed to normalize Kombu Redis bindings: %s", error)
 
     def _schedule_runtime_population(self):
@@ -147,7 +147,7 @@ class AppConfig(AppConfig):
                 priority=getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 1),
             )
             logger.info("Scheduled runtime population task to run on startup")
-        except Exception as error:  # noqa: BLE001
+        except Exception as error:
             logger.warning("Failed to schedule runtime population task: %s", error)
 
     def _schedule_discover_startup_warmup(self):
@@ -159,7 +159,7 @@ class AppConfig(AppConfig):
                 priority=getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 1),
             )
             logger.info("Scheduled Discover startup warmup")
-        except Exception as error:  # noqa: BLE001
+        except Exception as error:
             logger.warning("Failed to schedule Discover startup warmup: %s", error)
 
     def _schedule_history_day_coverage_warmup(self):
@@ -171,7 +171,7 @@ class AppConfig(AppConfig):
                 priority=getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 1),
             )
             logger.info("Scheduled history day coverage warmup")
-        except Exception as error:  # noqa: BLE001
+        except Exception as error:
             logger.warning("Failed to schedule history day coverage warmup: %s", error)
 
     def _schedule_imdb_game_person_profile_backfill(self):
@@ -188,7 +188,7 @@ class AppConfig(AppConfig):
                 priority=getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 1),
             )
             logger.info("Scheduled IMDB person profile backfill check on startup")
-        except Exception as error:  # noqa: BLE001
+        except Exception as error:
             logger.warning("Failed to schedule IMDB person profile backfill: %s", error)
 
     def _schedule_genre_backfill_reconcile(self):
@@ -217,7 +217,7 @@ class AppConfig(AppConfig):
                 "Scheduled genre backfill reconcile (version=%s)",
                 tasks.GENRE_BACKFILL_VERSION,
             )
-        except Exception as error:  # noqa: BLE001
+        except Exception as error:
             logger.warning("Failed to schedule genre backfill reconcile: %s", error)
 
     def _schedule_igdb_rating_backfill_reconcile(self):
@@ -228,7 +228,7 @@ class AppConfig(AppConfig):
         detail page happens to be visited. Runs once per strategy version.
         """
         try:
-            from app.tasks_igdb_ratings import (  # noqa: PLC0415
+            from app.tasks_igdb_ratings import (
                 IGDB_RATINGS_BACKFILL_VERSION,
                 reconcile_igdb_rating_backfill,
             )
@@ -255,8 +255,10 @@ class AppConfig(AppConfig):
                 "Scheduled IGDB ratings backfill reconcile (version=%s)",
                 IGDB_RATINGS_BACKFILL_VERSION,
             )
-        except Exception as error:  # noqa: BLE001
-            logger.warning("Failed to schedule IGDB ratings backfill reconcile: %s", error)
+        except Exception as error:
+            logger.warning(
+                "Failed to schedule IGDB ratings backfill reconcile: %s", error
+            )
 
     def _schedule_trakt_popularity_reconcile(self):
         """Schedule Trakt popularity reconciliation on startup.
@@ -266,18 +268,17 @@ class AppConfig(AppConfig):
         queued so a broker hiccup at startup never silently blocks future restarts.
         """
         try:
-            from app.services.trakt_popularity import (  # noqa: PLC0415
+            from app.services.trakt_popularity import (
                 TRAKT_POPULARITY_SCORE_VERSION,
             )
 
             version_key = (
-                "trakt_popularity_reconciled_"
-                f"v{TRAKT_POPULARITY_SCORE_VERSION}"
+                f"trakt_popularity_reconciled_v{TRAKT_POPULARITY_SCORE_VERSION}"
             )
             daily_key = "trakt_popularity_reconcile_daily"
 
-            version_status = cache.get(version_key)   # None | "pending" | "done"
-            daily_status = cache.get(daily_key)        # None | 1
+            version_status = cache.get(version_key)  # None | "pending" | "done"
+            daily_status = cache.get(daily_key)  # None | 1
 
             version_done = version_status == "done"
             version_pending = version_status == "pending"
@@ -307,5 +308,5 @@ class AppConfig(AppConfig):
                 "Scheduled Trakt popularity reconcile (version_trigger=%s)",
                 is_version_recompute,
             )
-        except Exception as error:  # noqa: BLE001
+        except Exception as error:
             logger.warning("Failed to schedule Trakt popularity reconcile: %s", error)

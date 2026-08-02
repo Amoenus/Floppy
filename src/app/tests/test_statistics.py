@@ -228,7 +228,9 @@ class StatisticsDateFilteringTests(TestCase):
         )
 
         # Should include all media except Planning status items
-        self.assertEqual(media_count["total"], 8)  # TV, Season, and 6 Movies (excluding Planning movie4 and movie6)
+        self.assertEqual(
+            media_count["total"], 8
+        )  # TV, Season, and 6 Movies (excluding Planning movie4 and movie6)
         self.assertEqual(media_count[MediaTypes.TV.value], 1)
         self.assertEqual(media_count[MediaTypes.SEASON.value], 1)
         self.assertEqual(media_count[MediaTypes.MOVIE.value], 6)
@@ -934,16 +936,16 @@ class StatisticsTests(TestCase):
         day_minutes_by_type = {
             "Movie": {
                 "2025-01-01": 120,  # Wednesday - 2 hours
-                "2025-01-02": 60,   # Thursday - 1 hour
-                "2025-01-03": 90,   # Friday - 1.5 hours
-                "2025-01-04": 0,    # Saturday - 0
+                "2025-01-02": 60,  # Thursday - 1 hour
+                "2025-01-03": 90,  # Friday - 1.5 hours
+                "2025-01-04": 0,  # Saturday - 0
                 "2025-01-05": 180,  # Sunday - 3 hours
             },
             "TV": {
-                "2025-01-01": 60,   # Wednesday - 1 hour (total: 3h)
-                "2025-01-02": 30,   # Thursday - 0.5 hour (total: 1.5h)
-                "2025-01-03": 0,    # Friday (total: 1.5h)
-                "2025-01-04": 0,    # Saturday (total: 0)
+                "2025-01-01": 60,  # Wednesday - 1 hour (total: 3h)
+                "2025-01-02": 30,  # Thursday - 0.5 hour (total: 1.5h)
+                "2025-01-03": 0,  # Friday (total: 1.5h)
+                "2025-01-04": 0,  # Saturday (total: 0)
                 "2025-01-05": 120,  # Sunday - 2 hours (total: 5h)
             },
         }
@@ -1224,7 +1226,9 @@ class GameDailyAverageTests(TestCase):
             progress=60,
         )
 
-        result = statistics._collect_game_data([first_session, second_session], None, None)
+        result = statistics._collect_game_data(
+            [first_session, second_session], None, None
+        )
 
         self.assertEqual(len(result), 1)
         self.assertAlmostEqual(result[0]["daily_average"], 165 / 60)
@@ -1368,7 +1372,9 @@ class ConsumptionStatisticsTests(TestCase):
 
         self.assertEqual(tv_stats["plays"]["total"], 2)
         self.assertAlmostEqual(tv_stats["hours"]["total"], 1.5, places=2)
-        self.assertEqual(tv_stats["charts"]["by_year"]["labels"], [str(self.end_date.year)])
+        self.assertEqual(
+            tv_stats["charts"]["by_year"]["labels"], [str(self.end_date.year)]
+        )
         self.assertEqual(
             tv_stats["charts"]["by_year"]["datasets"][0]["data"],
             [2],
@@ -1382,7 +1388,9 @@ class ConsumptionStatisticsTests(TestCase):
 
         self.assertEqual(movie_stats["plays"]["total"], 2)
         self.assertAlmostEqual(movie_stats["hours"]["total"], 4.0, places=2)
-        self.assertEqual(movie_stats["charts"]["by_year"]["labels"], [str(self.end_date.year)])
+        self.assertEqual(
+            movie_stats["charts"]["by_year"]["labels"], [str(self.end_date.year)]
+        )
         self.assertEqual(
             movie_stats["charts"]["by_year"]["datasets"][0]["data"],
             [2],
@@ -1408,7 +1416,9 @@ class ConsumptionStatisticsTests(TestCase):
 
     def test_statistics_view_includes_consumption_context(self):
         """Statistics view should include the consumption breakdown data."""
-        with patch("app.statistics._get_media_metadata_for_statistics") as metadata_mock:
+        with patch(
+            "app.statistics._get_media_metadata_for_statistics"
+        ) as metadata_mock:
             metadata_mock.return_value = {"runtime": "2h"}
             response = self.client.get(reverse("statistics"))
         self.assertEqual(response.status_code, 200)
@@ -1425,7 +1435,9 @@ class ConsumptionStatisticsTests(TestCase):
         self.user.season_enabled = False
         self.user.save(update_fields=["season_enabled"])
 
-        with patch("app.statistics._get_media_metadata_for_statistics") as metadata_mock:
+        with patch(
+            "app.statistics._get_media_metadata_for_statistics"
+        ) as metadata_mock:
             metadata_mock.return_value = {"runtime": "2h"}
             response = self.client.get(reverse("statistics"))
 
@@ -1542,9 +1554,15 @@ class GroupedAnimeStatisticsTests(TestCase):
 
         anime_bucket = user_media.get(MediaTypes.ANIME.value)
         # Anime bucket may be a single queryset or a list of querysets (flat + grouped)
-        anime_ids = [
-            m.id for m in statistics._iter_media_list(anime_bucket) if anime_bucket is not None
-        ] if anime_bucket is not None else []
+        anime_ids = (
+            [
+                m.id
+                for m in statistics._iter_media_list(anime_bucket)
+                if anime_bucket is not None
+            ]
+            if anime_bucket is not None
+            else []
+        )
         tv_ids = [m.id for m in user_media.get(MediaTypes.TV.value, [])]
 
         self.assertIn(self.anime_tv.id, anime_ids)

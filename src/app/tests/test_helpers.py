@@ -75,7 +75,9 @@ class HelpersTest(TestCase):
 
         request = MagicMock()
         request.GET = {}
-        request.POST = {"next": "/details/tmdb/movie/118340/guardians-of-the-galaxy?page=2"}
+        request.POST = {
+            "next": "/details/tmdb/movie/118340/guardians-of-the-galaxy?page=2"
+        }
 
         result = redirect_back(request)
 

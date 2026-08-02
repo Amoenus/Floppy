@@ -1,8 +1,11 @@
 import logging
-from collections.abc import Iterable
+from typing import TYPE_CHECKING
 
 from django.conf import settings
 from django.core.cache import cache
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 logger = logging.getLogger(__name__)
 
@@ -74,10 +77,7 @@ def register_time_left_cache_key(user_id: int, cache_key: str) -> None:
     registry_key = _registry_key_for_user(user_id)
     existing_keys = cache.get(registry_key)
 
-    if existing_keys:
-        keys = set(existing_keys)
-    else:
-        keys = set()
+    keys = set(existing_keys) if existing_keys else set()
 
     if cache_key not in keys:
         keys.add(cache_key)

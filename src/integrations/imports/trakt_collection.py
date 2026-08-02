@@ -268,8 +268,7 @@ class TraktCollectionCsvImporter(TraktMetadataResolverMixin):
             return False
 
         episode_exists = any(
-            ep["episode_number"] == episode_number
-            for ep in season_metadata["episodes"]
+            ep["episode_number"] == episode_number for ep in season_metadata["episodes"]
         )
         if not episode_exists:
             self.warnings.append(

@@ -57,9 +57,11 @@ class MediaListBrowserBenchmarkTests(StaticLiveServerTestCase):
         self.release_year_requests: list[str] = []
         self.page.on(
             "requestfinished",
-            lambda request: self.release_year_requests.append(request.url)
-            if "/api/fetch_release_year" in request.url
-            else None,
+            lambda request: (
+                self.release_year_requests.append(request.url)
+                if "/api/fetch_release_year" in request.url
+                else None
+            ),
         )
         self.credentials = {
             "username": f"benchmark-{self._testMethodName}",

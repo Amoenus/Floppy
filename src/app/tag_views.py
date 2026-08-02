@@ -59,11 +59,7 @@ def _resolve_detail_tag_implied_genres(
         details = media_metadata.get("details")
         implied_genres = stats._coerce_genre_list(
             media_metadata.get("implied_genres")
-            or (
-                details.get("implied_genres")
-                if isinstance(details, dict)
-                else None
-            ),
+            or (details.get("implied_genres") if isinstance(details, dict) else None),
         )
     if not implied_genres and fallback_implied_genres:
         implied_genres = stats._coerce_genre_list(fallback_implied_genres)
@@ -145,14 +141,13 @@ def _build_detail_tag_sections(
 
     tag_names = []
     is_authenticated_user = getattr(user, "is_authenticated", False)
-    if is_authenticated_user:
-        if item is not None:
-            tag_names = list(
-                ItemTag.objects.filter(item=item, tag__user=user)
-                .select_related("tag")
-                .order_by("tag__name")
-                .values_list("tag__name", flat=True)
-            )
+    if is_authenticated_user and item is not None:
+        tag_names = list(
+            ItemTag.objects.filter(item=item, tag__user=user)
+            .select_related("tag")
+            .order_by("tag__name")
+            .values_list("tag__name", flat=True)
+        )
 
     if is_authenticated_user:
         tag_section = {
@@ -300,7 +295,9 @@ def tags_modal(
     if preview_genres and list(item.genres or []) != list(preview_genres):
         item.genres = list(preview_genres)
         item_updates.append("genres")
-    if preview_implied_genres and list(getattr(item, "implied_genres", None) or []) != list(preview_implied_genres):
+    if preview_implied_genres and list(
+        getattr(item, "implied_genres", None) or []
+    ) != list(preview_implied_genres):
         item.implied_genres = list(preview_implied_genres)
         item_updates.append("implied_genres")
     if item_updates:

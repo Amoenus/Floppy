@@ -59,7 +59,9 @@ def genre_list_has_name(genres, name: str) -> bool:
     target = str(name or "").strip().lower()
     if not target:
         return False
-    return any(str(genre).strip().lower() == target for genre in normalize_genres(genres))
+    return any(
+        str(genre).strip().lower() == target for genre in normalize_genres(genres)
+    )
 
 
 def extract_metadata_genres(metadata: dict | None) -> list[str]:
@@ -87,10 +89,11 @@ def merge_persisted_genres(
     merged = normalize_genres(incoming_genres)
     existing = normalize_genres(existing_genres)
 
-    if source == Sources.TMDB.value and media_type == MediaTypes.TV.value:
-        if add_anime or genre_list_has_name(existing, ANIME_SUPPLEMENT_GENRE):
-            if not genre_list_has_name(merged, ANIME_SUPPLEMENT_GENRE):
-                merged.append(ANIME_SUPPLEMENT_GENRE)
+    if (
+        (source == Sources.TMDB.value and media_type == MediaTypes.TV.value)
+        and (add_anime or genre_list_has_name(existing, ANIME_SUPPLEMENT_GENRE))
+    ) and not genre_list_has_name(merged, ANIME_SUPPLEMENT_GENRE):
+        merged.append(ANIME_SUPPLEMENT_GENRE)
 
     return merged
 
@@ -133,9 +136,7 @@ def extract_item_metadata_values(metadata: dict | None) -> dict[str, object]:
     if isinstance(publishers, list):
         publishers = publishers[0] if publishers else ""
 
-    raw_number_of_pages = (
-        payload.get("max_progress") or details.get("number_of_pages")
-    )
+    raw_number_of_pages = payload.get("max_progress") or details.get("number_of_pages")
     try:
         number_of_pages = (
             int(raw_number_of_pages) if raw_number_of_pages is not None else None

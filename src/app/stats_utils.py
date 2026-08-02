@@ -4,6 +4,7 @@ Contains small helpers that are used across multiple stats_* modules and
 some non-stats views (tag_views, media_details_views, etc.).  No database
 writes; no calls to external providers.
 """
+
 import datetime
 
 from django.utils import timezone
@@ -27,10 +28,15 @@ MEDIA_TYPE_HOURS_ORDER = [
     MediaTypes.COMIC.value,
 ]
 
+# A "1h 30min"/"1h 30m" style runtime string splits into exactly two parts:
+# an hours component and a minutes component.
+RUNTIME_STR_HOURS_AND_MINUTES_PART_COUNT = 2
+
 
 # ---------------------------------------------------------------------------
 # Combined-queryset helpers (anime bucket)
 # ---------------------------------------------------------------------------
+
 
 class _CombinedMediaBucket:
     """Wraps two querysets (e.g. flat anime + grouped anime TV) into one iterable bucket."""
@@ -53,7 +59,9 @@ class _CombinedMediaBucket:
         return None
 
     def select_related(self, *args):
-        return _CombinedMediaBucket(*(qs.select_related(*args) for qs in self._querysets))
+        return _CombinedMediaBucket(
+            *(qs.select_related(*args) for qs in self._querysets)
+        )
 
     def count(self):
         return sum(qs.count() for qs in self._querysets)
@@ -89,7 +97,7 @@ class _CombinedValuesResult:
             for row in qs.values(*self._fields).annotate(**self._annotation):
                 key = tuple(row[f] for f in self._fields)
                 if key not in merged:
-                    merged[key] = dict(zip(self._fields, key))
+                    merged[key] = dict(zip(self._fields, key, strict=False))
                     merged[key][self._annotation_field] = 0
                 merged[key][self._annotation_field] += row[self._annotation_field]
         yield from merged.values()
@@ -134,6 +142,7 @@ def _infer_user_from_user_media(user_media):
 # Runtime-string parsing
 # ---------------------------------------------------------------------------
 
+
 def parse_runtime_to_minutes(runtime_str):
     """Parse runtime string (e.g., '45m', '1h 30m', '2h', '12 min') to total minutes."""
     if not runtime_str:
@@ -152,7 +161,7 @@ def parse_runtime_to_minutes(runtime_str):
         if "h" in runtime_str and "min" in runtime_str:
             # Format like "1h 30min" or "2h 15min"
             parts = runtime_str.split()
-            if len(parts) == 2:  # "1h 30min"
+            if len(parts) == RUNTIME_STR_HOURS_AND_MINUTES_PART_COUNT:  # "1h 30min"
                 hours = int(parts[0].replace("h", ""))
                 minutes = int(parts[1].replace("min", ""))
                 return hours * 60 + minutes
@@ -160,7 +169,7 @@ def parse_runtime_to_minutes(runtime_str):
         if "h" in runtime_str and "m" in runtime_str:
             # Format like "1h 30m" or "2h 15m" (TMDB format)
             parts = runtime_str.split()
-            if len(parts) == 2:  # "1h 30m"
+            if len(parts) == RUNTIME_STR_HOURS_AND_MINUTES_PART_COUNT:  # "1h 30m"
                 hours = int(parts[0].replace("h", ""))
                 minutes = int(parts[1].replace("m", ""))
                 return hours * 60 + minutes
@@ -171,14 +180,13 @@ def parse_runtime_to_minutes(runtime_str):
             return hours * 60
         if "min" in runtime_str:
             # Format like "45min" or "12 min" (MAL format)
-            minutes = int(runtime_str.replace("min", "").replace(" ", ""))
-            return minutes
+            return int(runtime_str.replace("min", "").replace(" ", ""))
         if "m" in runtime_str:
             # Format like "45m" (TMDB format)
-            minutes = int(runtime_str.replace("m", ""))
-            return minutes
-        return None
+            return int(runtime_str.replace("m", ""))
     except (ValueError, AttributeError):
+        return None
+    else:
         return None
 
 
@@ -199,20 +207,21 @@ def _is_media_in_date_range(media, start_date, end_date):
 # Duration formatting
 # ---------------------------------------------------------------------------
 
+
 def _format_long_units(total_minutes):
     """Format minutes using the largest applicable units (mo/d/h/min)."""
     total_minutes = int(total_minutes)
-    if total_minutes < 60:
+    hour_minutes = 60
+    day_minutes = 1440
+    month_minutes = 43800  # 30 x 24 x 60
+    if total_minutes < hour_minutes:
         return f"{total_minutes}min"
-    if total_minutes < 1440:  # < 24 h
-        hours, mins = divmod(total_minutes, 60)
+    if total_minutes < day_minutes:  # < 24 h
+        hours, mins = divmod(total_minutes, hour_minutes)
         return f"{hours}h {mins}min"
-    MONTH = 43800  # 30 × 24 × 60
-    DAY = 1440
-    HOUR = 60
-    months, r = divmod(total_minutes, MONTH)
-    days, r = divmod(r, DAY)
-    hours, mins = divmod(r, HOUR)
+    months, r = divmod(total_minutes, month_minutes)
+    days, r = divmod(r, day_minutes)
+    hours, mins = divmod(r, hour_minutes)
     parts = []
     if months:
         parts.append(f"{months}mo")
@@ -242,6 +251,7 @@ def _format_hours_minutes(total_minutes, duration_format="hours_minutes"):
 # ---------------------------------------------------------------------------
 # Activity datetime helpers
 # ---------------------------------------------------------------------------
+
 
 def _get_activity_datetime(media):
     """Return the most representative datetime for media activity."""
@@ -298,8 +308,10 @@ def _get_entry_play_dates(entry):
 # Genre normalization
 # ---------------------------------------------------------------------------
 
+
 def _coerce_genre_list(value):
     """Normalize a genre field (string, dict, or list) into a list of strings."""
+
     def _coerce_one(v):
         if not v:
             return None

@@ -196,7 +196,7 @@ def build_changes_list(changes, processed_entry):
     processed_entry["changes"].extend(changes["other_changes"])
 
 
-def format_description(field_name, old_value, new_value, media_type=None, user=None):  # noqa: C901, PLR0911, PLR0912
+def format_description(field_name, old_value, new_value, media_type=None, user=None):
     """Format change description in a human-readable way.
 
     Provides natural language descriptions for various types of changes,
@@ -225,7 +225,9 @@ def format_description(field_name, old_value, new_value, media_type=None, user=N
                 return f"{action} paused {verb}ing"
 
         if field_name == "score":
-            display_score = user.format_score_for_display(new_value) if user else new_value
+            display_score = (
+                user.format_score_for_display(new_value) if user else new_value
+            )
             return f"Rated {display_score}/{rating_scale_max}"
 
         if field_name == "progress" and media_type:

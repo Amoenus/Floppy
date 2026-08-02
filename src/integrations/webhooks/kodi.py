@@ -12,6 +12,8 @@ PERCENT_COMPLETE_THRESHOLD = 80
 
 
 class KodiEvent(StrEnum):
+    """Kodi event."""
+
     PLAYBACK_START = "start"
     PLAYBACK_STOP = "stop"
     PLAYBACK_END = "end"
@@ -21,6 +23,7 @@ class KodiWebhookProcessor(BaseWebhookProcessor):
     """Processor for Kodi webhook events via the HTTP Scrobbler add-on."""
 
     def process_payload(self, payload, user):
+        """Return the process payload."""
         event_type = payload.get("event")
         if not self._is_supported_event(event_type):
             logger.debug("Ignoring Kodi webhook event type: %s", event_type)

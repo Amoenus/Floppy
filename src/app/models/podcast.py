@@ -33,10 +33,14 @@ class PodcastShow(models.Model):
     slug = models.CharField(max_length=255, blank=True, default="")
     author = models.CharField(max_length=255, blank=True, default="")
     image = models.URLField(blank=True, default="")
-    description = models.TextField(blank=True, default="", help_text="Show description from Pocket Casts")
+    description = models.TextField(
+        blank=True, default="", help_text="Show description from Pocket Casts"
+    )
     language = models.CharField(max_length=10, blank=True, default="")
     genres = models.JSONField(default=list, blank=True)
-    rss_feed_url = models.URLField(blank=True, default="", help_text="RSS feed URL for fetching full episode list")
+    rss_feed_url = models.URLField(
+        blank=True, default="", help_text="RSS feed URL for fetching full episode list"
+    )
 
     class Meta:
         """Meta options for the model."""
@@ -115,6 +119,8 @@ class Podcast(Media):
 
     tracker = FieldTracker()
 
+    LAST_SEEN_STATUS_IN_PROGRESS = 2  # playingStatus from API
+
     show = models.ForeignKey(
         PodcastShow,
         on_delete=models.SET_NULL,
@@ -171,11 +177,15 @@ class Podcast(Media):
         Otherwise shows progress from the progress field.
         """
         is_in_progress = (
-            self.status == Status.IN_PROGRESS.value or
-            self.last_seen_status == 2  # 2 = in-progress from API
+            self.status == Status.IN_PROGRESS.value
+            or self.last_seen_status == self.LAST_SEEN_STATUS_IN_PROGRESS
         )
 
-        if is_in_progress and self.played_up_to_seconds and self.played_up_to_seconds > 0:
+        if (
+            is_in_progress
+            and self.played_up_to_seconds
+            and self.played_up_to_seconds > 0
+        ):
             minutes = self.played_up_to_seconds // 60
             return f"{minutes}m"
 
@@ -187,8 +197,8 @@ class Podcast(Media):
         """Return percent listened through the current episode (0-100), or None.
 
         Podcasts are tracked per episode, so this is the playback position within
-        a single episode relative to its runtime. Prefers the episode's precise 
-        duration and falls back to the item runtime; returns None when the 
+        a single episode relative to its runtime. Prefers the episode's precise
+        duration and falls back to the item runtime; returns None when the
         position or a runtime is unavailable.
         """
         if not self.played_up_to_seconds:

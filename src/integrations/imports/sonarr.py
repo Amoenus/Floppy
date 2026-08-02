@@ -65,7 +65,7 @@ class SonarrClient:
         return self._request("/api/v3/episode", params={"seriesId": series_id})
 
 
-def importer(identifier, user, mode):  # noqa: ARG001
+def importer(identifier, user, mode):
     """Import Sonarr collection ownership."""
     return SonarrImporter(user).import_data()
 
@@ -390,8 +390,7 @@ class SonarrImporter:
                 episode_item.save(update_fields=update_fields)
             return episode_item
 
-        episode_item = retry_on_lock(_get_or_create_episode_item)
-        return episode_item
+        return retry_on_lock(_get_or_create_episode_item)
 
     def _episode_has_file(self, row):
         """Return True when Sonarr reports a local file for the episode."""
@@ -403,11 +402,7 @@ class SonarrImporter:
         """Extract the episode file quality label when Sonarr includes it."""
         episode_file = row.get("episodeFile") or {}
         quality = episode_file.get("quality") or {}
-        return (
-            (quality.get("quality") or {}).get("name")
-            or quality.get("name")
-            or ""
-        )
+        return (quality.get("quality") or {}).get("name") or quality.get("name") or ""
 
     def _prune_series_collection_state(self, show_item, *, keep_episode_item_ids=None):
         """Drop stale Sonarr collection ownership for a series."""

@@ -28,25 +28,41 @@ class ItemProviderLink(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ["provider", "provider_media_type", "provider_media_id", "season_number"]
+        """Model and field configuration."""
+
+        ordering = [
+            "provider",
+            "provider_media_type",
+            "provider_media_id",
+            "season_number",
+        ]
         constraints = [
             UniqueConstraint(
                 fields=["item", "provider", "provider_media_type", "season_number"],
                 name="%(app_label)s_%(class)s_unique_item_provider_type",
             ),
             UniqueConstraint(
-                fields=["provider", "provider_media_type", "provider_media_id", "season_number"],
+                fields=[
+                    "provider",
+                    "provider_media_type",
+                    "provider_media_id",
+                    "season_number",
+                ],
                 name="%(app_label)s_%(class)s_unique_provider_lookup",
             ),
         ]
         indexes = [
-            models.Index(fields=["provider", "provider_media_type", "provider_media_id"]),
+            models.Index(
+                fields=["provider", "provider_media_type", "provider_media_id"]
+            ),
             models.Index(fields=["item", "provider"]),
         ]
 
     def __str__(self):
         """Return a readable mapping label."""
-        season_suffix = f" S{self.season_number}" if self.season_number is not None else ""
+        season_suffix = (
+            f" S{self.season_number}" if self.season_number is not None else ""
+        )
         return (
             f"{self.item_id}:{self.provider}/{self.provider_media_type}/"
             f"{self.provider_media_id}{season_suffix}"
@@ -71,6 +87,8 @@ class MetadataProviderPreference(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        """Model and field configuration."""
+
         constraints = [
             UniqueConstraint(
                 fields=["user", "item"],
@@ -123,6 +141,8 @@ class MetadataBackfillState(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        """Model and field configuration."""
+
         constraints = [
             UniqueConstraint(
                 fields=["item", "field"],
@@ -133,6 +153,10 @@ class MetadataBackfillState(models.Model):
             models.Index(fields=["field", "next_retry_at"]),
             models.Index(fields=["field", "give_up"]),
         ]
+
+    def __str__(self):
+        """Return the item and field this backfill state tracks."""
+        return f"{self.item} {self.field}"
 
 
 class PersonGender(models.TextChoices):

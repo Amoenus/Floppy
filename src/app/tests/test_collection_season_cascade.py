@@ -63,7 +63,9 @@ class CollectionSeasonCascadeTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.json()["success"])
         self.assertFalse(
-            CollectionEntry.objects.filter(user=self.user, item=self.season_item).exists(),
+            CollectionEntry.objects.filter(
+                user=self.user, item=self.season_item
+            ).exists(),
         )
         self.assertEqual(
             CollectionEntry.objects.filter(
@@ -89,11 +91,15 @@ class CollectionSeasonCascadeTest(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
-            CollectionEntry.objects.filter(user=self.user, item=self.episode_one).count(),
+            CollectionEntry.objects.filter(
+                user=self.user, item=self.episode_one
+            ).count(),
             1,
         )
         self.assertTrue(
-            CollectionEntry.objects.filter(user=self.user, item=self.episode_two).exists(),
+            CollectionEntry.objects.filter(
+                user=self.user, item=self.episode_two
+            ).exists(),
         )
 
         stats = get_season_collection_stats(self.user, self.season_item)
@@ -156,7 +162,10 @@ class CollectionSeasonCascadeTest(TestCase):
         CollectionEntry.objects.create(user=self.user, item=self.episode_two)
 
         response = self.client.post(
-            reverse("collection_remove_season", kwargs={"season_item_id": self.season_item.id}),
+            reverse(
+                "collection_remove_season",
+                kwargs={"season_item_id": self.season_item.id},
+            ),
             HTTP_HX_REQUEST="true",
         )
 

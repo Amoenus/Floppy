@@ -715,7 +715,9 @@ class MediaManagerTests(TestCase):
         self.assertEqual(tv_list[0].max_progress, 10)
 
     @patch("app.models.providers.services.get_media_metadata")
-    def test_annotate_max_progress_for_books_uses_stored_pages_only(self, mock_get_media_metadata):
+    def test_annotate_max_progress_for_books_uses_stored_pages_only(
+        self, mock_get_media_metadata
+    ):
         manager = MediaManager()
 
         self.book_item.number_of_pages = None

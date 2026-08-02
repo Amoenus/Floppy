@@ -441,7 +441,10 @@ class HistoryMonthViewTests(TestCase):
                 self.assertEqual(response.status_code, 200)
                 self.assertFalse(response.context["use_month_view"])
                 self.assertEqual(
-                    sum(len(day.get("entries", [])) for day in response.context["history_days"]),
+                    sum(
+                        len(day.get("entries", []))
+                        for day in response.context["history_days"]
+                    ),
                     2,
                 )
                 self.assertEqual(
@@ -724,7 +727,9 @@ class HistoryViewPersonFilterTests(TestCase):
                 },
             )
 
-    def _create_tmdb_tv_show(self, media_id, title, studio, show_credits, seasons, base_time):
+    def _create_tmdb_tv_show(
+        self, media_id, title, studio, show_credits, seasons, base_time
+    ):
         tv_item = Item.objects.create(
             media_id=media_id,
             source=Sources.TMDB.value,
@@ -789,8 +794,10 @@ class HistoryViewPersonFilterTests(TestCase):
                     media_id=media_id,
                     source=Sources.TMDB.value,
                     media_type=MediaTypes.EPISODE.value,
-                    title=episode_spec.get("title") or f"{title} Episode {season_number}-{episode_number}",
-                    image=episode_spec.get("image") or f"http://example.com/{media_id}-s{season_number}e{episode_number}.jpg",
+                    title=episode_spec.get("title")
+                    or f"{title} Episode {season_number}-{episode_number}",
+                    image=episode_spec.get("image")
+                    or f"http://example.com/{media_id}-s{season_number}e{episode_number}.jpg",
                     season_number=season_number,
                     episode_number=episode_number,
                     runtime_minutes=episode_spec.get("runtime_minutes", 45),
@@ -798,7 +805,8 @@ class HistoryViewPersonFilterTests(TestCase):
                 Episode.objects.create(
                     item=episode_item,
                     related_season=season,
-                    end_date=base_time + timedelta(minutes=episode_spec.get("offset_minutes", 0)),
+                    end_date=base_time
+                    + timedelta(minutes=episode_spec.get("offset_minutes", 0)),
                 )
                 for credit in episode_spec.get("credits", []):
                     ItemPersonCredit.objects.create(
@@ -936,7 +944,13 @@ class HistoryViewPersonFilterTests(TestCase):
             role_type=CreditRoleType.CAST.value,
             role="Episode-level non-match",
         )
-        self._mark_tmdb_credits_current(tv_item, season_item, episode_item_match, episode_item_exclude, episode_item_fallback)
+        self._mark_tmdb_credits_current(
+            tv_item,
+            season_item,
+            episode_item_match,
+            episode_item_exclude,
+            episode_item_fallback,
+        )
 
         response = self.client.get(
             reverse("history") + "?person_source=tmdb&person_id=900",
@@ -952,7 +966,9 @@ class HistoryViewPersonFilterTests(TestCase):
         self.assertIn("Fallback To Show Credit", titles)
         self.assertIn("Episode Specific Exclusion", titles)
 
-    def test_history_tmdb_person_filter_excludes_high_order_show_guest_from_other_episodes(self):
+    def test_history_tmdb_person_filter_excludes_high_order_show_guest_from_other_episodes(
+        self,
+    ):
         target_person = Person.objects.create(
             source=Sources.TMDB.value,
             source_person_id="990",
@@ -1057,7 +1073,13 @@ class HistoryViewPersonFilterTests(TestCase):
             role_type=CreditRoleType.CAST.value,
             role="Guest Star",
         )
-        self._mark_tmdb_credits_current(tv_item, season_item, episode_item_match, episode_item_exclude, episode_item_fallback)
+        self._mark_tmdb_credits_current(
+            tv_item,
+            season_item,
+            episode_item_match,
+            episode_item_exclude,
+            episode_item_fallback,
+        )
 
         response = self.client.get(
             reverse("history") + "?person_source=tmdb&person_id=990",
@@ -1332,11 +1354,18 @@ class HistoryViewPersonFilterTests(TestCase):
         )
 
         expectations = {
-            "9801": {"History Stable Woman": {"History Stable Ensemble Episode 1-1", "History Stable Ensemble Episode 2-1"}},
+            "9801": {
+                "History Stable Woman": {
+                    "History Stable Ensemble Episode 1-1",
+                    "History Stable Ensemble Episode 2-1",
+                }
+            },
             "9803": {"History Left Man": {"History Leaving Cast Episode 1-1"}},
             "9806": {"History Join Man": {"History Joining Cast Episode 2-1"}},
             "9809": {"History Guest Woman": {"History Guest Star Show Episode 1-1"}},
-            "9813": {"History Fallback Man": {"History Mixed Fallback Show Episode 2-1"}},
+            "9813": {
+                "History Fallback Man": {"History Mixed Fallback Show Episode 2-1"}
+            },
         }
 
         for person_id, person_expectations in expectations.items():

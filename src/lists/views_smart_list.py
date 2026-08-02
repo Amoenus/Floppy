@@ -26,7 +26,7 @@ from app.models import Item, MediaTypes
 from app.release_years import prefill_display_release_years
 from lists import smart_rules
 from lists.forms import CustomListForm
-from lists.models import CustomList, CustomListItem
+from lists.models import CustomListItem
 from lists.views_helpers import (
     _adapt_list_items_for_table,
     _attach_media_with_aggregation,
@@ -55,7 +55,9 @@ def _smart_list_detail_response(
 ):
     """Render smart-list detail page and HTMX partial responses."""
     valid_sorts = [choice[0] for choice in ListDetailSortChoices.choices]
-    saved_sort = (custom_list.smart_filters or {}).get("sort") or ListDetailSortChoices.DATE_ADDED
+    saved_sort = (custom_list.smart_filters or {}).get(
+        "sort"
+    ) or ListDetailSortChoices.DATE_ADDED
     if saved_sort not in valid_sorts:
         saved_sort = ListDetailSortChoices.DATE_ADDED
     sort_by = request.GET.get("sort", saved_sort)
@@ -81,7 +83,9 @@ def _smart_list_detail_response(
     if can_edit and custom_list.allow_recommendations:
         recommendation_count = custom_list.recommendations.count()
 
-    smart_edit_mode = can_edit and str(request.GET.get("edit_smart_rules", "")).lower() in {
+    smart_edit_mode = can_edit and str(
+        request.GET.get("edit_smart_rules", "")
+    ).lower() in {
         "1",
         "true",
         "yes",
@@ -107,7 +111,9 @@ def _smart_list_detail_response(
         active_rules = smart_rules.normalize_rule_payload(
             {
                 "media_types": request_media_types,
-                "status": request.GET.getlist("status") if "status" in request.GET else saved_rules["status"],
+                "status": request.GET.getlist("status")
+                if "status" in request.GET
+                else saved_rules["status"],
                 "rating": request.GET.get("rating", saved_rules["rating"]),
                 "rating_min": request.GET.get("rating_min", saved_rules["rating_min"]),
                 "rating_max": request.GET.get("rating_max", saved_rules["rating_max"]),
@@ -142,17 +148,23 @@ def _smart_list_detail_response(
                 "origin": request.GET.get("origin", saved_rules["origin"]),
                 "format": request.GET.get("format", saved_rules["format"]),
                 "author": request.GET.get("author", saved_rules["author"]),
-                "tag": request.GET.getlist("tag") if "tag" in request.GET else saved_rules["tag"],
+                "tag": request.GET.getlist("tag")
+                if "tag" in request.GET
+                else saved_rules["tag"],
                 "tag_exclude": request.GET.get("tag_exclude", ""),
                 "tag_mode": request.GET.get("tag_mode", saved_rules["tag_mode"]),
                 "search": request.GET.get("q", saved_rules["search"]),
                 "sort": request.GET.get("sort", saved_rules["sort"]),
-                "sort_direction": request.GET.get("direction", saved_rules["sort_direction"]),
+                "sort_direction": request.GET.get(
+                    "direction", saved_rules["sort_direction"]
+                ),
             },
             custom_list.owner,
         )
 
-    matched_item_ids = smart_rules.collect_matching_item_ids(custom_list.owner, active_rules)
+    matched_item_ids = smart_rules.collect_matching_item_ids(
+        custom_list.owner, active_rules
+    )
     items = Item.objects.filter(id__in=matched_item_ids).annotate(
         list_date_added=Subquery(
             CustomListItem.objects.filter(
@@ -227,7 +239,13 @@ def _smart_list_detail_response(
 
     sort_config = media_sort_config.get(sort_by)
     if sort_config:
-        all_items = list(items.order_by(*sort_mapping.get(sort_by, sort_mapping[ListDetailSortChoices.DATE_ADDED])))
+        all_items = list(
+            items.order_by(
+                *sort_mapping.get(
+                    sort_by, sort_mapping[ListDetailSortChoices.DATE_ADDED]
+                )
+            )
+        )
         _attach_media_with_aggregation(all_items, media_user)
         all_items = sorted(
             all_items,
@@ -238,7 +256,9 @@ def _smart_list_detail_response(
         items_page = paginator.get_page(page)
         filtered_items_count = paginator.count
     else:
-        items = items.order_by(*sort_mapping.get(sort_by, sort_mapping[ListDetailSortChoices.DATE_ADDED]))
+        items = items.order_by(
+            *sort_mapping.get(sort_by, sort_mapping[ListDetailSortChoices.DATE_ADDED])
+        )
         paginator = Paginator(items, 16)
         items_page = paginator.get_page(page)
         filtered_items_count = paginator.count
@@ -249,11 +269,14 @@ def _smart_list_detail_response(
     if layout == "table":
         _adapt_list_items_for_table(items_page)
 
-    status_choices = [("all", "All"), *[
-        (value, label)
-        for value, label in MediaStatusChoices.choices
-        if value != MediaStatusChoices.ALL
-    ]]
+    status_choices = [
+        ("all", "All"),
+        *[
+            (value, label)
+            for value, label in MediaStatusChoices.choices
+            if value != MediaStatusChoices.ALL
+        ],
+    ]
     sort_choices = sorted(ListDetailSortChoices.choices, key=lambda x: x[1])
 
     filter_data = smart_rules.build_rule_filter_data(
@@ -267,8 +290,7 @@ def _smart_list_detail_response(
         key=lambda v: MediaTypes(v).label,
     )
     available_media_type_labels = {
-        media_type: MediaTypes(media_type).label
-        for media_type in available_media_types
+        media_type: MediaTypes(media_type).label for media_type in available_media_types
     }
 
     is_partial = helpers.is_htmx_fragment(request)
@@ -355,7 +377,9 @@ def _smart_list_detail_response(
             args=[custom_list.id],
         ),
         "table_column_media_type": current_media_type,
-        "table_refresh_url": reverse("list_detail", args=[custom_list.public_reference]),
+        "table_refresh_url": reverse(
+            "list_detail", args=[custom_list.public_reference]
+        ),
         "table_refresh_target": "#items-view",
         "table_refresh_include_selector": "#smart-filter-form",
         "list_reference": custom_list.public_reference,
@@ -373,7 +397,9 @@ def _smart_list_detail_response(
                     "list",
                 ),
                 "table_body_id": "list-table-body",
-                "table_pagination_url": reverse("list_detail", args=[custom_list.public_reference]),
+                "table_pagination_url": reverse(
+                    "list_detail", args=[custom_list.public_reference]
+                ),
                 "table_target_selector": "#list-table-body",
                 "table_include_selector": "#smart-filter-form",
             },

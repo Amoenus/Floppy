@@ -328,7 +328,9 @@ class KitsuImporter:
                 **app.models.Item.title_fields_from_metadata(
                     {
                         "title": kitsu_metadata["attributes"]["canonicalTitle"],
-                        "localized_title": kitsu_metadata["attributes"]["canonicalTitle"],
+                        "localized_title": kitsu_metadata["attributes"][
+                            "canonicalTitle"
+                        ],
                         "original_title": None,
                     },
                 ),

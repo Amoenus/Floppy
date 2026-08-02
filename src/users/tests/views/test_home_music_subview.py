@@ -20,20 +20,27 @@ class MusicSubviewHomeTests(TestCase):
         # reuse across tests — clear to avoid stale empty-row sentinels.
         cache.clear()
         self.user = get_user_model().objects.create_user(
-            username="musicfan", password="pw",
+            username="musicfan",
+            password="pw",
         )
         self.user.music_enabled = True
         self.user.save(update_fields=["music_enabled"])
 
         self.artist = Artist.objects.create(name="Queen", image="http://x/a.jpg")
         self.album = Album.objects.create(
-            title="A Night at the Opera", artist=self.artist, image="http://x/al.jpg",
+            title="A Night at the Opera",
+            artist=self.artist,
+            image="http://x/al.jpg",
         )
         AlbumTracker.objects.create(
-            user=self.user, album=self.album, status=Status.PLANNING.value,
+            user=self.user,
+            album=self.album,
+            status=Status.PLANNING.value,
         )
         ArtistTracker.objects.create(
-            user=self.user, artist=self.artist, status=Status.IN_PROGRESS.value,
+            user=self.user,
+            artist=self.artist,
+            status=Status.IN_PROGRESS.value,
         )
 
     def _add_music_row(self, subview, status):
@@ -50,7 +57,8 @@ class MusicSubviewHomeTests(TestCase):
 
     def _music_group(self, groups):
         return next(
-            (g for g in groups if g["media_type"] == MediaTypes.MUSIC.value), None,
+            (g for g in groups if g["media_type"] == MediaTypes.MUSIC.value),
+            None,
         )
 
     def test_albums_subview_surfaces_album_tracker(self):
@@ -58,11 +66,7 @@ class MusicSubviewHomeTests(TestCase):
         groups = home_screen.build_home_page_groups(self.user, items_limit=10)
         group = self._music_group(groups)
         self.assertIsNotNone(group, "music group should be present")
-        titles = [
-            entry.item.title
-            for row in group["rows"]
-            for entry in row["items"]
-        ]
+        titles = [entry.item.title for row in group["rows"] for entry in row["items"]]
         self.assertIn("A Night at the Opera", titles)
 
     def test_artists_subview_surfaces_artist_tracker(self):
@@ -70,11 +74,7 @@ class MusicSubviewHomeTests(TestCase):
         groups = home_screen.build_home_page_groups(self.user, items_limit=10)
         group = self._music_group(groups)
         self.assertIsNotNone(group)
-        titles = [
-            entry.item.title
-            for row in group["rows"]
-            for entry in row["items"]
-        ]
+        titles = [entry.item.title for row in group["rows"] for entry in row["items"]]
         self.assertIn("Queen", titles)
 
     def test_albums_status_filter_excludes_other_statuses(self):
@@ -94,7 +94,8 @@ class MusicSubviewHomeTests(TestCase):
     def test_validate_rejects_bad_subview(self):
         with self.assertRaises(home_screen.HomeScreenValidationError):
             home_screen.validate_library_row_filters(
-                {"subview": "nonsense"}, MediaTypes.MUSIC.value,
+                {"subview": "nonsense"},
+                MediaTypes.MUSIC.value,
             )
 
     def test_subview_field_present_and_first_for_music(self):

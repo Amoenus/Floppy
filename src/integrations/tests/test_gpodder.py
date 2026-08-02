@@ -57,13 +57,15 @@ class GPodderViewAndTaskTests(TestCase):
     def setUp(self):
         self.user = get_user_model().objects.create_user(
             username="listener",
-            password="pass12345",  # noqa: S106
+            password="pass12345",
         )
         self.client.login(username="listener", password="pass12345")
 
     @patch("integrations.views.tasks.import_gpodder.delay")
     @patch("integrations.views.gpodder_api.verify_login")
-    def test_connect_success_creates_account_and_schedule(self, mock_verify_login, mock_delay):
+    def test_connect_success_creates_account_and_schedule(
+        self, mock_verify_login, mock_delay
+    ):
         response = self.client.post(
             reverse("gpodder_connect"),
             {
@@ -76,16 +78,23 @@ class GPodderViewAndTaskTests(TestCase):
 
         self.assertRedirects(response, reverse("import_data"))
         account = GPodderAccount.objects.get(user=self.user)
-        self.assertEqual(helpers.decrypt(account.server_url), "https://demo.example.com")
+        self.assertEqual(
+            helpers.decrypt(account.server_url), "https://demo.example.com"
+        )
         self.assertEqual(account.device_filter, "phone")
         self.assertEqual(account.device_id, f"yamtrack-{self.user.id}")
         self.assertTrue(
-            PeriodicTask.objects.filter(task="Import from GPodder (Recurring)").exists(),
+            PeriodicTask.objects.filter(
+                task="Import from GPodder (Recurring)"
+            ).exists(),
         )
         mock_verify_login.assert_called_once()
         mock_delay.assert_called_once_with(user_id=self.user.id, mode="new")
 
-    @patch("integrations.views.gpodder_api.verify_login", side_effect=gpodder_api.GPodderAuthError("bad"))
+    @patch(
+        "integrations.views.gpodder_api.verify_login",
+        side_effect=gpodder_api.GPodderAuthError("bad"),
+    )
     def test_connect_failure_shows_error(self, _mock_verify_login):
         response = self.client.post(
             reverse("gpodder_connect"),
@@ -114,7 +123,9 @@ class GPodderViewAndTaskTests(TestCase):
 
         self.assertRedirects(response, reverse("import_data"))
         self.assertTrue(
-            PeriodicTask.objects.filter(task="Import from GPodder (Recurring)").exists(),
+            PeriodicTask.objects.filter(
+                task="Import from GPodder (Recurring)"
+            ).exists(),
         )
         mock_delay.assert_called_once_with(user_id=self.user.id, mode="new")
 
@@ -145,7 +156,9 @@ class GPodderViewAndTaskTests(TestCase):
 
         self.assertRedirects(response, reverse("import_data"))
         self.assertFalse(GPodderAccount.objects.exists())
-        self.assertFalse(PeriodicTask.objects.filter(task="Import from GPodder (Recurring)").exists())
+        self.assertFalse(
+            PeriodicTask.objects.filter(task="Import from GPodder (Recurring)").exists()
+        )
 
     def test_recurring_task_skips_when_lock_exists(self):
         cache.set("gpodder_import_lock_99", "1", timeout=60)

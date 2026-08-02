@@ -32,6 +32,12 @@ STUDIO_ALIASES = {
     "walt disney pictures": "disney",
 }
 
+RUNTIME_UNKNOWN_AIRED = 999998
+RUNTIME_SHORT_MAX_MINUTES = 90
+RUNTIME_MEDIUM_MAX_MINUTES = 110
+RUNTIME_LONG_MAX_MINUTES = 130
+MIN_YEAR_PREFIX_LENGTH = 4
+
 
 def _normalize_whitespace(value) -> str:
     return " ".join(str(value or "").strip().lower().split())
@@ -78,13 +84,13 @@ def runtime_bucket_label(runtime_minutes) -> str:
     except (TypeError, ValueError):
         return ""
 
-    if minutes <= 0 or minutes >= 999998:
+    if minutes <= 0 or minutes >= RUNTIME_UNKNOWN_AIRED:
         return ""
-    if minutes < 90:
+    if minutes < RUNTIME_SHORT_MAX_MINUTES:
         return "<90"
-    if minutes < 110:
+    if minutes < RUNTIME_MEDIUM_MAX_MINUTES:
         return "90_109"
-    if minutes < 130:
+    if minutes < RUNTIME_LONG_MAX_MINUTES:
         return "110_129"
     return "130_plus"
 
@@ -92,11 +98,11 @@ def runtime_bucket_label(runtime_minutes) -> str:
 def release_decade_label(release_value) -> str:
     """Return decade label like 1990s from a date-ish value."""
     year = None
-    if isinstance(release_value, datetime) or isinstance(release_value, date):
+    if isinstance(release_value, (datetime, date)):
         year = release_value.year
     else:
         text = str(release_value or "").strip()
-        if len(text) >= 4 and text[:4].isdigit():
+        if len(text) >= MIN_YEAR_PREFIX_LENGTH and text[:4].isdigit():
             year = int(text[:4])
 
     if year is None or year <= 0:
@@ -121,4 +127,7 @@ def is_director_credit(role_type: str, role: str, department: str) -> bool:
     """Return True when the credit identifies a director."""
     if role_type != CreditRoleType.CREW.value:
         return False
-    return normalize_person_name(role) == "director" or normalize_person_name(department) == "directing"
+    return (
+        normalize_person_name(role) == "director"
+        or normalize_person_name(department) == "directing"
+    )

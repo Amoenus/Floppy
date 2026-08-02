@@ -37,7 +37,9 @@ class DiscoverFilterTests(TestCase):
         for patcher in self.signal_patches:
             patcher.start()
 
-        self.user = get_user_model().objects.create_user(username="discover-user", password="testpass")
+        self.user = get_user_model().objects.create_user(
+            username="discover-user", password="testpass"
+        )
         self.item = Item.objects.create(
             media_id="100",
             source=Sources.TMDB.value,
@@ -45,7 +47,10 @@ class DiscoverFilterTests(TestCase):
             title="Tracked Movie",
             image="http://example.com/image.jpg",
         )
-        with patch("app.models.providers.services.get_media_metadata", return_value={"max_progress": 1}):
+        with patch(
+            "app.models.providers.services.get_media_metadata",
+            return_value={"max_progress": 1},
+        ):
             Movie.objects.create(
                 item=self.item,
                 user=self.user,
@@ -77,7 +82,11 @@ class DiscoverFilterTests(TestCase):
         tracked = get_tracked_keys_by_media_type(
             self.user,
             MediaTypes.MOVIE.value,
-            statuses={Status.COMPLETED.value, Status.DROPPED.value, Status.PLANNING.value},
+            statuses={
+                Status.COMPLETED.value,
+                Status.DROPPED.value,
+                Status.PLANNING.value,
+            },
         )
         self.assertIn((MediaTypes.MOVIE.value, Sources.TMDB.value, "100"), tracked)
         self.assertIn((MediaTypes.MOVIE.value, Sources.TMDB.value, "101"), tracked)

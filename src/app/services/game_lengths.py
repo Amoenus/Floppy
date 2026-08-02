@@ -6,8 +6,8 @@ import json
 import logging
 import re
 import unicodedata
-from datetime import datetime
-from typing import Any
+from http import HTTPStatus
+from typing import TYPE_CHECKING, Any
 from urllib.parse import quote_plus
 
 from django.conf import settings
@@ -18,7 +18,12 @@ from app.models import Item, MediaTypes, Sources
 from app.providers import igdb
 from app.providers import services as provider_services
 
+if TYPE_CHECKING:
+    from datetime import datetime
+
 logger = logging.getLogger(__name__)
+
+YEAR_STRING_LENGTH = 4
 
 HLTB_BASE_URL = "https://howlongtobeat.com"
 HLTB_BROWSER_HEADERS = {
@@ -72,14 +77,19 @@ def refresh_game_lengths(
         if item.provider_game_lengths_match == HLTB_MATCH_AMBIGUOUS:
             return existing_payload
 
-    metadata = igdb_metadata if isinstance(igdb_metadata, dict) else provider_services.get_media_metadata(
-        item.media_type,
-        item.media_id,
-        item.source,
+    metadata = (
+        igdb_metadata
+        if isinstance(igdb_metadata, dict)
+        else provider_services.get_media_metadata(
+            item.media_type,
+            item.media_id,
+            item.source,
+        )
     )
 
     result = {
-        "active_source": existing_payload.get("active_source") or GAME_LENGTH_SOURCE_IGDB,
+        "active_source": existing_payload.get("active_source")
+        or GAME_LENGTH_SOURCE_IGDB,
     }
     if isinstance(existing_payload.get("hltb"), dict):
         result["hltb"] = existing_payload["hltb"]
@@ -127,7 +137,8 @@ def refresh_game_lengths(
         match_type = match_type or "igdb_fallback"
 
     if not result.get("hltb") and not result.get("igdb"):
-        raise ValueError(f"No game length data available for item {item.id}")
+        msg = f"No game length data available for item {item.id}"
+        raise ValueError(msg)
 
     item.provider_external_ids = external_ids
     item.provider_game_lengths = result
@@ -146,10 +157,14 @@ def refresh_game_lengths(
     return result
 
 
-def resolve_hltb_candidate(igdb_metadata: dict[str, Any] | None) -> dict[str, Any] | None:
+def resolve_hltb_candidate(
+    igdb_metadata: dict[str, Any] | None,
+) -> dict[str, Any] | None:
     """Resolve an IGDB metadata payload to a confident HLTB candidate."""
     payload = igdb_metadata if isinstance(igdb_metadata, dict) else {}
-    direct_url = ((payload.get("external_links") or {}).get("HowLongToBeat") or "").strip()
+    direct_url = (
+        (payload.get("external_links") or {}).get("HowLongToBeat") or ""
+    ).strip()
     direct_hltb_id = _extract_hltb_id(direct_url)
     if direct_hltb_id:
         return {
@@ -189,11 +204,15 @@ def resolve_hltb_candidate(igdb_metadata: dict[str, Any] | None) -> dict[str, An
         game_id = _coerce_int(candidate.get("game_id"))
         if game_id and isinstance(detail, dict):
             candidate_detail_cache[game_id] = detail
-    steam_app_id = _coerce_int((_extract_igdb_external_ids(payload)).get("steam_app_id"))
+    steam_app_id = _coerce_int(
+        (_extract_igdb_external_ids(payload)).get("steam_app_id")
+    )
 
     if len(exact_candidates) == 1:
         candidate = exact_candidates[0]
-        detail = _get_hltb_detail_from_cache(candidate_detail_cache, candidate["game_id"])
+        detail = _get_hltb_detail_from_cache(
+            candidate_detail_cache, candidate["game_id"]
+        )
         return {
             "match": _match_label_for_detail(detail, steam_app_id, HLTB_MATCH_EXACT),
             "hltb_id": candidate["game_id"],
@@ -201,10 +220,16 @@ def resolve_hltb_candidate(igdb_metadata: dict[str, Any] | None) -> dict[str, An
         }
 
     match_candidates = exact_candidates or title_candidates
-    overlapping_platforms = [candidate for candidate in match_candidates if _has_platform_overlap(payload, candidate)]
+    overlapping_platforms = [
+        candidate
+        for candidate in match_candidates
+        if _has_platform_overlap(payload, candidate)
+    ]
     if len(overlapping_platforms) == 1:
         candidate = overlapping_platforms[0]
-        detail = _get_hltb_detail_from_cache(candidate_detail_cache, candidate["game_id"])
+        detail = _get_hltb_detail_from_cache(
+            candidate_detail_cache, candidate["game_id"]
+        )
         return {
             "match": _match_label_for_detail(detail, steam_app_id, HLTB_MATCH_EXACT),
             "hltb_id": candidate["game_id"],
@@ -214,8 +239,13 @@ def resolve_hltb_candidate(igdb_metadata: dict[str, Any] | None) -> dict[str, An
     if steam_app_id:
         steam_matches = []
         for candidate in match_candidates:
-            detail = _get_hltb_detail_from_cache(candidate_detail_cache, candidate["game_id"])
-            if _coerce_int((detail.get("external_ids") or {}).get("steam_app_id")) == steam_app_id:
+            detail = _get_hltb_detail_from_cache(
+                candidate_detail_cache, candidate["game_id"]
+            )
+            if (
+                _coerce_int((detail.get("external_ids") or {}).get("steam_app_id"))
+                == steam_app_id
+            ):
                 steam_matches.append((candidate, detail))
         if len(steam_matches) == 1:
             candidate, detail = steam_matches[0]
@@ -232,18 +262,20 @@ def fetch_hltb_search(title: str) -> dict[str, Any]:
     """Search HLTB for a game title using the bleed API."""
     query = (title or "").strip()
     if not query:
-        raise ValueError("HLTB search title cannot be empty")
+        msg = "HLTB search title cannot be empty"
+        raise ValueError(msg)
 
     auth = _fetch_hltb_search_auth()
     search_response = _post_hltb_search(query, auth)
-    if search_response.status_code == 403:
+    if search_response.status_code == HTTPStatus.FORBIDDEN:
         auth = _fetch_hltb_search_auth()
         search_response = _post_hltb_search(query, auth)
     search_response.raise_for_status()
 
     search_payload = search_response.json()
     if not isinstance(search_payload, dict):
-        raise ValueError("HLTB search response must be a JSON object")
+        msg = "HLTB search response must be a JSON object"
+        raise TypeError(msg)
 
     normalized_candidates = []
     for candidate in search_payload.get("data") or []:
@@ -273,13 +305,15 @@ def _fetch_hltb_search_auth() -> dict[str, str]:
     response.raise_for_status()
     auth_payload = response.json()
     if not isinstance(auth_payload, dict):
-        raise ValueError("HLTB search auth response must be a JSON object")
+        msg = "HLTB search auth response must be a JSON object"
+        raise TypeError(msg)
 
     token = str(auth_payload.get("token") or "").strip()
     hp_key = str(auth_payload.get("hpKey") or "").strip()
     hp_val = str(auth_payload.get("hpVal") or "").strip()
     if not token or not hp_key or not hp_val:
-        raise ValueError("HLTB search auth response missing token or honeypot values")
+        msg = "HLTB search auth response missing token or honeypot values"
+        raise ValueError(msg)
     return {
         "token": token,
         "hpKey": hp_key,
@@ -340,7 +374,8 @@ def fetch_hltb_detail(hltb_id: int | str) -> dict[str, Any]:
     """Fetch and normalize a HLTB game detail page."""
     normalized_id = _coerce_int(hltb_id)
     if not normalized_id:
-        raise ValueError(f"Invalid HLTB id: {hltb_id!r}")
+        msg = f"Invalid HLTB id: {hltb_id!r}"
+        raise ValueError(msg)
 
     response = provider_services.session.get(
         f"{HLTB_BASE_URL}/game/{normalized_id}",
@@ -351,13 +386,15 @@ def fetch_hltb_detail(hltb_id: int | str) -> dict[str, Any]:
 
     next_data = _extract_hltb_next_data(response.text)
     if next_data is None:
-        raise ValueError(f"HLTB detail page missing __NEXT_DATA__ for {normalized_id}")
+        msg = f"HLTB detail page missing __NEXT_DATA__ for {normalized_id}"
+        raise ValueError(msg)
 
-    page_props = (((next_data.get("props") or {}).get("pageProps")) or {})
-    game_data = (((page_props.get("game") or {}).get("data")) or {})
+    page_props = ((next_data.get("props") or {}).get("pageProps")) or {}
+    game_data = ((page_props.get("game") or {}).get("data")) or {}
     game_rows = list(game_data.get("game") or [])
     if not game_rows:
-        raise ValueError(f"HLTB detail payload missing game rows for {normalized_id}")
+        msg = f"HLTB detail payload missing game rows for {normalized_id}"
+        raise ValueError(msg)
     profile = game_rows[0]
 
     return {
@@ -388,7 +425,8 @@ def fetch_igdb_time_to_beat(igdb_id: int | str) -> dict[str, Any]:
     """Fetch IGDB's official time-to-beat data for a game id."""
     game_id = _coerce_int(igdb_id)
     if not game_id:
-        raise ValueError(f"Invalid IGDB id: {igdb_id!r}")
+        msg = f"Invalid IGDB id: {igdb_id!r}"
+        raise ValueError(msg)
 
     access_token = igdb.get_access_token()
     response = provider_services.api_request(
@@ -459,7 +497,9 @@ def is_game_lengths_refresh_lock_stale(lock_payload: Any) -> bool:
         queued_at = float(lock_payload["queued_at"])
     except (KeyError, TypeError, ValueError):
         return True
-    return (timezone.now().timestamp() - queued_at) >= GAME_LENGTHS_REFRESH_STALE_SECONDS
+    return (
+        timezone.now().timestamp() - queued_at
+    ) >= GAME_LENGTHS_REFRESH_STALE_SECONDS
 
 
 def _build_single_player_table(profile: dict[str, Any]) -> list[dict[str, Any]]:
@@ -481,7 +521,8 @@ def _build_single_player_table(profile: dict[str, Any]) -> list[dict[str, Any]]:
                 "median_minutes": _seconds_to_minutes(profile.get(f"{prefix}_med")),
                 "rushed_minutes": _seconds_to_minutes(profile.get(f"{prefix}_l")),
                 "leisure_minutes": _seconds_to_minutes(profile.get(f"{prefix}_h")),
-                "average_source_seconds": _coerce_int(profile.get(f"{prefix}_avg")) or 0,
+                "average_source_seconds": _coerce_int(profile.get(f"{prefix}_avg"))
+                or 0,
                 "source_key": prefix_base,
             },
         )
@@ -489,20 +530,18 @@ def _build_single_player_table(profile: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _build_platform_table(platform_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    table = []
-    for row in platform_rows:
-        table.append(
-            {
-                "platform": row.get("platform") or "",
-                "count": _coerce_int(row.get("count_comp")) or 0,
-                "main_minutes": _seconds_to_minutes(row.get("comp_main")),
-                "main_plus_minutes": _seconds_to_minutes(row.get("comp_plus")),
-                "completionist_minutes": _seconds_to_minutes(row.get("comp_100")),
-                "fastest_minutes": _seconds_to_minutes(row.get("comp_low")),
-                "slowest_minutes": _seconds_to_minutes(row.get("comp_high")),
-            },
-        )
-    return table
+    return [
+        {
+            "platform": row.get("platform") or "",
+            "count": _coerce_int(row.get("count_comp")) or 0,
+            "main_minutes": _seconds_to_minutes(row.get("comp_main")),
+            "main_plus_minutes": _seconds_to_minutes(row.get("comp_plus")),
+            "completionist_minutes": _seconds_to_minutes(row.get("comp_100")),
+            "fastest_minutes": _seconds_to_minutes(row.get("comp_low")),
+            "slowest_minutes": _seconds_to_minutes(row.get("comp_high")),
+        }
+        for row in platform_rows
+    ]
 
 
 def _extract_hltb_profile_ids(profile: dict[str, Any]) -> dict[str, Any]:
@@ -517,7 +556,9 @@ def _extract_hltb_profile_ids(profile: dict[str, Any]) -> dict[str, Any]:
 def _extract_hltb_external_ids(detail: dict[str, Any]) -> dict[str, Any]:
     external_ids = detail.get("external_ids") or {}
     return {
-        "hltb_game_id": _coerce_int(detail.get("game_id")) or _coerce_int(external_ids.get("hltb_game_id")) or 0,
+        "hltb_game_id": _coerce_int(detail.get("game_id"))
+        or _coerce_int(external_ids.get("hltb_game_id"))
+        or 0,
         "steam_app_id": _coerce_int(external_ids.get("steam_app_id")) or 0,
         "itch_id": _coerce_int(external_ids.get("itch_id")) or 0,
         "ign_uuid": external_ids.get("ign_uuid") or "",
@@ -531,7 +572,9 @@ def _extract_igdb_external_ids(metadata: dict[str, Any] | None) -> dict[str, Any
     for key in ("steam_app_id", "itch_id", "ign_uuid", "hltb_game_id"):
         if key in external_ids:
             result[key] = external_ids[key]
-    direct_hltb_id = _extract_hltb_id(((payload.get("external_links") or {}).get("HowLongToBeat")))
+    direct_hltb_id = _extract_hltb_id(
+        (payload.get("external_links") or {}).get("HowLongToBeat")
+    )
     if direct_hltb_id:
         result["hltb_game_id"] = direct_hltb_id
     return result
@@ -580,7 +623,7 @@ def _seconds_to_minutes(value: Any) -> int:
     seconds = _coerce_int(value) or 0
     if seconds <= 0:
         return 0
-    return int(round(seconds / 60))
+    return round(seconds / 60)
 
 
 def _extract_hltb_id(url: str | None) -> int | None:
@@ -592,7 +635,9 @@ def _extract_hltb_id(url: str | None) -> int | None:
     return _coerce_int(match.group(1))
 
 
-def _get_hltb_detail_from_cache(cache: dict[int, dict[str, Any]], hltb_id: int) -> dict[str, Any]:
+def _get_hltb_detail_from_cache(
+    cache: dict[int, dict[str, Any]], hltb_id: int
+) -> dict[str, Any]:
     if hltb_id not in cache:
         cache[hltb_id] = fetch_hltb_detail(hltb_id)
     return cache[hltb_id]
@@ -623,7 +668,9 @@ def _extract_hltb_search_candidates(html_text: str) -> list[dict[str, Any]]:
     return candidates
 
 
-def _collect_hltb_search_candidates(node: Any, candidates: list[dict[str, Any]]) -> None:
+def _collect_hltb_search_candidates(
+    node: Any, candidates: list[dict[str, Any]]
+) -> None:
     if isinstance(node, dict):
         candidate = _build_hltb_search_candidate(node)
         if candidate:
@@ -636,7 +683,9 @@ def _collect_hltb_search_candidates(node: Any, candidates: list[dict[str, Any]])
 
 
 def _build_hltb_search_candidate(payload: dict[str, Any]) -> dict[str, Any] | None:
-    game_id = _coerce_int(_get_first_candidate_value(payload, ("game_id", "gameId", "id")))
+    game_id = _coerce_int(
+        _get_first_candidate_value(payload, ("game_id", "gameId", "id"))
+    )
     if not game_id:
         for key in ("url", "href", "link", "game_url", "gameUrl"):
             game_id = _extract_hltb_id(payload.get(key))
@@ -674,7 +723,9 @@ def _normalize_hltb_search_candidate(
     if not game_id:
         return None
 
-    detail = candidate.get("detail") if isinstance(candidate.get("detail"), dict) else None
+    detail = (
+        candidate.get("detail") if isinstance(candidate.get("detail"), dict) else None
+    )
     if detail is not None and detail_cache is not None:
         detail_cache[game_id] = detail
 
@@ -701,7 +752,9 @@ def _normalize_hltb_search_candidate(
     return normalized
 
 
-def _build_hltb_search_candidate_from_detail(detail: dict[str, Any]) -> dict[str, Any] | None:
+def _build_hltb_search_candidate_from_detail(
+    detail: dict[str, Any],
+) -> dict[str, Any] | None:
     game_id = _coerce_int(detail.get("game_id"))
     game_name = (detail.get("title") or "").strip()
     if not game_id or not game_name:
@@ -716,14 +769,13 @@ def _build_hltb_search_candidate_from_detail(detail: dict[str, Any]) -> dict[str
         )
         if platform
     )
-    candidate = {
+    return {
         "game_id": game_id,
         "game_name": game_name,
         "release_world": detail.get("release_year"),
         "profile_platform": profile_platforms,
         "detail": detail,
     }
-    return candidate
 
 
 def _extract_hltb_candidate_title(payload: dict[str, Any]) -> str | None:
@@ -748,8 +800,8 @@ def _extract_hltb_candidate_release_year(payload: dict[str, Any]) -> int | None:
         return value
     if isinstance(value, str):
         text = value.strip()
-        if len(text) >= 4:
-            return _coerce_int(text[:4])
+        if len(text) >= YEAR_STRING_LENGTH:
+            return _coerce_int(text[:YEAR_STRING_LENGTH])
     return _coerce_int(value)
 
 
@@ -794,13 +846,21 @@ def _get_first_candidate_value(payload: dict[str, Any], keys: tuple[str, ...]) -
     return None
 
 
-def _match_label_for_detail(detail: dict[str, Any], steam_app_id: int | None, default: str) -> str:
-    if steam_app_id and _coerce_int((detail.get("external_ids") or {}).get("steam_app_id")) == steam_app_id:
+def _match_label_for_detail(
+    detail: dict[str, Any], steam_app_id: int | None, default: str
+) -> str:
+    if (
+        steam_app_id
+        and _coerce_int((detail.get("external_ids") or {}).get("steam_app_id"))
+        == steam_app_id
+    ):
         return HLTB_MATCH_STEAM
     return default
 
 
-def _has_platform_overlap(igdb_metadata: dict[str, Any], candidate: dict[str, Any]) -> bool:
+def _has_platform_overlap(
+    igdb_metadata: dict[str, Any], candidate: dict[str, Any]
+) -> bool:
     igdb_platforms = {
         _normalize_title(platform)
         for platform in ((igdb_metadata.get("details") or {}).get("platforms") or [])
@@ -811,4 +871,8 @@ def _has_platform_overlap(igdb_metadata: dict[str, Any], candidate: dict[str, An
         for platform in str(candidate.get("profile_platform") or "").split(",")
         if _normalize_title(platform)
     }
-    return bool(igdb_platforms and hltb_platforms and igdb_platforms.intersection(hltb_platforms))
+    return bool(
+        igdb_platforms
+        and hltb_platforms
+        and igdb_platforms.intersection(hltb_platforms)
+    )

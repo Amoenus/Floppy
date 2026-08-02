@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from unittest.mock import patch
 
 from django.test import TestCase
@@ -21,7 +21,7 @@ from app.services import imdb_game_credits
 
 
 def _make_game(media_id, title, year=2025, **extra):
-    release = datetime(year, 1, 1, tzinfo=timezone.utc) if year else None
+    release = datetime(year, 1, 1, tzinfo=UTC) if year else None
     return Item.objects.create(
         media_id=media_id,
         source=Sources.IGDB.value,
@@ -122,8 +122,12 @@ class SyncGameCreditsFromImdbTests(TestCase):
         synced = imdb_game_credits.sync_game_credits_from_imdb(principals, names)
 
         self.assertEqual(synced, 1)
-        cast = ItemPersonCredit.objects.get(item=self.item, role_type=CreditRoleType.CAST.value)
-        crew = ItemPersonCredit.objects.get(item=self.item, role_type=CreditRoleType.CREW.value)
+        cast = ItemPersonCredit.objects.get(
+            item=self.item, role_type=CreditRoleType.CAST.value
+        )
+        crew = ItemPersonCredit.objects.get(
+            item=self.item, role_type=CreditRoleType.CREW.value
+        )
 
         self.assertEqual(cast.person.source, Sources.IMDB.value)
         self.assertEqual(cast.person.source_person_id, "nm0000001")
@@ -134,7 +138,9 @@ class SyncGameCreditsFromImdbTests(TestCase):
         # The game item's own source is untouched — no IGDB-namespace collision.
         self.assertFalse(Person.objects.filter(source=Sources.IGDB.value).exists())
 
-        state = MetadataBackfillState.objects.get(item=self.item, field=MetadataBackfillField.CREDITS.value)
+        state = MetadataBackfillState.objects.get(
+            item=self.item, field=MetadataBackfillField.CREDITS.value
+        )
         self.assertIsNotNone(state.last_success_at)
 
     def test_rerun_skips_already_synced_items(self):
@@ -161,7 +167,9 @@ class SyncGameCreditsFromImdbTests(TestCase):
         synced = imdb_game_credits.sync_game_credits_from_imdb({}, {})
 
         self.assertEqual(synced, 0)
-        state = MetadataBackfillState.objects.get(item=self.item, field=MetadataBackfillField.CREDITS.value)
+        state = MetadataBackfillState.objects.get(
+            item=self.item, field=MetadataBackfillField.CREDITS.value
+        )
         self.assertEqual(state.fail_count, 1)
 
     def test_rerun_can_fill_missing_crew_when_cast_already_exists(self):
@@ -219,7 +227,10 @@ class BackfillMissingPersonProfilesTests(TestCase):
         )
         with patch(
             "app.providers.tmdb.search_person_profile",
-            return_value={"image": "https://image.tmdb.org/t/p/h632/alice.jpg", "gender": "female"},
+            return_value={
+                "image": "https://image.tmdb.org/t/p/h632/alice.jpg",
+                "gender": "female",
+            },
         ) as mock_search:
             updated = imdb_game_credits.backfill_missing_person_profiles()
 
@@ -239,7 +250,10 @@ class BackfillMissingPersonProfilesTests(TestCase):
         )
         with patch(
             "app.providers.tmdb.search_person_profile",
-            return_value={"image": "https://image.tmdb.org/t/p/h632/other.jpg", "gender": "male"},
+            return_value={
+                "image": "https://image.tmdb.org/t/p/h632/other.jpg",
+                "gender": "male",
+            },
         ):
             updated = imdb_game_credits.backfill_missing_person_profiles()
 
@@ -307,8 +321,13 @@ class BackfillMissingPersonProfilesTests(TestCase):
 
         def _search(name):
             if name == "Rate Limited Person":
-                raise services.ProviderAPIError(Sources.TMDB.value, Exception("rate limited"))
-            return {"image": "https://image.tmdb.org/t/p/h632/working.jpg", "gender": "male"}
+                raise services.ProviderAPIError(
+                    Sources.TMDB.value, Exception("rate limited")
+                )
+            return {
+                "image": "https://image.tmdb.org/t/p/h632/working.jpg",
+                "gender": "male",
+            }
 
         with patch("app.providers.tmdb.search_person_profile", side_effect=_search):
             updated = imdb_game_credits.backfill_missing_person_profiles()
@@ -347,7 +366,9 @@ class BackfillMissingGameStudiosTests(TestCase):
 
         self.assertEqual(updated, 1)
         studio = Studio.objects.get(source=Sources.IGDB.value, source_studio_id="44")
-        self.assertTrue(ItemStudioCredit.objects.filter(item=item, studio=studio).exists())
+        self.assertTrue(
+            ItemStudioCredit.objects.filter(item=item, studio=studio).exists()
+        )
 
     def test_skips_games_that_already_have_studios(self):
         item = _make_game(

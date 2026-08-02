@@ -66,8 +66,7 @@ class ImportGoodreads(TestCase):
             "Private Notes",
         ]
         csv_payload = (
-            ",".join(headers)
-            + "\n"
+            ",".join(headers) + "\n"
             "1,Book with Unknown Shelf,Author,9780000000001,0,320,owned,,,\n"
         )
 
@@ -101,8 +100,7 @@ class ImportGoodreads(TestCase):
             "Private Notes",
         ]
         csv_payload = (
-            ",".join(headers)
-            + "\n"
+            ",".join(headers) + "\n"
             "2,Date-less Book,Author,9780000000002,4,220,read,,,\n"
         )
 
@@ -133,8 +131,7 @@ class ImportGoodreads(TestCase):
             "Private Notes",
         ]
         csv_payload = (
-            ",".join(headers)
-            + "\n"
+            ",".join(headers) + "\n"
             "3,Decimal Rating Book,Author,9780000000003,3.0,245,read,,,\n"
         )
 

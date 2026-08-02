@@ -92,7 +92,7 @@ class AudiobookshelfImporterTests(TestCase):
         """Create test user and connected ABS account."""
         self.user = get_user_model().objects.create_user(
             username="abs-user",
-            password="pass",  # noqa: S106
+            password="pass",
         )
         AudiobookshelfAccount.objects.create(
             user=self.user,
@@ -332,7 +332,7 @@ class AudiobookshelfImporterTests(TestCase):
             ],
         }
 
-        def library_item(library_item_id, *, expanded=False):  # noqa: ARG001
+        def library_item(library_item_id, *, expanded=False):
             if library_item_id == "podcast-item":
                 return podcast_library_item()
             return {

@@ -85,11 +85,15 @@ def _show_last_watched(media_type: str, current_sort: str, _user: Any) -> bool:
 
 
 def _show_next_episode_air_date(media_type: str, current_sort: str, _user: Any) -> bool:
-    return media_type in (
-        MediaTypes.TV.value,
-        MediaTypes.SEASON.value,
-        MediaTypes.ANIME.value,
-    ) and current_sort == "next_episode_air_date"
+    return (
+        media_type
+        in (
+            MediaTypes.TV.value,
+            MediaTypes.SEASON.value,
+            MediaTypes.ANIME.value,
+        )
+        and current_sort == "next_episode_air_date"
+    )
 
 
 def _show_author(media_type: str, _current_sort: str, _user: Any) -> bool:
@@ -529,11 +533,7 @@ def _resolve_order_and_hidden(
         if column.key not in ordered_flex_keys:
             ordered_flex_keys.append(column.key)
 
-    hidden_keys = {
-        key
-        for key in saved_hidden
-        if key in flex_by_key
-    }
+    hidden_keys = {key for key in saved_hidden if key in flex_by_key}
 
     ordered_columns = fixed_columns + [flex_by_key[key] for key in ordered_flex_keys]
     return ordered_columns, hidden_keys

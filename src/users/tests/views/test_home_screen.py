@@ -76,7 +76,10 @@ class HomeScreenViewTests(TestCase):
         self.assertContains(response, "expanded: false")
         self.assertContains(response, 'x-html="section.icon_svg"')
         self.assertContains(response, "ensureSortable()")
-        self.assertNotContains(response, 'src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.3/Sortable.min.js"')
+        self.assertNotContains(
+            response,
+            'src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.3/Sortable.min.js"',
+        )
         self.assertNotContains(response, "section.rows.length === 1")
         self.assertContains(response, "Add Row")
         self.assertContains(response, "Add List")
@@ -553,9 +556,15 @@ class HomeScreenViewTests(TestCase):
             media_type=MediaTypes.MOVIE.value,
             source=Sources.TMDB.value,
         )
-        Movie.objects.create(item=both_item, user=self.user, status=Status.COMPLETED.value)
-        Movie.objects.create(item=action_item, user=self.user, status=Status.DROPPED.value)
-        Movie.objects.create(item=comedy_item, user=self.user, status=Status.COMPLETED.value)
+        Movie.objects.create(
+            item=both_item, user=self.user, status=Status.COMPLETED.value
+        )
+        Movie.objects.create(
+            item=action_item, user=self.user, status=Status.DROPPED.value
+        )
+        Movie.objects.create(
+            item=comedy_item, user=self.user, status=Status.COMPLETED.value
+        )
         action_tag = Tag.objects.create(user=self.user, name="Action")
         comedy_tag = Tag.objects.create(user=self.user, name="Comedy")
         ItemTag.objects.create(item=both_item, tag=action_tag)
@@ -580,7 +589,9 @@ class HomeScreenViewTests(TestCase):
 
         entries = home_screen._library_query_entries(self.user, row)
 
-        self.assertEqual([entry.item.title for entry in entries], ["Home Action Comedy"])
+        self.assertEqual(
+            [entry.item.title for entry in entries], ["Home Action Comedy"]
+        )
 
     def test_home_screen_settings_do_not_expose_no_status_option(self):
         self._set_enabled_media_types(MediaTypes.MOVIE.value)
@@ -624,13 +635,20 @@ class HomeScreenViewTests(TestCase):
             self.user,
             MediaTypes.BOOK.value,
         )
-        author_field = next(field for field in filter_fields if field["key"] == "author")
+        author_field = next(
+            field for field in filter_fields if field["key"] == "author"
+        )
         self.assertIn(
-            {"value": "Author Only In Collection", "label": "Author Only In Collection"},
+            {
+                "value": "Author Only In Collection",
+                "label": "Author Only In Collection",
+            },
             author_field["options"],
         )
 
-    def test_planning_library_row_excludes_duplicate_item_with_newer_in_progress_status(self):
+    def test_planning_library_row_excludes_duplicate_item_with_newer_in_progress_status(
+        self,
+    ):
         self._set_enabled_media_types(MediaTypes.GAME.value)
         stale_planning_item = Item.objects.create(
             title="Multi-Session Game",
@@ -667,7 +685,9 @@ class HomeScreenViewTests(TestCase):
             created_at=now - timedelta(days=1),
         )
         Game.objects.filter(id=in_progress_game.id).update(created_at=now)
-        Game.objects.filter(id=visible_planning_game.id).update(created_at=now - timedelta(days=2))
+        Game.objects.filter(id=visible_planning_game.id).update(
+            created_at=now - timedelta(days=2)
+        )
 
         HomeScreenRow.objects.create(
             user=self.user,
@@ -709,9 +729,15 @@ class HomeScreenViewTests(TestCase):
         self.assertEqual(len(sections[MediaTypes.TV.value]["rows"]), 1)
         self.assertEqual(len(sections[MediaTypes.ANIME.value]["rows"]), 1)
         self.assertEqual(len(sections[MediaTypes.SEASON.value]["rows"]), 1)
-        self.assertEqual(sections[MediaTypes.SEASON.value]["rows"][0]["sort_by"], HomeSortChoices.UPCOMING)
+        self.assertEqual(
+            sections[MediaTypes.SEASON.value]["rows"][0]["sort_by"],
+            HomeSortChoices.UPCOMING,
+        )
         self.assertEqual(len(sections[MediaTypes.MOVIE.value]["rows"]), 1)
-        self.assertEqual(sections[MediaTypes.MOVIE.value]["rows"][0]["sort_by"], HomeSortChoices.RECENT)
+        self.assertEqual(
+            sections[MediaTypes.MOVIE.value]["rows"][0]["sort_by"],
+            HomeSortChoices.RECENT,
+        )
         self.assertEqual(
             sections[MediaTypes.TV.value]["rows"][0]["sort_by"],
             MediaSortChoices.NEXT_EPISODE_AIR_DATE,
@@ -753,7 +779,9 @@ class HomeScreenViewTests(TestCase):
                 "value": MediaSortChoices.NEXT_EPISODE_AIR_DATE,
                 "label": "Episode Air Date",
             },
-            sections[MediaTypes.TV.value]["sort_choices"][HomeScreenRowTypeChoices.LIBRARY_QUERY],
+            sections[MediaTypes.TV.value]["sort_choices"][
+                HomeScreenRowTypeChoices.LIBRARY_QUERY
+            ],
         )
         self.assertFalse(
             HomeScreenRow.objects.filter(
@@ -796,9 +824,15 @@ class HomeScreenViewTests(TestCase):
                 position=position,
                 enabled=True,
                 row_type=row_type,
-                sort_by=HomeSortChoices.UPCOMING if row_type == HomeScreenRowTypeChoices.LIBRARY_QUERY else HomeSortChoices.RECENT,
-                direction="asc" if row_type == HomeScreenRowTypeChoices.LIBRARY_QUERY else "desc",
-                filters=default_filters if row_type == HomeScreenRowTypeChoices.LIBRARY_QUERY else {},
+                sort_by=HomeSortChoices.UPCOMING
+                if row_type == HomeScreenRowTypeChoices.LIBRARY_QUERY
+                else HomeSortChoices.RECENT,
+                direction="asc"
+                if row_type == HomeScreenRowTypeChoices.LIBRARY_QUERY
+                else "desc",
+                filters=default_filters
+                if row_type == HomeScreenRowTypeChoices.LIBRARY_QUERY
+                else {},
             )
             HomeScreenRow.objects.create(
                 user=self.user,
@@ -806,22 +840,38 @@ class HomeScreenViewTests(TestCase):
                 position=position,
                 enabled=True,
                 row_type=row_type,
-                sort_by=HomeSortChoices.UPCOMING if row_type == HomeScreenRowTypeChoices.LIBRARY_QUERY else HomeSortChoices.RECENT,
-                direction="asc" if row_type == HomeScreenRowTypeChoices.LIBRARY_QUERY else "desc",
-                filters=default_filters if row_type == HomeScreenRowTypeChoices.LIBRARY_QUERY else {},
+                sort_by=HomeSortChoices.UPCOMING
+                if row_type == HomeScreenRowTypeChoices.LIBRARY_QUERY
+                else HomeSortChoices.RECENT,
+                direction="asc"
+                if row_type == HomeScreenRowTypeChoices.LIBRARY_QUERY
+                else "desc",
+                filters=default_filters
+                if row_type == HomeScreenRowTypeChoices.LIBRARY_QUERY
+                else {},
             )
 
         response = self.client.get(reverse("home_screen"))
 
         self.assertEqual(response.status_code, 200)
         rows = list(
-            HomeScreenRow.objects.filter(user=self.user).order_by("media_type", "position", "id"),
+            HomeScreenRow.objects.filter(user=self.user).order_by(
+                "media_type", "position", "id"
+            ),
         )
         self.assertEqual(
             [(row.media_type, row.row_type, row.sort_by) for row in rows],
             [
-                (MediaTypes.MOVIE.value, HomeScreenRowTypeChoices.LIBRARY_QUERY, HomeSortChoices.RECENT),
-                (MediaTypes.SEASON.value, HomeScreenRowTypeChoices.LIBRARY_QUERY, HomeSortChoices.UPCOMING),
+                (
+                    MediaTypes.MOVIE.value,
+                    HomeScreenRowTypeChoices.LIBRARY_QUERY,
+                    HomeSortChoices.RECENT,
+                ),
+                (
+                    MediaTypes.SEASON.value,
+                    HomeScreenRowTypeChoices.LIBRARY_QUERY,
+                    HomeSortChoices.UPCOMING,
+                ),
             ],
         )
 
@@ -1057,11 +1107,14 @@ class HomeScreenViewTests(TestCase):
             ).order_by("position", "id"),
         )
         self.assertEqual(len(rows), 3)
-        self.assertEqual([row.row_type for row in rows], [
-            HomeScreenRowTypeChoices.LIBRARY_QUERY,
-            HomeScreenRowTypeChoices.CUSTOM_LIST,
-            HomeScreenRowTypeChoices.RECENTLY_UNRATED,
-        ])
+        self.assertEqual(
+            [row.row_type for row in rows],
+            [
+                HomeScreenRowTypeChoices.LIBRARY_QUERY,
+                HomeScreenRowTypeChoices.CUSTOM_LIST,
+                HomeScreenRowTypeChoices.RECENTLY_UNRATED,
+            ],
+        )
         self.assertEqual(rows[0].sort_by, "title")
         self.assertEqual(rows[0].direction, "asc")
         self.assertEqual(rows[0].filters["status"], [Status.COMPLETED.value])
@@ -1179,7 +1232,9 @@ class HomeScreenViewTests(TestCase):
         settings_response = self.client.get(reverse("home_screen"))
         sections = {
             section["media_type"]: section
-            for section in json.loads(settings_response.context["home_screen_sections_json"])
+            for section in json.loads(
+                settings_response.context["home_screen_sections_json"]
+            )
         }
         self.assertEqual(
             sections[MediaTypes.SEASON.value]["rows"][0]["direction"],
@@ -1280,5 +1335,7 @@ class HomeScreenViewTests(TestCase):
 
         self.assertIn(owned.id, returned_ids)
         self.assertIn(smart.id, returned_ids)
-        self.assertTrue(next(result for result in results if result["id"] == smart.id)["is_smart"])
+        self.assertTrue(
+            next(result for result in results if result["id"] == smart.id)["is_smart"]
+        )
         self.assertEqual(len(returned_ids), 2)

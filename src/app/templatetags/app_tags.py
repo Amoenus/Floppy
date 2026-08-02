@@ -26,6 +26,7 @@ def absolute_app_url(context, path):
 
 @register.simple_tag
 def djdt_enabled():
+    """Return the djdt enabled."""
     return getattr(settings, "ENABLE_DEBUG_TOOLBAR", False)
 
 
@@ -37,18 +38,20 @@ def get_static_file_mtime(file_path):
         full_path = Path(static_dir) / file_path
         try:
             mtime = int(full_path.stat().st_mtime)
-            return f"?{mtime}"
         except OSError:
             continue
+        else:
+            return f"?{mtime}"
 
     # Fall back to STATIC_ROOT
     full_path = Path(settings.STATIC_ROOT) / file_path
     try:
         mtime = int(full_path.stat().st_mtime)
-        return f"?{mtime}"
     except OSError:
         # If file doesn't exist or can't be accessed
         return ""
+    else:
+        return f"?{mtime}"
 
 
 @register.filter
@@ -256,7 +259,7 @@ def match_percent(value):
     except (TypeError, ValueError):
         return None
     normalized = max(0.0, min(1.0, normalized))
-    return int(round(normalized * 100))
+    return round(normalized * 100)
 
 
 @register.filter
@@ -288,7 +291,11 @@ def media_type_readable_plural(media_type):
     singular = MediaTypes(media_type).label
 
     # Special cases that don't change in plural form
-    if singular.lower() in [MediaTypes.ANIME.value, MediaTypes.MANGA.value, MediaTypes.MUSIC.value]:
+    if singular.lower() in [
+        MediaTypes.ANIME.value,
+        MediaTypes.MANGA.value,
+        MediaTypes.MUSIC.value,
+    ]:
         return singular
 
     return f"{singular}s"
@@ -414,7 +421,10 @@ def season_card_title(item):
 
     normalized_provider_title = _normalize_title_value(provider_title)
     normalized_fallback_title = _normalize_title_value(fallback_title)
-    if normalized_provider_title and normalized_provider_title != normalized_fallback_title:
+    if (
+        normalized_provider_title
+        and normalized_provider_title != normalized_fallback_title
+    ):
         return normalized_provider_title
 
     try:
@@ -511,9 +521,8 @@ def _resolve_studio_url_target(value):
     ):
         return _resolve_studio_url_target(nested_studio)
 
-    if (
-        getattr(value, "source_studio_id", None) is not None
-        and getattr(value, "name", None)
+    if getattr(value, "source_studio_id", None) is not None and getattr(
+        value, "name", None
     ):
         return value
     if getattr(value, "studio_id", None) is not None and getattr(value, "name", None):
@@ -691,7 +700,11 @@ def get_search_media_types(user):
     """Return available media types for search based on user preferences."""
     # Handle anonymous users by returning all media types
     if not user or not user.is_authenticated:
-        enabled_types = [mt for mt in MediaTypes.values if mt != MediaTypes.EPISODE.value and mt != MediaTypes.SEASON.value]
+        enabled_types = [
+            mt
+            for mt in MediaTypes.values
+            if mt not in (MediaTypes.EPISODE.value, MediaTypes.SEASON.value)
+        ]
     else:
         enabled_types = user.get_enabled_media_types()
 
@@ -787,11 +800,12 @@ def user_event_time(event, user):
         else:
             time_str = formats.date_format(local_dt, "TIME_FORMAT")
 
-        return f"at {time_str}"
     except (ValueError, TypeError, AttributeError):
         # Fallback to default format if there's an error
         local_dt = timezone.localtime(event.datetime)
         return f"at {local_dt.strftime('%H:%M')}"
+    else:
+        return f"at {time_str}"
 
 
 @register.filter
@@ -834,7 +848,9 @@ def media_url(media):
     # Route override — used to route TV items to anime show pages, or season items
     # to anime season URLs when the parent show is anime
     route_media_type = (
-        media.get("route_media_type") if is_dict else getattr(media, "route_media_type", None)
+        media.get("route_media_type")
+        if is_dict
+        else getattr(media, "route_media_type", None)
     )
 
     source = media["source"] if is_dict else media.source
@@ -946,13 +962,16 @@ def _untracked_season_next_episode_url(item, seasons, actual_media_type):
     slug_title = slug(title) or slug(str(media_id)) or "item"
     is_anime = actual_media_type == MediaTypes.ANIME.value
     url_name = "anime_episode_details" if is_anime else "episode_details"
-    return reverse(url_name, kwargs={
-        "source": source,
-        "media_id": media_id,
-        "title": slug_title,
-        "season_number": event.item.season_number,
-        "episode_number": event.content_number,
-    })
+    return reverse(
+        url_name,
+        kwargs={
+            "source": source,
+            "media_id": media_id,
+            "title": slug_title,
+            "season_number": event.item.season_number,
+            "episode_number": event.content_number,
+        },
+    )
 
 
 @register.simple_tag
@@ -964,11 +983,15 @@ def next_episode_url(item, media):
     season is found via the already-prefetched seasons queryset.
     """
     is_dict = isinstance(item, dict)
-    actual_media_type = item["media_type"] if is_dict else getattr(item, "media_type", None)
+    actual_media_type = (
+        item["media_type"] if is_dict else getattr(item, "media_type", None)
+    )
 
     # ── Season card ──────────────────────────────────────────────────────────
     if actual_media_type == MediaTypes.SEASON.value:
-        season_number = item["season_number"] if is_dict else getattr(item, "season_number", None)
+        season_number = (
+            item["season_number"] if is_dict else getattr(item, "season_number", None)
+        )
         if season_number is None:
             return ""
         title = item["title"] if is_dict else getattr(item, "title", "")
@@ -978,19 +1001,24 @@ def next_episode_url(item, media):
             return ""
         slug_title = slug(title) or slug(str(media_id)) or "item"
         library_media_type = (
-            item.get("library_media_type", "") if is_dict else getattr(item, "library_media_type", "")
+            item.get("library_media_type", "")
+            if is_dict
+            else getattr(item, "library_media_type", "")
         )
         is_anime = library_media_type == MediaTypes.ANIME.value
         url_name = "anime_episode_details" if is_anime else "episode_details"
         progress = getattr(media, "progress", None) or 0
         next_ep = int(progress) + 1
-        return reverse(url_name, kwargs={
-            "source": source,
-            "media_id": media_id,
-            "title": slug_title,
-            "season_number": season_number,
-            "episode_number": next_ep,
-        })
+        return reverse(
+            url_name,
+            kwargs={
+                "source": source,
+                "media_id": media_id,
+                "title": slug_title,
+                "season_number": season_number,
+                "episode_number": next_ep,
+            },
+        )
 
     # ── TV / Anime show card ─────────────────────────────────────────────────
     if actual_media_type in (MediaTypes.TV.value, MediaTypes.ANIME.value):
@@ -1014,7 +1042,8 @@ def next_episode_url(item, media):
             return ""
         # Seasons are already prefetched for TV home cards — no extra query
         in_progress = [
-            s for s in seasons.all()
+            s
+            for s in seasons.all()
             if getattr(s, "status", None) == Status.IN_PROGRESS.value
             and getattr(getattr(s, "item", None), "season_number", 0) != 0
         ]
@@ -1022,17 +1051,22 @@ def next_episode_url(item, media):
             return _untracked_season_next_episode_url(item, seasons, actual_media_type)
         season = min(in_progress, key=lambda s: s.item.season_number)
         season_item = season.item
-        slug_title = slug(season_item.title) or slug(str(season_item.media_id)) or "item"
+        slug_title = (
+            slug(season_item.title) or slug(str(season_item.media_id)) or "item"
+        )
         is_anime = actual_media_type == MediaTypes.ANIME.value
         url_name = "anime_episode_details" if is_anime else "episode_details"
         next_ep = int(getattr(season, "progress", 0) or 0) + 1
-        return reverse(url_name, kwargs={
-            "source": season_item.source,
-            "media_id": season_item.media_id,
-            "title": slug_title,
-            "season_number": season_item.season_number,
-            "episode_number": next_ep,
-        })
+        return reverse(
+            url_name,
+            kwargs={
+                "source": season_item.source,
+                "media_id": season_item.media_id,
+                "title": slug_title,
+                "season_number": season_item.season_number,
+                "episode_number": next_ep,
+            },
+        )
 
     return ""
 
@@ -1260,6 +1294,17 @@ def get_pagination_range(current_page, total_pages, window):
     return result
 
 
+# Day-count deltas (end_date - start_date) that identify named preset date
+# ranges. Each is one less than the calendar span, since both endpoints are
+# inclusive (e.g. "This Week" spans 7 days -> a 6-day difference).
+DAYS_DIFF_ONE_WEEK = 6
+DAYS_DIFF_ONE_MONTH = 29
+DAYS_DIFF_90_DAYS = 89
+DAYS_DIFF_6_MONTHS_MIN = 175
+DAYS_DIFF_6_MONTHS_MAX = 185
+DAYS_DIFF_ONE_YEAR = 364
+
+
 def _check_same_day_ranges(start_date, end_date, today):
     """Check for same-day date ranges like Today and Yesterday."""
     if start_date == end_date:
@@ -1273,7 +1318,7 @@ def _check_same_day_ranges(start_date, end_date, today):
 def _check_week_ranges(start_date, end_date, today):
     """Check for week-based date ranges."""
     days_diff = (end_date - start_date).days
-    if days_diff == 6:  # 7 days including start and end
+    if days_diff == DAYS_DIFF_ONE_WEEK:  # 7 days including start and end
         if start_date == today - timedelta(days=6):
             return "This Week"
         if start_date == today - timedelta(days=13):
@@ -1290,7 +1335,7 @@ def _check_month_ranges(start_date, end_date, today):
         return "This Month"
     if start_date == month_start and end_date == today - timedelta(days=1):
         return "This Month"
-    if days_diff == 29:  # 30 days including start and end
+    if days_diff == DAYS_DIFF_ONE_MONTH:  # 30 days including start and end
         if start_date == today - timedelta(days=29):
             return "This Month"
         if start_date == today - timedelta(days=59):
@@ -1304,15 +1349,15 @@ def _check_extended_ranges(start_date, end_date):
     days_diff = (end_date - start_date).days
 
     # Check for 90 days
-    if days_diff == 89:  # 90 days including start and end
+    if days_diff == DAYS_DIFF_90_DAYS:  # 90 days including start and end
         return "Last 90 Days"
 
     # Check for 6 months (approximately 180 days)
-    if 175 <= days_diff <= 185:
+    if DAYS_DIFF_6_MONTHS_MIN <= days_diff <= DAYS_DIFF_6_MONTHS_MAX:
         return "Last 6 Months"
 
     # Check for year ranges
-    if days_diff == 364:  # 365 days including start and end
+    if days_diff == DAYS_DIFF_ONE_YEAR:  # 365 days including start and end
         return "Last 12 Months"
 
     return None
@@ -1358,7 +1403,7 @@ def order_by_end_date(queryset):
 @register.filter
 def format_date_range_display(start_date, end_date):
     """Format date range for display in card titles.
-    
+
     Returns a human-readable string like "Last 12 Months" or "Date Range"
     based on whether it's a predefined range or custom dates.
     """
@@ -1374,7 +1419,7 @@ def format_date_range_display(start_date, end_date):
     if hasattr(end_date, "date"):
         end_date = end_date.date()
 
-    today = date.today()
+    today = date.today()  # noqa: DTZ011  # plain calendar date, matching upstream behaviour
 
     # Check for predefined ranges
     predefined_range = _is_predefined_date_range(start_date, end_date, today)
@@ -1402,8 +1447,7 @@ def filter_media_types(entries, media_types_str):
         return entries
     media_types = {mt.strip().lower() for mt in media_types_str.split(",")}
     return [
-        entry for entry in entries
-        if entry.get("media_type", "").lower() in media_types
+        entry for entry in entries if entry.get("media_type", "").lower() in media_types
     ]
 
 
@@ -1424,7 +1468,8 @@ def exclude_media_types(entries, media_types_str):
         return entries
     media_types = {mt.strip().lower() for mt in media_types_str.split(",")}
     return [
-        entry for entry in entries
+        entry
+        for entry in entries
         if entry.get("media_type", "").lower() not in media_types
     ]
 
@@ -1460,7 +1505,8 @@ def filter_home_media_types(items, media_types_str):
         return items
     media_types = {mt.strip().lower() for mt in media_types_str.split(",")}
     return [
-        item for item in items
+        item
+        for item in items
         if getattr(getattr(item, "item", None), "media_type", "").lower() in media_types
     ]
 
@@ -1482,8 +1528,10 @@ def exclude_home_media_types(items, media_types_str):
         return items
     media_types = {mt.strip().lower() for mt in media_types_str.split(",")}
     return [
-        item for item in items
-        if getattr(getattr(item, "item", None), "media_type", "").lower() not in media_types
+        item
+        for item in items
+        if getattr(getattr(item, "item", None), "media_type", "").lower()
+        not in media_types
     ]
 
 

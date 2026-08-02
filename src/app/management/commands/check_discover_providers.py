@@ -14,6 +14,7 @@ class Command(BaseCommand):
     help = "Validate Discover provider endpoint availability"
 
     def handle(self, *_args, **_options):
+        """Validate Discover provider endpoint availability."""
         tmdb_checks = TMDbDiscoverAdapter().check_capability()
         trakt_checks = TraktDiscoverAdapter().check_capability()
         checks = {
@@ -29,7 +30,9 @@ class Command(BaseCommand):
             self.stdout.write(f"{status:>4} | {name}")
 
         if ok_count == len(checks):
-            self.stdout.write(self.style.SUCCESS("All Discover provider checks passed."))
+            self.stdout.write(
+                self.style.SUCCESS("All Discover provider checks passed.")
+            )
             return
 
         self.stdout.write(

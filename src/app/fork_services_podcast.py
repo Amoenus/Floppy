@@ -108,7 +108,7 @@ def refresh_show_episodes_from_rss(show):
             show.rss_feed_url,
             limit=None,
         )
-    except Exception as e:  # noqa: BLE001 — network failures are non-fatal
+    except Exception as e:
         logger.warning(
             "Failed to fetch full episode list from RSS feed for %s: %s",
             show.title,
@@ -154,7 +154,7 @@ def refresh_show_episodes_from_rss(show):
                     season_number=episode_data.get("season_number"),
                 )
                 seen_uuids.add(episode_uuid)
-            except Exception:  # noqa: BLE001 — duplicate UUID race
+            except Exception:
                 logger.debug(
                     "Skipping duplicate episode UUID %s for show %s",
                     episode_uuid,

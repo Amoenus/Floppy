@@ -1,4 +1,3 @@
-import datetime
 import logging
 
 from django.contrib import messages
@@ -94,7 +93,8 @@ def list_detail(request, list_reference):
                 )
                 return redirect("lists")
         # For anonymous users, just show 404
-        raise Http404("List not found")
+        msg = "List not found"
+        raise Http404(msg)
 
     # Check access: public lists are viewable by anyone, private lists require auth
     if not custom_list.user_can_view(request.user):
@@ -114,7 +114,9 @@ def list_detail(request, list_reference):
     # Determine if this is a public view (anonymous user viewing public list)
     can_edit = custom_list.user_can_edit(request.user)
     is_public_view = custom_list.visibility == "public" and not can_edit
-    public_view = not request.user.is_authenticated and custom_list.visibility == "public"
+    public_view = (
+        not request.user.is_authenticated and custom_list.visibility == "public"
+    )
 
     # Determine which user's data to use for media queries
     # For public views, use owner's data; otherwise use request.user
@@ -175,7 +177,9 @@ def list_detail(request, list_reference):
         layout = "grid"
     valid_media_types = set(MediaTypes.values)
     selected_media_types = [
-        media_type for media_type in selected_media_types if media_type in valid_media_types
+        media_type
+        for media_type in selected_media_types
+        if media_type in valid_media_types
     ]
 
     params = {
@@ -357,7 +361,8 @@ def list_detail(request, list_reference):
         "status_choices": MediaStatusChoices.choices,
         "public_view": public_view,
         "can_edit": can_edit,
-        "list_ordering_enabled": can_edit and params["sort_by"] == ListDetailSortChoices.CUSTOM,
+        "list_ordering_enabled": can_edit
+        and params["sort_by"] == ListDetailSortChoices.CUSTOM,
         "is_public_view": is_public_view,
         "recommendation_count": recommendation_count,
         "base_template": "base_public.html" if public_view else "base.html",
@@ -382,7 +387,9 @@ def list_detail(request, list_reference):
             args=[custom_list.id],
         ),
         "table_column_media_type": current_media_type,
-        "table_refresh_url": reverse("list_detail", args=[custom_list.public_reference]),
+        "table_refresh_url": reverse(
+            "list_detail", args=[custom_list.public_reference]
+        ),
         "table_refresh_target": "#items-view",
         "table_refresh_include_selector": "#filter-form",
         "list_reference": custom_list.public_reference,
@@ -400,7 +407,9 @@ def list_detail(request, list_reference):
                     "list",
                 ),
                 "table_body_id": "list-table-body",
-                "table_pagination_url": reverse("list_detail", args=[custom_list.public_reference]),
+                "table_pagination_url": reverse(
+                    "list_detail", args=[custom_list.public_reference]
+                ),
                 "table_target_selector": "#list-table-body",
                 "table_include_selector": "#filter-form",
             },
@@ -413,7 +422,9 @@ def list_detail(request, list_reference):
                 "form": CustomListForm(instance=custom_list, user=request.user)
                 if can_edit
                 else None,
-                "media_types": sorted(MediaTypes.values, key=lambda v: MediaTypes(v).label),
+                "media_types": sorted(
+                    MediaTypes.values, key=lambda v: MediaTypes(v).label
+                ),
                 "collaborators_count": custom_list.collaborators.count() + 1,
                 "completion_percent": completion_percent,
                 "completed_count": completed_count,

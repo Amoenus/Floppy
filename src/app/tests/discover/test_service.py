@@ -121,7 +121,9 @@ class DiscoverServiceTests(TestCase):
                 ),
             ],
         )
-        cached_version = tab_cache.get_activity_version(self.user.id, MediaTypes.MOVIE.value)
+        cached_version = tab_cache.get_activity_version(
+            self.user.id, MediaTypes.MOVIE.value
+        )
         cached_payload = cached_row.to_dict()
         cached_payload["meta"] = {
             ROW_CACHE_ACTIVITY_VERSION_META_KEY: cached_version,
@@ -421,9 +423,17 @@ class DiscoverServiceTests(TestCase):
     @patch("app.discover.service.TMDB_ADAPTER.top_rated", return_value=[])
     @patch("app.discover.service.TMDB_ADAPTER.upcoming", return_value=[])
     @patch("app.discover.service.TMDB_ADAPTER.current_cycle", return_value=[])
-    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_anticipated", return_value=[])
-    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_popular", return_value=[])
-    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_watched_weekly", side_effect=RuntimeError("trakt down"))
+    @patch(
+        "app.discover.provider_candidates.TRAKT_ADAPTER.movie_anticipated",
+        return_value=[],
+    )
+    @patch(
+        "app.discover.provider_candidates.TRAKT_ADAPTER.movie_popular", return_value=[]
+    )
+    @patch(
+        "app.discover.provider_candidates.TRAKT_ADAPTER.movie_watched_weekly",
+        side_effect=RuntimeError("trakt down"),
+    )
     def test_row_failure_isolated_to_single_row(
         self,
         _mock_trending,
@@ -441,8 +451,13 @@ class DiscoverServiceTests(TestCase):
     @patch("app.discover.service.TMDB_ADAPTER.top_rated", return_value=[])
     @patch("app.discover.service.TMDB_ADAPTER.upcoming", return_value=[])
     @patch("app.discover.service.TMDB_ADAPTER.current_cycle", return_value=[])
-    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_anticipated", return_value=[])
-    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_popular", return_value=[])
+    @patch(
+        "app.discover.provider_candidates.TRAKT_ADAPTER.movie_anticipated",
+        return_value=[],
+    )
+    @patch(
+        "app.discover.provider_candidates.TRAKT_ADAPTER.movie_popular", return_value=[]
+    )
     @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_watched_weekly")
     def test_trending_row_rebuilds_when_cached_source_changes(
         self,
@@ -510,15 +525,23 @@ class DiscoverServiceTests(TestCase):
         mock_trending.assert_called_once_with(limit=100)
         self.assertEqual(trending_row.source, "trakt")
         self.assertEqual(trending_row.why, "What everyone has been watching this week.")
-        self.assertEqual([item.title for item in trending_row.items], ["Fresh One", "Fresh Two", "Fresh Three"])
+        self.assertEqual(
+            [item.title for item in trending_row.items],
+            ["Fresh One", "Fresh Two", "Fresh Three"],
+        )
 
     @patch("app.discover.service.get_or_compute_taste_profile", return_value={})
     @patch("app.discover.service.TMDB_ADAPTER.top_rated", return_value=[])
     @patch("app.discover.service.TMDB_ADAPTER.upcoming", return_value=[])
     @patch("app.discover.service.TMDB_ADAPTER.current_cycle", return_value=[])
     @patch("app.discover.service.get_tracked_keys_by_media_type")
-    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_anticipated", return_value=[])
-    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_popular", return_value=[])
+    @patch(
+        "app.discover.provider_candidates.TRAKT_ADAPTER.movie_anticipated",
+        return_value=[],
+    )
+    @patch(
+        "app.discover.provider_candidates.TRAKT_ADAPTER.movie_popular", return_value=[]
+    )
     @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_watched_weekly")
     def test_trending_row_overfetches_filters_and_caps_to_twelve(
         self,
@@ -565,7 +588,9 @@ class DiscoverServiceTests(TestCase):
 
         mock_trending.assert_called_once_with(limit=100)
         self.assertEqual(len(trending_row.items), 12)
-        self.assertTrue(all(item.media_id not in {"1", "2", "3"} for item in trending_row.items))
+        self.assertTrue(
+            all(item.media_id not in {"1", "2", "3"} for item in trending_row.items)
+        )
 
     @patch("app.discover.service.get_or_compute_taste_profile", return_value={})
     @patch("app.discover.service.TMDB_ADAPTER.top_rated", return_value=[])
@@ -573,8 +598,13 @@ class DiscoverServiceTests(TestCase):
     @patch("app.discover.service.TMDB_ADAPTER.current_cycle", return_value=[])
     @patch("app.discover.service._queue_stale_refresh")
     @patch("app.discover.provider_candidates.services.get_media_metadata")
-    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_anticipated", return_value=[])
-    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_popular", return_value=[])
+    @patch(
+        "app.discover.provider_candidates.TRAKT_ADAPTER.movie_anticipated",
+        return_value=[],
+    )
+    @patch(
+        "app.discover.provider_candidates.TRAKT_ADAPTER.movie_popular", return_value=[]
+    )
     @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_watched_weekly")
     def test_trending_row_defers_missing_artwork_hydration_when_enabled(
         self,
@@ -620,7 +650,9 @@ class DiscoverServiceTests(TestCase):
         )
         trending_row = next(row for row in rows if row.key == "trending_right_now")
 
-        self.assertEqual([item.image for item in trending_row.items], [None, None, None])
+        self.assertEqual(
+            [item.image for item in trending_row.items], [None, None, None]
+        )
         mock_get_metadata.assert_not_called()
         mock_queue_stale_refresh.assert_called_once_with(
             self.user.id,
@@ -635,8 +667,13 @@ class DiscoverServiceTests(TestCase):
     @patch("app.discover.service.TMDB_ADAPTER.current_cycle", return_value=[])
     @patch("app.discover.service._queue_stale_refresh")
     @patch("app.discover.provider_candidates.services.get_media_metadata")
-    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_anticipated", return_value=[])
-    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_popular", return_value=[])
+    @patch(
+        "app.discover.provider_candidates.TRAKT_ADAPTER.movie_anticipated",
+        return_value=[],
+    )
+    @patch(
+        "app.discover.provider_candidates.TRAKT_ADAPTER.movie_popular", return_value=[]
+    )
     @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_watched_weekly")
     def test_cached_trending_row_with_missing_artwork_queues_refresh_when_deferred(
         self,
@@ -714,8 +751,13 @@ class DiscoverServiceTests(TestCase):
     @patch("app.discover.service.TMDB_ADAPTER.upcoming", return_value=[])
     @patch("app.discover.service.TMDB_ADAPTER.current_cycle", return_value=[])
     @patch("app.discover.provider_candidates.services.get_media_metadata")
-    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_anticipated", return_value=[])
-    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_popular", return_value=[])
+    @patch(
+        "app.discover.provider_candidates.TRAKT_ADAPTER.movie_anticipated",
+        return_value=[],
+    )
+    @patch(
+        "app.discover.provider_candidates.TRAKT_ADAPTER.movie_popular", return_value=[]
+    )
     @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_watched_weekly")
     def test_trending_row_hydrates_missing_artwork_from_tmdb(
         self,
@@ -752,7 +794,9 @@ class DiscoverServiceTests(TestCase):
             ),
         ]
 
-        def metadata_side_effect(media_type, media_id, source, season_numbers=None, episode_number=None):
+        def metadata_side_effect(
+            media_type, media_id, source, season_numbers=None, episode_number=None
+        ):
             return {"image": f"https://image.tmdb.org/t/p/w500/{media_id}.jpg"}
 
         mock_get_metadata.side_effect = metadata_side_effect
@@ -773,8 +817,13 @@ class DiscoverServiceTests(TestCase):
     @patch("app.discover.service.TMDB_ADAPTER.top_rated", return_value=[])
     @patch("app.discover.service.TMDB_ADAPTER.upcoming", return_value=[])
     @patch("app.discover.service.TMDB_ADAPTER.current_cycle", return_value=[])
-    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_anticipated", return_value=[])
-    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_popular", return_value=[])
+    @patch(
+        "app.discover.provider_candidates.TRAKT_ADAPTER.movie_anticipated",
+        return_value=[],
+    )
+    @patch(
+        "app.discover.provider_candidates.TRAKT_ADAPTER.movie_popular", return_value=[]
+    )
     @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_watched_weekly")
     def test_trending_row_rebuilds_cached_payload_with_missing_artwork(
         self,
@@ -851,7 +900,10 @@ class DiscoverServiceTests(TestCase):
     @patch("app.discover.service.TMDB_ADAPTER.upcoming", return_value=[])
     @patch("app.discover.service.TMDB_ADAPTER.current_cycle", return_value=[])
     @patch("app.discover.service.get_tracked_keys_by_media_type")
-    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_anticipated", return_value=[])
+    @patch(
+        "app.discover.provider_candidates.TRAKT_ADAPTER.movie_anticipated",
+        return_value=[],
+    )
     @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_popular")
     @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_watched_weekly")
     def test_all_time_greats_unseen_expands_popular_fetch_and_persists_pull_hint(
@@ -888,8 +940,7 @@ class DiscoverServiceTests(TestCase):
         mock_popular.side_effect = popular_side_effect
 
         blocked = {
-            (MediaTypes.MOVIE.value, "tmdb", str(index))
-            for index in range(1, 89)
+            (MediaTypes.MOVIE.value, "tmdb", str(index)) for index in range(1, 89)
         }
 
         def tracked_side_effect(user, media_type, statuses=None):
@@ -907,9 +958,16 @@ class DiscoverServiceTests(TestCase):
         canon_row = next(row for row in rows if row.key == "all_time_greats_unseen")
 
         self.assertEqual(mock_popular.call_count, 1)
-        self.assertEqual(mock_popular.call_args_list[0].kwargs, {"page": 1, "limit": 100})
+        self.assertEqual(
+            mock_popular.call_args_list[0].kwargs, {"page": 1, "limit": 100}
+        )
         self.assertEqual(len(canon_row.items), 12)
-        self.assertTrue(all(item.media_id not in {str(index) for index in range(1, 89)} for item in canon_row.items))
+        self.assertTrue(
+            all(
+                item.media_id not in {str(index) for index in range(1, 89)}
+                for item in canon_row.items
+            )
+        )
         self.assertIn("89", {item.media_id for item in canon_row.items})
 
         cached_payload, _ = cache_repo.get_row_cache(
@@ -918,14 +976,19 @@ class DiscoverServiceTests(TestCase):
             "all_time_greats_unseen",
         )
         self.assertIsNotNone(cached_payload)
-        self.assertEqual(cached_payload.get("meta", {}).get("adaptive_pull_target"), 100)
+        self.assertEqual(
+            cached_payload.get("meta", {}).get("adaptive_pull_target"), 100
+        )
 
     @patch("app.discover.service.get_or_compute_taste_profile", return_value={})
     @patch("app.discover.service.TMDB_ADAPTER.top_rated", return_value=[])
     @patch("app.discover.service.TMDB_ADAPTER.upcoming", return_value=[])
     @patch("app.discover.service.TMDB_ADAPTER.current_cycle", return_value=[])
     @patch("app.discover.service.get_tracked_keys_by_media_type", return_value=set())
-    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_anticipated", return_value=[])
+    @patch(
+        "app.discover.provider_candidates.TRAKT_ADAPTER.movie_anticipated",
+        return_value=[],
+    )
     @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_popular")
     @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_watched_weekly")
     def test_all_time_greats_unseen_keeps_overlap_items_when_cached_overlap(
@@ -989,9 +1052,17 @@ class DiscoverServiceTests(TestCase):
     @patch("app.discover.service.TMDB_ADAPTER.top_rated", return_value=[])
     @patch("app.discover.service.TMDB_ADAPTER.upcoming", return_value=[])
     @patch("app.discover.service.TMDB_ADAPTER.current_cycle", return_value=[])
-    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_anticipated", return_value=[])
-    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_popular", return_value=[])
-    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_watched_weekly", return_value=[])
+    @patch(
+        "app.discover.provider_candidates.TRAKT_ADAPTER.movie_anticipated",
+        return_value=[],
+    )
+    @patch(
+        "app.discover.provider_candidates.TRAKT_ADAPTER.movie_popular", return_value=[]
+    )
+    @patch(
+        "app.discover.provider_candidates.TRAKT_ADAPTER.movie_watched_weekly",
+        return_value=[],
+    )
     def test_all_time_greats_unseen_rebuilds_when_cached_schema_is_old(
         self,
         _mock_trending,
@@ -1056,16 +1127,27 @@ class DiscoverServiceTests(TestCase):
         rows = get_discover_rows(self.user, MediaTypes.MOVIE.value, show_more=False)
         canon_row = next(row for row in rows if row.key == "all_time_greats_unseen")
 
-        self.assertNotEqual([item.title for item in canon_row.items], ["Old Cached Canon"])
+        self.assertNotEqual(
+            [item.title for item in canon_row.items], ["Old Cached Canon"]
+        )
         self.assertGreaterEqual(mock_popular.call_count, 1)
 
     @patch("app.discover.service.get_or_compute_taste_profile", return_value={})
     @patch("app.discover.service.TMDB_ADAPTER.top_rated", return_value=[])
     @patch("app.discover.service.TMDB_ADAPTER.upcoming", return_value=[])
     @patch("app.discover.service.TMDB_ADAPTER.current_cycle", return_value=[])
-    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_anticipated", return_value=[])
-    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_popular", side_effect=RuntimeError("trakt down"))
-    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_watched_weekly", return_value=[])
+    @patch(
+        "app.discover.provider_candidates.TRAKT_ADAPTER.movie_anticipated",
+        return_value=[],
+    )
+    @patch(
+        "app.discover.provider_candidates.TRAKT_ADAPTER.movie_popular",
+        side_effect=RuntimeError("trakt down"),
+    )
+    @patch(
+        "app.discover.provider_candidates.TRAKT_ADAPTER.movie_watched_weekly",
+        return_value=[],
+    )
     def test_all_time_greats_unseen_uses_cached_row_when_rebuild_fails(
         self,
         _mock_trending,
@@ -1137,9 +1219,18 @@ class DiscoverServiceTests(TestCase):
     @patch("app.discover.service.get_or_compute_taste_profile", return_value={})
     @patch("app.discover.service.TMDB_ADAPTER.upcoming", return_value=[])
     @patch("app.discover.service.TMDB_ADAPTER.current_cycle", return_value=[])
-    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_anticipated", return_value=[])
-    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_popular", side_effect=RuntimeError("trakt down"))
-    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_watched_weekly", return_value=[])
+    @patch(
+        "app.discover.provider_candidates.TRAKT_ADAPTER.movie_anticipated",
+        return_value=[],
+    )
+    @patch(
+        "app.discover.provider_candidates.TRAKT_ADAPTER.movie_popular",
+        side_effect=RuntimeError("trakt down"),
+    )
+    @patch(
+        "app.discover.provider_candidates.TRAKT_ADAPTER.movie_watched_weekly",
+        return_value=[],
+    )
     @patch("app.discover.service.TMDB_ADAPTER.top_rated")
     def test_all_time_greats_unseen_falls_back_to_tmdb_when_trakt_fails_without_cache(
         self,
@@ -1192,9 +1283,17 @@ class DiscoverServiceTests(TestCase):
     @patch("app.discover.service.TMDB_ADAPTER.top_rated", return_value=[])
     @patch("app.discover.service.TMDB_ADAPTER.upcoming", return_value=[])
     @patch("app.discover.service.TMDB_ADAPTER.current_cycle", return_value=[])
-    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_anticipated", return_value=[])
-    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_popular", return_value=[])
-    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.movie_watched_weekly", return_value=[])
+    @patch(
+        "app.discover.provider_candidates.TRAKT_ADAPTER.movie_anticipated",
+        return_value=[],
+    )
+    @patch(
+        "app.discover.provider_candidates.TRAKT_ADAPTER.movie_popular", return_value=[]
+    )
+    @patch(
+        "app.discover.provider_candidates.TRAKT_ADAPTER.movie_watched_weekly",
+        return_value=[],
+    )
     @patch("app.discover.service._comfort_candidates")
     def test_comfort_rewatches_rebuilds_when_cached_schema_is_old(
         self,
@@ -1331,7 +1430,9 @@ class DiscoverServiceTests(TestCase):
         keys = [row.key for row in rows]
         coming_soon_row = next(row for row in rows if row.key == "coming_soon")
 
-        self.assertEqual(keys[:3], ["trending_right_now", "all_time_greats_unseen", "coming_soon"])
+        self.assertEqual(
+            keys[:3], ["trending_right_now", "all_time_greats_unseen", "coming_soon"]
+        )
         mock_anticipated.assert_called_once_with(page=1, limit=100)
         self.assertEqual(coming_soon_row.source, "trakt")
         self.assertEqual(
@@ -1364,11 +1465,31 @@ class DiscoverServiceTests(TestCase):
                 final_score=0.9,
             )
 
-        mock_trending.return_value = [candidate("100", "Trending 1"), candidate("101", "Trending 2"), candidate("102", "Trending 3")]
-        mock_popular.return_value = [candidate("200", "Canon 1"), candidate("201", "Canon 2"), candidate("202", "Canon 3")]
-        mock_anticipated.return_value = [candidate("300", "Soon 1"), candidate("301", "Soon 2"), candidate("302", "Soon 3")]
-        mock_top_picks.return_value = [candidate("400", "Pick 1"), candidate("401", "Pick 2"), candidate("402", "Pick 3")]
-        mock_comfort.return_value = [candidate("500", "Comfort 1"), candidate("501", "Comfort 2"), candidate("502", "Comfort 3")]
+        mock_trending.return_value = [
+            candidate("100", "Trending 1"),
+            candidate("101", "Trending 2"),
+            candidate("102", "Trending 3"),
+        ]
+        mock_popular.return_value = [
+            candidate("200", "Canon 1"),
+            candidate("201", "Canon 2"),
+            candidate("202", "Canon 3"),
+        ]
+        mock_anticipated.return_value = [
+            candidate("300", "Soon 1"),
+            candidate("301", "Soon 2"),
+            candidate("302", "Soon 3"),
+        ]
+        mock_top_picks.return_value = [
+            candidate("400", "Pick 1"),
+            candidate("401", "Pick 2"),
+            candidate("402", "Pick 3"),
+        ]
+        mock_comfort.return_value = [
+            candidate("500", "Comfort 1"),
+            candidate("501", "Comfort 2"),
+            candidate("502", "Comfort 3"),
+        ]
 
         rows = get_discover_rows(self.user, MediaTypes.MOVIE.value, show_more=False)
         self.assertEqual(
@@ -1407,11 +1528,31 @@ class DiscoverServiceTests(TestCase):
                 final_score=0.9,
             )
 
-        mock_trending.return_value = [candidate("100", "Trending 1"), candidate("101", "Trending 2"), candidate("102", "Trending 3")]
-        mock_popular.return_value = [candidate("200", "Canon 1"), candidate("201", "Canon 2"), candidate("202", "Canon 3")]
-        mock_anticipated.return_value = [candidate("300", "Soon 1"), candidate("301", "Soon 2"), candidate("302", "Soon 3")]
-        mock_top_picks.return_value = [candidate("400", "Pick 1"), candidate("401", "Pick 2"), candidate("402", "Pick 3")]
-        mock_comfort.return_value = [candidate("500", "Comfort 1"), candidate("501", "Comfort 2"), candidate("502", "Comfort 3")]
+        mock_trending.return_value = [
+            candidate("100", "Trending 1"),
+            candidate("101", "Trending 2"),
+            candidate("102", "Trending 3"),
+        ]
+        mock_popular.return_value = [
+            candidate("200", "Canon 1"),
+            candidate("201", "Canon 2"),
+            candidate("202", "Canon 3"),
+        ]
+        mock_anticipated.return_value = [
+            candidate("300", "Soon 1"),
+            candidate("301", "Soon 2"),
+            candidate("302", "Soon 3"),
+        ]
+        mock_top_picks.return_value = [
+            candidate("400", "Pick 1"),
+            candidate("401", "Pick 2"),
+            candidate("402", "Pick 3"),
+        ]
+        mock_comfort.return_value = [
+            candidate("500", "Comfort 1"),
+            candidate("501", "Comfort 2"),
+            candidate("502", "Comfort 3"),
+        ]
 
         rows = get_discover_rows(
             self.user,
@@ -1431,8 +1572,12 @@ class DiscoverServiceTests(TestCase):
             ],
         )
         mock_trending.assert_called_once_with(limit=100, media_type=MediaTypes.TV.value)
-        mock_popular.assert_called_once_with(page=1, limit=100, media_type=MediaTypes.TV.value)
-        mock_anticipated.assert_called_once_with(page=1, limit=100, media_type=MediaTypes.TV.value)
+        mock_popular.assert_called_once_with(
+            page=1, limit=100, media_type=MediaTypes.TV.value
+        )
+        mock_anticipated.assert_called_once_with(
+            page=1, limit=100, media_type=MediaTypes.TV.value
+        )
 
     @patch("app.discover.service.get_or_compute_taste_profile", return_value={})
     @patch("app.discover.service._comfort_candidates")
@@ -1459,11 +1604,31 @@ class DiscoverServiceTests(TestCase):
                 final_score=0.9,
             )
 
-        mock_trending.return_value = [candidate("100", "Trending 1"), candidate("101", "Trending 2"), candidate("102", "Trending 3")]
-        mock_popular.return_value = [candidate("200", "Canon 1"), candidate("201", "Canon 2"), candidate("202", "Canon 3")]
-        mock_anticipated.return_value = [candidate("300", "Soon 1"), candidate("301", "Soon 2"), candidate("302", "Soon 3")]
-        mock_top_picks.return_value = [candidate("400", "Pick 1"), candidate("401", "Pick 2"), candidate("402", "Pick 3")]
-        mock_comfort.return_value = [candidate("500", "Comfort 1"), candidate("501", "Comfort 2"), candidate("502", "Comfort 3")]
+        mock_trending.return_value = [
+            candidate("100", "Trending 1"),
+            candidate("101", "Trending 2"),
+            candidate("102", "Trending 3"),
+        ]
+        mock_popular.return_value = [
+            candidate("200", "Canon 1"),
+            candidate("201", "Canon 2"),
+            candidate("202", "Canon 3"),
+        ]
+        mock_anticipated.return_value = [
+            candidate("300", "Soon 1"),
+            candidate("301", "Soon 2"),
+            candidate("302", "Soon 3"),
+        ]
+        mock_top_picks.return_value = [
+            candidate("400", "Pick 1"),
+            candidate("401", "Pick 2"),
+            candidate("402", "Pick 3"),
+        ]
+        mock_comfort.return_value = [
+            candidate("500", "Comfort 1"),
+            candidate("501", "Comfort 2"),
+            candidate("502", "Comfort 3"),
+        ]
 
         rows = get_discover_rows(
             self.user,
@@ -1503,9 +1668,17 @@ class DiscoverServiceTests(TestCase):
     @patch("app.discover.service.get_or_compute_taste_profile", return_value={})
     @patch("app.discover.service._comfort_candidates", return_value=[])
     @patch("app.discover.service._top_picks_candidates", return_value=[])
-    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.show_anticipated", return_value=[])
-    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.show_popular", return_value=[])
-    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.show_watched_weekly", return_value=[])
+    @patch(
+        "app.discover.provider_candidates.TRAKT_ADAPTER.show_anticipated",
+        return_value=[],
+    )
+    @patch(
+        "app.discover.provider_candidates.TRAKT_ADAPTER.show_popular", return_value=[]
+    )
+    @patch(
+        "app.discover.provider_candidates.TRAKT_ADAPTER.show_watched_weekly",
+        return_value=[],
+    )
     def test_tv_and_anime_rows_keep_all_slots_when_personalized_rows_empty(
         self,
         _mock_trending,
@@ -1516,7 +1689,9 @@ class DiscoverServiceTests(TestCase):
         _mock_profile,
     ):
         tv_rows = get_discover_rows(self.user, MediaTypes.TV.value, show_more=False)
-        anime_rows = get_discover_rows(self.user, MediaTypes.ANIME.value, show_more=False)
+        anime_rows = get_discover_rows(
+            self.user, MediaTypes.ANIME.value, show_more=False
+        )
 
         expected_order = [
             "trending_right_now",
@@ -1577,7 +1752,9 @@ class DiscoverServiceTests(TestCase):
         )
         self.assertEqual(mock_igdb_candidates.call_count, 3)
 
-    @patch("app.discover.provider_candidates._musicbrainz_coming_soon_recording_candidates")
+    @patch(
+        "app.discover.provider_candidates._musicbrainz_coming_soon_recording_candidates"
+    )
     @patch("app.discover.provider_candidates._itunes_top_podcasts_candidates")
     @patch("app.discover.provider_candidates._bgg_hot_candidates")
     @patch("app.discover.provider_candidates._comicvine_coming_soon_volume_candidates")
@@ -1674,7 +1851,10 @@ class DiscoverServiceTests(TestCase):
         _mock_profile,
     ):
         def provider_side_effect(media_type, row_key):
-            if media_type == MediaTypes.BOARDGAME.value and row_key == "trending_right_now":
+            if (
+                media_type == MediaTypes.BOARDGAME.value
+                and row_key == "trending_right_now"
+            ):
                 return [
                     CandidateItem(
                         media_type=MediaTypes.BOARDGAME.value,
@@ -1722,7 +1902,10 @@ class DiscoverServiceTests(TestCase):
         _mock_profile,
     ):
         def provider_side_effect(media_type, row_key):
-            if media_type == MediaTypes.BOARDGAME.value and row_key == "trending_right_now":
+            if (
+                media_type == MediaTypes.BOARDGAME.value
+                and row_key == "trending_right_now"
+            ):
                 return [
                     CandidateItem(
                         media_type=MediaTypes.BOARDGAME.value,
@@ -1746,13 +1929,21 @@ class DiscoverServiceTests(TestCase):
         trending_row = next(row for row in rows if row.key == "trending_right_now")
 
         self.assertEqual(len(trending_row.items), 1)
-        self.assertEqual(trending_row.items[0].image, "https://example.com/boardgame.jpg")
+        self.assertEqual(
+            trending_row.items[0].image, "https://example.com/boardgame.jpg"
+        )
         mock_queue_stale_refresh.assert_not_called()
         mock_get_metadata.assert_called()
 
     @patch("app.discover.service.get_or_compute_taste_profile", return_value={})
-    @patch("app.discover.service._comfort_candidates", side_effect=RuntimeError("comfort row failed"))
-    @patch("app.discover.service._top_picks_candidates", side_effect=RuntimeError("top picks row failed"))
+    @patch(
+        "app.discover.service._comfort_candidates",
+        side_effect=RuntimeError("comfort row failed"),
+    )
+    @patch(
+        "app.discover.service._top_picks_candidates",
+        side_effect=RuntimeError("top picks row failed"),
+    )
     @patch("app.discover.provider_candidates.TRAKT_ADAPTER.show_anticipated")
     @patch("app.discover.provider_candidates.TRAKT_ADAPTER.show_popular")
     @patch("app.discover.provider_candidates.TRAKT_ADAPTER.show_watched_weekly")
@@ -1775,9 +1966,21 @@ class DiscoverServiceTests(TestCase):
                 final_score=0.9,
             )
 
-        mock_trending.return_value = [candidate("100", "Trending 1"), candidate("101", "Trending 2"), candidate("102", "Trending 3")]
-        mock_popular.return_value = [candidate("200", "Canon 1"), candidate("201", "Canon 2"), candidate("202", "Canon 3")]
-        mock_anticipated.return_value = [candidate("300", "Soon 1"), candidate("301", "Soon 2"), candidate("302", "Soon 3")]
+        mock_trending.return_value = [
+            candidate("100", "Trending 1"),
+            candidate("101", "Trending 2"),
+            candidate("102", "Trending 3"),
+        ]
+        mock_popular.return_value = [
+            candidate("200", "Canon 1"),
+            candidate("201", "Canon 2"),
+            candidate("202", "Canon 3"),
+        ]
+        mock_anticipated.return_value = [
+            candidate("300", "Soon 1"),
+            candidate("301", "Soon 2"),
+            candidate("302", "Soon 3"),
+        ]
 
         rows = get_discover_rows(
             self.user,
@@ -1835,11 +2038,31 @@ class DiscoverServiceTests(TestCase):
                 final_score=0.9,
             )
 
-        mock_trending.return_value = [candidate("100", "Trending 1"), candidate("101", "Trending 2"), candidate("102", "Trending 3")]
-        mock_popular.return_value = [candidate("200", "Canon 1"), candidate("201", "Canon 2"), candidate("202", "Canon 3")]
-        mock_anticipated.return_value = [candidate("300", "Soon 1"), candidate("301", "Soon 2"), candidate("302", "Soon 3")]
-        mock_top_picks.return_value = [candidate("400", "Pick 1"), candidate("401", "Pick 2"), candidate("402", "Pick 3")]
-        mock_comfort.return_value = [candidate("500", "Comfort 1"), candidate("501", "Comfort 2"), candidate("502", "Comfort 3")]
+        mock_trending.return_value = [
+            candidate("100", "Trending 1"),
+            candidate("101", "Trending 2"),
+            candidate("102", "Trending 3"),
+        ]
+        mock_popular.return_value = [
+            candidate("200", "Canon 1"),
+            candidate("201", "Canon 2"),
+            candidate("202", "Canon 3"),
+        ]
+        mock_anticipated.return_value = [
+            candidate("300", "Soon 1"),
+            candidate("301", "Soon 2"),
+            candidate("302", "Soon 3"),
+        ]
+        mock_top_picks.return_value = [
+            candidate("400", "Pick 1"),
+            candidate("401", "Pick 2"),
+            candidate("402", "Pick 3"),
+        ]
+        mock_comfort.return_value = [
+            candidate("500", "Comfort 1"),
+            candidate("501", "Comfort 2"),
+            candidate("502", "Comfort 3"),
+        ]
 
         rows = get_discover_rows(self.user, MediaTypes.TV.value, show_more=False)
         row_map = {row.key: row for row in rows}
@@ -2115,7 +2338,10 @@ class DiscoverServiceTests(TestCase):
         comfort_item = build_item("tv-comfort-1", "Comfort Mystery Show")
         recent_item = build_item("tv-recent-1", "Recent Mystery Show")
 
-        with patch("app.models.providers.services.get_media_metadata", return_value={"max_progress": 1}):
+        with patch(
+            "app.models.providers.services.get_media_metadata",
+            return_value={"max_progress": 1},
+        ):
             TV.objects.create(
                 user=self.user,
                 item=planning_item,
@@ -2183,8 +2409,12 @@ class DiscoverServiceTests(TestCase):
             datetime=timezone.now() - timedelta(days=1),
         )
 
-        TV.objects.filter(pk=comfort_entry.pk).update(created_at=timezone.now() - timedelta(days=220))
-        TV.objects.filter(pk=recent_entry.pk).update(created_at=timezone.now() - timedelta(days=20))
+        TV.objects.filter(pk=comfort_entry.pk).update(
+            created_at=timezone.now() - timedelta(days=220)
+        )
+        TV.objects.filter(pk=recent_entry.pk).update(
+            created_at=timezone.now() - timedelta(days=20)
+        )
 
         rows = get_discover_rows(self.user, MediaTypes.TV.value, show_more=False)
         row_map = {row.key: row for row in rows}
@@ -2316,7 +2546,10 @@ class DiscoverServiceTests(TestCase):
         comfort_item = build_item("anime-comfort-1", "Comfort Rewatch Anime")
         recent_item = build_item("anime-recent-1", "Recent Comfort Anime")
 
-        with patch("app.models.providers.services.get_media_metadata", return_value={"max_progress": 10}):
+        with patch(
+            "app.models.providers.services.get_media_metadata",
+            return_value={"max_progress": 10},
+        ):
             Anime.objects.create(
                 user=self.user,
                 item=planning_item,
@@ -2402,8 +2635,13 @@ class DiscoverServiceTests(TestCase):
     @patch("app.discover.service._comfort_candidates", return_value=[])
     @patch("app.discover.service._top_picks_candidates", return_value=[])
     @patch("app.discover.provider_candidates.services.get_media_metadata")
-    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.show_anticipated", return_value=[])
-    @patch("app.discover.provider_candidates.TRAKT_ADAPTER.show_popular", return_value=[])
+    @patch(
+        "app.discover.provider_candidates.TRAKT_ADAPTER.show_anticipated",
+        return_value=[],
+    )
+    @patch(
+        "app.discover.provider_candidates.TRAKT_ADAPTER.show_popular", return_value=[]
+    )
     @patch("app.discover.provider_candidates.TRAKT_ADAPTER.show_watched_weekly")
     def test_tv_trending_row_hydrates_artwork_for_missing_images(
         self,
@@ -2434,7 +2672,9 @@ class DiscoverServiceTests(TestCase):
             ),
         ]
 
-        def metadata_side_effect(media_type, media_id, source, season_numbers=None, episode_number=None):
+        def metadata_side_effect(
+            media_type, media_id, source, season_numbers=None, episode_number=None
+        ):
             return {"image": f"https://image.tmdb.org/t/p/w500/{media_id}.jpg"}
 
         mock_get_metadata.side_effect = metadata_side_effect
@@ -2494,11 +2734,21 @@ class DiscoverServiceTests(TestCase):
         now = timezone.now()
         Episode.objects.bulk_create(
             [
-                Episode(item=episode_items[0], related_season=season_entry, end_date=now),
-                Episode(item=episode_items[1], related_season=season_entry, end_date=now),
-                Episode(item=episode_items[2], related_season=season_entry, end_date=now),
-                Episode(item=episode_items[0], related_season=season_entry, end_date=now),
-                Episode(item=episode_items[1], related_season=season_entry, end_date=now),
+                Episode(
+                    item=episode_items[0], related_season=season_entry, end_date=now
+                ),
+                Episode(
+                    item=episode_items[1], related_season=season_entry, end_date=now
+                ),
+                Episode(
+                    item=episode_items[2], related_season=season_entry, end_date=now
+                ),
+                Episode(
+                    item=episode_items[0], related_season=season_entry, end_date=now
+                ),
+                Episode(
+                    item=episode_items[1], related_season=season_entry, end_date=now
+                ),
             ],
         )
 
@@ -2546,11 +2796,36 @@ class DiscoverServiceTests(TestCase):
                 final_score=0.8,
             )
 
-        mock_trending.return_value = [candidate("100", "Trending 1"), candidate("101", "Trending 2"), candidate("102", "Trending 3")]
-        mock_popular.return_value = [candidate("200", "Canon 1"), candidate("201", "Canon 2"), candidate("202", "Canon 3")]
-        mock_anticipated.return_value = [candidate("300", "Soon 1"), candidate("301", "Soon 2"), candidate("302", "Soon 3")]
+        mock_trending.return_value = [
+            candidate("100", "Trending 1"),
+            candidate("101", "Trending 2"),
+            candidate("102", "Trending 3"),
+        ]
+        mock_popular.return_value = [
+            candidate("200", "Canon 1"),
+            candidate("201", "Canon 2"),
+            candidate("202", "Canon 3"),
+        ]
+        mock_anticipated.return_value = [
+            candidate("300", "Soon 1"),
+            candidate("301", "Soon 2"),
+            candidate("302", "Soon 3"),
+        ]
 
-        duplicate_ids = ["100", "101", "102", "200", "201", "202", "300", "301", "302", "100", "200", "300"]
+        duplicate_ids = [
+            "100",
+            "101",
+            "102",
+            "200",
+            "201",
+            "202",
+            "300",
+            "301",
+            "302",
+            "100",
+            "200",
+            "300",
+        ]
         top_pick_candidates = [
             candidate(media_id, f"Pick duplicate {index}")
             for index, media_id in enumerate(duplicate_ids, start=1)
@@ -2564,7 +2839,9 @@ class DiscoverServiceTests(TestCase):
         top_picks_row = next(row for row in rows if row.key == "top_picks_for_you")
 
         self.assertEqual(len(top_picks_row.items), 12)
-        self.assertTrue(all(item.media_id.startswith("6") for item in top_picks_row.items))
+        self.assertTrue(
+            all(item.media_id.startswith("6") for item in top_picks_row.items)
+        )
 
     @patch("app.discover.service.get_or_compute_taste_profile", return_value={})
     @patch("app.discover.service._comfort_candidates", return_value=[])
@@ -2590,9 +2867,21 @@ class DiscoverServiceTests(TestCase):
                 image=f"https://example.com/{media_id}.jpg",
             )
 
-        mock_trending.return_value = [candidate("100", "Trending 1"), candidate("101", "Trending 2"), candidate("102", "Trending 3")]
-        mock_popular.return_value = [candidate("200", "Canon 1"), candidate("201", "Canon 2"), candidate("202", "Canon 3")]
-        mock_anticipated.return_value = [candidate("300", "Soon 1"), candidate("301", "Soon 2"), candidate("302", "Soon 3")]
+        mock_trending.return_value = [
+            candidate("100", "Trending 1"),
+            candidate("101", "Trending 2"),
+            candidate("102", "Trending 3"),
+        ]
+        mock_popular.return_value = [
+            candidate("200", "Canon 1"),
+            candidate("201", "Canon 2"),
+            candidate("202", "Canon 3"),
+        ]
+        mock_anticipated.return_value = [
+            candidate("300", "Soon 1"),
+            candidate("301", "Soon 2"),
+            candidate("302", "Soon 3"),
+        ]
 
         rows = get_discover_rows(self.user, MediaTypes.MOVIE.value, show_more=False)
         self.assertEqual(
@@ -2633,9 +2922,21 @@ class DiscoverServiceTests(TestCase):
                 },
             )
 
-        mock_trending.return_value = [candidate("100", "Trending 1"), candidate("101", "Trending 2"), candidate("102", "Trending 3")]
-        mock_popular.return_value = [candidate("200", "Canon 1"), candidate("201", "Canon 2"), candidate("202", "Canon 3")]
-        mock_anticipated.return_value = [candidate("300", "Soon 1"), candidate("301", "Soon 2"), candidate("302", "Soon 3")]
+        mock_trending.return_value = [
+            candidate("100", "Trending 1"),
+            candidate("101", "Trending 2"),
+            candidate("102", "Trending 3"),
+        ]
+        mock_popular.return_value = [
+            candidate("200", "Canon 1"),
+            candidate("201", "Canon 2"),
+            candidate("202", "Canon 3"),
+        ]
+        mock_anticipated.return_value = [
+            candidate("300", "Soon 1"),
+            candidate("301", "Soon 2"),
+            candidate("302", "Soon 3"),
+        ]
         mock_top_picks.return_value = [
             candidate("400", "Pick 1"),
             candidate("401", "Pick 2"),
@@ -2682,10 +2983,26 @@ class DiscoverServiceTests(TestCase):
                 final_score=0.8,
             )
 
-        mock_trending.return_value = [candidate("100", "Trending 1"), candidate("101", "Trending 2"), candidate("102", "Trending 3")]
-        mock_popular.return_value = [candidate("200", "Canon 1"), candidate("201", "Canon 2"), candidate("202", "Canon 3")]
-        mock_anticipated.return_value = [candidate("300", "Soon 1"), candidate("301", "Soon 2"), candidate("302", "Soon 3")]
-        mock_top_picks.return_value = [candidate("400", "Pick 1"), candidate("401", "Pick 2"), candidate("402", "Pick 3")]
+        mock_trending.return_value = [
+            candidate("100", "Trending 1"),
+            candidate("101", "Trending 2"),
+            candidate("102", "Trending 3"),
+        ]
+        mock_popular.return_value = [
+            candidate("200", "Canon 1"),
+            candidate("201", "Canon 2"),
+            candidate("202", "Canon 3"),
+        ]
+        mock_anticipated.return_value = [
+            candidate("300", "Soon 1"),
+            candidate("301", "Soon 2"),
+            candidate("302", "Soon 3"),
+        ]
+        mock_top_picks.return_value = [
+            candidate("400", "Pick 1"),
+            candidate("401", "Pick 2"),
+            candidate("402", "Pick 3"),
+        ]
         mock_comfort.return_value = [
             candidate("900", "Comfort blocked"),
             candidate("901", "Comfort 2"),
@@ -3171,6 +3488,7 @@ class DiscoverServiceTests(TestCase):
                 "rewatch_count": 1.0,
             },
         }
+
         def build_candidate(kind: str) -> CandidateItem:
             if kind == "rich":
                 return CandidateItem(
@@ -3182,7 +3500,11 @@ class DiscoverServiceTests(TestCase):
                     studios=["Universal Pictures"],
                     genres=["Adventure", "Comedy"],
                     score_breakdown=dict(candidate_common["score_breakdown"]),
-                    **{key: value for key, value in candidate_common.items() if key != "score_breakdown"},
+                    **{
+                        key: value
+                        for key, value in candidate_common.items()
+                        if key != "score_breakdown"
+                    },
                 )
             return CandidateItem(
                 media_id="planned-sparse",
@@ -3193,7 +3515,11 @@ class DiscoverServiceTests(TestCase):
                 studios=["Focus Features"],
                 genres=["Mystery", "Drama"],
                 score_breakdown=dict(candidate_common["score_breakdown"]),
-                **{key: value for key, value in candidate_common.items() if key != "score_breakdown"},
+                **{
+                    key: value
+                    for key, value in candidate_common.items()
+                    if key != "score_breakdown"
+                },
             )
 
         without_history = _apply_comfort_confidence(
@@ -3334,7 +3660,9 @@ class DiscoverServiceTests(TestCase):
             profile_payload,
             use_movie_rewatch_model=True,
         )
-        legacy_titles, current_titles, payload = self._comparison_titles(reranked, top_n=2)
+        legacy_titles, current_titles, payload = self._comparison_titles(
+            reranked, top_n=2
+        )
 
         self.assertEqual(
             legacy_titles,
@@ -3348,7 +3676,9 @@ class DiscoverServiceTests(TestCase):
         self.assertEqual(payload["comparison_summary"]["dropped_titles"], [])
         self.assertEqual(payload["comparison_summary"]["changed_rank_count"], 2)
 
-    def test_movie_comfort_rewatches_world_quality_debug_shows_before_and_after_titles(self):
+    def test_movie_comfort_rewatches_world_quality_debug_shows_before_and_after_titles(
+        self,
+    ):
         profile_payload = {
             "phase_keyword_affinity": {"comfort": 1.0, "rewatch": 0.9},
             "recent_keyword_affinity": {"comfort": 1.0, "rewatch": 0.9},
@@ -3446,7 +3776,9 @@ class DiscoverServiceTests(TestCase):
             profile_payload,
             use_movie_rewatch_model=True,
         )
-        legacy_titles, current_titles, _payload = self._comparison_titles(reranked, top_n=2)
+        legacy_titles, current_titles, _payload = self._comparison_titles(
+            reranked, top_n=2
+        )
 
         self.assertEqual(
             legacy_titles,
@@ -3553,7 +3885,9 @@ class DiscoverServiceTests(TestCase):
             profile_payload,
             use_movie_rewatch_model=True,
         )
-        legacy_titles, current_titles, _payload = self._comparison_titles(reranked, top_n=2)
+        legacy_titles, current_titles, _payload = self._comparison_titles(
+            reranked, top_n=2
+        )
 
         self.assertEqual(
             legacy_titles,
@@ -3656,7 +3990,9 @@ class DiscoverServiceTests(TestCase):
             profile_payload,
             use_movie_rewatch_model=True,
         )
-        legacy_titles, current_titles, payload = self._comparison_titles(reranked, top_n=2)
+        legacy_titles, current_titles, payload = self._comparison_titles(
+            reranked, top_n=2
+        )
 
         self.assertEqual(
             legacy_titles,
@@ -3763,7 +4099,9 @@ class DiscoverServiceTests(TestCase):
             profile_payload,
             use_movie_rewatch_model=True,
         )
-        legacy_titles, current_titles, payload = self._comparison_titles(reranked, top_n=2)
+        legacy_titles, current_titles, payload = self._comparison_titles(
+            reranked, top_n=2
+        )
 
         self.assertEqual(legacy_titles[0], "Strong Comfort Fit")
         self.assertEqual(current_titles[0], "Strong Comfort Fit")
@@ -3797,7 +4135,10 @@ class DiscoverServiceTests(TestCase):
             provider_rating=7.8,
         )
 
-        with patch("app.models.providers.services.get_media_metadata", return_value={"max_progress": 10}):
+        with patch(
+            "app.models.providers.services.get_media_metadata",
+            return_value={"max_progress": 10},
+        ):
             Anime.objects.create(
                 user=self.user,
                 item=open_item,
@@ -3902,10 +4243,12 @@ class DiscoverServiceTests(TestCase):
         )
         # Match genres populated from profile overlap
         self.assertIn(
-            "match_genres", boosted[0].score_breakdown,
+            "match_genres",
+            boosted[0].score_breakdown,
         )
         self.assertIn(
-            "Science Fiction", boosted[0].score_breakdown["match_genres"],
+            "Science Fiction",
+            boosted[0].score_breakdown["match_genres"],
         )
 
     def test_comfort_confidence_unrated_not_penalized(self):
@@ -4094,7 +4437,10 @@ class DiscoverServiceTests(TestCase):
         )
         rich_ranked = _apply_comfort_confidence(
             rich_candidates,
-            {"phase_genre_affinity": {"drama": 1.0}, "phase_tag_affinity": {"cozy": 1.0}},
+            {
+                "phase_genre_affinity": {"drama": 1.0},
+                "phase_tag_affinity": {"cozy": 1.0},
+            },
         )
 
         sparse = sparse_ranked[0].score_breakdown
@@ -4103,7 +4449,9 @@ class DiscoverServiceTests(TestCase):
         self.assertEqual(rich["tag_signal_mode"], "tag_rich")
         self.assertLess(sparse["hot_recency_mode_multiplier"], 1.0)
         self.assertEqual(rich["hot_recency_mode_multiplier"], 1.0)
-        self.assertGreater(rich["hot_recency_contribution"], sparse["hot_recency_contribution"])
+        self.assertGreater(
+            rich["hot_recency_contribution"], sparse["hot_recency_contribution"]
+        )
 
     def test_comfort_confidence_rewatch_needs_phase_support(self):
         candidates = [
@@ -4151,7 +4499,11 @@ class DiscoverServiceTests(TestCase):
         )
 
         self.assertEqual(reranked[0].media_id, "phase_fit")
-        legacy = next(candidate for candidate in reranked if candidate.media_id == "legacy_rewatch")
+        legacy = next(
+            candidate
+            for candidate in reranked
+            if candidate.media_id == "legacy_rewatch"
+        )
         self.assertLess(legacy.score_breakdown["rewatch_gate"], 0.5)
 
     def test_comfort_confidence_prefers_strong_phase_in_opening_window(self):
@@ -4189,7 +4541,10 @@ class DiscoverServiceTests(TestCase):
         self.assertIn("strong-below", opening_ids)
         self.assertTrue(
             any(
-                float(candidate.score_breakdown.get("strong_phase_promoted_opening", 0.0)) >= 1.0
+                float(
+                    candidate.score_breakdown.get("strong_phase_promoted_opening", 0.0)
+                )
+                >= 1.0
                 for candidate in reranked[:12]
             ),
         )
@@ -4220,7 +4575,10 @@ class DiscoverServiceTests(TestCase):
             genres=["Comedy"],
         )
 
-        with patch("app.models.providers.services.get_media_metadata", return_value={"max_progress": 1}):
+        with patch(
+            "app.models.providers.services.get_media_metadata",
+            return_value={"max_progress": 1},
+        ):
             Movie.objects.create(
                 item=rated_item,
                 user=self.user,
@@ -4275,7 +4633,10 @@ class DiscoverServiceTests(TestCase):
             genres=["Animation"],
         )
 
-        with patch("app.models.providers.services.get_media_metadata", return_value={"max_progress": 1}):
+        with patch(
+            "app.models.providers.services.get_media_metadata",
+            return_value={"max_progress": 1},
+        ):
             Movie.objects.create(
                 item=eligible_item,
                 user=self.user,
@@ -4306,7 +4667,10 @@ class DiscoverServiceTests(TestCase):
 
     def test_comfort_candidates_biases_phase_evidence_with_limited_backfill(self):
         phase_media_ids = {"5001", "5002"}
-        with patch("app.models.providers.services.get_media_metadata", return_value={"max_progress": 1}):
+        with patch(
+            "app.models.providers.services.get_media_metadata",
+            return_value={"max_progress": 1},
+        ):
             for media_id in sorted(phase_media_ids):
                 item = Item.objects.create(
                     media_id=media_id,
@@ -4409,7 +4773,10 @@ class DiscoverServiceTests(TestCase):
         )
         ItemStudioCredit.objects.create(item=item, studio=studio)
 
-        with patch("app.models.providers.services.get_media_metadata", return_value={"max_progress": 1}):
+        with patch(
+            "app.models.providers.services.get_media_metadata",
+            return_value={"max_progress": 1},
+        ):
             entry = Movie.objects.create(
                 item=item,
                 user=self.user,
@@ -4483,7 +4850,10 @@ class DiscoverServiceTests(TestCase):
         )
         ItemStudioCredit.objects.create(item=item, studio=studio)
 
-        with patch("app.models.providers.services.get_media_metadata", return_value={"max_progress": 1}):
+        with patch(
+            "app.models.providers.services.get_media_metadata",
+            return_value={"max_progress": 1},
+        ):
             entry = Anime.objects.create(
                 item=item,
                 user=self.user,
@@ -4609,7 +4979,9 @@ class DiscoverServiceTests(TestCase):
         self.assertGreater(reranked[0].score_breakdown["recency_phase_fit"], 0.0)
         self.assertIn("ready_now_score", reranked[0].score_breakdown)
         self.assertTrue(
-            reranked[0].score_breakdown["primary_reason_bucket"].startswith("keywords:"),
+            reranked[0]
+            .score_breakdown["primary_reason_bucket"]
+            .startswith("keywords:"),
         )
 
     def test_behavior_first_confidence_keeps_anime_on_generic_path(self):
@@ -4710,7 +5082,9 @@ class DiscoverServiceTests(TestCase):
         self.assertNotIn("library_fit", reranked[0].score_breakdown)
         self.assertNotIn("primary_reason_bucket", reranked[0].score_breakdown)
 
-    def test_movie_comfort_confidence_prefers_behavior_first_fits_and_filters_weak_unrated(self):
+    def test_movie_comfort_confidence_prefers_behavior_first_fits_and_filters_weak_unrated(
+        self,
+    ):
         candidates = [
             CandidateItem(
                 media_type=MediaTypes.MOVIE.value,
@@ -4826,10 +5200,14 @@ class DiscoverServiceTests(TestCase):
         )
         self.assertGreater(reranked[0].score_breakdown["recency_phase_fit"], 0.0)
         self.assertTrue(
-            reranked[0].score_breakdown["primary_reason_bucket"].startswith("keywords:"),
+            reranked[0]
+            .score_breakdown["primary_reason_bucket"]
+            .startswith("keywords:"),
         )
 
-    def test_row_match_signal_prefers_movie_reason_bucket_labels_over_runtime_and_decade(self):
+    def test_row_match_signal_prefers_movie_reason_bucket_labels_over_runtime_and_decade(
+        self,
+    ):
         candidates = [
             CandidateItem(
                 media_type=MediaTypes.MOVIE.value,
@@ -5116,7 +5494,9 @@ class DiscoverServiceTests(TestCase):
         self.assertNotIn("title-days", content)
 
     @patch("app.discover.comfort_scoring._is_holiday_window", return_value=False)
-    def test_movie_behavior_first_applies_keyword_holiday_penalty_out_of_season(self, _mock_window):
+    def test_movie_behavior_first_applies_keyword_holiday_penalty_out_of_season(
+        self, _mock_window
+    ):
         candidates = [
             CandidateItem(
                 media_type=MediaTypes.MOVIE.value,
@@ -5196,12 +5576,18 @@ class DiscoverServiceTests(TestCase):
         )
 
         by_id = {candidate.media_id: candidate for candidate in reranked}
-        self.assertLess(by_id["keyword-holiday"].score_breakdown["seasonal_adjustment"], 0.0)
+        self.assertLess(
+            by_id["keyword-holiday"].score_breakdown["seasonal_adjustment"], 0.0
+        )
         self.assertEqual(by_id["neutral"].score_breakdown["seasonal_adjustment"], 0.0)
-        self.assertLess(by_id["keyword-holiday"].final_score, by_id["neutral"].final_score)
+        self.assertLess(
+            by_id["keyword-holiday"].final_score, by_id["neutral"].final_score
+        )
 
     @patch("app.discover.comfort_scoring._is_holiday_window", return_value=False)
-    def test_movie_behavior_first_debug_payload_exposes_holiday_penalty(self, _mock_window):
+    def test_movie_behavior_first_debug_payload_exposes_holiday_penalty(
+        self, _mock_window
+    ):
         candidates = [
             CandidateItem(
                 media_type=MediaTypes.MOVIE.value,
@@ -5321,7 +5707,10 @@ class DiscoverServiceTests(TestCase):
             studios=["Walt Disney Animation Studios"],
         )
 
-        with patch("app.models.providers.services.get_media_metadata", return_value={"max_progress": 1}):
+        with patch(
+            "app.models.providers.services.get_media_metadata",
+            return_value={"max_progress": 1},
+        ):
             Movie.objects.create(
                 item=zootopia_item,
                 user=self.user,
@@ -5390,7 +5779,11 @@ class DiscoverServiceTests(TestCase):
         reranked = _apply_comfort_confidence(
             candidates,
             {
-                "phase_keyword_affinity": {"family": 1.0, "musical": 0.9, "animal": 0.8},
+                "phase_keyword_affinity": {
+                    "family": 1.0,
+                    "musical": 0.9,
+                    "animal": 0.8,
+                },
                 "recent_keyword_affinity": {"family": 1.0, "musical": 0.9},
                 "phase_studio_affinity": {"walt disney animation studios": 1.0},
                 "recent_studio_affinity": {"walt disney animation studios": 1.0},
@@ -5402,8 +5795,16 @@ class DiscoverServiceTests(TestCase):
                 "recent_runtime_bucket_affinity": {"90_109": 1.0},
                 "phase_decade_affinity": {"2010s": 0.8, "2020s": 0.8},
                 "recent_decade_affinity": {"2020s": 0.9},
-                "phase_genre_affinity": {"animation": 1.0, "adventure": 0.8, "comedy": 0.7},
-                "recent_genre_affinity": {"animation": 1.0, "adventure": 0.9, "comedy": 0.8},
+                "phase_genre_affinity": {
+                    "animation": 1.0,
+                    "adventure": 0.8,
+                    "comedy": 0.7,
+                },
+                "recent_genre_affinity": {
+                    "animation": 1.0,
+                    "adventure": 0.9,
+                    "comedy": 0.8,
+                },
                 "comfort_library_affinity": {
                     "keywords": {"family": 1.0, "musical": 0.9, "animal": 0.8},
                     "collections": {"disney animation": 1.0},
@@ -5432,8 +5833,16 @@ class DiscoverServiceTests(TestCase):
         )
 
         self.assertEqual(reranked[0].media_id, "cooldown-encanto")
-        zootopia = next(candidate for candidate in reranked if candidate.media_id == "cooldown-zootopia")
-        encanto = next(candidate for candidate in reranked if candidate.media_id == "cooldown-encanto")
+        zootopia = next(
+            candidate
+            for candidate in reranked
+            if candidate.media_id == "cooldown-zootopia"
+        )
+        encanto = next(
+            candidate
+            for candidate in reranked
+            if candidate.media_id == "cooldown-encanto"
+        )
         self.assertGreater(zootopia.score_breakdown["cooldown_penalty"], 0.0)
         self.assertGreater(
             zootopia.score_breakdown["cooldown_penalty"],
@@ -5444,7 +5853,9 @@ class DiscoverServiceTests(TestCase):
             encanto.score_breakdown["ready_now_score"],
         )
 
-    def test_movie_comfort_confidence_penalizes_bursty_recent_density_once_titles_are_eligible(self):
+    def test_movie_comfort_confidence_penalizes_bursty_recent_density_once_titles_are_eligible(
+        self,
+    ):
         bursty_item = Item.objects.create(
             media_id="burst-title",
             source=Sources.TMDB.value,
@@ -5474,7 +5885,10 @@ class DiscoverServiceTests(TestCase):
             studios=["Disney"],
         )
 
-        with patch("app.models.providers.services.get_media_metadata", return_value={"max_progress": 1}):
+        with patch(
+            "app.models.providers.services.get_media_metadata",
+            return_value={"max_progress": 1},
+        ):
             for days_ago in (35, 50, 70):
                 Movie.objects.create(
                     item=bursty_item,
@@ -5579,8 +5993,12 @@ class DiscoverServiceTests(TestCase):
             user=self.user,
         )
 
-        bursty = next(candidate for candidate in reranked if candidate.media_id == "burst-title")
-        steady = next(candidate for candidate in reranked if candidate.media_id == "steady-title")
+        bursty = next(
+            candidate for candidate in reranked if candidate.media_id == "burst-title"
+        )
+        steady = next(
+            candidate for candidate in reranked if candidate.media_id == "steady-title"
+        )
         self.assertGreater(
             bursty.score_breakdown["title_saturation_penalty"],
             steady.score_breakdown["title_saturation_penalty"],
@@ -5615,7 +6033,11 @@ class DiscoverServiceTests(TestCase):
             "phase_decade_affinity": {"2010s": 0.8, "2020s": 0.8},
             "recent_decade_affinity": {"2020s": 0.9},
             "phase_genre_affinity": {"animation": 1.0, "adventure": 0.8, "comedy": 0.7},
-            "recent_genre_affinity": {"animation": 1.0, "adventure": 0.9, "comedy": 0.8},
+            "recent_genre_affinity": {
+                "animation": 1.0,
+                "adventure": 0.9,
+                "comedy": 0.8,
+            },
             "comfort_library_affinity": {
                 "keywords": {"family": 1.0, "musical": 0.9, "animal": 0.8},
                 "collections": {"disney animation": 1.0},
@@ -5802,7 +6224,9 @@ class DiscoverServiceTests(TestCase):
             provider_collection_name="",
             studios=["Unknown Pictures"],
         )
-        strong_item = self._create_movie_item("strong-moderate", "Moderately Absent Favorite")
+        strong_item = self._create_movie_item(
+            "strong-moderate", "Moderately Absent Favorite"
+        )
         self._create_movie_watches(weak_item, [1500], score=8)
         self._create_movie_watches(strong_item, [120])
 
@@ -5856,7 +6280,9 @@ class DiscoverServiceTests(TestCase):
             0.15,
         )
 
-    def test_comfort_rewatches_rotation_lengthens_cooldown_and_attenuates_rewatch_strength(self):
+    def test_comfort_rewatches_rotation_lengthens_cooldown_and_attenuates_rewatch_strength(
+        self,
+    ):
         bursty_item = self._create_movie_item("rotation-bursty", "Household Rotation")
         steady_item = self._create_movie_item("rotation-steady", "Occasional Favorite")
         self._create_movie_watches(bursty_item, [100, 114, 128, 142, 156])
@@ -6058,7 +6484,9 @@ class DiscoverServiceTests(TestCase):
         )
 
     def test_unrated_rewatched_candidate_gets_implicit_rating_confidence(self):
-        rewatched_item = self._create_movie_item("implicit-rewatched", "Unrated Favorite")
+        rewatched_item = self._create_movie_item(
+            "implicit-rewatched", "Unrated Favorite"
+        )
         self._create_movie_watches(rewatched_item, [200, 500, 800])
         rated_item = self._create_movie_item("explicit-rated", "Rated Favorite")
         self._create_movie_watches(rated_item, [200])
@@ -6290,14 +6718,10 @@ class DiscoverServiceTests(TestCase):
 
         visible = candidates[:12]
         planning_visible = [
-            c
-            for c in visible
-            if c.score_breakdown.get("pool_source") == "planning"
+            c for c in visible if c.score_breakdown.get("pool_source") == "planning"
         ]
         provider_visible = [
-            c
-            for c in visible
-            if c.score_breakdown.get("pool_source") != "planning"
+            c for c in visible if c.score_breakdown.get("pool_source") != "planning"
         ]
         self.assertLessEqual(len(planning_visible), 6)
         self.assertGreaterEqual(len(provider_visible), 4)
@@ -6313,16 +6737,10 @@ class DiscoverServiceTests(TestCase):
             if c.score_breakdown.get("pool_source") == "similar_to_favorite"
         ]
         self.assertTrue(
-            all(
-                "Anchor Favorite" in (c.source_reason or "")
-                for c in related_visible
-            ),
+            all("Anchor Favorite" in (c.source_reason or "") for c in related_visible),
         )
         self.assertTrue(
-            all(
-                c.score_breakdown.get("source_quota_action")
-                for c in candidates
-            ),
+            all(c.score_breakdown.get("source_quota_action") for c in candidates),
         )
 
     def test_apply_top_picks_source_quotas_relaxes_when_provider_thin(self):
@@ -6346,9 +6764,7 @@ class DiscoverServiceTests(TestCase):
 
         visible = candidates[:12]
         provider_visible = [
-            c
-            for c in visible
-            if c.score_breakdown.get("pool_source") != "planning"
+            c for c in visible if c.score_breakdown.get("pool_source") != "planning"
         ]
         self.assertEqual(len(provider_visible), 1)
         self.assertEqual(len(visible), 12)
@@ -6667,7 +7083,9 @@ class DiscoverServiceTests(TestCase):
         self.assertIn("absence_boost", payload["contribution_totals"])
 
     @patch("app.discover.comfort_scoring._is_holiday_window", return_value=False)
-    def test_comfort_confidence_applies_out_of_season_holiday_penalty(self, _mock_window):
+    def test_comfort_confidence_applies_out_of_season_holiday_penalty(
+        self, _mock_window
+    ):
         candidates = [
             CandidateItem(
                 media_type=MediaTypes.MOVIE.value,
@@ -6742,7 +7160,12 @@ class DiscoverServiceTests(TestCase):
 
     def test_row_match_signal_uses_row_candidates_not_static_phrase(self):
         profile = {
-            "phase_genre_affinity": {"drama": 1.0, "comedy": 0.9, "action": 0.8, "animation": 0.7},
+            "phase_genre_affinity": {
+                "drama": 1.0,
+                "comedy": 0.9,
+                "action": 0.8,
+                "animation": 0.7,
+            },
             "phase_tag_affinity": {"cozy": 1.0, "ensemble": 0.6},
         }
         top_picks_candidates = [
@@ -6874,7 +7297,8 @@ class DiscoverServiceTests(TestCase):
         )
         top_twelve = reranked[:12]
         phase_count = sum(
-            1 for candidate in top_twelve
+            1
+            for candidate in top_twelve
             if "animation" in {genre.lower() for genre in (candidate.genres or [])}
             or "cozy" in {tag.lower() for tag in (candidate.tags or [])}
         )
@@ -6942,10 +7366,15 @@ class DiscoverServiceTests(TestCase):
         ]
         reranked = _apply_comfort_confidence(
             candidates,
-            {"phase_genre_affinity": {"animation": 1.0}, "phase_tag_affinity": {"cozy": 1.0}},
+            {
+                "phase_genre_affinity": {"animation": 1.0},
+                "phase_tag_affinity": {"cozy": 1.0},
+            },
         )
         final_scores = [float(candidate.final_score or 0.0) for candidate in reranked]
-        display_scores = [float(candidate.display_score or 0.0) for candidate in reranked]
+        display_scores = [
+            float(candidate.display_score or 0.0) for candidate in reranked
+        ]
 
         self.assertEqual(
             [candidate.media_id for candidate in reranked],
@@ -7006,7 +7435,10 @@ class DiscoverServiceTests(TestCase):
         ]
         reranked = _apply_comfort_confidence(
             candidates,
-            {"phase_genre_affinity": {"animation": 1.0}, "phase_tag_affinity": {"cozy": 1.0}},
+            {
+                "phase_genre_affinity": {"animation": 1.0},
+                "phase_tag_affinity": {"cozy": 1.0},
+            },
         )
         payload = _build_comfort_debug_payload(reranked, top_n=2)
 

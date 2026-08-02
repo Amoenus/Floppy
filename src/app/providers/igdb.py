@@ -558,7 +558,9 @@ def get_image_url(response):
     # e.g game: 287348
     cover_image_id = response.get("cover", {}).get("image_id")
     if cover_image_id:
-        return f"https://images.igdb.com/igdb/image/upload/t_original/{cover_image_id}.jpg"
+        return (
+            f"https://images.igdb.com/igdb/image/upload/t_original/{cover_image_id}.jpg"
+        )
 
     artworks = response.get("artworks") or []
     for artwork in artworks:

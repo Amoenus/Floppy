@@ -83,7 +83,7 @@ class ServicesTests(TestCase):
         """TMDB requests should route through a configured user's proxy URL."""
         User.objects.create_user(
             username="proxy-user",
-            password="testpass123",  # noqa: S106
+            password="testpass123",
             tmdb_proxy_url=encrypt("socks5://127.0.0.1:1080"),
         )
         mock_response = MagicMock()
@@ -115,7 +115,7 @@ class ServicesTests(TestCase):
         """Non-TMDB providers should not pick up the TMDB proxy setting."""
         User.objects.create_user(
             username="proxy-user",
-            password="testpass123",  # noqa: S106
+            password="testpass123",
             tmdb_proxy_url=encrypt("socks5://127.0.0.1:1080"),
         )
         mock_response = MagicMock()
@@ -326,7 +326,9 @@ class ServicesTests(TestCase):
                     "name": "The Witcher 3: Wild Hunt",
                     "url": "https://www.igdb.com/games/the-witcher-3-wild-hunt",
                     "game_type": 0,
-                    "external_games": [{"url": "https://store.steampowered.com/app/292030"}],
+                    "external_games": [
+                        {"url": "https://store.steampowered.com/app/292030"}
+                    ],
                 },
             ]
 
@@ -376,7 +378,9 @@ class ServicesTests(TestCase):
                     "name": "",
                     "url": "https://www.igdb.com/games/the-witcher-3-wild-hunt",
                     "game_type": 0,
-                    "external_games": [{"url": "https://store.steampowered.com/app/292030"}],
+                    "external_games": [
+                        {"url": "https://store.steampowered.com/app/292030"}
+                    ],
                 },
             ]
 

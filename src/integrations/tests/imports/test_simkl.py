@@ -369,9 +369,13 @@ class ImportSimkl(TestCase):
         self.client.force_login(self.user)
         now = timezone.localtime()
         watch_dt = now.replace(day=2, hour=12, minute=0, second=0, microsecond=0)
-        watched_at = watch_dt.astimezone(UTC).isoformat().replace(
-            "+00:00",
-            "Z",
+        watched_at = (
+            watch_dt.astimezone(UTC)
+            .isoformat()
+            .replace(
+                "+00:00",
+                "Z",
+            )
         )
 
         # Prime an empty month cache.

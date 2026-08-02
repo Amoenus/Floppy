@@ -1,5 +1,3 @@
-# ruff: noqa: D102, S106
-
 from datetime import timedelta
 from unittest.mock import call, patch
 
@@ -447,7 +445,9 @@ class DiscoverTabCacheTests(TestCase):
         )
 
     @patch("app.discover.service.get_discover_rows", return_value=[])
-    def test_refresh_tab_cache_force_preserves_taste_profile(self, mock_get_discover_rows):
+    def test_refresh_tab_cache_force_preserves_taste_profile(
+        self, mock_get_discover_rows
+    ):
         expires_at = timezone.now() + timedelta(hours=1)
         DiscoverRowCache.objects.create(
             user=self.user,
@@ -512,7 +512,9 @@ class DiscoverTabCacheTests(TestCase):
 
         rows = tab_cache.refresh_tab_cache(self.user, "movie")
 
-        payload, is_stale = tab_cache.get_tab_cache(self.user.id, "movie", show_more=False)
+        payload, is_stale = tab_cache.get_tab_cache(
+            self.user.id, "movie", show_more=False
+        )
         self.assertEqual(rows[0].items[0].title, "Superseded Movie")
         self.assertEqual(payload["rows"][0]["items"][0]["title"], "Optimistic Movie")
         self.assertTrue(is_stale)

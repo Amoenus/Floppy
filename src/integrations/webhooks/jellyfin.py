@@ -50,7 +50,10 @@ class JellyfinWebhookProcessor(BaseWebhookProcessor):
         # Update live playback state (before media tracking)
         playback_media_type = self._get_live_playback_media_type(payload)
         self._update_live_playback_state(
-            payload, user, ids, playback_media_type,
+            payload,
+            user,
+            ids,
+            playback_media_type,
         )
 
         # Pause events only update the card — no media tracking
@@ -146,17 +149,19 @@ class JellyfinWebhookProcessor(BaseWebhookProcessor):
 
     def _get_live_playback_media_type(self, payload):
         """Map Jellyfin item type to a playback card media type."""
-        item_type = (
-            payload.get("Item", {}).get("Type") or ""
-        ).strip()
+        item_type = (payload.get("Item", {}).get("Type") or "").strip()
         if item_type == "Episode":
             return MediaTypes.EPISODE.value
         if item_type == "Movie":
             return MediaTypes.MOVIE.value
         return None
 
-    def _update_live_playback_state(  # noqa: C901
-        self, payload, user, ids, playback_media_type,
+    def _update_live_playback_state(
+        self,
+        payload,
+        user,
+        ids,
+        playback_media_type,
     ):
         """Update cache-backed live playback state for home-page UI."""
         event_type = JELLYFIN_EVENT_MAP.get(payload.get("Event"))
@@ -177,8 +182,8 @@ class JellyfinWebhookProcessor(BaseWebhookProcessor):
         if playback_media_type == MediaTypes.MOVIE.value:
             media_id = ids.get("tmdb_id")
         else:
-            season_number, episode_number = (
-                self._extract_season_episode_from_payload(payload)
+            season_number, episode_number = self._extract_season_episode_from_payload(
+                payload
             )
             # Prefer TVDB/IMDB resolution — they reliably return the
             # show-level TMDB ID via the TMDB find API.
@@ -206,8 +211,7 @@ class JellyfinWebhookProcessor(BaseWebhookProcessor):
         # Duration / offset from Jellyfin ticks (100 ns units)
         duration_seconds = _ticks_to_seconds(item.get("RunTimeTicks"))
         offset_seconds = _ticks_to_seconds(
-            payload.get("PlaybackPositionTicks")
-            or item.get("PlaybackPositionTicks"),
+            payload.get("PlaybackPositionTicks") or item.get("PlaybackPositionTicks"),
         )
 
         live_playback.apply_playback_event(

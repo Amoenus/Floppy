@@ -302,7 +302,9 @@ def author_profile(author_id):
         handle_error(error)
 
     bibliography = []
-    for index, series in enumerate(response.get("series_list", []) or response.get("series", [])):
+    for index, series in enumerate(
+        response.get("series_list", []) or response.get("series", [])
+    ):
         if not isinstance(series, dict):
             continue
         series_id = series.get("series_id") or series.get("id")

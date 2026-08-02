@@ -14,8 +14,8 @@ from rest_framework.response import Response
 
 from app import statistics_cache
 from app.statistics_views import (
-    _get_predefined_range_date_strings,  # noqa: PLC2701 — shared with web view
-    _identify_predefined_range,  # noqa: PLC2701 — shared with web view
+    _get_predefined_range_date_strings,
+    _identify_predefined_range,
 )
 
 logger = logging.getLogger(__name__)
@@ -103,9 +103,14 @@ def _resolve_range(request):
         start = parse_date(start_date_str)
         end = parse_date(end_date_str)
         if start is None or end is None:
-            return None, None, None, Response(
-                {"detail": "Invalid date format (expected YYYY-MM-DD or 'all')."},
-                status=HTTP.BAD_REQUEST,
+            return (
+                None,
+                None,
+                None,
+                Response(
+                    {"detail": "Invalid date format (expected YYYY-MM-DD or 'all')."},
+                    status=HTTP.BAD_REQUEST,
+                ),
             )
         tz = timezone.get_current_timezone()
         start_date = timezone.make_aware(

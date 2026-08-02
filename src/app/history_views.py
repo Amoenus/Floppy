@@ -1,4 +1,5 @@
 import calendar
+import contextlib
 import logging
 import time
 from collections import defaultdict
@@ -18,17 +19,17 @@ from django.utils.dateparse import parse_date
 from django.views.decorators.http import require_GET, require_http_methods
 
 from app import (
-    cache_utils,
     fork_services_history,
     helpers,
     history_cache,
     history_processor,
-    statistics_cache,
 )
 from app import statistics as stats
 from app.models import BasicMedia, MediaTypes
 
 logger = logging.getLogger(__name__)
+
+MONTHS_PER_YEAR = 12
 
 _MONTH_CACHE_UNSUPPORTED_FILTER_KEYS = frozenset(
     {
@@ -197,9 +198,10 @@ def delete_history_record(request, media_type, history_id):
                 f'<p id="modal-listen-count-{music_id}" hx-swap-oob="true" '
                 'class="text-sm text-gray-400 mt-1">Not listened yet</p>',
             )
-            return response
         except Music.DoesNotExist:
             pass
+        else:
+            return response
 
     if podcast_id and media_type.lower() == "podcast":
         from app.models import Podcast
@@ -254,18 +256,20 @@ def delete_history_record(request, media_type, history_id):
                 'class="text-sm text-gray-400 mt-1">Not played yet</p>',
             )
             response["HX-Trigger"] = "history-refresh-start"
-            return response
         except Podcast.DoesNotExist:
             pass
+        else:
+            return response
 
     response = HttpResponse()
     response["HX-Trigger"] = "history-refresh-start"
     return response
 
 
-
 def _build_anniversary_history_days(user, month, day, logging_style=None):
-    day_keys = history_cache.build_history_index(user, logging_style_override=logging_style)
+    day_keys = history_cache.build_history_index(
+        user, logging_style_override=logging_style
+    )
     history_days = []
     for day_key in day_keys:
         try:
@@ -284,7 +288,9 @@ def _build_anniversary_history_days(user, month, day, logging_style=None):
     return history_days
 
 
-def _build_release_history_days(user, month=None, day=None, date_filters=None, filters=None):
+def _build_release_history_days(
+    user, month=None, day=None, date_filters=None, filters=None
+):
     active_types = list(getattr(user, "get_active_media_types", list)())
     if not active_types:
         active_types = list(MediaTypes.values)
@@ -298,7 +304,11 @@ def _build_release_history_days(user, month=None, day=None, date_filters=None, f
     media_type_filter = (filters or {}).get("media_type")
     include_episodes = True
     if media_type_filter:
-        if media_type_filter in (MediaTypes.TV.value, MediaTypes.SEASON.value, MediaTypes.EPISODE.value):
+        if media_type_filter in (
+            MediaTypes.TV.value,
+            MediaTypes.SEASON.value,
+            MediaTypes.EPISODE.value,
+        ):
             active_types = []
             include_podcasts = False
         elif media_type_filter == MediaTypes.PODCAST.value:
@@ -314,7 +324,9 @@ def _build_release_history_days(user, month=None, day=None, date_filters=None, f
         active_filters = filters or {}
         genre_filter = active_filters.get("genre")
         if genre_filter:
-            requested = {g.strip().lower() for g in genre_filter.split(",") if g.strip()}
+            requested = {
+                g.strip().lower() for g in genre_filter.split(",") if g.strip()
+            }
             values = getattr(item, "genres", None) or []
             if album is not None:
                 values = list(values) + list(getattr(album, "genres", None) or [])
@@ -323,13 +335,13 @@ def _build_release_history_days(user, month=None, day=None, date_filters=None, f
         implied_genre_filter = active_filters.get("implied_genre")
         if implied_genre_filter:
             requested = {
-                g.strip().lower()
-                for g in implied_genre_filter.split(",")
-                if g.strip()
+                g.strip().lower() for g in implied_genre_filter.split(",") if g.strip()
             }
             values = getattr(item, "implied_genres", None) or []
             if album is not None:
-                values = list(values) + list(getattr(album, "implied_genres", None) or [])
+                values = list(values) + list(
+                    getattr(album, "implied_genres", None) or []
+                )
             if not ({str(g).lower() for g in values} & requested):
                 return False
         return True
@@ -344,10 +356,9 @@ def _build_release_history_days(user, month=None, day=None, date_filters=None, f
     seen_item_ids = set()
     for media_type in active_types:
         model = apps.get_model("app", media_type)
-        queryset = (
-            model.objects.filter(user=user, item__release_datetime__isnull=False)
-            .select_related("item")
-        )
+        queryset = model.objects.filter(
+            user=user, item__release_datetime__isnull=False
+        ).select_related("item")
         if month and day:
             queryset = queryset.annotate(
                 release_month=ExtractMonth("item__release_datetime"),
@@ -384,16 +395,13 @@ def _build_release_history_days(user, month=None, day=None, date_filters=None, f
 
     if include_episodes:
         Episode = apps.get_model("app", "Episode")
-        episode_qs = (
-            Episode.objects.filter(
-                related_season__user=user,
-                item__release_datetime__isnull=False,
-            )
-            .select_related(
-                "item",
-                "related_season__item",
-                "related_season__related_tv__item",
-            )
+        episode_qs = Episode.objects.filter(
+            related_season__user=user,
+            item__release_datetime__isnull=False,
+        ).select_related(
+            "item",
+            "related_season__item",
+            "related_season__related_tv__item",
         )
         if month and day:
             episode_qs = episode_qs.annotate(
@@ -402,9 +410,13 @@ def _build_release_history_days(user, month=None, day=None, date_filters=None, f
             ).filter(release_month=month, release_day=day)
         elif start_date or end_date:
             if start_date:
-                episode_qs = episode_qs.filter(item__release_datetime__date__gte=start_date)
+                episode_qs = episode_qs.filter(
+                    item__release_datetime__date__gte=start_date
+                )
             if end_date:
-                episode_qs = episode_qs.filter(item__release_datetime__date__lte=end_date)
+                episode_qs = episode_qs.filter(
+                    item__release_datetime__date__lte=end_date
+                )
 
         for episode in episode_qs:
             episode_item = getattr(episode, "item", None)
@@ -422,7 +434,9 @@ def _build_release_history_days(user, month=None, day=None, date_filters=None, f
                 continue
             release_date = localized.date()
             season_item = getattr(episode.related_season, "item", None)
-            tv_item = getattr(getattr(episode.related_season, "related_tv", None), "item", None)
+            tv_item = getattr(
+                getattr(episode.related_season, "related_tv", None), "item", None
+            )
             title = (
                 episode_item.title
                 or (season_item.title if season_item else None)
@@ -442,7 +456,9 @@ def _build_release_history_days(user, month=None, day=None, date_filters=None, f
 
     if include_podcasts:
         Podcast = apps.get_model("app", "Podcast")
-        podcast_base = Podcast.objects.filter(user=user).select_related("item", "episode", "show")
+        podcast_base = Podcast.objects.filter(user=user).select_related(
+            "item", "episode", "show"
+        )
         podcast_qs = podcast_base.filter(episode__published__isnull=False)
         if month and day:
             podcast_qs = podcast_qs.annotate(
@@ -476,7 +492,9 @@ def _build_release_history_days(user, month=None, day=None, date_filters=None, f
                 poster = show.image
             elif item.image:
                 poster = item.image
-            title = item.title or getattr(getattr(podcast, "episode", None), "title", "")
+            title = item.title or getattr(
+                getattr(podcast, "episode", None), "title", ""
+            )
             entry = {
                 "item": item,
                 "media_type": MediaTypes.PODCAST.value,
@@ -530,7 +548,9 @@ def _build_release_history_days(user, month=None, day=None, date_filters=None, f
                 poster = show.image
             elif item.image:
                 poster = item.image
-            title = item.title or getattr(getattr(podcast, "episode", None), "title", "")
+            title = item.title or getattr(
+                getattr(podcast, "episode", None), "title", ""
+            )
             entry = {
                 "item": item,
                 "media_type": MediaTypes.PODCAST.value,
@@ -607,10 +627,7 @@ def _can_use_cached_month_history(
         return False
     if any(key in filters for key in _MONTH_CACHE_UNSUPPORTED_FILTER_KEYS):
         return False
-    if filters.get("media_id") or filters.get("source"):
-        return False
-
-    return True
+    return not (filters.get("media_id") or filters.get("source"))
 
 
 def _cached_history_entry_matches_filters(entry, filters):
@@ -632,7 +649,9 @@ def _cached_history_entry_matches_filters(entry, filters):
 
     genre_filter = filters.get("genre")
     if genre_filter:
-        genre_filters = {g.strip().lower() for g in genre_filter.split(",") if g.strip()}
+        genre_filters = {
+            g.strip().lower() for g in genre_filter.split(",") if g.strip()
+        }
         genres = entry.get("genres") or item.get("genres") or []
         item_genre_set = {str(g).lower() for g in genres}
         if not (item_genre_set & genre_filters):
@@ -640,9 +659,7 @@ def _cached_history_entry_matches_filters(entry, filters):
     implied_genre_filter = filters.get("implied_genre")
     if implied_genre_filter:
         implied_genre_filters = {
-            g.strip().lower()
-            for g in implied_genre_filter.split(",")
-            if g.strip()
+            g.strip().lower() for g in implied_genre_filter.split(",") if g.strip()
         }
         implied_genres = entry.get("implied_genres") or item.get("implied_genres") or []
         item_implied_genre_set = {str(g).lower() for g in implied_genres}
@@ -664,14 +681,15 @@ def _cached_history_entry_matches_filters(entry, filters):
             return False
 
     target_media_id = filters.get("media_id")
-    if target_media_id is not None and str(item.get("media_id")) != str(target_media_id):
+    if target_media_id is not None and str(item.get("media_id")) != str(
+        target_media_id
+    ):
         return False
 
     target_source = filters.get("source")
-    if target_source is not None and str(item.get("source")) != str(target_source):
-        return False
-
-    return True
+    return not (
+        target_source is not None and str(item.get("source")) != str(target_source)
+    )
 
 
 def _filter_cached_history_days(history_days, filters):
@@ -691,14 +709,14 @@ def _filter_cached_history_days(history_days, filters):
         if not filtered_entries:
             continue
 
-        total_minutes = sum(entry.get("runtime_minutes") or 0 for entry in filtered_entries)
+        total_minutes = sum(
+            entry.get("runtime_minutes") or 0 for entry in filtered_entries
+        )
         filtered_day = day.copy()
         filtered_day["entries"] = filtered_entries
         filtered_day["total_minutes"] = total_minutes
         filtered_day["total_runtime_display"] = (
-            helpers.minutes_to_hhmm(total_minutes)
-            if total_minutes
-            else "0min"
+            helpers.minutes_to_hhmm(total_minutes) if total_minutes else "0min"
         )
         filtered_days.append(filtered_day)
 
@@ -712,11 +730,8 @@ def history_genres(request):
 
     from app.models import (
         BoardGame,
-        Book,
-        Comic,
         Episode,
         Game,
-        Manga,
         Movie,
         Music,
         Podcast,
@@ -730,14 +745,17 @@ def history_genres(request):
     implied_genres: set[str] = set()
     # Book, Comic, and Manga use Library of Congress subject headings in their genres
     # field rather than real genre names, so exclude them from the genre list.
-    for ModelClass in [Movie, Game, Music, BoardGame, Podcast]:
-        for genres_list in ModelClass.objects.filter(user=request.user).values_list(
+    for model_cls in [Movie, Game, Music, BoardGame, Podcast]:
+        for genres_list in model_cls.objects.filter(user=request.user).values_list(
             "item__genres", flat=True
         ):
             if genres_list:
                 genres.update(str(g).strip() for g in genres_list if _is_valid_genre(g))
-        for implied_genres_list in ModelClass.objects.filter(user=request.user).values_list(
-            "item__implied_genres", flat=True,
+        for implied_genres_list in model_cls.objects.filter(
+            user=request.user
+        ).values_list(
+            "item__implied_genres",
+            flat=True,
         ):
             if implied_genres_list:
                 implied_genres.update(
@@ -770,7 +788,14 @@ def history(request):
             history_mode = "activity"
 
         filters = {}
-        int_params = ["album", "artist", "tv", "season", "season_number", "podcast_show"]
+        int_params = [
+            "album",
+            "artist",
+            "tv",
+            "season",
+            "season_number",
+            "podcast_show",
+        ]
         str_params = [
             "genre",
             "implied_genre",
@@ -783,10 +808,8 @@ def history(request):
         for param in int_params:
             value = request.GET.get(param)
             if value:
-                try:
+                with contextlib.suppress(TypeError, ValueError):
                     filters[param] = int(value)
-                except (TypeError, ValueError):
-                    pass
         for param in str_params:
             value = request.GET.get(param)
             if value:
@@ -817,7 +840,7 @@ def history(request):
         try:
             view_year = int(request.GET.get("year", now.year))
             view_month = int(request.GET.get("m", now.month))
-            if view_month < 1 or view_month > 12:
+            if view_month < 1 or view_month > MONTHS_PER_YEAR:
                 view_month = now.month
         except (TypeError, ValueError):
             view_year = now.year
@@ -851,7 +874,9 @@ def history(request):
             )
             history_days = _filter_cached_history_days(history_days, filters)
             history_refreshing = cache_meta.get("refreshing", False)
-            history_days = _filter_history_by_enabled_media_types(history_days, request.user)
+            history_days = _filter_history_by_enabled_media_types(
+                history_days, request.user
+            )
 
             page_obj = None
             current_page = 1
@@ -862,7 +887,7 @@ def history(request):
                 prev_year, prev_month = view_year - 1, 12
             else:
                 prev_year, prev_month = view_year, view_month - 1
-            if view_month == 12:
+            if view_month == MONTHS_PER_YEAR:
                 next_year, next_month = view_year + 1, 1
             else:
                 next_year, next_month = view_year, view_month + 1
@@ -870,9 +895,8 @@ def history(request):
             prev_month_name = calendar.month_abbr[prev_month]
             next_month_name = calendar.month_abbr[next_month]
             is_current_month = view_year == now.year and view_month == now.month
-            show_next_month = (
-                next_year < now.year
-                or (next_year == now.year and next_month <= now.month)
+            show_next_month = next_year < now.year or (
+                next_year == now.year and next_month <= now.month
             )
         else:
             try:
@@ -978,7 +1002,11 @@ def history(request):
         day_entry_counts = []
         total_entries = 0
         for day in history_days:
-            entries = day.get("entries", []) if isinstance(day, dict) else getattr(day, "entries", [])
+            entries = (
+                day.get("entries", [])
+                if isinstance(day, dict)
+                else getattr(day, "entries", [])
+            )
             count = len(entries)
             total_entries += count
             day_entry_counts.append((day.get("date_display") or day.get("date"), count))
@@ -1016,9 +1044,8 @@ def history(request):
             (time.perf_counter() - view_start) * 1000,
             response_bytes,
         )
-        return response
-    except OperationalError as error:
-        logger.error("Database error in history view: %s", error, exc_info=True)
+    except OperationalError:
+        logger.exception("Database error in history view")
         context = {
             "user": request.user,
             "history_days": [],
@@ -1032,3 +1059,5 @@ def history(request):
             "history_refreshing": False,
         }
         return render(request, "app/history.html", context)
+    else:
+        return response

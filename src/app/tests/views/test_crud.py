@@ -127,7 +127,9 @@ class CreateMedia(TestCase):
 
     @patch("app.models.providers.services.get_media_metadata")
     @patch("app.views.services.get_media_metadata")
-    def test_create_reading_media_with_null_format_metadata(self, view_metadata_mock, model_metadata_mock):
+    def test_create_reading_media_with_null_format_metadata(
+        self, view_metadata_mock, model_metadata_mock
+    ):
         """Creating reading media should coerce None format metadata to an empty string."""
         cases = [
             (
@@ -162,7 +164,9 @@ class CreateMedia(TestCase):
                 "max_progress": max_progress,
                 "details": {
                     "format": None,
-                    "number_of_pages": max_progress if media_type == MediaTypes.BOOK.value else None,
+                    "number_of_pages": max_progress
+                    if media_type == MediaTypes.BOOK.value
+                    else None,
                 },
             }
             view_metadata_mock.return_value = metadata
@@ -186,11 +190,15 @@ class CreateMedia(TestCase):
                 media_type=media_type,
             )
             self.assertEqual(item.format, "")
-            self.assertTrue(model_class.objects.filter(item=item, user=self.user).exists())
+            self.assertTrue(
+                model_class.objects.filter(item=item, user=self.user).exists()
+            )
 
     @patch("app.models.providers.services.get_media_metadata")
     @patch("app.views.services.get_media_metadata")
-    def test_create_comic_persists_authors_from_people_metadata(self, view_metadata_mock, model_metadata_mock):
+    def test_create_comic_persists_authors_from_people_metadata(
+        self, view_metadata_mock, model_metadata_mock
+    ):
         """Comic saves should persist provider people names into Item.authors."""
         metadata = {
             "title": "People Writer Comic",
@@ -285,11 +293,15 @@ class CreateMedia(TestCase):
             media_type=MediaTypes.MOVIE.value,
         )
         self.assertIsNotNone(item.release_datetime)
-        self.assertEqual(item.release_datetime.date(), timezone.datetime(1999, 3, 31).date())
+        self.assertEqual(
+            item.release_datetime.date(), timezone.datetime(1999, 3, 31).date()
+        )
 
     @patch("app.models.providers.services.get_media_metadata")
     @patch("app.views.services.get_media_metadata")
-    def test_create_reading_media_persists_metadata_genres(self, view_metadata_mock, model_metadata_mock):
+    def test_create_reading_media_persists_metadata_genres(
+        self, view_metadata_mock, model_metadata_mock
+    ):
         metadata_by_media = {
             (MediaTypes.BOOK.value, "book-genre", Sources.OPENLIBRARY.value): {
                 "title": "Book Genre",
@@ -522,7 +534,9 @@ class CreateMedia(TestCase):
             ],
         }
 
-        def metadata_side_effect(media_type, media_id, source, season_numbers=None, **_kwargs):
+        def metadata_side_effect(
+            media_type, media_id, source, season_numbers=None, **_kwargs
+        ):
             self.assertEqual(media_id, "1668")
             self.assertEqual(source, Sources.TMDB.value)
             if media_type == "tv_with_seasons":
@@ -649,7 +663,9 @@ class CreateMedia(TestCase):
         )
 
     @patch("app.views.ensure_item_metadata")
-    def test_create_game_htmx_returns_activity_subtitle_update(self, ensure_item_metadata_mock):
+    def test_create_game_htmx_returns_activity_subtitle_update(
+        self, ensure_item_metadata_mock
+    ):
         """HTMX game saves should refresh the shared activity subtitle in place."""
         item = Item.objects.create(
             media_id="123",
@@ -678,7 +694,9 @@ class CreateMedia(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'id="detail-activity-subtitle-slot-game-123-igdb"', html=False)
+        self.assertContains(
+            response, 'id="detail-activity-subtitle-slot-game-123-igdb"', html=False
+        )
         self.assertContains(response, "Progress: 3h 25min")
         self.assertContains(response, "April 13, 2026 - May 12, 2026")
         self.assertContains(response, "data-track-action-root", html=False)
@@ -1269,7 +1287,11 @@ class EditMedia(TestCase):
             'id="detail-score-chip-slot-movie-10494-tmdb"',
             html=False,
         )
-        self.assertContains(response, f'id="detail-score-chip-{Movie.objects.get(item__media_id="10494").id}"', html=False)
+        self.assertContains(
+            response,
+            f'id="detail-score-chip-{Movie.objects.get(item__media_id="10494").id}"',
+            html=False,
+        )
         self.assertContains(response, "Edit rating")
         self.assertContains(response, "Completed")
         trigger = json.loads(response["HX-Trigger"])

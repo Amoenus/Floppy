@@ -988,9 +988,7 @@ class MediaSeasonTests(FloppyApiTestCase):
             if episode_media.item_id == tracked_episode_items[0].id
         )
         first_result = next(
-            episode
-            for episode in results
-            if episode["item"]["episode_number"] == 1
+            episode for episode in results if episode["item"]["episode_number"] == 1
         )
         self.assertTrue(first_result["tracked"])
         self.assertEqual(first_result["consumption_id"], tracked_episode.id)

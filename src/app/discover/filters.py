@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from django.apps import apps
 
-from app.discover.schemas import CandidateItem
 from app.models import (
     CollectionEntry,
     DiscoverFeedback,
@@ -12,6 +13,9 @@ from app.models import (
     MediaTypes,
     Status,
 )
+
+if TYPE_CHECKING:
+    from app.discover.schemas import CandidateItem
 
 DEFAULT_BLOCKED_STATUSES = {
     Status.COMPLETED.value,
@@ -128,9 +132,7 @@ def exclude_owned_items(
     if not owned_keys:
         return list(candidates)
     return [
-        candidate
-        for candidate in candidates
-        if candidate.identity() not in owned_keys
+        candidate for candidate in candidates if candidate.identity() not in owned_keys
     ]
 
 
@@ -141,7 +143,11 @@ def exclude_tracked_items(
     """Filter out candidates already tracked in excluded statuses."""
     if not tracked_keys:
         return list(candidates)
-    return [candidate for candidate in candidates if candidate.identity() not in tracked_keys]
+    return [
+        candidate
+        for candidate in candidates
+        if candidate.identity() not in tracked_keys
+    ]
 
 
 def dedupe_candidates(

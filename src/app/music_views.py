@@ -15,25 +15,29 @@ from app.discover import tab_cache as discover_tab_cache
 from app.forms import BulkEpisodeTrackForm
 from app.log_safety import exception_summary
 from app.models import (
-    TV,
     Album,
     Artist,
     CollectionEntry,
     Item,
     MediaTypes,
     Music,
-    Season,
     Sources,
-    Status,
     Track,
 )
 from app.services import bulk_music_tracking
 from app.services import music as sync_services
-from app.signals import suppress_media_cache_change_signals
 from app.tag_views import _build_detail_tag_sections
 from app.templatetags import app_tags
 
 logger = logging.getLogger(__name__)
+
+MINUTES_PER_HOUR = 60
+
+# Lengths of the partial-date strings MusicBrainz can return for a release
+# date: "YYYY", "YYYY-MM", or a full "YYYY-MM-DD" (10+ chars).
+DATE_STR_LEN_YEAR_ONLY = 4
+DATE_STR_LEN_YEAR_MONTH = 7
+DATE_STR_LEN_FULL_DATE = 10
 
 
 def _music_artist_detail_url(artist):
@@ -58,9 +62,7 @@ def _music_activity_date_range(entries):
     first_date = min(start_candidates) if start_candidates else None
     last_date = max(end_candidates) if end_candidates else None
     collapse_same_day = bool(
-        first_date
-        and last_date
-        and first_date.date() == last_date.date()
+        first_date and last_date and first_date.date() == last_date.date()
     )
     return first_date, last_date, collapse_same_day
 
@@ -78,7 +80,9 @@ def _build_music_artist_activity_subtitle(
 
     primary_text = None
     if total_plays:
-        primary_text = "Played once" if total_plays == 1 else f"Played {total_plays} times"
+        primary_text = (
+            "Played once" if total_plays == 1 else f"Played {total_plays} times"
+        )
 
     return {
         "primary_text": primary_text,
@@ -174,9 +178,9 @@ def _render_music_tracker_modal(
     track_form_id = f"track-form-{uuid4().hex}"
     field_groups = view_barrel._track_modal_field_groups(
         form,
-        hidden_field_names=set(
+        hidden_field_names={
             field_name for field_name in form.fields if field_name.endswith("_id")
-        ),
+        },
         metadata_field_names=set(),
     )
     episode_plays_tab_available = bool(bulk_domain)
@@ -232,9 +236,7 @@ def _render_music_tracker_modal(
                 bulk_domain,
             ),
             "episode_plays_mode_notice": (
-                bulk_domain.get("mode_notice", "")
-                if bulk_domain
-                else ""
+                bulk_domain.get("mode_notice", "") if bulk_domain else ""
             ),
             "episode_plays_domain_script_id": f"{track_form_id}-episode-domain",
         },
@@ -291,12 +293,14 @@ def _build_artist_relations(user, artist):
         relations = []
         for membership in memberships:
             related_artist = getattr(membership, attr)
-            relations.append({
-                "artist": related_artist,
-                "role": membership.role,
-                "is_current": membership.is_current,
-                "tracker": trackers_by_artist_id.get(related_artist.id),
-            })
+            relations.append(
+                {
+                    "artist": related_artist,
+                    "role": membership.role,
+                    "is_current": membership.is_current,
+                    "tracker": trackers_by_artist_id.get(related_artist.id),
+                }
+            )
         return relations
 
     band_members = _to_relations(band_memberships, "member")
@@ -328,9 +332,9 @@ def _queue_artist_relation_image_prefetch(artist, band_members, member_of_bands)
         if cache.add(cache_key, True, 60 * 10):
             try:
                 prefetch_artist_images_batch.delay(missing_ids)
-            except Exception as queue_exc:  # pragma: no cover - defensive
+            except Exception:  # pragma: no cover - defensive
                 cache.delete(cache_key)
-                raise queue_exc
+                raise
     except Exception as exc:  # pragma: no cover - defensive
         logger.debug(
             "Artist relation image prefetch queue failed for artist %s: %s",
@@ -443,7 +447,8 @@ def _render_music_artist_details(request, artist):
 
     user_music_entries = list(
         Music.objects.filter(
-            models.Q(album__artist=artist) | models.Q(album__artist_credits__artist=artist),
+            models.Q(album__artist=artist)
+            | models.Q(album__artist_credits__artist=artist),
             user=request.user,
         ).select_related("album", "item"),
     )
@@ -473,11 +478,7 @@ def _render_music_artist_details(request, artist):
         album.score = album_scores.get(album.id)
 
     discography_groups = build_discography_groups(all_albums)
-    missing_cover_count = sum(
-        1
-        for album in all_albums
-        if not album.image
-    )
+    missing_cover_count = sum(1 for album in all_albums if not album.image)
 
     artist_tracker = ArtistTracker.objects.filter(
         user=request.user,
@@ -529,9 +530,7 @@ def _render_music_artist_details(request, artist):
                 updated_fields.append("country")
             if mb_data.get("genres"):
                 genre_names = [
-                    g.get("name")
-                    for g in mb_data.get("genres")
-                    if g.get("name")
+                    g.get("name") for g in mb_data.get("genres") if g.get("name")
                 ]
                 if genre_names != artist.genres:
                     artist.genres = genre_names
@@ -551,9 +550,11 @@ def _render_music_artist_details(request, artist):
         except Exception as exc:
             logger.debug("Failed to sync artist members from MusicBrainz: %s", exc)
 
-    band_members, member_of_bands, missing_relation_image_count = _build_artist_relations(
-        request.user,
-        artist,
+    band_members, member_of_bands, missing_relation_image_count = (
+        _build_artist_relations(
+            request.user,
+            artist,
+        )
     )
     poll_for_relation_images = missing_relation_image_count > 0
     if poll_for_relation_images:
@@ -713,9 +714,8 @@ def _render_music_album_details(request, artist, album):
 
     has_mb_identity = album_has_musicbrainz_id(album)
     album_release_data = None
-    if (
-        album.musicbrainz_release_id
-        and sync_services.album_artist_credits_need_sync(album)
+    if album.musicbrainz_release_id and sync_services.album_artist_credits_need_sync(
+        album
     ):
         try:
             album_release_data = musicbrainz.get_release(album.musicbrainz_release_id)
@@ -833,7 +833,7 @@ def _render_music_album_details(request, artist, album):
     total_runtime = None
     if total_duration_ms:
         total_minutes = total_duration_ms // 60000
-        if total_minutes >= 60:
+        if total_minutes >= MINUTES_PER_HOUR:
             hours = total_minutes // 60
             minutes = total_minutes % 60
             total_runtime = f"{hours}h {minutes}m"
@@ -947,7 +947,9 @@ def _render_music_album_details(request, artist, album):
         "detail_link_sections": detail_link_sections,
         "detail_tag_sections": detail_tag_sections,
         "detail_tag_preview_genres_json": json.dumps(album.genres or []),
-        "detail_tag_preview_implied_genres_json": json.dumps(album.implied_genres or []),
+        "detail_tag_preview_implied_genres_json": json.dumps(
+            album.implied_genres or []
+        ),
         "notes_entry": notes_entry,
     }
     return render(request, "app/media_details.html", context)
@@ -966,7 +968,9 @@ def music_album_details(request, artist_id, artist_slug, album_id, album_slug):
     from app.services.music import canonicalize_album
 
     album = get_object_or_404(
-        Album.objects.select_related("artist").prefetch_related("artist_credits__artist"),
+        Album.objects.select_related("artist").prefetch_related(
+            "artist_credits__artist"
+        ),
         id=album_id,
     )
     canonical_album = canonicalize_album(album, user=request.user)
@@ -1036,11 +1040,13 @@ def create_album_from_search(request, musicbrainz_release_id):
 
                 if artist is None:
                     artist = credit_artist
-                created_artists.append((
-                    credit_artist,
-                    position,
-                    credit.get("join_phrase", ""),
-                ))
+                created_artists.append(
+                    (
+                        credit_artist,
+                        position,
+                        credit.get("join_phrase", ""),
+                    )
+                )
         else:
             if artist_id:
                 artist = Artist.objects.filter(musicbrainz_id=artist_id).first()
@@ -1080,12 +1086,12 @@ def create_album_from_search(request, musicbrainz_release_id):
                 try:
                     from datetime import datetime
 
-                    if len(date_str) == 4:
-                        release_date = datetime.strptime(date_str, "%Y").date()
-                    elif len(date_str) == 7:
-                        release_date = datetime.strptime(date_str, "%Y-%m").date()
-                    elif len(date_str) >= 10:
-                        release_date = datetime.strptime(
+                    if len(date_str) == DATE_STR_LEN_YEAR_ONLY:
+                        release_date = datetime.strptime(date_str, "%Y").date()  # noqa: DTZ007  # date-only value; no timezone applies
+                    elif len(date_str) == DATE_STR_LEN_YEAR_MONTH:
+                        release_date = datetime.strptime(date_str, "%Y-%m").date()  # noqa: DTZ007  # date-only value; no timezone applies
+                    elif len(date_str) >= DATE_STR_LEN_FULL_DATE:
+                        release_date = datetime.strptime(  # noqa: DTZ007  # date-only value; no timezone applies
                             date_str[:10],
                             "%Y-%m-%d",
                         ).date()
@@ -1169,11 +1175,16 @@ def prefetch_artist_covers(request, artist_id):
         .order_by("-release_date", "title"),
     )
 
-    user_music_entries = Music.objects.filter(
-        user=request.user,
-    ).filter(
-        models.Q(album__artist=artist) | models.Q(album__artist_credits__artist=artist),
-    ).select_related("album")
+    user_music_entries = (
+        Music.objects.filter(
+            user=request.user,
+        )
+        .filter(
+            models.Q(album__artist=artist)
+            | models.Q(album__artist_credits__artist=artist),
+        )
+        .select_related("album")
+    )
 
     album_play_counts = {}
     for music in user_music_entries:
@@ -1187,11 +1198,7 @@ def prefetch_artist_covers(request, artist_id):
         album.play_count = album_play_counts.get(album.id, 0)
 
     discography_groups = build_discography_groups(all_albums)
-    missing_cover_count = sum(
-        1
-        for album in all_albums
-        if not album.image
-    )
+    missing_cover_count = sum(1 for album in all_albums if not album.image)
 
     poll_for_covers = missing_cover_count > 0
     if missing_cover_count:
@@ -1199,10 +1206,12 @@ def prefetch_artist_covers(request, artist_id):
         try:
             if cache.add(cache_key, True, 60 * 10):
                 try:
-                    prefetch_album_covers_batch.delay([artist.id], limit_per_artist=None)
-                except Exception as queue_exc:  # pragma: no cover - defensive
+                    prefetch_album_covers_batch.delay(
+                        [artist.id], limit_per_artist=None
+                    )
+                except Exception:  # pragma: no cover - defensive
                     cache.delete(cache_key)
-                    raise queue_exc
+                    raise
             poll_for_covers = bool(cache.get(cache_key))
         except Exception as exc:  # pragma: no cover - defensive
             logger.debug(
@@ -1233,9 +1242,11 @@ def prefetch_artist_relation_images(request, artist_id):
     """
     artist = get_object_or_404(Artist, id=artist_id)
 
-    band_members, member_of_bands, missing_relation_image_count = _build_artist_relations(
-        request.user,
-        artist,
+    band_members, member_of_bands, missing_relation_image_count = (
+        _build_artist_relations(
+            request.user,
+            artist,
+        )
     )
 
     poll_for_relation_images = missing_relation_image_count > 0

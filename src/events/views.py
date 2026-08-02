@@ -64,10 +64,14 @@ def calendar(request):
     # Get calendar data
     week_start_sunday = request.user.week_start_day == WeekStartDayChoices.SUNDAY
     first_weekday = 6 if week_start_sunday else 0
-    calendar_format = cal.Calendar(firstweekday=first_weekday).monthdayscalendar(year, month)
+    calendar_format = cal.Calendar(firstweekday=first_weekday).monthdayscalendar(
+        year, month
+    )
     month_name = cal.month_name[month]
     base_weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-    weekday_headers = [base_weekdays[6], *base_weekdays[:6]] if week_start_sunday else base_weekdays
+    weekday_headers = (
+        [base_weekdays[6], *base_weekdays[:6]] if week_start_sunday else base_weekdays
+    )
 
     # Get events and organize by day
     releases = Event.objects.get_user_events(request.user, first_day, last_day)

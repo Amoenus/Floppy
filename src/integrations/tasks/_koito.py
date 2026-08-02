@@ -228,7 +228,7 @@ def poll_all_koito_accounts():
 
     for index, account in enumerate(accounts_list):
         if index > 0 and index % batch_size == 0:
-            time.sleep(random.uniform(0.5, 2.0))
+            time.sleep(random.uniform(0.5, 2.0))  # noqa: S311  # sampling/jitter only, not cryptographic
 
         result = _run_incremental_koito_sync(account)
         if result["status"] == "success":

@@ -267,10 +267,16 @@ class ListsViewTests(TestCase):
             [custom_list.name for custom_list in response.context["custom_lists"]],
             ["Test List 2", "Test List 1"],
         )
-        self.assertContains(response, timezone.localtime(newer_watch).strftime("%Y-%m-%d"))
-        self.assertContains(response, timezone.localtime(older_watch).strftime("%Y-%m-%d"))
+        self.assertContains(
+            response, timezone.localtime(newer_watch).strftime("%Y-%m-%d")
+        )
+        self.assertContains(
+            response, timezone.localtime(older_watch).strftime("%Y-%m-%d")
+        )
 
-        asc_response = self.client.get(reverse("lists") + "?sort=last_watched&direction=asc")
+        asc_response = self.client.get(
+            reverse("lists") + "?sort=last_watched&direction=asc"
+        )
 
         self.assertEqual(asc_response.status_code, 200)
         self.assertEqual(asc_response.context["current_direction"], "asc")
@@ -312,7 +318,9 @@ class ListsViewTests(TestCase):
         self.assertTemplateUsed(response, "lists/components/list_grid.html")
         self.assertEqual(response.context["current_sort"], "last_watched")
         self.assertEqual(response.context["current_direction"], "desc")
-        self.assertContains(response, timezone.localtime(watched_at).strftime("%Y-%m-%d"))
+        self.assertContains(
+            response, timezone.localtime(watched_at).strftime("%Y-%m-%d")
+        )
         self.assertContains(response, "No watched items")
 
     @patch.object(get_user_model(), "update_preference")
@@ -374,7 +382,7 @@ class ListsViewTests(TestCase):
         self.assertNotContains(response, reverse("list_add_item", args=[self.list1.id]))
         self.assertNotContains(
             response,
-            f'{reverse("list_detail", args=[smart_list.id])}?edit_smart_rules=1',
+            f"{reverse('list_detail', args=[smart_list.id])}?edit_smart_rules=1",
         )
         self.assertContains(response, "More list actions")
 
@@ -636,7 +644,9 @@ class ListDetailViewTests(TestCase):
         self.assertLess(content.index("3 items"), content.index(self.user.username))
         self.assertLess(content.index(self.user.username), content.index("Links"))
         self.assertLess(content.index("Links"), content.index("Recommend Item"))
-        self.assertLess(content.index("Recommend Item"), content.index("Test Description"))
+        self.assertLess(
+            content.index("Recommend Item"), content.index("Test Description")
+        )
 
     def test_public_list_detail_resolves_custom_slug(self):
         """Public lists should resolve their custom slug in the detail route."""
@@ -645,7 +655,9 @@ class ListDetailViewTests(TestCase):
         self.custom_list.save(update_fields=["visibility", "public_slug"])
 
         self.client.logout()
-        response = self.client.get(reverse("list_detail", args=[self.custom_list.public_slug]))
+        response = self.client.get(
+            reverse("list_detail", args=[self.custom_list.public_slug])
+        )
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["custom_list"], self.custom_list)
@@ -823,7 +835,8 @@ class ListDetailViewTests(TestCase):
         self.anime_item.save(update_fields=["release_datetime"])
 
         asc_response = self.client.get(
-            reverse("list_detail", args=[self.custom_list.id]) + "?sort=release_date&direction=asc",
+            reverse("list_detail", args=[self.custom_list.id])
+            + "?sort=release_date&direction=asc",
         )
         self.assertEqual(asc_response.status_code, 200)
         self.assertEqual(asc_response.context["current_direction"], "asc")
@@ -833,7 +846,8 @@ class ListDetailViewTests(TestCase):
         )
 
         desc_response = self.client.get(
-            reverse("list_detail", args=[self.custom_list.id]) + "?sort=release_date&direction=desc",
+            reverse("list_detail", args=[self.custom_list.id])
+            + "?sort=release_date&direction=desc",
         )
         self.assertEqual(desc_response.status_code, 200)
         self.assertEqual(desc_response.context["current_direction"], "desc")
@@ -1023,7 +1037,9 @@ class ListDetailViewTests(TestCase):
 
     @patch.object(get_user_model(), "update_preference")
     @patch.object(CustomList, "user_can_view")
-    def test_list_table_column_preferences_are_scoped_to_lists(self, mock_user_can_view, mock_update_preference):
+    def test_list_table_column_preferences_are_scoped_to_lists(
+        self, mock_user_can_view, mock_update_preference
+    ):
         mock_update_preference.side_effect = ["date_added", None]
         mock_user_can_view.return_value = True
 
@@ -1085,7 +1101,9 @@ class ListDetailViewTests(TestCase):
         response = self.client.get(reverse("list_detail", args=[self.custom_list.id]))
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, reverse("list_add_item", args=[self.custom_list.id]))
+        self.assertContains(
+            response, reverse("list_add_item", args=[self.custom_list.id])
+        )
         self.assertContains(response, "Add New Item")
         self.assertContains(response, "More list actions")
         self.assertNotContains(response, 'aria-label="Edit list"')
@@ -1102,7 +1120,9 @@ class ListDetailViewTests(TestCase):
         content = response.content.decode()
         self.assertLess(content.index("3 items"), content.index("Links"))
         self.assertLess(content.index("Links"), content.index("Add New Item"))
-        self.assertLess(content.index("Add New Item"), content.index("Test Description"))
+        self.assertLess(
+            content.index("Add New Item"), content.index("Test Description")
+        )
 
     @patch("app.providers.services.get_media_metadata")
     def test_smart_list_detail_exposes_smart_rule_split_actions(
@@ -1133,7 +1153,7 @@ class ListDetailViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(
             response,
-            f'{reverse("list_detail", args=[smart_list.id])}?edit_smart_rules=1',
+            f"{reverse('list_detail', args=[smart_list.id])}?edit_smart_rules=1",
         )
         self.assertContains(response, "Smart Rules")
         self.assertContains(response, "More list actions")
@@ -1172,8 +1192,12 @@ class ListDetailViewTests(TestCase):
         content = response.content.decode()
         self.assertLess(content.index("1 item"), content.index("Links"))
         self.assertLess(content.index("Links"), content.index("Edit Smart Rules"))
-        self.assertLess(content.index("Edit Smart Rules"), content.index("Smart Description"))
-        self.assertLess(content.index("Smart Description"), content.rindex("Smart Rules"))
+        self.assertLess(
+            content.index("Edit Smart Rules"), content.index("Smart Description")
+        )
+        self.assertLess(
+            content.index("Smart Description"), content.rindex("Smart Rules")
+        )
 
     @patch("app.providers.services.get_media_metadata")
     def test_public_smart_list_reorders_header_and_removes_public_banner(
@@ -1217,7 +1241,9 @@ class ListDetailViewTests(TestCase):
         self.assertLess(content.index("1 item"), content.index(self.user.username))
         self.assertLess(content.index(self.user.username), content.index("Links"))
         self.assertLess(content.index("Links"), content.index("Recommend Item"))
-        self.assertLess(content.index("Recommend Item"), content.index("Smart Description"))
+        self.assertLess(
+            content.index("Recommend Item"), content.index("Smart Description")
+        )
 
     @patch("app.providers.services.get_media_metadata")
     def test_smart_list_detail_table_partial(self, mock_get_media_metadata):
@@ -1241,7 +1267,8 @@ class ListDetailViewTests(TestCase):
         )
 
         response = self.client.get(
-            reverse("list_detail", args=[smart_list.id]) + "?edit_smart_rules=1&layout=table",
+            reverse("list_detail", args=[smart_list.id])
+            + "?edit_smart_rules=1&layout=table",
             HTTP_HX_REQUEST="true",
         )
         self.assertEqual(response.status_code, 200)
@@ -1381,9 +1408,15 @@ class ListDetailViewTests(TestCase):
         self.tv_item.save(update_fields=["release_datetime"])
         self.anime_item.save(update_fields=["release_datetime"])
 
-        Movie.objects.create(item=self.movie_item, status=Status.COMPLETED.value, user=self.user)
-        TV.objects.create(item=self.tv_item, status=Status.IN_PROGRESS.value, user=self.user)
-        Anime.objects.create(item=self.anime_item, status=Status.PLANNING.value, user=self.user)
+        Movie.objects.create(
+            item=self.movie_item, status=Status.COMPLETED.value, user=self.user
+        )
+        TV.objects.create(
+            item=self.tv_item, status=Status.IN_PROGRESS.value, user=self.user
+        )
+        Anime.objects.create(
+            item=self.anime_item, status=Status.PLANNING.value, user=self.user
+        )
 
         smart_list = CustomList.objects.create(
             name="Smart List",
@@ -1398,7 +1431,8 @@ class ListDetailViewTests(TestCase):
         )
 
         asc_response = self.client.get(
-            reverse("list_detail", args=[smart_list.id]) + "?sort=release_date&direction=asc",
+            reverse("list_detail", args=[smart_list.id])
+            + "?sort=release_date&direction=asc",
         )
         self.assertEqual(asc_response.status_code, 200)
         self.assertEqual(asc_response.context["current_direction"], "asc")
@@ -1408,7 +1442,8 @@ class ListDetailViewTests(TestCase):
         )
 
         desc_response = self.client.get(
-            reverse("list_detail", args=[smart_list.id]) + "?sort=release_date&direction=desc",
+            reverse("list_detail", args=[smart_list.id])
+            + "?sort=release_date&direction=desc",
         )
         self.assertEqual(desc_response.status_code, 200)
         self.assertEqual(desc_response.context["current_direction"], "desc")
@@ -1419,8 +1454,15 @@ class ListDetailViewTests(TestCase):
 
     def test_smart_list_uses_saved_sort_defaults(self):
         """Smart-list detail should default to the saved sort and direction."""
-        Movie.objects.create(item=self.movie_item, status=Status.COMPLETED.value, user=self.user, score=8.0)
-        TV.objects.create(item=self.tv_item, status=Status.IN_PROGRESS.value, user=self.user)
+        Movie.objects.create(
+            item=self.movie_item,
+            status=Status.COMPLETED.value,
+            user=self.user,
+            score=8.0,
+        )
+        TV.objects.create(
+            item=self.tv_item, status=Status.IN_PROGRESS.value, user=self.user
+        )
 
         smart_list = CustomList.objects.create(
             name="Sorted Smart List",
@@ -1439,7 +1481,6 @@ class ListDetailViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["current_sort"], "rating")
         self.assertEqual(response.context["current_direction"], "asc")
-
 
     @patch("app.providers.services.get_media_metadata")
     @patch.object(get_user_model(), "update_preference")
@@ -1742,7 +1783,9 @@ class SmartRulesUpdateViewTest(TestCase):
         self.smart_list.refresh_from_db()
         self.assertEqual(self.smart_list.smart_filters["rating_min"], "7.0")
         self.assertEqual(self.smart_list.smart_filters["rating_max"], "9.0")
-        self.assertEqual(self.smart_list.smart_filters["release_date_from"], "2000-01-01")
+        self.assertEqual(
+            self.smart_list.smart_filters["release_date_from"], "2000-01-01"
+        )
         self.assertEqual(self.smart_list.smart_filters["release_date_to"], "2009-12-31")
         self.assertEqual(self.smart_list.smart_filters["date_added_from"], "2026-01-01")
         self.assertEqual(self.smart_list.smart_filters["date_added_to"], "2026-01-31")
@@ -1921,9 +1964,15 @@ class ReorderListItemViewTests(TestCase):
         )
 
         custom_items = [
-            CustomListItem.objects.create(custom_list=self.custom_list, item=self.item_one),
-            CustomListItem.objects.create(custom_list=self.custom_list, item=self.item_two),
-            CustomListItem.objects.create(custom_list=self.custom_list, item=self.item_three),
+            CustomListItem.objects.create(
+                custom_list=self.custom_list, item=self.item_one
+            ),
+            CustomListItem.objects.create(
+                custom_list=self.custom_list, item=self.item_two
+            ),
+            CustomListItem.objects.create(
+                custom_list=self.custom_list, item=self.item_three
+            ),
         ]
         start = timezone.now().replace(microsecond=0)
         for offset, custom_item in enumerate(custom_items):
@@ -2424,7 +2473,10 @@ class ListRssFeedTests(TestCase):
             manual_metadata={"synopsis": "Brick-built galactic co-op."},
         )
         with (
-            patch("app.models.providers.services.get_media_metadata", return_value={"max_progress": None}),
+            patch(
+                "app.models.providers.services.get_media_metadata",
+                return_value={"max_progress": None},
+            ),
             patch("app.models.Item.fetch_releases"),
         ):
             Game.objects.create(
@@ -2449,7 +2501,10 @@ class ListRssFeedTests(TestCase):
         self.assertIn(b"RSS Movie", response.content)
         self.assertIsNotNone(item)
         self.assertEqual(item.findtext("description"), "Brick-built galactic co-op.")
-        self.assertEqual(item.findtext("yamtrack:status", namespaces=namespaces), Status.COMPLETED.value)
+        self.assertEqual(
+            item.findtext("yamtrack:status", namespaces=namespaces),
+            Status.COMPLETED.value,
+        )
         self.assertEqual(
             item.findtext("yamtrack:description", namespaces=namespaces),
             "Brick-built galactic co-op.",
@@ -2464,7 +2519,9 @@ class ListRssFeedTests(TestCase):
         self.custom_list.public_slug = "public-rss-list"
         self.custom_list.save(update_fields=["public_slug"])
 
-        response = self.client.get(reverse("list_rss", args=[self.custom_list.public_slug]))
+        response = self.client.get(
+            reverse("list_rss", args=[self.custom_list.public_slug])
+        )
 
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"RSS Movie", response.content)
@@ -2673,7 +2730,9 @@ class RecommendationRedirectTests(TestCase):
         self.client = Client()
         self.custom_list = CustomList.objects.create(
             name="Public Recs",
-            owner=get_user_model().objects.create_user("owner", "owner@example.com", "pw"),
+            owner=get_user_model().objects.create_user(
+                "owner", "owner@example.com", "pw"
+            ),
             visibility="public",
             allow_recommendations=True,
         )
@@ -2760,7 +2819,9 @@ class QuickAddListItemTests(TestCase):
 
     def setUp(self):
         self.client = Client()
-        self.user = get_user_model().objects.create_user("owner", "owner@example.com", "pw")
+        self.user = get_user_model().objects.create_user(
+            "owner", "owner@example.com", "pw"
+        )
         self.client.force_login(self.user)
         self.custom_list = CustomList.objects.create(
             name="Manual List",
@@ -2797,7 +2858,9 @@ class QuickAddListItemTests(TestCase):
         )
 
     @patch("lists.views.services.get_media_metadata")
-    def test_add_list_item_search_preview_renders_owner_add_modal(self, mock_get_metadata):
+    def test_add_list_item_search_preview_renders_owner_add_modal(
+        self, mock_get_metadata
+    ):
         """Preview requests should use the direct-add modal instead of recommendations."""
         mock_get_metadata.return_value = {
             "title": "Preview Movie",
@@ -2821,11 +2884,15 @@ class QuickAddListItemTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, "lists/components/add_item_preview_modal.html")
-        self.assertContains(response, reverse("list_add_item_submit", args=[self.custom_list.id]))
+        self.assertTemplateUsed(
+            response, "lists/components/add_item_preview_modal.html"
+        )
+        self.assertContains(
+            response, reverse("list_add_item_submit", args=[self.custom_list.id])
+        )
         self.assertContains(
             response,
-            f'{reverse("list_add_item", args=[self.custom_list.id])}?q=dark&amp;media_type=movie&amp;page=2',
+            f"{reverse('list_add_item', args=[self.custom_list.id])}?q=dark&amp;media_type=movie&amp;page=2",
         )
 
     @patch("lists.views.services.get_media_metadata")
@@ -2877,7 +2944,9 @@ class QuickAddListItemTests(TestCase):
 
         self.assertRedirects(response, next_url, fetch_redirect_response=False)
         self.assertTrue(
-            CustomListItem.objects.filter(custom_list=self.custom_list, item=self.item).exists(),
+            CustomListItem.objects.filter(
+                custom_list=self.custom_list, item=self.item
+            ).exists(),
         )
         self.assertTrue(
             ListActivity.objects.filter(
@@ -2900,7 +2969,9 @@ class QuickAddListItemTests(TestCase):
             "genres": [],
             "synopsis": "",
         }
-        next_url = f"{reverse('list_add_item', args=[self.custom_list.id])}?q=death+note"
+        next_url = (
+            f"{reverse('list_add_item', args=[self.custom_list.id])}?q=death+note"
+        )
 
         response = self.client.post(
             reverse("list_add_item_submit", args=[self.custom_list.id]),

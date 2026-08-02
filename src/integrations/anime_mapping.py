@@ -15,7 +15,9 @@ REMOTE_URL = (
     "https://raw.githubusercontent.com/Kometa-Team/Anime-IDs/refs/heads/master/"
     "anime_ids.json"
 )
-TEST_FIXTURE_PATH = Path(__file__).resolve().parent / "tests" / "mock_data" / "anime_mapping.json"
+TEST_FIXTURE_PATH = (
+    Path(__file__).resolve().parent / "tests" / "mock_data" / "anime_mapping.json"
+)
 
 
 def load_mapping_data() -> dict:
@@ -42,9 +44,7 @@ def _normalize_mal_ids(mal_value) -> set[str]:
     if isinstance(mal_value, int):
         return {str(mal_value)}
     return {
-        str(part).strip()
-        for part in str(mal_value).split(",")
-        if str(part).strip()
+        str(part).strip() for part in str(mal_value).split(",") if str(part).strip()
     }
 
 

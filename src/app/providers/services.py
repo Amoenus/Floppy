@@ -4,6 +4,8 @@ import re
 import sys
 import time
 from difflib import SequenceMatcher
+from http import HTTPStatus
+from pathlib import Path
 
 import requests
 from defusedxml import ElementTree
@@ -43,6 +45,18 @@ TRANSIENT_HTTP_STATUS_CODES = frozenset(
 )
 TRANSIENT_HTTP_MAX_RETRIES = 2
 
+# MusicBrainz MBIDs are UUIDs (36 chars); shorter values are not valid
+# recording IDs and should be treated as "no metadata available".
+MUSICBRAINZ_MBID_MIN_LENGTH = 30
+
+# ISBN-10 and ISBN-13 identifier lengths (digits only, after cleaning).
+ISBN_10_LENGTH = 10
+ISBN_13_LENGTH = 13
+
+# Minimum fuzzy title-similarity ratio to accept a Hardcover match as the
+# same book when disambiguating by ISBN fails.
+TITLE_SIMILARITY_THRESHOLD = 0.88
+
 
 def _audiobookshelf_book(media_id):
     """Return local metadata for an Audiobookshelf book item.
@@ -50,7 +64,7 @@ def _audiobookshelf_book(media_id):
     Audiobookshelf library item IDs are not Open Library IDs, so attempting to
     resolve them via Open Library causes 404s and can break details pages.
     """
-    from app.models import Item  # noqa: PLC0415
+    from app.models import Item
 
     item = Item.objects.filter(
         media_id=media_id,
@@ -100,7 +114,7 @@ def _storyteller_book(media_id):
     synthetic media_id, so resolve them from the local Item instead of an
     external API (which would 404).
     """
-    from app.models import Item  # noqa: PLC0415
+    from app.models import Item
 
     item = Item.objects.filter(
         media_id=media_id,
@@ -146,7 +160,7 @@ def _storyteller_book(media_id):
 def get_redis_pool():
     """Return a Redis connection pool."""
     if settings.TESTING:
-        import fakeredis  # noqa: PLC0415
+        import fakeredis
 
         return fakeredis.FakeRedis().connection_pool
     return ConnectionPool.from_url(settings.REDIS_URL)
@@ -168,7 +182,7 @@ def get_process_role():
     role = role.strip().lower()
     if role in {"web", "interactive", "background"}:
         return role
-    argv0 = os.path.basename(sys.argv[0]).lower() if sys.argv and sys.argv[0] else ""
+    argv0 = Path(sys.argv[0]).name.lower() if sys.argv and sys.argv[0] else ""
     if "celery" in argv0:
         return "background"
     return "web"
@@ -264,7 +278,9 @@ class ProviderAPIError(Exception):
                     except (TypeError, ValueError):
                         response_keys = []
 
-        log_method = logger.warning if self.status_code == 404 else logger.error
+        log_method = (
+            logger.warning if self.status_code == HTTPStatus.NOT_FOUND else logger.error
+        )
         if response is None:
             log_method(
                 "%s api request failed error=%s",
@@ -282,7 +298,9 @@ class ProviderAPIError(Exception):
                 )
             else:
                 response_text = getattr(response, "text", "")
-                body_length = len(response_text) if isinstance(response_text, str) else 0
+                body_length = (
+                    len(response_text) if isinstance(response_text, str) else 0
+                )
                 log_method(
                     "%s api error status=%s content_type=%s body_length=%s",
                     provider_label,
@@ -490,7 +508,9 @@ def get_media_metadata(
         if media_type == MediaTypes.SEASON.value:
             return _ensure_title_fields(manual.season(media_id, season_numbers[0]))
         if media_type == MediaTypes.EPISODE.value:
-            return _ensure_title_fields(manual.episode(media_id, season_numbers[0], episode_number))
+            return _ensure_title_fields(
+                manual.episode(media_id, season_numbers[0], episode_number)
+            )
         if media_type == "tv_with_seasons":
             media_type = MediaTypes.TV.value
         return _ensure_title_fields(manual.metadata(media_id, media_type))
@@ -545,7 +565,8 @@ def get_media_metadata(
         MediaTypes.ANIME.value: lambda: (
             mal.anime(media_id)
             if source == Sources.MAL.value
-            else tmdb.tv(media_id) | {
+            else tmdb.tv(media_id)
+            | {
                 "media_type": MediaTypes.ANIME.value,
                 "identity_media_type": MediaTypes.TV.value,
                 "library_media_type": MediaTypes.ANIME.value,
@@ -612,7 +633,7 @@ def get_media_metadata(
         },
     }
     if media_type == MediaTypes.MUSIC.value:
-        if not media_id or len(str(media_id)) < 30:
+        if not media_id or len(str(media_id)) < MUSICBRAINZ_MBID_MIN_LENGTH:
             return _ensure_title_fields(
                 {
                     "max_progress": None,
@@ -704,14 +725,14 @@ def _metadata_to_search_result(metadata):
 def _normalize_isbn_candidate(value):
     """Return a normalized ISBN-10/13 when the input passes checksum validation."""
     cleaned = _ISBN_CLEAN_RE.sub("", str(value or "")).upper()
-    if len(cleaned) == 10 and re.fullmatch(r"\d{9}[\dX]", cleaned):
+    if len(cleaned) == ISBN_10_LENGTH and re.fullmatch(r"\d{9}[\dX]", cleaned):
         total = 0
         for index, char in enumerate(cleaned):
             digit = 10 if char == "X" else int(char)
             total += (10 - index) * digit
         return cleaned if total % 11 == 0 else None
 
-    if len(cleaned) == 13 and cleaned.isdigit():
+    if len(cleaned) == ISBN_13_LENGTH and cleaned.isdigit():
         checksum = 0
         for index, char in enumerate(cleaned[:12]):
             checksum += int(char) * (1 if index % 2 == 0 else 3)
@@ -784,7 +805,7 @@ def _extract_isbns(metadata):
 
 def _resolve_hardcover_isbn_search(query, page):
     """Resolve ISBN queries against Hardcover using Open Library metadata."""
-    from app import helpers  # noqa: PLC0415
+    from app import helpers
 
     isbn = _normalize_isbn_candidate(query)
     if not isbn:
@@ -792,7 +813,7 @@ def _resolve_hardcover_isbn_search(query, page):
 
     try:
         ol_results = openlibrary.search(isbn, 1).get("results", [])
-    except Exception:  # noqa: BLE001
+    except Exception:  # best-effort provider lookup
         return None
 
     best_fallback_response = None
@@ -805,7 +826,7 @@ def _resolve_hardcover_isbn_search(query, page):
         if media_id:
             try:
                 ol_metadata = openlibrary.book(str(media_id))
-            except Exception:  # noqa: BLE001
+            except Exception:  # best-effort provider lookup
                 ol_metadata = None
             else:
                 title = str(ol_metadata.get("title") or title).strip()
@@ -829,7 +850,7 @@ def _resolve_hardcover_isbn_search(query, page):
 
             try:
                 hardcover_results = hardcover.search(normalized_query, page)
-            except Exception:  # noqa: BLE001
+            except Exception:  # noqa: S112  # best-effort provider lookup
                 continue
 
             if not best_fallback_response and hardcover_results.get("results"):
@@ -842,7 +863,7 @@ def _resolve_hardcover_isbn_search(query, page):
 
                 try:
                     hardcover_metadata = hardcover.book(media_id)
-                except Exception:  # noqa: BLE001
+                except Exception:  # noqa: S112  # best-effort provider lookup
                     continue
 
                 hardcover_isbns = _extract_isbns(hardcover_metadata)
@@ -856,7 +877,7 @@ def _resolve_hardcover_isbn_search(query, page):
 
                 hardcover_title = hardcover_metadata.get("title") or result.get("title")
                 title_score = _title_similarity(title, hardcover_title)
-                if title_score < 0.88:
+                if title_score < TITLE_SIMILARITY_THRESHOLD:
                     continue
 
                 candidate_authors = {
@@ -880,7 +901,7 @@ def _resolve_hardcover_isbn_search(query, page):
     return best_fallback_response
 
 
-def _lookup_by_numeric_id(media_type, query, source):  # noqa: PLR0911
+def _lookup_by_numeric_id(media_type, query, source):
     """Return full metadata for a media item identified by a numeric provider ID."""
     n = int(query)
     tv_types = (MediaTypes.TV.value, MediaTypes.SEASON.value, MediaTypes.EPISODE.value)
@@ -920,7 +941,7 @@ def search_by_id(media_type, query, source=None):
     an ID pattern and the provider lookup succeeds, or ``None`` otherwise
     (triggering the normal text-search fallback).
     """
-    from app import helpers  # noqa: PLC0415
+    from app import helpers
 
     query = query.strip()
     source = _resolve_search_source(media_type, source)
@@ -942,7 +963,7 @@ def search_by_id(media_type, query, source=None):
             metadata = openlibrary.book(query)
         elif _UUID_RE.match(query) and media_type == MediaTypes.MUSIC.value:
             metadata = musicbrainz.recording(query)
-    except Exception:  # noqa: BLE001
+    except Exception:  # best-effort provider lookup
         return None
 
     if not metadata or not metadata.get("title"):
@@ -956,7 +977,12 @@ def search(media_type, query, page, source=None, limit=None, offset=None, user=N
     """Search for media based on the query and return the results."""
     if source == Sources.MANUAL.value:
         return manual.search(
-            media_type, query, page=page, limit=limit, offset=offset, user=user,
+            media_type,
+            query,
+            page=page,
+            limit=limit,
+            offset=offset,
+            user=user,
         )
 
     source = _resolve_search_source(media_type, source)
@@ -967,10 +993,7 @@ def search(media_type, query, page, source=None, limit=None, offset=None, user=N
         if id_result is not None:
             return id_result
 
-        if (
-            media_type == MediaTypes.BOOK.value
-            and source != Sources.OPENLIBRARY.value
-        ):
+        if media_type == MediaTypes.BOOK.value and source != Sources.OPENLIBRARY.value:
             isbn_result = _resolve_hardcover_isbn_search(query, page)
             if isbn_result is not None:
                 return isbn_result

@@ -38,19 +38,21 @@ def _next_credits_backfill_item_ids(batch_size: int, scan_multiplier: int):
         return []
     candidate_limit = max(batch_size * max(scan_multiplier, 1), batch_size)
     candidates = (
-            Item.objects.filter(
-                source__in=CREDITS_BACKFILL_SOURCES,
-                media_type__in=[
-                    MediaTypes.MOVIE.value,
-                    MediaTypes.TV.value,
-                    MediaTypes.SEASON.value,
-                    MediaTypes.EPISODE.value,
-                ],
-            )
-            .order_by("id")
-            .values_list("id", flat=True)[:candidate_limit]
+        Item.objects.filter(
+            source__in=CREDITS_BACKFILL_SOURCES,
+            media_type__in=[
+                MediaTypes.MOVIE.value,
+                MediaTypes.TV.value,
+                MediaTypes.SEASON.value,
+                MediaTypes.EPISODE.value,
+            ],
+        )
+        .order_by("id")
+        .values_list("id", flat=True)[:candidate_limit]
     )
-    candidate_ids = _filter_backfill_item_ids(list(candidates), MetadataBackfillField.CREDITS)
+    candidate_ids = _filter_backfill_item_ids(
+        list(candidates), MetadataBackfillField.CREDITS
+    )
     if not candidate_ids:
         return []
     missing_ids = _missing_credits_item_ids(candidate_ids)
@@ -58,7 +60,9 @@ def _next_credits_backfill_item_ids(batch_size: int, scan_multiplier: int):
 
 
 def _populate_credits_for_items(items, delay_seconds):
-    from app import credits  # noqa: PLC0415
+    from app import (
+        credits,  # noqa: A004  # app.credits module, not the site builtin
+    )
 
     updated_count = 0
     error_count = 0
@@ -82,7 +86,10 @@ def _populate_credits_for_items(items, delay_seconds):
                 )
                 continue
 
-            if item.media_type == MediaTypes.SEASON.value and item.season_number is None:
+            if (
+                item.media_type == MediaTypes.SEASON.value
+                and item.season_number is None
+            ):
                 logger.warning(
                     "Season item %s is missing season_number; skipping credits backfill",
                     item.id,
@@ -105,21 +112,27 @@ def _populate_credits_for_items(items, delay_seconds):
                     item.source,
                 )
                 error_count += 1
-                _record_backfill_failure(item, MetadataBackfillField.CREDITS, "no metadata")
+                _record_backfill_failure(
+                    item, MetadataBackfillField.CREDITS, "no metadata"
+                )
                 continue
 
-            has_payload = any(key in metadata for key in ("cast", "crew", "studios_full"))
+            has_payload = any(
+                key in metadata for key in ("cast", "crew", "studios_full")
+            )
             if not has_payload:
                 logger.warning("No credits payload available for %s", item.title)
                 error_count += 1
-                _record_backfill_failure(item, MetadataBackfillField.CREDITS, "no credits payload")
+                _record_backfill_failure(
+                    item, MetadataBackfillField.CREDITS, "no credits payload"
+                )
                 continue
 
             # Suppress per-row signal side effects (each ItemPersonCredit
             # delete/create would otherwise schedule its own Discover rebuild);
             # _schedule_metadata_statistics_refresh below handles the follow-up
             # invalidation for the whole batch instead.
-            from app.signals import suppress_media_change_side_effects  # noqa: PLC0415
+            from app.signals import suppress_media_change_side_effects
 
             with suppress_media_change_side_effects():
                 credits.sync_item_credits_from_metadata(item, metadata)
@@ -132,15 +145,28 @@ def _populate_credits_for_items(items, delay_seconds):
             updated_items.append(item)
 
             if delay_seconds > 0:
-                import time  # noqa: PLC0415
+                import time
+
                 time.sleep(delay_seconds)
         except Exception as exc:
             error_count += 1
-            logger.error("Error syncing credits for %s: %s", item.title, exception_summary(exc))
-            _record_backfill_failure(item, MetadataBackfillField.CREDITS, f"exception: {exception_summary(exc)}")
+            logger.exception(
+                "Error syncing credits for %s: %s",
+                item.title,
+                exception_summary(exc),  # noqa: TRY401  # exception_summary() is the project's sanitised rendering
+            )
+            _record_backfill_failure(
+                item,
+                MetadataBackfillField.CREDITS,
+                f"exception: {exception_summary(exc)}",
+            )
 
     run.reenqueue_if_deferred(enqueue_credits_backfill_items)
-    logger.info("Credits population batch completed: %s updated, %s errors", updated_count, error_count)
+    logger.info(
+        "Credits population batch completed: %s updated, %s errors",
+        updated_count,
+        error_count,
+    )
     if updated_items:
         _schedule_metadata_statistics_refresh(
             updated_items,
@@ -151,6 +177,7 @@ def _populate_credits_for_items(items, delay_seconds):
 
 
 def enqueue_credits_backfill_items(item_ids, countdown=10):
+    """Return the enqueue credits backfill items."""
     normalized = _normalize_item_ids(item_ids)
     normalized = _filter_backfill_item_ids(normalized, MetadataBackfillField.CREDITS)
     normalized = _missing_credits_item_ids(normalized)
@@ -159,12 +186,16 @@ def enqueue_credits_backfill_items(item_ids, countdown=10):
     try:
         queue = cache.get(CREDITS_BACKFILL_ITEMS_QUEUE_KEY) or []
         queue = list(set(queue).union(normalized))
-        cache.set(CREDITS_BACKFILL_ITEMS_QUEUE_KEY, queue, timeout=CREDITS_BACKFILL_QUEUE_TTL)
+        cache.set(
+            CREDITS_BACKFILL_ITEMS_QUEUE_KEY, queue, timeout=CREDITS_BACKFILL_QUEUE_TTL
+        )
         if cache.add(CREDITS_BACKFILL_ITEMS_SCHEDULED_KEY, True, timeout=30):
             populate_credits_backfill_queue.apply_async(countdown=countdown)
     except Exception as exc:  # pragma: no cover - cache unavailable
         logger.debug("Credits backfill queue unavailable: %s", exception_summary(exc))
-        populate_credits_data_for_items.apply_async(args=[normalized], countdown=countdown)
+        populate_credits_data_for_items.apply_async(
+            args=[normalized], countdown=countdown
+        )
     return len(normalized)
 
 
@@ -175,7 +206,11 @@ def populate_credits_data_for_items(item_ids: list[int], delay_seconds: float = 
     normalized = _filter_backfill_item_ids(normalized, MetadataBackfillField.CREDITS)
     normalized = _missing_credits_item_ids(normalized)
     if not normalized:
-        return {"updated": 0, "errors": 0, "message": "No targeted items need credits data"}
+        return {
+            "updated": 0,
+            "errors": 0,
+            "message": "No targeted items need credits data",
+        }
 
     items_to_update = list(
         Item.objects.filter(
@@ -191,9 +226,15 @@ def populate_credits_data_for_items(item_ids: list[int], delay_seconds: float = 
     )
     if not items_to_update:
         logger.info("No targeted items need credits data")
-        return {"updated": 0, "errors": 0, "message": "No targeted items need credits data"}
+        return {
+            "updated": 0,
+            "errors": 0,
+            "message": "No targeted items need credits data",
+        }
 
-    updated_count, error_count = _populate_credits_for_items(items_to_update, delay_seconds)
+    updated_count, error_count = _populate_credits_for_items(
+        items_to_update, delay_seconds
+    )
     return {
         "updated": updated_count,
         "errors": error_count,
@@ -213,7 +254,11 @@ def populate_credits_backfill_queue(batch_size: int = 50, delay_seconds: float =
     batch = queue[:batch_size]
     remaining = queue[batch_size:]
     if remaining:
-        cache.set(CREDITS_BACKFILL_ITEMS_QUEUE_KEY, remaining, timeout=CREDITS_BACKFILL_QUEUE_TTL)
+        cache.set(
+            CREDITS_BACKFILL_ITEMS_QUEUE_KEY,
+            remaining,
+            timeout=CREDITS_BACKFILL_QUEUE_TTL,
+        )
         if cache.add(CREDITS_BACKFILL_ITEMS_SCHEDULED_KEY, True, timeout=30):
             populate_credits_backfill_queue.apply_async(countdown=10)
     else:

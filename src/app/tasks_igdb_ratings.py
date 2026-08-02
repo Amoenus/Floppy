@@ -35,14 +35,16 @@ IGDB_RATINGS_BACKFILL_ITEMS_SCHEDULED_KEY = "igdb_ratings_backfill_items_schedul
 
 
 def _igdb_rating_items_queryset():
-    from app.models import MetadataBackfillState  # noqa: PLC0415
+    from app.models import MetadataBackfillState
 
     queryset = Item.objects.filter(
         source=Sources.IGDB.value,
         media_type=MediaTypes.GAME.value,
         metadata_fetched_at__isnull=False,
     )
-    queryset = _apply_backfill_state_filters(queryset, MetadataBackfillField.IGDB_RATINGS)
+    queryset = _apply_backfill_state_filters(
+        queryset, MetadataBackfillField.IGDB_RATINGS
+    )
     completed_ids = MetadataBackfillState.objects.filter(
         field=MetadataBackfillField.IGDB_RATINGS,
         give_up=False,
@@ -54,6 +56,7 @@ def _igdb_rating_items_queryset():
 
 
 def count_igdb_rating_backfill_items() -> int:
+    """Return the count igdb rating backfill items."""
     return _igdb_rating_items_queryset().count()
 
 
@@ -70,7 +73,9 @@ def _populate_igdb_ratings_for_items(items):
             )
             if not isinstance(metadata, dict):
                 error_count += 1
-                _record_backfill_failure(item, MetadataBackfillField.IGDB_RATINGS, "no metadata")
+                _record_backfill_failure(
+                    item, MetadataBackfillField.IGDB_RATINGS, "no metadata"
+                )
                 continue
 
             update_fields = metadata_utils.apply_item_metadata(
@@ -91,10 +96,10 @@ def _populate_igdb_ratings_for_items(items):
             updated_count += 1
         except Exception as exc:
             error_count += 1
-            logger.error(
+            logger.exception(
                 "Error backfilling IGDB ratings for %s: %s",
                 item.title,
-                exception_summary(exc),
+                exception_summary(exc),  # noqa: TRY401  # exception_summary() is the project's sanitised rendering
             )
             _record_backfill_failure(
                 item,
@@ -135,8 +140,11 @@ def populate_igdb_rating_data_for_items(item_ids: list[int]):
 
 
 def enqueue_igdb_rating_backfill_items(item_ids, countdown=10):
+    """Return the enqueue igdb rating backfill items."""
     normalized = _normalize_item_ids(item_ids)
-    normalized = _filter_backfill_item_ids(normalized, MetadataBackfillField.IGDB_RATINGS)
+    normalized = _filter_backfill_item_ids(
+        normalized, MetadataBackfillField.IGDB_RATINGS
+    )
     if not normalized:
         return 0
     try:
@@ -150,8 +158,12 @@ def enqueue_igdb_rating_backfill_items(item_ids, countdown=10):
         if cache.add(IGDB_RATINGS_BACKFILL_ITEMS_SCHEDULED_KEY, True, timeout=30):
             populate_igdb_rating_backfill_queue.apply_async(countdown=countdown)
     except Exception as exc:  # pragma: no cover - cache unavailable
-        logger.debug("IGDB ratings backfill queue unavailable: %s", exception_summary(exc))
-        populate_igdb_rating_data_for_items.apply_async(args=[normalized], countdown=countdown)
+        logger.debug(
+            "IGDB ratings backfill queue unavailable: %s", exception_summary(exc)
+        )
+        populate_igdb_rating_data_for_items.apply_async(
+            args=[normalized], countdown=countdown
+        )
     return len(normalized)
 
 

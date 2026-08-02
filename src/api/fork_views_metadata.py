@@ -214,7 +214,7 @@ class MediaEpisodeScoreView(drf_views.APIView):
     """Set or clear the score on all plays of an episode."""
 
     @extend_schema(parameters=[MEDIA_TYPE_TV_ONLY_PARAM])
-    def patch(  # noqa: PLR0911
+    def patch(
         self,
         request,
         media_type,

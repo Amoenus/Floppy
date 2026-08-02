@@ -47,7 +47,7 @@ def _safe_request_value(
         value = getattr(request, attr_name)
         if callable(value):
             value = value()
-    except Exception:  # noqa: BLE001
+    except Exception:
         return default
     return _display_value(value, default=default)
 
@@ -87,8 +87,7 @@ def build_error_report(
             f"Host: {_safe_request_value(request, 'get_host')}",
             f"Scheme: {_display_value(getattr(request, 'scheme', None))}",
             (
-                "User: "
-                f"{_display_value(getattr(user, 'username', None), 'anonymous')}"
+                f"User: {_display_value(getattr(user, 'username', None), 'anonymous')}"
                 if is_authenticated
                 else "User: anonymous"
             ),

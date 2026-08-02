@@ -36,6 +36,12 @@ from lists.views_helpers import (
 
 logger = logging.getLogger(__name__)
 
+# Minimum characters required before a search query is sent to providers.
+MIN_SEARCH_QUERY_LENGTH = 2
+
+# Reordering (first/back/next/last) is only meaningful with at least 2 items.
+MIN_ITEMS_FOR_REORDER = 2
+
 
 @require_GET
 def add_list_item_page(request, list_id):
@@ -176,7 +182,7 @@ def add_list_item_search(request, list_id):
     except (TypeError, ValueError):
         page = 1
 
-    if not query or len(query) < 2:
+    if not query or len(query) < MIN_SEARCH_QUERY_LENGTH:
         return render(
             request,
             "lists/components/add_item_search_results.html",
@@ -338,7 +344,7 @@ def apply_reorder_action(custom_list, item_id, action):
         .select_related("item")
         .order_by("date_added", "id"),
     )
-    if len(list_items) < 2:
+    if len(list_items) < MIN_ITEMS_FOR_REORDER:
         return 204
 
     current_index = next(
@@ -381,7 +387,9 @@ def apply_full_order(custom_list, item_ids):
         return 400
 
     all_items = list(
-        CustomListItem.objects.filter(custom_list=custom_list).order_by("date_added", "id"),
+        CustomListItem.objects.filter(custom_list=custom_list).order_by(
+            "date_added", "id"
+        ),
     )
     submitted_set = {str(i) for i in item_ids}
     item_map = {str(li.item_id): li for li in all_items}
@@ -394,7 +402,7 @@ def apply_full_order(custom_list, item_ids):
         return 400
 
     # Place submitted items in their new DnD order at those same positions
-    for pos, item_id in zip(original_positions, item_ids):
+    for pos, item_id in zip(original_positions, item_ids, strict=False):
         if str(item_id) in item_map:
             all_items[pos] = item_map[str(item_id)]
 

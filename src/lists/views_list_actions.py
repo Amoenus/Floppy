@@ -1,6 +1,6 @@
-"""
-List management action views: CRUD, column preferences, modal, item toggle,
-and release-year fetch.
+"""List management action views.
+
+Covers CRUD, column preferences, the modal, item toggle and release-year fetch.
 
 None of these views render the list detail page — they mutate state or return
 small fragments. The read-heavy detail views live in views_list_detail.py and
@@ -53,7 +53,8 @@ def update_list_table_columns(request, list_id):
         id=list_id,
     )
     if not custom_list.user_can_view(request.user):
-        raise Http404("List not found")
+        msg = "List not found"
+        raise Http404(msg)
 
     media_type = request.POST.get("media_type_key", "all")
     if media_type != "all" and media_type not in MediaTypes.values:

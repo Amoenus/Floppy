@@ -128,6 +128,7 @@ class AuthenticatorSetupForm(forms.Form):
     code = forms.CharField(max_length=6, min_length=6)
 
     def __init__(self, *args, user, **kwargs):
+        """Store the extra keyword arguments this form needs."""
         self.user = user
         super().__init__(*args, **kwargs)
 
@@ -135,7 +136,8 @@ class AuthenticatorSetupForm(forms.Form):
         """Validate TOTP code against the user's pending secret."""
         code = self.cleaned_data["code"].strip()
         if not self.user.verify_totp_code(code):
-            raise ValidationError("Invalid authenticator code.")
+            msg = "Invalid authenticator code."
+            raise ValidationError(msg)
         return code
 
 
@@ -145,13 +147,16 @@ class RegenerateRecoveryCodesForm(forms.Form):
     current_password = forms.CharField(widget=forms.PasswordInput)
 
     def __init__(self, *args, user, **kwargs):
+        """Store the extra keyword arguments this form needs."""
         self.user = user
         super().__init__(*args, **kwargs)
 
     def clean_current_password(self):
+        """Validate the current password field."""
         password = self.cleaned_data["current_password"]
         if not self.user.check_password(password):
-            raise ValidationError("Current password is incorrect.")
+            msg = "Current password is incorrect."
+            raise ValidationError(msg)
         return password
 
 
@@ -167,10 +172,12 @@ class PasswordRecoveryForm(SetPasswordForm):
     }
 
     def __init__(self, *args, **kwargs):
+        """Store the extra keyword arguments this form needs."""
         super().__init__(None, *args, **kwargs)
         self.recovery_instance = None
 
     def clean(self):
+        """Validate the submitted data as a whole."""
         cleaned_data = super().clean()
         username = cleaned_data.get("username", "").strip()
         recovery_code = cleaned_data.get("recovery_code", "").strip().upper()
@@ -180,9 +187,13 @@ class PasswordRecoveryForm(SetPasswordForm):
         if user is None:
             raise ValidationError(self.error_messages["invalid_recovery"])
 
-        has_valid_authenticator_code = user.has_authenticator_configured and bool(
-            authenticator_code,
-        ) and user.verify_totp_code(authenticator_code)
+        has_valid_authenticator_code = (
+            user.has_authenticator_configured
+            and bool(
+                authenticator_code,
+            )
+            and user.verify_totp_code(authenticator_code)
+        )
 
         matching_recovery = None
         if recovery_code:
@@ -205,6 +216,7 @@ class PasswordRecoveryForm(SetPasswordForm):
         return cleaned_data
 
     def save(self, commit=True):
+        """Return the save."""
         user = super().save(commit=commit)
         if self.recovery_instance:
             self.recovery_instance.used_at = timezone.now()

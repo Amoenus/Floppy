@@ -42,8 +42,10 @@ def trakt_lists_credentials(request):
                 "client_secret": import_helpers.encrypt(client_secret),
             },
         )
-    except Exception as error:
-        logger.error("Failed to store Trakt credentials for user %s: %s", request.user.username, error)
+    except Exception:
+        logger.exception(
+            "Failed to store Trakt credentials for user %s", request.user.username
+        )
         messages.error(request, "Failed to save Trakt credentials. Please try again.")
         return redirect("lists")
 
@@ -58,7 +60,9 @@ def trakt_lists_oauth(request):
     redirect_uri = request.build_absolute_uri(reverse("trakt_lists_callback"))
     credentials = _get_trakt_credentials(request.user)
     if not credentials:
-        messages.error(request, "Add your Trakt client ID and secret before authorizing.")
+        messages.error(
+            request, "Add your Trakt client ID and secret before authorizing."
+        )
         return redirect("lists")
 
     client_id, _client_secret = credentials
@@ -84,13 +88,17 @@ def trakt_lists_callback(request):
 
     if not state_token:
         logger.error("Trakt OAuth callback missing state parameter")
-        messages.error(request, "Invalid Trakt authorization request. Missing state parameter.")
+        messages.error(
+            request, "Invalid Trakt authorization request. Missing state parameter."
+        )
         return redirect("lists")
 
     state_data = request.session.pop(state_token, None)
 
     if not state_data:
-        logger.error("Trakt OAuth callback: state token '%s' not found in session", state_token)
+        logger.error(
+            "Trakt OAuth callback: state token '%s' not found in session", state_token
+        )
         messages.error(
             request,
             "Invalid or expired Trakt authorization request. Please try again - make sure to complete the authorization process without closing your browser.",
@@ -99,7 +107,9 @@ def trakt_lists_callback(request):
 
     credentials = _get_trakt_credentials(request.user)
     if not credentials:
-        messages.error(request, "Trakt credentials are missing. Please add them and try again.")
+        messages.error(
+            request, "Trakt credentials are missing. Please add them and try again."
+        )
         return redirect("lists")
 
     client_id, client_secret = credentials
@@ -117,7 +127,10 @@ def trakt_lists_callback(request):
             oauth_callback["access_token"],
             client_id=client_id,
         )
-        messages.info(request, "Trakt authorization successful. Your lists are being imported in the background.")
+        messages.info(
+            request,
+            "Trakt authorization successful. Your lists are being imported in the background.",
+        )
     except import_helpers.MediaImportError as error:
         messages.error(request, f"Trakt list import failed: {error}")
         return redirect("lists")

@@ -69,6 +69,12 @@ SMART_FILTER_DEFAULTS = {
     "tag_mode": "or",
 }
 
+MAX_RATING = 10.0
+
+# Language/country/origin codes at or below this length (e.g. ISO 639-1
+# language codes, ISO 3166 country codes) are displayed uppercased.
+SHORT_CODE_MAX_LENGTH = 3
+
 RATING_CHOICES = {"all", "rated", "not_rated"}
 COLLECTION_CHOICES = {"all", "collected", "not_collected"}
 RELEASE_CHOICES = {"all", "released", "not_released"}
@@ -86,7 +92,11 @@ LANGUAGE_MEDIA_TYPES = {
 COUNTRY_MEDIA_TYPES = LANGUAGE_MEDIA_TYPES
 PLATFORM_MEDIA_TYPES = {MediaTypes.GAME.value}
 ORIGIN_MEDIA_TYPES = {MediaTypes.MUSIC.value}
-FORMAT_MEDIA_TYPES = {MediaTypes.BOOK.value, MediaTypes.MANGA.value, MediaTypes.COMIC.value}
+FORMAT_MEDIA_TYPES = {
+    MediaTypes.BOOK.value,
+    MediaTypes.MANGA.value,
+    MediaTypes.COMIC.value,
+}
 AUTHOR_MEDIA_TYPES = FORMAT_MEDIA_TYPES
 
 
@@ -102,7 +112,7 @@ def _normalize_decimal_value(value) -> str:
         normalized = round(float(str(value).strip()), 1)
     except (TypeError, ValueError):
         return ""
-    if 0.0 <= normalized <= 10.0:
+    if 0.0 <= normalized <= MAX_RATING:
         return str(normalized)
     return ""
 
@@ -128,7 +138,7 @@ def _release_date_from_value(value):
         try:
             if hasattr(value, "utcoffset") and timezone.is_aware(value):
                 return timezone.localtime(value).date()
-        except Exception:
+        except Exception:  # noqa: S110  # deliberate best-effort; failure is non-fatal here
             pass
         try:
             return value.date()
@@ -229,7 +239,9 @@ def get_available_media_types(owner) -> list[str]:
         ]
 
     # Keep list smart rules at show/media granularity.
-    enabled = [media_type for media_type in enabled if media_type != MediaTypes.EPISODE.value]
+    enabled = [
+        media_type for media_type in enabled if media_type != MediaTypes.EPISODE.value
+    ]
 
     # Remove duplicates while preserving order.
     deduped = []
@@ -271,7 +283,7 @@ def normalize_rule_payload(payload, owner):
     normalized_statuses = []
     seen_statuses = set()
     for value in status_values:
-        value = str(value).strip()
+        value = str(value).strip()  # noqa: PLW2901  # deliberate in-loop normalisation
         if not value or value.lower() == "all" or value not in Status.values:
             continue
         if value in seen_statuses:
@@ -285,16 +297,24 @@ def normalize_rule_payload(payload, owner):
     rating_min = _normalize_decimal_value(_payload_get(payload, "rating_min", ""))
     rating_max = _normalize_decimal_value(_payload_get(payload, "rating_max", ""))
 
-    collection = str(_payload_get(payload, "collection", "all") or "all").strip().lower()
+    collection = (
+        str(_payload_get(payload, "collection", "all") or "all").strip().lower()
+    )
     if collection not in COLLECTION_CHOICES:
         collection = "all"
 
     release = str(_payload_get(payload, "release", "all") or "all").strip().lower()
     if release not in RELEASE_CHOICES:
         release = "all"
-    release_date_from = _normalize_date_filter(_payload_get(payload, "release_date_from", ""))
-    release_date_to = _normalize_date_filter(_payload_get(payload, "release_date_to", ""))
-    date_added_from = _normalize_date_filter(_payload_get(payload, "date_added_from", ""))
+    release_date_from = _normalize_date_filter(
+        _payload_get(payload, "release_date_from", "")
+    )
+    release_date_to = _normalize_date_filter(
+        _payload_get(payload, "release_date_to", "")
+    )
+    date_added_from = _normalize_date_filter(
+        _payload_get(payload, "date_added_from", "")
+    )
     date_added_to = _normalize_date_filter(_payload_get(payload, "date_added_to", ""))
 
     year = str(_payload_get(payload, "year", "") or "").strip().lower()
@@ -305,11 +325,17 @@ def normalize_rule_payload(payload, owner):
     if source and source not in Sources.values:
         source = ""
     sort = str(_payload_get(payload, "sort", "") or "").strip()
-    sort_direction = str(_payload_get(payload, "sort_direction", "") or "").strip().lower()
+    sort_direction = (
+        str(_payload_get(payload, "sort_direction", "") or "").strip().lower()
+    )
     if sort_direction not in {"asc", "desc"}:
         sort_direction = ""
 
-    tag_values = [str(value).strip() for value in _payload_getlist(payload, "tag") if str(value).strip()]
+    tag_values = [
+        str(value).strip()
+        for value in _payload_getlist(payload, "tag")
+        if str(value).strip()
+    ]
     tag_mode = str(_payload_get(payload, "tag_mode", "") or "").strip().lower()
     if not tag_values:
         legacy_tag_exclude = str(_payload_get(payload, "tag_exclude", "") or "").strip()
@@ -327,7 +353,7 @@ def normalize_rule_payload(payload, owner):
         seen_tags.add(key)
         deduped_tags.append(value)
 
-    normalized = {
+    return {
         "media_types": normalized_media_types,
         "status": normalized_statuses,
         "rating": rating,
@@ -355,7 +381,6 @@ def normalize_rule_payload(payload, owner):
         "tag": deduped_tags,
         "tag_mode": tag_mode,
     }
-    return normalized
 
 
 def normalize_list_rules(custom_list) -> dict:
@@ -401,7 +426,9 @@ def _base_media_queryset(
     if isinstance(status_filter, str):
         status_filters = [] if status_filter in ("", "all") else [status_filter]
     else:
-        status_filters = [value for value in (status_filter or []) if value and value != "all"]
+        status_filters = [
+            value for value in (status_filter or []) if value and value != "all"
+        ]
 
     model = apps.get_model("app", media_type)
     if media_type == MediaTypes.EPISODE.value:
@@ -426,7 +453,9 @@ def _base_media_queryset(
 def _target_media_types(owner, rules_media_types: list[str]) -> list[str]:
     available = get_available_media_types(owner)
     if rules_media_types:
-        return [media_type for media_type in rules_media_types if media_type in available]
+        return [
+            media_type for media_type in rules_media_types if media_type in available
+        ]
     return available
 
 
@@ -443,7 +472,9 @@ def _matches_item_filters(item: Item, rules: dict, today) -> bool:
 
     if genre_filter:
         item_genres = getattr(item, "genres", None) or []
-        if not any(_normalize_filter_value(genre) == genre_filter for genre in item_genres):
+        if not any(
+            _normalize_filter_value(genre) == genre_filter for genre in item_genres
+        ):
             return False
     if implied_genre_filter:
         item_implied_genres = getattr(item, "implied_genres", None) or []
@@ -462,7 +493,10 @@ def _matches_item_filters(item: Item, rules: dict, today) -> bool:
         if release_year != int(year_filter):
             return False
 
-    if source_filter and _normalize_filter_value(getattr(item, "source", "")) != source_filter:
+    if (
+        source_filter
+        and _normalize_filter_value(getattr(item, "source", "")) != source_filter
+    ):
         return False
 
     release_date_from = rules.get("release_date_from")
@@ -493,7 +527,10 @@ def _matches_item_filters(item: Item, rules: dict, today) -> bool:
 
     if language_filter:
         languages = _extract_languages(item)
-        if not any(_normalize_filter_value(language) == language_filter for language in languages):
+        if not any(
+            _normalize_filter_value(language) == language_filter
+            for language in languages
+        ):
             return False
 
     if country_filter:
@@ -508,7 +545,10 @@ def _matches_item_filters(item: Item, rules: dict, today) -> bool:
 
     if platform_filter:
         platforms = _extract_platforms(item)
-        if not any(_normalize_filter_value(platform) == platform_filter for platform in platforms):
+        if not any(
+            _normalize_filter_value(platform) == platform_filter
+            for platform in platforms
+        ):
             return False
 
     format_filter = _normalize_filter_value(rules.get("format"))
@@ -520,7 +560,9 @@ def _matches_item_filters(item: Item, rules: dict, today) -> bool:
     author_filter = _normalize_filter_value(rules.get("author"))
     if author_filter:
         authors = _extract_authors(item)
-        if not any(_normalize_filter_value(author) == author_filter for author in authors):
+        if not any(
+            _normalize_filter_value(author) == author_filter for author in authors
+        ):
             return False
 
     return True
@@ -536,10 +578,9 @@ def _rules_require_item_scan(normalized_rules: dict) -> bool:
 
     if normalized_rules.get("rating", "all") != "all":
         return True
-    if (
-        _normalize_decimal_value(normalized_rules.get("rating_min"))
-        or _normalize_decimal_value(normalized_rules.get("rating_max"))
-    ):
+    if _normalize_decimal_value(
+        normalized_rules.get("rating_min")
+    ) or _normalize_decimal_value(normalized_rules.get("rating_max")):
         return True
 
     if normalized_rules.get("tag"):
@@ -581,7 +622,10 @@ def _matches_collection_filter(
 
     has_collection = item.id in collected_item_ids
     if not has_collection and media_type in SHOW_COLLECTION_MEDIA_TYPES:
-        has_collection = (str(item.media_id), str(item.source)) in collected_episode_pairs
+        has_collection = (
+            str(item.media_id),
+            str(item.source),
+        ) in collected_episode_pairs
 
     if collection_filter == "collected":
         return has_collection
@@ -667,7 +711,9 @@ def _filter_item_ids_by_rating(
 ) -> set[int]:
     """Filter candidate item ids using the same rated/unrated semantics as media lists."""
     candidate_item_ids = {item_id for item_id in item_ids if item_id}
-    if not candidate_item_ids or (rating_filter == "all" and not rating_min and not rating_max):
+    if not candidate_item_ids or (
+        rating_filter == "all" and not rating_min and not rating_max
+    ):
         return candidate_item_ids
 
     model = apps.get_model("app", media_type)
@@ -724,7 +770,9 @@ def collect_matching_item_ids(
     include_collection_only_untracked: bool = False,
 ) -> set[int]:
     """Return matching Item IDs for a normalized smart-rule definition."""
-    target_media_types = _target_media_types(owner, normalized_rules.get("media_types", []))
+    target_media_types = _target_media_types(
+        owner, normalized_rules.get("media_types", [])
+    )
     if not target_media_types:
         return set()
 
@@ -732,7 +780,9 @@ def collect_matching_item_ids(
     rating_filter = normalized_rules.get("rating", "all")
     rating_min = normalized_rules.get("rating_min", "")
     rating_max = normalized_rules.get("rating_max", "")
-    has_rating_constraints = rating_filter != "all" or bool(rating_min) or bool(rating_max)
+    has_rating_constraints = (
+        rating_filter != "all" or bool(rating_min) or bool(rating_max)
+    )
     today = timezone.localdate()
     item_scan_required = _rules_require_item_scan(normalized_rules)
 
@@ -851,7 +901,9 @@ def item_matches_rules(
     if not owner or not item:
         return False
 
-    target_media_types = _target_media_types(owner, normalized_rules.get("media_types", []))
+    target_media_types = _target_media_types(
+        owner, normalized_rules.get("media_types", [])
+    )
     if item.media_type not in target_media_types:
         return False
 
@@ -1042,7 +1094,7 @@ def build_rule_filter_data(
         "authors",
     )
 
-    _FORMAT_LABELS = {
+    format_labels = {
         "hardcover": "Hardcover",
         "paperback": "Paperback",
         "ebook": "eBook",
@@ -1062,11 +1114,11 @@ def build_rule_filter_data(
     has_unknown_year = False
 
     for item in items:
-        for genre in (item.genres or []):
+        for genre in item.genres or []:
             genre_value = str(genre).strip()
             if genre_value:
                 genres_set.add(genre_value)
-        for genre in (getattr(item, "implied_genres", None) or []):
+        for genre in getattr(item, "implied_genres", None) or []:
             genre_value = str(genre).strip()
             if genre_value:
                 implied_genres_set.add(genre_value)
@@ -1109,14 +1161,18 @@ def build_rule_filter_data(
         "languages": [
             {
                 "value": value,
-                "label": value.upper() if len(value) <= 3 else value,
+                "label": value.upper()
+                if len(value) <= SHORT_CODE_MAX_LENGTH
+                else value,
             }
             for value in sorted(languages_set)
         ],
         "countries": [
             {
                 "value": value,
-                "label": value.upper() if len(value) <= 3 else value,
+                "label": value.upper()
+                if len(value) <= SHORT_CODE_MAX_LENGTH
+                else value,
             }
             for value in sorted(countries_set)
         ],
@@ -1127,24 +1183,38 @@ def build_rule_filter_data(
         "origins": [
             {
                 "value": value,
-                "label": value.upper() if len(value) <= 3 else value,
+                "label": value.upper()
+                if len(value) <= SHORT_CODE_MAX_LENGTH
+                else value,
             }
             for value in sorted(origins_set)
         ],
-        "show_languages": any(media_type in LANGUAGE_MEDIA_TYPES for media_type in target_media_types),
-        "show_countries": any(media_type in COUNTRY_MEDIA_TYPES for media_type in target_media_types),
-        "show_platforms": any(media_type in PLATFORM_MEDIA_TYPES for media_type in target_media_types),
-        "show_origins": any(media_type in ORIGIN_MEDIA_TYPES for media_type in target_media_types),
+        "show_languages": any(
+            media_type in LANGUAGE_MEDIA_TYPES for media_type in target_media_types
+        ),
+        "show_countries": any(
+            media_type in COUNTRY_MEDIA_TYPES for media_type in target_media_types
+        ),
+        "show_platforms": any(
+            media_type in PLATFORM_MEDIA_TYPES for media_type in target_media_types
+        ),
+        "show_origins": any(
+            media_type in ORIGIN_MEDIA_TYPES for media_type in target_media_types
+        ),
         "formats": [
-            {"value": value, "label": _FORMAT_LABELS.get(value, value.title())}
+            {"value": value, "label": format_labels.get(value, value.title())}
             for value in sorted(formats_set, key=lambda val: val.lower())
         ],
-        "show_formats": any(media_type in FORMAT_MEDIA_TYPES for media_type in target_media_types),
+        "show_formats": any(
+            media_type in FORMAT_MEDIA_TYPES for media_type in target_media_types
+        ),
         "authors": [
             {"value": value, "label": value}
             for value in sorted(authors_set, key=lambda value: value.lower())
         ],
-        "show_authors": any(media_type in AUTHOR_MEDIA_TYPES for media_type in target_media_types),
+        "show_authors": any(
+            media_type in AUTHOR_MEDIA_TYPES for media_type in target_media_types
+        ),
     }
 
     if has_unknown_year:

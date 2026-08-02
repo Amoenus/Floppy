@@ -320,7 +320,7 @@ class TrackModalViewTests(TestCase):
         self.assertTrue(response.context["discover_tab_available"])
         self.assertTrue(response.context["is_hidden_from_discover"])
         self.assertContains(response, "Currently hidden in Discover.")
-        self.assertContains(response, "name=\"action\"", html=False)
+        self.assertContains(response, 'name="action"', html=False)
 
     def test_artist_track_modal_uses_shared_fill_track_shell(self):
         """Music artist trackers should render through the shared modal shell."""
@@ -683,7 +683,9 @@ class TrackModalViewTests(TestCase):
         self.assertContains(response, "Save Metadata")
         self.assertNotContains(response, "Save Image")
 
-    def test_track_modal_renders_custom_metadata_form_for_movie_using_custom_provider(self):
+    def test_track_modal_renders_custom_metadata_form_for_movie_using_custom_provider(
+        self,
+    ):
         """Tracked items should show the custom editor when Custom is selected."""
         self.item.manual_metadata = {
             "title": "Custom Display Movie",
@@ -780,7 +782,9 @@ class TrackModalViewTests(TestCase):
             manual_item.release_datetime.date().isoformat(),
             "2024-01-15",
         )
-        self.assertEqual(manual_item.manual_metadata["synopsis"], "A custom movie synopsis.")
+        self.assertEqual(
+            manual_item.manual_metadata["synopsis"], "A custom movie synopsis."
+        )
         self.assertEqual(
             manual_item.manual_metadata["details"]["release_date"],
             "2024-01-15",

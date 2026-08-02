@@ -5,9 +5,9 @@ from public APIs that don't require auth: RSS feeds, Podcast Index, and iTunes.
 """
 
 import logging
-import xml.etree.ElementTree as ET
 
 import requests
+from defusedxml import ElementTree as ET  # noqa: N817  # long-standing alias
 from django.core.cache import cache
 
 from app.log_safety import exception_summary, safe_url
@@ -26,18 +26,18 @@ def fetch_podcast_artwork(
     rss_feed_url: str | None = None,
 ) -> str | None:
     """Fetch podcast artwork from alternative public sources.
-    
+
     Tries multiple sources in order:
     1. RSS feed (if provided) - most reliable
     2. Podcast Index API - free, no auth, good coverage
     3. iTunes API - legacy but still works for many podcasts
-    
+
     Args:
         podcast_uuid: Pocket Casts podcast UUID (for caching)
         show_title: Podcast show title
         author: Podcast author/network (optional, helps with search)
         rss_feed_url: RSS feed URL if available (optional)
-        
+
     Returns:
         Image URL string or None if not found
     """
@@ -45,7 +45,7 @@ def fetch_podcast_artwork(
     cache_key = f"podcast_artwork_{podcast_uuid}"
     cached = cache.get(cache_key)
     if cached is not None:
-        return cached if cached else None
+        return cached or None
 
     image_url = None
 
@@ -80,20 +80,17 @@ def fetch_podcast_artwork_and_rss(
     author: str | None = None,
 ) -> tuple[str | None, str | None]:
     """Fetch podcast artwork and RSS feed URL from iTunes API in a single call.
-    
+
     Args:
         show_title: Podcast show title
         author: Podcast author (optional, helps narrow search)
-        
+
     Returns:
         Tuple of (artwork_url, rss_feed_url) or (None, None) if not found
     """
     try:
         # Build search query
-        if author:
-            query = f"{show_title} {author}"
-        else:
-            query = show_title
+        query = f"{show_title} {author}" if author else show_title
 
         # iTunes API expects URL-encoded query
         params = {
@@ -129,15 +126,27 @@ def fetch_podcast_artwork_and_rss(
                 artwork_url = result.get("artworkUrl600") or result.get("artworkUrl100")
                 feed_url = result.get("feedUrl")
                 if artwork_url or feed_url:
-                    logger.debug("Found iTunes match for %s: artwork=%s, feed=%s", show_title, bool(artwork_url), bool(feed_url))
+                    logger.debug(
+                        "Found iTunes match for %s: artwork=%s, feed=%s",
+                        show_title,
+                        bool(artwork_url),
+                        bool(feed_url),
+                    )
                     return artwork_url, feed_url
 
         # If no exact match, use first result
         if results:
-            artwork_url = results[0].get("artworkUrl600") or results[0].get("artworkUrl100")
+            artwork_url = results[0].get("artworkUrl600") or results[0].get(
+                "artworkUrl100"
+            )
             feed_url = results[0].get("feedUrl")
             if artwork_url or feed_url:
-                logger.debug("Using first iTunes result for %s: artwork=%s, feed=%s", show_title, bool(artwork_url), bool(feed_url))
+                logger.debug(
+                    "Using first iTunes result for %s: artwork=%s, feed=%s",
+                    show_title,
+                    bool(artwork_url),
+                    bool(feed_url),
+                )
                 return artwork_url, feed_url
 
     except Exception as e:
@@ -148,15 +157,17 @@ def fetch_podcast_artwork_and_rss(
 
 def _fetch_from_rss_feed(rss_feed_url: str) -> str | None:
     """Fetch artwork from RSS feed.
-    
+
     Args:
         rss_feed_url: URL to the podcast RSS feed
-        
+
     Returns:
         Image URL or None
     """
     try:
-        response = requests.get(rss_feed_url, headers={"User-Agent": USER_AGENT}, timeout=10)
+        response = requests.get(
+            rss_feed_url, headers={"User-Agent": USER_AGENT}, timeout=10
+        )
         response.raise_for_status()
 
         # Parse XML - handle both RSS and Atom feeds
@@ -209,14 +220,14 @@ def _fetch_from_rss_feed(rss_feed_url: str) -> str | None:
 
 def _fetch_from_podcast_index(show_title: str, author: str | None = None) -> str | None:
     """Fetch artwork from Podcast Index API.
-    
+
     Podcast Index API is free but requires API key. For now, we'll skip it
     and rely on iTunes. If we want to use it later, we'd need to add API keys.
-    
+
     Args:
         show_title: Podcast show title
         author: Podcast author (optional)
-        
+
     Returns:
         Image URL or None
     """
@@ -230,20 +241,17 @@ def _fetch_from_podcast_index(show_title: str, author: str | None = None) -> str
 
 def _fetch_from_itunes(show_title: str, author: str | None = None) -> str | None:
     """Fetch artwork from iTunes/Apple Podcasts API.
-    
+
     Args:
         show_title: Podcast show title
         author: Podcast author (optional, helps narrow search)
-        
+
     Returns:
         Image URL or None
     """
     try:
         # Build search query
-        if author:
-            query = f"{show_title} {author}"
-        else:
-            query = show_title
+        query = f"{show_title} {author}" if author else show_title
 
         # iTunes API expects URL-encoded query
         params = {
@@ -283,14 +291,16 @@ def _fetch_from_itunes(show_title: str, author: str | None = None) -> str | None
                     # artworkUrl600 is 600x600, but we can get 1400x1400 by replacing dimensions
                     if "artworkUrl600" in result:
                         # Try to get larger version
-                        large_url = artwork_url.replace("600x600", "1400x1400")
+                        artwork_url.replace("600x600", "1400x1400")
                         # Verify it exists (or just use 600x600 which is usually fine)
                         return artwork_url
                     return artwork_url
 
         # If no exact match, use first result's artwork
         if results:
-            artwork_url = results[0].get("artworkUrl600") or results[0].get("artworkUrl100")
+            artwork_url = results[0].get("artworkUrl600") or results[0].get(
+                "artworkUrl100"
+            )
             if artwork_url:
                 return artwork_url
 

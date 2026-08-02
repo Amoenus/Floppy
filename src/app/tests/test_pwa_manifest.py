@@ -37,11 +37,16 @@ class WebManifestTests(SimpleTestCase):
             "Games": ("/medialist/game", "/static/img/shortcuts/games.svg"),
             "Books": ("/medialist/book", "/static/img/shortcuts/books.svg"),
             "Comics": ("/medialist/comic", "/static/img/shortcuts/comics.svg"),
-            "Board Games": ("/medialist/boardgame", "/static/img/shortcuts/boardgames.svg"),
+            "Board Games": (
+                "/medialist/boardgame",
+                "/static/img/shortcuts/boardgames.svg",
+            ),
             "Statistics": ("/statistics", "/static/img/shortcuts/stats.svg"),
             "Your Lists": ("/lists", "/static/img/shortcuts/lists.svg"),
         }
-        shortcuts = {shortcut["name"]: shortcut for shortcut in self.manifest["shortcuts"]}
+        shortcuts = {
+            shortcut["name"]: shortcut for shortcut in self.manifest["shortcuts"]
+        }
 
         self.assertEqual(set(shortcuts), set(expected_shortcuts))
 
@@ -50,4 +55,6 @@ class WebManifestTests(SimpleTestCase):
             self.assertEqual(shortcut["url"], url)
             self.assertEqual(shortcut["icons"], [{"src": icon_src, "sizes": "192x192"}])
             asset_path = self.static_dir / icon_src.removeprefix("/static/")
-            self.assertTrue(asset_path.exists(), f"Missing shortcut icon asset: {icon_src}")
+            self.assertTrue(
+                asset_path.exists(), f"Missing shortcut icon asset: {icon_src}"
+            )

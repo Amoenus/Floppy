@@ -32,7 +32,9 @@ class TvProviderMigrationTests(TestCase):
             provider_external_ids={"tvdb_id": "81189"},
         )
         TV.objects.create(
-            item=self.show_item, user=self.user, status=Status.IN_PROGRESS.value,
+            item=self.show_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
         )
         self.season_item = Item.objects.create(
             media_id="1396",
@@ -98,7 +100,8 @@ class TvProviderMigrationTests(TestCase):
 
     @patch("app.services.tv_provider_migration.tvdb.tv_with_seasons")
     def test_pins_instead_of_migrating_when_episode_missing_on_tvdb(
-        self, mock_tv_with_seasons,
+        self,
+        mock_tv_with_seasons,
     ):
         """A locally-watched episode absent from TVDB must block migration."""
         mock_tv_with_seasons.return_value = self._tvdb_payload(episode_numbers=(2, 3))
@@ -136,7 +139,8 @@ class TvProviderMigrationTests(TestCase):
 
     @patch("app.services.tv_provider_migration.tvdb.tv_with_seasons")
     def test_pins_when_tvdb_identity_already_tracked_separately(
-        self, mock_tv_with_seasons,
+        self,
+        mock_tv_with_seasons,
     ):
         """Never create a duplicate show under an already-tracked TVDB identity."""
         Item.objects.create(

@@ -25,6 +25,7 @@ class PlexWatchlistSyncService:
     """Synchronize a user's Plex Discover watchlist into Floppy."""
 
     def __init__(self, user, account):
+        """Store the extra keyword arguments this form needs."""
         self.user = user
         self.account = account
         self.counts = defaultdict(int)
@@ -35,7 +36,8 @@ class PlexWatchlistSyncService:
     def sync(self) -> tuple[dict[str, int], str]:
         """Run the watchlist sync and return counts plus warning text."""
         if not self.account or not self.account.plex_token:
-            raise MediaImportError("Plex is not connected for this user.")
+            msg = "Plex is not connected for this user."
+            raise MediaImportError(msg)
 
         self.counts = defaultdict(int)
         self.warnings = []
@@ -64,9 +66,11 @@ class PlexWatchlistSyncService:
         try:
             account_data = plex_api.fetch_account(self.account.plex_token)
         except plex_api.PlexAuthError as exc:
-            raise MediaImportError("Plex token expired; reconnect and try again.") from exc
+            msg = "Plex token expired; reconnect and try again."
+            raise MediaImportError(msg) from exc
         except plex_api.PlexClientError as exc:
-            raise MediaImportError(f"Could not read Plex account details: {exc}") from exc
+            msg = f"Could not read Plex account details: {exc}"
+            raise MediaImportError(msg) from exc
 
         username = username or (account_data.get("username") or "").strip()
         account_id = account_id or str(account_data.get("id") or "").strip()
@@ -96,9 +100,11 @@ class PlexWatchlistSyncService:
                     size=WATCHLIST_PAGE_SIZE,
                 )
             except plex_api.PlexAuthError as exc:
-                raise MediaImportError("Plex token expired; reconnect and try again.") from exc
+                msg = "Plex token expired; reconnect and try again."
+                raise MediaImportError(msg) from exc
             except plex_api.PlexClientError as exc:
-                raise MediaImportError(f"Could not fetch Plex watchlist: {exc}") from exc
+                msg = f"Could not fetch Plex watchlist: {exc}"
+                raise MediaImportError(msg) from exc
 
             if not page_entries:
                 break
@@ -169,9 +175,12 @@ class PlexWatchlistSyncService:
             return entry
 
         try:
-            detail_entry = plex_api.fetch_watchlist_metadata(self.account.plex_token, rating_key)
+            detail_entry = plex_api.fetch_watchlist_metadata(
+                self.account.plex_token, rating_key
+            )
         except plex_api.PlexAuthError as exc:
-            raise MediaImportError("Plex token expired; reconnect and try again.") from exc
+            msg = "Plex token expired; reconnect and try again."
+            raise MediaImportError(msg) from exc
         except plex_api.PlexClientError as exc:
             self._warn(
                 f"Could not load Plex watchlist metadata for {entry.get('title') or rating_key}: {exc}",
@@ -229,7 +238,11 @@ class PlexWatchlistSyncService:
             if media_type == MediaTypes.MOVIE.value:
                 candidates = find_results.get("movie_results") or []
             else:
-                candidates = find_results.get("tv_results") or find_results.get("tv_episode_results") or []
+                candidates = (
+                    find_results.get("tv_results")
+                    or find_results.get("tv_episode_results")
+                    or []
+                )
 
             if not candidates:
                 continue
@@ -240,7 +253,9 @@ class PlexWatchlistSyncService:
 
         return None
 
-    def _fetch_tmdb_metadata(self, media_type: str, tmdb_id: str, entry: dict) -> dict | None:
+    def _fetch_tmdb_metadata(
+        self, media_type: str, tmdb_id: str, entry: dict
+    ) -> dict | None:
         """Fetch TMDB metadata for the resolved item."""
         try:
             return services.get_media_metadata(
@@ -294,10 +309,14 @@ class PlexWatchlistSyncService:
 
     def _get_or_create_user_media(self, model_class, item: Item):
         """Return the user's tracked media row, creating a Planning row if needed."""
-        media_obj = model_class.objects.filter(
-            user=self.user,
-            item=item,
-        ).order_by("created_at").first()
+        media_obj = (
+            model_class.objects.filter(
+                user=self.user,
+                item=item,
+            )
+            .order_by("created_at")
+            .first()
+        )
         if media_obj:
             return media_obj, False
 
@@ -310,10 +329,14 @@ class PlexWatchlistSyncService:
                 notes="",
             )
         except IntegrityError:
-            media_obj = model_class.objects.filter(
-                user=self.user,
-                item=item,
-            ).order_by("created_at").first()
+            media_obj = (
+                model_class.objects.filter(
+                    user=self.user,
+                    item=item,
+                )
+                .order_by("created_at")
+                .first()
+            )
             if media_obj is None:  # pragma: no cover - defensive
                 raise
             return media_obj, False
@@ -378,20 +401,26 @@ class PlexWatchlistSyncService:
 
     def _reconcile_removals(self, seen_item_ids: set[int]) -> None:
         """Deactivate ledger rows that disappeared from the current watchlist."""
-        stale_items = PlexWatchlistSyncItem.objects.filter(
-            user=self.user,
-            source_username=self.source_username,
-            is_active=True,
-        ).exclude(
-            item_id__in=seen_item_ids,
-        ).select_related("item")
+        stale_items = (
+            PlexWatchlistSyncItem.objects.filter(
+                user=self.user,
+                source_username=self.source_username,
+                is_active=True,
+            )
+            .exclude(
+                item_id__in=seen_item_ids,
+            )
+            .select_related("item")
+        )
 
         now = timezone.now()
         for sync_item in stale_items:
             removed_media = False
             if sync_item.created_by_sync:
                 media_obj = self._get_media_instance(sync_item.item)
-                if media_obj and self._can_remove_synced_media(sync_item.item, media_obj):
+                if media_obj and self._can_remove_synced_media(
+                    sync_item.item, media_obj
+                ):
                     media_obj.delete()
                     removed_media = True
                     self.counts["removed"] += 1
@@ -406,7 +435,11 @@ class PlexWatchlistSyncService:
     def _get_media_instance(self, item: Item):
         """Return the tracked Movie/TV row for the given item, if any."""
         if item.media_type == MediaTypes.MOVIE.value:
-            return Movie.objects.filter(user=self.user, item=item).order_by("created_at").first()
+            return (
+                Movie.objects.filter(user=self.user, item=item)
+                .order_by("created_at")
+                .first()
+            )
         if item.media_type == MediaTypes.TV.value:
             return TV.objects.filter(user=self.user, item=item).first()
         return None
@@ -432,10 +465,7 @@ class PlexWatchlistSyncService:
             return False
         if getattr(media_obj, "start_date", None) is not None:
             return False
-        if getattr(media_obj, "end_date", None) is not None:
-            return False
-
-        return True
+        return getattr(media_obj, "end_date", None) is None
 
     def _warn(self, message: str) -> None:
         """Collect a warning without duplicating format logic in callers."""

@@ -17,6 +17,7 @@ class NewSeasonStatusUpdateTests(TestCase):
         """Set up the test with a completed TV show."""
         # Use unique media_id for each test run to avoid conflicts
         import uuid
+
         self.test_id = str(uuid.uuid4())[:8]
 
         self.credentials = {"username": f"testuser_{self.test_id}", "password": "12345"}
@@ -35,10 +36,16 @@ class NewSeasonStatusUpdateTests(TestCase):
 
         # Create TV instance - mock provider calls to avoid API requests
         # First, create with Planning status to avoid any triggers
-        with patch("app.models.providers.services.get_media_metadata") as mock_get_metadata:
+        with patch(
+            "app.models.providers.services.get_media_metadata"
+        ) as mock_get_metadata:
             # Mock for _start_next_available_season if triggered
             mock_get_metadata.return_value = {
-                "related": {"seasons": [{"season_number": 1, "image": "http://example.com/season1.jpg"}]},
+                "related": {
+                    "seasons": [
+                        {"season_number": 1, "image": "http://example.com/season1.jpg"}
+                    ]
+                },
                 "max_progress": 8,
                 "details": {"seasons": 1},
             }
@@ -51,7 +58,9 @@ class NewSeasonStatusUpdateTests(TestCase):
             TV.save_base(self.tv_instance)
 
         # Now set to Completed with proper mocking
-        with patch("app.models.providers.services.get_media_metadata") as mock_get_metadata:
+        with patch(
+            "app.models.providers.services.get_media_metadata"
+        ) as mock_get_metadata:
             mock_get_metadata.side_effect = [
                 # First call from _completed() for tv_with_seasons
                 {
@@ -209,7 +218,9 @@ class NewSeasonStatusUpdateTests(TestCase):
         mock_clear_time_left_cache,
     ):
         """A newly announced season should reopen the show, but not auto-start the season."""
-        future_date = (timezone.now() + timezone.timedelta(days=30)).strftime("%Y-%m-%d")
+        future_date = (timezone.now() + timezone.timedelta(days=30)).strftime(
+            "%Y-%m-%d"
+        )
         season_metadata = {
             "season/2": {
                 "image": "http://example.com/season2.jpg",

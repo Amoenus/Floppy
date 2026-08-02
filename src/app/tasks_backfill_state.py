@@ -32,9 +32,13 @@ GENRE_BACKFILL_VERSION = 4
 
 def _apply_backfill_state_filters(queryset, field: str):
     now = timezone.now()
-    blocked = MetadataBackfillState.objects.filter(field=field).filter(
-        Q(give_up=True) | Q(next_retry_at__gt=now),
-    ).values("item_id")
+    blocked = (
+        MetadataBackfillState.objects.filter(field=field)
+        .filter(
+            Q(give_up=True) | Q(next_retry_at__gt=now),
+        )
+        .values("item_id")
+    )
     return queryset.exclude(id__in=blocked)
 
 
@@ -45,7 +49,9 @@ def _backfill_delay_seconds(fail_count: int) -> int:
     return min(delay, METADATA_BACKFILL_MAX_DELAY_SECONDS)
 
 
-def _record_backfill_failure(item: Item, field: str, error_message: str | None = None) -> bool:
+def _record_backfill_failure(
+    item: Item, field: str, error_message: str | None = None
+) -> bool:
     now = timezone.now()
     state, _ = MetadataBackfillState.objects.get_or_create(item=item, field=field)
     state.fail_count = min(state.fail_count + 1, 9999)
@@ -57,14 +63,18 @@ def _record_backfill_failure(item: Item, field: str, error_message: str | None =
         state.next_retry_at = None
     else:
         state.give_up = False
-        state.next_retry_at = now + timedelta(seconds=_backfill_delay_seconds(state.fail_count))
-    state.save(update_fields=[
-        "fail_count",
-        "last_attempt_at",
-        "next_retry_at",
-        "last_error",
-        "give_up",
-    ])
+        state.next_retry_at = now + timedelta(
+            seconds=_backfill_delay_seconds(state.fail_count)
+        )
+    state.save(
+        update_fields=[
+            "fail_count",
+            "last_attempt_at",
+            "next_retry_at",
+            "last_error",
+            "give_up",
+        ]
+    )
     if state.give_up:
         logger.warning(
             "metadata_backfill_give_up item_id=%s media_type=%s field=%s fail_count=%s has_reason=%s",
@@ -169,7 +179,7 @@ def _add_user_day_key(user_day_keys, user_id, day_key):
 
 
 def _collect_backfill_day_keys(items, field: str):
-    from app.models import (  # noqa: PLC0415
+    from app.models import (
         Anime,
         Book,
         Comic,
@@ -192,8 +202,16 @@ def _collect_backfill_day_keys(items, field: str):
                 "created_at",
             )
             for row in rows:
-                activity_dt = row.get("end_date") or row.get("start_date") or row.get("created_at")
-                _add_user_day_key(user_day_keys, row.get("user_id"), history_cache.history_day_key(activity_dt))
+                activity_dt = (
+                    row.get("end_date")
+                    or row.get("start_date")
+                    or row.get("created_at")
+                )
+                _add_user_day_key(
+                    user_day_keys,
+                    row.get("user_id"),
+                    history_cache.history_day_key(activity_dt),
+                )
             continue
 
         if item.media_type == MediaTypes.ANIME.value:
@@ -206,7 +224,11 @@ def _collect_backfill_day_keys(items, field: str):
                 "created_at",
             )
             for row in rows:
-                if field == MetadataBackfillField.RUNTIME and row.get("start_date") and row.get("end_date"):
+                if (
+                    field == MetadataBackfillField.RUNTIME
+                    and row.get("start_date")
+                    and row.get("end_date")
+                ):
                     day_keys = history_cache.history_day_keys_for_range(
                         row.get("start_date"),
                         row.get("end_date"),
@@ -214,8 +236,16 @@ def _collect_backfill_day_keys(items, field: str):
                     if day_keys:
                         user_day_keys[row.get("user_id")].update(day_keys)
                     continue
-                activity_dt = row.get("end_date") or row.get("start_date") or row.get("created_at")
-                _add_user_day_key(user_day_keys, row.get("user_id"), history_cache.history_day_key(activity_dt))
+                activity_dt = (
+                    row.get("end_date")
+                    or row.get("start_date")
+                    or row.get("created_at")
+                )
+                _add_user_day_key(
+                    user_day_keys,
+                    row.get("user_id"),
+                    history_cache.history_day_key(activity_dt),
+                )
             continue
 
         if item.media_type == MediaTypes.GAME.value:
@@ -226,8 +256,16 @@ def _collect_backfill_day_keys(items, field: str):
                 "created_at",
             )
             for row in rows:
-                activity_dt = row.get("end_date") or row.get("start_date") or row.get("created_at")
-                _add_user_day_key(user_day_keys, row.get("user_id"), history_cache.history_day_key(activity_dt))
+                activity_dt = (
+                    row.get("end_date")
+                    or row.get("start_date")
+                    or row.get("created_at")
+                )
+                _add_user_day_key(
+                    user_day_keys,
+                    row.get("user_id"),
+                    history_cache.history_day_key(activity_dt),
+                )
             continue
 
         if item.media_type in (
@@ -248,8 +286,16 @@ def _collect_backfill_day_keys(items, field: str):
                 "created_at",
             )
             for row in rows:
-                activity_dt = row.get("end_date") or row.get("start_date") or row.get("created_at")
-                _add_user_day_key(user_day_keys, row.get("user_id"), history_cache.history_day_key(activity_dt))
+                activity_dt = (
+                    row.get("end_date")
+                    or row.get("start_date")
+                    or row.get("created_at")
+                )
+                _add_user_day_key(
+                    user_day_keys,
+                    row.get("user_id"),
+                    history_cache.history_day_key(activity_dt),
+                )
             continue
 
         if item.media_type == MediaTypes.TV.value and field in (
@@ -267,7 +313,10 @@ def _collect_backfill_day_keys(items, field: str):
                 )
             continue
 
-        if item.media_type == MediaTypes.SEASON.value and field == MetadataBackfillField.CREDITS:
+        if (
+            item.media_type == MediaTypes.SEASON.value
+            and field == MetadataBackfillField.CREDITS
+        ):
             rows = Episode.objects.filter(
                 related_season__item_id=item.id,
             ).values("related_season__user_id", "end_date")
@@ -279,7 +328,10 @@ def _collect_backfill_day_keys(items, field: str):
                 )
             continue
 
-        if item.media_type == MediaTypes.EPISODE.value and field == MetadataBackfillField.RUNTIME:
+        if (
+            item.media_type == MediaTypes.EPISODE.value
+            and field == MetadataBackfillField.RUNTIME
+        ):
             rows = Episode.objects.filter(item_id=item.id).values(
                 "related_season__user_id",
                 "end_date",
@@ -297,7 +349,7 @@ def _collect_backfill_day_keys(items, field: str):
 def _schedule_metadata_statistics_refresh(items, field: str, reason: str):
     if not items:
         return
-    from app import statistics_cache  # noqa: PLC0415
+    from app import statistics_cache
 
     user_day_keys = _collect_backfill_day_keys(items, field)
     for user_id, day_keys in user_day_keys.items():
@@ -325,7 +377,7 @@ def _normalize_item_ids(item_ids):
     normalized = []
     for item_id in item_ids or []:
         try:
-            item_id = int(item_id)
+            item_id = int(item_id)  # noqa: PLW2901  # deliberate in-loop normalisation
         except (TypeError, ValueError):
             continue
         if item_id > 0:

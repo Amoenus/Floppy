@@ -14,7 +14,9 @@ class TraktDiscoverAdapterTests(TestCase):
         DiscoverApiCache.objects.all().delete()
 
     @patch("app.discover.providers.trakt_adapter.services.api_request")
-    def test_movie_watched_weekly_uses_db_cache_after_first_fetch(self, mock_api_request):
+    def test_movie_watched_weekly_uses_db_cache_after_first_fetch(
+        self, mock_api_request
+    ):
         mock_api_request.return_value = [
             {
                 "watcher_count": 1200,
@@ -112,9 +114,14 @@ class TraktDiscoverAdapterTests(TestCase):
         self.assertEqual(first[0].release_date, "2025-12-12")
         self.assertEqual(mock_api_request.call_count, 1)
 
-    @patch("app.discover.providers.trakt_adapter.trakt_provider.is_configured", return_value=True)
+    @patch(
+        "app.discover.providers.trakt_adapter.trakt_provider.is_configured",
+        return_value=True,
+    )
     @patch("app.discover.providers.trakt_adapter.services.api_request")
-    def test_movie_watched_weekly_degrades_to_empty_on_http_error(self, mock_api_request, _mock_configured):
+    def test_movie_watched_weekly_degrades_to_empty_on_http_error(
+        self, mock_api_request, _mock_configured
+    ):
         response = requests.Response()
         response.status_code = 403
         mock_api_request.side_effect = requests.exceptions.HTTPError(response=response)

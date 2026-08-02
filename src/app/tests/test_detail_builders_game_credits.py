@@ -104,7 +104,9 @@ class GameImdbLinkChipTests(TestCase):
             item=item,
         )
         external_section = next(s for s in sections if s["title"] == "External links")
-        imdb_entry = next(e for e in external_section["entries"] if e["label"] == "IMDb")
+        imdb_entry = next(
+            e for e in external_section["entries"] if e["label"] == "IMDb"
+        )
         self.assertEqual(imdb_entry["url"], "https://www.imdb.com/title/tt34996965/")
 
     def test_no_imdb_chip_when_unresolved(self):

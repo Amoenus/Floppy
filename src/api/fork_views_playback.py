@@ -564,7 +564,7 @@ class PlaybackProgressView(drf_views.APIView):
                 data.get("episode_number"),
                 create=True,
             )
-        except Exception as e:  # noqa: BLE001 - provider metadata failures
+        except Exception as e:
             return Response(
                 {"detail": "Could not resolve media.", "errors": str(e)},
                 status=HTTP.NOT_FOUND,
@@ -649,7 +649,7 @@ class PlaybackProgressView(drf_views.APIView):
                 data.get("episode_number"),
                 create=False,
             )
-        except Exception as e:  # noqa: BLE001 - provider metadata failures
+        except Exception as e:
             return Response(
                 {"detail": "Could not resolve media.", "errors": str(e)},
                 status=HTTP.NOT_FOUND,

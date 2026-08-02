@@ -96,6 +96,7 @@ class PlexWebhookTests(TestCase):
             side_effect=fake_tv_with_seasons,
         )
         self.tv_with_seasons_patcher.start()
+
         def fake_tmdb_find(external_id, external_source):
             key = (str(external_id), external_source)
             if key in {
@@ -1762,7 +1763,9 @@ class PlexWebhookTests(TestCase):
         self.assertFalse(
             TV.objects.filter(item__media_id="777777", user=self.user).exists(),
         )
-        mock_resolve_tvdb_id.assert_called_once_with("777777", mock_tv_with_seasons.return_value)
+        mock_resolve_tvdb_id.assert_called_once_with(
+            "777777", mock_tv_with_seasons.return_value
+        )
         mock_tvdb_tv.assert_called_once_with("900001")
 
     @patch("app.providers.tmdb.resolve_tvdb_id_for_tmdb_show")
@@ -1922,7 +1925,9 @@ class PlexWebhookTests(TestCase):
         self.assertFalse(
             Anime.objects.filter(item__media_id="52992", user=self.user).exists(),
         )
-        mock_resolve_tvdb_id.assert_called_once_with("777780", mock_tv_with_seasons.return_value)
+        mock_resolve_tvdb_id.assert_called_once_with(
+            "777780", mock_tv_with_seasons.return_value
+        )
         mock_tvdb_tv.assert_called_once_with("900002")
 
     def test_ignored_event_types(self):
@@ -2053,7 +2058,9 @@ class PlexWebhookTests(TestCase):
                 "duration": 200000,
                 "ratingKey": "987",
                 "Guid": [
-                    {"id": "musicbrainz://recording/00000000-1111-2222-3333-444444444444"},
+                    {
+                        "id": "musicbrainz://recording/00000000-1111-2222-3333-444444444444"
+                    },
                 ],
             },
         }
@@ -2441,7 +2448,8 @@ class PlexWebhookTests(TestCase):
         """Plex scrobble should land in the anime bucket when the show is already tracked
         as anime (TMDB-based, library_media_type='anime').  The Season Item created by
         the scrobble must carry library_media_type='anime' so it appears on the anime
-        season page rather than the TV season page."""
+        season page rather than the TV season page.
+        """
         # Pre-create a TV Item with library_media_type='anime' to simulate the user
         # having previously tracked this show via the grouped-anime pathway (the bucket
         # signal lives on the TV item, matching item_uses_grouped_anime elsewhere in
@@ -2526,7 +2534,8 @@ class PlexWebhookTests(TestCase):
         #326. The scrobble must land in the bucket that matches the show's
         real TV-level tracking (season), and self-healing should clean up the
         orphaned stray anime-typed Item rather than leave two Season Items
-        around."""
+        around.
+        """
         # TVDB-first resolution → show tracked under correct show TMDB ID 1668.
         # No library_media_type='anime' on the TV item — this show is NOT
         # actually anime-tracked.
@@ -2620,7 +2629,7 @@ class LivePlaybackScrobbleClearingTests(TestCase):
         """Scrobble with known duration/offset sets expiry from remaining time."""
         now = timezone.now()
         duration = 2666  # seconds (~44 min episode)
-        offset = 2265    # ~85% through -> 401 seconds remaining
+        offset = 2265  # ~85% through -> 401 seconds remaining
 
         live_playback.apply_playback_event(
             user_id=self.user.id,

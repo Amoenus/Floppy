@@ -275,8 +275,13 @@ class MusicServiceTests(TestCase):
             ["Brian Eno", "David Byrne"],
         )
 
-    @patch("app.providers.musicbrainz.get_genre_parents", return_value=["Rock", "Electronic"])
-    @patch("app.providers.musicbrainz.get_release_group_genres", return_value=["Krautrock"])
+    @patch(
+        "app.providers.musicbrainz.get_genre_parents",
+        return_value=["Rock", "Electronic"],
+    )
+    @patch(
+        "app.providers.musicbrainz.get_release_group_genres", return_value=["Krautrock"]
+    )
     @patch("app.providers.musicbrainz.get_release")
     def test_populate_album_tracks_falls_back_and_syncs_implied_genres(
         self,
@@ -334,11 +339,18 @@ class MusicServiceTests(TestCase):
         self.assertEqual(item.genres, ["Krautrock"])
         self.assertEqual(item.implied_genres, ["Rock", "Electronic"])
         self.assertTrue(
-            Track.objects.filter(album=album, musicbrainz_recording_id="track-mbid").exists(),
+            Track.objects.filter(
+                album=album, musicbrainz_recording_id="track-mbid"
+            ).exists(),
         )
 
-    @patch("app.providers.musicbrainz.get_genre_parents", return_value=["Experimental Rock", "Rock"])
-    def test_populate_album_implied_genres_excludes_direct_genres(self, _mock_genre_parents):
+    @patch(
+        "app.providers.musicbrainz.get_genre_parents",
+        return_value=["Experimental Rock", "Rock"],
+    )
+    def test_populate_album_implied_genres_excludes_direct_genres(
+        self, _mock_genre_parents
+    ):
         artist = Artist.objects.create(name="Test Artist")
         album = Album.objects.create(
             title="Genre Album",
@@ -353,7 +365,9 @@ class MusicServiceTests(TestCase):
         self.assertEqual(album.implied_genres, ["Experimental Rock"])
 
     @patch("app.providers.musicbrainz.get_genre_parents", return_value=[])
-    def test_populate_album_implied_genres_capitalizes_existing_direct_genres(self, _mock_genre_parents):
+    def test_populate_album_implied_genres_capitalizes_existing_direct_genres(
+        self, _mock_genre_parents
+    ):
         artist = Artist.objects.create(name="Test Artist")
         album = Album.objects.create(
             title="Genre Album",

@@ -88,4 +88,4 @@ def prefill_episode_runtime_index(media_list):
     index = build_episode_runtime_index(show_keys)
     for media in targets:
         key = (media.item.media_id, media.item.source)
-        media._episode_runtime_index = index.get(key, {})  # noqa: SLF001
+        media._episode_runtime_index = index.get(key, {})

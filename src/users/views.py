@@ -92,7 +92,9 @@ SIDEBAR_MEDIA_TYPES = [
 ]
 
 
-def _normalize_auto_pause_rules(raw_rules: str, allowed_libraries: list[str]) -> list[dict]:
+def _normalize_auto_pause_rules(
+    raw_rules: str, allowed_libraries: list[str]
+) -> list[dict]:
     """Validate and normalize submitted auto-pause rules."""
     try:
         parsed_rules = json.loads(raw_rules or "[]")
@@ -128,7 +130,11 @@ def _normalize_auto_pause_rules(raw_rules: str, allowed_libraries: list[str]) ->
         }
 
         existing_index = next(
-            (index for index, rule in enumerate(normalized_rules) if rule["library"] == library),
+            (
+                index
+                for index, rule in enumerate(normalized_rules)
+                if rule["library"] == library
+            ),
             None,
         )
 
@@ -172,7 +178,9 @@ def _get_import_data_user(user):
     ).get(pk=user.pk)
 
 
-def _refresh_cached_plex_sections(account: PlexAccount) -> tuple[list[dict], str | None]:
+def _refresh_cached_plex_sections(
+    account: PlexAccount,
+) -> tuple[list[dict], str | None]:
     """Refresh and persist Plex library sections when the cache is stale."""
     cached_sections = account.sections or []
     needs_refresh = _should_refresh_plex_sections(account) or not cached_sections
@@ -200,7 +208,9 @@ def _build_qr_data_uri(provisioning_uri: str) -> str:
         return ""
 
     if qrcode is None:
-        logger.warning("qrcode package is unavailable; skipping authenticator QR rendering")
+        logger.warning(
+            "qrcode package is unavailable; skipping authenticator QR rendering"
+        )
         return ""
 
     qr = qrcode.QRCode(
@@ -237,7 +247,9 @@ def account(request):
             if user_form.is_valid():
                 user_form.save()
                 messages.success(request, "Your username has been updated!")
-                logger.info("Successful username change for user: %s", request.user.username)
+                logger.info(
+                    "Successful username change for user: %s", request.user.username
+                )
                 return redirect("account")
 
             logger.warning(
@@ -246,14 +258,19 @@ def account(request):
                 list(user_form.errors.keys()),
             )
 
-        elif any(key in request.POST for key in ["old_password", "new_password1", "new_password2"]):
+        elif any(
+            key in request.POST
+            for key in ["old_password", "new_password1", "new_password2"]
+        ):
             password_form = PasswordChangeForm(user=request.user, data=request.POST)
 
             if password_form.is_valid():
                 user = password_form.save()
                 update_session_auth_hash(request, user)
                 messages.success(request, "Your password has been updated!")
-                logger.info("Successful password change for user: %s", request.user.username)
+                logger.info(
+                    "Successful password change for user: %s", request.user.username
+                )
                 return redirect("account")
 
             logger.warning(
@@ -268,7 +285,12 @@ def account(request):
             if authenticator_form.is_valid():
                 request.user.authenticator_enabled = True
                 request.user.authenticator_confirmed_at = timezone.now()
-                request.user.save(update_fields=["authenticator_enabled", "authenticator_confirmed_at"])
+                request.user.save(
+                    update_fields=[
+                        "authenticator_enabled",
+                        "authenticator_confirmed_at",
+                    ]
+                )
                 fresh_recovery_codes = request.user.generate_recovery_codes()
                 show_authenticator_setup = False
                 messages.success(
@@ -308,7 +330,9 @@ def account(request):
             messages.warning(request, "Authenticator app deactivated.")
 
         elif action == "regenerate_recovery_codes":
-            recovery_codes_form = RegenerateRecoveryCodesForm(request.POST, user=request.user)
+            recovery_codes_form = RegenerateRecoveryCodesForm(
+                request.POST, user=request.user
+            )
             if recovery_codes_form.is_valid():
                 fresh_recovery_codes = request.user.generate_recovery_codes()
                 messages.success(
@@ -333,7 +357,9 @@ def account(request):
         "authenticator_uri": authenticator_uri,
         "authenticator_qr_data_uri": authenticator_qr_data_uri,
         "show_authenticator_setup": show_authenticator_setup,
-        "unused_recovery_code_count": request.user.recovery_codes.filter(used_at__isnull=True).count(),
+        "unused_recovery_code_count": request.user.recovery_codes.filter(
+            used_at__isnull=True
+        ).count(),
         "fresh_recovery_codes": fresh_recovery_codes,
     }
 
@@ -350,8 +376,12 @@ def password_recover(request):
         form = PasswordRecoveryForm(request.POST)
         if form.is_valid():
             user = form.save()
-            logger.info("Successful self-service password recovery for user: %s", user.username)
-            messages.success(request, "Password updated. Sign in with your new password.")
+            logger.info(
+                "Successful self-service password recovery for user: %s", user.username
+            )
+            messages.success(
+                request, "Password updated. Sign in with your new password."
+            )
             return redirect("account_login")
 
         logger.warning("Failed self-service password recovery attempt")
@@ -567,10 +597,16 @@ def sidebar(request):
 
         submitted_order = request.POST.get("sidebar_media_type_order", "").split(",")
         sidebar_media_type_order = list(
-            dict.fromkeys(media_type for media_type in submitted_order if media_type in media_types),
+            dict.fromkeys(
+                media_type
+                for media_type in submitted_order
+                if media_type in media_types
+            ),
         )
         sidebar_media_type_order += [
-            media_type for media_type in media_types if media_type not in sidebar_media_type_order
+            media_type
+            for media_type in media_types
+            if media_type not in sidebar_media_type_order
         ]
         if request.user.sidebar_media_type_order != sidebar_media_type_order:
             request.user.sidebar_media_type_order = sidebar_media_type_order
@@ -585,10 +621,16 @@ def sidebar(request):
         return redirect("sidebar")
 
     preferred_order = request.user.sidebar_media_type_order or []
-    ordered_media_types = [media_type for media_type in preferred_order if media_type in media_types]
+    ordered_media_types = [
+        media_type for media_type in preferred_order if media_type in media_types
+    ]
     context = {
         "media_types": ordered_media_types
-        + [media_type for media_type in media_types if media_type not in ordered_media_types],
+        + [
+            media_type
+            for media_type in media_types
+            if media_type not in ordered_media_types
+        ],
     }
     return render(request, "users/sidebar.html", context)
 
@@ -617,7 +659,9 @@ def home_screen(request):
         return redirect("home_screen")
 
     context = {
-        "home_screen_sections_json": json.dumps(serialize_settings_sections(request.user)),
+        "home_screen_sections_json": json.dumps(
+            serialize_settings_sections(request.user)
+        ),
         "show_media_type_headers": request.user.home_show_media_type_headers,
         "home_screen_list_search_url": reverse("home_screen_list_search"),
         "direction_choices_json": json.dumps(
@@ -683,7 +727,9 @@ def ui_preferences(request):
 @require_http_methods(["GET", "POST"])
 def preferences(request):
     """Render the preferences settings page."""
-    media_types = [mt.value for mt in MediaTypes if mt.value != MediaTypes.EPISODE.value]
+    media_types = [
+        mt.value for mt in MediaTypes if mt.value != MediaTypes.EPISODE.value
+    ]
     active_libraries = [
         library
         for library in request.user.get_active_media_types()
@@ -731,17 +777,26 @@ def preferences(request):
         top_talent_sort_by = request.POST.get("top_talent_sort_by")
         rating_scale = request.POST.get("rating_scale")
         tv_metadata_source_default = request.POST.get("tv_metadata_source_default")
-        anime_metadata_source_default = request.POST.get("anime_metadata_source_default")
+        anime_metadata_source_default = request.POST.get(
+            "anime_metadata_source_default"
+        )
         anime_library_mode = request.POST.get("anime_library_mode")
-        hide_completed_recommendations_raw = request.POST.get("hide_completed_recommendations")
+        hide_completed_recommendations_raw = request.POST.get(
+            "hide_completed_recommendations"
+        )
         hide_zero_rating_raw = request.POST.get("hide_zero_rating")
         progress_bar_raw = request.POST.get("progress_bar")
         _qsu_raw = request.POST.get("quick_season_update_mobile", "none")
         from users.models import QuickSeasonUpdateChoices
+
         quick_season_update_mobile = (
-            _qsu_raw if _qsu_raw in QuickSeasonUpdateChoices.values else QuickSeasonUpdateChoices.NONE
+            _qsu_raw
+            if _qsu_raw in QuickSeasonUpdateChoices.values
+            else QuickSeasonUpdateChoices.NONE
         )
-        book_comic_manga_progress_percentage = request.POST.get("book_comic_manga_progress_percentage") == "1"
+        book_comic_manga_progress_percentage = (
+            request.POST.get("book_comic_manga_progress_percentage") == "1"
+        )
 
         duration_format = request.POST.get("duration_format")
         fields_to_update = []
@@ -761,92 +816,114 @@ def preferences(request):
                     setattr(request.user, enabled_field, is_enabled)
                     fields_to_update.append(enabled_field)
 
-        if date_format and date_format in [choice[0] for choice in DateFormatChoices.choices]:
-            if request.user.date_format != date_format:
-                request.user.date_format = date_format
-                fields_to_update.append("date_format")
+        if (
+            date_format
+            and date_format in [choice[0] for choice in DateFormatChoices.choices]
+            and request.user.date_format != date_format
+        ):
+            request.user.date_format = date_format
+            fields_to_update.append("date_format")
 
-        if time_format and time_format in [choice[0] for choice in TimeFormatChoices.choices]:
-            if request.user.time_format != time_format:
-                request.user.time_format = time_format
-                fields_to_update.append("time_format")
+        if (
+            time_format
+            and time_format in [choice[0] for choice in TimeFormatChoices.choices]
+            and request.user.time_format != time_format
+        ):
+            request.user.time_format = time_format
+            fields_to_update.append("time_format")
 
         week_start_day = request.POST.get("week_start_day")
-        if week_start_day and week_start_day in WeekStartDayChoices.values:
-            if request.user.week_start_day != week_start_day:
-                request.user.week_start_day = week_start_day
-                fields_to_update.append("week_start_day")
-                week_start_day_changed = True
+        if (
+            week_start_day and week_start_day in WeekStartDayChoices.values
+        ) and request.user.week_start_day != week_start_day:
+            request.user.week_start_day = week_start_day
+            fields_to_update.append("week_start_day")
+            week_start_day_changed = True
 
         if (
             activity_history_view
-            and activity_history_view in [choice[0] for choice in ActivityHistoryViewChoices.choices]
+            and activity_history_view
+            in [choice[0] for choice in ActivityHistoryViewChoices.choices]
+            and request.user.activity_history_view != activity_history_view
         ):
-            if request.user.activity_history_view != activity_history_view:
-                request.user.activity_history_view = activity_history_view
-                fields_to_update.append("activity_history_view")
+            request.user.activity_history_view = activity_history_view
+            fields_to_update.append("activity_history_view")
 
-        if duration_format and duration_format in DurationFormatChoices.values:
-            if request.user.duration_format != duration_format:
-                request.user.duration_format = duration_format
-                fields_to_update.append("duration_format")
-                duration_format_changed = True
+        if (
+            duration_format and duration_format in DurationFormatChoices.values
+        ) and request.user.duration_format != duration_format:
+            request.user.duration_format = duration_format
+            fields_to_update.append("duration_format")
+            duration_format_changed = True
 
         if (
             game_logging_style
-            and game_logging_style in [choice[0] for choice in GameLoggingStyleChoices.choices]
+            and game_logging_style
+            in [choice[0] for choice in GameLoggingStyleChoices.choices]
+            and request.user.game_logging_style != game_logging_style
         ):
-            if request.user.game_logging_style != game_logging_style:
-                request.user.game_logging_style = game_logging_style
-                fields_to_update.append("game_logging_style")
-                history_cache.invalidate_history_cache(request.user.id)
-                history_cache.schedule_history_refresh(request.user.id, game_logging_style, debounce_seconds=0)
+            request.user.game_logging_style = game_logging_style
+            fields_to_update.append("game_logging_style")
+            history_cache.invalidate_history_cache(request.user.id)
+            history_cache.schedule_history_refresh(
+                request.user.id, game_logging_style, debounce_seconds=0
+            )
 
         if (
             mobile_grid_layout
-            and mobile_grid_layout in [choice[0] for choice in MobileGridLayoutChoices.choices]
+            and mobile_grid_layout
+            in [choice[0] for choice in MobileGridLayoutChoices.choices]
+            and request.user.mobile_grid_layout != mobile_grid_layout
         ):
-            if request.user.mobile_grid_layout != mobile_grid_layout:
-                request.user.mobile_grid_layout = mobile_grid_layout
-                fields_to_update.append("mobile_grid_layout")
+            request.user.mobile_grid_layout = mobile_grid_layout
+            fields_to_update.append("mobile_grid_layout")
 
         if (
             media_card_subtitle_display
             and media_card_subtitle_display
             in [choice[0] for choice in MediaCardSubtitleDisplayChoices.choices]
+            and request.user.media_card_subtitle_display != media_card_subtitle_display
         ):
-            if request.user.media_card_subtitle_display != media_card_subtitle_display:
-                request.user.media_card_subtitle_display = media_card_subtitle_display
-                fields_to_update.append("media_card_subtitle_display")
+            request.user.media_card_subtitle_display = media_card_subtitle_display
+            fields_to_update.append("media_card_subtitle_display")
 
         if (
             title_display_preference
             and title_display_preference
             in [choice[0] for choice in TitleDisplayPreferenceChoices.choices]
+            and request.user.title_display_preference != title_display_preference
         ):
-            if request.user.title_display_preference != title_display_preference:
-                request.user.title_display_preference = title_display_preference
-                fields_to_update.append("title_display_preference")
+            request.user.title_display_preference = title_display_preference
+            fields_to_update.append("title_display_preference")
 
         if (
             top_talent_sort_by
-            and top_talent_sort_by in [choice[0] for choice in TopTalentSortChoices.choices]
+            and top_talent_sort_by
+            in [choice[0] for choice in TopTalentSortChoices.choices]
+            and request.user.top_talent_sort_by != top_talent_sort_by
         ):
-            if request.user.top_talent_sort_by != top_talent_sort_by:
-                request.user.top_talent_sort_by = top_talent_sort_by
-                fields_to_update.append("top_talent_sort_by")
-                top_talent_sort_changed = True
+            request.user.top_talent_sort_by = top_talent_sort_by
+            fields_to_update.append("top_talent_sort_by")
+            top_talent_sort_changed = True
 
-        if rating_scale and rating_scale in [choice[0] for choice in RatingScaleChoices.choices]:
-            if request.user.rating_scale != rating_scale:
-                request.user.rating_scale = rating_scale
-                fields_to_update.append("rating_scale")
-                rating_scale_changed = True
+        if (
+            rating_scale
+            and rating_scale in [choice[0] for choice in RatingScaleChoices.choices]
+            and request.user.rating_scale != rating_scale
+        ):
+            request.user.rating_scale = rating_scale
+            fields_to_update.append("rating_scale")
+            rating_scale_changed = True
 
         if hide_completed_recommendations_raw is not None:
             hide_completed_recommendations = hide_completed_recommendations_raw == "1"
-            if request.user.hide_completed_recommendations != hide_completed_recommendations:
-                request.user.hide_completed_recommendations = hide_completed_recommendations
+            if (
+                request.user.hide_completed_recommendations
+                != hide_completed_recommendations
+            ):
+                request.user.hide_completed_recommendations = (
+                    hide_completed_recommendations
+                )
                 fields_to_update.append("hide_completed_recommendations")
 
         if hide_zero_rating_raw is not None:
@@ -867,10 +944,13 @@ def preferences(request):
 
         show_planned_on_home = request.POST.get("show_planned_on_home")
 
-        if show_planned_on_home in [choice[0] for choice in PlannedHomeDisplayChoices.choices]:
-            if request.user.show_planned_on_home != show_planned_on_home:
-                request.user.show_planned_on_home = show_planned_on_home
-                fields_to_update.append("show_planned_on_home")
+        if (
+            show_planned_on_home
+            in [choice[0] for choice in PlannedHomeDisplayChoices.choices]
+            and request.user.show_planned_on_home != show_planned_on_home
+        ):
+            request.user.show_planned_on_home = show_planned_on_home
+            fields_to_update.append("show_planned_on_home")
 
         auto_pause_enabled = request.POST.get("auto_pause_enabled") == "1"
         raw_rules = request.POST.get("auto_pause_rules", "[]")
@@ -884,8 +964,13 @@ def preferences(request):
             request.user.auto_pause_rules = normalized_rules
             fields_to_update.append("auto_pause_rules")
 
-        if request.user.book_comic_manga_progress_percentage != book_comic_manga_progress_percentage:
-            request.user.book_comic_manga_progress_percentage = book_comic_manga_progress_percentage
+        if (
+            request.user.book_comic_manga_progress_percentage
+            != book_comic_manga_progress_percentage
+        ):
+            request.user.book_comic_manga_progress_percentage = (
+                book_comic_manga_progress_percentage
+            )
             fields_to_update.append("book_comic_manga_progress_percentage")
 
         provider_region = request.POST.get("watch_provider_region", "")
@@ -897,24 +982,29 @@ def preferences(request):
             request.user.watch_provider_region = "UNSET"
             fields_to_update.append("watch_provider_region")
 
-        if tv_metadata_source_default in {
-            choice[0] for choice in tv_metadata_source_choices
-        }:
-            if request.user.tv_metadata_source_default != tv_metadata_source_default:
-                request.user.tv_metadata_source_default = tv_metadata_source_default
-                fields_to_update.append("tv_metadata_source_default")
+        if (
+            tv_metadata_source_default
+            in {choice[0] for choice in tv_metadata_source_choices}
+            and request.user.tv_metadata_source_default != tv_metadata_source_default
+        ):
+            request.user.tv_metadata_source_default = tv_metadata_source_default
+            fields_to_update.append("tv_metadata_source_default")
 
         if anime_metadata_source_default in {
             choice[0] for choice in anime_metadata_source_choices
-        }:
-            if request.user.anime_metadata_source_default != anime_metadata_source_default:
-                request.user.anime_metadata_source_default = anime_metadata_source_default
-                fields_to_update.append("anime_metadata_source_default")
+        } and (
+            request.user.anime_metadata_source_default != anime_metadata_source_default
+        ):
+            request.user.anime_metadata_source_default = anime_metadata_source_default
+            fields_to_update.append("anime_metadata_source_default")
 
-        if anime_library_mode in [choice[0] for choice in AnimeLibraryModeChoices.choices]:
-            if request.user.anime_library_mode != anime_library_mode:
-                request.user.anime_library_mode = anime_library_mode
-                fields_to_update.append("anime_library_mode")
+        if (
+            anime_library_mode
+            in [choice[0] for choice in AnimeLibraryModeChoices.choices]
+            and request.user.anime_library_mode != anime_library_mode
+        ):
+            request.user.anime_library_mode = anime_library_mode
+            fields_to_update.append("anime_library_mode")
 
         session_duration = request.POST.get("session_duration")
         if session_duration is not None:
@@ -922,10 +1012,12 @@ def preferences(request):
                 session_duration_int = int(session_duration)
             except (ValueError, TypeError):
                 session_duration_int = None
-            if session_duration_int in SessionDurationChoices.values:
-                if request.user.session_duration != session_duration_int:
-                    request.user.session_duration = session_duration_int
-                    fields_to_update.append("session_duration")
+            if (
+                session_duration_int in SessionDurationChoices.values
+                and request.user.session_duration != session_duration_int
+            ):
+                request.user.session_duration = session_duration_int
+                fields_to_update.append("session_duration")
 
         if fields_to_update:
             request.user.save(update_fields=fields_to_update)
@@ -936,7 +1028,12 @@ def preferences(request):
                     force=True,
                     logging_styles=("sessions", "repeats"),
                 )
-            if rating_scale_changed or top_talent_sort_changed or week_start_day_changed or duration_format_changed:
+            if (
+                rating_scale_changed
+                or top_talent_sort_changed
+                or week_start_day_changed
+                or duration_format_changed
+            ):
                 statistics_cache.invalidate_statistics_cache(request.user.id)
                 statistics_cache.schedule_all_ranges_refresh(
                     request.user.id,
@@ -1023,7 +1120,9 @@ def integrations(request):
             "user": user,
             "plex_webhook_needs_update": plex_webhook_needs_update,
             "plex_library_options_json": json.dumps(plex_library_options),
-            "selected_plex_webhook_libraries_json": json.dumps(selected_plex_webhook_libraries),
+            "selected_plex_webhook_libraries_json": json.dumps(
+                selected_plex_webhook_libraries
+            ),
             "jellyfin_account": jellyfin_account,
             "seerr_global_webhook_enabled": bool(settings.SEERR_GLOBAL_WEBHOOK_SECRET),
         },
@@ -1087,7 +1186,9 @@ def import_data(request):
         if lastfm_periodic_task and lastfm_periodic_task.interval:
             lastfm_poll_interval = lastfm_periodic_task.interval.every
         if lastfm_account.history_import_status != "idle":
-            lastfm_history_status_label = lastfm_account.get_history_import_status_display()
+            lastfm_history_status_label = (
+                lastfm_account.get_history_import_status_display()
+            )
         lastfm_history_total_pages = lastfm_account.history_import_total_pages
         if lastfm_history_total_pages:
             if lastfm_account.history_import_status == "completed":
@@ -1139,8 +1240,8 @@ def save_import_settings(request):
         return HttpResponse(status=204)
 
     frequency = request.POST.get("import_frequency", "")
-    time_val  = request.POST.get("import_time", "")
-    mode      = request.POST.get("import_mode", "")
+    time_val = request.POST.get("import_time", "")
+    mode = request.POST.get("import_mode", "")
 
     fields = []
     if frequency in ImportFrequencyChoices.values:
@@ -1236,7 +1337,11 @@ def import_data_plex_sections(request):
 @require_GET
 def export_data(request):
     """Render the export data settings page."""
-    media_types = [mt.value for mt in MediaTypes if mt.value not in (MediaTypes.EPISODE.value, MediaTypes.SEASON.value)]
+    media_types = [
+        mt.value
+        for mt in MediaTypes
+        if mt.value not in (MediaTypes.EPISODE.value, MediaTypes.SEASON.value)
+    ]
     export_tasks = request.user.get_export_tasks()
     context = {
         "user": request.user,
@@ -1301,7 +1406,9 @@ def create_export_schedule(request):
 
     frequency = request.POST.get("frequency", "once")
     export_time = request.POST.get("time", "03:00")
-    selected_media_types = request.POST.getlist("media_types") or request.POST.getlist("media_types_checkboxes")
+    selected_media_types = request.POST.getlist("media_types") or request.POST.getlist(
+        "media_types_checkboxes"
+    )
     include_lists = request.POST.get("include_lists") == "on"
     include_collection = request.POST.get("include_collection") == "on"
 
@@ -1331,7 +1438,7 @@ def create_export_schedule(request):
         return build_export_response()
 
     try:
-        parsed_time = dt.datetime.strptime(export_time, "%H:%M").time()
+        parsed_time = dt.datetime.strptime(export_time, "%H:%M").time()  # noqa: DTZ007  # date-only value; no timezone applies
     except ValueError:
         messages.error(request, "Invalid export time.")
         return redirect("export_data")
@@ -1343,7 +1450,10 @@ def create_export_schedule(request):
         enabled=True,
     ).first()
     if existing:
-        messages.error(request, "A backup schedule already exists. Delete it first to create a new one.")
+        messages.error(
+            request,
+            "A backup schedule already exists. Delete it first to create a new one.",
+        )
         return redirect("export_data")
 
     if frequency == "daily":
@@ -1371,7 +1481,9 @@ def create_export_schedule(request):
     if selected_media_types:
         task_kwargs["media_types"] = selected_media_types
 
-    task_name = f"Backup export for {request.user.username} at {parsed_time} {frequency}"
+    task_name = (
+        f"Backup export for {request.user.username} at {parsed_time} {frequency}"
+    )
     PeriodicTask.objects.create(
         name=task_name,
         task="Scheduled backup export",
@@ -1574,7 +1686,6 @@ def update_jellyseerr_settings(request):
 
     messages.success(request, "Jellyseerr settings saved.")
     return redirect(request.META.get("HTTP_REFERER", "/settings/integrations"))
-
 
 
 @require_POST

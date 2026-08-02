@@ -30,13 +30,19 @@ class DownloadVideogameTitleIndexTests(SimpleTestCase):
                 ["tt0000003", "videoGame", "No Year Game", "\\N"],
             ],
         )
-        with patch("app.providers.imdb_datasets.urllib.request.urlopen", return_value=_mock_urlopen(payload)):
+        with patch(
+            "app.providers.imdb_datasets.urllib.request.urlopen",
+            return_value=_mock_urlopen(payload),
+        ):
             index = imdb_datasets.download_videogame_title_index()
 
-        self.assertEqual(index, {
-            "tt0000001": ("Dispatch", 2025),
-            "tt0000003": ("No Year Game", None),
-        })
+        self.assertEqual(
+            index,
+            {
+                "tt0000001": ("Dispatch", 2025),
+                "tt0000003": ("No Year Game", None),
+            },
+        )
 
 
 class DownloadPrincipalsTests(SimpleTestCase):
@@ -49,7 +55,10 @@ class DownloadPrincipalsTests(SimpleTestCase):
                 ["tt0000099", "1", "nm0000099", "actor", "\\N", "\\N"],
             ],
         )
-        with patch("app.providers.imdb_datasets.urllib.request.urlopen", return_value=_mock_urlopen(payload)):
+        with patch(
+            "app.providers.imdb_datasets.urllib.request.urlopen",
+            return_value=_mock_urlopen(payload),
+        ):
             result = imdb_datasets.download_principals({"tt0000001"})
 
         self.assertEqual(set(result.keys()), {"tt0000001"})
@@ -59,7 +68,9 @@ class DownloadPrincipalsTests(SimpleTestCase):
         self.assertEqual(rows["nm0000002"]["job"], "Director")
 
     def test_empty_tconsts_short_circuits(self):
-        with patch("app.providers.imdb_datasets.urllib.request.urlopen") as mock_urlopen:
+        with patch(
+            "app.providers.imdb_datasets.urllib.request.urlopen"
+        ) as mock_urlopen:
             result = imdb_datasets.download_principals(set())
         self.assertEqual(result, {})
         mock_urlopen.assert_not_called()
@@ -74,7 +85,10 @@ class DownloadNamesTests(SimpleTestCase):
                 ["nm0000002", "Bob Director"],
             ],
         )
-        with patch("app.providers.imdb_datasets.urllib.request.urlopen", return_value=_mock_urlopen(payload)):
+        with patch(
+            "app.providers.imdb_datasets.urllib.request.urlopen",
+            return_value=_mock_urlopen(payload),
+        ):
             names = imdb_datasets.download_names({"nm0000001"})
 
         self.assertEqual(names, {"nm0000001": "Alice Actor"})

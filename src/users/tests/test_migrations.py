@@ -205,7 +205,9 @@ class Migration0090HomeScreenSeedTests(SimpleTestCase):
 
         self.assertEqual(len(rows), 2)
         self.assertEqual([row.position for row in rows], [0, 1])
-        self.assertEqual([row.row_type for row in rows], ["library_query", "library_query"])
+        self.assertEqual(
+            [row.row_type for row in rows], ["library_query", "library_query"]
+        )
         self.assertEqual(rows[0].filters["status"], "In progress")
         self.assertEqual(rows[0].sort_by, "completion")
         self.assertEqual(rows[0].direction, "desc")

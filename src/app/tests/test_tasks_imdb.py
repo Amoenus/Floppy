@@ -23,7 +23,8 @@ class RefreshImdbGameCreditsTaskTests(TestCase):
     def test_backfills_images_even_when_no_new_credits_to_sync(self):
         """Regression: a game already synced in a prior run has no new tconsts to
         fetch, but its cast can still be missing images from before this backfill
-        existed — that shouldn't skip the image backfill step entirely."""
+        existed — that shouldn't skip the image backfill step entirely.
+        """
         item = Item.objects.create(
             media_id="igdb-1",
             source=Sources.IGDB.value,
@@ -70,7 +71,10 @@ class RefreshImdbGameCreditsTaskTests(TestCase):
             ),
             patch(
                 "app.providers.tmdb.search_person_profile",
-                return_value={"image": "https://image.tmdb.org/t/p/h632/alice.jpg", "gender": "female"},
+                return_value={
+                    "image": "https://image.tmdb.org/t/p/h632/alice.jpg",
+                    "gender": "female",
+                },
             ) as mock_search,
             patch(
                 "app.services.imdb_game_credits.backfill_missing_game_studios",
@@ -100,7 +104,10 @@ class BackfillImdbGamePersonProfilesTaskTests(TestCase):
 
         with patch(
             "app.providers.tmdb.search_person_profile",
-            return_value={"image": "https://image.tmdb.org/t/p/h632/alice.jpg", "gender": "female"},
+            return_value={
+                "image": "https://image.tmdb.org/t/p/h632/alice.jpg",
+                "gender": "female",
+            },
         ):
             result = backfill_imdb_game_person_profiles()
 

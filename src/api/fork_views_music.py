@@ -66,9 +66,7 @@ def _serialize_artist(artist, tracker=None, *, include_albums=False):
         "tracker": _serialize_tracker(tracker),
     }
     if include_albums:
-        payload["albums"] = [
-            _serialize_album(album) for album in artist.albums.all()
-        ]
+        payload["albums"] = [_serialize_album(album) for album in artist.albums.all()]
     return payload
 
 
@@ -131,9 +129,7 @@ class MusicArtistsView(drf_views.APIView):
         trackers = ArtistTracker.objects.filter(user=request.user).select_related(
             "artist",
         )
-        results = [
-            _serialize_artist(tracker.artist, tracker) for tracker in trackers
-        ]
+        results = [_serialize_artist(tracker.artist, tracker) for tracker in trackers]
         return Response(
             paginate_data(request, results, limit, offset),
             status=HTTP.OK,
@@ -151,7 +147,7 @@ class MusicArtistsView(drf_views.APIView):
                 artist = fork_services_music.get_or_create_artist_from_musicbrainz(
                     musicbrainz_id,
                 )
-            except Exception as e:  # noqa: BLE001 — provider failures
+            except Exception as e:
                 return Response(
                     {"detail": "Could not fetch artist.", "errors": str(e)},
                     status=HTTP.BAD_GATEWAY,
@@ -271,7 +267,7 @@ class MusicArtistSyncView(drf_views.APIView):
             return Response({"detail": "Artist not found."}, status=HTTP.NOT_FOUND)
         try:
             count = sync_artist_discography(artist, force=True)
-        except Exception as e:  # noqa: BLE001 — provider failures
+        except Exception as e:
             return Response(
                 {"detail": "Discography sync failed.", "errors": str(e)},
                 status=HTTP.BAD_GATEWAY,
@@ -556,7 +552,7 @@ class MusicBulkPlaysView(drf_views.APIView):
     season/episode numbering. Returns 202 with a pollable task_id.
     """
 
-    def post(self, request):  # noqa: PLR0911
+    def post(self, request):
         """Queue bulk plays for an artist or album context."""
         context_kind = (request.data.get("context_kind") or "").strip()
         if context_kind not in ("artist", "album"):

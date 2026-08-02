@@ -1,5 +1,3 @@
-# ruff: noqa: D101, D102
-
 import fnmatch
 from unittest.mock import patch
 

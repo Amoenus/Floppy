@@ -1,4 +1,5 @@
 """stats_top_played.py — Top played media ranking by total time spent."""
+
 import logging
 
 from app.helpers import minutes_to_hhmm
@@ -42,7 +43,9 @@ def get_top_played_media(user_media, start_date, end_date):
             aggregated_movies = {}
 
             for media in _iter_media_list(media_list):
-                total_time_minutes = _calculate_movie_time(media, start_date, end_date, normalized_type, _logger)
+                total_time_minutes = _calculate_movie_time(
+                    media, start_date, end_date, normalized_type, _logger
+                )
                 if total_time_minutes <= 0:
                     continue
 
@@ -53,7 +56,10 @@ def get_top_played_media(user_media, start_date, end_date):
                 # Use item id when available, fallback to (media_id, source) tuple
                 item_key = getattr(item, "id", None)
                 if item_key is None:
-                    item_key = (getattr(item, "media_id", None), getattr(item, "source", None))
+                    item_key = (
+                        getattr(item, "media_id", None),
+                        getattr(item, "source", None),
+                    )
 
                 activity = media.end_date or media.start_date or media.created_at
                 if item_key not in aggregated_movies:
@@ -71,23 +77,33 @@ def get_top_played_media(user_media, start_date, end_date):
                     entry["total_time_minutes"] += total_time_minutes
                     entry["play_count"] += 1
 
-                    if activity and (entry["last_activity"] is None or activity > entry["last_activity"]):
+                    if activity and (
+                        entry["last_activity"] is None
+                        or activity > entry["last_activity"]
+                    ):
                         entry["last_activity"] = activity
 
                     current_media_activity = entry.get("_media_activity")
-                    if activity and (current_media_activity is None or activity > current_media_activity):
+                    if activity and (
+                        current_media_activity is None
+                        or activity > current_media_activity
+                    ):
                         entry["media"] = media
                         entry["_media_activity"] = activity
 
             for entry in aggregated_movies.values():
-                entry["formatted_duration"] = minutes_to_hhmm(entry["total_time_minutes"])
+                entry["formatted_duration"] = minutes_to_hhmm(
+                    entry["total_time_minutes"]
+                )
                 entry.pop("_media_activity", None)
                 media_with_progress.append(entry)
         elif normalized_type == "game":
             aggregated_games = {}
 
             for media in _iter_media_list(media_list):
-                total_time_minutes = _calculate_game_time_in_range(media, start_date, end_date)
+                total_time_minutes = _calculate_game_time_in_range(
+                    media, start_date, end_date
+                )
                 if total_time_minutes <= 0:
                     continue
 
@@ -98,7 +114,10 @@ def get_top_played_media(user_media, start_date, end_date):
                 # Use item id when available, fallback to (media_id, source) tuple
                 item_key = getattr(item, "id", None)
                 if item_key is None:
-                    item_key = (getattr(item, "media_id", None), getattr(item, "source", None))
+                    item_key = (
+                        getattr(item, "media_id", None),
+                        getattr(item, "source", None),
+                    )
 
                 activity = media.end_date or media.start_date or media.created_at
                 if item_key not in aggregated_games:
@@ -116,16 +135,24 @@ def get_top_played_media(user_media, start_date, end_date):
                     entry["total_time_minutes"] += total_time_minutes
                     entry["play_count"] += 1
 
-                    if activity and (entry["last_activity"] is None or activity > entry["last_activity"]):
+                    if activity and (
+                        entry["last_activity"] is None
+                        or activity > entry["last_activity"]
+                    ):
                         entry["last_activity"] = activity
 
                     current_media_activity = entry.get("_media_activity")
-                    if activity and (current_media_activity is None or activity > current_media_activity):
+                    if activity and (
+                        current_media_activity is None
+                        or activity > current_media_activity
+                    ):
                         entry["media"] = media
                         entry["_media_activity"] = activity
 
             for entry in aggregated_games.values():
-                entry["formatted_duration"] = minutes_to_hhmm(entry["total_time_minutes"])
+                entry["formatted_duration"] = minutes_to_hhmm(
+                    entry["total_time_minutes"]
+                )
                 entry.pop("_media_activity", None)
                 media_with_progress.append(entry)
         else:
@@ -134,29 +161,41 @@ def get_top_played_media(user_media, start_date, end_date):
                 episode_count = 0
 
                 if normalized_type == "tv":
-                    total_time_minutes, episode_count = _calculate_tv_time(media, start_date, end_date, _logger)
+                    total_time_minutes, episode_count = _calculate_tv_time(
+                        media, start_date, end_date, _logger
+                    )
                 elif normalized_type == "anime":
                     # Grouped anime uses TV model (seasons + episodes)
                     if hasattr(media, "seasons"):
-                        total_time_minutes, episode_count = _calculate_tv_time(media, start_date, end_date, _logger)
+                        total_time_minutes, episode_count = _calculate_tv_time(
+                            media, start_date, end_date, _logger
+                        )
                     else:
-                        total_time_minutes, episode_count = _calculate_anime_time(media, start_date, end_date, _logger)
+                        total_time_minutes, episode_count = _calculate_anime_time(
+                            media, start_date, end_date, _logger
+                        )
                 elif normalized_type == "boardgame":
                     if (
-                        media.end_date
-                        and start_date
-                        and end_date
-                        and start_date <= media.end_date <= end_date
-                    ) or (
-                        media.start_date
-                        and start_date
-                        and end_date
-                        and start_date <= media.start_date <= end_date
-                    ) or (not start_date and not end_date):
+                        (
+                            media.end_date
+                            and start_date
+                            and end_date
+                            and start_date <= media.end_date <= end_date
+                        )
+                        or (
+                            media.start_date
+                            and start_date
+                            and end_date
+                            and start_date <= media.start_date <= end_date
+                        )
+                        or (not start_date and not end_date)
+                    ):
                         total_time_minutes += media.progress
                 elif normalized_type == "music":
                     # Music: sum runtime for each play (history record) within date range
-                    total_time_minutes = _calculate_music_time(media, start_date, end_date, _logger)
+                    total_time_minutes = _calculate_music_time(
+                        media, start_date, end_date, _logger
+                    )
                     # Count plays for display - deduplicate by end_date (each unique end_date = one play)
                     play_count = 0
                     history_records = list(media.history.all().order_by("history_date"))
@@ -180,21 +219,27 @@ def get_top_played_media(user_media, start_date, end_date):
                     episode_count = play_count  # Reuse episode_count for plays
                 else:
                     # For movies and other media types, get runtime from metadata
-                    total_time_minutes = _calculate_movie_time(media, start_date, end_date, normalized_type, _logger)
+                    total_time_minutes = _calculate_movie_time(
+                        media, start_date, end_date, normalized_type, _logger
+                    )
 
                 if total_time_minutes > 0:
                     formatted_duration = minutes_to_hhmm(total_time_minutes)
                     if normalized_type == "boardgame":
                         formatted_duration = f"{total_time_minutes} play{'s' if total_time_minutes != 1 else ''}"
 
-                    media_with_progress.append({
-                        "media": media,
-                        "total_time_minutes": total_time_minutes,
-                        "formatted_duration": formatted_duration,
-                        "episode_count": episode_count,
-                        "last_activity": media.end_date or media.start_date or media.created_at,
-                        "play_count": 1,
-                    })
+                    media_with_progress.append(
+                        {
+                            "media": media,
+                            "total_time_minutes": total_time_minutes,
+                            "formatted_duration": formatted_duration,
+                            "episode_count": episode_count,
+                            "last_activity": media.end_date
+                            or media.start_date
+                            or media.created_at,
+                            "play_count": 1,
+                        }
+                    )
 
         # Sort by total time, then by most recent activity
         media_with_progress.sort(
