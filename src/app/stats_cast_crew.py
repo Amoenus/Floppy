@@ -25,6 +25,8 @@ from app.statistics_talent import _aggregate_top_talent
 
 logger = logging.getLogger(__name__)
 
+MINUTES_PER_HOUR = 60
+
 # Mirrors GENRE_PALETTE in statistics-charts.js for consistent genre coloring.
 GENRE_PALETTE = [
     "#6366f1",
@@ -63,8 +65,8 @@ ROLE_LEADER_COLUMNS = (
 def _compact_role_leader_time_label(total_minutes):
     """Return a single-unit watched-time label for narrow leaderboard cells."""
     total_minutes = int(total_minutes or 0)
-    if total_minutes >= 60:
-        return f"{math.floor(total_minutes / 60)}h"
+    if total_minutes >= MINUTES_PER_HOUR:
+        return f"{math.floor(total_minutes / MINUTES_PER_HOUR)}h"
     return f"{total_minutes}m"
 
 

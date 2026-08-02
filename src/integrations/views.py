@@ -7,6 +7,7 @@ import re
 import secrets
 import zipfile
 from datetime import datetime, timedelta
+from http import HTTPStatus
 from io import BytesIO
 from urllib.parse import unquote
 
@@ -1554,7 +1555,10 @@ def storyteller_poll(request):
         return JsonResponse({"status": "connected"})
 
     error = data.get("error") if isinstance(data, dict) else None
-    if error in ("authorization_pending", "slow_down") or status_code == 400:
+    if (
+        error in ("authorization_pending", "slow_down")
+        or status_code == HTTPStatus.BAD_REQUEST
+    ):
         return JsonResponse({"status": "pending"})
 
     request.session.pop(STORYTELLER_PENDING_SESSION_KEY, None)

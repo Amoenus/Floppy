@@ -15,6 +15,8 @@ from integrations.imports.helpers import MediaImportError, MediaImportUnexpected
 
 logger = logging.getLogger(__name__)
 
+RATING_HALF_SCALE_MAX = 5
+
 
 def importer(file, user, mode):
     """Import media from CSV file using the class-based importer."""
@@ -234,7 +236,7 @@ class HardcoverImporter:
 
         if rating <= 0:
             return None
-        if rating <= 5:
+        if rating <= RATING_HALF_SCALE_MAX:
             return round(rating * 2, 1)
         return min(rating, 10)
 

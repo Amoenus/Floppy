@@ -10,6 +10,8 @@ from app.providers import services
 
 logger = logging.getLogger(__name__)
 
+BOOK_CATEGORY_BUNDLE = 8  # Hardcover book_category_id for bundle editions
+
 base_url = "https://api.hardcover.app/v1/graphql"
 MAX_SEARCH_QUERY_LENGTH = 50
 
@@ -598,7 +600,7 @@ def process_series_data(featured_series):
                     continue
                 if (
                     book_data.get("compilation")
-                    or book_data.get("book_category_id") == 8
+                    or book_data.get("book_category_id") == BOOK_CATEGORY_BUNDLE
                 ):
                     continue
 

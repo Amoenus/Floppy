@@ -4,6 +4,7 @@ import logging
 import re
 from collections import defaultdict
 from datetime import UTC, datetime
+from http import HTTPStatus
 
 import urllib3
 from django.conf import settings
@@ -27,6 +28,10 @@ from integrations.webhooks.plex import PlexWebhookProcessor
 import contextlib
 
 logger = logging.getLogger(__name__)
+
+MAX_SKIPPED_USER_SAMPLES = 5
+RATING_SCALE_MAX = 10
+RATING_PERCENTAGE_SCALE_MAX = 100
 
 
 def importer(library, user, mode):
@@ -782,7 +787,7 @@ class PlexHistoryImporter:
             sample = username
         elif account_id:
             sample = f"accountID={account_id}"
-        if sample and len(self._skipped_user_samples) < 5:
+        if sample and len(self._skipped_user_samples) < MAX_SKIPPED_USER_SAMPLES:
             self._skipped_user_samples.add(sample)
 
     def _track_unknown_type(self, metadata: dict):
@@ -1299,9 +1304,9 @@ class PlexHistoryImporter:
             )
             return None
 
-        if rating <= 10:
+        if rating <= RATING_SCALE_MAX:
             rating = rating
-        elif rating <= 100:
+        elif rating <= RATING_PERCENTAGE_SCALE_MAX:
             rating /= 10
         else:
             entry_title = title or "Unknown title"
@@ -1311,7 +1316,7 @@ class PlexHistoryImporter:
             return None
 
         rating = round(rating, 1)
-        if rating < 0 or rating > 10:
+        if rating < 0 or rating > RATING_SCALE_MAX:
             entry_title = title or "Unknown title"
             self.warnings.append(
                 f"{entry_title}: invalid Plex rating '{rating_value}' - skipped",
@@ -2275,7 +2280,7 @@ class PlexHistoryImporter:
                 Sources.TMDB.value,
             )
         except services.ProviderAPIError as error:
-            if getattr(error, "status_code", None) == 404:
+            if getattr(error, "status_code", None) == HTTPStatus.NOT_FOUND:
                 self.warnings.append(
                     f"{title or tmdb_id}: not found in {Sources.TMDB.label} with ID {tmdb_id}.",
                 )
@@ -2300,7 +2305,7 @@ class PlexHistoryImporter:
                 season_numbers=sorted(season_numbers),
             )
         except services.ProviderAPIError as error:
-            if getattr(error, "status_code", None) == 404:
+            if getattr(error, "status_code", None) == HTTPStatus.NOT_FOUND:
                 # If ID lookup failed, try title search fallback if we have a title
                 if series_title:
                     logger.info(

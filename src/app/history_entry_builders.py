@@ -17,6 +17,9 @@ from app.models import MediaTypes
 
 logger = logging.getLogger(__name__)
 
+RUNTIME_UNKNOWN_AIRED = 999998  # aired but runtime unknown
+MINUTES_PER_HOUR = 60
+
 
 # ── Model serializers ─────────────────────────────────────────────────────────
 
@@ -109,7 +112,7 @@ def _resolve_runtime_minutes(*items):
             continue
         runtime = getattr(item, "runtime_minutes", None)
         # Exclude fallback values: 999998 (aired but runtime unknown) and 999999 (unknown runtime)
-        if runtime and runtime < 999998:
+        if runtime and runtime < RUNTIME_UNKNOWN_AIRED:
             return runtime
     return 0
 
@@ -117,8 +120,8 @@ def _resolve_runtime_minutes(*items):
 def _format_game_hours(minutes: int) -> str:
     """Show hours only if at least 1h, otherwise keep minutes."""
     minutes = minutes or 0
-    if minutes >= 60:
-        return f"{minutes // 60}h"
+    if minutes >= MINUTES_PER_HOUR:
+        return f"{minutes // MINUTES_PER_HOUR}h"
     return f"{minutes}min"
 
 

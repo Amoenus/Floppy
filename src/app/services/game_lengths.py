@@ -7,6 +7,7 @@ import logging
 import re
 import unicodedata
 from datetime import datetime
+from http import HTTPStatus
 from typing import Any
 from urllib.parse import quote_plus
 
@@ -19,6 +20,8 @@ from app.providers import igdb
 from app.providers import services as provider_services
 
 logger = logging.getLogger(__name__)
+
+YEAR_STRING_LENGTH = 4
 
 HLTB_BASE_URL = "https://howlongtobeat.com"
 HLTB_BROWSER_HEADERS = {
@@ -262,7 +265,7 @@ def fetch_hltb_search(title: str) -> dict[str, Any]:
 
     auth = _fetch_hltb_search_auth()
     search_response = _post_hltb_search(query, auth)
-    if search_response.status_code == 403:
+    if search_response.status_code == HTTPStatus.FORBIDDEN:
         auth = _fetch_hltb_search_auth()
         search_response = _post_hltb_search(query, auth)
     search_response.raise_for_status()
@@ -797,8 +800,8 @@ def _extract_hltb_candidate_release_year(payload: dict[str, Any]) -> int | None:
         return value
     if isinstance(value, str):
         text = value.strip()
-        if len(text) >= 4:
-            return _coerce_int(text[:4])
+        if len(text) >= YEAR_STRING_LENGTH:
+            return _coerce_int(text[:YEAR_STRING_LENGTH])
     return _coerce_int(value)
 
 

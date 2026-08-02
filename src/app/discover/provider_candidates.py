@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 PROVIDER_DISCOVER_TTL_SECONDS = 60 * 60
 PROVIDER_COMING_SOON_WINDOW_DAYS = 180
 TRAKT_POPULAR_PAGE_SIZE = 100
+ISO_DATE_LENGTH = 10
 
 
 def _api_cached_results(
@@ -86,7 +87,7 @@ def _iso_date(raw) -> str | None:
     text = str(raw).strip()
     if not text:
         return None
-    if len(text) >= 10 and text[4:5] == "-" and text[7:8] == "-":
+    if len(text) >= ISO_DATE_LENGTH and text[4:5] == "-" and text[7:8] == "-":
         return text[:10]
     return None
 

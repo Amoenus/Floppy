@@ -1,6 +1,7 @@
 """Thin REST client for pushing watched state to a Jellyfin server."""
 
 import logging
+from http import HTTPStatus
 
 import requests
 
@@ -44,10 +45,10 @@ class JellyfinClient:
             msg = f"Could not reach Jellyfin: {exc}"
             raise JellyfinClientError(msg) from exc
 
-        if response.status_code == 401:
+        if response.status_code == HTTPStatus.UNAUTHORIZED:
             msg = "Jellyfin API key is invalid or unauthorized"
             raise JellyfinAuthError(msg)
-        if response.status_code >= 400:
+        if response.status_code >= HTTPStatus.BAD_REQUEST:
             body_snippet = (response.text or "").strip()[:200]
             logger.warning(
                 "Jellyfin request failed: %s %s -> %s %s",

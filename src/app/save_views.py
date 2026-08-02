@@ -36,6 +36,8 @@ from app.track_modal_views import (
 
 logger = logging.getLogger(__name__)
 
+DETAILS_ROUTE_MIN_SEGMENTS = 2  # "details", "<source>", ... in the URL path
+
 
 @require_POST
 def media_save(request):
@@ -410,7 +412,9 @@ def _write_episode_save_oob(
     parsed_next = urlparse(next_path).path
     path_parts = [segment for segment in parsed_next.split("/") if segment]
     is_episode_page = (
-        len(path_parts) >= 2 and path_parts[0] == "details" and "episode" in path_parts
+        len(path_parts) >= DETAILS_ROUTE_MIN_SEGMENTS
+        and path_parts[0] == "details"
+        and "episode" in path_parts
     )
 
     if is_episode_page:
@@ -489,7 +493,7 @@ def episode_save(request):
     if source == Sources.TMDB.value and next_path:
         parsed_next_path = urlparse(next_path).path
         path_parts = [segment for segment in parsed_next_path.split("/") if segment]
-        if len(path_parts) >= 2 and path_parts[0] == "details":
+        if len(path_parts) >= DETAILS_ROUTE_MIN_SEGMENTS and path_parts[0] == "details":
             route_source = path_parts[1]
             if route_source in {choice[0] for choice in Sources.choices}:
                 source = route_source
@@ -611,7 +615,7 @@ def episode_drop(request):
     if source == Sources.TMDB.value and next_path:
         parsed_next_path = urlparse(next_path).path
         path_parts = [segment for segment in parsed_next_path.split("/") if segment]
-        if len(path_parts) >= 2 and path_parts[0] == "details":
+        if len(path_parts) >= DETAILS_ROUTE_MIN_SEGMENTS and path_parts[0] == "details":
             route_source = path_parts[1]
             if route_source in {choice[0] for choice in Sources.choices}:
                 source = route_source

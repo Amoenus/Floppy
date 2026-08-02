@@ -29,6 +29,8 @@ import contextlib
 
 logger = logging.getLogger(__name__)
 
+MONTHS_PER_YEAR = 12
+
 _MONTH_CACHE_UNSUPPORTED_FILTER_KEYS = frozenset(
     {
         "artist",
@@ -836,7 +838,7 @@ def history(request):
         try:
             view_year = int(request.GET.get("year", now.year))
             view_month = int(request.GET.get("m", now.month))
-            if view_month < 1 or view_month > 12:
+            if view_month < 1 or view_month > MONTHS_PER_YEAR:
                 view_month = now.month
         except (TypeError, ValueError):
             view_year = now.year
@@ -883,7 +885,7 @@ def history(request):
                 prev_year, prev_month = view_year - 1, 12
             else:
                 prev_year, prev_month = view_year, view_month - 1
-            if view_month == 12:
+            if view_month == MONTHS_PER_YEAR:
                 next_year, next_month = view_year + 1, 1
             else:
                 next_year, next_month = view_year, view_month + 1

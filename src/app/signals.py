@@ -45,6 +45,8 @@ from lists.smart_rules import sync_smart_lists_for_item
 
 logger = logging.getLogger(__name__)
 
+RUNTIME_UNKNOWN_FAILED = 999999  # runtime completely unknown / failed lookup
+
 RUNTIME_BACKFILL_SOURCES = ("tmdb", "mal", "simkl")
 GENRE_BACKFILL_SOURCES = ("tmdb", "mal", "simkl", "igdb", "bgg")
 DISCOVER_PRIORITY_HISTORY_DEBOUNCE_SECONDS = 15
@@ -997,7 +999,10 @@ def schedule_runtime_backfill_on_item_save(
                 instance,
             )
 
-    if instance.runtime_minutes is not None and instance.runtime_minutes != 999999:
+    if (
+        instance.runtime_minutes is not None
+        and instance.runtime_minutes != RUNTIME_UNKNOWN_FAILED
+    ):
         MetadataBackfillState.objects.filter(
             item=instance,
             field=MetadataBackfillField.RUNTIME,
@@ -1043,7 +1048,8 @@ def schedule_runtime_backfill_on_item_save(
         return
 
     runtime_missing = (
-        instance.runtime_minutes in (None, 0) and instance.runtime_minutes != 999999
+        instance.runtime_minutes in (None, 0)
+        and instance.runtime_minutes != RUNTIME_UNKNOWN_FAILED
     )
     genres_missing = not instance.genres
 

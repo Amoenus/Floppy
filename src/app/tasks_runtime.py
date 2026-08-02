@@ -31,6 +31,8 @@ BACKGROUND_TASK_PRIORITY = getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 
 
 RUNTIME_BACKFILL_SOURCES = ("tmdb", "mal", "simkl")
 RUNTIME_BACKFILL_QUEUE_TTL = 60 * 60  # 1 hour
+
+SEASON_KEY_TUPLE_LENGTH = 3  # (media_id, source, season_number)
 RUNTIME_BACKFILL_ITEMS_QUEUE_KEY = "runtime_backfill_items_queue"
 RUNTIME_BACKFILL_ITEMS_SCHEDULED_KEY = "runtime_backfill_items_scheduled"
 RUNTIME_BACKFILL_EPISODES_QUEUE_KEY = "runtime_backfill_episode_queue"
@@ -119,7 +121,7 @@ def _decode_season_key(token):
 def _normalize_season_keys(season_keys):
     normalized = []
     for key in season_keys or []:
-        if isinstance(key, (list, tuple)) and len(key) == 3:
+        if isinstance(key, (list, tuple)) and len(key) == SEASON_KEY_TUPLE_LENGTH:
             media_id, source, season_number = key
             token = _encode_season_key(media_id, source, season_number)
         else:

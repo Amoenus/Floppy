@@ -54,6 +54,8 @@ from lists.models import CustomList
 
 logger = logging.getLogger(__name__)
 
+MIN_PLAUSIBLE_YEAR = 1900
+
 
 @login_not_required
 @require_GET
@@ -388,7 +390,7 @@ def season_details(
 
                     if (
                         air_date_dt
-                        and air_date_dt.year > 1900
+                        and air_date_dt.year > MIN_PLAUSIBLE_YEAR
                         and air_date_dt <= current_datetime
                     ):
                         # Episode has aired but no runtime - mark as unknown (use 999998)

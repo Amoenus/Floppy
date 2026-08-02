@@ -20,6 +20,10 @@ logger = logging.getLogger(__name__)
 
 USER_AGENT = "Floppy/1.0 (https://github.com/dannyvfilms/Floppy)"
 
+# Component counts for duration strings formatted as "MM:SS" or "HH:MM:SS".
+DURATION_PARTS_MM_SS = 2
+DURATION_PARTS_HH_MM_SS = 3
+
 
 def fetch_show_metadata_from_rss(rss_feed_url: str) -> dict:
     """Fetch show metadata from RSS feed channel.
@@ -391,7 +395,7 @@ def _parse_duration(duration_str: str) -> int | None:
 
     # Try MM:SS or HH:MM:SS format
     parts = duration_str.split(":")
-    if len(parts) == 2:
+    if len(parts) == DURATION_PARTS_MM_SS:
         # MM:SS
         try:
             minutes = int(parts[0])
@@ -399,7 +403,7 @@ def _parse_duration(duration_str: str) -> int | None:
             return minutes * 60 + seconds
         except ValueError:
             pass
-    elif len(parts) == 3:
+    elif len(parts) == DURATION_PARTS_HH_MM_SS:
         # HH:MM:SS
         try:
             hours = int(parts[0])

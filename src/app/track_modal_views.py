@@ -27,6 +27,8 @@ from app.models import (
 from app.providers import services
 from app.services import bulk_episode_tracking, metadata_resolution
 
+RUNTIME_UNKNOWN_AIRED = 999998  # aired but runtime unknown
+
 
 class _EmptyHistoryProxy:
     """Minimal queryset-like history object for empty podcast wrappers."""
@@ -218,7 +220,10 @@ def _track_modal_release_runtime_minutes(media_type, *candidates):
         elif isinstance(runtime_minutes, float):
             runtime_minutes = int(runtime_minutes)
 
-        if isinstance(runtime_minutes, int) and 0 < runtime_minutes < 999998:
+        if (
+            isinstance(runtime_minutes, int)
+            and 0 < runtime_minutes < RUNTIME_UNKNOWN_AIRED
+        ):
             return str(runtime_minutes)
 
     return ""

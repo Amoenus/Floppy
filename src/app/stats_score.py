@@ -16,6 +16,8 @@ from app.statistics_cache import STATISTICS_TOP_N, STATISTICS_TOP_RATED_OVERALL
 from app.stats_utils import _CombinedMediaBucket, _infer_user_from_user_media
 from app.templatetags import app_tags
 
+SCORE_SCALE_FIVE_POINT = 5
+
 
 def get_score_distribution(user_media):
     """Get score distribution for each media type within date range."""
@@ -278,7 +280,7 @@ def get_score_distribution(user_media):
             media = entry_data["media"]
             score_value = entry_data["score"]
             score_value_scaled = float(score_value)
-            if score_scale_max == 5:
+            if score_scale_max == SCORE_SCALE_FIVE_POINT:
                 score_value_scaled = score_value_scaled / 2
 
             # Add to global top rated (for backward compatibility)

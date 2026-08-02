@@ -44,6 +44,8 @@ DATE_FORMAT_DJANGO_MAP = {
 
 logger = logging.getLogger(__name__)
 
+NO_CHANGE_DELTA_PERCENT_THRESHOLD = 0.05
+
 
 def _extend_heatmap_with_future(
     activity_data, start_date, end_date, week_start_sunday=False
@@ -381,7 +383,7 @@ def _build_hours_per_media_type_comparison(
 
         delta_percent = ((current_total - previous_total) / previous_total) * 100
 
-        if abs(delta_percent) < 0.05:
+        if abs(delta_percent) < NO_CHANGE_DELTA_PERCENT_THRESHOLD:
             comparisons[media_type] = {
                 "badge": "No change",
                 "badge_state": "neutral",

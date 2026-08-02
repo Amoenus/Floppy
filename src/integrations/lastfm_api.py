@@ -14,6 +14,10 @@ logger = logging.getLogger(__name__)
 LASTFM_API_BASE = "https://ws.audioscrobbler.com/2.0/"
 USER_AGENT = "Floppy/1.0 (https://github.com/dannyvfilms/Floppy)"
 
+# Last.fm API error codes: https://www.last.fm/api/errorcodes
+LASTFM_ERROR_RATE_LIMIT_EXCEEDED = 29
+LASTFM_ERROR_INVALID_USER = 6
+
 
 class LastFMAPIError(Exception):
     """Base exception for Last.fm API errors."""
@@ -88,7 +92,7 @@ def _make_api_request(method: str, params: dict[str, Any]) -> dict[str, Any]:
                 )
 
                 # Handle rate limit specifically
-                if error_code == 29:
+                if error_code == LASTFM_ERROR_RATE_LIMIT_EXCEEDED:
                     if attempt < max_retries - 1:
                         # Exponential backoff with jitter
                         delay = retry_delay * (2**attempt) + random.uniform(0, 1)
@@ -105,7 +109,7 @@ def _make_api_request(method: str, params: dict[str, Any]) -> dict[str, Any]:
                     raise LastFMRateLimitError(msg)
 
                 # Handle invalid user (code 6)
-                if error_code == 6:
+                if error_code == LASTFM_ERROR_INVALID_USER:
                     msg = f"User not found: {error_message}"
                     raise LastFMClientError(msg)
 

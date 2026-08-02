@@ -119,6 +119,8 @@ class Podcast(Media):
 
     tracker = FieldTracker()
 
+    LAST_SEEN_STATUS_IN_PROGRESS = 2  # playingStatus from API
+
     show = models.ForeignKey(
         PodcastShow,
         on_delete=models.SET_NULL,
@@ -176,7 +178,7 @@ class Podcast(Media):
         """
         is_in_progress = (
             self.status == Status.IN_PROGRESS.value
-            or self.last_seen_status == 2  # 2 = in-progress from API
+            or self.last_seen_status == self.LAST_SEEN_STATUS_IN_PROGRESS
         )
 
         if (

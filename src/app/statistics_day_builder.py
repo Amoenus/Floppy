@@ -31,6 +31,8 @@ from app.statistics_talent import (
 
 logger = logging.getLogger(__name__)
 
+SECONDS_PER_DAY = 86400
+
 
 def _day_bounds(day_value):
     day = _normalize_day_value(day_value)
@@ -1250,7 +1252,7 @@ def build_stats_for_day(
                 continue
             existing_diff = abs((existing - play_end).total_seconds())
             current_diff = abs((hist_date - play_end).total_seconds())
-            if current_diff < existing_diff and current_diff < 86400:
+            if current_diff < existing_diff and current_diff < SECONDS_PER_DAY:
                 plays_by_key[key] = hist_date
 
         if prefetch is None:
@@ -1429,7 +1431,7 @@ def build_stats_for_day(
             else:
                 existing_diff = abs((existing[0] - play_end).total_seconds())
                 current_diff = abs((hist_date - play_end).total_seconds())
-                if current_diff < existing_diff and current_diff < 86400:
+                if current_diff < existing_diff and current_diff < SECONDS_PER_DAY:
                     plays_for_podcast[play_end] = (hist_date, progress)
 
         if prefetch is not None:

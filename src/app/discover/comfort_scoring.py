@@ -40,6 +40,9 @@ COMFORT_SPREAD_COMPRESSION_THRESHOLD = 0.08
 DISPLAY_BASELINE = 0.55
 DISPLAY_RAW_WEIGHT = 0.25
 DISPLAY_COMPRESSED_BASELINE_DROP = 0.06
+LEGACY_ERA_CUTOFF_YEAR = 2000
+MULTIPLIER_APPLIED_THRESHOLD = 0.999
+MULTI_PENALTY_THRESHOLD = 2
 
 
 def _apply_comfort_confidence(
@@ -347,7 +350,7 @@ def _apply_comfort_confidence(
             opening_multiplier = COMFORT_ERA_OPENING_DECAY**era_seen_count
         else:
             opening_multiplier = 1.0
-        if release_year < 2000:
+        if release_year < LEGACY_ERA_CUTOFF_YEAR:
             base_multiplier *= COMFORT_LEGACY_ERA_DECAY**legacy_count
             if index < COMFORT_ERA_OPENING_WINDOW:
                 opening_multiplier *= COMFORT_LEGACY_OPENING_DECAY**legacy_count
@@ -592,11 +595,14 @@ def _build_movie_comfort_debug_payload(
             penalty_count += 1
         if float(score.get("candidate_is_unrated", 0.0)) >= 1.0:
             penalty_count += 1
-        if float(score.get("saturation_multiplier", 1.0)) < 0.999:
+        if (
+            float(score.get("saturation_multiplier", 1.0))
+            < MULTIPLIER_APPLIED_THRESHOLD
+        ):
             penalty_count += 1
         if seasonal_adjustment < 0.0:
             penalty_count += 1
-        if penalty_count >= 2:
+        if penalty_count >= MULTI_PENALTY_THRESHOLD:
             multi_penalty_ids.append(str(candidate.media_id))
 
         contribution_totals["library"] += float(score.get("library_contribution", 0.0))
@@ -1181,14 +1187,14 @@ def _build_comfort_debug_payload(
         penalty_count = 0
         if seasonal_adjustment < 0.0:
             penalty_count += 1
-        if diversity_multiplier < 0.999:
+        if diversity_multiplier < MULTIPLIER_APPLIED_THRESHOLD:
             penalty_count += 1
-        if era_multiplier < 0.999:
+        if era_multiplier < MULTIPLIER_APPLIED_THRESHOLD:
             penalty_count += 1
         if phase_pool_source in {"weak_backfill", "weak_only"}:
             penalty_count += 1
 
-        if penalty_count >= 2:
+        if penalty_count >= MULTI_PENALTY_THRESHOLD:
             multi_penalty_ids.append(str(candidate.media_id))
 
         top_candidates.append(

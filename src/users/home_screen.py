@@ -42,9 +42,14 @@ from users.models import (
     relabel_end_date_sort_choice,
 )
 
+# A tag line needs at least this many parts before its values are usable.
+MIN_TAG_PARTS = 4
+
 RECENTLY_UNRATED_DAYS = 7
 RECENTLY_UNRATED_EPISODE_DAYS = 30
 RECENTLY_UNRATED_LABEL = "Recently Played - Not Rated"
+# Cap on how many active-filter labels are shown in a row's settings summary.
+MAX_SUMMARY_FILTER_PARTS = 4
 SQUARE_HOME_MEDIA_TYPES = {
     MediaTypes.MUSIC.value,
     MediaTypes.PODCAST.value,
@@ -984,11 +989,11 @@ def describe_library_query(filters: dict, user, media_type: str) -> str:
             continue
         label = _summary_filter_label(key, value)
         parts.append(label)
-        if len(parts) >= 4:
+        if len(parts) >= MAX_SUMMARY_FILTER_PARTS:
             break
 
     tag_values = [value for value in (normalized.get("tag") or []) if value]
-    if tag_values and len(parts) < 4:
+    if tag_values and len(parts) < MIN_TAG_PARTS:
         tag_mode = normalized.get("tag_mode", "or")
         joined = " & " if tag_mode == "and" else " or "
         tag_label = joined.join(tag_values)

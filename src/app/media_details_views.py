@@ -67,6 +67,8 @@ from lists.models import CustomList
 
 logger = logging.getLogger(__name__)
 
+RUNTIME_UNKNOWN_AIRED = 999998  # aired but runtime unknown
+
 
 def _enrich_comic_issues(issues, user):
     """Attach user tracking history to each issue dict from the volume issues list."""
@@ -106,7 +108,7 @@ def _get_tv_runtime_display_fallback(detail_item, media_metadata):
         return None
 
     runtime_minutes = getattr(detail_item, "runtime_minutes", None)
-    if runtime_minutes and runtime_minutes < 999998:
+    if runtime_minutes and runtime_minutes < RUNTIME_UNKNOWN_AIRED:
         return tmdb.get_readable_duration(runtime_minutes)
 
     if detail_item.runtime:

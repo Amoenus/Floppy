@@ -17,6 +17,9 @@ from app.providers import services, tmdb
 
 logger = logging.getLogger(__name__)
 
+RATING_SCALE_MAX = 10  # upper bound of a 0-10 rating scale
+PERCENT_SCALE_MAX = 100  # upper bound of a 0-100 percent-style rating scale
+
 base_url = "https://api4.thetvdb.com/v4"
 TVDB_CACHE_NAMESPACE = f"{Sources.TVDB.value}_v4"
 TOKEN_CACHE_KEY = f"{TVDB_CACHE_NAMESPACE}_access_token"
@@ -533,9 +536,9 @@ def _get_rating_pair(row: dict | None) -> tuple[float | None, int | None]:
     for score, score_count, allow_percent_scale in candidates:
         if score is None:
             continue
-        if 0 <= score <= 10:
+        if 0 <= score <= RATING_SCALE_MAX:
             return round(score, 1), score_count
-        if allow_percent_scale and 10 < score <= 100:
+        if allow_percent_scale and RATING_SCALE_MAX < score <= PERCENT_SCALE_MAX:
             return round(score / 10, 1), score_count
 
     return None, None

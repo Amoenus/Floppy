@@ -2,6 +2,7 @@
 
 import logging
 from datetime import UTC, datetime, timedelta
+from http import HTTPStatus
 from typing import Any
 
 import jwt
@@ -11,6 +12,9 @@ from django.utils import timezone
 logger = logging.getLogger(__name__)
 
 POCKETCASTS_API_BASE_URL = "https://api.pocketcasts.com"
+
+# Heuristic minimum length for a bare string response to be treated as a token.
+MIN_TOKEN_VALUE_LENGTH = 50
 
 
 class PocketCastsClientError(Exception):
@@ -70,7 +74,10 @@ def login(email: str, password: str) -> dict[str, Any]:
         elif isinstance(data, dict) and len(data) == 1:
             # Sometimes APIs return just the token as a single value
             first_value = next(iter(data.values()))
-            if isinstance(first_value, str) and len(first_value) > 50:
+            if (
+                isinstance(first_value, str)
+                and len(first_value) > MIN_TOKEN_VALUE_LENGTH
+            ):
                 access_token = first_value
 
         if not access_token:
@@ -107,7 +114,7 @@ def login(email: str, password: str) -> dict[str, Any]:
             "refreshToken": refresh_token or "",
         }
     except requests.HTTPError as e:
-        if e.response.status_code == 401:
+        if e.response.status_code == HTTPStatus.UNAUTHORIZED:
             msg = "Invalid email or password"
             raise PocketCastsAuthError(msg)
         msg = f"Pocket Casts API error: {e.response.status_code}"
@@ -163,7 +170,7 @@ def refresh_token(refresh_token: str) -> dict[str, Any]:
                 status_code,
             )
 
-        if status_code == 401:
+        if status_code == HTTPStatus.UNAUTHORIZED:
             msg = "Refresh token is invalid or expired"
             raise PocketCastsAuthError(msg)
         msg = f"Pocket Casts API error: {status_code}"
@@ -220,7 +227,7 @@ def validate_token(access_token: str) -> bool:
             )
             return True
         # 401 means invalid token
-        if response.status_code == 401:
+        if response.status_code == HTTPStatus.UNAUTHORIZED:
             try:
                 response_text = response.text
                 body_length = (
@@ -239,7 +246,7 @@ def validate_token(access_token: str) -> bool:
             "Access token validation returned unexpected status %d",
             response.status_code,
         )
-        return response.status_code < 500
+        return response.status_code < HTTPStatus.INTERNAL_SERVER_ERROR
     except requests.RequestException as e:
         # Network errors - can't validate, assume invalid to be safe
         logger.exception("Network error during access token validation: %s", e)
@@ -270,7 +277,7 @@ def get_podcast_list(access_token: str) -> dict[str, Any]:
         response.raise_for_status()
         data = response.json()
     except requests.HTTPError as e:
-        if e.response is not None and e.response.status_code == 401:
+        if e.response is not None and e.response.status_code == HTTPStatus.UNAUTHORIZED:
             msg = "Pocket Casts token is invalid or expired"
             raise PocketCastsAuthError(msg) from e
         status_code = e.response.status_code if e.response is not None else "unknown"

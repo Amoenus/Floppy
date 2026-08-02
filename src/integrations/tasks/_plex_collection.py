@@ -16,6 +16,9 @@ from integrations.tasks._import_helpers import _is_expected_plex_lookup_error
 
 logger = logging.getLogger(__name__)
 
+# Number of items fetched per Plex library section page when searching for a match.
+PLEX_SECTION_PAGE_SIZE = 100
+
 
 @shared_task(name="Update collection metadata from Plex webhook")
 def update_collection_metadata_from_plex_webhook(
@@ -592,7 +595,7 @@ def _find_plex_rating_key_for_item(
                     section_uri,
                     str(section_key),
                     start=0,
-                    size=min(100, total),
+                    size=min(PLEX_SECTION_PAGE_SIZE, total),
                 )
 
                 for entry in library_items:
@@ -632,8 +635,8 @@ def _find_plex_rating_key_for_item(
                             )
                             return (rating_key, section_uri, match_type)
 
-            if total > 100:
-                page_size = 100
+            if total > PLEX_SECTION_PAGE_SIZE:
+                page_size = PLEX_SECTION_PAGE_SIZE
                 max_pages_to_check = min(50, (total + page_size - 1) // page_size)
 
                 for page in range(1, max_pages_to_check + 1):

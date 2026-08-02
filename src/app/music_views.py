@@ -31,6 +31,14 @@ from app.templatetags import app_tags
 
 logger = logging.getLogger(__name__)
 
+MINUTES_PER_HOUR = 60
+
+# Lengths of the partial-date strings MusicBrainz can return for a release
+# date: "YYYY", "YYYY-MM", or a full "YYYY-MM-DD" (10+ chars).
+DATE_STR_LEN_YEAR_ONLY = 4
+DATE_STR_LEN_YEAR_MONTH = 7
+DATE_STR_LEN_FULL_DATE = 10
+
 
 def _music_artist_detail_url(artist):
     """Return the canonical shared media-details URL for a music artist."""
@@ -825,7 +833,7 @@ def _render_music_album_details(request, artist, album):
     total_runtime = None
     if total_duration_ms:
         total_minutes = total_duration_ms // 60000
-        if total_minutes >= 60:
+        if total_minutes >= MINUTES_PER_HOUR:
             hours = total_minutes // 60
             minutes = total_minutes % 60
             total_runtime = f"{hours}h {minutes}m"
@@ -1078,11 +1086,11 @@ def create_album_from_search(request, musicbrainz_release_id):
                 try:
                     from datetime import datetime
 
-                    if len(date_str) == 4:
+                    if len(date_str) == DATE_STR_LEN_YEAR_ONLY:
                         release_date = datetime.strptime(date_str, "%Y").date()
-                    elif len(date_str) == 7:
+                    elif len(date_str) == DATE_STR_LEN_YEAR_MONTH:
                         release_date = datetime.strptime(date_str, "%Y-%m").date()
-                    elif len(date_str) >= 10:
+                    elif len(date_str) >= DATE_STR_LEN_FULL_DATE:
                         release_date = datetime.strptime(
                             date_str[:10],
                             "%Y-%m-%d",

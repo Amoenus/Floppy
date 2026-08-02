@@ -35,6 +35,22 @@ from app.services.music import (
 
 logger = logging.getLogger(__name__)
 
+# MusicBrainz MBIDs are UUIDs (36 chars); shorter values are not valid IDs.
+MUSICBRAINZ_MBID_MIN_LENGTH = 30
+
+# A MusicBrainz search returning more results than this is considered too
+# noisy to reliably auto-attach MBIDs from.
+NOISY_SEARCH_RESULT_THRESHOLD = 50
+
+# Maximum allowed difference (in milliseconds) between two track durations
+# for them to be considered a match ("within 2 seconds").
+DURATION_MATCH_TOLERANCE_MS = 2000
+
+# Lengths of the partial-date strings MusicBrainz can return for a release
+# date: "YYYY" or "YYYY-MM" (a full "YYYY-MM-DD" needs no adjustment).
+DATE_STR_LEN_YEAR_ONLY = 4
+DATE_STR_LEN_YEAR_MONTH = 7
+
 
 @dataclass
 class MusicPlaybackEvent:
@@ -226,7 +242,11 @@ def _resolve_metadata(event: MusicPlaybackEvent) -> ResolvedMusicMetadata:
 
     # Ignore obviously invalid MBIDs up front to avoid noisy lookups unless recording is mocked
     recording_is_mocked = isinstance(musicbrainz.recording, Mock)
-    if recording_id and len(str(recording_id)) < 30 and not recording_is_mocked:
+    if (
+        recording_id
+        and len(str(recording_id)) < MUSICBRAINZ_MBID_MIN_LENGTH
+        and not recording_is_mocked
+    ):
         recording_id = None
         event.external_ids["musicbrainz_recording"] = None
 
@@ -436,7 +456,7 @@ def _populate_from_search(metadata: ResolvedMusicMetadata) -> None:
     _log_search_candidates(query, result_list[:5])
 
     # If search is extremely noisy, avoid attaching MBIDs
-    if (results.get("total_results") or 0) > 50:
+    if (results.get("total_results") or 0) > NOISY_SEARCH_RESULT_THRESHOLD:
         logger.debug(
             "Skipping MBIDs due to high result count (%s) for query '%s'",
             results.get("total_results"),
@@ -510,7 +530,7 @@ def _match_release_track(tracks, track_title: str, duration_ms: int | None):
             if not track.get("duration_ms"):
                 continue
             diff = abs(track["duration_ms"] - duration_ms)
-            if diff <= 2000:  # within 2 seconds
+            if diff <= DURATION_MATCH_TOLERANCE_MS:  # within 2 seconds
                 return track
 
     return tracks[0]
@@ -1190,9 +1210,9 @@ def _parse_release_date(release_date: str | None):
         return None
     try:
         # MusicBrainz may provide YYYY, YYYY-MM, or YYYY-MM-DD
-        if len(release_date) == 4:
+        if len(release_date) == DATE_STR_LEN_YEAR_ONLY:
             release_date = f"{release_date}-01-01"
-        elif len(release_date) == 7:
+        elif len(release_date) == DATE_STR_LEN_YEAR_MONTH:
             release_date = f"{release_date}-01"
         return parse_date(release_date)
     except Exception:
@@ -1385,7 +1405,7 @@ def _enrich_missing_artist_metadata(
         return
 
     total_results = (results or {}).get("total_results") or 0
-    if total_results > 50:
+    if total_results > NOISY_SEARCH_RESULT_THRESHOLD:
         logger.debug(
             "Skipping enrichment for '%s' due to noisy search results (%s)",
             query,

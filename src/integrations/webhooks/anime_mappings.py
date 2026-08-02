@@ -9,6 +9,10 @@ URL = (
     "mappings.min.json"
 )
 
+# Minimum "provider:id" descriptor components; a third "sNN" component adds a season.
+DESCRIPTOR_MIN_PARTS = 2
+DESCRIPTOR_SEASON_PART_INDEX = 3
+
 
 def fetch_mapping_data():
     """Fetch anime mapping data with caching."""
@@ -103,7 +107,7 @@ def find_entries_for_mal_id(mapping_data, mal_id):
 def _parse_source_descriptor_to_link(descriptor, ranges):
     """Parse a source descriptor and ranges into a provider link dict."""
     parts = descriptor.split(":")
-    if len(parts) < 2:
+    if len(parts) < DESCRIPTOR_MIN_PARTS:
         return None
 
     provider = parts[0]
@@ -119,7 +123,7 @@ def _parse_source_descriptor_to_link(descriptor, ranges):
         episode_offset = source_start - target_start
 
     season = None
-    if len(parts) >= 3 and parts[2].startswith("s"):
+    if len(parts) >= DESCRIPTOR_SEASON_PART_INDEX and parts[2].startswith("s"):
         with contextlib.suppress(ValueError):
             season = int(parts[2][1:])
 
@@ -165,7 +169,7 @@ def _parse_mal_descriptor(descriptor):
         return None
 
     parts = descriptor.split(":", 2)
-    if len(parts) < 2:
+    if len(parts) < DESCRIPTOR_MIN_PARTS:
         return None
 
     provider, media_id = parts[:2]

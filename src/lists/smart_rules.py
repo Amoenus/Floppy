@@ -69,6 +69,12 @@ SMART_FILTER_DEFAULTS = {
     "tag_mode": "or",
 }
 
+MAX_RATING = 10.0
+
+# Language/country/origin codes at or below this length (e.g. ISO 639-1
+# language codes, ISO 3166 country codes) are displayed uppercased.
+SHORT_CODE_MAX_LENGTH = 3
+
 RATING_CHOICES = {"all", "rated", "not_rated"}
 COLLECTION_CHOICES = {"all", "collected", "not_collected"}
 RELEASE_CHOICES = {"all", "released", "not_released"}
@@ -106,7 +112,7 @@ def _normalize_decimal_value(value) -> str:
         normalized = round(float(str(value).strip()), 1)
     except (TypeError, ValueError):
         return ""
-    if 0.0 <= normalized <= 10.0:
+    if 0.0 <= normalized <= MAX_RATING:
         return str(normalized)
     return ""
 
@@ -1155,14 +1161,18 @@ def build_rule_filter_data(
         "languages": [
             {
                 "value": value,
-                "label": value.upper() if len(value) <= 3 else value,
+                "label": value.upper()
+                if len(value) <= SHORT_CODE_MAX_LENGTH
+                else value,
             }
             for value in sorted(languages_set)
         ],
         "countries": [
             {
                 "value": value,
-                "label": value.upper() if len(value) <= 3 else value,
+                "label": value.upper()
+                if len(value) <= SHORT_CODE_MAX_LENGTH
+                else value,
             }
             for value in sorted(countries_set)
         ],
@@ -1173,7 +1183,9 @@ def build_rule_filter_data(
         "origins": [
             {
                 "value": value,
-                "label": value.upper() if len(value) <= 3 else value,
+                "label": value.upper()
+                if len(value) <= SHORT_CODE_MAX_LENGTH
+                else value,
             }
             for value in sorted(origins_set)
         ],

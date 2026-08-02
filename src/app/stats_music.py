@@ -5,6 +5,14 @@ from app import config
 from app.models import MediaTypes
 from app.statistics_cache import STATISTICS_TOP_N
 
+SECONDS_PER_DAY = 86400
+
+# Lengths of the partial-date strings MusicBrainz can return for a release
+# date: "YYYY", "YYYY-MM", or a full "YYYY-MM-DD" (10+ chars).
+DATE_STR_LEN_YEAR_ONLY = 4
+DATE_STR_LEN_YEAR_MONTH = 7
+DATE_STR_LEN_FULL_DATE = 10
+
 
 def _collect_music_play_data(music_queryset, start_date, end_date):
     """Collect music play datetimes and per-play runtime from history records.
@@ -56,7 +64,8 @@ def _collect_music_play_data(music_queryset, start_date, end_date):
                 # Prefer the one closer to end_date, but only if it's within 24 hours
                 # (metadata updates can happen days/weeks later)
                 if (
-                    time_diff_current < time_diff_existing and time_diff_current < 86400
+                    time_diff_current < time_diff_existing
+                    and time_diff_current < SECONDS_PER_DAY
                 ):  # 24 hours
                     plays_by_end_date[history_end_date] = (history_record, history_date)
 
@@ -471,11 +480,11 @@ def _parse_release_date_str(date_str):
     if not date_str:
         return None
     try:
-        if len(date_str) >= 10:
+        if len(date_str) >= DATE_STR_LEN_FULL_DATE:
             return datetime.datetime.strptime(date_str[:10], "%Y-%m-%d").date()
-        if len(date_str) == 7:
+        if len(date_str) == DATE_STR_LEN_YEAR_MONTH:
             return datetime.datetime.strptime(date_str, "%Y-%m").date()
-        if len(date_str) == 4:
+        if len(date_str) == DATE_STR_LEN_YEAR_ONLY:
             return datetime.datetime.strptime(date_str, "%Y").date()
     except ValueError:
         return None

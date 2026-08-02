@@ -221,20 +221,28 @@ _SERIES_GRAPH_LEGEND = [
     {"label": "Garbage", "color": "#7b2fbe"},
 ]
 
+# Score thresholds for the episode-score color scale (matches
+# _SERIES_GRAPH_LEGEND labels above).
+SCORE_THRESHOLD_AWESOME = 9.0
+SCORE_THRESHOLD_GREAT = 8.0
+SCORE_THRESHOLD_GOOD = 7.0
+SCORE_THRESHOLD_REGULAR = 6.0
+SCORE_THRESHOLD_BAD = 5.0
+
 
 def _score_to_color(score):
     """Return background hex color for an episode score value."""
     if score is None:
         return None
-    if score >= 9.0:
+    if score >= SCORE_THRESHOLD_AWESOME:
         return "#1d6e3e"
-    if score >= 8.0:
+    if score >= SCORE_THRESHOLD_GREAT:
         return "#2d9e5f"
-    if score >= 7.0:
+    if score >= SCORE_THRESHOLD_GOOD:
         return "#c9970a"
-    if score >= 6.0:
+    if score >= SCORE_THRESHOLD_REGULAR:
         return "#c47c1a"
-    if score >= 5.0:
+    if score >= SCORE_THRESHOLD_BAD:
         return "#c0392b"
     return "#7b2fbe"
 

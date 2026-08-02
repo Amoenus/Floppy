@@ -10,6 +10,8 @@ from collections import Counter, defaultdict
 
 from app.stats_utils import _localize_datetime
 
+HOUR_NOON = 12  # 24-hour clock hour marking noon, splits am/pm labels
+
 # ---------------------------------------------------------------------------
 # Metric breakdown (rates over time)
 # ---------------------------------------------------------------------------
@@ -80,11 +82,11 @@ def _format_hour_label(hour):
     """Return a human-friendly label for an hour of day."""
     if hour == 0:
         return "12am"
-    if hour < 12:
+    if hour < HOUR_NOON:
         return f"{hour}am"
-    if hour == 12:
+    if hour == HOUR_NOON:
         return "12pm"
-    return f"{hour - 12}pm"
+    return f"{hour - HOUR_NOON}pm"
 
 
 def _build_media_charts(datetimes, color, dataset_label):

@@ -28,6 +28,7 @@ from app.models import (
 )
 
 MAX_ITEMS_PER_ROW = 12
+MAX_LEAD_CAST_MEMBERS = 3
 
 BEHAVIOR_FIRST_MEDIA_TYPES = {
     MediaTypes.MOVIE.value,
@@ -120,7 +121,7 @@ def _item_credit_feature_maps(
                 directors_map[item_id].append(person_name)
         if (
             role_type == CreditRoleType.CAST.value
-            and lead_cast_counts[item_id] < 3
+            and lead_cast_counts[item_id] < MAX_LEAD_CAST_MEMBERS
             and person_name not in lead_cast_seen[item_id]
         ):
             lead_cast_seen[item_id].add(person_name)

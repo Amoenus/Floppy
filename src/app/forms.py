@@ -33,6 +33,8 @@ from app.models import (
     Status,
 )
 
+CHOICE_PAIR_LENGTH = 2
+
 
 def get_form_class(media_type):
     """Return the form class for the media type."""
@@ -1151,7 +1153,10 @@ class CollectionEntryForm(forms.ModelForm):
                 continue
             normalized = []
             for option in choices:
-                if isinstance(option, (tuple, list)) and len(option) == 2:
+                if (
+                    isinstance(option, (tuple, list))
+                    and len(option) == CHOICE_PAIR_LENGTH
+                ):
                     normalized.append((option[0], option[1]))
                 else:
                     normalized.append((option, option))

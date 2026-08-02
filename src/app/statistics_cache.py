@@ -109,6 +109,9 @@ STATISTICS_ALL_TIME_REFRESH_DELAY = getattr(
     settings, "STATISTICS_ALL_TIME_REFRESH_DELAY", 45
 )
 
+DAY_KEY_LENGTH = 8  # length of a YYYYMMDD day key string
+SCORE_COMPARISON_EPSILON = 1e-6  # tolerance for float score equality checks
+
 # Predefined ranges that can be cached
 PREDEFINED_RANGES = [
     "Today",
@@ -373,7 +376,7 @@ def _normalize_day_value(value):
         return localized.date()
     if isinstance(value, str):
         try:
-            if value.isdigit() and len(value) == 8:
+            if value.isdigit() and len(value) == DAY_KEY_LENGTH:
                 return datetime.strptime(value, "%Y%m%d").date()
             return datetime.strptime(value, "%Y-%m-%d").date()
         except ValueError:
@@ -561,7 +564,7 @@ def _collect_stale_reading_score_days(
             except (TypeError, ValueError):
                 stale_days.add(day)
                 break
-            if abs(cached_score_value - expected_score) > 1e-6:
+            if abs(cached_score_value - expected_score) > SCORE_COMPARISON_EPSILON:
                 stale_days.add(day)
                 break
 

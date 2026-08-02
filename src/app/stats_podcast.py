@@ -10,6 +10,8 @@ from app.statistics_cache import STATISTICS_TOP_N
 
 logger = logging.getLogger(__name__)
 
+SECONDS_PER_DAY = 86400
+
 
 def _get_podcast_runtime_minutes(podcast_entry, history_record=None):
     """Get runtime in minutes from a Podcast entry, checking episode and item."""
@@ -120,7 +122,10 @@ def _collect_podcast_play_data(
             )
             time_diff_current = abs((history_date - history_end_date).total_seconds())
 
-            if time_diff_current < time_diff_existing and time_diff_current < 86400:
+            if (
+                time_diff_current < time_diff_existing
+                and time_diff_current < SECONDS_PER_DAY
+            ):
                 plays_for_podcast[history_end_date] = (history_record, history_date)
 
     for podcast_id, plays_for_podcast in plays_by_podcast.items():

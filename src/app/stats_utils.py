@@ -28,6 +28,10 @@ MEDIA_TYPE_HOURS_ORDER = [
     MediaTypes.COMIC.value,
 ]
 
+# A "1h 30min"/"1h 30m" style runtime string splits into exactly two parts:
+# an hours component and a minutes component.
+RUNTIME_STR_HOURS_AND_MINUTES_PART_COUNT = 2
+
 
 # ---------------------------------------------------------------------------
 # Combined-queryset helpers (anime bucket)
@@ -157,7 +161,7 @@ def parse_runtime_to_minutes(runtime_str):
         if "h" in runtime_str and "min" in runtime_str:
             # Format like "1h 30min" or "2h 15min"
             parts = runtime_str.split()
-            if len(parts) == 2:  # "1h 30min"
+            if len(parts) == RUNTIME_STR_HOURS_AND_MINUTES_PART_COUNT:  # "1h 30min"
                 hours = int(parts[0].replace("h", ""))
                 minutes = int(parts[1].replace("min", ""))
                 return hours * 60 + minutes
@@ -165,7 +169,7 @@ def parse_runtime_to_minutes(runtime_str):
         if "h" in runtime_str and "m" in runtime_str:
             # Format like "1h 30m" or "2h 15m" (TMDB format)
             parts = runtime_str.split()
-            if len(parts) == 2:  # "1h 30m"
+            if len(parts) == RUNTIME_STR_HOURS_AND_MINUTES_PART_COUNT:  # "1h 30m"
                 hours = int(parts[0].replace("h", ""))
                 minutes = int(parts[1].replace("m", ""))
                 return hours * 60 + minutes
@@ -206,14 +210,14 @@ def _is_media_in_date_range(media, start_date, end_date):
 def _format_long_units(total_minutes):
     """Format minutes using the largest applicable units (mo/d/h/min)."""
     total_minutes = int(total_minutes)
-    if total_minutes < 60:
-        return f"{total_minutes}min"
-    if total_minutes < 1440:  # < 24 h
-        hours, mins = divmod(total_minutes, 60)
-        return f"{hours}h {mins}min"
-    MONTH = 43800  # 30 × 24 × 60
-    DAY = 1440
     HOUR = 60
+    DAY = 1440
+    MONTH = 43800  # 30 × 24 × 60
+    if total_minutes < HOUR:
+        return f"{total_minutes}min"
+    if total_minutes < DAY:  # < 24 h
+        hours, mins = divmod(total_minutes, HOUR)
+        return f"{hours}h {mins}min"
     months, r = divmod(total_minutes, MONTH)
     days, r = divmod(r, DAY)
     hours, mins = divmod(r, HOUR)

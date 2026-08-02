@@ -54,6 +54,13 @@ MEDIA_RATING_CHOICES = (
     # "not_rated" is handled in logic but not shown in dropdown (toggle behavior)
 )
 MEDIA_LIST_NO_STATUS = "no_status"
+
+# ISO language/country codes are at most 3 characters (e.g. "en", "eng");
+# anything longer is treated as a display name rather than a code.
+MAX_ISO_CODE_LENGTH = 3
+
+# Number of times the debug column-prefs poll re-reads the DB after a save.
+DEBUG_POLL_ATTEMPTS = 3
 MEDIA_LIST_NO_STATUS_LABEL = "No Status"
 RECENTLY_NOT_RATED_KEY = "recently_not_rated"
 RECENTLY_NOT_RATED_LABEL = "Recently Played - Not Rated"
@@ -375,14 +382,14 @@ def build_filter_data_from_items(
     languages = [
         {
             "value": value,
-            "label": value.upper() if len(value) <= 3 else value,
+            "label": value.upper() if len(value) <= MAX_ISO_CODE_LENGTH else value,
         }
         for value in sorted(languages_set)
     ]
     countries = [
         {
             "value": value,
-            "label": value.upper() if len(value) <= 3 else value,
+            "label": value.upper() if len(value) <= MAX_ISO_CODE_LENGTH else value,
         }
         for value in sorted(countries_set)
     ]
@@ -2063,7 +2070,12 @@ def media_list(request, media_type):
 
             genres = sorted(genres_set, key=lambda value: value.lower())
             languages = [
-                {"value": value, "label": value.upper() if len(value) <= 3 else value}
+                {
+                    "value": value,
+                    "label": value.upper()
+                    if len(value) <= MAX_ISO_CODE_LENGTH
+                    else value,
+                }
                 for value in sorted(languages_set)
             ]
             return {
@@ -2402,9 +2414,11 @@ def media_list(request, media_type):
                 genres = sorted(genres_set, key=lambda value: value.lower())
                 origins = []
                 for value in sorted(origins_set):
-                    label = value.upper() if len(value) <= 3 else value
+                    label = (
+                        value.upper() if len(value) <= MAX_ISO_CODE_LENGTH else value
+                    )
                     try:
-                        if len(value) <= 3:
+                        if len(value) <= MAX_ISO_CODE_LENGTH:
                             country_name = stats._country_name_from_code(value.upper())
                             if country_name:
                                 label = country_name
@@ -2873,7 +2887,7 @@ def update_table_columns(request, media_type):
                     "resolved": resolved_keys,
                 },
             )
-            if attempt < 3:
+            if attempt < DEBUG_POLL_ATTEMPTS:
                 time.sleep(0.05)
 
         logger.info(

@@ -28,6 +28,9 @@ from integrations.imports.helpers import MediaImportError, decrypt_or_raise
 
 logger = logging.getLogger(__name__)
 
+MIN_SIGNIFICANT_PROGRESS_SECONDS = 60
+DUPLICATE_COMPLETION_WINDOW_SECONDS = 300
+
 
 def importer(identifier, user, mode):
     """Import podcast history from a GPodder-compatible server."""
@@ -504,7 +507,8 @@ class GPodderImporter:
         if total_seconds is None or total_seconds <= 0 or position_seconds <= 0:
             return False
         significant_progress = (
-            position_seconds > 60 or position_seconds > total_seconds * 0.1
+            position_seconds > MIN_SIGNIFICANT_PROGRESS_SECONDS
+            or position_seconds > total_seconds * 0.1
         )
         return significant_progress and position_seconds >= total_seconds - 5
 
@@ -527,7 +531,10 @@ class GPodderImporter:
     def _is_duplicate_completion(self, podcast, position_seconds, action_time):
         if podcast.end_date is None:
             return False
-        if abs((action_time - podcast.end_date).total_seconds()) >= 300:
+        if (
+            abs((action_time - podcast.end_date).total_seconds())
+            >= DUPLICATE_COMPLETION_WINDOW_SECONDS
+        ):
             return False
         return (podcast.played_up_to_seconds or 0) == (position_seconds or 0)
 

@@ -189,6 +189,18 @@ WORLD_QUALITY_ALIGNMENT_WEIGHT = 0.20
 WORLD_QUALITY_ALIGNMENT_FLOOR = 0.10
 WORLD_QUALITY_ALIGNMENT_CAP = 0.45
 COMFORT_DEBUG_TOP_N = 12
+MEANINGFUL_FIT_THRESHOLD = 0.20
+STRONG_REWATCH_THRESHOLD = 0.50
+MIN_WATCH_COUNT_FOR_MEDIAN_GAP = 2
+YEAR_TOKEN_LENGTH = 4
+REASON_BUCKET_EARLY_SELECTION_COUNT = 8
+REWATCH_BONUS_MIN_COUNT = 2
+LOW_LIBRARY_FIT_THRESHOLD = 0.40
+LOW_REWATCH_STRENGTH_THRESHOLD = 0.35
+SATURATION_APPLIED_THRESHOLD = 0.999
+AVOIDANCE_REASON_THRESHOLD = -0.02
+ABSENCE_BOOST_REASON_THRESHOLD = 0.05
+ALIGNMENT_OFFSET_REASON_THRESHOLD = 0.05
 
 GENERIC_PHASE_TERMS = {
     "action",
@@ -517,10 +529,10 @@ def _movie_reason_bucket_label(
             if strength > best_strength:
                 best_label = value
                 best_strength = strength
-        if best_strength < 0.20 or not best_label:
+        if best_strength < MEANINGFUL_FIT_THRESHOLD or not best_label:
             continue
         return f"{family}:{best_label}", family, best_label
-    if rewatch_strength >= 0.50:
+    if rewatch_strength >= STRONG_REWATCH_THRESHOLD:
         return "rewatch:personal", "rewatch", "personal"
     return "broad:general", "broad", "general"
 
@@ -913,7 +925,7 @@ def _movie_ready_now_signal(
             )
 
     rotation_pressure = 0.0
-    if title_signal and title_watch_count >= 2:
+    if title_signal and title_watch_count >= MIN_WATCH_COUNT_FOR_MEDIAN_GAP:
         rotation_pressure = max(
             title_burstiness,
             _clamp_unit(
@@ -933,7 +945,7 @@ def _movie_ready_now_signal(
         else:
             cooldown_window_days = (
                 median_gap_days
-                if title_watch_count >= 2
+                if title_watch_count >= MIN_WATCH_COUNT_FOR_MEDIAN_GAP
                 else MOVIE_COMFORT_COOLDOWN_DEFAULT_DAYS
             )
             cooldown_window_days = max(
@@ -1024,11 +1036,11 @@ def _candidate_release_year(candidate: CandidateItem) -> int | None:
     if not candidate.release_date:
         return None
     value = str(candidate.release_date).strip()
-    if len(value) >= 4 and value[:4].isdigit():
+    if len(value) >= YEAR_TOKEN_LENGTH and value[:4].isdigit():
         return int(value[:4])
     for token in value.split():
         cleaned = token.strip(",.")
-        if len(cleaned) == 4 and cleaned.isdigit():
+        if len(cleaned) == YEAR_TOKEN_LENGTH and cleaned.isdigit():
             return int(cleaned)
     return None
 
@@ -1416,7 +1428,7 @@ def _apply_movie_reason_bucket_quotas(
                 "reason_bucket_quota_action", "reserve"
             )
             continue
-        base_limit = 2 if len(selected) < 8 else 3
+        base_limit = 2 if len(selected) < REASON_BUCKET_EARLY_SELECTION_COUNT else 3
         if counts[bucket] >= base_limit:
             candidate.score_breakdown["reason_bucket_quota_action"] = "deferred"
             deferred.append(candidate)
@@ -1434,7 +1446,7 @@ def _apply_movie_reason_bucket_quotas(
             bucket = str(
                 candidate.score_breakdown.get("primary_reason_bucket", "broad:general")
             )
-            base_limit = 2 if len(selected) < 8 else 3
+            base_limit = 2 if len(selected) < REASON_BUCKET_EARLY_SELECTION_COUNT else 3
             relaxed_limit = base_limit + MOVIE_COMFORT_REASON_BUCKET_RELAX_INCREMENT
             if counts[bucket] >= relaxed_limit:
                 still_deferred.append(candidate)
@@ -1742,7 +1754,7 @@ def _apply_movie_comfort_confidence(
                 suppressed_map[family] = "no_candidate_feature"
             elif not any(family_profile_maps[family].values()):
                 suppressed_map[family] = "no_profile_signal"
-            elif blended_fit >= 0.20:
+            elif blended_fit >= MEANINGFUL_FIT_THRESHOLD:
                 active_signal_families.append(family)
 
         recency_phase_fit = _movie_comfort_weighted_fit(
@@ -1783,7 +1795,7 @@ def _apply_movie_comfort_confidence(
                 # Unrated entries still carry taste signal: rewatching or
                 # finishing quickly after adding are implicit endorsements.
                 implicit = IMPLICIT_RATING_CONFIDENCE_BASE
-                if rewatch_count >= 2:
+                if rewatch_count >= REWATCH_BONUS_MIN_COUNT:
                     implicit += IMPLICIT_RATING_CONFIDENCE_REWATCH_BONUS
                 if fast_completion:
                     implicit += IMPLICIT_RATING_CONFIDENCE_FAST_COMPLETION_BONUS
@@ -1859,12 +1871,16 @@ def _apply_movie_comfort_confidence(
             for family in MOVIE_COMFORT_RICH_FAMILIES
         }
         shape_coverage = _clamp_unit(
-            sum(1 for family_fit in rich_family_fits.values() if family_fit >= 0.20)
+            sum(
+                1
+                for family_fit in rich_family_fits.values()
+                if family_fit >= MEANINGFUL_FIT_THRESHOLD
+            )
             / 4.0,
         )
         generic_only_match = (
             1.0
-            if max(rich_family_fits.values(), default=0.0) < 0.20
+            if max(rich_family_fits.values(), default=0.0) < MEANINGFUL_FIT_THRESHOLD
             and max(certification_fit, runtime_fit, decade_fit) > 0.0
             else 0.0
         )
@@ -1925,7 +1941,11 @@ def _apply_movie_comfort_confidence(
             + (legacy_quality_score * 0.10)
             + (shape_coverage * 0.05),
         )
-        if generic_only_match >= 1.0 and library_fit < 0.40 and rewatch_strength < 0.35:
+        if (
+            generic_only_match >= 1.0
+            and library_fit < LOW_LIBRARY_FIT_THRESHOLD
+            and rewatch_strength < LOW_REWATCH_STRENGTH_THRESHOLD
+        ):
             core_affinity_score = _clamp_unit(core_affinity_score * 0.86)
             legacy_core_affinity_score = _clamp_unit(legacy_core_affinity_score * 0.86)
             for family in MOVIE_COMFORT_GENERIC_SOURCES:
@@ -2005,7 +2025,7 @@ def _apply_movie_comfort_confidence(
         saturation_penalty_contribution = 0.0
         if (
             candidate.media_type == MediaTypes.MOVIE.value
-            and saturation_multiplier < 0.999
+            and saturation_multiplier < SATURATION_APPLIED_THRESHOLD
         ):
             raw_before_saturation = raw_final_score
             raw_final_score = _clamp_unit(raw_final_score * saturation_multiplier)
@@ -2089,7 +2109,7 @@ def _apply_movie_comfort_confidence(
             if family == primary_reason_source:
                 continue
             if (
-                family_layer_fits[family]["blended"] >= 0.20
+                family_layer_fits[family]["blended"] >= MEANINGFUL_FIT_THRESHOLD
                 and family not in suppressed_map
             ):
                 suppressed_map[family] = "not_selected_in_bucket"
@@ -2337,11 +2357,11 @@ def _apply_movie_comfort_confidence(
         # Which distinct explanation dominates this pick; feeds future
         # user-facing reason text ("you haven't revisited this in years" vs
         # "you like this family more than the crowd").
-        if applied_avoidance < -0.02:
+        if applied_avoidance < AVOIDANCE_REASON_THRESHOLD:
             primary_reason_kind = "avoided_family"
-        elif absence_boost >= 0.05:
+        elif absence_boost >= ABSENCE_BOOST_REASON_THRESHOLD:
             primary_reason_kind = "long_unseen_favorite"
-        elif personal_alignment_offset_value >= 0.05:
+        elif personal_alignment_offset_value >= ALIGNMENT_OFFSET_REASON_THRESHOLD:
             primary_reason_kind = "above_crowd_family"
         else:
             primary_reason_kind = "phase_match"
@@ -2541,8 +2561,10 @@ def _apply_movie_comfort_confidence(
         )
         if (
             is_unrated
-            and float(candidate.score_breakdown.get("rewatch_strength", 0.0)) < 0.35
-            and float(candidate.score_breakdown.get("library_fit", 0.0)) < 0.40
+            and float(candidate.score_breakdown.get("rewatch_strength", 0.0))
+            < LOW_REWATCH_STRENGTH_THRESHOLD
+            and float(candidate.score_breakdown.get("library_fit", 0.0))
+            < LOW_LIBRARY_FIT_THRESHOLD
             and max(
                 float(candidate.score_breakdown.get("keyword_fit", 0.0)),
                 float(candidate.score_breakdown.get("collection_fit", 0.0)),
@@ -2551,7 +2573,7 @@ def _apply_movie_comfort_confidence(
                 float(candidate.score_breakdown.get("director_fit", 0.0)),
                 float(candidate.score_breakdown.get("lead_cast_fit", 0.0)),
             )
-            < 0.20
+            < MEANINGFUL_FIT_THRESHOLD
         ):
             candidate.score_breakdown["filtered_unrated_weak_shape"] = 1.0
             continue

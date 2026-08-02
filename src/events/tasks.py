@@ -10,6 +10,16 @@ from events.calendar.main import fetch_releases
 
 logger = logging.getLogger(__name__)
 
+# Above this many items still needing metadata, use a larger batch size to
+# finish the initial backfill quickly; below it, fall back to a smaller
+# cleanup batch size.
+LARGE_BACKFILL_ITEM_THRESHOLD = 1000
+
+# A Pocket Casts episode UUID is a standard 36-character UUID string
+# containing 4 hyphens; RSS GUIDs that already look like one are left alone.
+POCKETCASTS_UUID_LENGTH = 36
+POCKETCASTS_UUID_HYPHEN_COUNT = 4
+
 
 def _normalize_user_id(user_or_id):
     """Coerce a User instance or scalar value into a user ID."""
@@ -101,7 +111,7 @@ def reload_calendar(user_id=None, item_ids=None, user=None, items_to_process=Non
 
             # Use larger batch for initial metadata imports, then keep release backfill
             # running nightly so stale cached metadata can be corrected over time.
-            if remaining_metadata_count > 1000:
+            if remaining_metadata_count > LARGE_BACKFILL_ITEM_THRESHOLD:
                 batch_size = 5000  # Aggressive initial backfill
                 logger.info(
                     "Initial metadata backfill: processing %s items (batch of 5000)",
@@ -248,8 +258,9 @@ def refresh_podcast_episodes():
                         # Only update if the matched episode doesn't look like a Pocket Casts UUID
                         # Pocket Casts UUIDs typically have hyphens in specific positions
                         is_pocketcasts_uuid = (
-                            len(matched_episode.episode_uuid) == 36
-                            and matched_episode.episode_uuid.count("-") == 4
+                            len(matched_episode.episode_uuid) == POCKETCASTS_UUID_LENGTH
+                            and matched_episode.episode_uuid.count("-")
+                            == POCKETCASTS_UUID_HYPHEN_COUNT
                         )
                         if not is_pocketcasts_uuid:
                             logger.info(

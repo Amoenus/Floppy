@@ -2,6 +2,7 @@
 
 import logging
 from collections import defaultdict
+from http import HTTPStatus
 
 import requests
 from django.conf import settings
@@ -36,7 +37,7 @@ class RadarrClient:
         if response.status_code in (401, 403):
             msg = "Radarr API key is invalid or unauthorized"
             raise MediaImportError(msg)
-        if response.status_code >= 400:
+        if response.status_code >= HTTPStatus.BAD_REQUEST:
             msg = f"Radarr request failed ({response.status_code}) for {path}"
             raise MediaImportError(msg)
         return response.json()
@@ -149,7 +150,7 @@ class RadarrImporter:
                     Sources.TMDB.value,
                 )
             except services.ProviderAPIError as error:
-                if getattr(error, "status_code", None) == 404:
+                if getattr(error, "status_code", None) == HTTPStatus.NOT_FOUND:
                     title = row.get("title") or row.get("sortTitle") or tmdb_id
                     self.warnings.append(
                         f"{title}: not found in {Sources.TMDB.label} with ID {tmdb_id}.",

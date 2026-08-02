@@ -37,6 +37,9 @@ from app.templatetags import app_tags
 
 logger = logging.getLogger(__name__)
 
+COIN_FLIP_PROBABILITY = 0.5
+SCORE_SCALE_FIVE_POINT = 5
+
 
 def _build_today_card(
     today_in_history,
@@ -45,7 +48,7 @@ def _build_today_card(
     today_in_user_history_year,
 ):
     if today_in_history and today_in_user_history:
-        use_user = _random.random() < 0.5
+        use_user = _random.random() < COIN_FLIP_PROBABILITY
     elif today_in_user_history:
         use_user = True
     else:
@@ -991,7 +994,9 @@ def _aggregate_statistics_from_days(
                 continue
             score_value = float(score)
             score_value_scaled = (
-                score_value / 2 if score_scale_max == 5 else score_value
+                score_value / 2
+                if score_scale_max == SCORE_SCALE_FIVE_POINT
+                else score_value
             )
             binned = int(score_value_scaled)
             binned = max(binned, 0)
@@ -1934,7 +1939,7 @@ def _aggregate_statistics_from_days(
             if _score is None:
                 continue
             _sv = float(_score)
-            if score_scale_max == 5:
+            if score_scale_max == SCORE_SCALE_FIVE_POINT:
                 _sv = _sv / 2
             _mt_sum += _sv
             _mt_count += 1

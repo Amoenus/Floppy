@@ -53,6 +53,8 @@ COMFORT_PROFILE_FAMILIES = (
     "runtime_buckets",
     "decades",
 )
+MAX_LEAD_CAST_MEMBERS = 3
+MIN_WATCH_COUNT_FOR_REWATCH_WEIGHT = 2
 VIDEO_COMFORT_PROFILE_MEDIA_TYPES = {
     MediaTypes.MOVIE.value,
     MediaTypes.TV.value,
@@ -361,7 +363,10 @@ def _item_credit_feature_maps(
             if person_name not in directors_seen[item_id]:
                 directors_seen[item_id].add(person_name)
                 directors_map[item_id].append(person_name)
-        if role_type == CreditRoleType.CAST.value and lead_cast_count[item_id] < 3:
+        if (
+            role_type == CreditRoleType.CAST.value
+            and lead_cast_count[item_id] < MAX_LEAD_CAST_MEMBERS
+        ):
             if person_name not in lead_cast_seen[item_id]:
                 lead_cast_seen[item_id].add(person_name)
                 lead_cast_map[item_id].append(person_name)
@@ -529,7 +534,11 @@ def _build_video_comfort_affinity_bundles(
             1.0 - (min(days_since_latest_watch, 1825) / 1825.0),
         )
         library_weight = score_weight * repeat_weight * library_age_weight
-        rewatch_weight = library_weight * 1.35 if watch_count >= 2 else 0.0
+        rewatch_weight = (
+            library_weight * 1.35
+            if watch_count >= MIN_WATCH_COUNT_FOR_REWATCH_WEIGHT
+            else 0.0
+        )
         feature_map = aggregate.get("features") or {}
         for family, values in feature_map.items():
             for value in values:

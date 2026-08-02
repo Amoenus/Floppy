@@ -1,5 +1,6 @@
 import logging
 import time
+from http import HTTPStatus
 from urllib.parse import urlparse
 
 from django.conf import settings
@@ -216,7 +217,7 @@ class ProviderAPIErrorMiddleware:
 
             if (
                 exception.provider == Sources.HARDCOVER.value
-                and exception.status_code == 401
+                and exception.status_code == HTTPStatus.UNAUTHORIZED
             ):
                 extra_context = {
                     "error_support_title": "Hardcover token expired",

@@ -15,17 +15,31 @@ from app.models.music import ArtistMember
 
 logger = logging.getLogger(__name__)
 
+# Lengths of the partial-date strings MusicBrainz can return for a release
+# date: "YYYY", "YYYY-MM", or a full "YYYY-MM-DD" (10+ chars).
+DATE_STR_LEN_YEAR_ONLY = 4
+DATE_STR_LEN_YEAR_MONTH = 7
+DATE_STR_LEN_FULL_DATE = 10
+
+# Fuzzy string-similarity ratio above which two candidate names/titles are
+# considered the same for artist/album MBID resolution.
+FUZZY_MATCH_SIMILARITY_THRESHOLD = 0.8
+
+# When resolving ambiguous MusicBrainz search results, trust the first
+# candidate outright if the result set is this small or smaller.
+FEW_CANDIDATES_AUTO_TRUST_MAX = 3
+
 
 def _parse_partial_date(date_str):
     """Parse a MusicBrainz partial date string (YYYY, YYYY-MM, or YYYY-MM-DD)."""
     if not date_str:
         return None
     try:
-        if len(date_str) >= 10:
+        if len(date_str) >= DATE_STR_LEN_FULL_DATE:
             return parse_date(date_str[:10])
-        if len(date_str) == 7:
+        if len(date_str) == DATE_STR_LEN_YEAR_MONTH:
             return parse_date(date_str + "-01")
-        if len(date_str) == 4:
+        if len(date_str) == DATE_STR_LEN_YEAR_ONLY:
             return parse_date(date_str + "-01-01")
     except (ValueError, TypeError):
         return None
@@ -333,7 +347,7 @@ def resolve_artist_mbid(name: str, sort_name: str | None = None):
                         similarity_ratio = shorter / longer if longer > 0 else 0
                         if shorter > 0 and contains_match:
                             # Check length similarity
-                            if similarity_ratio >= 0.8:
+                            if similarity_ratio >= FUZZY_MATCH_SIMILARITY_THRESHOLD:
                                 chosen = cid
                                 logger.info(
                                     "resolve_artist_mbid: DECISION - fuzzy match '%s' -> '%s' (MBID=%s, norm: '%s'->'%s', similarity=%.2f)",
@@ -390,7 +404,7 @@ def resolve_artist_mbid(name: str, sort_name: str | None = None):
                 first_cand_name = first_cand.get("name", "Unknown")
                 if first_cand_id:
                     # Trust first result if very few candidates (1-3) regardless of search type
-                    if len(candidates) <= 3:
+                    if len(candidates) <= FEW_CANDIDATES_AUTO_TRUST_MAX:
                         chosen = first_cand_id
                         logger.info(
                             "resolve_artist_mbid: DECISION - using first candidate for '%s' -> '%s' (MBID=%s, only %d candidates, trusting MB search ranking)",
@@ -665,7 +679,7 @@ def resolve_album_mbid(album_title: str, artist_name: str | None = None):
                         if (
                             shorter > 0
                             and contains_match
-                            and similarity_ratio >= 0.8
+                            and similarity_ratio >= FUZZY_MATCH_SIMILARITY_THRESHOLD
                             and artist_matches
                         ):
                             chosen_release_id = cand_release_id
@@ -681,7 +695,11 @@ def resolve_album_mbid(album_title: str, artist_name: str | None = None):
                                 artist_matches,
                             )
                             break
-                        if shorter > 0 and contains_match and similarity_ratio >= 0.8:
+                        if (
+                            shorter > 0
+                            and contains_match
+                            and similarity_ratio >= FUZZY_MATCH_SIMILARITY_THRESHOLD
+                        ):
                             logger.info(
                                 "resolve_album_mbid: fuzzy match rejected for '%s' vs '%s' (similarity=%.2f >= 0.8 but artist mismatch: '%s' vs '%s')",
                                 variant,
@@ -741,7 +759,7 @@ def resolve_album_mbid(album_title: str, artist_name: str | None = None):
                 first_cand_title = first_cand.get("title", "Unknown")
                 if first_cand_release_id:
                     # Trust first result if very few candidates (1-3) regardless of search type
-                    if len(candidates) <= 3:
+                    if len(candidates) <= FEW_CANDIDATES_AUTO_TRUST_MAX:
                         chosen_release_id = first_cand_release_id
                         logger.info(
                             "resolve_album_mbid: DECISION - using first candidate for '%s' -> '%s' (release_id=%s, only %d candidates, trusting MB search ranking)",

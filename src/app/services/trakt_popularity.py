@@ -36,6 +36,12 @@ TRAKT_POPULARITY_INTERVAL_FIRST_YEAR_DAYS = 60
 TRAKT_POPULARITY_INTERVAL_FIVE_YEARS_DAYS = 180
 TRAKT_POPULARITY_INTERVAL_OLDER_DAYS = 365
 
+TOP_N_RANK = 10  # size of the "top ten" bucket used for calibration overlap
+AGE_THRESHOLD_NEW_DAYS = 90  # release age below which an item counts as "new"
+AGE_THRESHOLD_FIRST_YEAR_DAYS = (
+    365  # release age below which an item is within its first year
+)
+
 
 def route_media_type_for_item(item: Item, route_media_type: str | None = None) -> str:
     """Return the routed/library media type for a tracked item."""
@@ -248,9 +254,11 @@ def evaluate_calibration_fixture() -> dict[str, Any]:
     top_ten_expected = {
         str(item.get("title"))
         for item in raw_items
-        if int(item.get("expected_rank") or 0) <= 10
+        if int(item.get("expected_rank") or 0) <= TOP_N_RANK
     }
-    top_ten_predicted = {str(item.get("title")) for item in predicted_order[:10]}
+    top_ten_predicted = {
+        str(item.get("title")) for item in predicted_order[:TOP_N_RANK]
+    }
 
     return {
         "count": len(enriched_items),
@@ -321,9 +329,9 @@ def refresh_interval_for_item(item: Item, *, now=None):
         release_date = release_dt.date()
 
     age_days = (now.date() - release_date).days
-    if age_days <= 90:
+    if age_days <= AGE_THRESHOLD_NEW_DAYS:
         return timedelta(days=TRAKT_POPULARITY_INTERVAL_NEW_DAYS)
-    if age_days <= 365:
+    if age_days <= AGE_THRESHOLD_FIRST_YEAR_DAYS:
         return timedelta(days=TRAKT_POPULARITY_INTERVAL_FIRST_YEAR_DAYS)
     if age_days <= (365 * 5):
         return timedelta(days=TRAKT_POPULARITY_INTERVAL_FIVE_YEARS_DAYS)

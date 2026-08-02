@@ -41,6 +41,19 @@ from integrations import anime_mapping
 
 logger = logging.getLogger(__name__)
 
+# Sentinel value on Item.runtime_minutes meaning "aired but runtime unknown"
+# (see app.models.episode_runtimes.EXCLUDED_RUNTIME_SENTINELS).
+RUNTIME_UNKNOWN_AIRED = 999998
+
+# Air dates before this year are treated as placeholder/invalid data rather
+# than real release dates.
+MIN_PLAUSIBLE_AIR_YEAR = 1900
+
+# Plex userRating can be reported on a 0-10 scale (Yamtrack's native scale)
+# or, in some client integrations, a 0-100 scale that needs dividing by 10.
+YAMTRACK_RATING_SCALE_MAX = 10
+PLEX_RATING_SCALE_MAX = 100
+
 
 @login_required
 @require_POST
@@ -366,7 +379,10 @@ def _build_missing_season_metadata(
         if episode_item:
             if episode_item.release_datetime:
                 air_date = episode_item.release_datetime
-            if episode_item.runtime_minutes and episode_item.runtime_minutes < 999998:
+            if (
+                episode_item.runtime_minutes
+                and episode_item.runtime_minutes < RUNTIME_UNKNOWN_AIRED
+            ):
                 runtime = tmdb.get_readable_duration(episode_item.runtime_minutes)
             if episode_item.title and episode_item.title != show_title:
                 title = episode_item.title
@@ -1448,7 +1464,10 @@ def sync_metadata(request, source, media_type, media_id, season_number=None):
                         # air_date is already converted to datetime by process_episodes
                         # or it's None if TMDB returned null
                         # Use same logic as process_season_episodes: only store meaningful dates
-                        if hasattr(air_date, "year") and air_date.year > 1900:
+                        if (
+                            hasattr(air_date, "year")
+                            and air_date.year > MIN_PLAUSIBLE_AIR_YEAR
+                        ):
                             episode_item.release_datetime = air_date
                         else:
                             episode_item.release_datetime = None
@@ -1737,16 +1756,16 @@ def _sync_plex_rating(request, item, media_type):
         return
 
     # Normalize rating (Plex userRating is typically 0-10, Floppy uses 0-10)
-    if rating_float <= 10:
+    if rating_float <= YAMTRACK_RATING_SCALE_MAX:
         normalized_rating = rating_float
-    elif rating_float <= 100:
-        normalized_rating = rating_float / 10
+    elif rating_float <= PLEX_RATING_SCALE_MAX:
+        normalized_rating = rating_float / YAMTRACK_RATING_SCALE_MAX
     else:
         logger.debug("Rating from Plex sync was out of expected range")
         return
 
     normalized_rating = round(normalized_rating, 1)
-    if normalized_rating < 0 or normalized_rating > 10:
+    if normalized_rating < 0 or normalized_rating > YAMTRACK_RATING_SCALE_MAX:
         logger.debug("Normalized Plex rating was out of range")
         return
 

@@ -30,6 +30,8 @@ STATISTICS_TOP_N = 50
 # Cross-type global top-rated heap — intentionally same value but a distinct card.
 STATISTICS_TOP_RATED_OVERALL = 50
 
+RUNTIME_UNKNOWN_AIRED = 999998  # aired but runtime unknown
+
 
 def _safe_runtime_minutes(value):
     if not value:
@@ -39,7 +41,7 @@ def _safe_runtime_minutes(value):
     except (TypeError, ValueError):
         return 0
     # Exclude fallback values: 999998 (aired but runtime unknown) and 999999 (unknown runtime)
-    if minutes >= 999998:
+    if minutes >= RUNTIME_UNKNOWN_AIRED:
         return 0
     return minutes
 

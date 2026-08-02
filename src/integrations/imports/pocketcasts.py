@@ -3,6 +3,7 @@ import logging
 import os
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
+from http import HTTPStatus
 
 import jwt
 import requests
@@ -35,6 +36,23 @@ logger = logging.getLogger(__name__)
 
 POCKETCASTS_API_BASE_URL = "https://api.pocketcasts.com"
 POCKETCASTS_PODCAST_API_BASE_URL = "https://podcast-api.pocketcasts.com"
+
+# Pocket Casts UUIDs are standard UUIDs: 36 characters with 4 hyphens.
+POCKETCASTS_UUID_LENGTH = 36
+POCKETCASTS_UUID_HYPHEN_COUNT = 4
+
+# Pocket Casts `playingStatus` values.
+PLAYING_STATUS_IN_PROGRESS = 2
+PLAYING_STATUS_COMPLETED = 3
+
+# Minimum play position (seconds) considered meaningful listening progress.
+MIN_SIGNIFICANT_PLAY_SECONDS = 60
+
+# History entries within this many seconds of each other are treated as duplicates.
+DUPLICATE_HISTORY_WINDOW_SECONDS = 300
+
+# Timestamps larger than this are assumed to be milliseconds, not seconds, since epoch.
+EPOCH_MS_THRESHOLD = 1_000_000_000_000
 
 
 def _cleanup_duplicate_episodes_global():
@@ -91,8 +109,8 @@ def _cleanup_duplicate_episodes_global():
             kept_episode = None
             for episode in episodes_list_sorted:
                 is_pocketcasts_uuid = (
-                    len(episode.episode_uuid) == 36
-                    and episode.episode_uuid.count("-") == 4
+                    len(episode.episode_uuid) == POCKETCASTS_UUID_LENGTH
+                    and episode.episode_uuid.count("-") == POCKETCASTS_UUID_HYPHEN_COUNT
                 )
                 if is_pocketcasts_uuid:
                     kept_episode = episode
@@ -411,11 +429,13 @@ class PocketCastsImporter:
                     epsilon = 5
                     # Only mark as completed if there's significant progress to avoid false positives
                     significant_progress = duration > 0 and (
-                        played_up_to > 60 or played_up_to > duration * 0.1
+                        played_up_to > MIN_SIGNIFICANT_PLAY_SECONDS
+                        or played_up_to > duration * 0.1
                     )
-                    is_completed = (playing_status == 3 and significant_progress) or (
-                        duration > 0 and played_up_to >= duration - epsilon
-                    )
+                    is_completed = (
+                        playing_status == PLAYING_STATUS_COMPLETED
+                        and significant_progress
+                    ) or (duration > 0 and played_up_to >= duration - epsilon)
 
                     if is_completed and published:
                         new_completed_podcasts.append(
@@ -1483,7 +1503,10 @@ class PocketCastsImporter:
             episodes = response.get("episodes", [])
             return {ep["uuid"]: ep for ep in episodes if "uuid" in ep}
         except requests.HTTPError as e:
-            if e.response is not None and e.response.status_code == 401:
+            if (
+                e.response is not None
+                and e.response.status_code == HTTPStatus.UNAUTHORIZED
+            ):
                 msg = "Pocket Casts token expired during import — please retry"
                 raise MediaImportError(msg) from e
             logger.warning(
@@ -1521,7 +1544,10 @@ class PocketCastsImporter:
                     params=params,
                 )
             except requests.HTTPError as e:
-                if e.response is not None and e.response.status_code == 401:
+                if (
+                    e.response is not None
+                    and e.response.status_code == HTTPStatus.UNAUTHORIZED
+                ):
                     msg = "Pocket Casts token expired during import — please retry"
                     raise MediaImportError(msg) from e
                 logger.warning(
@@ -1620,12 +1646,16 @@ class PocketCastsImporter:
         duration = episode_data.get("duration", 0) or 0
         epsilon = 5
         significant_progress = duration > 0 and (
-            played_up_to > 60 or played_up_to > duration * 0.1
+            played_up_to > MIN_SIGNIFICANT_PLAY_SECONDS or played_up_to > duration * 0.1
         )
-        is_completed = (playing_status == 3 and significant_progress) or (
-            duration > 0 and played_up_to >= duration - epsilon
+        is_completed = (
+            playing_status == PLAYING_STATUS_COMPLETED and significant_progress
+        ) or (duration > 0 and played_up_to >= duration - epsilon)
+        return (
+            playing_status == PLAYING_STATUS_IN_PROGRESS
+            or played_up_to > 0
+            or is_completed
         )
-        return playing_status == 2 or played_up_to > 0 or is_completed
 
     def _ensure_show(self, podcast_uuid, show_metadata):
         """Create or update the PodcastShow row for a subscribed show."""
@@ -2085,7 +2115,11 @@ class PocketCastsImporter:
             )  # 2=in-progress, 3=completed
             played_up_to = episode_data.get("playedUpTo", 0)  # in seconds
             duration_seconds = duration or 0
-            if playing_status == 3 and duration_seconds and not played_up_to:
+            if (
+                playing_status == PLAYING_STATUS_COMPLETED
+                and duration_seconds
+                and not played_up_to
+            ):
                 played_up_to = duration_seconds
 
             latest_podcast = existing_podcast
@@ -2383,21 +2417,27 @@ class PocketCastsImporter:
         # 2. OR played_up_to is within 5 seconds of duration
         # This prevents false positives where Pocket Casts marks episodes as completed but played_up_to is 0
         significant_progress = duration > 0 and (
-            new_played > 60 or new_played > duration * 0.1
+            new_played > MIN_SIGNIFICANT_PLAY_SECONDS or new_played > duration * 0.1
         )
-        is_completed = (playing_status == 3 and significant_progress) or (
-            duration > 0 and new_played >= duration - epsilon
-        )
+        is_completed = (
+            playing_status == PLAYING_STATUS_COMPLETED and significant_progress
+        ) or (duration > 0 and new_played >= duration - epsilon)
 
         # Determine status
         if is_completed:
             status = Status.COMPLETED.value
             progress_minutes = (duration // 60) if duration > 0 else 0
-        elif delta > 0 or (old_status != 2 and playing_status == 2):
+        elif delta > 0 or (
+            old_status != PLAYING_STATUS_IN_PROGRESS
+            and playing_status == PLAYING_STATUS_IN_PROGRESS
+        ):
             # Progress made or newly in-progress
             status = Status.IN_PROGRESS.value
             progress_minutes = (new_played // 60) if new_played > 0 else 0
-        elif old_status == Status.IN_PROGRESS.value and playing_status == 2:
+        elif (
+            old_status == Status.IN_PROGRESS.value
+            and playing_status == PLAYING_STATUS_IN_PROGRESS
+        ):
             # Still in progress, no new progress
             status = Status.IN_PROGRESS.value
             progress_minutes = (new_played // 60) if new_played > 0 else 0
@@ -2415,7 +2455,7 @@ class PocketCastsImporter:
         self, existing_podcast, played_up_to, duration_seconds, playing_status
     ):
         """Return True when an incoming completed entry matches an existing completed play."""
-        if playing_status != 3:
+        if playing_status != PLAYING_STATUS_COMPLETED:
             return False
         if (
             not existing_podcast
@@ -2458,7 +2498,7 @@ class PocketCastsImporter:
         if latest_history and latest_history.end_date and import_time:
             # Check if we're trying to record history with the same or very similar end_date
             time_diff = abs((import_time - latest_history.end_date).total_seconds())
-            if time_diff < 300:  # Within 5 minutes
+            if time_diff < DUPLICATE_HISTORY_WINDOW_SECONDS:  # Within 5 minutes
                 logger.debug(
                     "Skipping duplicate history entry for podcast %s (end_date difference: %d seconds)",
                     podcast.id,
@@ -2561,8 +2601,9 @@ class PocketCastsImporter:
                     # Only update if the matched episode doesn't look like a Pocket Casts UUID
                     # Pocket Casts UUIDs typically have hyphens in specific positions
                     is_pocketcasts_uuid = (
-                        len(matched_episode.episode_uuid) == 36
-                        and matched_episode.episode_uuid.count("-") == 4
+                        len(matched_episode.episode_uuid) == POCKETCASTS_UUID_LENGTH
+                        and matched_episode.episode_uuid.count("-")
+                        == POCKETCASTS_UUID_HYPHEN_COUNT
                     )
                     if not is_pocketcasts_uuid:
                         logger.info(
@@ -2676,7 +2717,7 @@ class PocketCastsImporter:
             return None
         if isinstance(value, (int, float)):
             timestamp = float(value)
-            if timestamp > 1_000_000_000_000:
+            if timestamp > EPOCH_MS_THRESHOLD:
                 timestamp /= 1000
             return timestamp
         if isinstance(value, str):
@@ -2711,7 +2752,7 @@ class PocketCastsImporter:
     def _history_entry_sort_key(self, episode_data):
         """Return a sort key to pick the best entry for a duplicate UUID."""
         playing_status = episode_data.get("playingStatus", 0)
-        is_completed = 1 if playing_status == 3 else 0
+        is_completed = 1 if playing_status == PLAYING_STATUS_COMPLETED else 0
         played_up_to = episode_data.get("playedUpTo") or 0
         event_time = self._get_history_event_timestamp(episode_data) or 0
         return (is_completed, event_time, played_up_to)

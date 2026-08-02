@@ -25,6 +25,8 @@ import contextlib
 
 logger = logging.getLogger(__name__)
 
+MIN_PLAUSIBLE_YEAR = 1900
+
 
 def _normalize_media_list_filter_value(value):
     return str(value or "").strip().lower()
@@ -547,7 +549,7 @@ class MediaManager(models.Manager):
             return None
 
         def _is_usable_datetime(value):
-            return value is not None and getattr(value, "year", 0) >= 1900
+            return value is not None and getattr(value, "year", 0) >= MIN_PLAUSIBLE_YEAR
 
         def _progress_index():
             progress_value = getattr(media, "aggregated_progress", None)

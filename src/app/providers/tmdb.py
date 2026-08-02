@@ -15,6 +15,10 @@ from app.providers import services
 import contextlib
 
 logger = logging.getLogger(__name__)
+
+YEAR_STRING_LENGTH = 4
+TMDB_GENDER_MALE = 2
+TMDB_GENDER_NON_BINARY = 3
 base_url = "https://api.themoviedb.org/3"
 TVDB_OVERRIDE_CACHE_TIMEOUT = 60 * 60 * 24 * 30
 TMDB_APPEND_TO_RESPONSE_MAX_REMOTE_CALLS = 20
@@ -199,9 +203,9 @@ def _coerce_provider_year(value):
             return None
 
     text = str(value).strip()
-    if len(text) >= 4 and text[:4].isdigit():
+    if len(text) >= YEAR_STRING_LENGTH and text[:YEAR_STRING_LENGTH].isdigit():
         try:
-            return int(text[:4])
+            return int(text[:YEAR_STRING_LENGTH])
         except ValueError:
             return None
     return None
@@ -1468,9 +1472,9 @@ def get_gender(value):
     """Normalize TMDB gender integer into a stable string."""
     if value == 1:
         return "female"
-    if value == 2:
+    if value == TMDB_GENDER_MALE:
         return "male"
-    if value == 3:
+    if value == TMDB_GENDER_NON_BINARY:
         return "non_binary"
     return "unknown"
 

@@ -4,6 +4,13 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# Video resolution height thresholds (in pixels), used to classify streams
+# into standard resolution buckets.
+RESOLUTION_HEIGHT_4K = 2160
+RESOLUTION_HEIGHT_1080P = 1080
+RESOLUTION_HEIGHT_720P = 720
+RESOLUTION_HEIGHT_480P = 480
+
 
 def extract_collection_metadata_from_plex(plex_metadata):
     """Extract format metadata from Plex API metadata response.
@@ -165,13 +172,13 @@ def extract_collection_metadata_from_jellyfin(jellyfin_metadata):
         height = video_stream.get("Height")
         if width and height:
             # Derive resolution from dimensions
-            if height >= 2160:
+            if height >= RESOLUTION_HEIGHT_4K:
                 result["resolution"] = "4k"
-            elif height >= 1080:
+            elif height >= RESOLUTION_HEIGHT_1080P:
                 result["resolution"] = "1080p"
-            elif height >= 720:
+            elif height >= RESOLUTION_HEIGHT_720P:
                 result["resolution"] = "720p"
-            elif height >= 480:
+            elif height >= RESOLUTION_HEIGHT_480P:
                 result["resolution"] = "480p"
 
         # Check for HDR

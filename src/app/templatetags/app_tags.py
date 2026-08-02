@@ -1290,6 +1290,17 @@ def get_pagination_range(current_page, total_pages, window):
     return result
 
 
+# Day-count deltas (end_date - start_date) that identify named preset date
+# ranges. Each is one less than the calendar span, since both endpoints are
+# inclusive (e.g. "This Week" spans 7 days -> a 6-day difference).
+DAYS_DIFF_ONE_WEEK = 6
+DAYS_DIFF_ONE_MONTH = 29
+DAYS_DIFF_90_DAYS = 89
+DAYS_DIFF_6_MONTHS_MIN = 175
+DAYS_DIFF_6_MONTHS_MAX = 185
+DAYS_DIFF_ONE_YEAR = 364
+
+
 def _check_same_day_ranges(start_date, end_date, today):
     """Check for same-day date ranges like Today and Yesterday."""
     if start_date == end_date:
@@ -1303,7 +1314,7 @@ def _check_same_day_ranges(start_date, end_date, today):
 def _check_week_ranges(start_date, end_date, today):
     """Check for week-based date ranges."""
     days_diff = (end_date - start_date).days
-    if days_diff == 6:  # 7 days including start and end
+    if days_diff == DAYS_DIFF_ONE_WEEK:  # 7 days including start and end
         if start_date == today - timedelta(days=6):
             return "This Week"
         if start_date == today - timedelta(days=13):
@@ -1320,7 +1331,7 @@ def _check_month_ranges(start_date, end_date, today):
         return "This Month"
     if start_date == month_start and end_date == today - timedelta(days=1):
         return "This Month"
-    if days_diff == 29:  # 30 days including start and end
+    if days_diff == DAYS_DIFF_ONE_MONTH:  # 30 days including start and end
         if start_date == today - timedelta(days=29):
             return "This Month"
         if start_date == today - timedelta(days=59):
@@ -1334,15 +1345,15 @@ def _check_extended_ranges(start_date, end_date):
     days_diff = (end_date - start_date).days
 
     # Check for 90 days
-    if days_diff == 89:  # 90 days including start and end
+    if days_diff == DAYS_DIFF_90_DAYS:  # 90 days including start and end
         return "Last 90 Days"
 
     # Check for 6 months (approximately 180 days)
-    if 175 <= days_diff <= 185:
+    if DAYS_DIFF_6_MONTHS_MIN <= days_diff <= DAYS_DIFF_6_MONTHS_MAX:
         return "Last 6 Months"
 
     # Check for year ranges
-    if days_diff == 364:  # 365 days including start and end
+    if days_diff == DAYS_DIFF_ONE_YEAR:  # 365 days including start and end
         return "Last 12 Months"
 
     return None

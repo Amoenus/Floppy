@@ -57,6 +57,8 @@ HISTORY_COVERAGE_REPAIR_LOCK_TTL = getattr(
     60 * 30,
 )
 
+DAY_KEY_LENGTH = 8  # length of a YYYYMMDD day key string
+
 
 # ── Query helpers ─────────────────────────────────────────────────────────────
 
@@ -109,7 +111,7 @@ def _day_key_from_value(value):
             return None
     if isinstance(value, str):
         value = value.strip().strip("'").strip('"')
-        if value.isdigit() and len(value) == 8:
+        if value.isdigit() and len(value) == DAY_KEY_LENGTH:
             return value
         try:
             return _day_key_for_date(datetime.strptime(value, "%Y-%m-%d").date())

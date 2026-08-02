@@ -1,6 +1,7 @@
 """Helpers for interacting with the Plex APIs."""
 
 import logging
+from http import HTTPStatus
 from typing import Any
 from urllib.parse import quote_plus
 from xml.etree import ElementTree
@@ -460,7 +461,7 @@ def fetch_metadata(
         )
     except RequestException as exc:
         raise PlexClientError(str(exc)) from exc
-    if response.status_code == 404:
+    if response.status_code == HTTPStatus.NOT_FOUND:
         return None
     _raise_for_auth(response)
 
@@ -499,7 +500,7 @@ def _fetch_sections_from_connection(
         )
     except RequestException as exc:
         raise PlexClientError(str(exc)) from exc
-    if response.status_code == 401:
+    if response.status_code == HTTPStatus.UNAUTHORIZED:
         msg = "Plex token is unauthorized for this server"
         raise PlexAuthError(msg)
 
@@ -733,7 +734,7 @@ def _extract_watchlist_entries(container: dict[str, Any]) -> list[dict[str, Any]
 
 def _raise_for_auth(response: requests.Response):
     """Raise auth errors consistently."""
-    if response.status_code == 401:
+    if response.status_code == HTTPStatus.UNAUTHORIZED:
         msg = "Plex token is invalid or expired"
         raise PlexAuthError(msg)
     try:

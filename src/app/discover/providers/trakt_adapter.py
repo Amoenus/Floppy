@@ -19,6 +19,7 @@ TRAKT_API_PROVIDER = "TRAKT"
 WATCHED_WEEKLY_TTL = 60 * 60
 POPULAR_TTL = 60 * 60 * 24
 ANTICIPATED_TTL = 60 * 60
+ISO_DATE_LENGTH = 10
 
 
 class TraktDiscoverAdapter:
@@ -284,7 +285,7 @@ class TraktDiscoverAdapter:
         raw = str(value).strip()
         if not raw:
             return None
-        if len(raw) >= 10 and raw[4:5] == "-" and raw[7:8] == "-":
+        if len(raw) >= ISO_DATE_LENGTH and raw[4:5] == "-" and raw[7:8] == "-":
             return raw[:10]
         return raw
 

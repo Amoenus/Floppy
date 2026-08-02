@@ -5,6 +5,7 @@ Koito. Endpoint shapes were read from the Koito source (gabehf/Koito) since the
 web API is unversioned and undocumented.
 """
 
+from http import HTTPStatus
 import logging
 import random
 import time
@@ -110,7 +111,7 @@ def _make_api_request(
                 msg = "Koito rejected the API key. Reconnect the integration."
                 raise KoitoAuthError(msg)
 
-            if response.status_code == 429:
+            if response.status_code == HTTPStatus.TOO_MANY_REQUESTS:
                 if attempt < MAX_RETRIES - 1:
                     delay = retry_delay * (2**attempt) + random.uniform(0, 1)
                     logger.info(

@@ -38,6 +38,10 @@ MULTI_STATUS_PREFERENCE_FIELDS = {
     "music_status",
     "podcast_status",
 }
+# Score-scaling constants: a user's display scale is either 1-5 or the
+# internal storage scale of 0-10 (see RatingScaleChoices).
+FIVE_POINT_RATING_SCALE = 5
+MAX_INTERNAL_RATING_SCORE = 10
 
 
 def generate_token():
@@ -1394,7 +1398,7 @@ class User(AbstractUser):
         score_decimal = self._coerce_score_decimal(score)
         if score_decimal is None:
             return None
-        if self.rating_scale_max == 5:
+        if self.rating_scale_max == FIVE_POINT_RATING_SCALE:
             score_decimal = score_decimal / Decimal(2)
         return score_decimal.quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
 
@@ -1403,12 +1407,12 @@ class User(AbstractUser):
         score_decimal = self._coerce_score_decimal(score)
         if score_decimal is None:
             return None
-        if self.rating_scale_max == 5:
+        if self.rating_scale_max == FIVE_POINT_RATING_SCALE:
             score_decimal = score_decimal * Decimal(2)
         score_decimal = score_decimal.quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
         if score_decimal < 0:
             return Decimal(0)
-        if score_decimal > 10:
+        if score_decimal > MAX_INTERNAL_RATING_SCORE:
             return Decimal(10)
         return score_decimal
 

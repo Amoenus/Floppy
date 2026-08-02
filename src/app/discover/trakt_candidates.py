@@ -28,6 +28,7 @@ ROW_CACHE_SCHEMA_META_KEY = "schema_version"
 
 MOVIE_CANON_ROW_SCHEMA_VERSION = 2
 MOVIE_COMING_SOON_ROW_SCHEMA_VERSION = 1
+HIGH_RATING_THRESHOLD = 7.0
 
 
 def _clamp_adaptive_pull_target(value: int | None) -> int:
@@ -321,7 +322,7 @@ def _select_top_picks_anchors(user, media_type: str, *, max_anchors: int = 5):
     endorsed_recent = [
         entry
         for entry in recent
-        if (entry.score is not None and float(entry.score) >= 7.0)
+        if (entry.score is not None and float(entry.score) >= HIGH_RATING_THRESHOLD)
         or entry.item_id in rewatched_id_set
     ]
 

@@ -4,6 +4,7 @@ import re
 import sys
 import time
 from difflib import SequenceMatcher
+from http import HTTPStatus
 
 import requests
 from defusedxml import ElementTree
@@ -42,6 +43,18 @@ TRANSIENT_HTTP_STATUS_CODES = frozenset(
     },
 )
 TRANSIENT_HTTP_MAX_RETRIES = 2
+
+# MusicBrainz MBIDs are UUIDs (36 chars); shorter values are not valid
+# recording IDs and should be treated as "no metadata available".
+MUSICBRAINZ_MBID_MIN_LENGTH = 30
+
+# ISBN-10 and ISBN-13 identifier lengths (digits only, after cleaning).
+ISBN_10_LENGTH = 10
+ISBN_13_LENGTH = 13
+
+# Minimum fuzzy title-similarity ratio to accept a Hardcover match as the
+# same book when disambiguating by ISBN fails.
+TITLE_SIMILARITY_THRESHOLD = 0.88
 
 
 def _audiobookshelf_book(media_id):
@@ -264,7 +277,9 @@ class ProviderAPIError(Exception):
                     except (TypeError, ValueError):
                         response_keys = []
 
-        log_method = logger.warning if self.status_code == 404 else logger.error
+        log_method = (
+            logger.warning if self.status_code == HTTPStatus.NOT_FOUND else logger.error
+        )
         if response is None:
             log_method(
                 "%s api request failed error=%s",
@@ -617,7 +632,7 @@ def get_media_metadata(
         },
     }
     if media_type == MediaTypes.MUSIC.value:
-        if not media_id or len(str(media_id)) < 30:
+        if not media_id or len(str(media_id)) < MUSICBRAINZ_MBID_MIN_LENGTH:
             return _ensure_title_fields(
                 {
                     "max_progress": None,
@@ -709,14 +724,14 @@ def _metadata_to_search_result(metadata):
 def _normalize_isbn_candidate(value):
     """Return a normalized ISBN-10/13 when the input passes checksum validation."""
     cleaned = _ISBN_CLEAN_RE.sub("", str(value or "")).upper()
-    if len(cleaned) == 10 and re.fullmatch(r"\d{9}[\dX]", cleaned):
+    if len(cleaned) == ISBN_10_LENGTH and re.fullmatch(r"\d{9}[\dX]", cleaned):
         total = 0
         for index, char in enumerate(cleaned):
             digit = 10 if char == "X" else int(char)
             total += (10 - index) * digit
         return cleaned if total % 11 == 0 else None
 
-    if len(cleaned) == 13 and cleaned.isdigit():
+    if len(cleaned) == ISBN_13_LENGTH and cleaned.isdigit():
         checksum = 0
         for index, char in enumerate(cleaned[:12]):
             checksum += int(char) * (1 if index % 2 == 0 else 3)
@@ -861,7 +876,7 @@ def _resolve_hardcover_isbn_search(query, page):
 
                 hardcover_title = hardcover_metadata.get("title") or result.get("title")
                 title_score = _title_similarity(title, hardcover_title)
-                if title_score < 0.88:
+                if title_score < TITLE_SIMILARITY_THRESHOLD:
                     continue
 
                 candidate_authors = {

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from http import HTTPStatus
 from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 
 import requests
@@ -149,7 +150,7 @@ def _request(
     if response.status_code in {401, 403}:
         msg = "Invalid GPodder credentials."
         raise GPodderAuthError(msg)
-    if response.status_code >= 400:
+    if response.status_code >= HTTPStatus.BAD_REQUEST:
         msg = f"GPodder request failed with status {response.status_code}: {response.text[:300]}"
         raise GPodderClientError(msg)
     return response

@@ -7,6 +7,8 @@ from app.statistics import parse_runtime_to_minutes
 
 logger = logging.getLogger(__name__)
 
+RUNTIME_UNKNOWN_AIRED = 999998  # aired but runtime unknown
+
 
 def _sort_tv_media_by_time_left(media_list, direction="asc"):
     """Sort TV media by time left with explicit grouping order.
@@ -115,7 +117,7 @@ def _sort_tv_media_by_time_left(media_list, direction="asc"):
         # FIRST: Check locally stored runtime (but exclude fallback markers)
         if hasattr(media, "item") and media.item.runtime_minutes:
             # Exclude fallback values: 999998 (aired but runtime unknown) and 999999 (unknown runtime)
-            if media.item.runtime_minutes < 999998:
+            if media.item.runtime_minutes < RUNTIME_UNKNOWN_AIRED:
                 runtime_minutes = media.item.runtime_minutes
                 logger.debug(
                     f"Using stored runtime for {media.item.title}: {runtime_minutes}min"

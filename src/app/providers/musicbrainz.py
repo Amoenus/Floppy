@@ -3,6 +3,7 @@
 import logging
 import time
 from collections import OrderedDict
+from http import HTTPStatus
 from urllib.parse import quote
 
 import requests
@@ -198,7 +199,10 @@ def _mb_request(endpoint, params=None):
         )
     except requests.exceptions.HTTPError as error:
         # Downgrade noise for missing/invalid IDs
-        if error.response is not None and error.response.status_code == 404:
+        if (
+            error.response is not None
+            and error.response.status_code == HTTPStatus.NOT_FOUND
+        ):
             logger.debug("MusicBrainz API request 404 for %s: %s", url, error)
         else:
             logger.warning("MusicBrainz API request failed: %s", error)

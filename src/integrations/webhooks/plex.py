@@ -14,6 +14,17 @@ from .base import BaseWebhookProcessor
 
 logger = logging.getLogger(__name__)
 
+# Ignore "media.stop" events reported before this much playback (ms) has elapsed.
+MIN_STOP_VIEW_OFFSET_MS = 60_000
+
+# Plex ratings arrive on a 0-5, 0-10, or 0-100 scale depending on source; normalize to 0-10.
+RATING_HALF_SCALE_MAX = 5
+RATING_SCALE_MAX = 10
+RATING_PERCENTAGE_SCALE_MAX = 100
+
+# Numeric IDs above this are more likely IMDB-style (tt########) than TMDB IDs.
+LIKELY_IMDB_NUMERIC_ID_THRESHOLD = 3_000_000
+
 
 class _TasksProxy:
     """Lazily import integrations.tasks to avoid circular imports."""
@@ -137,7 +148,7 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
 
         if event_type == "media.stop":
             view_offset_ms = (payload.get("Metadata") or {}).get("viewOffset") or 0
-            if view_offset_ms < 60_000:
+            if view_offset_ms < MIN_STOP_VIEW_OFFSET_MS:
                 return None
 
         if not any(
@@ -779,25 +790,25 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
             return None
 
         if rating_source in {"userRating", "user_rating", "payload_userRating"}:
-            if rating <= 10:
+            if rating <= RATING_SCALE_MAX:
                 rating = rating
-            elif rating <= 100:
+            elif rating <= RATING_PERCENTAGE_SCALE_MAX:
                 rating /= 10
             else:
                 logger.warning("Invalid Plex rating received (out of range)")
                 return None
-        elif rating <= 5:
+        elif rating <= RATING_HALF_SCALE_MAX:
             rating *= 2
-        elif rating <= 10:
+        elif rating <= RATING_SCALE_MAX:
             rating = rating
-        elif rating <= 100:
+        elif rating <= RATING_PERCENTAGE_SCALE_MAX:
             rating /= 10
         else:
             logger.warning("Invalid Plex rating received (out of range)")
             return None
 
         rating = round(rating, 1)
-        if rating < 0 or rating > 10:
+        if rating < 0 or rating > RATING_SCALE_MAX:
             logger.warning("Invalid Plex rating received (normalized out of range)")
             return None
 
@@ -1015,7 +1026,10 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
                 if tmdb_id:
                     # If it looks like an IMDB ID (7+ digits) and we don't have an IMDB ID yet,
                     # AND it's a TV show, be skeptical of treating it as TMDB.
-                    if int(tmdb_id) > 3000000 and ids["imdb_id"] is None:
+                    if (
+                        int(tmdb_id) > LIKELY_IMDB_NUMERIC_ID_THRESHOLD
+                        and ids["imdb_id"] is None
+                    ):
                         ids["imdb_id"] = f"tt{tmdb_id}"
                         logger.debug("Skeptically treated large TMDB-style ID as IMDB")
                     else:

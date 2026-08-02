@@ -16,6 +16,8 @@ from app.log_safety import exception_summary
 
 logger = logging.getLogger(__name__)
 
+LOG_SAMPLE_SIZE = 20  # max sampled names collected for a single summary log line
+
 
 @shared_task(name="app.tasks.enrich_music_library_task")
 def enrich_music_library_task(user_id: int):
@@ -136,7 +138,7 @@ def enrich_music_library_task(user_id: int):
             # Artist already has MBID, skip MBID resolution
             skipped_already_has_mbid += 1
             # Collect sample names (first 20) for logging
-            if len(skipped_artist_names_sample) < 20:
+            if len(skipped_artist_names_sample) < LOG_SAMPLE_SIZE:
                 skipped_artist_names_sample.append(artist.name)
         else:
             logger.info(
@@ -787,7 +789,7 @@ def enrich_albums_task(user_id: int):
         # If missing MBID, try to attach one
         if album.musicbrainz_release_id or album.musicbrainz_release_group_id:
             skipped_already_has_mbid += 1
-            if len(skipped_album_names_sample) < 20:
+            if len(skipped_album_names_sample) < LOG_SAMPLE_SIZE:
                 skipped_album_names_sample.append(
                     f"{album.title} - {album.artist.name if album.artist else 'Unknown'}",
                 )

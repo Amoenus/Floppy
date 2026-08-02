@@ -6,6 +6,10 @@ from datetime import datetime, timedelta
 import croniter
 from django.utils import timezone
 
+# A cron expression "minute hour ..." needs at least this many space-separated
+# fields before its hour part can be inspected for an "every X hours" pattern.
+MIN_CRON_PARTS_FOR_HOUR_PATTERN = 2
+
 
 def _deserialize_task_result(result):
     """Return the stored task result in its native Python shape when possible."""
@@ -159,7 +163,7 @@ def get_next_run_info(periodic_task):
         # Check for "every X hours" pattern by examining the cron expression
         # Pattern should be: "0 */X * * *" (minute=0, hour=*/X, all others *)
         cron_parts = cron_expr.split()
-        if len(cron_parts) >= 2:
+        if len(cron_parts) >= MIN_CRON_PARTS_FOR_HOUR_PATTERN:
             minute_part = str(cron_parts[0])
             hour_part = str(cron_parts[1])
             # Check if it matches "every 2 hours" pattern

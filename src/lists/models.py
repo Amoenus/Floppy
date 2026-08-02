@@ -1,3 +1,5 @@
+from http import HTTPStatus
+
 import requests
 from django.conf import settings
 from django.core.cache import cache
@@ -8,6 +10,15 @@ from django.urls import reverse
 from app.models import Item, MediaTypes, Sources
 from app.providers import services
 from lists import smart_rules
+
+# IGDB artwork_type values used to classify fetched artwork images.
+IGDB_ARTWORK_TYPE_HERO = 7
+IGDB_ARTWORK_TYPE_TOP_BANNER = 4
+
+# Acceptable image aspect ratio range for list artwork: from 3:2 (1.5) up to
+# 16:9 (1.777..., allowing a small rounding margin up to 1.778).
+MIN_ARTWORK_ASPECT_RATIO = 1.5
+MAX_ARTWORK_ASPECT_RATIO = 1.778
 
 
 class CustomListManager(models.Manager):
@@ -659,7 +670,7 @@ class CustomList(models.Model):
                                     # Need to identify the correct type for Key Art - possibly type 7 (Hero) or a different value
                                     # For now, let's try type 7 (Hero) as Key Art, and if that doesn't work, we'll need to check the actual values
                                     if (
-                                        artwork_type == 7
+                                        artwork_type == IGDB_ARTWORK_TYPE_HERO
                                     ):  # Hero - trying this as Key Art
                                         key_arts.append(image_id)
                                         logger.debug(
@@ -669,7 +680,7 @@ class CustomList(models.Model):
                                             artwork_type,
                                         )
                                     elif (
-                                        artwork_type == 4
+                                        artwork_type == IGDB_ARTWORK_TYPE_TOP_BANNER
                                     ):  # Top Banner - might be Concept Art based on user feedback
                                         # Skip type 4 for now since user says it's showing Concept Art
                                         other_artworks.append(image_id)
@@ -874,7 +885,7 @@ class CustomList(models.Model):
 
             # Fetch image with timeout
             response = requests.get(image_url, timeout=5, stream=True)
-            if response.status_code == 404:
+            if response.status_code == HTTPStatus.NOT_FOUND:
                 # Try t_thumb as fallback (for screenshots)
                 image_url = (
                     f"https://images.igdb.com/igdb/image/upload/t_thumb/{image_id}.jpg"
@@ -911,7 +922,7 @@ class CustomList(models.Model):
             # Skip if wider than 16:9 (aspect_ratio > 1.778, allowing small rounding)
             # Accept if between 1.5 and 1.778 (inclusive)
             # 16:9 = 1.777777..., so we allow up to 1.778 to account for rounding
-            if aspect_ratio > 1.778:
+            if aspect_ratio > MAX_ARTWORK_ASPECT_RATIO:
                 logger.debug(
                     "Skipping %s image_id=%s: aspect ratio %.3f is wider than 16:9",
                     image_type_label,
@@ -920,7 +931,7 @@ class CustomList(models.Model):
                 )
                 return None
 
-            if aspect_ratio < 1.5:
+            if aspect_ratio < MIN_ARTWORK_ASPECT_RATIO:
                 logger.debug(
                     "Skipping %s image_id=%s: aspect ratio %.3f is narrower than 3:2",
                     image_type_label,

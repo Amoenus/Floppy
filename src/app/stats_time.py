@@ -23,6 +23,13 @@ from app.stats_utils import (
 
 logger = logging.getLogger(__name__)
 
+# Sentinel value on Item.runtime_minutes meaning "aired but runtime unknown"
+# (see app.models.episode_runtimes.EXCLUDED_RUNTIME_SENTINELS; the sibling
+# 999999 "runtime completely unknown" sentinel is not compared in this file).
+RUNTIME_UNKNOWN_AIRED = 999998
+
+SECONDS_PER_DAY = 86400
+
 
 # ---------------------------------------------------------------------------
 # Game time
@@ -163,7 +170,7 @@ def _calculate_episode_time_from_cache(episode, logger):
         )
         return 0  # Skip this episode instead of failing
 
-    if runtime_minutes >= 999998:
+    if runtime_minutes >= RUNTIME_UNKNOWN_AIRED:
         logger.warning(
             "Runtime placeholder %s for episode %s, skipping",
             runtime_minutes,
@@ -292,7 +299,7 @@ def _get_media_runtime_from_cache(media, logger, context=""):
 
     runtime_minutes = getattr(media.item, "runtime_minutes", None)
     # Exclude fallback values: 999998 (aired but runtime unknown) and 999999 (unknown runtime)
-    if runtime_minutes and runtime_minutes < 999998:
+    if runtime_minutes and runtime_minutes < RUNTIME_UNKNOWN_AIRED:
         logger.debug(
             "Media '%s' %s: using cached runtime %s minutes",
             media.item.title,
@@ -311,7 +318,7 @@ def _get_media_runtime_from_cache(media, logger, context=""):
         .first()
     )
     # Exclude fallback values: 999998 (aired but runtime unknown) and 999999 (unknown runtime)
-    if db_runtime and db_runtime < 999998:
+    if db_runtime and db_runtime < RUNTIME_UNKNOWN_AIRED:
         logger.debug(
             "Media '%s' %s: using database runtime %s minutes (saved by another task)",
             media.item.title,
@@ -352,7 +359,7 @@ def _get_media_runtime_from_cache(media, logger, context=""):
                     break
 
     # Exclude fallback values: 999998 (aired but runtime unknown) and 999999 (unknown runtime)
-    if metadata_runtime and metadata_runtime < 999998:
+    if metadata_runtime and metadata_runtime < RUNTIME_UNKNOWN_AIRED:
         logger.debug(
             "Media '%s' %s: fetched runtime %s minutes",
             media.item.title,
@@ -508,7 +515,8 @@ def _calculate_music_time(media, start_date, end_date, logger):
             # Prefer the one closer to end_date, but only if it's within 24 hours
             # (metadata updates can happen days/weeks later)
             if (
-                time_diff_current < time_diff_existing and time_diff_current < 86400
+                time_diff_current < time_diff_existing
+                and time_diff_current < SECONDS_PER_DAY
             ):  # 24 hours
                 plays_by_end_date[history_end_date] = (history_record, history_date)
 

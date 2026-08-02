@@ -21,6 +21,9 @@ from app.discover.service_helpers import (
 )
 
 ROW_MATCH_SIGNAL_CANDIDATE_LIMIT = 12
+MAX_MATCH_SIGNAL_LABELS = 3
+MIN_LABEL_SCORE_THRESHOLD = 0.15
+MIN_SELECTED_LABELS_BEFORE_GENERIC_FALLBACK = 2
 ROW_MATCH_SIGNAL_ROWS = {
     "top_picks_for_you",
     "clear_out_next",
@@ -68,11 +71,11 @@ def _comfort_match_signal(profile_payload: dict) -> str:
             ):
                 if label not in top_labels:
                     top_labels.append(label)
-                if len(top_labels) >= 3:
+                if len(top_labels) >= MAX_MATCH_SIGNAL_LABELS:
                     break
-            if len(top_labels) >= 3:
+            if len(top_labels) >= MAX_MATCH_SIGNAL_LABELS:
                 break
-        if len(top_labels) >= 3:
+        if len(top_labels) >= MAX_MATCH_SIGNAL_LABELS:
             break
 
     if not top_labels:
@@ -134,7 +137,8 @@ def _movie_comfort_match_signal_with_details(
         (
             (source, label, score_value)
             for (source, label), score_value in label_scores.items()
-            if source in MOVIE_COMFORT_BUCKET_SOURCE_PRIORITY and score_value >= 0.15
+            if source in MOVIE_COMFORT_BUCKET_SOURCE_PRIORITY
+            and score_value >= MIN_LABEL_SCORE_THRESHOLD
         ),
         key=lambda item: item[2],
         reverse=True,
@@ -144,15 +148,16 @@ def _movie_comfort_match_signal_with_details(
             continue
         seen_labels.add(label)
         selected.append((source, label, score_value))
-        if len(selected) >= 3:
+        if len(selected) >= MAX_MATCH_SIGNAL_LABELS:
             break
 
-    if len(selected) < 3:
+    if len(selected) < MAX_MATCH_SIGNAL_LABELS:
         certification_ranked = sorted(
             (
                 (source, label, score_value)
                 for (source, label), score_value in label_scores.items()
-                if source == "certifications" and score_value >= 0.15
+                if source == "certifications"
+                and score_value >= MIN_LABEL_SCORE_THRESHOLD
             ),
             key=lambda item: item[2],
             reverse=True,
@@ -162,15 +167,16 @@ def _movie_comfort_match_signal_with_details(
                 continue
             seen_labels.add(label)
             selected.append((source, label, score_value))
-            if len(selected) >= 3:
+            if len(selected) >= MAX_MATCH_SIGNAL_LABELS:
                 break
 
-    if len(selected) < 2:
+    if len(selected) < MIN_SELECTED_LABELS_BEFORE_GENERIC_FALLBACK:
         generic_ranked = sorted(
             (
                 (source, label, score_value)
                 for (source, label), score_value in label_scores.items()
-                if source in {"runtime_buckets", "decades"} and score_value >= 0.15
+                if source in {"runtime_buckets", "decades"}
+                and score_value >= MIN_LABEL_SCORE_THRESHOLD
             ),
             key=lambda item: item[2],
             reverse=True,
@@ -180,7 +186,7 @@ def _movie_comfort_match_signal_with_details(
                 continue
             seen_labels.add(label)
             selected.append((source, label, score_value))
-            if len(selected) >= 3:
+            if len(selected) >= MAX_MATCH_SIGNAL_LABELS:
                 break
 
     if not selected:
