@@ -795,7 +795,10 @@ def build_collection_modal_context(
     season_audit_entries = _build_collection_season_audit_entries(request.user, item)
     episode_audit_entries = _build_collection_episode_audit_entries(request.user, item)
     visible_existing_entries = list(existing_entries)
-    if season_audit_entries or episode_audit_entries:
+    if season_audit_entries:
+        # At show level an entry on the show Item cannot say which season it
+        # covers, so the per-season audit rows replace it. A season-level entry
+        # is unambiguous: keep it visible so it can still be seen and removed.
         visible_existing_entries = []
     form = CollectionEntryForm(
         user=request.user,

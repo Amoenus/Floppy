@@ -727,15 +727,15 @@ class CollectionModalViewTest(TestCase):
         )
         self.assertEqual(
             response.context["season_audit_entries"][0]["display_title"],
-            "Season 1: 1/2 • 50%",
+            "Season 1: 2/2 • 100%",
         )
         self.assertEqual(
             response.context["season_audit_entries"][0]["progress_label"],
-            "Collected Episodes: 1/2 • 50%",
+            "Collected Episodes: 2/2 • 100%",
         )
         self.assertEqual(
             response.context["season_audit_entries"][0]["source_labels"],
-            ["Sonarr"],
+            ["Sonarr", "Plex"],
         )
         self.assertEqual(
             response.context["season_audit_entries"][0]["quality_label"],
@@ -750,8 +750,8 @@ class CollectionModalViewTest(TestCase):
             "Collected Episodes: 1/1 • 100%",
         )
         self.assertContains(response, "Collected Seasons")
-        self.assertContains(response, "Season 1: 1/2 • 50%")
-        self.assertNotContains(response, "Collected Episodes: 1/2 • 50%")
+        self.assertContains(response, "Season 1: 2/2 • 100%")
+        self.assertNotContains(response, "Collected Episodes: 2/2 • 100%")
         self.assertContains(response, "WebDL-1080p")
         self.assertContains(response, "Sonarr")
         self.assertContains(response, "Add Another Copy")
@@ -769,7 +769,9 @@ class CollectionModalViewTest(TestCase):
         self.assertContains(response, 'aria-label="Remove collection entry"', count=2)
         self.assertNotContains(response, "Existing Entries")
         self.assertNotContains(response, "Delete")
-        self.assertNotContains(response, "Plex")
+        # Season 1 now counts both of its collected episodes, so the Plex-sourced
+        # one contributes its label alongside Sonarr.
+        self.assertContains(response, "Sources: Sonarr • Plex")
         self.assertNotContains(response, "S01E03 - Third Episode")
 
     def test_collection_modal_season_limits_episode_audit_entries_to_the_season(self):
