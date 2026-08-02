@@ -14,11 +14,14 @@ from app.discover.movie_comfort import (
     _signal_phase_feature_maps,
     _top_phase_labels,
 )
-from app.discover.schemas import CandidateItem
 from app.discover.service_helpers import (
     BEHAVIOR_FIRST_MEDIA_TYPES,
     _clamp_unit,
 )
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.discover.schemas import CandidateItem
 
 ROW_MATCH_SIGNAL_CANDIDATE_LIMIT = 12
 MAX_MATCH_SIGNAL_LABELS = 3

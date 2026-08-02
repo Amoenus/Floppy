@@ -1043,19 +1043,20 @@ def build_stats_for_day(
                     created_at=row.get("created_at"),
                 )
             )
-            if row.get("item_id") and day in entry_days:
-                if row.get("item_id") not in game_rollup_days_counted:
-                    rollup = game_rollups.setdefault(
-                        row.get("item_id"),
-                        {
-                            "minutes_total": 0,
-                            "days": 0,
-                            "activity_dt": None,
-                            "media_id": row.get("id"),
-                        },
-                    )
-                    rollup["days"] += 1
-                    game_rollup_days_counted.add(row.get("item_id"))
+            if (row.get("item_id") and day in entry_days) and row.get(
+                "item_id"
+            ) not in game_rollup_days_counted:
+                rollup = game_rollups.setdefault(
+                    row.get("item_id"),
+                    {
+                        "minutes_total": 0,
+                        "days": 0,
+                        "activity_dt": None,
+                        "media_id": row.get("id"),
+                    },
+                )
+                rollup["days"] += 1
+                game_rollup_days_counted.add(row.get("item_id"))
             if start_local and end_local:
                 if start_local <= day <= end_local:
                     total_days = (end_local - start_local).days + 1

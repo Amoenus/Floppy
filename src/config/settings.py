@@ -391,7 +391,7 @@ else:
             if cursor:
                 try:
                     cursor.close()
-                except Exception:
+                except Exception:  # noqa: S110  # deliberate best-effort; failure is non-fatal here
                     # Ignore errors when closing cursor
                     pass
 
@@ -604,7 +604,7 @@ def _get_local_commit_hash(base_dir=BASE_DIR):
     """Return the current commit hash from the local git checkout if available."""
     git_rev_parse_command = ["git", "rev-parse", "HEAD"]
     try:
-        git_rev = subprocess.run(
+        git_rev = subprocess.run(  # noqa: S603  # static argv, no shell, no user input
             git_rev_parse_command,
             cwd=base_dir,
             check=True,
@@ -646,7 +646,7 @@ def _get_local_version(base_dir=BASE_DIR, commit_sha=None):
     """Return a version string from the local git checkout if available."""
     git_describe_command = ["git", "describe", "--tags", "--always", "--dirty"]
     try:
-        git_describe = subprocess.run(
+        git_describe = subprocess.run(  # noqa: S603  # static argv, no shell, no user input
             git_describe_command,
             cwd=base_dir,
             check=True,
@@ -774,7 +774,7 @@ def _get_fork_owner():
 
     try:
         git_remote = subprocess.run(
-            ["git", "config", "--get", "remote.origin.url"],
+            ["git", "config", "--get", "remote.origin.url"],  # noqa: S607  # relative path is deliberate; the image resolves it via PATH
             cwd=BASE_DIR,
             check=True,
             capture_output=True,
@@ -801,7 +801,7 @@ def _get_fork_repository():
 
     try:
         git_remote = subprocess.run(
-            ["git", "config", "--get", "remote.origin.url"],
+            ["git", "config", "--get", "remote.origin.url"],  # noqa: S607  # relative path is deliberate; the image resolves it via PATH
             cwd=BASE_DIR,
             check=True,
             capture_output=True,

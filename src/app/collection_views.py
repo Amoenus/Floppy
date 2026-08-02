@@ -288,7 +288,7 @@ def collection_update(request, entry_id):
         from django.http import Http404
 
         msg = "Collection entry not found"
-        raise Http404(msg)
+        raise Http404(msg) from None
 
     form = CollectionEntryForm(
         request.POST,
@@ -325,7 +325,7 @@ def collection_remove(request, entry_id):
         from django.http import Http404
 
         msg = "Collection entry not found"
-        raise Http404(msg)
+        raise Http404(msg) from None
 
     item_title = entry.item.title
     entry.delete()

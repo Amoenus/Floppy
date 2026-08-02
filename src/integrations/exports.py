@@ -753,7 +753,7 @@ def generate_sample_template():
             },
         )
         for (media_id, title, *rest), (status, score) in zip(
-            entries, status_score_sequence
+            entries, status_score_sequence, strict=False
         ):
             track_vals = {"status": status}
             if score:
@@ -830,6 +830,7 @@ def generate_sample_template():
     for (media_id, title, show_path, season_path), (status, score) in zip(
         SAMPLE_TV_SHOWS,
         status_score_sequence,
+        strict=False,
     ):
         tv_track_vals = {"status": status}
         if score:
@@ -867,6 +868,7 @@ def generate_sample_template():
     ) in zip(
         SAMPLE_MUSIC,
         status_score_sequence,
+        strict=False,
     ):
         track_vals = {"status": status}
         if score:

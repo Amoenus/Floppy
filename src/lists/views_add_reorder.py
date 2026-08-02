@@ -402,7 +402,7 @@ def apply_full_order(custom_list, item_ids):
         return 400
 
     # Place submitted items in their new DnD order at those same positions
-    for pos, item_id in zip(original_positions, item_ids):
+    for pos, item_id in zip(original_positions, item_ids, strict=False):
         if str(item_id) in item_map:
             all_items[pos] = item_map[str(item_id)]
 

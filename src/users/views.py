@@ -833,11 +833,12 @@ def preferences(request):
             fields_to_update.append("time_format")
 
         week_start_day = request.POST.get("week_start_day")
-        if week_start_day and week_start_day in WeekStartDayChoices.values:
-            if request.user.week_start_day != week_start_day:
-                request.user.week_start_day = week_start_day
-                fields_to_update.append("week_start_day")
-                week_start_day_changed = True
+        if (
+            week_start_day and week_start_day in WeekStartDayChoices.values
+        ) and request.user.week_start_day != week_start_day:
+            request.user.week_start_day = week_start_day
+            fields_to_update.append("week_start_day")
+            week_start_day_changed = True
 
         if (
             activity_history_view
@@ -1434,7 +1435,7 @@ def create_export_schedule(request):
         return build_export_response()
 
     try:
-        parsed_time = dt.datetime.strptime(export_time, "%H:%M").time()
+        parsed_time = dt.datetime.strptime(export_time, "%H:%M").time()  # noqa: DTZ007  # date-only value; no timezone applies
     except ValueError:
         messages.error(request, "Invalid export time.")
         return redirect("export_data")

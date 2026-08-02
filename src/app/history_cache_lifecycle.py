@@ -240,7 +240,6 @@ def schedule_history_refresh(
                 else priority
             ),
         )
-        return True
     except Exception as exc:  # pragma: no cover - Celery not available
         if not allow_inline:
             cache.delete(dedupe_key)
@@ -263,6 +262,8 @@ def schedule_history_refresh(
 
         refresh_history_cache(user_id, logging_style=logging_style, warm_days=warm_days)
         return False
+    else:
+        return True
 
 
 def schedule_history_day_cache_coverage(
@@ -305,7 +306,6 @@ def schedule_history_day_cache_coverage(
                 else priority
             ),
         )
-        return True
     except Exception as exc:  # pragma: no cover - Celery not available
         cache.delete(repair_key)
         logger.warning(
@@ -314,3 +314,5 @@ def schedule_history_day_cache_coverage(
             exc,
         )
         return False
+    else:
+        return True

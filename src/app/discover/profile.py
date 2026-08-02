@@ -359,18 +359,19 @@ def _item_credit_feature_maps(
         if person_name not in people_seen[item_id]:
             people_seen[item_id].add(person_name)
             people_map[item_id].append(person_name)
-        if is_director_credit(role_type, role, department):
-            if person_name not in directors_seen[item_id]:
-                directors_seen[item_id].add(person_name)
-                directors_map[item_id].append(person_name)
+        if (
+            is_director_credit(role_type, role, department)
+            and person_name not in directors_seen[item_id]
+        ):
+            directors_seen[item_id].add(person_name)
+            directors_map[item_id].append(person_name)
         if (
             role_type == CreditRoleType.CAST.value
             and lead_cast_count[item_id] < MAX_LEAD_CAST_MEMBERS
-        ):
-            if person_name not in lead_cast_seen[item_id]:
-                lead_cast_seen[item_id].add(person_name)
-                lead_cast_map[item_id].append(person_name)
-                lead_cast_count[item_id] += 1
+        ) and person_name not in lead_cast_seen[item_id]:
+            lead_cast_seen[item_id].add(person_name)
+            lead_cast_map[item_id].append(person_name)
+            lead_cast_count[item_id] += 1
 
     return people_map, directors_map, lead_cast_map
 

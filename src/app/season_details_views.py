@@ -118,7 +118,7 @@ def season_details(
                 )
                 if public_list:
                     list_owner = public_list.owner
-        except Exception:
+        except Exception:  # noqa: S110  # deliberate best-effort; failure is non-fatal here
             # If we can't find a list owner, list_owner stays None
             pass
 
@@ -380,7 +380,7 @@ def season_details(
                 # Check if episode has aired
                 try:
                     if isinstance(episode["air_date"], str):
-                        date_obj = datetime.strptime(episode["air_date"], "%Y-%m-%d")
+                        date_obj = datetime.strptime(episode["air_date"], "%Y-%m-%d")  # noqa: DTZ007  # date-only value; no timezone applies
                         air_date_dt = timezone.make_aware(
                             date_obj,
                             timezone.get_current_timezone(),
@@ -631,7 +631,7 @@ def season_details(
         # season_item is already scoped by library_media_type at the top of this view
         try:
             if season_item is None:
-                raise ItemModel.DoesNotExist
+                raise ItemModel.DoesNotExist  # noqa: TRY301  # raised for the surrounding handler by design
 
             # Check if the show has collection data, and trigger background fetch if not
             # We check the show item (not season) because episode collection data is tied to the show

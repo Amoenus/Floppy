@@ -312,9 +312,9 @@ def _normalize_season_numbers(season_numbers):
 
     for season_number in season_numbers:
         if isinstance(season_number, str):
-            season_number = season_number.strip()
+            season_number = season_number.strip()  # noqa: PLW2901  # deliberate in-loop normalisation
             with contextlib.suppress(ValueError):
-                season_number = int(season_number)
+                season_number = int(season_number)  # noqa: PLW2901  # deliberate in-loop normalisation
 
         normalized_seasons.append(season_number)
 
@@ -1302,12 +1302,13 @@ def get_start_date(date):
         # TMDB returns dates in YYYY-MM-DD format
         if isinstance(date, str):
             # Parse the date string and convert to timezone-aware datetime
-            date_obj = datetime.strptime(date, "%Y-%m-%d")
+            date_obj = datetime.strptime(date, "%Y-%m-%d")  # noqa: DTZ007  # date-only value; no timezone applies
             return timezone.make_aware(date_obj, timezone.get_current_timezone())
 
-        return date
     except (ValueError, TypeError):
         # If parsing fails, return the original value
+        return date
+    else:
         return date
 
 
@@ -1322,7 +1323,7 @@ def get_end_date(response):
                 from django.utils import timezone
 
                 # TMDB returns dates in YYYY-MM-DD format
-                date_obj = datetime.strptime(last_episode_date, "%Y-%m-%d")
+                date_obj = datetime.strptime(last_episode_date, "%Y-%m-%d")  # noqa: DTZ007  # date-only value; no timezone applies
                 return timezone.make_aware(date_obj, timezone.get_current_timezone())
             except (ValueError, TypeError):
                 # If parsing fails, return the original value
@@ -1971,7 +1972,7 @@ def process_episodes(season_metadata, episodes_in_db):
                     date_obj = datetime.fromisoformat(normalized_air_date)
                 else:
                     # TMDB returns dates in YYYY-MM-DD format
-                    date_obj = datetime.strptime(normalized_air_date, "%Y-%m-%d")
+                    date_obj = datetime.strptime(normalized_air_date, "%Y-%m-%d")  # noqa: DTZ007  # date-only value; no timezone applies
                 air_date = (
                     date_obj
                     if timezone.is_aware(date_obj)

@@ -198,9 +198,10 @@ def delete_history_record(request, media_type, history_id):
                 f'<p id="modal-listen-count-{music_id}" hx-swap-oob="true" '
                 'class="text-sm text-gray-400 mt-1">Not listened yet</p>',
             )
-            return response
         except Music.DoesNotExist:
             pass
+        else:
+            return response
 
     if podcast_id and media_type.lower() == "podcast":
         from app.models import Podcast
@@ -255,9 +256,10 @@ def delete_history_record(request, media_type, history_id):
                 'class="text-sm text-gray-400 mt-1">Not played yet</p>',
             )
             response["HX-Trigger"] = "history-refresh-start"
-            return response
         except Podcast.DoesNotExist:
             pass
+        else:
+            return response
 
     response = HttpResponse()
     response["HX-Trigger"] = "history-refresh-start"
@@ -1042,7 +1044,6 @@ def history(request):
             (time.perf_counter() - view_start) * 1000,
             response_bytes,
         )
-        return response
     except OperationalError as error:
         logger.error("Database error in history view: %s", error, exc_info=True)
         context = {
@@ -1058,3 +1059,5 @@ def history(request):
             "history_refreshing": False,
         }
         return render(request, "app/history.html", context)
+    else:
+        return response

@@ -733,7 +733,6 @@ def schedule_statistics_refresh(
                 STATISTICS_TASK_PRIORITY_INTERACTIVE if priority is None else priority
             ),
         )
-        return True
     except Exception as exc:  # pragma: no cover - Celery not available
         if allow_inline:
             logger.debug(
@@ -754,6 +753,8 @@ def schedule_statistics_refresh(
         if dedupe_key:
             cache.delete(dedupe_key)
         return False
+    else:
+        return True
 
 
 def schedule_all_ranges_refresh(

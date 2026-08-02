@@ -21,7 +21,6 @@ from app.discover.feature_metadata import (
     runtime_bucket_label,
 )
 from app.discover.provider_candidates import _iso_date
-from app.discover.schemas import CandidateItem
 from app.discover.scoring import (
     blended_world_quality,
     cosine_similarity,
@@ -49,6 +48,10 @@ from app.discover.service_helpers import (
 )
 from app.models import MediaTypes, Status
 import itertools
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.discover.schemas import CandidateItem
 
 MOVIE_COMFORT_PROFILE_LAYER_WEIGHTS = {
     "phase": 0.60,
@@ -1050,7 +1053,7 @@ def _candidate_release_date_value(candidate: CandidateItem):
     if not iso_date:
         return None
     try:
-        return datetime.strptime(iso_date, "%Y-%m-%d").date()
+        return datetime.strptime(iso_date, "%Y-%m-%d").date()  # noqa: DTZ007  # date-only value; no timezone applies
     except ValueError:
         return None
 
@@ -1551,7 +1554,7 @@ def _promote_phase_lane_candidates(
     if not promotable:
         return candidates
 
-    for promoted, target_idx in zip(promotable, replacement_indices):
+    for promoted, target_idx in zip(promotable, replacement_indices, strict=False):
         current_idx = next(
             (idx for idx, item in enumerate(candidates) if item is promoted), None
         )

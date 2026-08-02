@@ -211,7 +211,7 @@ def resolve_artist_mbid(name: str, sort_name: str | None = None):
     variants_tried = []
     total_candidates_seen = 0
     for variant in variants:
-        variant = variant.strip()
+        variant = variant.strip()  # noqa: PLW2901  # deliberate in-loop normalisation
         if not variant or variant in seen:
             continue
         seen.add(variant)
@@ -486,7 +486,7 @@ def resolve_album_mbid(album_title: str, artist_name: str | None = None):
     variants_tried = []
     total_candidates_seen = 0
     for variant in variants:
-        variant = variant.strip()
+        variant = variant.strip()  # noqa: PLW2901  # deliberate in-loop normalisation
         if not variant or variant in seen:
             continue
         seen.add(variant)
@@ -876,28 +876,27 @@ def refresh_album_cover_art(album: Album) -> bool:
         logger.debug("Failed to fetch cover art for album %s: %s", album.title, e)
 
     # Try iTunes as fallback if MusicBrainz didn't find artwork
-    if album.image == settings.IMG_NONE or not album.image:
-        if album.artist and album.title:
-            try:
-                from integrations import itunes_music_artwork
+    if (album.image == settings.IMG_NONE or not album.image) and (
+        album.artist and album.title
+    ):
+        try:
+            from integrations import itunes_music_artwork
 
-                itunes_image = itunes_music_artwork.fetch_album_artwork(
-                    album_title=album.title,
-                    artist_name=album.artist.name,
-                )
-                if itunes_image:
-                    album.image = itunes_image
-                    album.save(update_fields=["image"])
-                    logger.info(
-                        "Updated cover art for album %s from iTunes", album.title
-                    )
-                    return True
-            except Exception as e:
-                logger.debug(
-                    "Failed to fetch cover art from iTunes for album %s: %s",
-                    album.title,
-                    e,
-                )
+            itunes_image = itunes_music_artwork.fetch_album_artwork(
+                album_title=album.title,
+                artist_name=album.artist.name,
+            )
+            if itunes_image:
+                album.image = itunes_image
+                album.save(update_fields=["image"])
+                logger.info("Updated cover art for album %s from iTunes", album.title)
+                return True
+        except Exception as e:
+            logger.debug(
+                "Failed to fetch cover art from iTunes for album %s: %s",
+                album.title,
+                e,
+            )
 
     return False
 
@@ -1023,11 +1022,12 @@ def sync_artist_discography(artist: Artist, force: bool = False) -> int:
             synced_count,
             artist.name,
         )
-        return synced_count
 
-    except Exception as e:
-        logger.exception("Failed to sync discography for artist %s: %s", artist.name, e)
+    except Exception:
+        logger.exception("Failed to sync discography for artist %s", artist.name)
         return 0
+    else:
+        return synced_count
 
 
 def _sync_single_artist_member(band: Artist, member_data: dict) -> bool:
@@ -1113,11 +1113,12 @@ def sync_artist_members(artist: Artist, force: bool = False) -> int:
             synced_count,
             artist.name,
         )
-        return synced_count
 
-    except Exception as e:
-        logger.exception("Failed to sync members for artist %s: %s", artist.name, e)
+    except Exception:
+        logger.exception("Failed to sync members for artist %s", artist.name)
         return 0
+    else:
+        return synced_count
 
 
 def sync_album_artist_credits(album: Album, release_data: dict) -> None:

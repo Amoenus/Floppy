@@ -16,7 +16,6 @@ from app.discover.feature_metadata import (
     normalize_studio,
 )
 from app.discover.profile import MODEL_BY_MEDIA_TYPE
-from app.discover.schemas import CandidateItem
 from app.models import (
     CreditRoleType,
     Episode,
@@ -26,6 +25,10 @@ from app.models import (
     MediaTypes,
     Status,
 )
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.discover.schemas import CandidateItem
 
 MAX_ITEMS_PER_ROW = 12
 MAX_LEAD_CAST_MEMBERS = 3
@@ -115,10 +118,12 @@ def _item_credit_feature_maps(
         if person_name not in people_seen[item_id]:
             people_seen[item_id].add(person_name)
             people_map[item_id].append(person_name)
-        if is_director_credit(role_type, role, department):
-            if person_name not in directors_seen[item_id]:
-                directors_seen[item_id].add(person_name)
-                directors_map[item_id].append(person_name)
+        if (
+            is_director_credit(role_type, role, department)
+            and person_name not in directors_seen[item_id]
+        ):
+            directors_seen[item_id].add(person_name)
+            directors_map[item_id].append(person_name)
         if (
             role_type == CreditRoleType.CAST.value
             and lead_cast_counts[item_id] < MAX_LEAD_CAST_MEMBERS

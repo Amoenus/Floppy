@@ -11,13 +11,16 @@ from app.discover.filters import (
     get_feedback_keys_by_media_type,
     get_tracked_keys_by_media_type,
 )
-from app.discover.schemas import CandidateItem
 from app.discover.scoring import score_candidates
 from app.discover.service_helpers import (
     MAX_ITEMS_PER_ROW,
     _model_for_media_type,
 )
 from app.models import MediaTypes, Status
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.discover.schemas import CandidateItem
 
 TRAKT_POPULAR_PAGE_SIZE = 100
 TRAKT_POPULAR_PULL_STEP = 100

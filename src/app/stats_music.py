@@ -72,9 +72,10 @@ def _collect_music_play_data(music_queryset, start_date, end_date):
         # Process unique plays within date range
         for play_end_date, (history_record, _) in plays_by_end_date.items():
             # Check if within date range
-            if start_date and end_date:
-                if not (start_date <= play_end_date <= end_date):
-                    continue
+            if (start_date and end_date) and not (
+                start_date <= play_end_date <= end_date
+            ):
+                continue
 
             localized_date = _localize_datetime(play_end_date)
             datetimes.append(localized_date)
@@ -481,11 +482,11 @@ def _parse_release_date_str(date_str):
         return None
     try:
         if len(date_str) >= DATE_STR_LEN_FULL_DATE:
-            return datetime.datetime.strptime(date_str[:10], "%Y-%m-%d").date()
+            return datetime.datetime.strptime(date_str[:10], "%Y-%m-%d").date()  # noqa: DTZ007  # date-only value; no timezone applies
         if len(date_str) == DATE_STR_LEN_YEAR_MONTH:
-            return datetime.datetime.strptime(date_str, "%Y-%m").date()
+            return datetime.datetime.strptime(date_str, "%Y-%m").date()  # noqa: DTZ007  # date-only value; no timezone applies
         if len(date_str) == DATE_STR_LEN_YEAR_ONLY:
-            return datetime.datetime.strptime(date_str, "%Y").date()
+            return datetime.datetime.strptime(date_str, "%Y").date()  # noqa: DTZ007  # date-only value; no timezone applies
     except ValueError:
         return None
     return None

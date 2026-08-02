@@ -222,11 +222,12 @@ def set_taste_profile(
                 media_type=media_type,
                 defaults=defaults,
             )
-            return entry
         except OperationalError as exc:
             if "database is locked" not in str(exc) or attempt >= max_attempts - 1:
                 raise
-            time.sleep(0.2 * (attempt + 1) + random.random() * 0.3)
+            time.sleep(0.2 * (attempt + 1) + random.random() * 0.3)  # noqa: S311  # sampling/jitter only, not cryptographic
+        else:
+            return entry
     msg = "unreachable"
     raise RuntimeError(msg)
 

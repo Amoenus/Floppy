@@ -73,9 +73,8 @@ def _collect_movie_datetimes(movie_queryset, start_date, end_date):
         if activity_date is None:
             continue
 
-        if start_date and end_date:
-            if not (start_date <= activity_date <= end_date):
-                continue
+        if (start_date and end_date) and not (start_date <= activity_date <= end_date):
+            continue
 
         datetimes.append(_localize_datetime(activity_date))
 

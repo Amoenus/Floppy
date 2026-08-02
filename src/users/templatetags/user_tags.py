@@ -181,7 +181,7 @@ def user_date_format(date, user):
         if isinstance(date, str):
             try:
                 # Try to parse the date string
-                date_obj = datetime.strptime(date, "%Y-%m-%d")
+                date_obj = datetime.strptime(date, "%Y-%m-%d")  # noqa: DTZ007  # date-only value; no timezone applies
                 date = timezone.make_aware(date_obj, timezone.get_current_timezone())
             except (ValueError, TypeError):
                 # If parsing fails, return the original string
@@ -261,13 +261,14 @@ def _parse_datetime_string(datetime_obj):
                 "%H:%M",
             ]:
                 try:
-                    return datetime.strptime(datetime_obj, fmt)
+                    return datetime.strptime(datetime_obj, fmt)  # noqa: DTZ007  # date-only value; no timezone applies
                 except ValueError:
                     continue
             # If we can't parse the string, return it as-is
-            return datetime_obj
         except (ValueError, TypeError):
             # If parsing fails, return the original string
+            return datetime_obj
+        else:
             return datetime_obj
     return datetime_obj
 
@@ -305,7 +306,6 @@ def user_datetime_format(datetime_obj, user):
 
         date_part = user_date_format(datetime_obj, user)
         time_part = user_time_format(datetime_obj, user)
-        return f"{date_part} {time_part}"
     except (ValueError, TypeError, AttributeError):
         # Fallback to default format if there's an error
         try:
@@ -313,3 +313,5 @@ def user_datetime_format(datetime_obj, user):
         except (ValueError, TypeError, AttributeError):
             # If all else fails, return the original value as a string
             return str(datetime_obj)
+    else:
+        return f"{date_part} {time_part}"

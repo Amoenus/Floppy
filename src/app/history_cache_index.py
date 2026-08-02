@@ -282,7 +282,7 @@ def cache_history_payloads(user_id: int, logging_style: str, history_days):
             continue
         if isinstance(day_date, str):
             try:
-                day_date = datetime.strptime(day_date, "%Y-%m-%d").date()
+                day_date = datetime.strptime(day_date, "%Y-%m-%d").date()  # noqa: DTZ007  # date-only value; no timezone applies
             except ValueError:
                 continue
         day_key = _day_key_for_date(day_date)

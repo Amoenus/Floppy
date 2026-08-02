@@ -6,9 +6,8 @@ import json
 import logging
 import re
 import unicodedata
-from datetime import datetime
 from http import HTTPStatus
-from typing import Any
+from typing import Any, TYPE_CHECKING
 from urllib.parse import quote_plus
 
 from django.conf import settings
@@ -18,6 +17,9 @@ from app import helpers
 from app.models import Item, MediaTypes, Sources
 from app.providers import igdb
 from app.providers import services as provider_services
+
+if TYPE_CHECKING:
+    from datetime import datetime
 
 logger = logging.getLogger(__name__)
 

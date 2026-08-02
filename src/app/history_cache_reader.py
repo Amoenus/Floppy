@@ -77,18 +77,17 @@ def get_month_history(user, year: int, month: int, logging_style_override=None):
         built_at = cache_entry.get("built_at")
         if built_at:
             cache_age_s = (timezone.now() - built_at).total_seconds()
-        if built_at and timezone.now() - built_at > HISTORY_STALE_AFTER:
-            if refresh_lock is None:
-                scheduled = schedule_history_refresh(
-                    user.id, logging_style, warm_days=0
-                )
-                logger.info(
-                    "history_index_stale_refresh user_id=%s logging_style=%s scheduled=%s cache_age_s=%s",
-                    user.id,
-                    logging_style,
-                    scheduled,
-                    cache_age_s,
-                )
+        if (
+            built_at and timezone.now() - built_at > HISTORY_STALE_AFTER
+        ) and refresh_lock is None:
+            scheduled = schedule_history_refresh(user.id, logging_style, warm_days=0)
+            logger.info(
+                "history_index_stale_refresh user_id=%s logging_style=%s scheduled=%s cache_age_s=%s",
+                user.id,
+                logging_style,
+                scheduled,
+                cache_age_s,
+            )
     else:
         logger.warning(
             "history_index_inline_repair user_id=%s logging_style=%s year=%s month=%s",
@@ -549,7 +548,6 @@ def refresh_history_cache(
             lock_key,
             verify_lock is not None,
         )
-        return index_day_keys
     except Exception as e:
         logger.error(
             "Error refreshing history cache for user %s: %s", user_id, e, exc_info=True
@@ -563,6 +561,8 @@ def refresh_history_cache(
         if dedupe_key and dedupe_key != lock_key:
             cache.delete(dedupe_key)
         raise
+    else:
+        return index_day_keys
 
 
 def repair_history_day_cache_coverage(

@@ -60,7 +60,7 @@ class Command(BaseCommand):
             user = User.objects.get(username=username)
         except User.DoesNotExist:
             msg = f"User '{username}' not found."
-            raise CommandError(msg)
+            raise CommandError(msg) from None
 
         # Enable query logging and allow the test client's default host.
         original_debug = conf.settings.DEBUG

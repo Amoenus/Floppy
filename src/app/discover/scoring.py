@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import math
 
-from app.discover.schemas import CandidateItem
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.discover.schemas import CandidateItem
 
 
 def cosine_similarity(vec_a: dict[str, float], vec_b: dict[str, float]) -> float:

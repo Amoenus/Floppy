@@ -134,7 +134,7 @@ def media_save(request):
                             item.number_of_pages = number_of_pages
                             item.save(update_fields=["number_of_pages"])
                             max_progress = number_of_pages
-                    except Exception:
+                    except Exception:  # noqa: S110  # deliberate best-effort; failure is non-fatal here
                         pass
             else:
                 # For comics and manga, need to get max_progress from events

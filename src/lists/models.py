@@ -336,7 +336,7 @@ class CustomList(models.Model):
                 )
                 if backdrop_url and backdrop_url != settings.IMG_NONE:
                     return backdrop_url
-            except Exception:
+            except Exception:  # noqa: S110  # deliberate best-effort; failure is non-fatal here
                 # If anything fails, fall back to regular poster
                 pass
 
@@ -411,7 +411,7 @@ class CustomList(models.Model):
                 # Cache for 7 days (same as TMDB metadata cache)
                 cache.set(cache_key, backdrop_url, 60 * 60 * 24 * 7)
                 return backdrop_url
-        except Exception:
+        except Exception:  # noqa: S110  # deliberate best-effort; failure is non-fatal here
             pass
 
         # Cache the absence of backdrop to avoid repeated failed calls
@@ -953,7 +953,6 @@ class CustomList(models.Model):
                 image_id,
                 aspect_ratio,
             )
-            return backdrop_url
 
         except Exception as exc:
             logger.debug(
@@ -964,6 +963,8 @@ class CustomList(models.Model):
             )
             # If we can't check aspect ratio, skip this image
             return None
+        else:
+            return backdrop_url
 
 
 class CustomListItemManager(models.Manager):

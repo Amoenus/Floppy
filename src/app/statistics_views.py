@@ -1463,11 +1463,12 @@ def update_statistics_preferences(request):
         fields_to_update.append("activity_history_view")
 
     duration_format = request.POST.get("duration_format")
-    if duration_format and duration_format in DurationFormatChoices.values:
-        if request.user.duration_format != duration_format:
-            request.user.duration_format = duration_format
-            fields_to_update.append("duration_format")
-            invalidate_cache = True
+    if (
+        duration_format and duration_format in DurationFormatChoices.values
+    ) and request.user.duration_format != duration_format:
+        request.user.duration_format = duration_format
+        fields_to_update.append("duration_format")
+        invalidate_cache = True
 
     week_start_day = request.POST.get("week_start_day")
     if week_start_day and week_start_day in WeekStartDayChoices.values:

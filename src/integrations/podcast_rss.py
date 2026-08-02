@@ -46,8 +46,8 @@ def fetch_show_metadata_from_rss(rss_feed_url: str) -> dict:
         # Parse XML
         try:
             root = ET.fromstring(response.content)
-        except ET.ParseError as e:
-            logger.exception("Failed to parse RSS feed XML: %s", e)
+        except ET.ParseError:
+            logger.exception("Failed to parse RSS feed XML")
             return {}
 
         metadata = {}
@@ -90,8 +90,6 @@ def fetch_show_metadata_from_rss(rss_feed_url: str) -> dict:
             if author_elem is not None and author_elem.text:
                 metadata["author"] = author_elem.text.strip()
 
-        return metadata
-
     except requests.RequestException as e:
         logger.exception(
             "Failed to fetch RSS feed %s: %s",
@@ -107,6 +105,8 @@ def fetch_show_metadata_from_rss(rss_feed_url: str) -> dict:
             exc_info=True,
         )
         return {}
+    else:
+        return metadata
 
 
 def fetch_episodes_from_rss(rss_feed_url: str, limit: int | None = None) -> list[dict]:
@@ -136,8 +136,8 @@ def fetch_episodes_from_rss(rss_feed_url: str, limit: int | None = None) -> list
         # Parse XML - handle both RSS and Atom feeds
         try:
             root = ET.fromstring(response.content)
-        except ET.ParseError as e:
-            logger.exception("Failed to parse RSS feed XML: %s", e)
+        except ET.ParseError:
+            logger.exception("Failed to parse RSS feed XML")
             return []
 
         # Determine feed type
@@ -153,7 +153,6 @@ def fetch_episodes_from_rss(rss_feed_url: str, limit: int | None = None) -> list
             len(episodes),
             safe_url(rss_feed_url),
         )
-        return episodes
 
     except requests.RequestException as e:
         logger.exception(
@@ -170,6 +169,8 @@ def fetch_episodes_from_rss(rss_feed_url: str, limit: int | None = None) -> list
             exc_info=True,
         )
         return []
+    else:
+        return episodes
 
 
 def _parse_rss_feed(root: ET.Element, limit: int | None) -> list[dict]:
@@ -353,13 +354,14 @@ def _parse_date(date_str: str) -> datetime | None:
 
     for fmt in formats:
         try:
-            dt = datetime.strptime(date_str, fmt)
+            dt = datetime.strptime(date_str, fmt)  # noqa: DTZ007  # date-only value; no timezone applies
             # Make timezone-aware if not already
             if timezone.is_naive(dt):
                 dt = timezone.make_aware(dt)
-            return dt
         except ValueError:
             continue
+        else:
+            return dt
 
     # Try ISO format with fromisoformat
     try:
@@ -368,9 +370,10 @@ def _parse_date(date_str: str) -> datetime | None:
         dt = datetime.fromisoformat(date_str_clean)
         if timezone.is_naive(dt):
             dt = timezone.make_aware(dt)
-        return dt
     except (ValueError, AttributeError):
         pass
+    else:
+        return dt
 
     logger.debug("Failed to parse date: %s", date_str)
     return None

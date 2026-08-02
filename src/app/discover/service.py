@@ -1312,13 +1312,12 @@ def get_discover_rows(
                     show_more=show_more,
                 )
 
-        except Exception as error:
+        except Exception:
             logger.exception(
-                "discover_row_failed user_id=%s media_type=%s row_key=%s error=%s",
+                "discover_row_failed user_id=%s media_type=%s row_key=%s error=",
                 user.id,
                 media_type,
                 row_definition.key,
-                error,
             )
             row = _build_row_error_fallback(
                 user,

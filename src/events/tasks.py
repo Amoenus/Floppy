@@ -145,10 +145,8 @@ def reload_calendar(user_id=None, item_ids=None, user=None, items_to_process=Non
                     backfill_result.get("remaining_metadata", 0),
                     backfill_result.get("remaining_release", 0),
                 )
-        except Exception as e:
-            logger.exception(
-                "Failed to backfill metadata during calendar reload: %s", e
-            )
+        except Exception:
+            logger.exception("Failed to backfill metadata during calendar reload")
 
     return result
 

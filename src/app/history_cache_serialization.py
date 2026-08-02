@@ -57,7 +57,7 @@ def _deserialize_history_day(day):
     date_value = day.get("date")
     if isinstance(date_value, str):
         try:
-            date_value = datetime.strptime(date_value, "%Y-%m-%d").date()
+            date_value = datetime.strptime(date_value, "%Y-%m-%d").date()  # noqa: DTZ007  # date-only value; no timezone applies
         except ValueError:
             date_value = None
     return {

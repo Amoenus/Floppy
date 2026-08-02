@@ -176,15 +176,15 @@ def _track_modal_release_date_shortcut(*candidates):
         if not candidate:
             continue
         if isinstance(candidate, dict):
-            candidate = helpers.extract_release_datetime(candidate)
+            candidate = helpers.extract_release_datetime(candidate)  # noqa: PLW2901  # deliberate in-loop normalisation
         elif isinstance(candidate, str):
-            candidate = parse_date(candidate[:10])
+            candidate = parse_date(candidate[:10])  # noqa: PLW2901  # deliberate in-loop normalisation
 
         if not candidate:
             continue
         if isinstance(candidate, datetime):
             if timezone.is_aware(candidate):
-                candidate = timezone.localtime(candidate)
+                candidate = timezone.localtime(candidate)  # noqa: PLW2901  # deliberate in-loop normalisation
             return candidate.date().isoformat()
         if isinstance(candidate, date):
             return candidate.isoformat()
@@ -321,7 +321,7 @@ def _render_standard_track_modal(
                             media.item.number_of_pages = number_of_pages
                             media.item.save(update_fields=["number_of_pages"])
                             max_progress = number_of_pages
-                    except Exception:
+                    except Exception:  # noqa: S110  # deliberate best-effort; failure is non-fatal here
                         pass
             else:
                 media_list = [media]

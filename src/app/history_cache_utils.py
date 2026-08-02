@@ -98,7 +98,7 @@ def _day_key_for_date(day_value):
 
 
 def _date_from_day_key(day_key: str):
-    return datetime.strptime(day_key, "%Y%m%d").date()
+    return datetime.strptime(day_key, "%Y%m%d").date()  # noqa: DTZ007  # date-only value; no timezone applies
 
 
 def _day_key_from_value(value):
@@ -114,7 +114,7 @@ def _day_key_from_value(value):
         if value.isdigit() and len(value) == DAY_KEY_LENGTH:
             return value
         try:
-            return _day_key_for_date(datetime.strptime(value, "%Y-%m-%d").date())
+            return _day_key_for_date(datetime.strptime(value, "%Y-%m-%d").date())  # noqa: DTZ007  # date-only value; no timezone applies
         except ValueError:
             return None
     if isinstance(value, datetime):

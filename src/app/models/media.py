@@ -555,9 +555,10 @@ class Media(models.Model):
         runtime_minutes = None
 
         # First, try to get from TV show runtime
-        if hasattr(self, "item") and self.item.runtime_minutes:
-            if self.item.runtime_minutes < RUNTIME_UNKNOWN_FAILED:
-                runtime_minutes = self.item.runtime_minutes
+        if (
+            hasattr(self, "item") and self.item.runtime_minutes
+        ) and self.item.runtime_minutes < RUNTIME_UNKNOWN_FAILED:
+            runtime_minutes = self.item.runtime_minutes
 
         if not runtime_minutes:
             # Try to get from season cache

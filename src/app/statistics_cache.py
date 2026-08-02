@@ -377,8 +377,8 @@ def _normalize_day_value(value):
     if isinstance(value, str):
         try:
             if value.isdigit() and len(value) == DAY_KEY_LENGTH:
-                return datetime.strptime(value, "%Y%m%d").date()
-            return datetime.strptime(value, "%Y-%m-%d").date()
+                return datetime.strptime(value, "%Y%m%d").date()  # noqa: DTZ007  # date-only value; no timezone applies
+            return datetime.strptime(value, "%Y-%m-%d").date()  # noqa: DTZ007  # date-only value; no timezone applies
         except ValueError:
             return None
     return None

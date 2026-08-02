@@ -42,11 +42,9 @@ def trakt_lists_credentials(request):
                 "client_secret": import_helpers.encrypt(client_secret),
             },
         )
-    except Exception as error:
+    except Exception:
         logger.exception(
-            "Failed to store Trakt credentials for user %s: %s",
-            request.user.username,
-            error,
+            "Failed to store Trakt credentials for user %s", request.user.username
         )
         messages.error(request, "Failed to save Trakt credentials. Please try again.")
         return redirect("lists")

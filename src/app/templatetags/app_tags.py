@@ -37,18 +37,20 @@ def get_static_file_mtime(file_path):
         full_path = Path(static_dir) / file_path
         try:
             mtime = int(full_path.stat().st_mtime)
-            return f"?{mtime}"
         except OSError:
             continue
+        else:
+            return f"?{mtime}"
 
     # Fall back to STATIC_ROOT
     full_path = Path(settings.STATIC_ROOT) / file_path
     try:
         mtime = int(full_path.stat().st_mtime)
-        return f"?{mtime}"
     except OSError:
         # If file doesn't exist or can't be accessed
         return ""
+    else:
+        return f"?{mtime}"
 
 
 @register.filter
@@ -797,11 +799,12 @@ def user_event_time(event, user):
         else:
             time_str = formats.date_format(local_dt, "TIME_FORMAT")
 
-        return f"at {time_str}"
     except (ValueError, TypeError, AttributeError):
         # Fallback to default format if there's an error
         local_dt = timezone.localtime(event.datetime)
         return f"at {local_dt.strftime('%H:%M')}"
+    else:
+        return f"at {time_str}"
 
 
 @register.filter

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from django.apps import apps
 
-from app.discover.schemas import CandidateItem
 from app.models import (
     CollectionEntry,
     DiscoverFeedback,
@@ -12,6 +11,10 @@ from app.models import (
     MediaTypes,
     Status,
 )
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.discover.schemas import CandidateItem
 
 DEFAULT_BLOCKED_STATUSES = {
     Status.COMPLETED.value,

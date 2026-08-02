@@ -109,11 +109,11 @@ def _make_api_request(
 
             if response.status_code in (401, 403):
                 msg = "Koito rejected the API key. Reconnect the integration."
-                raise KoitoAuthError(msg)
+                raise KoitoAuthError(msg)  # noqa: TRY301  # raised for the surrounding handler by design
 
             if response.status_code == HTTPStatus.TOO_MANY_REQUESTS:
                 if attempt < MAX_RETRIES - 1:
-                    delay = retry_delay * (2**attempt) + random.uniform(0, 1)
+                    delay = retry_delay * (2**attempt) + random.uniform(0, 1)  # noqa: S311  # sampling/jitter only, not cryptographic
                     logger.info(
                         "Koito rate limited, retrying after %.2fs (attempt %d/%d)",
                         delay,
@@ -124,7 +124,7 @@ def _make_api_request(
                     retry_delay = delay
                     continue
                 msg = "Koito rate limit exceeded"
-                raise KoitoRateLimitError(msg)
+                raise KoitoRateLimitError(msg)  # noqa: TRY301  # raised for the surrounding handler by design
 
             response.raise_for_status()
 
@@ -140,7 +140,7 @@ def _make_api_request(
         except requests.exceptions.RequestException as e:
             logger.warning("Koito API request failed: %s", e)
             if attempt < MAX_RETRIES - 1:
-                delay = retry_delay * (2**attempt) + random.uniform(0, 1)
+                delay = retry_delay * (2**attempt) + random.uniform(0, 1)  # noqa: S311  # sampling/jitter only, not cryptographic
                 time.sleep(delay)
                 retry_delay = delay
                 continue

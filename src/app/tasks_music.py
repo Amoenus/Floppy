@@ -198,7 +198,7 @@ def enrich_music_library_task(user_id: int):
                                 existing.musicbrainz_id,
                             )
                             try:
-                                artist = merge_artist_records(artist, existing)
+                                artist = merge_artist_records(artist, existing)  # noqa: PLW2901  # deliberate in-loop normalisation
                                 # Refresh from DB to ensure we have a valid saved instance
                                 if artist.pk:
                                     artist.refresh_from_db()
@@ -943,7 +943,7 @@ def enrich_albums_task(user_id: int):
 
                                 # Delete the source album
                                 album.delete()
-                                album = existing  # Use existing for further processing
+                                album = existing  # Use existing for further processing  # noqa: PLW2901  # deliberate in-loop normalisation
                                 merged += 1
                                 logger.info(
                                     "enrich_albums_task: SUCCESS - merged album '%s' (id=%s) into '%s' (id=%s, release_group_id=%s) via variant '%s'",

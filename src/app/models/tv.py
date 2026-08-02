@@ -1067,7 +1067,7 @@ class Season(Media):
                 try:
                     # TMDB returns dates in YYYY-MM-DD format (string)
                     if isinstance(air_date, str):
-                        date_obj = datetime.strptime(air_date, "%Y-%m-%d")
+                        date_obj = datetime.strptime(air_date, "%Y-%m-%d")  # noqa: DTZ007  # date-only value; no timezone applies
                         release_datetime = timezone.make_aware(
                             date_obj, timezone.get_current_timezone()
                         )

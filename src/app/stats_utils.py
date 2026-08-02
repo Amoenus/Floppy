@@ -97,7 +97,7 @@ class _CombinedValuesResult:
             for row in qs.values(*self._fields).annotate(**self._annotation):
                 key = tuple(row[f] for f in self._fields)
                 if key not in merged:
-                    merged[key] = dict(zip(self._fields, key))
+                    merged[key] = dict(zip(self._fields, key, strict=False))
                     merged[key][self._annotation_field] = 0
                 merged[key][self._annotation_field] += row[self._annotation_field]
         yield from merged.values()
@@ -184,8 +184,9 @@ def parse_runtime_to_minutes(runtime_str):
         if "m" in runtime_str:
             # Format like "45m" (TMDB format)
             return int(runtime_str.replace("m", ""))
-        return None
     except (ValueError, AttributeError):
+        return None
+    else:
         return None
 
 

@@ -508,9 +508,10 @@ def _find_plex_rating_key_for_item(
                                 logger.debug(
                                     "Derived show-level Plex lookup from episode metadata",
                                 )
-                                return (rating_key, episode_plex_uri, "cached")
                             except (ValueError, TypeError):
                                 pass
+                            else:
+                                return (rating_key, episode_plex_uri, "cached")
                 except Exception as exc:
                     logger.debug(
                         "Failed to derive show-level Plex lookup from episode metadata: %s",

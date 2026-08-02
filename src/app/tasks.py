@@ -386,8 +386,8 @@ def build_statistics_days_task(user_id: int, start_token: str, end_token: str):
     except user_model.DoesNotExist:
         return
 
-    start_date = datetime.fromisoformat(start_token) if start_token != "all" else None
-    end_date = datetime.fromisoformat(end_token) if end_token != "all" else None
+    start_date = datetime.fromisoformat(start_token) if start_token != "all" else None  # noqa: S105  # pagination cursor, not a credential
+    end_date = datetime.fromisoformat(end_token) if end_token != "all" else None  # noqa: S105  # pagination cursor, not a credential
 
     day_list = statistics_cache._resolve_day_list(user, start_date, end_date)
     if not day_list:

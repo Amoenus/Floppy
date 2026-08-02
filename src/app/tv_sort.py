@@ -103,8 +103,12 @@ def _sort_tv_media_by_time_left(media_list, direction="asc"):
                     total_runtime += sum(runtimes)
                     episodes_with_runtime_data += len(runtimes)
                     logger.debug(
-                        f"{media.item.title} S{season_num}: {len(runtimes)} unwatched eps "
-                        f"(after ep {watched_in_season}), runtime sum={sum(runtimes)}min",
+                        "%s S%s: %s unwatched eps (after ep %s), runtime sum=%smin",
+                        media.item.title,
+                        season_num,
+                        len(runtimes),
+                        watched_in_season,
+                        sum(runtimes),
                     )
 
         if episodes_with_runtime_data > 0:
@@ -120,11 +124,15 @@ def _sort_tv_media_by_time_left(media_list, direction="asc"):
             if media.item.runtime_minutes < RUNTIME_UNKNOWN_AIRED:
                 runtime_minutes = media.item.runtime_minutes
                 logger.debug(
-                    f"Using stored runtime for {media.item.title}: {runtime_minutes}min"
+                    "Using stored runtime for %s: %smin",
+                    media.item.title,
+                    runtime_minutes,
                 )
             else:
                 logger.debug(
-                    f"Skipping invalid runtime marker ({media.item.runtime_minutes}min) for {media.item.title}"
+                    "Skipping invalid runtime marker (%smin) for %s",
+                    media.item.runtime_minutes,
+                    media.item.title,
                 )
 
         if not runtime_minutes:
@@ -138,8 +146,10 @@ def _sort_tv_media_by_time_left(media_list, direction="asc"):
             if all_ep_runtimes:
                 runtime_minutes = round(sum(all_ep_runtimes) / len(all_ep_runtimes))
                 logger.debug(
-                    f"Using average episode runtime for {media.item.title}: "
-                    f"{runtime_minutes}min (from {len(all_ep_runtimes)} episodes)",
+                    "Using average episode runtime for %s: %smin (from %s episodes)",
+                    media.item.title,
+                    runtime_minutes,
+                    len(all_ep_runtimes),
                 )
 
         if not runtime_minutes:
@@ -153,7 +163,9 @@ def _sort_tv_media_by_time_left(media_list, direction="asc"):
                 runtime_minutes = parse_runtime_to_minutes(runtime_str)
                 if runtime_minutes and runtime_minutes > 0:
                     logger.debug(
-                        f"Using cached season avg runtime for {media.item.title}: {runtime_minutes}min"
+                        "Using cached season avg runtime for %s: %smin",
+                        media.item.title,
+                        runtime_minutes,
                     )
             # Try other seasons if season 1 didn't work
             if not runtime_minutes:
@@ -167,7 +179,10 @@ def _sort_tv_media_by_time_left(media_list, direction="asc"):
                         runtime_minutes = parse_runtime_to_minutes(runtime_str)
                         if runtime_minutes and runtime_minutes > 0:
                             logger.debug(
-                                f"Using cached season {season_num} avg runtime for {media.item.title}: {runtime_minutes}min"
+                                "Using cached season %s avg runtime for %s: %smin",
+                                season_num,
+                                media.item.title,
+                                runtime_minutes,
                             )
                             break
 
@@ -180,7 +195,9 @@ def _sort_tv_media_by_time_left(media_list, direction="asc"):
             else:
                 runtime_minutes = 30
             logger.debug(
-                f"Using fallback runtime for {media.item.title}: {runtime_minutes}min"
+                "Using fallback runtime for %s: %smin",
+                media.item.title,
+                runtime_minutes,
             )
         return runtime_minutes
 
@@ -203,7 +220,10 @@ def _sort_tv_media_by_time_left(media_list, direction="asc"):
         if total_runtime is not None and eps_with_data == episodes_left:
             # We have runtime data for all unwatched episodes - use exact sum
             logger.debug(
-                f"{media.item.title}: Using exact sum of {eps_with_data} unwatched episodes = {total_runtime}min",
+                "%s: Using exact sum of %s unwatched episodes = %smin",
+                media.item.title,
+                eps_with_data,
+                total_runtime,
             )
             return total_runtime
         if total_runtime is not None and eps_with_data > 0:
@@ -213,8 +233,13 @@ def _sort_tv_media_by_time_left(media_list, direction="asc"):
             estimated_missing = int(missing_eps * avg_runtime)
             final_total = total_runtime + estimated_missing
             logger.debug(
-                f"{media.item.title}: Partial data - {eps_with_data} eps={total_runtime}min + "
-                f"{missing_eps} eps estimated={estimated_missing}min (avg {avg_runtime:.0f}min/ep)",
+                "%s: Partial data - %s eps=%smin + %s eps estimated=%smin (avg %smin/ep)",
+                media.item.title,
+                eps_with_data,
+                total_runtime,
+                missing_eps,
+                estimated_missing,
+                avg_runtime,
             )
             return final_total
         # No runtime data for unwatched episodes - fall back to average method
@@ -223,7 +248,11 @@ def _sort_tv_media_by_time_left(media_list, direction="asc"):
             runtime = 30
         total = episodes_left * runtime
         logger.debug(
-            f"{media.item.title}: Fallback to average - {episodes_left} eps × {runtime}min = {total}min",
+            "%s: Fallback to average - %s eps × %smin = %smin",
+            media.item.title,
+            episodes_left,
+            runtime,
+            total,
         )
         return total
 
@@ -351,7 +380,11 @@ def _sort_tv_media_by_time_left(media_list, direction="asc"):
             in ["Taskmaster", "Rent-a-Girlfriend", "The Last of Us"]
         ):
             logger.debug(
-                f"DEBUG 0 episodes: {media.item.title} - progress={media.progress}, max_progress={effective_max}, episodes_left={episodes_left}"
+                "DEBUG 0 episodes: %s - progress=%s, max_progress=%s, episodes_left=%s",
+                media.item.title,
+                media.progress,
+                effective_max,
+                episodes_left,
             )
 
         status = getattr(media, "status", Status.IN_PROGRESS.value)
@@ -441,7 +474,11 @@ def _sort_tv_media_by_time_left(media_list, direction="asc"):
         if not hasattr(m, "_debug_logged"):
             m._debug_logged = True
             logger.debug(
-                f"Dropped show: {m.item.title} - progress={m.progress}, max_progress={getattr(m, 'max_progress', 'MISSING')}, hasattr={hasattr(m, 'max_progress')}"
+                "Dropped show: %s - progress=%s, max_progress=%s, hasattr=%s",
+                m.item.title,
+                m.progress,
+                getattr(m, "max_progress", "MISSING"),
+                hasattr(m, "max_progress"),
             )
 
         # Calculate episodes remaining (not watched)
@@ -466,7 +503,7 @@ def _sort_tv_media_by_time_left(media_list, direction="asc"):
                 m._time_left_total = 0
         else:
             # No max_progress data - show as unknown
-            logger.debug(f"Dropped show NO DATA: {m.item.title} - Setting '-' display")
+            logger.debug("Dropped show NO DATA: %s - Setting '-' display", m.item.title)
             m.episodes_left_display = 0
             m.time_left_display = "-"
             m._time_left_total = 0
@@ -507,7 +544,11 @@ def _sort_tv_media_by_time_left(media_list, direction="asc"):
             else 0
         )
         logger.debug(
-            f"  {i + 1}. {media.item.title} - Episodes left: {episodes_left}, Status: {getattr(media, 'status', 'Unknown')}"
+            "  %s. %s - Episodes left: %s, Status: %s",
+            i + 1,
+            media.item.title,
+            episodes_left,
+            getattr(media, "status", "Unknown"),
         )
 
     if direction == "desc":

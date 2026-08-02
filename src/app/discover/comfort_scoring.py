@@ -15,7 +15,6 @@ from app.discover.movie_comfort import (
     _prefer_strong_phase_opening_window,
     _promote_phase_lane_candidates,
 )
-from app.discover.schemas import CandidateItem
 from app.discover.service_helpers import (
     COMFORT_DIVERSITY_DECAY,
     COMFORT_ERA_DECAY,
@@ -34,6 +33,10 @@ from app.discover.service_helpers import (
     _holiday_seasonal_adjustment,
     _is_holiday_window,
 )
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.discover.schemas import CandidateItem
 
 COMFORT_DEBUG_TOP_N = 12
 COMFORT_SPREAD_COMPRESSION_THRESHOLD = 0.08

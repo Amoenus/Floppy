@@ -214,7 +214,7 @@ def list_json(request, list_reference):
                 tvdb_id = metadata.get("tvdb_id")
                 if tvdb_id:  # Skip if no TVDB mapping available
                     json_data.append({"tvdbId": int(tvdb_id)})
-            except Exception:
+            except Exception:  # noqa: S112  # deliberate best-effort; skip the item and continue
                 # Skip items where metadata fetch fails
                 continue
 

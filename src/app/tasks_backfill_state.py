@@ -377,7 +377,7 @@ def _normalize_item_ids(item_ids):
     normalized = []
     for item_id in item_ids or []:
         try:
-            item_id = int(item_id)
+            item_id = int(item_id)  # noqa: PLW2901  # deliberate in-loop normalisation
         except (TypeError, ValueError):
             continue
         if item_id > 0:

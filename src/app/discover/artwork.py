@@ -7,10 +7,13 @@ import logging
 from django.conf import settings
 
 from app.discover.adapters import TMDB_ADAPTER
-from app.discover.schemas import CandidateItem, RowDefinition, RowResult
 from app.discover.service_helpers import MAX_ITEMS_PER_ROW
 from app.models import Item, MediaTypes, Sources
 from app.providers import services
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.discover.schemas import CandidateItem, RowDefinition, RowResult
 
 logger = logging.getLogger(__name__)
 

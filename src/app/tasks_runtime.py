@@ -239,10 +239,8 @@ def _populate_runtime_for_items(items, delay_seconds):
                     item.title,
                     reason,
                 )
-            except Exception as save_error:
-                logger.exception(
-                    "Failed to mark %s as failed: %s", item.title, save_error
-                )
+            except Exception:
+                logger.exception("Failed to mark %s as failed", item.title)
         return give_up
 
     run = CooperativeRun("runtime_backfill")

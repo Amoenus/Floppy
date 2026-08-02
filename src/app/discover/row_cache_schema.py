@@ -8,7 +8,6 @@ from app.discover.artwork import (
     _is_missing_image,
     _supports_provider_artwork_hydration,
 )
-from app.discover.schemas import RowDefinition, RowResult
 from app.discover.service_helpers import MAX_ITEMS_PER_ROW
 from app.discover.trakt_candidates import (
     MOVIE_CANON_ROW_SCHEMA_VERSION,
@@ -16,6 +15,10 @@ from app.discover.trakt_candidates import (
     ROW_CACHE_SCHEMA_META_KEY,
 )
 from app.models import MediaTypes
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.discover.schemas import RowDefinition, RowResult
 
 ROW_CACHE_ACTIVITY_VERSION_META_KEY = "activity_version"
 

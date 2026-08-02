@@ -811,7 +811,7 @@ def media_list(request, media_type):
             try:
                 if hasattr(value, "utcoffset") and timezone.is_aware(value):
                     return timezone.localtime(value).date()
-            except Exception:
+            except Exception:  # noqa: S110  # deliberate best-effort; failure is non-fatal here
                 pass
             try:
                 return value.date()
@@ -1854,7 +1854,7 @@ def media_list(request, media_type):
         if _time_left_cached_order is not None:
             # Cached sort order: paginate the compact order and hydrate only
             # this page's rows — no library-wide sort or annotation.
-            logger.debug(f"DEBUG: Using cached time_left sort (page {page})")
+            logger.debug("DEBUG: Using cached time_left sort (page %s)", page)
             paginator = Paginator(_time_left_cached_order, items_per_page)
             media_page = paginator.get_page(page)
             media_page.object_list = _hydrate_time_left_page(
@@ -1862,10 +1862,10 @@ def media_list(request, media_type):
                 media_page.object_list,
             )
         else:
-            logger.debug(f"DEBUG: Starting time_left sort for page {page} (no cache)")
+            logger.debug("DEBUG: Starting time_left sort for page %s (no cache)", page)
 
             # media_list already has filters applied from above
-            logger.debug(f"DEBUG: Got {len(media_list)} media objects after filtering")
+            logger.debug("DEBUG: Got %s media objects after filtering", len(media_list))
 
             # Annotate max_progress first
             BasicMedia.objects.annotate_max_progress(
@@ -2422,7 +2422,7 @@ def media_list(request, media_type):
                             country_name = stats._country_name_from_code(value.upper())
                             if country_name:
                                 label = country_name
-                    except Exception:  # pragma: no cover - defensive
+                    except Exception:  # pragma: no cover - defensive  # noqa: S110  # deliberate best-effort; failure is non-fatal here
                         pass
                     origins.append({"value": value, "label": label})
                 return {

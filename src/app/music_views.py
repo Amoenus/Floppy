@@ -1087,11 +1087,11 @@ def create_album_from_search(request, musicbrainz_release_id):
                     from datetime import datetime
 
                     if len(date_str) == DATE_STR_LEN_YEAR_ONLY:
-                        release_date = datetime.strptime(date_str, "%Y").date()
+                        release_date = datetime.strptime(date_str, "%Y").date()  # noqa: DTZ007  # date-only value; no timezone applies
                     elif len(date_str) == DATE_STR_LEN_YEAR_MONTH:
-                        release_date = datetime.strptime(date_str, "%Y-%m").date()
+                        release_date = datetime.strptime(date_str, "%Y-%m").date()  # noqa: DTZ007  # date-only value; no timezone applies
                     elif len(date_str) >= DATE_STR_LEN_FULL_DATE:
-                        release_date = datetime.strptime(
+                        release_date = datetime.strptime(  # noqa: DTZ007  # date-only value; no timezone applies
                             date_str[:10],
                             "%Y-%m-%d",
                         ).date()

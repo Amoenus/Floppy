@@ -109,19 +109,20 @@ def login(email: str, password: str) -> dict[str, Any]:
         elif "refreshToken" in data:
             refresh_token = data.get("refreshToken", "")
 
-        return {
-            "accessToken": access_token,
-            "refreshToken": refresh_token or "",
-        }
     except requests.HTTPError as e:
         if e.response.status_code == HTTPStatus.UNAUTHORIZED:
             msg = "Invalid email or password"
-            raise PocketCastsAuthError(msg)
+            raise PocketCastsAuthError(msg) from e
         msg = f"Pocket Casts API error: {e.response.status_code}"
         raise PocketCastsClientError(msg) from e
     except requests.RequestException as e:
         msg = f"Failed to connect to Pocket Casts: {e}"
         raise PocketCastsClientError(msg) from e
+    else:
+        return {
+            "accessToken": access_token,
+            "refreshToken": refresh_token or "",
+        }
 
 
 def refresh_token(refresh_token: str) -> dict[str, Any]:
@@ -172,11 +173,11 @@ def refresh_token(refresh_token: str) -> dict[str, Any]:
 
         if status_code == HTTPStatus.UNAUTHORIZED:
             msg = "Refresh token is invalid or expired"
-            raise PocketCastsAuthError(msg)
+            raise PocketCastsAuthError(msg) from None
         msg = f"Pocket Casts API error: {status_code}"
         raise PocketCastsClientError(msg) from e
     except requests.RequestException as e:
-        logger.exception("Network error during token refresh: %s", e)
+        logger.exception("Network error during token refresh")
         msg = f"Failed to refresh token: {e}"
         raise PocketCastsClientError(msg) from e
 
@@ -192,7 +193,7 @@ def parse_token_expiration(access_token: str) -> datetime:
         exp = decoded.get("exp")
         if exp:
             return datetime.fromtimestamp(exp, tz=UTC)
-    except Exception:
+    except Exception:  # noqa: S110  # deliberate best-effort; failure is non-fatal here
         pass
 
     # Fallback: assume 1 hour expiration
@@ -246,11 +247,12 @@ def validate_token(access_token: str) -> bool:
             "Access token validation returned unexpected status %d",
             response.status_code,
         )
-        return response.status_code < HTTPStatus.INTERNAL_SERVER_ERROR
-    except requests.RequestException as e:
+    except requests.RequestException:
         # Network errors - can't validate, assume invalid to be safe
-        logger.exception("Network error during access token validation: %s", e)
+        logger.exception("Network error during access token validation")
         return False
+    else:
+        return response.status_code < HTTPStatus.INTERNAL_SERVER_ERROR
 
 
 def get_podcast_list(access_token: str) -> dict[str, Any]:
@@ -286,7 +288,7 @@ def get_podcast_list(access_token: str) -> dict[str, Any]:
             msg,
         ) from e
     except requests.RequestException as e:
-        logger.exception("Failed to fetch podcast list: %s", e)
+        logger.exception("Failed to fetch podcast list")
         msg = f"Failed to fetch Pocket Casts podcast list: {e}"
         raise PocketCastsClientError(msg) from e
     except ValueError as e:

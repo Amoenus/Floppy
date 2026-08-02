@@ -95,7 +95,7 @@ def _make_api_request(method: str, params: dict[str, Any]) -> dict[str, Any]:
                 if error_code == LASTFM_ERROR_RATE_LIMIT_EXCEEDED:
                     if attempt < max_retries - 1:
                         # Exponential backoff with jitter
-                        delay = retry_delay * (2**attempt) + random.uniform(0, 1)
+                        delay = retry_delay * (2**attempt) + random.uniform(0, 1)  # noqa: S311  # sampling/jitter only, not cryptographic
                         logger.info(
                             "Rate limit exceeded, retrying after %.2fs (attempt %d/%d)",
                             delay,
@@ -117,17 +117,17 @@ def _make_api_request(method: str, params: dict[str, Any]) -> dict[str, Any]:
                 msg = f"API error {error_code}: {error_message}"
                 raise LastFMAPIError(msg)
 
-            return data
-
         except requests.exceptions.RequestException as e:
-            logger.exception("Last.fm API request failed: %s", e)
+            logger.exception("Last.fm API request failed")
             if attempt < max_retries - 1:
-                delay = retry_delay * (2**attempt) + random.uniform(0, 1)
+                delay = retry_delay * (2**attempt) + random.uniform(0, 1)  # noqa: S311  # sampling/jitter only, not cryptographic
                 time.sleep(delay)
                 retry_delay = delay
                 continue
             msg = f"Request failed: {e}"
             raise LastFMAPIError(msg) from e
+        else:
+            return data
 
     msg = "Max retries exceeded"
     raise LastFMAPIError(msg)
@@ -268,13 +268,8 @@ def get_recent_tracks_window(
         except LastFMRateLimitError:
             # Re-raise rate limit errors immediately
             raise
-        except Exception as e:
-            logger.exception(
-                "Error fetching page %d for user %s: %s",
-                page,
-                username,
-                e,
-            )
+        except Exception:
+            logger.exception("Error fetching page %d for user %s", page, username)
             # If we got some tracks, return what we have
             if all_tracks:
                 logger.warning(

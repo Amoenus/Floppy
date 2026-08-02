@@ -58,7 +58,7 @@ def get_daily_hours_by_media_type(user_media, start_date, end_date):
         try:
             start_date = timezone.make_aware(start_date)
             end_date = timezone.make_aware(end_date)
-        except Exception:
+        except Exception:  # noqa: S110  # deliberate best-effort; failure is non-fatal here
             # If awareness fails, fall back to original naive datetimes
             pass
 

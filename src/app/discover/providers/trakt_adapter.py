@@ -60,7 +60,6 @@ class TraktDiscoverAdapter:
                 normalized_payload,
                 ttl_seconds=ttl_seconds,
             )
-            return normalized_payload
         except Exception as error:  # noqa: BLE001
             if payload:
                 logger.warning(
@@ -75,6 +74,8 @@ class TraktDiscoverAdapter:
                 error,
             )
             return {"results": []}
+        else:
+            return normalized_payload
 
     def movie_watched_weekly(self, *, limit: int = 100) -> list[CandidateItem]:
         """Return Trakt watched-weekly movies normalized to Discover candidates."""

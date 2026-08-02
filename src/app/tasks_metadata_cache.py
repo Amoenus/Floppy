@@ -67,7 +67,7 @@ def _clear_item_metadata_cache(item: Item):
         for key in keys:
             try:
                 cache.delete(key)
-            except Exception:
+            except Exception:  # noqa: S112  # deliberate best-effort; skip the item and continue
                 continue
 
 

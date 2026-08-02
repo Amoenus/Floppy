@@ -212,12 +212,13 @@ def fetch_artist_artwork(artist_name: str) -> str | None:
         logger.debug("Found iTunes artwork for artist %s", artist_name)
         # Cache the result
         cache.set(cache_key, artwork_url, 60 * 60 * 24 * 7)  # Cache for 7 days
-        return artwork_url
 
     except Exception as e:
         logger.debug(
             "Failed to fetch artist artwork from iTunes for %s: %s", artist_name, e
         )
+    else:
+        return artwork_url
 
     # Cache None to avoid repeated lookups
     cache.set(cache_key, None, 60 * 60 * 24 * 7)

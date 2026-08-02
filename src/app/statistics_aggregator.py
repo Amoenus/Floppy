@@ -48,7 +48,7 @@ def _build_today_card(
     today_in_user_history_year,
 ):
     if today_in_history and today_in_user_history:
-        use_user = _random.random() < COIN_FLIP_PROBABILITY
+        use_user = _random.random() < COIN_FLIP_PROBABILITY  # noqa: S311  # sampling/jitter only, not cryptographic
     elif today_in_user_history:
         use_user = True
     else:
@@ -137,7 +137,7 @@ def _build_media_charts_from_counts(
     weekday_counts = Counter()
     for day_str, count in day_counts.items():
         try:
-            day = datetime.strptime(day_str, "%Y-%m-%d").date()
+            day = datetime.strptime(day_str, "%Y-%m-%d").date()  # noqa: DTZ007  # date-only value; no timezone applies
         except ValueError:
             continue
         year_counts[day.year] += count
@@ -1395,7 +1395,7 @@ def _aggregate_statistics_from_days(
     game_day_minutes = day_minutes_by_type.get(MediaTypes.GAME.value, {})
     for day_str, minutes in game_day_minutes.items():
         try:
-            day = datetime.strptime(day_str, "%Y-%m-%d").date()
+            day = datetime.strptime(day_str, "%Y-%m-%d").date()  # noqa: DTZ007  # date-only value; no timezone applies
         except ValueError:
             continue
         game_hours_by_year[day.year] += minutes / 60

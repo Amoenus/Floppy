@@ -138,7 +138,7 @@ def _release_date_from_value(value):
         try:
             if hasattr(value, "utcoffset") and timezone.is_aware(value):
                 return timezone.localtime(value).date()
-        except Exception:
+        except Exception:  # noqa: S110  # deliberate best-effort; failure is non-fatal here
             pass
         try:
             return value.date()
@@ -283,7 +283,7 @@ def normalize_rule_payload(payload, owner):
     normalized_statuses = []
     seen_statuses = set()
     for value in status_values:
-        value = str(value).strip()
+        value = str(value).strip()  # noqa: PLW2901  # deliberate in-loop normalisation
         if not value or value.lower() == "all" or value not in Status.values:
             continue
         if value in seen_statuses:

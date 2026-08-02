@@ -1748,11 +1748,11 @@ def _media_lookup_for_items(
         candidate_entries = []
         for entries in grouped_entries.values():
             if actual_media_type == MediaTypes.PODCAST.value:
-                entries = sorted(
+                entries = sorted(  # noqa: PLW2901  # deliberate in-loop normalisation
                     entries, key=lambda entry: entry.created_at, reverse=True
                 )
             else:
-                entries = sorted(
+                entries = sorted(  # noqa: PLW2901  # deliberate in-loop normalisation
                     entries, key=lambda entry: entry.created_at, reverse=True
                 )
             primary_entry = entries[0]

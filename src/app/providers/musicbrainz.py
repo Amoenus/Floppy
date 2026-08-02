@@ -69,7 +69,7 @@ def _normalize_musicbrainz_genre_names(values) -> list[str]:
     normalized = OrderedDict()
     for value in values or []:
         if isinstance(value, dict):
-            value = value.get("name")
+            value = value.get("name")  # noqa: PLW2901  # deliberate in-loop normalisation
         name = capitalize_genre(str(value).strip()) if value else ""
         if name:
             normalized.setdefault(name.lower(), name)
@@ -1109,10 +1109,9 @@ def get_artist_discography(artist_id, skip_cover_art=False):
     rg_to_release = {}
     for release in releases:
         rg_id = release.get("release-group", {}).get("id")
-        if rg_id:
-            # Keep first release per release-group (API returns most relevant first)
-            if rg_id not in rg_to_release:
-                rg_to_release[rg_id] = release
+        # Keep first release per release-group (API returns most relevant first)
+        if rg_id and rg_id not in rg_to_release:
+            rg_to_release[rg_id] = release
 
     # Update albums with release IDs and optionally fetch cover art
     for album in albums:

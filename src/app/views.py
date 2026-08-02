@@ -1292,9 +1292,7 @@ def delete_history_record(request, media_type, history_id):
                 )
             except ObjectDoesNotExist:
                 msg = f"History record {history_id} not found for user {request.user}"
-                raise historical_model.DoesNotExist(
-                    msg,
-                )
+                raise historical_model.DoesNotExist(msg) from None
 
         # Capture all needed data BEFORE deletion to ensure we have it for cache invalidation
         # and verification, even if the object becomes invalid after deletion
@@ -1520,9 +1518,10 @@ def delete_history_record(request, media_type, history_id):
                 response.write(
                     f'<p id="modal-listen-count-{music_id}" hx-swap-oob="true" class="text-sm text-gray-400 mt-1">Not listened yet</p>'
                 )
-                return response
             except Music.DoesNotExist:
                 pass
+            else:
+                return response
 
         # If podcast_id is provided, return updated count for out-of-band swap
         if podcast_id and media_type.lower() == "podcast":
@@ -1579,14 +1578,14 @@ def delete_history_record(request, media_type, history_id):
                     f'<p id="modal-listen-count-{podcast_id}" hx-swap-oob="true" class="text-sm text-gray-400 mt-1">Not played yet</p>'
                 )
                 response["HX-Trigger"] = "history-refresh-start"
-                return response
             except Podcast.DoesNotExist:
                 pass
+            else:
+                return response
 
         # Return empty 200 response - the element will be removed by HTMX
         response = HttpResponse()
         response["HX-Trigger"] = "history-refresh-start"
-        return response
 
     except historical_model.DoesNotExist:
         logger.exception(
@@ -1595,6 +1594,8 @@ def delete_history_record(request, media_type, history_id):
             str(request.user),
         )
         return HttpResponse("Record not found", status=404)
+    else:
+        return response
 
 
 @require_GET

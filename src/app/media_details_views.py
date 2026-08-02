@@ -205,7 +205,7 @@ def media_details(
                 )
                 if public_list:
                     list_owner = public_list.owner
-        except Exception:
+        except Exception:  # noqa: S110  # deliberate best-effort; failure is non-fatal here
             # If we can't find a list owner, list_owner stays None
             pass
 
@@ -623,7 +623,7 @@ def media_details(
             # Build episode data in TV season format (inline episodes, not related items)
             episode_list = []
             for episode_obj, enriched in zip(
-                episodes[:initial_limit], enriched_episodes
+                episodes[:initial_limit], enriched_episodes, strict=False
             ):
                 # Format duration
                 duration_str = ""

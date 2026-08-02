@@ -232,9 +232,10 @@ def _build_game_hours_charts(game_data, start_date, end_date, color, dataset_lab
                         continue
 
                     activity_date = _localize_datetime(activity_dt).date()
-                    if filter_start_date and filter_end_date:
-                        if not (filter_start_date <= activity_date <= filter_end_date):
-                            continue
+                    if (filter_start_date and filter_end_date) and not (
+                        filter_start_date <= activity_date <= filter_end_date
+                    ):
+                        continue
                     year_hours[activity_date.year] += segment_hours
                     month_hours[activity_date.month] += segment_hours
                     continue

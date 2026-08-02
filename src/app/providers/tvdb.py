@@ -257,7 +257,7 @@ def _parse_date(value):
 
     for fmt in ("%Y-%m-%d", "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S%z"):
         try:
-            dt = datetime.strptime(value, fmt)
+            dt = datetime.strptime(value, fmt)  # noqa: DTZ007  # date-only value; no timezone applies
             return dt if timezone.is_aware(dt) else timezone.make_aware(dt)
         except ValueError:
             continue
@@ -754,7 +754,7 @@ def _normalize_episode_rows(season_data: dict | None):
     for episode in _coerce_list((season_data or {}).get("episodes")):
         if not isinstance(episode, dict):
             continue
-        episode = _with_preferred_translation(episode, "episodes")
+        episode = _with_preferred_translation(episode, "episodes")  # noqa: PLW2901  # deliberate in-loop normalisation
         air_date = (
             _parse_date(episode.get("aired"))
             or _parse_date(episode.get("firstAired"))

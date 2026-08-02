@@ -412,7 +412,7 @@ def extract_release_datetime(metadata):
     }
     for fmt, length in format_lengths.items():
         try:
-            dt = datetime.strptime(date_str[:length], fmt)
+            dt = datetime.strptime(date_str[:length], fmt)  # noqa: DTZ007  # date-only value; no timezone applies
             return dt.replace(tzinfo=ZoneInfo("UTC"))
         except (ValueError, TypeError):
             continue

@@ -58,7 +58,6 @@ class TMDbDiscoverAdapter:
                 response,
                 ttl_seconds=ttl_seconds,
             )
-            return response
         except Exception as error:  # noqa: BLE001
             if payload:
                 logger.warning(
@@ -73,6 +72,8 @@ class TMDbDiscoverAdapter:
                 error,
             )
             return {"results": []}
+        else:
+            return response
 
     def _paginated_raw_results(
         self,

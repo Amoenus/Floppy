@@ -103,9 +103,7 @@ def _run_incremental_lastfm_sync(account) -> dict:
             "message": "Last.fm rate limit exceeded.",
         }
     except lastfm_api.LastFMClientError as exc:
-        logger.exception(
-            "Last.fm client error for user %s: %s", account.user.username, exc
-        )
+        logger.exception("Last.fm client error for user %s", account.user.username)
         now = timezone.now()
         account.connection_broken = True
         account.failure_count += 1
@@ -129,9 +127,7 @@ def _run_incremental_lastfm_sync(account) -> dict:
             "message": "Last.fm account is no longer valid.",
         }
     except lastfm_api.LastFMAPIError as exc:
-        logger.exception(
-            "Last.fm API error for user %s: %s", account.user.username, exc
-        )
+        logger.exception("Last.fm API error for user %s", account.user.username)
         now = timezone.now()
         account.connection_broken = False
         account.failure_count += 1
@@ -461,7 +457,7 @@ def poll_all_lastfm_scrobbles():
 
     for index, account in enumerate(accounts_list):
         if index > 0 and index % batch_size == 0:
-            time.sleep(random.uniform(0.5, 2.0))
+            time.sleep(random.uniform(0.5, 2.0))  # noqa: S311  # sampling/jitter only, not cryptographic
 
         result = _run_incremental_lastfm_sync(account)
         if result["status"] == "success":

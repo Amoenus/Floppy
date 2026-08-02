@@ -44,7 +44,6 @@ def _api_cached_results(
             {"results": results},
             ttl_seconds=ttl_seconds,
         )
-        return results
     except Exception as error:  # noqa: BLE001
         if payload:
             logger.warning(
@@ -61,6 +60,8 @@ def _api_cached_results(
             error,
         )
         return []
+    else:
+        return results
 
 
 def _safe_float(value) -> float | None:

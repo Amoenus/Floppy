@@ -89,10 +89,11 @@ def merge_persisted_genres(
     merged = normalize_genres(incoming_genres)
     existing = normalize_genres(existing_genres)
 
-    if source == Sources.TMDB.value and media_type == MediaTypes.TV.value:
-        if add_anime or genre_list_has_name(existing, ANIME_SUPPLEMENT_GENRE):
-            if not genre_list_has_name(merged, ANIME_SUPPLEMENT_GENRE):
-                merged.append(ANIME_SUPPLEMENT_GENRE)
+    if (
+        (source == Sources.TMDB.value and media_type == MediaTypes.TV.value)
+        and (add_anime or genre_list_has_name(existing, ANIME_SUPPLEMENT_GENRE))
+    ) and not genre_list_has_name(merged, ANIME_SUPPLEMENT_GENRE):
+        merged.append(ANIME_SUPPLEMENT_GENRE)
 
     return merged
 

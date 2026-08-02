@@ -665,11 +665,10 @@ def _build_game_entries(
             for game in games:
                 if not (game.start_date or game.end_date):
                     continue
-                if genre_filters:
-                    if not {str(g).lower() for g in _resolve_genres(game.item)} & set(
-                        genre_filters
-                    ):
-                        continue
+                if genre_filters and not {
+                    str(g).lower() for g in _resolve_genres(game.item)
+                } & set(genre_filters):
+                    continue
                 activity_dt = game.end_date or game.start_date or game.created_at
                 played_at_local = _localize_datetime(activity_dt)
                 if not played_at_local:
@@ -1249,12 +1248,13 @@ def build_history_days(
             matches = bool({str(g).lower() for g in genres} & set(genre_filters))
             if cache_key:
                 genre_cache[cache_key] = matches
-            return matches
         except Exception as e:
-            logger.debug(f"Error checking genre for {media_entry}: {e}")
+            logger.debug("Error checking genre for %s: %s", media_entry, e)
             if cache_key:
                 genre_cache[cache_key] = False
             return False
+        else:
+            return matches
 
     def entry_matches_implied_genre(entry):
         """Check if a built entry matches the implied-genre filter."""

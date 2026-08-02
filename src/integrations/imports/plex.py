@@ -355,7 +355,7 @@ class PlexHistoryImporter:
             machine_id, section_id = self.library.split("::", 1)
         except ValueError:
             msg = "Invalid Plex library selection."
-            raise MediaImportError(msg)
+            raise MediaImportError(msg) from None
 
         filtered = [
             section

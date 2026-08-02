@@ -132,16 +132,15 @@ def _get_season_metadata_with_episodes(media, season, logger):
             episodes_in_db,
         )
 
-        return season_metadata
-
-    except Exception as e:
+    except Exception:
         logger.exception(
-            "Failed to get season metadata with episodes for %s S%s: %s",
+            "Failed to get season metadata with episodes for %s S%s",
             media.item.title,
             season.item.season_number,
-            e,
         )
         return None
+    else:
+        return season_metadata
 
 
 def _calculate_episode_time_from_data(episode_data, logger):
@@ -288,7 +287,7 @@ def _get_media_metadata_for_statistics(media):
         )
     except Exception as e:
         msg = f"Failed to get metadata for {media.item.title}: {e}"
-        raise ValueError(msg)
+        raise ValueError(msg) from e
 
 
 def _get_media_runtime_from_cache(media, logger, context=""):

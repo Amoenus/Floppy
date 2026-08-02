@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Protocol, TYPE_CHECKING
 
-from app.discover.schemas import CandidateItem
+
+if TYPE_CHECKING:
+    from app.discover.schemas import CandidateItem
 
 
 class DiscoverProviderAdapter(Protocol):

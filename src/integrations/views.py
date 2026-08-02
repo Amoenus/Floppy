@@ -1654,7 +1654,7 @@ def stremio_connect(request):
             # Validate a pasted auth key before storing it.
             stremio.get_user(auth_key)
     except helpers.MediaImportError as error:
-        logger.exception("Stremio login failed: %s", error)
+        logger.exception("Stremio login failed")
         messages.error(
             request,
             "Could not connect to Stremio. Check your credentials; for accounts created "
@@ -1737,8 +1737,8 @@ def pocketcasts_connect(request):
         logger.info(
             "Successfully logged in to Pocket Casts for user %s", request.user.username
         )
-    except PocketCastsAuthError as auth_error:
-        logger.exception("Pocket Casts login failed: %s", auth_error)
+    except PocketCastsAuthError:
+        logger.exception("Pocket Casts login failed")
         messages.error(
             request,
             "Invalid email or password. For accounts created via 'Sign in with Apple' or 'Sign in with Google', "
@@ -1820,7 +1820,7 @@ def pocketcasts_connect(request):
         else:
             messages.success(request, "Connected to Pocket Casts successfully.")
     except Exception as e:
-        logger.exception("Failed to store Pocket Casts credentials: %s", e)
+        logger.exception("Failed to store Pocket Casts credentials")
         messages.error(request, f"Failed to store credentials: {e}")
 
     return redirect("import_data")
@@ -1958,22 +1958,22 @@ def lastfm_connect(request):
         # Make a minimal API call to verify user exists and has public scrobbles
         lastfm_api.get_recent_tracks(username=username, limit=1, page=1)
         logger.info("Successfully validated Last.fm username: %s", username)
-    except LastFMClientError as e:
-        logger.exception("Last.fm username validation failed: %s", e)
+    except LastFMClientError:
+        logger.exception("Last.fm username validation failed")
         messages.error(
             request,
             "Invalid Last.fm username or user not found. Please check your username and ensure your scrobbles are public.",
         )
         return redirect("import_data")
-    except LastFMRateLimitError as e:
-        logger.exception("Last.fm rate limit during validation: %s", e)
+    except LastFMRateLimitError:
+        logger.exception("Last.fm rate limit during validation")
         messages.error(
             request,
             "Last.fm API rate limit exceeded. Please try again in a few moments.",
         )
         return redirect("import_data")
     except LastFMAPIError as e:
-        logger.exception("Last.fm API error during validation: %s", e)
+        logger.exception("Last.fm API error during validation")
         messages.error(request, f"Failed to connect to Last.fm: {e}")
         return redirect("import_data")
     except Exception as e:

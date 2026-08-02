@@ -192,7 +192,7 @@ def _get_horizontal_history_image(item, fallback_image, *, allow_network=True):
             )
             if backdrop_url and backdrop_url != settings.IMG_NONE:
                 return backdrop_url
-        except Exception:
+        except Exception:  # noqa: S110  # deliberate best-effort; failure is non-fatal here
             pass
 
     if source == Sources.TMDB.value and media_type in (
@@ -203,7 +203,7 @@ def _get_horizontal_history_image(item, fallback_image, *, allow_network=True):
             backdrop_url = CustomList()._get_tmdb_backdrop(media_type, media_id)
             if backdrop_url and backdrop_url != settings.IMG_NONE:
                 return backdrop_url
-        except Exception:
+        except Exception:  # noqa: S110  # deliberate best-effort; failure is non-fatal here
             pass
 
     # TVDB items store a tmdb_id cross-reference in provider_external_ids
@@ -228,7 +228,7 @@ def _get_horizontal_history_image(item, fallback_image, *, allow_network=True):
                 )
                 if backdrop_url and backdrop_url != settings.IMG_NONE:
                     return backdrop_url
-            except Exception:
+            except Exception:  # noqa: S110  # deliberate best-effort; failure is non-fatal here
                 pass
 
     if source == Sources.IGDB.value and media_type == MediaTypes.GAME.value:
@@ -236,7 +236,7 @@ def _get_horizontal_history_image(item, fallback_image, *, allow_network=True):
             backdrop_url = CustomList()._get_igdb_backdrop(media_id)
             if backdrop_url and backdrop_url != settings.IMG_NONE:
                 return backdrop_url
-        except Exception:
+        except Exception:  # noqa: S110  # deliberate best-effort; failure is non-fatal here
             pass
 
     return image or settings.IMG_NONE
@@ -309,7 +309,7 @@ def _select_history_entry_for_day(
     elif pick_latest:
         entry = entries[0]
     else:
-        entry = random.choice(entries)
+        entry = random.choice(entries)  # noqa: S311  # sampling/jitter only, not cryptographic
     return _history_entry_card_payload(entry)
 
 
@@ -341,11 +341,11 @@ def _get_today_history_entries(user, media_type_filter=None):
         return None, None
 
     available_years = sorted({day_date.year for day_date in matching_dates})
-    selected_year = random.choice(available_years)
+    selected_year = random.choice(available_years)  # noqa: S311  # sampling/jitter only, not cryptographic
     year_dates = [
         day_date for day_date in matching_dates if day_date.year == selected_year
     ]
-    selected_date = random.choice(year_dates) if year_dates else None
+    selected_date = random.choice(year_dates) if year_dates else None  # noqa: S311  # sampling/jitter only, not cryptographic
     if not selected_date:
         return None, None
 
@@ -556,9 +556,9 @@ def _get_today_release_entry(user, media_type_filter=None):
         return None, None
 
     available_years = sorted(items_by_year.keys())
-    selected_year = random.choice(available_years)
+    selected_year = random.choice(available_years)  # noqa: S311  # sampling/jitter only, not cryptographic
     selected_item = (
-        random.choice(items_by_year[selected_year])
+        random.choice(items_by_year[selected_year])  # noqa: S311  # sampling/jitter only, not cryptographic
         if items_by_year[selected_year]
         else None
     )

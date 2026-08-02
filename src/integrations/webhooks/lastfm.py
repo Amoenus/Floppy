@@ -113,7 +113,6 @@ class LastFMScrobbleProcessor:
                     music_entry.status,
                     music_entry.progress,
                 )
-            return music_entry
         except Exception as e:
             logger.error(
                 "Error processing Last.fm scrobble for %s: %s - %s: %s",
@@ -124,6 +123,8 @@ class LastFMScrobbleProcessor:
                 exc_info=True,
             )
             return None
+        else:
+            return music_entry
 
     def _is_duplicate(
         self,
