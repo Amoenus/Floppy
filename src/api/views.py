@@ -80,19 +80,19 @@ logger = logging.getLogger(__name__)
 
 # TODO!: for children items, it should return an error if user is trying to access a non existing season/episode (for example if it's requested the season 4 of a 2 season show)
 
-# TODO: Implement search for already tracked media (item_id and tracked fields)  # noqa: FIX002
+# TODO: Implement search for already tracked media (item_id and tracked fields)
 
-# TODO: Implement global search endpoint for every media_type  # noqa: FIX002
+# TODO: Implement global search endpoint for every media_type
 
-# TODO: Implement admin commands to manage users (add admins, remove/add users, etc)  # noqa: FIX002
+# TODO: Implement admin commands to manage users (add admins, remove/add users, etc)
 
-# TODO: Move operations on db to `models` file of the relative django app  # noqa: FIX002
+# TODO: Move operations on db to `models` file of the relative django app
 
-# TODO!!: since it's possible to add to lists untracked items, the id field can be null, so it's impossible to get these elements from the list, while it should be possible. The untracked added element is in the Items table, but not in the media tables. Add the list of lists an item is in to the model of the medias, so they can be retrieved and computed easily.  # noqa: FIX002
+# TODO!!: since it's possible to add to lists untracked items, the id field can be null, so it's impossible to get these elements from the list, while it should be possible. The untracked added element is in the Items table, but not in the media tables. Add the list of lists an item is in to the model of the medias, so they can be retrieved and computed easily.
 
-# TODO: look into django.core.paginator Paginator  # noqa: FIX002
+# TODO: look into django.core.paginator Paginator
 
-# TODO: Review children endpoints performance and avoid repeated list lookups per item.  # noqa: FIX002
+# TODO: Review children endpoints performance and avoid repeated list lookups per item.
 
 
 # /api/v1/calendar/
@@ -127,7 +127,7 @@ class CalendarView(drf_views.APIView):
 
         try:
             releases = Event.objects.get_user_events(request.user, first_day, last_day)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return Response(
                 {
                     "detail": "Error occurred while fetching events.",
@@ -184,7 +184,7 @@ class MediaTypeChangesHistoryDetailView(drf_views.APIView):
                 serializer_class=ChangesHistoryEntrySerializer,
             )
             return Response(serialized_data, status=HTTP.OK)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return Response(
                 {
                     "detail": "History record not found",
@@ -208,7 +208,7 @@ class MediaTypeChangesHistoryDetailView(drf_views.APIView):
                 {"detail": "Record removed correctly"},
                 status=HTTP.NO_CONTENT,
             )
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return Response(
                 {
                     "detail": "History record not found",
@@ -225,7 +225,7 @@ class HealthView(CheckMixin, drf_views.APIView):
     authentication_classes = []
     permission_classes = []
 
-    def get(self, request):  # noqa: ARG002
+    def get(self, request):
         """Check API health status."""
         # FORK: django-health-check 3.x — run_check() populates each plugin's
         # errors and returns the critical-service error list.
@@ -249,7 +249,7 @@ class InfoView(drf_views.APIView):
     authentication_classes = []
     permission_classes = []
 
-    def get(self, request):  # noqa: ARG002
+    def get(self, request):
         """Get application information."""
         info_data = {}
         response_data = serialize_data(
@@ -353,7 +353,7 @@ class ListsView(drf_views.APIView):
             )
             return Response(serialized_data, status=HTTP.CREATED)
 
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return Response(
                 {
                     "detail": "An error occurred while creating the list.",
@@ -952,7 +952,7 @@ class MediaTypeListView(drf_views.APIView):
                 source,
                 [season_number],
             )
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return Response(
                 {
                     "detail": "Internal Server Error.",
@@ -987,7 +987,7 @@ class MediaTypeListView(drf_views.APIView):
                     image=metadata.get("image") or "",
                     **Item.title_fields_from_metadata(metadata),
                 )
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 return Response(
                     {
                         "detail": "Internal Server Error.",
@@ -1055,7 +1055,7 @@ class MediaDetailView(drf_views.APIView):
                 media_type,
                 source,
             )
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return Response(
                 {
                     "detail": "Internal Server Error.",
@@ -1098,7 +1098,7 @@ class MediaDetailView(drf_views.APIView):
 
         try:
             media_metadata = services.get_media_metadata(media_type, media_id, source)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return Response(
                 {
                     "detail": HTTP.INTERNAL_SERVER_ERROR.phrase,
@@ -1116,7 +1116,7 @@ class MediaDetailView(drf_views.APIView):
                 source,
                 library_media_type=library_media_type,
             )
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return Response(
                 {
                     "detail": HTTP.INTERNAL_SERVER_ERROR.phrase,
@@ -1203,7 +1203,7 @@ class MediaDetailView(drf_views.APIView):
                 media_type,
                 source,
             )
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return Response(
                 {
                     "detail": HTTP.INTERNAL_SERVER_ERROR.phrase,
@@ -1234,7 +1234,7 @@ class MediaDetailView(drf_views.APIView):
 
         try:
             media.save()
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return Response(
                 {
                     "detail": "Failed to update media.",
@@ -1247,7 +1247,7 @@ class MediaDetailView(drf_views.APIView):
 
         try:
             media_metadata = services.get_media_metadata(media_type, media_id, source)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return Response(
                 {
                     "detail": "Internal Server Error.",
@@ -1370,7 +1370,7 @@ class MediaConsumptionHistoryView(drf_views.APIView):
                 media_type,
                 source,
             )
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return Response(
                 {
                     "detail": "Internal Server Error.",
@@ -1438,7 +1438,7 @@ class MediaConsumptionEntryDetailView(drf_views.APIView):
                 media_type,
                 source,
             )
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return Response(
                 {
                     "detail": "Internal Server Error.",
@@ -1482,7 +1482,7 @@ class MediaConsumptionEntryDetailView(drf_views.APIView):
                 media_type,
                 source,
             )
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return Response(
                 {
                     "detail": HTTP.INTERNAL_SERVER_ERROR.phrase,
@@ -1528,7 +1528,7 @@ class MediaConsumptionEntryDetailView(drf_views.APIView):
                 media_type,
                 source,
             )
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return Response(
                 {
                     "detail": HTTP.INTERNAL_SERVER_ERROR.phrase,
@@ -1560,7 +1560,7 @@ class MediaConsumptionEntryDetailView(drf_views.APIView):
 
         try:
             consumption.save()
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return Response(
                 {"detail": HTTP.BAD_REQUEST.phrase, "errors": str(e)},
                 status=HTTP.BAD_REQUEST,
@@ -1755,7 +1755,7 @@ class MediaRecommendationsView(drf_views.APIView):
 
         try:
             media_metadata = services.get_media_metadata(media_type, media_id, source)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return Response(
                 {
                     "detail": HTTP.INTERNAL_SERVER_ERROR.phrase,
@@ -1813,7 +1813,7 @@ class MediaSeasonsView(drf_views.APIView):
 
         try:
             media_metadata = services.get_media_metadata(media_type, media_id, source)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return Response(
                 {
                     "detail": HTTP.INTERNAL_SERVER_ERROR.phrase,
@@ -2032,7 +2032,7 @@ class MediaSyncView(drf_views.APIView):
                 status=HTTP.ACCEPTED,
             )
 
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return Response(
                 {
                     "detail": HTTP.INTERNAL_SERVER_ERROR.phrase,
@@ -2084,7 +2084,7 @@ class MediaSeasonDetailView(drf_views.APIView):
                 source,
                 season_number=season_number,
             )
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return Response(
                 {
                     "detail": HTTP.INTERNAL_SERVER_ERROR.phrase,
@@ -2140,7 +2140,7 @@ class MediaSeasonDetailView(drf_views.APIView):
                 source,
                 [season_number],
             )
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return Response(
                 {
                     "detail": HTTP.INTERNAL_SERVER_ERROR.phrase,
@@ -2165,7 +2165,7 @@ class MediaSeasonDetailView(drf_views.APIView):
                 season_number=season_number,
                 library_media_type=library_media_type,
             )
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return Response(
                 {
                     "detail": HTTP.INTERNAL_SERVER_ERROR.phrase,
@@ -2257,7 +2257,7 @@ class MediaSeasonDetailView(drf_views.APIView):
                 source,
                 season_number=season_number,
             )
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return Response(
                 {
                     "detail": HTTP.INTERNAL_SERVER_ERROR.phrase,
@@ -2288,7 +2288,7 @@ class MediaSeasonDetailView(drf_views.APIView):
 
         try:
             media.save()
-        except Exception:  # noqa: BLE001
+        except Exception:
             return Response(
                 {"detail": "Failed to update season."},
                 status=HTTP.BAD_REQUEST,
@@ -2303,7 +2303,7 @@ class MediaSeasonDetailView(drf_views.APIView):
                 source,
                 [season_number],
             )
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return Response(
                 {
                     "detail": HTTP.INTERNAL_SERVER_ERROR.phrase,
@@ -2443,7 +2443,7 @@ class MediaSeasonEpisodesView(drf_views.APIView):
                 source,
                 [season_number],
             )
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return Response(
                 {
                     "detail": "Failed to retrieve season episodes.",
@@ -2558,7 +2558,7 @@ class MediaSeasonConsumptionHistoryView(drf_views.APIView):
                 season_number=season_number,
                 library_media_type=request.query_params.get("library_media_type"),
             )
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return Response(
                 {
                     "detail": HTTP.INTERNAL_SERVER_ERROR.phrase,
@@ -2637,7 +2637,7 @@ class MediaSeasonConsumptionEntryDetailView(drf_views.APIView):
                 source,
                 season_number=season_number,
             )
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return Response(
                 {
                     "detail": "Failed to retrieve consumption entry.",
@@ -2690,7 +2690,7 @@ class MediaSeasonConsumptionEntryDetailView(drf_views.APIView):
                 source,
                 season_number=season_number,
             )
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return Response(
                 {
                     "detail": HTTP.INTERNAL_SERVER_ERROR.phrase,
@@ -2753,7 +2753,7 @@ class MediaSeasonConsumptionEntryDetailView(drf_views.APIView):
                 source,
                 season_number=season_number,
             )
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return Response(
                 {
                     "detail": HTTP.INTERNAL_SERVER_ERROR.phrase,
@@ -2785,7 +2785,7 @@ class MediaSeasonConsumptionEntryDetailView(drf_views.APIView):
 
         try:
             consumption.save()
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return Response(
                 {"detail": HTTP.BAD_REQUEST.phrase, "errors": str(e)},
                 status=HTTP.BAD_REQUEST,
@@ -3138,7 +3138,7 @@ class MediaSeasonSyncView(drf_views.APIView):
                 status=HTTP.ACCEPTED,
             )
 
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return Response(
                 {
                     "detail": "An error occurred while syncing metadata.",
@@ -3199,7 +3199,7 @@ class MediaEpisodeDetailView(drf_views.APIView):
                 season_number=season_number,
                 episode_number=episode_number,
             )
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return Response(
                 {
                     "detail": "An error occurred while fetching media.",
@@ -3258,7 +3258,7 @@ class MediaEpisodeDetailView(drf_views.APIView):
                 source,
                 [season_number],
             )
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return Response(
                 {
                     "detail": "An error occurred while fetching media metadata.",
@@ -3298,7 +3298,7 @@ class MediaEpisodeDetailView(drf_views.APIView):
                 episode_number=episode_number,
                 library_media_type=request.query_params.get("library_media_type"),
             )
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return Response(
                 {
                     "detail": "An error occurred while fetching user media.",
@@ -3378,7 +3378,7 @@ class MediaEpisodeDetailView(drf_views.APIView):
                 season_number=season_number,
                 episode_number=episode_number,
             )
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return Response(
                 {
                     "detail": "An error occurred while fetching user media.",
@@ -3411,7 +3411,7 @@ class MediaEpisodeDetailView(drf_views.APIView):
 
         try:
             media.save()
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return Response(
                 {"detail": HTTP.BAD_REQUEST.phrase, "errors": str(e)},
                 status=HTTP.BAD_REQUEST,
@@ -3426,7 +3426,7 @@ class MediaEpisodeDetailView(drf_views.APIView):
                 source,
                 [season_number],
             )
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return Response(
                 {
                     "detail": HTTP.INTERNAL_SERVER_ERROR.phrase,
@@ -3594,7 +3594,7 @@ class MediaEpisodeConsumptionHistoryView(drf_views.APIView):
                 episode_number=episode_number,
                 library_media_type=request.query_params.get("library_media_type"),
             )
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return Response(
                 {
                     "detail": HTTP.INTERNAL_SERVER_ERROR.phrase,
@@ -3675,7 +3675,7 @@ class MediaEpisodeConsumptionEntryDetailView(drf_views.APIView):
                 season_number=season_number,
                 episode_number=episode_number,
             )
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return Response(
                 {"detail": f"{e!s}"},
                 status=HTTP.INTERNAL_SERVER_ERROR,
@@ -3735,7 +3735,7 @@ class MediaEpisodeConsumptionEntryDetailView(drf_views.APIView):
                 season_number=season_number,
                 episode_number=episode_number,
             )
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return Response(
                 {"detail": f"{e!s}"},
                 status=HTTP.INTERNAL_SERVER_ERROR,
@@ -3797,7 +3797,7 @@ class MediaEpisodeConsumptionEntryDetailView(drf_views.APIView):
                 season_number=season_number,
                 episode_number=episode_number,
             )
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return Response(
                 {"detail": f"{e!s}"},
                 status=HTTP.INTERNAL_SERVER_ERROR,
@@ -3826,7 +3826,7 @@ class MediaEpisodeConsumptionEntryDetailView(drf_views.APIView):
 
         try:
             consumption.save()
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return Response(
                 {"detail": HTTP.BAD_REQUEST.phrase, "errors": str(e)},
                 status=HTTP.BAD_REQUEST,
@@ -4069,7 +4069,7 @@ class MediaEpisodeSyncView(drf_views.APIView):
         source,
         media_id,
         season_number,
-        episode_number,  # noqa: ARG002
+        episode_number,
     ):
         """Redirect episode sync to season sync."""
         season_sync = MediaSeasonSyncView()

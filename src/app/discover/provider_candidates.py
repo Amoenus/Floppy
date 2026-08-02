@@ -44,7 +44,7 @@ def _api_cached_results(
             {"results": results},
             ttl_seconds=ttl_seconds,
         )
-    except Exception as error:  # noqa: BLE001
+    except Exception as error:
         if payload:
             logger.warning(
                 "discover_provider_cache_fallback provider=%s endpoint=%s error=%s",
@@ -130,7 +130,7 @@ def _openlibrary_first_edition_id(work_key: str) -> str | None:
             f"https://openlibrary.org{work_key}/editions.json",
             params={"limit": 1},
         )
-    except Exception:  # noqa: BLE001
+    except Exception:
         cache.set(cache_key, "", timeout=60 * 60 * 6)
         return None
 

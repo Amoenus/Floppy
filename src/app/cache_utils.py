@@ -1,8 +1,8 @@
 import logging
+from typing import TYPE_CHECKING
 
 from django.conf import settings
 from django.core.cache import cache
-from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Iterable

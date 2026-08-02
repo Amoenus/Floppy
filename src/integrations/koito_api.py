@@ -5,11 +5,11 @@ Koito. Endpoint shapes were read from the Koito source (gabehf/Koito) since the
 web API is unversioned and undocumented.
 """
 
-from http import HTTPStatus
 import logging
 import random
 import time
 from dataclasses import dataclass, field
+from http import HTTPStatus
 from typing import Any
 
 import requests

@@ -148,7 +148,7 @@ def _describe_conflicting_row(manager, lookup: dict, defaults: dict) -> str:
         if not probe:
             return "unknown (no probeable scalar fields in lookup/defaults)"
         rows = list(manager.filter(**probe)[:3])
-    except Exception:  # noqa: BLE001 - diagnostic path must never raise
+    except Exception:
         return "unknown (probe query failed)"
 
     if not rows:

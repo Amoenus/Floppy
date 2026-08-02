@@ -7,7 +7,7 @@ import logging
 import re
 import unicodedata
 from http import HTTPStatus
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from urllib.parse import quote_plus
 
 from django.conf import settings

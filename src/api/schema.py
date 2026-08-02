@@ -72,7 +72,7 @@ class StatusFieldExtension(OpenApiSerializerFieldExtension):
 
     target_class = "api.serializers.StatusField"
 
-    def map_serializer_field(self, auto_schema, direction):  # noqa: ARG002
+    def map_serializer_field(self, auto_schema, direction):
         """Return the OpenAPI schema for status: integer code, string label on write."""
         return {
             "type": "integer",

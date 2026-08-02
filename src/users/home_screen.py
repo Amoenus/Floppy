@@ -723,9 +723,9 @@ def build_filter_field_data(
     the Home Screen settings page needs one per enabled media type — so
     the payload is cached and registered for invalidation on media save.
     """
-    from django.core.cache import cache  # noqa: PLC0415
+    from django.core.cache import cache
 
-    from app import cache_utils  # noqa: PLC0415 - avoid circular import
+    from app import cache_utils
 
     tags_fingerprint = hashlib.md5(  # noqa: S324 - cache key, not security
         "\x1f".join(precomputed_tags or ()).encode(),
@@ -1560,7 +1560,7 @@ def _build_album_home_entries(
     user, filters: dict, sort_by: str, direction: str
 ) -> list[HomeRowEntry]:
     """Build Home entries from the user's tracked albums (AlbumTracker)."""
-    from app.models import AlbumTracker  # noqa: PLC0415
+    from app.models import AlbumTracker
 
     status_filter = filters.get("status") or []
     trackers = AlbumTracker.objects.filter(user=user).select_related(
@@ -1602,7 +1602,7 @@ def _build_artist_home_entries(
     user, filters: dict, sort_by: str, direction: str
 ) -> list[HomeRowEntry]:
     """Build Home entries from the user's tracked artists (ArtistTracker)."""
-    from app.models import ArtistTracker  # noqa: PLC0415
+    from app.models import ArtistTracker
 
     status_filter = filters.get("status") or []
     trackers = (
@@ -2243,7 +2243,7 @@ def _custom_list_entries(user, row: HomeScreenRow) -> list[HomeRowEntry]:
     if custom_list.is_smart:
         # Render current membership now; refresh it in the background so the
         # write-heavy sync never runs inside a GET request.
-        from lists.tasks import schedule_smart_list_sync  # noqa: PLC0415
+        from lists.tasks import schedule_smart_list_sync
 
         schedule_smart_list_sync(custom_list)
         items = list(custom_list.get_smart_items_queryset())
@@ -2468,9 +2468,9 @@ def _cached_row_section(
     Empty rows are cached with a sentinel so their (potentially expensive)
     smart-rule scans are also skipped on warm loads.
     """
-    from django.core.cache import cache  # noqa: PLC0415
+    from django.core.cache import cache
 
-    from app import cache_utils  # noqa: PLC0415 - avoid circular import
+    from app import cache_utils
 
     cache_key = cache_utils.build_home_row_cache_key(user.id, row.id, items_limit)
     cached = None if refresh else cache.get(cache_key)

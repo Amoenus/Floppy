@@ -279,9 +279,9 @@ def _initial_metadata_items_queryset():
     library data. Treating those rows as generic "never fetched" metadata work
     causes avoidable provider storms and can monopolize SQLite during imports.
     """
-    from django.db.models import Exists, OuterRef  # noqa: PLC0415
+    from django.db.models import Exists, OuterRef
 
-    from integrations.models import CollectionSourceState  # noqa: PLC0415
+    from integrations.models import CollectionSourceState
 
     sonarr_episode_collection_state = CollectionSourceState.objects.filter(
         source="sonarr",
@@ -361,7 +361,7 @@ def _schedule_discover_refresh_for_movie_items(items: list[Item]) -> None:
 @shared_task(name="Resolve live playback image")
 def resolve_playback_image(user_id: int):
     """Resolve artwork for a cached live playback state in the background."""
-    from app import live_playback  # noqa: PLC0415
+    from app import live_playback
 
     live_playback.resolve_state_image(user_id)
 
@@ -374,11 +374,11 @@ def build_statistics_days_task(user_id: int, start_token: str, end_token: str):
     comparison period) has uncached days, so the rebuild happens here
     instead of blocking the page.
     """
-    from datetime import datetime  # noqa: PLC0415
+    from datetime import datetime
 
-    from django.contrib.auth import get_user_model  # noqa: PLC0415
+    from django.contrib.auth import get_user_model
 
-    from app import statistics_cache  # noqa: PLC0415
+    from app import statistics_cache
 
     user_model = get_user_model()
     try:

@@ -249,7 +249,7 @@ class ManualItemForm(forms.ModelForm):
 
         return cleaned_data
 
-    def save(self, commit=True):  # noqa: FBT002
+    def save(self, commit=True):
         """Save the form and handle manual media ID generation."""
         instance = super().save(commit=False)
         instance.source = Sources.MANUAL.value

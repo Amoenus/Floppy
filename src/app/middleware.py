@@ -283,7 +283,7 @@ class DiscoverWarmupMiddleware:
         if should_mark_interactive_request(request):
             try:
                 mark_interactive_request()
-            except Exception as error:  # noqa: BLE001
+            except Exception as error:
                 logger.debug(
                     "Skipping interactive-request marker for %s due to error: %s",
                     request.path,
@@ -292,7 +292,7 @@ class DiscoverWarmupMiddleware:
         if self._should_warm_discover(request):
             try:
                 discover_tab_cache.maybe_schedule_user_warmup(request.user)
-            except Exception as error:  # noqa: BLE001
+            except Exception as error:
                 logger.debug(
                     "Skipping Discover warmup for %s due to error: %s",
                     request.path,

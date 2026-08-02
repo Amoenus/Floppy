@@ -413,7 +413,7 @@ def series_has_anime_genre(
     if not isinstance(tv_data, dict):
         return False
 
-    from app import metadata_utils  # noqa: PLC0415
+    from app import metadata_utils
 
     genres = metadata_utils.extract_metadata_genres(tv_data)
     return metadata_utils.genre_list_has_name(

@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 def populate_episode_runtime_queue(batch_size: int = 20):
     """Drain the episode runtime queue and process seasons in small batches."""
     # Deferred to avoid circular import: tasks.py re-exports this module.
-    from app.tasks import (  # noqa: PLC0415
+    from app.tasks import (
         RUNTIME_BACKFILL_EPISODES_QUEUE_KEY,
         RUNTIME_BACKFILL_EPISODES_SCHEDULED_KEY,
         RUNTIME_BACKFILL_QUEUE_TTL,
@@ -53,14 +53,14 @@ def populate_episode_runtime_queue(batch_size: int = 20):
 @shared_task(name="app.tasks.populate_episode_runtime_data")
 def populate_episode_runtime_data(season_keys: list[str] | None = None):
     """Populate runtime data for episodes by syncing season metadata."""
-    import time  # noqa: PLC0415
+    import time
 
-    from app.models import Item, MediaTypes  # noqa: PLC0415
-    from app.providers import services as _services  # noqa: PLC0415
-    from app.statistics import parse_runtime_to_minutes  # noqa: PLC0415
+    from app.models import Item, MediaTypes
+    from app.providers import services as _services
+    from app.statistics import parse_runtime_to_minutes
 
     # Deferred to avoid circular import: tasks.py re-exports this module.
-    from app.tasks import (  # noqa: PLC0415
+    from app.tasks import (
         _episode_runtime_items_queryset,
         _normalize_season_keys,
         _record_backfill_failure,
@@ -166,7 +166,7 @@ def populate_episode_runtime_data(season_keys: list[str] | None = None):
 
             season_data = season_metadata[f"season/{season_number}"]
 
-            from app.providers import tmdb  # noqa: PLC0415
+            from app.providers import tmdb
 
             episodes_metadata = tmdb.process_episodes(season_data, [])
             if not episodes_metadata:

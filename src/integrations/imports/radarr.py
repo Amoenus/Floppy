@@ -52,7 +52,7 @@ class RadarrClient:
         return self._request("/api/v3/movie")
 
 
-def importer(identifier, user, mode):  # noqa: ARG001
+def importer(identifier, user, mode):
     """Import Radarr collection ownership."""
     return RadarrImporter(user).import_data()
 

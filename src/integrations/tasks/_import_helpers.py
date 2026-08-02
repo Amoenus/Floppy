@@ -1,3 +1,4 @@
+import contextlib
 from io import BytesIO
 
 from app.log_safety import exception_summary
@@ -5,7 +6,6 @@ from app.models import MediaTypes
 from app.templatetags import app_tags
 from integrations import plex as plex_api
 from integrations.imports import helpers
-import contextlib
 
 ERROR_TITLE = "\n\n\n Couldn't import the following media: \n\n"
 GOODREADS_IMPORT_TASK_NAME = "Import from Goodreads"

@@ -3,6 +3,7 @@
 Extracted from tasks.py. Re-exported from app.tasks for backward compatibility.
 """
 
+import contextlib
 import logging
 
 from celery import shared_task
@@ -25,7 +26,6 @@ from app.tasks_backfill_state import (
     _record_backfill_success,
     _schedule_metadata_statistics_refresh,
 )
-import contextlib
 
 logger = logging.getLogger(__name__)
 
@@ -53,11 +53,11 @@ _GENRE_BATCH_SIZE_DEFAULT = 1500
 
 
 def _genre_items_queryset():
-    from app.models import MetadataBackfillState  # noqa: PLC0415
-    from app.providers import tvdb  # noqa: PLC0415
+    from app.models import MetadataBackfillState
+    from app.providers import tvdb
 
     tvdb_enabled = tvdb.enabled()
-    from django.db.models import Q  # noqa: PLC0415
+    from django.db.models import Q
 
     genre_filters = Q(genres__isnull=True) | Q(genres=[])
     if tvdb_enabled:
@@ -97,7 +97,7 @@ def is_genre_backfill_reconcile_complete() -> bool:
 
 def _resolve_tmdb_tv_item_tvdb_id(item: Item, tmdb_metadata: dict | None) -> str | None:
     """Return a TVDB series ID for a TMDB TV item, persisting discovered mapping."""
-    from app.services import metadata_resolution  # noqa: PLC0415
+    from app.services import metadata_resolution
 
     if not (
         item.source == Sources.TMDB.value and item.media_type == MediaTypes.TV.value
@@ -131,9 +131,9 @@ def _resolve_tvdb_id_via_imdb(
     fetch returns 404. The existing upsert_provider_links call in the caller
     will persist the corrected ID automatically.
     """
-    import re  # noqa: PLC0415
+    import re
 
-    from app.providers import tvdb  # noqa: PLC0415
+    from app.providers import tvdb
 
     imdb_link = ((tmdb_metadata or {}).get("external_links") or {}).get("IMDb", "")
     if not imdb_link:
@@ -166,8 +166,8 @@ def _resolve_tvdb_id_via_imdb(
 
 def _tmdb_tv_item_is_tvdb_anime(item: Item, tmdb_metadata: dict | None) -> bool:
     """Return whether TVDB classifies a TMDB TV item as Anime."""
-    from app.providers import tvdb  # noqa: PLC0415
-    from app.services import metadata_resolution  # noqa: PLC0415
+    from app.providers import tvdb
+    from app.services import metadata_resolution
 
     if not tvdb.enabled():
         return False
@@ -176,7 +176,7 @@ def _tmdb_tv_item_is_tvdb_anime(item: Item, tmdb_metadata: dict | None) -> bool:
     if not tvdb_id:
         return False
 
-    from app.providers.services import ProviderAPIError  # noqa: PLC0415
+    from app.providers.services import ProviderAPIError
 
     tvdb_metadata_result = None
     with contextlib.suppress(ProviderAPIError):
@@ -195,7 +195,7 @@ def _tmdb_tv_item_is_tvdb_anime(item: Item, tmdb_metadata: dict | None) -> bool:
                 tvdb_id,
                 Sources.TVDB.value,
             )
-            from app.providers import tmdb as tmdb_provider  # noqa: PLC0415
+            from app.providers import tmdb as tmdb_provider
 
             tmdb_provider.set_tvdb_id_override(item.media_id, healed_id)
 
@@ -213,7 +213,7 @@ def _tmdb_tv_item_is_tvdb_anime(item: Item, tmdb_metadata: dict | None) -> bool:
 
 
 def _populate_genres_for_items(items, delay_seconds):
-    from app.providers import tvdb  # noqa: PLC0415
+    from app.providers import tvdb
 
     updated_count = 0
     error_count = 0
@@ -284,7 +284,7 @@ def _populate_genres_for_items(items, delay_seconds):
             logger.info("Updated genres for %s: %s", item.title, item.genres)
 
             if delay_seconds > 0:
-                import time  # noqa: PLC0415
+                import time
 
                 time.sleep(delay_seconds)
         except Exception as exc:
@@ -322,7 +322,7 @@ def populate_genres_for_item_sync(item: Item, metadata: dict) -> None:
     the corrected genres are persisted before the page reloads. Errors are caught
     and logged rather than raised so they don't abort the surrounding sync.
     """
-    from app.providers import tvdb  # noqa: PLC0415
+    from app.providers import tvdb
 
     source_genres = metadata_utils.extract_metadata_genres(metadata)
     incoming_genres = source_genres or metadata_utils.normalize_genres(item.genres)

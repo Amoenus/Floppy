@@ -32,7 +32,7 @@ class ApiJsonErrorMiddleware:
         """Safely extract the request path."""
         try:
             return request.path or ""
-        except Exception:  # noqa: BLE001
+        except Exception:
             return ""
 
     def _handle_template_response(self, response, path):
@@ -60,7 +60,7 @@ class ApiJsonErrorMiddleware:
         if hasattr(response, "get"):
             try:
                 return response.get("Content-Type", "")
-            except Exception:  # noqa: BLE001
+            except Exception:
                 return getattr(response, "content_type", "")
 
         return getattr(response, "content_type", "")
@@ -93,7 +93,7 @@ class ApiJsonErrorMiddleware:
         """Extract debug detail from response content."""
         try:
             return response.content.decode(errors="ignore")
-        except Exception:  # noqa: BLE001
+        except Exception:
             return None
 
     def process_exception(self, request, exception):

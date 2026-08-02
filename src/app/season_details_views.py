@@ -227,7 +227,7 @@ def season_details(
                 current_instance.item,
                 season_metadata.get("image"),
             )
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.warning(
                 "Skipping season image refresh for %s due to error",
                 request.path,
@@ -454,7 +454,7 @@ def season_details(
                 clear_media_list_cache_for_user(user_id)
 
         # Trigger background Trakt episode ratings fetch if not yet populated
-        from app.providers import trakt as _trakt_provider  # noqa: PLC0415
+        from app.providers import trakt as _trakt_provider
 
         if (
             source in {Sources.TMDB.value, Sources.TVDB.value}

@@ -1,4 +1,5 @@
 import calendar
+import contextlib
 import logging
 import time
 from collections import defaultdict
@@ -25,7 +26,6 @@ from app import (
 )
 from app import statistics as stats
 from app.models import BasicMedia, MediaTypes
-import contextlib
 
 logger = logging.getLogger(__name__)
 

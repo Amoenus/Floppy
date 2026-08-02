@@ -1,6 +1,6 @@
 """Redis-backed tab cache for Discover page payloads."""
 
-# ruff: noqa: BLE001, PLC0415, TRY300
+# ruff: noqa: TRY300
 
 from __future__ import annotations
 

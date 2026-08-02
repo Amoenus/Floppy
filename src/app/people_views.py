@@ -4,7 +4,11 @@ from django.http import HttpResponseBadRequest
 from django.shortcuts import get_object_or_404, render
 from django.views.decorators.http import require_GET
 
-from app import credits, helpers, statistics_cache  # noqa: A004  # app.credits module, not the site builtin
+from app import (
+    credits,  # noqa: A004  # app.credits module, not the site builtin
+    helpers,
+    statistics_cache,
+)
 from app.media_list_views import build_filter_data_from_items
 from app.models import (
     Book,

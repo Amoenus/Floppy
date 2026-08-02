@@ -835,10 +835,10 @@ def _queue_stale_refresh(
         return
 
     try:
-        from app.tasks import refresh_discover_rows  # noqa: PLC0415
+        from app.tasks import refresh_discover_rows
 
         refresh_discover_rows.delay(user_id, media_type, [row_key], show_more=show_more)
-    except Exception as error:  # noqa: BLE001
+    except Exception as error:
         logger.warning(
             "discover_refresh_enqueue_failed user_id=%s media_type=%s row_key=%s error=%s",
             user_id,

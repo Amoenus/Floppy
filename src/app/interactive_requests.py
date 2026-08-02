@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from django.core.cache import cache
 from typing import TYPE_CHECKING
+
+from django.core.cache import cache
 
 if TYPE_CHECKING:
     from django.http import HttpRequest

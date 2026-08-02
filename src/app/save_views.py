@@ -753,7 +753,7 @@ def episode_history_poll(request, season_id):
 @require_POST
 def episode_bulk_save(request):
     """Dispatch a bulk episode play range as a background task and return immediately."""
-    from app.tasks import bulk_episode_plays_task  # noqa: PLC0415
+    from app.tasks import bulk_episode_plays_task
 
     media_id = request.POST["media_id"]
     source = request.POST["source"]

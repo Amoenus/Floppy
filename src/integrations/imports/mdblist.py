@@ -293,7 +293,7 @@ class MDBListImporter(TraktMetadataResolverMixin):
                 self.process_watched_movie(entry)
             except MediaImportError:
                 raise
-            except Exception:  # noqa: BLE001
+            except Exception:
                 self._entry_error_warning(entry, "watched movie")
 
         for entry in data.get("shows", []):
@@ -301,7 +301,7 @@ class MDBListImporter(TraktMetadataResolverMixin):
                 self.process_watched_show(entry)
             except MediaImportError:
                 raise
-            except Exception:  # noqa: BLE001
+            except Exception:
                 self._entry_error_warning(entry, "watched show")
 
         for entry in data.get("seasons", []):
@@ -309,7 +309,7 @@ class MDBListImporter(TraktMetadataResolverMixin):
                 self.process_watched_season(entry)
             except MediaImportError:
                 raise
-            except Exception:  # noqa: BLE001
+            except Exception:
                 self._entry_error_warning(entry, "watched season")
 
         for entry in data.get("episodes", []):
@@ -324,7 +324,7 @@ class MDBListImporter(TraktMetadataResolverMixin):
                 )
             except MediaImportError:
                 raise
-            except Exception:  # noqa: BLE001
+            except Exception:
                 self._entry_error_warning(entry, "watched episode")
 
     def process_watched_movie(self, entry):
@@ -631,7 +631,7 @@ class MDBListImporter(TraktMetadataResolverMixin):
                 self._process_watchlist_entry(entry)
             except MediaImportError:
                 raise
-            except Exception:  # noqa: BLE001
+            except Exception:
                 self._entry_error_warning(entry, "watchlist")
 
     def _process_watchlist_entry(self, entry):
@@ -695,7 +695,7 @@ class MDBListImporter(TraktMetadataResolverMixin):
                     handler(entry)
                 except MediaImportError:
                     raise
-                except Exception:  # noqa: BLE001
+                except Exception:
                     self._entry_error_warning(entry, "rating")
 
     def _process_movie_rating(self, entry):
@@ -934,5 +934,5 @@ class MDBListImporter(TraktMetadataResolverMixin):
                         ),
                         metadata=None,
                     )
-                except Exception:  # noqa: BLE001
+                except Exception:
                     self._entry_error_warning(entry, "collection")

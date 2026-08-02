@@ -125,7 +125,7 @@ def _get_season_metadata_with_episodes(media, season, logger):
         episodes_in_db = season.episodes.all()
 
         # Process episodes through TMDB to get runtime data
-        from app.providers import tmdb  # noqa: PLC0415
+        from app.providers import tmdb
 
         season_metadata["episodes"] = tmdb.process_episodes(
             season_metadata,
@@ -307,7 +307,7 @@ def _get_media_runtime_from_cache(media, logger, context=""):
 
     # Check database directly to see if another task just saved runtime
     # This helps prevent race conditions when multiple tasks run in parallel
-    from app.models import Item  # noqa: PLC0415
+    from app.models import Item
 
     db_runtime = (
         Item.objects.filter(id=media.item.id)
@@ -544,7 +544,7 @@ def calculate_minutes_per_media_type(user_media, start_date, end_date, user=None
 
         if media_type == MediaTypes.PODCAST.value:
             # Podcast: sum runtime from completed plays in history records
-            from app.stats_podcast import (  # noqa: PLC0415
+            from app.stats_podcast import (
                 _collect_podcast_play_data,
                 _get_podcast_history_data,
             )

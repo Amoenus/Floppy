@@ -128,7 +128,7 @@ class StorytellerClient:
             return None
 
 
-def importer(identifier, user, mode):  # noqa: ARG001
+def importer(identifier, user, mode):
     """Import Storyteller reading progress for a user."""
     return StorytellerImporter(user).import_data()
 
@@ -565,7 +565,7 @@ class StorytellerImporter:
         """
         try:
             response = services.search(MediaTypes.BOOK.value, query, 1, provider_source)
-        except Exception as error:  # noqa: BLE001
+        except Exception as error:
             logger.debug(
                 "Storyteller metadata search failed provider=%s error=%s",
                 provider_source,
@@ -586,7 +586,7 @@ class StorytellerImporter:
                     str(media_id),
                     provider_source,
                 )
-            except Exception as error:  # noqa: BLE001
+            except Exception as error:
                 logger.debug(
                     "Storyteller metadata fetch failed provider=%s error=%s",
                     provider_source,

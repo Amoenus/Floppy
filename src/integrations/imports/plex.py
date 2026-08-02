@@ -23,13 +23,14 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # plexapi does not emit InsecureRequestWarning at import time.
 # ruff: noqa: E402
 
+import contextlib
+
 from integrations import episode_remap
 from integrations import plex as plex_api
 from integrations.imports import helpers
 from integrations.imports.helpers import MediaImportError, MediaImportUnexpectedError
 from integrations.webhooks import anime_mappings
 from integrations.webhooks.plex import PlexWebhookProcessor
-import contextlib
 
 logger = logging.getLogger(__name__)
 

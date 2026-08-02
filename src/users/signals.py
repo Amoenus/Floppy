@@ -36,7 +36,7 @@ def _demo_user_schema_ready():
 
 
 @receiver(user_logged_in)
-def apply_session_duration(sender, request, user, **kwargs):  # noqa: ARG001
+def apply_session_duration(sender, request, user, **kwargs):
     """Set session expiry to match the user's session_duration preference."""
     duration = getattr(user, "session_duration", None)
     if duration is not None:
@@ -44,7 +44,7 @@ def apply_session_duration(sender, request, user, **kwargs):  # noqa: ARG001
 
 
 @receiver(post_migrate)
-def ensure_demo_user_after_migrate(sender, **kwargs):  # noqa: ARG001
+def ensure_demo_user_after_migrate(sender, **kwargs):
     """Provision the configured demo account after migrations."""
     if getattr(settings, "TESTING", False):
         return

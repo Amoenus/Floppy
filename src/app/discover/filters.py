@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from django.apps import apps
 
 from app.models import (
@@ -11,7 +13,6 @@ from app.models import (
     MediaTypes,
     Status,
 )
-from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from app.discover.schemas import CandidateItem

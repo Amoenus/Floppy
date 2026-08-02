@@ -120,7 +120,7 @@ class Command(BaseCommand):
                         f"title={item.title}"
                     ),
                 )
-            except Exception as error:  # noqa: BLE001
+            except Exception as error:
                 failed += 1
                 _record_backfill_failure(
                     item,

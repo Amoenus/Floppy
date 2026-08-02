@@ -65,7 +65,7 @@ class SonarrClient:
         return self._request("/api/v3/episode", params={"seriesId": series_id})
 
 
-def importer(identifier, user, mode):  # noqa: ARG001
+def importer(identifier, user, mode):
     """Import Sonarr collection ownership."""
     return SonarrImporter(user).import_data()
 

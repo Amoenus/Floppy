@@ -401,7 +401,7 @@ def _run_comparison_studio_delta(
             schedule_missing_backfill=False,
             media_type=media_type,
         )
-    except Exception as exc:  # noqa: BLE001 - best effort comparison
+    except Exception as exc:
         logger.debug(
             "studio_footprint_comparison_failed user_id=%s error=%s",
             user.id,

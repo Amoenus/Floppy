@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from typing import TYPE_CHECKING
 
 from app.discover.movie_comfort import (
     MOVIE_COMFORT_FAMILY_WEIGHTS,
@@ -33,7 +34,6 @@ from app.discover.service_helpers import (
     _holiday_seasonal_adjustment,
     _is_holiday_window,
 )
-from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from app.discover.schemas import CandidateItem

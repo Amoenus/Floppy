@@ -14,6 +14,38 @@ ignore = [
     # comments and docstring prose. W505 (via max-doc-length) is the same
     # concession for documentation, which the formatter does not reflow.
     "E501",
+    # --- Remaining backlog, suppressed deliberately. Each entry is a policy
+    # --- decision, not an oversight; see the PR description for the numbers.
+    # Deferred imports. Many exist to break circular-import cycles between the
+    # statistics/cache/task modules; hoisting them risks breaking app startup.
+    "PLC0415",
+    # Legacy complexity. Hundreds of functions exceed the default thresholds,
+    # the worst by a wide margin. Refactoring them is a project in its own
+    # right and no current test guards those paths.
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0915",
+    # Broad excepts at provider and network boundaries. Narrowing each one needs
+    # knowledge of what a given provider client can raise; several handlers
+    # classify the error by inspecting it rather than by type.
+    "BLE001",
+    # Unused arguments on framework contract signatures: Django management
+    # command handle(), webhook processor overrides, signal receivers. The names
+    # are fixed by the caller, so renaming them would break the contract.
+    "ARG001",
+    "ARG002",
+    "ARG005",
+    # Boolean positional arguments. Making these keyword-only is an API change
+    # across call sites in templates and tasks, not a lint fix.
+    "FBT001",
+    "FBT002",
+    "FBT003",
+    # null=True on text fields. Fixing means a schema migration, a data
+    # migration and auditing every __isnull filter that depends on it.
+    "DJ001",
+    # TODO markers are deliberate here; TD002/3/4 are already ignored above.
+    "FIX002",
 ]
 
 [tool.ruff.lint.pydocstyle]

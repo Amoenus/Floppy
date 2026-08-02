@@ -60,7 +60,9 @@ def _next_credits_backfill_item_ids(batch_size: int, scan_multiplier: int):
 
 
 def _populate_credits_for_items(items, delay_seconds):
-    from app import credits  # noqa: PLC0415, A004  # app.credits module, not the site builtin
+    from app import (
+        credits,  # noqa: A004  # app.credits module, not the site builtin
+    )
 
     updated_count = 0
     error_count = 0
@@ -130,7 +132,7 @@ def _populate_credits_for_items(items, delay_seconds):
             # delete/create would otherwise schedule its own Discover rebuild);
             # _schedule_metadata_statistics_refresh below handles the follow-up
             # invalidation for the whole batch instead.
-            from app.signals import suppress_media_change_side_effects  # noqa: PLC0415
+            from app.signals import suppress_media_change_side_effects
 
             with suppress_media_change_side_effects():
                 credits.sync_item_credits_from_metadata(item, metadata)
@@ -143,7 +145,7 @@ def _populate_credits_for_items(items, delay_seconds):
             updated_items.append(item)
 
             if delay_seconds > 0:
-                import time  # noqa: PLC0415
+                import time
 
                 time.sleep(delay_seconds)
         except Exception as exc:

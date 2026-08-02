@@ -34,10 +34,10 @@ def bulk_episode_plays_task(
     library_media_type: str | None = None,
 ):
     """Apply a bulk episode play range in the background after the modal has closed."""
-    from datetime import date  # noqa: PLC0415
+    from datetime import date
 
-    from app.models import PodcastShow  # noqa: PLC0415
-    from app.services import bulk_episode_tracking, metadata_resolution  # noqa: PLC0415
+    from app.models import PodcastShow
+    from app.services import bulk_episode_tracking, metadata_resolution
 
     logger.info(
         "bulk_episode_plays_task_start task_id=%s user_id=%d media_id=%s",
@@ -166,10 +166,10 @@ def bulk_music_plays_task(
     end_date_str: str | None,
 ):
     """Apply a bulk music play range in the background after the modal has closed."""
-    from datetime import date  # noqa: PLC0415
+    from datetime import date
 
-    from app.models import Album, Artist  # noqa: PLC0415
-    from app.services import bulk_music_tracking  # noqa: PLC0415
+    from app.models import Album, Artist
+    from app.services import bulk_music_tracking
 
     logger.info(
         "bulk_music_plays_task_start task_id=%s user_id=%d context_kind=%s context_id=%d",

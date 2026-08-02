@@ -1,11 +1,11 @@
 import logging
 import os
-from pathlib import Path
 import re
 import sys
 import time
 from difflib import SequenceMatcher
 from http import HTTPStatus
+from pathlib import Path
 
 import requests
 from defusedxml import ElementTree
@@ -64,7 +64,7 @@ def _audiobookshelf_book(media_id):
     Audiobookshelf library item IDs are not Open Library IDs, so attempting to
     resolve them via Open Library causes 404s and can break details pages.
     """
-    from app.models import Item  # noqa: PLC0415
+    from app.models import Item
 
     item = Item.objects.filter(
         media_id=media_id,
@@ -114,7 +114,7 @@ def _storyteller_book(media_id):
     synthetic media_id, so resolve them from the local Item instead of an
     external API (which would 404).
     """
-    from app.models import Item  # noqa: PLC0415
+    from app.models import Item
 
     item = Item.objects.filter(
         media_id=media_id,
@@ -160,7 +160,7 @@ def _storyteller_book(media_id):
 def get_redis_pool():
     """Return a Redis connection pool."""
     if settings.TESTING:
-        import fakeredis  # noqa: PLC0415
+        import fakeredis
 
         return fakeredis.FakeRedis().connection_pool
     return ConnectionPool.from_url(settings.REDIS_URL)
@@ -805,7 +805,7 @@ def _extract_isbns(metadata):
 
 def _resolve_hardcover_isbn_search(query, page):
     """Resolve ISBN queries against Hardcover using Open Library metadata."""
-    from app import helpers  # noqa: PLC0415
+    from app import helpers
 
     isbn = _normalize_isbn_candidate(query)
     if not isbn:
@@ -813,7 +813,7 @@ def _resolve_hardcover_isbn_search(query, page):
 
     try:
         ol_results = openlibrary.search(isbn, 1).get("results", [])
-    except Exception:  # noqa: BLE001, S112  # best-effort provider lookup
+    except Exception:  # best-effort provider lookup
         return None
 
     best_fallback_response = None
@@ -826,7 +826,7 @@ def _resolve_hardcover_isbn_search(query, page):
         if media_id:
             try:
                 ol_metadata = openlibrary.book(str(media_id))
-            except Exception:  # noqa: BLE001, S112  # best-effort provider lookup
+            except Exception:  # best-effort provider lookup
                 ol_metadata = None
             else:
                 title = str(ol_metadata.get("title") or title).strip()
@@ -850,7 +850,7 @@ def _resolve_hardcover_isbn_search(query, page):
 
             try:
                 hardcover_results = hardcover.search(normalized_query, page)
-            except Exception:  # noqa: BLE001, S112  # best-effort provider lookup
+            except Exception:  # noqa: S112  # best-effort provider lookup
                 continue
 
             if not best_fallback_response and hardcover_results.get("results"):
@@ -863,7 +863,7 @@ def _resolve_hardcover_isbn_search(query, page):
 
                 try:
                     hardcover_metadata = hardcover.book(media_id)
-                except Exception:  # noqa: BLE001, S112  # best-effort provider lookup
+                except Exception:  # noqa: S112  # best-effort provider lookup
                     continue
 
                 hardcover_isbns = _extract_isbns(hardcover_metadata)
@@ -901,7 +901,7 @@ def _resolve_hardcover_isbn_search(query, page):
     return best_fallback_response
 
 
-def _lookup_by_numeric_id(media_type, query, source):  # noqa: PLR0911
+def _lookup_by_numeric_id(media_type, query, source):
     """Return full metadata for a media item identified by a numeric provider ID."""
     n = int(query)
     tv_types = (MediaTypes.TV.value, MediaTypes.SEASON.value, MediaTypes.EPISODE.value)
@@ -941,7 +941,7 @@ def search_by_id(media_type, query, source=None):
     an ID pattern and the provider lookup succeeds, or ``None`` otherwise
     (triggering the normal text-search fallback).
     """
-    from app import helpers  # noqa: PLC0415
+    from app import helpers
 
     query = query.strip()
     source = _resolve_search_source(media_type, source)
@@ -963,7 +963,7 @@ def search_by_id(media_type, query, source=None):
             metadata = openlibrary.book(query)
         elif _UUID_RE.match(query) and media_type == MediaTypes.MUSIC.value:
             metadata = musicbrainz.recording(query)
-    except Exception:  # noqa: BLE001, S112  # best-effort provider lookup
+    except Exception:  # best-effort provider lookup
         return None
 
     if not metadata or not metadata.get("title"):

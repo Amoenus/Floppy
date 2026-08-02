@@ -195,7 +195,7 @@ def _build_person_talent_context(
             movie_play_counts[item_id] += 1
             movie_watch_minutes[item_id] += _safe_runtime_minutes(runtime_minutes)
 
-    from app.stats_time import _calculate_game_time_in_range  # noqa: PLC0415
+    from app.stats_time import _calculate_game_time_in_range
 
     games_qs = Game.objects.filter(
         user=user,
@@ -627,7 +627,7 @@ def _aggregate_top_talent(
             Q(end_date__lte=end_date)
             | (Q(end_date__isnull=True) & Q(start_date__lte=end_date)),
         )
-    from app.stats_time import _calculate_game_time_in_range  # noqa: PLC0415
+    from app.stats_time import _calculate_game_time_in_range
 
     for game in games_qs.select_related("item").iterator():
         if not game.item_id:

@@ -997,7 +997,7 @@ def _schedule_missing_day_builds(user, day_list, start_date, end_date) -> None:
         return
 
     try:
-        from app.tasks import build_statistics_days_task  # noqa: PLC0415
+        from app.tasks import build_statistics_days_task
 
         build_statistics_days_task.apply_async(
             args=[user.id, start_token, end_token],

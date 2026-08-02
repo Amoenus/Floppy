@@ -53,7 +53,7 @@ class GenericScrobbleProcessor(BaseWebhookProcessor):
             return
         self._process_media(payload, user, ids)
 
-    def _is_supported_event(self, event_type):  # noqa: ARG002
+    def _is_supported_event(self, event_type):
         return True
 
     def _is_played(self, payload):

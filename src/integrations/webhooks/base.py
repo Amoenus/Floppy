@@ -402,7 +402,7 @@ class BaseWebhookProcessor:
         Checked before creating a new TMDB-sourced item so that users who
         track a show via TVDB don't end up with a duplicate entry.
         """
-        from django.db.models import Q  # noqa: PLC0415
+        from django.db.models import Q
 
         tvdb_id = ids.get("tvdb_id")
 
@@ -825,7 +825,7 @@ class BaseWebhookProcessor:
 
     def _handle_movie(self, media_id, payload, user):
         """Handle movie playback event."""
-        from app.services import metadata_resolution  # noqa: PLC0415
+        from app.services import metadata_resolution
 
         if self._is_unplayed(payload):
             deleted, _ = app.models.Movie.objects.filter(
@@ -1146,7 +1146,7 @@ class BaseWebhookProcessor:
         Returns:
             tuple: (source, media_id, tv_metadata, season_metadata)
         """
-        from app.services import metadata_resolution  # noqa: PLC0415
+        from app.services import metadata_resolution
 
         show_tvdb_id = tv_metadata.get("tvdb_id")
         preferred_source = metadata_resolution.metadata_default_source(
@@ -1191,7 +1191,7 @@ class BaseWebhookProcessor:
         user,
     ):
         """Handle TV episode playback event."""
-        from app.services import metadata_resolution  # noqa: PLC0415
+        from app.services import metadata_resolution
 
         if self._is_unplayed(payload):
             deleted, _ = app.models.Episode.objects.filter(
@@ -1558,7 +1558,7 @@ class BaseWebhookProcessor:
 
     def _handle_anime(self, media_id, episode_number, payload, user):
         """Handle anime playback event."""
-        from app.services import metadata_resolution  # noqa: PLC0415
+        from app.services import metadata_resolution
 
         anime_metadata = app.providers.mal.anime(media_id)
         if not self._is_played(payload):

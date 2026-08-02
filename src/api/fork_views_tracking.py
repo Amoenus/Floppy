@@ -106,7 +106,7 @@ class MediaEpisodeWatchView(drf_views.APIView):
                 int(season_number),
                 library_media_type=library_media_type,
             )
-        except Exception as e:  # noqa: BLE001 — provider metadata failures
+        except Exception as e:
             return Response(
                 {"detail": "Could not resolve season.", "errors": str(e)},
                 status=HTTP.NOT_FOUND,
@@ -193,7 +193,7 @@ class MediaEpisodeDropView(drf_views.APIView):
                 int(season_number),
                 library_media_type=library_media_type,
             )
-        except Exception as e:  # noqa: BLE001 — provider metadata failures
+        except Exception as e:
             return Response(
                 {"detail": "Could not resolve season.", "errors": str(e)},
                 status=HTTP.NOT_FOUND,

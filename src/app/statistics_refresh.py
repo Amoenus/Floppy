@@ -500,7 +500,7 @@ def _enqueue_collected_backfills(user_id: int, collector: dict) -> None:
     if not any(collector.values()):
         return
     try:
-        from app.tasks import (  # noqa: PLC0415 - deferred to avoid circular import
+        from app.tasks import (
             enqueue_credits_backfill_items,
             enqueue_episode_runtime_backfill,
             enqueue_genre_backfill_items,

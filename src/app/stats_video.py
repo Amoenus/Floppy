@@ -93,7 +93,7 @@ def _collect_movie_play_data(movie_queryset, start_date, end_date):
     if movie_queryset is None:
         return datetimes, play_details
 
-    import logging  # noqa: PLC0415
+    import logging
 
     _logger = logging.getLogger(__name__)
 
@@ -132,7 +132,7 @@ def _collect_tv_play_data(tv_queryset, start_date, end_date):
     if tv_queryset is None:
         return datetimes, play_details
 
-    import logging  # noqa: PLC0415
+    import logging
 
     _logger = logging.getLogger(__name__)
 
@@ -182,8 +182,8 @@ def _compute_movie_tv_top_genres(play_details, limit=STATISTICS_TOP_N):
     Returns:
         list of genre dicts with name, minutes, plays, formatted_duration
     """
-    from app.helpers import minutes_to_hhmm  # noqa: PLC0415
-    from app.models import Episode  # noqa: PLC0415
+    from app.helpers import minutes_to_hhmm
+    from app.models import Episode
 
     genre_stats = defaultdict(lambda: {"minutes": 0, "plays": 0, "name": ""})
 
@@ -229,7 +229,7 @@ def _compute_movie_tv_top_genres(play_details, limit=STATISTICS_TOP_N):
                         if genres_raw:
                             genres = _coerce_genre_list(genres_raw)
             except (ValueError, TypeError, KeyError, AttributeError) as e:
-                import logging  # noqa: PLC0415
+                import logging
 
                 _g_logger = logging.getLogger(__name__)
                 _g_logger.debug(
@@ -269,8 +269,8 @@ def _compute_movie_tv_top_decades(play_details, limit=STATISTICS_TOP_N):
     Returns:
         list of decade dicts with label, minutes, plays, formatted_duration
     """
-    from app.helpers import minutes_to_hhmm  # noqa: PLC0415
-    from app.models import Episode  # noqa: PLC0415
+    from app.helpers import minutes_to_hhmm
+    from app.models import Episode
 
     decade_stats = defaultdict(lambda: {"minutes": 0, "plays": 0, "label": ""})
 
@@ -423,7 +423,7 @@ def get_anime_consumption_stats(
     user_media, start_date, end_date, minutes_per_type=None
 ):
     """Return aggregate metrics and chart data for anime (grouped episode-based + standalone)."""
-    import logging as _logging  # noqa: PLC0415
+    import logging as _logging
 
     anime_queryset = (user_media or {}).get(MediaTypes.ANIME.value)
 

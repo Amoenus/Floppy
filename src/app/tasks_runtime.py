@@ -73,7 +73,7 @@ def _reset_stale_give_up_episode_runtimes():
     Episodes aired within the last 30 days (or with no known air date) are eligible.
     Items must have been last attempted more than 7 days ago to avoid immediate re-triggering.
     """
-    from datetime import timedelta  # noqa: PLC0415
+    from datetime import timedelta
 
     now = timezone.now()
     attempt_cutoff = now - timedelta(days=7)
@@ -213,7 +213,7 @@ def enqueue_episode_runtime_backfill(season_keys, countdown=10):
         logger.debug(
             "Episode runtime backfill queue unavailable: %s", exception_summary(exc)
         )
-        from app.tasks_episode import populate_episode_runtime_data  # noqa: PLC0415
+        from app.tasks_episode import populate_episode_runtime_data
 
         populate_episode_runtime_data.apply_async(
             kwargs={"season_keys": normalized}, countdown=countdown
@@ -223,7 +223,7 @@ def enqueue_episode_runtime_backfill(season_keys, countdown=10):
 
 
 def _populate_runtime_for_items(items, delay_seconds):
-    from app.statistics import parse_runtime_to_minutes  # noqa: PLC0415
+    from app.statistics import parse_runtime_to_minutes
 
     updated_count = 0
     error_count = 0
@@ -310,7 +310,7 @@ def _populate_runtime_for_items(items, delay_seconds):
             )
 
             if delay_seconds > 0:
-                import time  # noqa: PLC0415
+                import time
 
                 time.sleep(delay_seconds)
         except Exception as exc:
@@ -439,7 +439,7 @@ def populate_runtime_backfill_queue(batch_size: int = 50, delay_seconds: float =
 def populate_runtime_data_continuous():
     """Populate runtime data for ALL items that don't have it (startup task)."""
     # Deferred to avoid circular import: tasks_episode.py re-exports from app.tasks.
-    from app.tasks_episode import populate_episode_runtime_data  # noqa: PLC0415
+    from app.tasks_episode import populate_episode_runtime_data
 
     # Check if runtime population has already been completed recently (within last hour)
     cache_key = "runtime_population_completed"

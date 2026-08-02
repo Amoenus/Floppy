@@ -1489,7 +1489,7 @@ def storyteller_connect(request):
     except StorytellerClientError as exc:
         messages.error(request, str(exc))
         return redirect("import_data")
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         messages.error(request, f"Failed to reach Storyteller: {exc}")
         return redirect("import_data")
 
@@ -1535,7 +1535,7 @@ def storyteller_poll(request):
     client = StorytellerClient(pending["server_url"])
     try:
         data, status_code = client.poll_device_token(pending["device_code"])
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return JsonResponse({"status": "pending", "detail": str(exc)})
 
     access_token = data.get("access_token") if isinstance(data, dict) else None
@@ -2121,7 +2121,7 @@ def koito_connect(request):
     except koito_api.KoitoAuthError as exc:
         messages.error(request, str(exc))
         return redirect("import_data")
-    except Exception as exc:  # noqa: BLE001 - surface any connection failure
+    except Exception as exc:
         messages.error(request, f"Failed to connect to Koito: {exc}")
         return redirect("import_data")
 
@@ -2694,7 +2694,7 @@ def _stremio_addon_response(payload, status=200):
 @login_not_required
 @csrf_exempt
 @require_GET
-def stremio_addon_manifest(request, token):  # noqa: ARG001
+def stremio_addon_manifest(request, token):
     """Serve the Stremio addon manifest for a user's install URL."""
     try:
         users.models.User.objects.get(token=token)
@@ -2708,7 +2708,7 @@ def stremio_addon_manifest(request, token):  # noqa: ARG001
 @login_not_required
 @csrf_exempt
 @require_GET
-def stremio_addon_subtitles(request, token, media_type, media_id):  # noqa: ARG001
+def stremio_addon_subtitles(request, token, media_type, media_id):
     """Record a playback-start scrobble from a Stremio subtitles request."""
     from django.core.cache import cache
 

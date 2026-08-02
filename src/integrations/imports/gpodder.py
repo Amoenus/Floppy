@@ -160,7 +160,7 @@ class GPodderImporter:
             try:
                 rss_metadata = podcast_rss.fetch_show_metadata_from_rss(raw_feed_url)
                 rss_episodes = podcast_rss.fetch_episodes_from_rss(raw_feed_url)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 self.warnings.append(
                     f"Failed to refresh RSS feed {raw_feed_url}: {exc}"
                 )

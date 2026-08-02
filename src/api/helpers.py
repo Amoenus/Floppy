@@ -236,7 +236,7 @@ def fetch_media_list(user, media_type, status, sort_filter, search):
         if status and status != MediaStatusChoices.ALL:
             try:
                 qs = qs.filter(related_season__status=status)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 return []
         if search:
             qs = qs.filter(item__title__icontains=search)

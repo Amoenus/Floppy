@@ -2,6 +2,7 @@
 # This module hand-writes the case-insensitive JSON-array match the ORM cannot
 # express across postgres and sqlite. Every identifier goes through
 # connection.ops.quote_name() and the only user value is bound via params.
+import contextlib
 import logging
 from collections import defaultdict
 from datetime import timedelta
@@ -25,7 +26,6 @@ import events
 import users
 from app.models.choices import MediaTypes, Sources, Status
 from app.models.item import Item
-import contextlib
 
 logger = logging.getLogger(__name__)
 
@@ -1404,7 +1404,7 @@ class MediaManager(models.Manager):
             MediaTypes.MANGA.value,
             MediaTypes.COMIC.value,
         }:
-            from app import custom_metadata  # noqa: PLC0415
+            from app import custom_metadata
 
             manual_item_ids = set()
             for media in media_list:
@@ -1536,7 +1536,7 @@ class MediaManager(models.Manager):
             else:
                 tv.max_progress = None
                 if tv.item.source == Sources.MANUAL.value:
-                    from app import custom_metadata  # noqa: PLC0415
+                    from app import custom_metadata
 
                     details = custom_metadata.build_manual_detail_payload(tv.item)
                     tv.max_progress = custom_metadata.manual_max_progress(
@@ -1616,7 +1616,7 @@ class MediaManager(models.Manager):
                 season.max_progress is None
                 and season.item.source == Sources.MANUAL.value
             ):
-                from app import custom_metadata  # noqa: PLC0415
+                from app import custom_metadata
 
                 details = custom_metadata.build_manual_detail_payload(season.item)
                 season.max_progress = custom_metadata.manual_max_progress(

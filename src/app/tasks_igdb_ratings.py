@@ -35,7 +35,7 @@ IGDB_RATINGS_BACKFILL_ITEMS_SCHEDULED_KEY = "igdb_ratings_backfill_items_schedul
 
 
 def _igdb_rating_items_queryset():
-    from app.models import MetadataBackfillState  # noqa: PLC0415
+    from app.models import MetadataBackfillState
 
     queryset = Item.objects.filter(
         source=Sources.IGDB.value,

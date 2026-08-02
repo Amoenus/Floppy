@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from app.discover import tab_cache
 from app.discover.artwork import (
     PROVIDER_ARTWORK_HYDRATION_ROW_KEYS,
@@ -15,7 +17,6 @@ from app.discover.trakt_candidates import (
     ROW_CACHE_SCHEMA_META_KEY,
 )
 from app.models import MediaTypes
-from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from app.discover.schemas import RowDefinition, RowResult

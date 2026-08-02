@@ -47,7 +47,7 @@ def _safe_request_value(
         value = getattr(request, attr_name)
         if callable(value):
             value = value()
-    except Exception:  # noqa: BLE001
+    except Exception:
         return default
     return _display_value(value, default=default)
 

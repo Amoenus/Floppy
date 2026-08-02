@@ -179,7 +179,7 @@ def _add_user_day_key(user_day_keys, user_id, day_key):
 
 
 def _collect_backfill_day_keys(items, field: str):
-    from app.models import (  # noqa: PLC0415
+    from app.models import (
         Anime,
         Book,
         Comic,
@@ -349,7 +349,7 @@ def _collect_backfill_day_keys(items, field: str):
 def _schedule_metadata_statistics_refresh(items, field: str, reason: str):
     if not items:
         return
-    from app import statistics_cache  # noqa: PLC0415
+    from app import statistics_cache
 
     user_day_keys = _collect_backfill_day_keys(items, field)
     for user_id, day_keys in user_day_keys.items():

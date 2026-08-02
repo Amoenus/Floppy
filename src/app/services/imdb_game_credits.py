@@ -56,7 +56,7 @@ def resolve_game_imdb_ids() -> int:
 
     Returns the number of Items updated with a provider_external_ids["imdb_id"].
     """
-    from app.providers import imdb_datasets  # noqa: PLC0415
+    from app.providers import imdb_datasets
 
     candidates = list(
         Item.objects.filter(
@@ -186,7 +186,7 @@ def sync_game_credits_from_imdb(
 
         # Suppress per-row credit signals — a bulk sync across many games would
         # otherwise schedule a Discover rebuild per ItemPersonCredit row.
-        from app.signals import suppress_media_change_side_effects  # noqa: PLC0415
+        from app.signals import suppress_media_change_side_effects
 
         with suppress_media_change_side_effects():
             credit_helpers.sync_item_credits_from_metadata(
@@ -219,7 +219,7 @@ def backfill_missing_person_profiles() -> int:
     Runs once per Person, not per credit, so it naturally dedupes across however
     many games a person is credited on.
     """
-    from app.providers import tmdb  # noqa: PLC0415
+    from app.providers import tmdb
 
     people = list(
         Person.objects.filter(source=Sources.IMDB.value).filter(
@@ -296,8 +296,8 @@ def backfill_missing_person_profiles() -> int:
 
 def backfill_missing_game_studios() -> int:
     """Best-effort IGDB studio/company backfill for IMDB-resolved games."""
-    from app.providers import services  # noqa: PLC0415
-    from app.signals import suppress_media_change_side_effects  # noqa: PLC0415
+    from app.providers import services
+    from app.signals import suppress_media_change_side_effects
 
     items = list(
         Item.objects.filter(

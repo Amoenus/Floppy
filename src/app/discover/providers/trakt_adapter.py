@@ -60,7 +60,7 @@ class TraktDiscoverAdapter:
                 normalized_payload,
                 ttl_seconds=ttl_seconds,
             )
-        except Exception as error:  # noqa: BLE001
+        except Exception as error:
             if payload:
                 logger.warning(
                     "discover_trakt_cache_fallback endpoint=%s error=%s",
@@ -517,32 +517,32 @@ class TraktDiscoverAdapter:
 
         try:
             checks["movie_watched_weekly"] = bool(self.movie_watched_weekly(limit=1))
-        except Exception:  # noqa: BLE001
+        except Exception:
             checks["movie_watched_weekly"] = False
 
         try:
             checks["movie_popular"] = bool(self.movie_popular(limit=1))
-        except Exception:  # noqa: BLE001
+        except Exception:
             checks["movie_popular"] = False
 
         try:
             checks["movie_anticipated"] = bool(self.movie_anticipated(limit=1))
-        except Exception:  # noqa: BLE001
+        except Exception:
             checks["movie_anticipated"] = False
 
         try:
             checks["show_watched_weekly"] = bool(self.show_watched_weekly(limit=1))
-        except Exception:  # noqa: BLE001
+        except Exception:
             checks["show_watched_weekly"] = False
 
         try:
             checks["show_popular"] = bool(self.show_popular(limit=1))
-        except Exception:  # noqa: BLE001
+        except Exception:
             checks["show_popular"] = False
 
         try:
             checks["show_anticipated"] = bool(self.show_anticipated(limit=1))
-        except Exception:  # noqa: BLE001
+        except Exception:
             checks["show_anticipated"] = False
 
         return checks

@@ -637,7 +637,7 @@ class CustomList(models.Model):
                                         media_id,
                                         error_json,
                                     )
-                                except Exception:  # noqa: BLE001
+                                except Exception:
                                     logger.warning(
                                         "IGDB artworks API error for game %s batch: %s",
                                         media_id,

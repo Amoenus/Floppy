@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 from django.conf import settings
 
@@ -10,7 +11,6 @@ from app.discover.adapters import TMDB_ADAPTER
 from app.discover.service_helpers import MAX_ITEMS_PER_ROW
 from app.models import Item, MediaTypes, Sources
 from app.providers import services
-from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from app.discover.schemas import CandidateItem, RowDefinition, RowResult
@@ -105,7 +105,7 @@ def _hydrate_provider_ranked_artwork(
                 candidate.media_id,
                 candidate.source,
             )
-        except Exception as error:  # noqa: BLE001
+        except Exception as error:
             logger.warning(
                 "discover_provider_artwork_lookup_failed media_type=%s source=%s media_id=%s error=%s",
                 candidate.media_type,
@@ -174,7 +174,7 @@ def _hydrate_trakt_ranked_artwork(
                 candidate.media_id,
                 TMDB_ADAPTER.provider,
             )
-        except Exception as error:  # noqa: BLE001
+        except Exception as error:
             logger.warning(
                 "discover_tmdb_artwork_lookup_failed media_id=%s error=%s",
                 candidate.media_id,

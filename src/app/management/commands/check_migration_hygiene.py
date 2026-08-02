@@ -240,7 +240,7 @@ class Command(BaseCommand):
             ),
         )
 
-    def handle(self, *_args, **options):  # noqa: C901
+    def handle(self, *_args, **options):
         """Run migration hygiene checks and exit non-zero on violations."""
         repo_root = _repo_root()
         apps = _parse_apps(options["apps"])

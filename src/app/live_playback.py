@@ -124,7 +124,7 @@ def _state_matches(
     return False
 
 
-def apply_playback_event(  # noqa: C901, PLR0912
+def apply_playback_event(
     *,
     user_id: int,
     event_type: str,
@@ -442,9 +442,9 @@ def _resolve_state_item(state: dict):
 
 def _slugify_title(title: str, media_id: str | None = None) -> str:
     """Slugify a title, matching the template ``slug`` filter behaviour."""
-    from urllib.parse import quote  # noqa: PLC0415
+    from urllib.parse import quote
 
-    from unidecode import unidecode  # noqa: PLC0415
+    from unidecode import unidecode
 
     cleaned = slugify(title)
     if not cleaned:
@@ -600,13 +600,13 @@ def _fetch_episode_still(show_id, season_number, episode_number):
 
     result = (None, "none")
     try:
-        from app.providers import tmdb  # noqa: PLC0415
+        from app.providers import tmdb
 
         ep_data = tmdb.episode(show_id, season_number, episode_number)
         image = ep_data.get("image")
         if helpers.has_real_image(image):
             result = (image, ep_data.get("image_source") or "primary")
-    except Exception:  # noqa: BLE001, S110
+    except Exception:  # noqa: S110
         pass
 
     ttl = EPISODE_STILL_SUCCESS_SECONDS if result[0] else EPISODE_STILL_FAILURE_SECONDS
@@ -623,7 +623,7 @@ def _attach_resolved_image(state: dict) -> None:
     try:
         state_item = _resolve_state_item(state)
         image, image_source = _resolve_landscape_image(state, state_item)
-    except Exception:  # noqa: BLE001
+    except Exception:
         logger.debug("Live playback image resolution failed", exc_info=True)
         return
     if image:
@@ -761,7 +761,7 @@ def build_home_playback_card(user) -> dict | None:
             image, image_source = settings.IMG_NONE, "pending"
         guard_key = f"{IMAGE_RESOLVE_GUARD_PREFIX}:{user.id}"
         if cache.add(guard_key, True, IMAGE_RESOLVE_GUARD_SECONDS):
-            from app.tasks import resolve_playback_image  # noqa: PLC0415
+            from app.tasks import resolve_playback_image
 
             resolve_playback_image.delay(user.id)
 

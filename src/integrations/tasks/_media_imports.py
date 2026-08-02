@@ -135,7 +135,7 @@ def import_trakt(user_id, mode, token=None, username=None):
 
 
 @shared_task(name="Import from MDBList")
-def import_mdblist(user_id, mode, username=None):  # noqa: ARG001
+def import_mdblist(user_id, mode, username=None):
     """Celery task for importing tracking data from MDBList.
 
     The API key is decrypted from the user's MDBListAccount at run time so
@@ -151,7 +151,7 @@ def import_mdblist(user_id, mode, username=None):  # noqa: ARG001
 
 
 @shared_task(name="Import from SIMKL")
-def import_simkl(token, user_id, mode, username=None):  # noqa: ARG001
+def import_simkl(token, user_id, mode, username=None):
     """Celery task for importing media data from SIMKL."""
     return import_media(simkl.importer, token, user_id, mode)
 
@@ -264,13 +264,13 @@ def import_storygraph(file, user_id, mode):
 
 
 @shared_task(name="Import from Plex")
-def import_plex(library, user_id, mode, username=None):  # noqa: ARG001
+def import_plex(library, user_id, mode, username=None):
     """Celery task for importing media data from Plex."""
     return import_media(plex.importer, library, user_id, mode)
 
 
 @shared_task(name="Import from Radarr")
-def import_radarr(user_id, mode="new", username=None):  # noqa: ARG001
+def import_radarr(user_id, mode="new", username=None):
     """Celery task for importing movie collection data from Radarr."""
     return _run_arr_import("Radarr", radarr.importer, user_id, mode)
 
@@ -282,7 +282,7 @@ def import_radarr_recurring(user_id):
 
 
 @shared_task(name="Import from Sonarr")
-def import_sonarr(user_id, mode="new", username=None):  # noqa: ARG001
+def import_sonarr(user_id, mode="new", username=None):
     """Celery task for importing TV collection data from Sonarr."""
     return _run_arr_import("Sonarr", sonarr.importer, user_id, mode)
 
@@ -294,7 +294,7 @@ def import_sonarr_recurring(user_id):
 
 
 @shared_task(name="Sync Plex Watchlist")
-def sync_plex_watchlist(user_id, mode="watchlist"):  # noqa: ARG001
+def sync_plex_watchlist(user_id, mode="watchlist"):
     """Celery task for syncing Plex Discover watchlist items."""
     from integrations.models import PlexAccount
 

@@ -768,7 +768,7 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
     def _normalize_rating(
         self,
         rating_value,
-        title: str | None = None,  # noqa: ARG002 - kept for caller compatibility
+        title: str | None = None,
         rating_source: str | None = None,
     ) -> float | None:
         """Normalize Plex rating values onto a 0-10 scale.

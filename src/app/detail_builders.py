@@ -1,3 +1,4 @@
+import contextlib
 from decimal import ROUND_DOWN, Decimal, InvalidOperation
 
 from django.templatetags.static import static
@@ -8,7 +9,6 @@ from app.models import MediaTypes, Sources
 from app.services import game_lengths as game_length_services
 from app.services import trakt_popularity as trakt_popularity_service
 from app.templatetags import app_tags
-import contextlib
 
 
 def _format_game_length_minutes(minutes):
@@ -317,7 +317,7 @@ def _build_series_graph_data(
       episode_rows: list of {ep, cells} where cells align with seasons columns
       legend: list of {label, color}
     """
-    from app.models import Item, MediaTypes  # noqa: PLC0415
+    from app.models import Item, MediaTypes
 
     filters = {
         "media_id": str(media_id),
@@ -410,14 +410,14 @@ def _build_episode_graph_from_season_cache(source, media_id, related_seasons):
     episode list with vote_average/vote_count — no API call needed.
     Returns None if none of the seasons are cached yet.
     """
-    from django.core.cache import cache as django_cache  # noqa: PLC0415
+    from django.core.cache import cache as django_cache
 
-    from app.models import Sources  # noqa: PLC0415
+    from app.models import Sources
 
     if source != Sources.TMDB.value:
         return None
 
-    from app.providers.tmdb import (  # noqa: PLC0415
+    from app.providers.tmdb import (
         _season_cache_key,
     )
 
@@ -535,7 +535,7 @@ def _build_season_scores_graph(related_seasons, source):
 
 def _build_stored_season_scores_graph(source, media_id, *, use_trakt=False):
     """Build a season-summary graph from stored season rating fields."""
-    from app.models import Item, MediaTypes  # noqa: PLC0415
+    from app.models import Item, MediaTypes
 
     rating_field = "trakt_rating" if use_trakt else "provider_rating"
     count_field = "trakt_rating_count" if use_trakt else "provider_rating_count"
@@ -972,7 +972,7 @@ def _game_cast_and_crew_from_credits(item):
     omit person_id — person_card_inline.html renders them as plain (unlinked)
     cards instead of pointing at a person_detail page that doesn't exist.
     """
-    from app.models import CreditRoleType, ItemPersonCredit  # noqa: PLC0415
+    from app.models import CreditRoleType, ItemPersonCredit
 
     credits_qs = (
         ItemPersonCredit.objects.filter(item=item)

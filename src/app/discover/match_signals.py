@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from typing import TYPE_CHECKING
 
 from app.discover.movie_comfort import (
     MOVIE_COMFORT_BUCKET_SOURCE_PRIORITY,
@@ -18,7 +19,6 @@ from app.discover.service_helpers import (
     BEHAVIOR_FIRST_MEDIA_TYPES,
     _clamp_unit,
 )
-from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from app.discover.schemas import CandidateItem

@@ -5,9 +5,9 @@ from public APIs that don't require auth: RSS feeds, Podcast Index, and iTunes.
 """
 
 import logging
-from defusedxml import ElementTree as ET  # noqa: N817  # long-standing alias
 
 import requests
+from defusedxml import ElementTree as ET  # noqa: N817  # long-standing alias
 from django.core.cache import cache
 
 from app.log_safety import exception_summary, safe_url

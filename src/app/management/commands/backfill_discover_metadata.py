@@ -104,7 +104,7 @@ class Command(BaseCommand):
         for item in queryset.iterator(chunk_size=batch_size):
             try:
                 payload = self._tmdb_fetch(item.media_type, item.media_id)
-            except Exception as error:  # noqa: BLE001
+            except Exception as error:
                 failed += 1
                 self.stderr.write(
                     f"Failed item_id={item.id} media_type={item.media_type} media_id={item.media_id}: {error}",

@@ -923,7 +923,7 @@ def statistics_talent_fragment(request):
     user's history version so any tracked-media change (or the refresh
     button) invalidates it automatically.
     """
-    from django.core.cache import cache  # noqa: PLC0415
+    from django.core.cache import cache
 
     range_name = request.GET.get("range_name") or None
     start_date_str = request.GET.get("start-date") or None

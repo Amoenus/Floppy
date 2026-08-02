@@ -235,7 +235,7 @@ def media_details(
     ):
         try:
             return operation()
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.warning(
                 "Skipping detail follow-up %s for %s due to error",
                 operation_name,
@@ -1548,14 +1548,14 @@ def media_details(
             # that already have episode Items but are missing trakt_rating.
             # This primes the cache so the Trakt series graph tooltip has data
             # ready before the user hovers.
-            from app.providers import trakt as _trakt  # noqa: PLC0415
+            from app.providers import trakt as _trakt
 
             if _trakt.is_configured() and source in {
                 Sources.TMDB.value,
                 Sources.TVDB.value,
             }:
-                from app.models import Item as _Item  # noqa: PLC0415
-                from app.tasks_trakt import (  # noqa: PLC0415
+                from app.models import Item as _Item
+                from app.tasks_trakt import (
                     populate_trakt_episode_ratings_for_season,
                 )
 

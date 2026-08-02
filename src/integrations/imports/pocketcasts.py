@@ -1508,7 +1508,7 @@ class PocketCastsImporter:
                 "HTTP error fetching play states for podcast %s: %s", podcast_uuid, e
             )
             return None
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             logger.warning(
                 "Failed to fetch play states for podcast %s: %s", podcast_uuid, e
             )
@@ -1552,7 +1552,7 @@ class PocketCastsImporter:
                     e,
                 )
                 return None
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 logger.warning(
                     "Failed to fetch full metadata for podcast %s (page %d): %s",
                     podcast_uuid,

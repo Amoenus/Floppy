@@ -264,7 +264,7 @@ def warm_discover_api_cache():
             try:
                 fetcher(media_type, limit=20)
                 warmed += 1
-            except Exception as error:  # noqa: BLE001
+            except Exception as error:
                 failed += 1
                 logger.warning(
                     "discover_api_warm_failed media_type=%s fetcher=%s error=%s",
@@ -276,7 +276,7 @@ def warm_discover_api_cache():
     try:
         trakt_adapter.movie_watched_weekly(limit=25)
         warmed += 1
-    except Exception as error:  # noqa: BLE001
+    except Exception as error:
         failed += 1
         logger.warning(
             "discover_api_warm_failed media_type=%s fetcher=%s error=%s",
@@ -288,7 +288,7 @@ def warm_discover_api_cache():
     try:
         trakt_adapter.movie_popular(page=1, limit=25)
         warmed += 1
-    except Exception as error:  # noqa: BLE001
+    except Exception as error:
         failed += 1
         logger.warning(
             "discover_api_warm_failed media_type=%s fetcher=%s error=%s",
@@ -300,7 +300,7 @@ def warm_discover_api_cache():
     try:
         trakt_adapter.movie_anticipated(page=1, limit=25)
         warmed += 1
-    except Exception as error:  # noqa: BLE001
+    except Exception as error:
         failed += 1
         logger.warning(
             "discover_api_warm_failed media_type=%s fetcher=%s error=%s",

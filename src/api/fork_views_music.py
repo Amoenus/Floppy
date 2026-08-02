@@ -147,7 +147,7 @@ class MusicArtistsView(drf_views.APIView):
                 artist = fork_services_music.get_or_create_artist_from_musicbrainz(
                     musicbrainz_id,
                 )
-            except Exception as e:  # noqa: BLE001 — provider failures
+            except Exception as e:
                 return Response(
                     {"detail": "Could not fetch artist.", "errors": str(e)},
                     status=HTTP.BAD_GATEWAY,
@@ -267,7 +267,7 @@ class MusicArtistSyncView(drf_views.APIView):
             return Response({"detail": "Artist not found."}, status=HTTP.NOT_FOUND)
         try:
             count = sync_artist_discography(artist, force=True)
-        except Exception as e:  # noqa: BLE001 — provider failures
+        except Exception as e:
             return Response(
                 {"detail": "Discography sync failed.", "errors": str(e)},
                 status=HTTP.BAD_GATEWAY,
@@ -552,7 +552,7 @@ class MusicBulkPlaysView(drf_views.APIView):
     season/episode numbering. Returns 202 with a pollable task_id.
     """
 
-    def post(self, request):  # noqa: PLR0911
+    def post(self, request):
         """Queue bulk plays for an artist or album context."""
         context_kind = (request.data.get("context_kind") or "").strip()
         if context_kind not in ("artist", "album"):

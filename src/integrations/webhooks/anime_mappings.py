@@ -1,7 +1,8 @@
+import contextlib
+
 from django.core.cache import cache
 
 import app
-import contextlib
 
 CACHE_KEY = "anibridge_v3_mapping_data"
 URL = (

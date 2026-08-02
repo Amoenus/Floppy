@@ -223,7 +223,7 @@ class HomeView(drf_views.APIView):
                 for entry in row.get("items", []):
                     try:
                         items.append(serialize_data(entry))
-                    except Exception:  # noqa: BLE001 — mixed row entry types
+                    except Exception:
                         title = getattr(
                             getattr(entry, "item", None),
                             "title",

@@ -3,9 +3,8 @@ from pathlib import Path
 
 from django import template
 from django.conf import settings
-from django.utils import timezone
 from django.urls import reverse
-from django.utils import formats
+from django.utils import formats, timezone
 from django.utils.dateparse import parse_date
 from django.utils.html import format_html
 from unidecode import unidecode
@@ -1420,7 +1419,7 @@ def format_date_range_display(start_date, end_date):
     if hasattr(end_date, "date"):
         end_date = end_date.date()
 
-    today = timezone.localdate()
+    today = date.today()  # noqa: DTZ011  # plain calendar date, matching upstream behaviour
 
     # Check for predefined ranges
     predefined_range = _is_predefined_date_range(start_date, end_date, today)

@@ -5,18 +5,17 @@ public RSS feeds to get the complete episode list, not just what's in
 Pocket Casts history.
 """
 
+import contextlib
 import logging
 import re
+from datetime import datetime
 from xml.etree.ElementTree import Element
 
-from defusedxml import ElementTree as ET  # noqa: N817  # long-standing alias
-from datetime import datetime
-
 import requests
+from defusedxml import ElementTree as ET  # noqa: N817  # long-standing alias
 from django.utils import timezone
 
 from app.log_safety import exception_summary, safe_url
-import contextlib
 
 logger = logging.getLogger(__name__)
 

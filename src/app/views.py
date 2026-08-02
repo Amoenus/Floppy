@@ -1,4 +1,5 @@
 import calendar
+import contextlib
 import json
 import logging
 import math
@@ -376,7 +377,6 @@ from users.models import (
     MediaStatusChoices,
     TopTalentSortChoices,
 )
-import contextlib
 
 logger = logging.getLogger(__name__)
 
@@ -669,8 +669,8 @@ def trakt_series_graph_fragment(request, source, media_id):
     Returns the inner grid content (or skeleton) and drops hx-trigger once
     all episode Items have trakt_rating, so polling stops automatically.
     """
-    from app.detail_builders import _build_series_graph_data  # noqa: PLC0415
-    from app.models import Item, MediaTypes  # noqa: PLC0415
+    from app.detail_builders import _build_series_graph_data
+    from app.models import Item, MediaTypes
 
     graph_data = _build_series_graph_data(
         source,
@@ -1020,7 +1020,7 @@ def music_bulk_save(request):
     write_mode = request.POST.get("write_mode", "add")
     distribution_mode = request.POST.get("distribution_mode", "even")
 
-    from app.tasks import bulk_music_plays_task  # noqa: PLC0415
+    from app.tasks import bulk_music_plays_task
 
     task = bulk_music_plays_task.apply_async(
         kwargs={

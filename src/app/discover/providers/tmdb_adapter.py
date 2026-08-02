@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import logging
+from datetime import date
 
 from django.conf import settings
-from django.utils import timezone
 
 from app.discover import cache_repo
 from app.discover.schemas import CandidateItem
@@ -58,7 +58,7 @@ class TMDbDiscoverAdapter:
                 response,
                 ttl_seconds=ttl_seconds,
             )
-        except Exception as error:  # noqa: BLE001
+        except Exception as error:
             if payload:
                 logger.warning(
                     "discover_tmdb_cache_fallback endpoint=%s error=%s",
@@ -219,7 +219,7 @@ class TMDbDiscoverAdapter:
             )
 
         if media_type == MediaTypes.TV.value:
-            today = timezone.localdate().isoformat()
+            today = date.today().isoformat()  # noqa: DTZ011  # provider filter uses a plain calendar date
             payload = self._cache_request(
                 "/discover/tv",
                 {
@@ -358,24 +358,24 @@ class TMDbDiscoverAdapter:
             checks["trending_movie"] = bool(
                 self.trending(MediaTypes.MOVIE.value, limit=1)
             )
-        except Exception:  # noqa: BLE001
+        except Exception:
             checks["trending_movie"] = False
 
         try:
             checks["trending_tv"] = bool(self.trending(MediaTypes.TV.value, limit=1))
-        except Exception:  # noqa: BLE001
+        except Exception:
             checks["trending_tv"] = False
 
         try:
             checks["top_rated_movie"] = bool(
                 self.top_rated(MediaTypes.MOVIE.value, limit=1)
             )
-        except Exception:  # noqa: BLE001
+        except Exception:
             checks["top_rated_movie"] = False
 
         try:
             checks["top_rated_tv"] = bool(self.top_rated(MediaTypes.TV.value, limit=1))
-        except Exception:  # noqa: BLE001
+        except Exception:
             checks["top_rated_tv"] = False
 
         return checks

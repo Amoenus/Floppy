@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 from collections import defaultdict
+from typing import TYPE_CHECKING
 
 from django.apps import apps
 from django.core.exceptions import FieldDoesNotExist
@@ -25,7 +26,6 @@ from app.models import (
     MediaTypes,
     Status,
 )
-from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from app.discover.schemas import CandidateItem

@@ -1,3 +1,4 @@
+import contextlib
 import logging
 from datetime import timedelta
 from types import SimpleNamespace
@@ -12,7 +13,6 @@ from app import helpers
 from app.log_safety import exception_summary
 from app.models import MediaTypes, Sources
 from app.providers import services
-import contextlib
 
 logger = logging.getLogger(__name__)
 
@@ -220,7 +220,7 @@ def _discover_tmdb_tvdb_id_from_search(media_id, tv_data=None):
     if override_tvdb_id:
         return override_tvdb_id
 
-    from app.providers import tvdb  # noqa: PLC0415
+    from app.providers import tvdb
 
     if not tvdb.enabled():
         return None
@@ -725,7 +725,7 @@ def _build_specials_season_from_tvdb(media_id, tv_data):
     if not tv_data.get("tvdb_id"):
         return None
 
-    from app.providers import tvdb  # noqa: PLC0415
+    from app.providers import tvdb
 
     if not tvdb.enabled():
         return None
@@ -773,7 +773,7 @@ def get_tvdb_episode_image_map(tvdb_id, season_number, *, tmdb_media_id=None):
         if not tvdb_id:
             return {}
 
-    from app.providers import tvdb  # noqa: PLC0415
+    from app.providers import tvdb
 
     if not tvdb.enabled():
         return {}

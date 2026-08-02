@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from django.db.models import Count, Q
 
 from app.discover import cache_repo
@@ -17,7 +19,6 @@ from app.discover.service_helpers import (
     _model_for_media_type,
 )
 from app.models import MediaTypes, Status
-from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from app.discover.schemas import CandidateItem

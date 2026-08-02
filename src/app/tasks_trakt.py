@@ -28,7 +28,7 @@ TRAKT_POPULARITY_BACKFILL_ITEMS_SCHEDULED_KEY = (
 def enqueue_trakt_popularity_backfill_items(item_ids, countdown=10, *, force=False):
     """Queue item IDs for Trakt popularity backfill via the cache-based queue."""
     # Deferred to avoid circular import: tasks.py re-exports this module.
-    from app.tasks import (  # noqa: PLC0415
+    from app.tasks import (
         _filter_backfill_item_ids,
         _normalize_item_ids,
     )
@@ -72,7 +72,7 @@ def populate_trakt_popularity_data_for_items(
 ):
     """Refresh persisted Trakt popularity metadata for targeted items."""
     # Deferred to avoid circular import: tasks.py re-exports this module.
-    from app.tasks import (  # noqa: PLC0415
+    from app.tasks import (
         _filter_backfill_item_ids,
         _normalize_item_ids,
         _record_backfill_failure,
@@ -121,7 +121,7 @@ def populate_trakt_popularity_data_for_items(
             updated_count += 1
 
             if delay_seconds > 0:
-                import time  # noqa: PLC0415
+                import time
 
                 time.sleep(delay_seconds)
         except Exception as exc:
@@ -194,9 +194,9 @@ def populate_trakt_episode_ratings_for_season(
     delay_seconds: float = 0.5,
 ):
     """Fetch and store Trakt aggregate ratings for all episodes in a season."""
-    from app.models import Item, MediaTypes  # noqa: PLC0415
-    from app.providers import trakt as trakt_provider  # noqa: PLC0415
-    from app.services import trakt_popularity as trakt_pop  # noqa: PLC0415
+    from app.models import Item, MediaTypes
+    from app.providers import trakt as trakt_provider
+    from app.services import trakt_popularity as trakt_pop
 
     if not trakt_provider.is_configured():
         return {"updated": 0, "message": "Trakt not configured"}
@@ -295,7 +295,7 @@ def reconcile_trakt_popularity(score_version: int | None = None):
     On success, stamps a permanent version cache key so this version's recompute
     does not fire again until the formula version advances.
     """
-    from app.models import Item  # noqa: PLC0415
+    from app.models import Item
 
     all_items = list(
         trakt_popularity_service.tracked_items_queryset().iterator(chunk_size=500)

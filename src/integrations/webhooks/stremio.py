@@ -105,10 +105,10 @@ class StremioWebhookProcessor(BaseWebhookProcessor):
             episode_number=episode_number,
         )
 
-    def _is_supported_event(self, event_type):  # noqa: ARG002
+    def _is_supported_event(self, event_type):
         return True
 
-    def _is_played(self, payload):  # noqa: ARG002
+    def _is_played(self, payload):
         # The subtitles request only proves playback started; completion is
         # picked up by the recurring library sync.
         return False
@@ -138,5 +138,5 @@ class StremioWebhookProcessor(BaseWebhookProcessor):
         except ValueError:
             return None, None
 
-    def _extract_series_title(self, payload):  # noqa: ARG002
+    def _extract_series_title(self, payload):
         return None

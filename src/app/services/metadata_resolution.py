@@ -98,7 +98,7 @@ def available_metadata_provider_values(
     identity_provider: str | None = None,
 ) -> list[str]:
     """Return the supported metadata-provider values for an item route."""
-    from app import custom_metadata  # noqa: PLC0415
+    from app import custom_metadata
 
     values: list[str] = []
     if media_type in {MediaTypes.TV.value, MediaTypes.ANIME.value}:
@@ -1014,7 +1014,7 @@ def resolve_detail_metadata(
     grouped_preview_target = None
 
     if provider == Sources.MANUAL.value and item is not None:
-        from app import custom_metadata  # noqa: PLC0415
+        from app import custom_metadata
 
         provider_media_id = f"item:{item.id}"
         header_metadata = custom_metadata.build_custom_overlay_metadata(
