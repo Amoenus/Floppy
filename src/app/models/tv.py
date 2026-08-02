@@ -23,6 +23,11 @@ from app.models.media import Media
 
 logger = logging.getLogger(__name__)
 
+# Sentinel distinguishing "no explicit end_date supplied" (fall back to the
+# user's resolve_watch_date behavior) from an explicit value, including None
+# (blank date deliberately chosen on the completion form).
+_UNSET_END_DATE = object()
+
 
 def _runtime_minutes(value):
     """Return a positive runtime in minutes, or None.
@@ -304,7 +309,10 @@ class TV(Media):
                 f"season/{season_instance.item.season_number}"
             ]
             episodes_to_create.extend(
-                season_instance.get_remaining_eps(season_metadata),
+                season_instance.get_remaining_eps(
+                    season_metadata,
+                    end_date=getattr(self, "_pending_end_date", _UNSET_END_DATE),
+                ),
             )
         bulk_create_with_history(episodes_to_create, Episode)
 
@@ -492,7 +500,10 @@ class Season(Media):
                         self.item.source,
                         [self.item.season_number],
                     )
-                    episodes_to_create = self.get_remaining_eps(season_metadata)
+                    episodes_to_create = self.get_remaining_eps(
+                        season_metadata,
+                        end_date=getattr(self, "_pending_end_date", _UNSET_END_DATE),
+                    )
                     if episodes_to_create:
                         bulk_create_with_history(
                             episodes_to_create,
@@ -947,7 +958,7 @@ class Season(Media):
 
         return tv
 
-    def get_remaining_eps(self, season_metadata):
+    def get_remaining_eps(self, season_metadata, end_date=_UNSET_END_DATE):
         """Return episodes needed to complete a season."""
         latest_watched_ep_num = Episode.objects.filter(related_season=self).aggregate(
             latest_watched_ep_num=Max("item__episode_number"),
@@ -968,13 +979,17 @@ class Season(Media):
 
             item = self.get_episode_item(episode["episode_number"], season_metadata)
 
-            # Resolve end_date based on user preference
-            end_date = self.user.resolve_watch_date(now, episode.get("air_date"))
+            # An explicit end_date (including None) from the completion form
+            # applies uniformly; otherwise fall back to the user's preference.
+            if end_date is _UNSET_END_DATE:
+                resolved_end_date = self.user.resolve_watch_date(now, episode.get("air_date"))
+            else:
+                resolved_end_date = end_date
 
             episode_db = Episode(
                 related_season=self,
                 item=item,
-                end_date=end_date,
+                end_date=resolved_end_date,
             )
             episodes_to_create.append(episode_db)
 

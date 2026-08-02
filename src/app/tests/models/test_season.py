@@ -753,6 +753,80 @@ class SeasonGetRemainingEpsQuickWatchDateTests(TestCase):
         self.assertEqual(episodes[0].end_date, datetime(1994, 9, 22, tzinfo=UTC))
         self.assertEqual(episodes[1].end_date, datetime(1994, 9, 29, tzinfo=UTC))
 
+    @patch("app.models.Season.get_episode_item")
+    def test_get_remaining_eps_explicit_end_date_overrides_preference(
+        self,
+        mock_get_episode_item,
+    ):
+        """An explicit end_date argument wins over the user's quick_watch_date."""
+        self.user.quick_watch_date = self.QuickWatchDateChoices.CURRENT_DATE
+        self.user.save()
+
+        for i in range(1, 4):
+            mock_get_episode_item.return_value = Item.objects.create(
+                media_id="1668",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.EPISODE.value,
+                title=f"Episode {i}",
+                image=f"img{i}.jpg",
+                season_number=1,
+                episode_number=i,
+            )
+
+        episodes = self.season.get_remaining_eps(self.mock_metadata, end_date=None)
+
+        for ep in episodes:
+            self.assertIsNone(ep.end_date)
+
+    @patch("app.models.providers.services.get_media_metadata")
+    def test_season_completion_with_pending_end_date_blank(self, mock_get_metadata):
+        """Completing via the form with a blank end_date persists no date,
+        even when the user's quick_watch_date preference defaults to today.
+        """
+        self.user.quick_watch_date = self.QuickWatchDateChoices.CURRENT_DATE
+        self.user.save()
+
+        mock_get_metadata.return_value = {
+            "episodes": [
+                {"episode_number": 1, "image": "img1.jpg", "air_date": None},
+                {"episode_number": 2, "image": "img2.jpg", "air_date": None},
+            ],
+            "image": "season_img.jpg",
+        }
+
+        self.season.status = Status.COMPLETED.value
+        self.season._pending_end_date = None
+        self.season.save()
+
+        episodes = Episode.objects.filter(related_season=self.season)
+        self.assertEqual(episodes.count(), 2)
+        for ep in episodes:
+            self.assertIsNone(ep.end_date)
+
+    @patch("app.models.providers.services.get_media_metadata")
+    def test_season_completion_with_pending_end_date_explicit(self, mock_get_metadata):
+        """Completing via the form with an explicit end_date applies it to all episodes."""
+        self.user.quick_watch_date = self.QuickWatchDateChoices.CURRENT_DATE
+        self.user.save()
+
+        mock_get_metadata.return_value = {
+            "episodes": [
+                {"episode_number": 1, "image": "img1.jpg", "air_date": None},
+                {"episode_number": 2, "image": "img2.jpg", "air_date": None},
+            ],
+            "image": "season_img.jpg",
+        }
+
+        chosen_date = datetime(2000, 1, 1, tzinfo=UTC)
+        self.season.status = Status.COMPLETED.value
+        self.season._pending_end_date = chosen_date
+        self.season.save()
+
+        episodes = Episode.objects.filter(related_season=self.season)
+        self.assertEqual(episodes.count(), 2)
+        for ep in episodes:
+            self.assertEqual(ep.end_date, chosen_date)
+
 
 class SeasonEpisodeItemModelTests(TestCase):
     """Focused tests for season episode item creation/updating."""

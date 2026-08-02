@@ -18,6 +18,7 @@ from app.activity_builders import _build_detail_activity_state
 from app.discover import tab_cache as discover_tab_cache
 from app.forms import EpisodeForm, get_form_class
 from app.models import (
+    TV,
     BasicMedia,
     CollectionEntry,
     Episode,
@@ -183,7 +184,12 @@ def media_save(request):
     old_status = getattr(instance, "status", None) if instance_id else None
     action_verb = "Added" if not instance_id else "Updated"
     if form.is_valid():
-        media = form.save()
+        if isinstance(instance, (Season, TV)):
+            media = form.save(commit=False)
+            media._pending_end_date = form.cleaned_data.get("end_date")
+            media.save()
+        else:
+            media = form.save()
         BasicMedia.objects.annotate_max_progress([media], media_type)
         image_url = form.cleaned_data.get("image_url")
         if image_url and media.item.image != image_url:

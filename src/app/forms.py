@@ -560,6 +560,13 @@ class ComicissueForm(MediaForm):
 class TvForm(MediaForm):
     """Form for TV shows."""
 
+    end_date = forms.DateTimeField(
+        required=False,
+        widget=forms.DateTimeInput(attrs={"type": "datetime-local"})
+        if settings.TRACK_TIME
+        else forms.DateInput(attrs={"type": "date"}),
+    )
+
     class Meta(MediaForm.Meta):
         """Bind form to model."""
 
@@ -571,6 +578,12 @@ class SeasonForm(MediaForm):
     """Form for seasons."""
 
     season_number = forms.IntegerField(widget=forms.HiddenInput(), required=False)
+    end_date = forms.DateTimeField(
+        required=False,
+        widget=forms.DateTimeInput(attrs={"type": "datetime-local"})
+        if settings.TRACK_TIME
+        else forms.DateInput(attrs={"type": "date"}),
+    )
 
     class Meta(MediaForm.Meta):
         """Bind form to model."""

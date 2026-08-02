@@ -396,6 +396,48 @@ class CreateMedia(TestCase):
         )
 
     @patch("app.providers.services.get_media_metadata")
+    def test_complete_season_with_blank_end_date_creates_dateless_episodes(
+        self,
+        metadata_mock,
+    ):
+        """Marking a season Completed with end_date left blank sets no watch date.
+
+        Regression test for GitHub issue #452: bulk-completing a season used
+        to always stamp remaining episodes with today's date.
+        """
+        metadata_mock.return_value = {
+            "episodes": [
+                {"episode_number": 1, "image": "img1.jpg", "air_date": None},
+                {"episode_number": 2, "image": "img2.jpg", "air_date": None},
+            ],
+            "image": "season_img.jpg",
+        }
+        Item.objects.create(
+            media_id="1668",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Friends",
+            image="http://example.com/image.jpg",
+            season_number=1,
+        )
+        self.client.post(
+            reverse("media_save"),
+            {
+                "media_id": "1668",
+                "source": Sources.TMDB.value,
+                "media_type": MediaTypes.SEASON.value,
+                "season_number": 1,
+                "status": Status.COMPLETED.value,
+                "end_date": "",
+            },
+        )
+        season = Season.objects.get(item__media_id="1668", user=self.user)
+        episodes = Episode.objects.filter(related_season=season)
+        self.assertEqual(episodes.count(), 2)
+        for episode in episodes:
+            self.assertIsNone(episode.end_date)
+
+    @patch("app.providers.services.get_media_metadata")
     def test_create_tvdb_season_with_tv_identity_media_type(self, metadata_mock):
         """A TVDB season save must create a Season, not a TV, despite identity_media_type=tv.
 
