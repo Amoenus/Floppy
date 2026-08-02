@@ -76,10 +76,12 @@ class MediaListEntry:
 
     @classmethod
     def from_media(cls, media):
+        """Return the from media."""
         return cls(item=getattr(media, "item", None), media=media)
 
     @property
     def is_untracked(self) -> bool:
+        """Return whether untracked."""
         return self.media is None
 
     @property
@@ -94,14 +96,17 @@ class MediaListEntry:
 
     @property
     def item_id(self):
+        """Return the item id."""
         if self.media is not None:
             return getattr(self.media, "item_id", None)
         return getattr(self.item, "id", None)
 
     def __bool__(self):
+        """Return the bool  ."""
         return self.media is not None
 
     def __getattr__(self, attr):
+        """Return the getattr  ."""
         if attr.startswith("__") and attr.endswith("__"):
             raise AttributeError(attr)
         media = self.__dict__.get("media")

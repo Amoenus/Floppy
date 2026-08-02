@@ -22,6 +22,7 @@ class JellyfinClient:
     """Client for the subset of the Jellyfin REST API needed to push watched state."""
 
     def __init__(self, base_url: str, api_key: str, user_id: str | None = None):
+        """Store the extra keyword arguments this form needs."""
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.user_id = user_id

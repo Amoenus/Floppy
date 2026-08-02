@@ -33,9 +33,12 @@ RUNS = 3
 
 
 class Command(BaseCommand):
+    """Command."""
+
     help = "Benchmark response time and query count for key slow endpoints."
 
     def add_arguments(self, parser):
+        """Register this command's command-line options."""
         parser.add_argument(
             "--username",
             required=True,
@@ -54,12 +57,13 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        User = get_user_model()
+        """Benchmark response time and query count for key slow endpoints."""
+        user_model = get_user_model()
         username = options["username"]
         try:
-            user = User.objects.get(username=username)
-        except User.DoesNotExist:
-            msg = f"User '{username}' not found."
+            user = user_model.objects.get(username=username)
+        except user_model.DoesNotExist:
+            msg = f"user_model '{username}' not found."
             raise CommandError(msg) from None
 
         # Enable query logging and allow the test client's default host.

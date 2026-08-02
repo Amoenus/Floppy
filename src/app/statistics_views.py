@@ -677,7 +677,7 @@ def statistics(request):
 
         return render(request, "app/statistics.html", context)
     except OperationalError as error:
-        logger.error("Database error in statistics view: %s", error, exc_info=True)
+        logger.exception("Database error in statistics view: %s", error)
         timeformat = "%Y-%m-%d"
         today = timezone.localdate()
         one_year_ago = today.replace(year=today.year - 1)

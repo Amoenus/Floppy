@@ -273,6 +273,7 @@ class RatingScaleFormMixin:
     """Apply user rating scale preferences to score fields."""
 
     def __init__(self, *args, **kwargs):
+        """Store the extra keyword arguments this form needs."""
         self.user = kwargs.pop("user", None)
         super().__init__(*args, **kwargs)
         self._apply_rating_scale()
@@ -299,6 +300,7 @@ class RatingScaleFormMixin:
             )
 
     def clean_score(self):
+        """Validate the score field."""
         score = self.cleaned_data.get("score")
         if score is None or not self.user:
             return score
@@ -1078,6 +1080,8 @@ class CollectionEntryForm(forms.ModelForm):
     """Form for adding/editing collection entries."""
 
     class Meta:
+        """Model and field configuration."""
+
         model = CollectionEntry
         fields = [
             "item",
@@ -1113,6 +1117,7 @@ class CollectionEntryForm(forms.ModelForm):
         }
 
     def __init__(self, *args, **kwargs):
+        """Store the extra keyword arguments this form needs."""
         self.user = kwargs.pop("user", None)
         collection_media_type = kwargs.pop("collection_media_type", None)
         collection_choices_override = (

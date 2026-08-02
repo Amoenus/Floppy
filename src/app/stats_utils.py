@@ -211,17 +211,17 @@ def _is_media_in_date_range(media, start_date, end_date):
 def _format_long_units(total_minutes):
     """Format minutes using the largest applicable units (mo/d/h/min)."""
     total_minutes = int(total_minutes)
-    HOUR = 60
-    DAY = 1440
-    MONTH = 43800  # 30 × 24 × 60
-    if total_minutes < HOUR:
+    hour_minutes = 60
+    day_minutes = 1440
+    month_minutes = 43800  # 30 × 24 × 60
+    if total_minutes < hour_minutes:
         return f"{total_minutes}min"
-    if total_minutes < DAY:  # < 24 h
-        hours, mins = divmod(total_minutes, HOUR)
+    if total_minutes < day_minutes:  # < 24 h
+        hours, mins = divmod(total_minutes, hour_minutes)
         return f"{hours}h {mins}min"
-    months, r = divmod(total_minutes, MONTH)
-    days, r = divmod(r, DAY)
-    hours, mins = divmod(r, HOUR)
+    months, r = divmod(total_minutes, month_minutes)
+    days, r = divmod(r, day_minutes)
+    hours, mins = divmod(r, hour_minutes)
     parts = []
     if months:
         parts.append(f"{months}mo")

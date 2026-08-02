@@ -745,13 +745,13 @@ def history_genres(request):
     implied_genres: set[str] = set()
     # Book, Comic, and Manga use Library of Congress subject headings in their genres
     # field rather than real genre names, so exclude them from the genre list.
-    for ModelClass in [Movie, Game, Music, BoardGame, Podcast]:
-        for genres_list in ModelClass.objects.filter(user=request.user).values_list(
+    for model_cls in [Movie, Game, Music, BoardGame, Podcast]:
+        for genres_list in model_cls.objects.filter(user=request.user).values_list(
             "item__genres", flat=True
         ):
             if genres_list:
                 genres.update(str(g).strip() for g in genres_list if _is_valid_genre(g))
-        for implied_genres_list in ModelClass.objects.filter(
+        for implied_genres_list in model_cls.objects.filter(
             user=request.user
         ).values_list(
             "item__implied_genres",
@@ -1045,7 +1045,7 @@ def history(request):
             response_bytes,
         )
     except OperationalError as error:
-        logger.error("Database error in history view: %s", error, exc_info=True)
+        logger.exception("Database error in history view: %s", error)
         context = {
             "user": request.user,
             "history_days": [],

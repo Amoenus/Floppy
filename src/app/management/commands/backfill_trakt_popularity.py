@@ -20,6 +20,7 @@ class Command(BaseCommand):
     help = "Backfill stored Trakt popularity metadata for tracked movie, TV, and anime items"
 
     def add_arguments(self, parser):
+        """Register this command's command-line options."""
         parser.add_argument(
             "--media-types",
             default=f"{MediaTypes.MOVIE.value},{MediaTypes.TV.value},{MediaTypes.ANIME.value}",
@@ -48,6 +49,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *_args, **options):
+        """Backfill stored Trakt popularity metadata for tracked movie, TV, and anime items."""
         media_types = self._parse_media_types(options["media_types"])
         limit = options.get("limit")
         force = bool(options.get("force"))

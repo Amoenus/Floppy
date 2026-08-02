@@ -41,7 +41,7 @@ from django.views.decorators.http import require_GET, require_http_methods, requ
 from app import (
     cache_utils,
     config,
-    credits,
+    credits,  # noqa: A004  # app.credits module, not the site builtin
     custom_metadata,
     discover,
     helpers,
@@ -451,7 +451,7 @@ def home(request):
         }
         return render(request, "app/home.html", context)
     except OperationalError as error:
-        logger.error("Database error in home view: %s", error, exc_info=True)
+        logger.exception("Database error in home view: %s", error)
         # Return empty state on database error
         context = {
             "user": request.user,
@@ -1351,12 +1351,11 @@ def delete_history_record(request, media_type, history_id):
             try:
                 media_instance.delete()
             except Exception as e:
-                logger.error(
+                logger.exception(
                     "Failed to delete media instance %s for history record %s: %s",
                     str(media_instance_id),
                     str(history_id),
                     str(e),
-                    exc_info=True,
                 )
                 return HttpResponse("Failed to delete record", status=500)
 
@@ -1394,11 +1393,8 @@ def delete_history_record(request, media_type, history_id):
             try:
                 history_record.delete()
             except Exception as e:
-                logger.error(
-                    "Failed to delete history record %s: %s",
-                    str(history_id),
-                    str(e),
-                    exc_info=True,
+                logger.exception(
+                    "Failed to delete history record %s: %s", str(history_id), str(e)
                 )
                 return HttpResponse("Failed to delete record", status=500)
 

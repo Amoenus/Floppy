@@ -1577,7 +1577,7 @@ def get_crew_credits(credits_data, is_aggregate=False):
             },
         )
 
-    _CREW_PRIORITY_EXACT = {
+    crew_priority_exact = {
         "creator": 0,
         "created by": 0,
         "showrunner": 0,
@@ -1595,7 +1595,7 @@ def get_crew_credits(credits_data, is_aggregate=False):
 
     def _crew_priority(entry):
         role_lower = (entry.get("role") or "").lower().strip()
-        return _CREW_PRIORITY_EXACT.get(role_lower, 99)
+        return crew_priority_exact.get(role_lower, 99)
 
     crew_entries.sort(
         key=lambda row: (

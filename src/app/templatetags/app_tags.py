@@ -5,7 +5,7 @@ from django import template
 from django.conf import settings
 from django.utils import timezone
 from django.urls import reverse
-from django.utils import formats, timezone
+from django.utils import formats
 from django.utils.dateparse import parse_date
 from django.utils.html import format_html
 from unidecode import unidecode
@@ -27,6 +27,7 @@ def absolute_app_url(context, path):
 
 @register.simple_tag
 def djdt_enabled():
+    """Return the djdt enabled."""
     return getattr(settings, "ENABLE_DEBUG_TOOLBAR", False)
 
 

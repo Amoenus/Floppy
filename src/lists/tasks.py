@@ -79,11 +79,8 @@ def import_mdblist_lists_task(user_id):
     try:
         mdblist_lists.import_mdblist_lists(user)
     except Exception as error:
-        logger.error(
-            "Failed to sync MDBList lists for user %s: %s",
-            user.username,
-            error,
-            exc_info=True,
+        logger.exception(
+            "Failed to sync MDBList lists for user %s: %s", user.username, error
         )
         raise
 
@@ -95,12 +92,11 @@ def import_mdblist_list_by_reference_task(user_id, reference):
     try:
         mdblist_lists.import_mdblist_list_by_reference(user, reference)
     except Exception as error:
-        logger.error(
+        logger.exception(
             "Failed to import MDBList list %s for user %s: %s",
             reference,
             user.username,
             error,
-            exc_info=True,
         )
         raise
 
@@ -113,11 +109,8 @@ def import_trakt_lists_task(user_id, access_token, client_id=None):
         trakt_lists.import_trakt_lists(user, access_token, client_id=client_id)
         logger.info("Successfully imported Trakt lists for user %s", user.username)
     except Exception as error:
-        logger.error(
-            "Failed to import Trakt lists for user %s: %s",
-            user.username,
-            error,
-            exc_info=True,
+        logger.exception(
+            "Failed to import Trakt lists for user %s: %s", user.username, error
         )
         raise
 
@@ -138,10 +131,7 @@ def import_list_csv_task(user_id, file_bytes, mode):
         )
         logger.info("Successfully imported list CSV for user %s", user.username)
     except Exception as error:
-        logger.error(
-            "Failed to import list CSV for user %s: %s",
-            user.username,
-            error,
-            exc_info=True,
+        logger.exception(
+            "Failed to import list CSV for user %s: %s", user.username, error
         )
         raise

@@ -177,11 +177,10 @@ def _cleanup_duplicate_episodes_global():
                         items_updated if dup_item else 0,
                     )
                 except Exception as e:
-                    logger.error(
+                    logger.exception(
                         "Failed to merge duplicate episode %s: %s",
                         dup_episode.episode_uuid,
                         e,
-                        exc_info=True,
                     )
 
     return stats
@@ -2832,9 +2831,9 @@ class PocketCastsImporter:
                 "limit": 5,  # Get top 5 results
             }
 
-            ITUNES_API_BASE = "https://itunes.apple.com/search"
+            itunes_api_base = "https://itunes.apple.com/search"
             response = requests.get(
-                ITUNES_API_BASE,
+                itunes_api_base,
                 params=params,
                 headers={
                     "User-Agent": "Floppy/1.0 (https://github.com/dannyvfilms/Floppy)"

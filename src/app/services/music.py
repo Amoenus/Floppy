@@ -1180,16 +1180,16 @@ def sync_album_artist_credits(album: Album, release_data: dict) -> None:
 
 def album_artist_credits_need_sync(album: Album) -> bool:
     """Return True when album credits are missing or look like fallback data."""
-    credits = list(album.artist_credits.all()[:2])
-    if not credits:
+    credit_entries = list(album.artist_credits.all()[:2])
+    if not credit_entries:
         return True
 
     return (
-        len(credits) == 1
+        len(credit_entries) == 1
         and album.artist_id is not None
-        and credits[0].artist_id == album.artist_id
-        and credits[0].position == 0
-        and credits[0].join_phrase == ""
+        and credit_entries[0].artist_id == album.artist_id
+        and credit_entries[0].position == 0
+        and credit_entries[0].join_phrase == ""
     )
 
 
@@ -1414,6 +1414,7 @@ def _split_release_type(release_type: str | None) -> tuple[str, list[str], str]:
 
 
 def build_discography_groups(albums: list[Album]) -> list[dict]:
+    """Return the build discography groups."""
     groups: dict[str, dict] = defaultdict(
         lambda: {"albums": [], "primary": "Unknown", "secondary": []}
     )

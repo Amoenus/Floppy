@@ -173,6 +173,7 @@ class ProfilePayload:
     activity_snapshot_at: timezone.datetime | None
 
     def to_dict(self) -> dict:
+        """Return this value as a plain dictionary."""
         return {
             "genre_affinity": self.genre_affinity,
             "recent_genre_affinity": self.recent_genre_affinity,
@@ -341,7 +342,7 @@ def _item_credit_feature_maps(
     lead_cast_seen: dict[int, set[str]] = defaultdict(set)
     lead_cast_count: dict[int, int] = defaultdict(int)
 
-    credits = (
+    credit_entries = (
         ItemPersonCredit.objects.filter(item_id__in=item_ids)
         .order_by("item_id", "role_type", "sort_order", "person__name")
         .values_list(
@@ -352,7 +353,7 @@ def _item_credit_feature_maps(
             "person__name",
         )
     )
-    for item_id, role_type, role, department, person_name_raw in credits:
+    for item_id, role_type, role, department, person_name_raw in credit_entries:
         person_name = normalize_person_name(person_name_raw or "")
         if not person_name:
             continue
@@ -382,12 +383,12 @@ def _item_studio_feature_map(item_ids: list[int]) -> dict[int, list[str]]:
         return studio_map
 
     seen: dict[int, set[str]] = defaultdict(set)
-    credits = (
+    credit_entries = (
         ItemStudioCredit.objects.filter(item_id__in=item_ids)
         .order_by("item_id", "sort_order", "studio__name")
         .values_list("item_id", "studio__name")
     )
-    for item_id, studio_name_raw in credits:
+    for item_id, studio_name_raw in credit_entries:
         studio_name = normalize_studio(studio_name_raw or "")
         if not studio_name or studio_name in seen[item_id]:
             continue

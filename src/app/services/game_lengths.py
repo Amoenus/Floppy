@@ -275,7 +275,7 @@ def fetch_hltb_search(title: str) -> dict[str, Any]:
     search_payload = search_response.json()
     if not isinstance(search_payload, dict):
         msg = "HLTB search response must be a JSON object"
-        raise ValueError(msg)
+        raise TypeError(msg)
 
     normalized_candidates = []
     for candidate in search_payload.get("data") or []:
@@ -306,7 +306,7 @@ def _fetch_hltb_search_auth() -> dict[str, str]:
     auth_payload = response.json()
     if not isinstance(auth_payload, dict):
         msg = "HLTB search auth response must be a JSON object"
-        raise ValueError(msg)
+        raise TypeError(msg)
 
     token = str(auth_payload.get("token") or "").strip()
     hp_key = str(auth_payload.get("hpKey") or "").strip()

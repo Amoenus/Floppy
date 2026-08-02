@@ -54,6 +54,7 @@ class PlexHistoryImporter:
     """Importer that replays Plex history through TMDB-backed bulk creation."""
 
     def __init__(self, user, account, mode, library, fast_mode=True):
+        """Store the extra keyword arguments this form needs."""
         self.user = user
         self.account = account
         self.mode = mode

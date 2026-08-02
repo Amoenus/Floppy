@@ -158,6 +158,7 @@ def _filter_episode_runtime_season_keys(season_keys):
 
 
 def enqueue_runtime_backfill_items(item_ids, countdown=10):
+    """Return the enqueue runtime backfill items."""
     normalized = _normalize_item_ids(item_ids)
     normalized = _filter_backfill_item_ids(normalized, MetadataBackfillField.RUNTIME)
     if not normalized:
@@ -179,6 +180,7 @@ def enqueue_runtime_backfill_items(item_ids, countdown=10):
 
 
 def enqueue_episode_runtime_backfill(season_keys, countdown=10):
+    """Return the enqueue episode runtime backfill."""
     normalized = _filter_episode_runtime_season_keys(season_keys)
     if not normalized:
         return 0

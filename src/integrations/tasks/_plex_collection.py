@@ -44,11 +44,11 @@ def update_collection_metadata_from_plex_webhook(
         safe_url(plex_uri),
     )
 
-    User = get_user_model()
+    user_model = get_user_model()
     try:
-        user = User.objects.get(id=user_id)
+        user = user_model.objects.get(id=user_id)
         item = Item.objects.get(id=item_id)
-    except (User.DoesNotExist, Item.DoesNotExist) as exc:
+    except (user_model.DoesNotExist, Item.DoesNotExist) as exc:
         logger.warning(
             "Cannot update collection metadata: %s (user_id=%s, item_id=%s)",
             exc,
@@ -340,11 +340,11 @@ def fetch_collection_metadata_for_item(
         item_id,
     )
 
-    User = get_user_model()
+    user_model = get_user_model()
     try:
-        user = User.objects.get(id=user_id)
+        user = user_model.objects.get(id=user_id)
         item = Item.objects.get(id=item_id)
-    except (User.DoesNotExist, Item.DoesNotExist) as exc:
+    except (user_model.DoesNotExist, Item.DoesNotExist) as exc:
         logger.warning(
             "Cannot fetch collection metadata: %s (user_id=%s, item_id=%s)",
             exc,
@@ -356,7 +356,7 @@ def fetch_collection_metadata_for_item(
     plex_account = getattr(user, "plex_account", None)
     if not plex_account or not plex_account.plex_token:
         logger.info(
-            "User %s does not have Plex connected, skipping collection fetch",
+            "user_model %s does not have Plex connected, skipping collection fetch",
             user.username,
         )
         return None
@@ -1014,12 +1014,12 @@ def update_collection_metadata_from_plex(library, user_id):
         library: Plex library identifier (e.g., "all" or "machine_id::section_id")
         user_id: User ID
     """
-    User = get_user_model()
+    user_model = get_user_model()
     try:
-        user = User.objects.get(id=user_id)
-    except User.DoesNotExist:
+        user = user_model.objects.get(id=user_id)
+    except user_model.DoesNotExist:
         logger.warning("Cannot update collection metadata: user %s not found", user_id)
-        return {"error": "User not found"}
+        return {"error": "user_model not found"}
 
     plex_account = getattr(user, "plex_account", None)
     if not plex_account or not plex_account.plex_token:

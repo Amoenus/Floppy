@@ -14,6 +14,7 @@ class Command(BaseCommand):
     help = "Validate Discover provider endpoint availability"
 
     def handle(self, *_args, **_options):
+        """Validate Discover provider endpoint availability."""
         tmdb_checks = TMDbDiscoverAdapter().check_capability()
         trakt_checks = TraktDiscoverAdapter().check_capability()
         checks = {

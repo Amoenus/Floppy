@@ -4,7 +4,7 @@ from django.http import HttpResponseBadRequest
 from django.shortcuts import get_object_or_404, render
 from django.views.decorators.http import require_GET
 
-from app import credits, helpers, statistics_cache
+from app import credits, helpers, statistics_cache  # noqa: A004  # app.credits module, not the site builtin
 from app.media_list_views import build_filter_data_from_items
 from app.models import (
     Book,
@@ -437,7 +437,7 @@ def person_detail(request, source, person_id, name):
     filter_collection = request.GET.get("collection", "all")
     # Use the same sort key names as MediaSortChoices for consistency with the
     # rest of the app. "release_date" desc is the default provider ordering.
-    _PERSON_VALID_SORTS = {
+    person_valid_sorts = {
         MediaSortChoices.RELEASE_DATE.value,
         MediaSortChoices.TITLE.value,
         MediaSortChoices.CRITIC_RATING.value,
@@ -445,7 +445,7 @@ def person_detail(request, source, person_id, name):
         "votes",
     }
     sort_by = request.GET.get("sort", MediaSortChoices.RELEASE_DATE.value)
-    if sort_by not in _PERSON_VALID_SORTS:
+    if sort_by not in person_valid_sorts:
         sort_by = MediaSortChoices.RELEASE_DATE.value
     sort_dir = request.GET.get("direction", "")
     if sort_dir not in {"asc", "desc"}:

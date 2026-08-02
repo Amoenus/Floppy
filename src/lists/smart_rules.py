@@ -1094,7 +1094,7 @@ def build_rule_filter_data(
         "authors",
     )
 
-    _FORMAT_LABELS = {
+    format_labels = {
         "hardcover": "Hardcover",
         "paperback": "Paperback",
         "ebook": "eBook",
@@ -1202,7 +1202,7 @@ def build_rule_filter_data(
             media_type in ORIGIN_MEDIA_TYPES for media_type in target_media_types
         ),
         "formats": [
-            {"value": value, "label": _FORMAT_LABELS.get(value, value.title())}
+            {"value": value, "label": format_labels.get(value, value.title())}
             for value in sorted(formats_set, key=lambda val: val.lower())
         ],
         "show_formats": any(

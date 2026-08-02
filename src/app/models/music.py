@@ -141,6 +141,8 @@ class Album(models.Model):
 
 
 class AlbumArtist(models.Model):
+    """Album artist."""
+
     album = models.ForeignKey(
         Album,
         on_delete=models.CASCADE,
@@ -155,6 +157,8 @@ class AlbumArtist(models.Model):
     join_phrase = models.CharField(max_length=100, blank=True, default="")
 
     class Meta:
+        """Model and field configuration."""
+
         ordering = ["position"]
         constraints = [
             models.UniqueConstraint(

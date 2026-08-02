@@ -176,6 +176,7 @@ class TMDbDiscoverAdapter:
         }
 
     def trending(self, media_type: str, *, limit: int = 50) -> list[CandidateItem]:
+        """Return the trending."""
         if media_type not in {MediaTypes.MOVIE.value, MediaTypes.TV.value}:
             return []
         payload = self._cache_request(
@@ -190,6 +191,7 @@ class TMDbDiscoverAdapter:
         )
 
     def top_rated(self, media_type: str, *, limit: int = 50) -> list[CandidateItem]:
+        """Return the top rated."""
         if media_type not in {MediaTypes.MOVIE.value, MediaTypes.TV.value}:
             return []
         payload = self._cache_request(
@@ -204,6 +206,7 @@ class TMDbDiscoverAdapter:
         )
 
     def upcoming(self, media_type: str, *, limit: int = 50) -> list[CandidateItem]:
+        """Return the upcoming."""
         if media_type == MediaTypes.MOVIE.value:
             payload = self._cache_request(
                 "/movie/upcoming",
@@ -236,6 +239,7 @@ class TMDbDiscoverAdapter:
         return []
 
     def current_cycle(self, media_type: str, *, limit: int = 50) -> list[CandidateItem]:
+        """Return the current cycle."""
         if media_type == MediaTypes.MOVIE.value:
             payload = self._cache_request(
                 "/movie/now_playing",
@@ -265,6 +269,7 @@ class TMDbDiscoverAdapter:
     def related(
         self, media_type: str, media_id: str, *, limit: int = 50
     ) -> list[CandidateItem]:
+        """Return the related."""
         if not media_id:
             return []
 
@@ -311,6 +316,7 @@ class TMDbDiscoverAdapter:
         *,
         limit: int = 100,
     ) -> list[CandidateItem]:
+        """Return the genre discovery."""
         if media_type not in {MediaTypes.MOVIE.value, MediaTypes.TV.value}:
             return []
 

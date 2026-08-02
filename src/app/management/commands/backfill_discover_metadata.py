@@ -18,6 +18,7 @@ class Command(BaseCommand):
     help = "Backfill provider popularity/rating fields for Discover"
 
     def add_arguments(self, parser):
+        """Register this command's command-line options."""
         parser.add_argument(
             "--media-types",
             default=f"{MediaTypes.MOVIE.value},{MediaTypes.TV.value}",
@@ -67,6 +68,7 @@ class Command(BaseCommand):
         }
 
     def handle(self, *_args, **options):
+        """Backfill provider popularity/rating fields for Discover."""
         media_types = self._parse_media_types(options["media_types"])
         if not media_types:
             self.stdout.write(self.style.ERROR("No supported media types specified."))

@@ -18,6 +18,7 @@ class TagsField(forms.MultipleChoiceField):
     """Allow arbitrary tags while still supporting select2 choices."""
 
     def valid_value(self, value):
+        """Return the valid value."""
         return True
 
 

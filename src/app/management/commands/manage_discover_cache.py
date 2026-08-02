@@ -17,6 +17,7 @@ class Command(BaseCommand):
     help = "Clear and optionally rebuild Discover row/profile caches"
 
     def add_arguments(self, parser):
+        """Register this command's command-line options."""
         parser.add_argument(
             "--user-id",
             action="append",
@@ -65,6 +66,7 @@ class Command(BaseCommand):
         return sorted({key.strip() for key in raw_row_keys if key and key.strip()})
 
     def handle(self, *_args, **options):
+        """Clear and optionally rebuild Discover row/profile caches."""
         user_model = get_user_model()
         users = user_model.objects.all().order_by("id")
 

@@ -173,6 +173,7 @@ def _populate_credits_for_items(items, delay_seconds):
 
 
 def enqueue_credits_backfill_items(item_ids, countdown=10):
+    """Return the enqueue credits backfill items."""
     normalized = _normalize_item_ids(item_ids)
     normalized = _filter_backfill_item_ids(normalized, MetadataBackfillField.CREDITS)
     normalized = _missing_credits_item_ids(normalized)

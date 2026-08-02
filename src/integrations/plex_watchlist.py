@@ -25,6 +25,7 @@ class PlexWatchlistSyncService:
     """Synchronize a user's Plex Discover watchlist into Floppy."""
 
     def __init__(self, user, account):
+        """Store the extra keyword arguments this form needs."""
         self.user = user
         self.account = account
         self.counts = defaultdict(int)

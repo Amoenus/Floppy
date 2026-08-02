@@ -151,11 +151,10 @@ def _run_incremental_lastfm_sync(account) -> dict:
             "message": "Last.fm API request failed.",
         }
     except Exception as exc:  # pragma: no cover - defensive
-        logger.error(
+        logger.exception(
             "Unexpected error polling Last.fm for user %s: %s",
             account.user.username,
             exc,
-            exc_info=True,
         )
         now = timezone.now()
         account.connection_broken = False

@@ -13,7 +13,7 @@ from django.views.decorators.http import require_GET
 
 from app import (
     config,
-    credits,
+    credits,  # noqa: A004  # app.credits module, not the site builtin
     custom_metadata,
     helpers,
     metadata_utils,
@@ -425,10 +425,9 @@ def media_details(
                             title=slugify(show.title or "podcast"),
                         )
                 except Exception as e:
-                    logger.error(
+                    logger.exception(
                         "Failed to enrich podcast from iTunes metadata: %s",
                         exception_summary(e),
-                        exc_info=True,
                     )
                     messages.error(request, f"Failed to load podcast details: {e}")
                     # Fall through to empty metadata

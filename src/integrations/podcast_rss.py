@@ -100,11 +100,10 @@ def fetch_show_metadata_from_rss(rss_feed_url: str) -> dict:
         )
         return {}
     except Exception as e:
-        logger.error(
+        logger.exception(
             "Unexpected error parsing RSS feed %s: %s",
             safe_url(rss_feed_url),
             exception_summary(e),
-            exc_info=True,
         )
         return {}
     else:
@@ -164,11 +163,10 @@ def fetch_episodes_from_rss(rss_feed_url: str, limit: int | None = None) -> list
         )
         return []
     except Exception as e:
-        logger.error(
+        logger.exception(
             "Unexpected error parsing RSS feed %s: %s",
             safe_url(rss_feed_url),
             exception_summary(e),
-            exc_info=True,
         )
         return []
     else:

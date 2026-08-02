@@ -21,6 +21,7 @@ class RadarrClient:
     """Thin API client for Radarr v3."""
 
     def __init__(self, base_url: str, api_key: str):
+        """Store the extra keyword arguments this form needs."""
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
 
@@ -60,6 +61,7 @@ class RadarrImporter:
     """Import collection data from Radarr."""
 
     def __init__(self, user):
+        """Store the extra keyword arguments this form needs."""
         self.user = user
         try:
             self.account = user.radarr_account
@@ -81,6 +83,7 @@ class RadarrImporter:
         self.warnings = []
 
     def import_data(self):
+        """Return the import data."""
         imported_counts = defaultdict(int)
 
         try:

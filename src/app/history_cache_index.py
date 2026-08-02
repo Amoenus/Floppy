@@ -312,6 +312,7 @@ def cache_history_payloads(user_id: int, logging_style: str, history_days):
 
 
 def cache_history_index(user_id: int, logging_style: str, day_keys, built_at=None):
+    """Return the cache history index."""
     logging_style = _normalize_logging_style(logging_style)
     if built_at is None:
         built_at = timezone.now()

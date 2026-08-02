@@ -128,6 +128,7 @@ class AuthenticatorSetupForm(forms.Form):
     code = forms.CharField(max_length=6, min_length=6)
 
     def __init__(self, *args, user, **kwargs):
+        """Store the extra keyword arguments this form needs."""
         self.user = user
         super().__init__(*args, **kwargs)
 
@@ -146,10 +147,12 @@ class RegenerateRecoveryCodesForm(forms.Form):
     current_password = forms.CharField(widget=forms.PasswordInput)
 
     def __init__(self, *args, user, **kwargs):
+        """Store the extra keyword arguments this form needs."""
         self.user = user
         super().__init__(*args, **kwargs)
 
     def clean_current_password(self):
+        """Validate the current password field."""
         password = self.cleaned_data["current_password"]
         if not self.user.check_password(password):
             msg = "Current password is incorrect."
@@ -169,10 +172,12 @@ class PasswordRecoveryForm(SetPasswordForm):
     }
 
     def __init__(self, *args, **kwargs):
+        """Store the extra keyword arguments this form needs."""
         super().__init__(None, *args, **kwargs)
         self.recovery_instance = None
 
     def clean(self):
+        """Validate the submitted data as a whole."""
         cleaned_data = super().clean()
         username = cleaned_data.get("username", "").strip()
         recovery_code = cleaned_data.get("recovery_code", "").strip().upper()
@@ -211,6 +216,7 @@ class PasswordRecoveryForm(SetPasswordForm):
         return cleaned_data
 
     def save(self, commit=True):
+        """Return the save."""
         user = super().save(commit=commit)
         if self.recovery_instance:
             self.recovery_instance.used_at = timezone.now()

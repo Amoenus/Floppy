@@ -96,8 +96,8 @@ def scheduled_backup_export(
     """Celery task for exporting a CSV backup to the backup directory."""
     from integrations import exports
 
-    User = get_user_model()
-    user = User.objects.get(id=user_id)
+    user_model = get_user_model()
+    user = user_model.objects.get(id=user_id)
     filepath = exports.write_backup(
         user,
         media_types=media_types,

@@ -528,20 +528,20 @@ def comic_issue(media_id):
 
 def _get_issue_people(response):
     """Return writer names from issue person_credits."""
-    credits = response.get("person_credits") or []
+    credit_entries = response.get("person_credits") or []
     return [
         person["name"]
-        for person in credits[:5]
+        for person in credit_entries[:5]
         if isinstance(person, dict) and _is_writer_role(person.get("role") or "")
-    ] or [person["name"] for person in credits[:5] if isinstance(person, dict)]
+    ] or [person["name"] for person in credit_entries[:5] if isinstance(person, dict)]
 
 
 def _get_issue_people_full(response):
     """Return normalized writer payloads from issue person_credits."""
-    credits = response.get("person_credits") or []
+    credit_entries = response.get("person_credits") or []
     people_full = []
     seen = set()
-    for index, person in enumerate(credits):
+    for index, person in enumerate(credit_entries):
         if not isinstance(person, dict):
             continue
         role = person.get("role") or ""

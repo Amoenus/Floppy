@@ -689,12 +689,11 @@ def season_details(
                             fetching_collection_data = True
                             item_id_for_polling = show_item.id
                         except Exception as task_exc:
-                            logger.error(
+                            logger.exception(
                                 "Failed to trigger background collection fetch for show %s - %s: %s",
                                 request.user.username,
                                 show_item.title,
                                 task_exc,
-                                exc_info=True,
                             )
                     else:
                         logger.info(
@@ -709,10 +708,9 @@ def season_details(
                     source,
                 )
             except Exception as exc:
-                logger.error(
+                logger.exception(
                     "Error checking show collection entry in season_details: %s",
                     exception_summary(exc),
-                    exc_info=True,
                 )
 
             # Get collection entry for the season item itself (if it exists)

@@ -71,6 +71,7 @@ class JellyfinPushSyncService:
     """Push the user's watched/unwatched Movie and Episode state to Jellyfin."""
 
     def __init__(self, user, account):
+        """Store the extra keyword arguments this form needs."""
         self.user = user
         self.account = account
         self.counts = defaultdict(int)

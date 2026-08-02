@@ -235,12 +235,16 @@ class StatisticsRangeChoices(models.TextChoices):
 
 
 class ImportFrequencyChoices(models.TextChoices):
+    """Import frequency choices."""
+
     ONCE = "once", "One Time Import"
     DAILY = "daily", "Every Day"
     TWO_DAYS = "2days", "Every 2 Days"
 
 
 class ImportModeChoices(models.TextChoices):
+    """Import mode choices."""
+
     NEW = "new", "Only Sync New Items"
     OVERWRITE = "overwrite", "Sync New Items and Overwrite Existing"
     WATCHLIST = "watchlist", "Import Watchlist Data Only"
@@ -1909,6 +1913,8 @@ class UserRecoveryCode(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        """Model and field configuration."""
+
         ordering = ["-created_at"]
 
     @staticmethod
@@ -1966,6 +1972,8 @@ class HomeScreenRow(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        """Model and field configuration."""
+
         ordering = ["media_type", "position", "id"]
         constraints = [
             models.CheckConstraint(

@@ -29,6 +29,7 @@ class JellyseerrWebhookProcessor:
     }
 
     def process_payload(self, payload, user):
+        """Return the process payload."""
         if not getattr(user, "jellyseerr_enabled", False):
             logger.debug(
                 "Jellyseerr webhook ignored: user %s has jellyseerr_enabled=False",

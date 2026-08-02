@@ -346,6 +346,7 @@ class Command(BaseCommand):
     help = "Match 250 known movie titles against backfilled DB items and write a calibration fixture"
 
     def handle(self, *_args, **_options):
+        """Match 250 known movie titles against backfilled DB items and write a calibration fixture."""
         os.makedirs(os.path.dirname(os.path.abspath(OUTPUT_PATH)), exist_ok=True)
 
         found_items = []

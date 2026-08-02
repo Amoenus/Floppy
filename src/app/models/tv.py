@@ -1247,6 +1247,7 @@ class Episode(models.Model):
 
     @property
     def progressed_at(self):
+        """Return the progressed at."""
         return None
 
     def _local_season_max_progress(self):

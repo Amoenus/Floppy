@@ -42,6 +42,7 @@ class GPodderImporter:
     """Importer for GPodder-compatible podcast history."""
 
     def __init__(self, user, mode):
+        """Store the extra keyword arguments this form needs."""
         self.user = user
         self.mode = mode
         self.warnings = []

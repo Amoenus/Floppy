@@ -15,6 +15,7 @@ class Command(BaseCommand):
     help = "Evaluate the checked-in Trakt popularity calibration fixture"
 
     def add_arguments(self, parser):
+        """Register this command's command-line options."""
         parser.add_argument(
             "--grid-search",
             action="store_true",
@@ -27,6 +28,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *_args, **options):
+        """Evaluate the checked-in Trakt popularity calibration fixture."""
         if options["grid_search"]:
             self._handle_grid_search()
             return

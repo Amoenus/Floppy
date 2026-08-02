@@ -9,7 +9,7 @@ from django.conf import settings
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 
-from app import credits, helpers, metadata_utils
+from app import credits, helpers, metadata_utils  # noqa: A004  # app.credits module, not the site builtin
 from app import statistics as stats
 from app.models import Album, Artist, Item, MediaTypes, PodcastShow, Sources, Track
 from app.providers import pocketcasts, services

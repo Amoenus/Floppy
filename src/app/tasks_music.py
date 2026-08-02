@@ -32,10 +32,10 @@ def enrich_music_library_task(user_id: int):
     from app.services.music_scrobble import dedupe_artist_albums
     from app.services.music_validation import validate_music_library
 
-    User = get_user_model()
+    user_model = get_user_model()
     try:
-        user = User.objects.get(id=user_id)
-    except User.DoesNotExist:
+        user = user_model.objects.get(id=user_id)
+    except user_model.DoesNotExist:
         logger.warning("enrich_music_library_task: user %s no longer exists", user_id)
         return {"artists": 0, "synced": 0, "deduped": 0}
 
@@ -485,10 +485,10 @@ def fast_runtime_backfill_task(user_id: int):
     from app.models import Item, Music, Track
     from app.services.music_scrobble import _runtime_minutes_from_ms
 
-    User = get_user_model()
+    user_model = get_user_model()
     try:
-        user = User.objects.get(id=user_id)
-    except User.DoesNotExist:
+        user = user_model.objects.get(id=user_id)
+    except user_model.DoesNotExist:
         logger.warning("fast_runtime_backfill_task: user %s no longer exists", user_id)
         return {"backfilled": 0}
 
@@ -630,8 +630,8 @@ def populate_album_tracks_batch(album_ids: list[int], user_id: int | None = None
     # After populating tracks, link Music entries to tracks and backfill runtime
     if populated > 0 and user_id:
         try:
-            User = get_user_model()
-            user = User.objects.get(id=user_id)
+            user_model = get_user_model()
+            user = user_model.objects.get(id=user_id)
 
             # Link Music entries to newly populated tracks
             link_result = link_music_to_tracks(user)
@@ -681,10 +681,10 @@ def enrich_albums_task(user_id: int):
     )
     from app.services.music_scrobble import _runtime_minutes_from_ms
 
-    User = get_user_model()
+    user_model = get_user_model()
     try:
-        user = User.objects.get(id=user_id)
-    except User.DoesNotExist:
+        user = user_model.objects.get(id=user_id)
+    except user_model.DoesNotExist:
         logger.warning("enrich_albums_task: user %s no longer exists", user_id)
         return {"albums": 0, "attached_mbid": 0, "merged": 0}
 

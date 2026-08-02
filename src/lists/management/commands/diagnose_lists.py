@@ -9,9 +9,12 @@ User = get_user_model()
 
 
 class Command(BaseCommand):
+    """Command."""
+
     help = "Diagnose broken or invalid lists"
 
     def handle(self, *args, **options):
+        """Diagnose broken or invalid lists."""
         self.stdout.write("Checking for broken lists...\n")
 
         # Check all lists

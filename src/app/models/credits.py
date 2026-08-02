@@ -28,6 +28,8 @@ class ItemProviderLink(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        """Model and field configuration."""
+
         ordering = [
             "provider",
             "provider_media_type",
@@ -85,6 +87,8 @@ class MetadataProviderPreference(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        """Model and field configuration."""
+
         constraints = [
             UniqueConstraint(
                 fields=["user", "item"],
@@ -137,6 +141,8 @@ class MetadataBackfillState(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        """Model and field configuration."""
+
         constraints = [
             UniqueConstraint(
                 fields=["item", "field"],

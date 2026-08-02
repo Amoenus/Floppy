@@ -201,7 +201,7 @@ def _tmdb_tv_item_is_tvdb_anime(item: Item, tmdb_metadata: dict | None) -> bool:
 
     if not isinstance(tvdb_metadata_result, dict):
         msg = "no tvdb metadata"
-        raise ValueError(msg)
+        raise TypeError(msg)
 
     metadata_resolution.upsert_provider_links(
         item,
@@ -363,6 +363,7 @@ def populate_genres_for_item_sync(item: Item, metadata: dict) -> None:
 
 
 def enqueue_genre_backfill_items(item_ids, countdown=10):
+    """Return the enqueue genre backfill items."""
     normalized = _normalize_item_ids(item_ids)
     normalized = _filter_backfill_item_ids(normalized, MetadataBackfillField.GENRES)
     if not normalized:

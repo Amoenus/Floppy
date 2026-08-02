@@ -526,10 +526,8 @@ def _get_trakt_credentials(user):
         client_id = import_helpers.decrypt(trakt_account.client_id)
         client_secret = import_helpers.decrypt(trakt_account.client_secret)
     except Exception:
-        logger.error(
-            "Failed to decrypt Trakt credentials for user %s",
-            user.username,
-            exc_info=True,
+        logger.exception(
+            "Failed to decrypt Trakt credentials for user %s", user.username
         )
         return None
     return client_id, client_secret

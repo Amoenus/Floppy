@@ -102,6 +102,8 @@ class CollectionEntry(models.Model):
     )
 
     class Meta:
+        """Model and field configuration."""
+
         ordering = ["-collected_at"]
         indexes = [
             models.Index(fields=["user", "-collected_at"]),
@@ -110,6 +112,7 @@ class CollectionEntry(models.Model):
         ]
 
     def __str__(self):
+        """Return a readable label for this record."""
         return f"{self.user.username} - {self.item.title}"
 
 
@@ -125,6 +128,8 @@ class Tag(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        """Model and field configuration."""
+
         ordering = ["name"]
         constraints = [
             UniqueConstraint(
@@ -138,9 +143,11 @@ class Tag(models.Model):
         ]
 
     def __str__(self):
+        """Return a readable label for this record."""
         return self.name
 
     def save(self, *args, **kwargs):
+        """Return the save."""
         self.name = " ".join(self.name.split())
         super().save(*args, **kwargs)
 
@@ -161,6 +168,8 @@ class ItemTag(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        """Model and field configuration."""
+
         ordering = ["-created_at"]
         constraints = [
             UniqueConstraint(
@@ -173,6 +182,7 @@ class ItemTag(models.Model):
         ]
 
     def __str__(self):
+        """Return a readable label for this record."""
         return f"{self.tag.name} -> {self.item.title}"
 
 
@@ -206,6 +216,8 @@ class DiscoverFeedback(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        """Model and field configuration."""
+
         ordering = ["user_id", "feedback_type", "-updated_at"]
         constraints = [
             UniqueConstraint(
@@ -219,6 +231,7 @@ class DiscoverFeedback(models.Model):
         ]
 
     def __str__(self):
+        """Return a readable label for this record."""
         return f"{self.user_id}:{self.item_id}:{self.feedback_type}"
 
 
@@ -233,6 +246,8 @@ class DiscoverApiCache(models.Model):
     expires_at = models.DateTimeField()
 
     class Meta:
+        """Model and field configuration."""
+
         ordering = ["-fetched_at"]
         constraints = [
             UniqueConstraint(
@@ -246,6 +261,7 @@ class DiscoverApiCache(models.Model):
         ]
 
     def __str__(self):
+        """Return a readable label for this record."""
         return f"{self.provider}:{self.endpoint}"
 
 
@@ -306,6 +322,8 @@ class DiscoverTasteProfile(models.Model):
     expires_at = models.DateTimeField()
 
     class Meta:
+        """Model and field configuration."""
+
         ordering = ["user_id", "media_type"]
         constraints = [
             UniqueConstraint(
@@ -319,6 +337,7 @@ class DiscoverTasteProfile(models.Model):
         ]
 
     def __str__(self):
+        """Return a readable label for this record."""
         return f"{self.user_id}:{self.media_type}"
 
 
@@ -337,6 +356,8 @@ class DiscoverRowCache(models.Model):
     expires_at = models.DateTimeField()
 
     class Meta:
+        """Model and field configuration."""
+
         ordering = ["user_id", "media_type", "row_key"]
         constraints = [
             UniqueConstraint(
@@ -350,4 +371,5 @@ class DiscoverRowCache(models.Model):
         ]
 
     def __str__(self):
+        """Return a readable label for this record."""
         return f"{self.user_id}:{self.media_type}:{self.row_key}"

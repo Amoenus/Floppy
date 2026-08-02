@@ -640,11 +640,10 @@ def _build_podcast_entries(user, podcast_history_records, podcasts_lookup):
             _attach_entry_score(entry, podcast)
             entries.append(entry)
         except Exception as e:
-            logger.error(
+            logger.exception(
                 "Error processing podcast history record %s: %s",
                 history_record.history_id,
                 e,
-                exc_info=True,
             )
     return entries
 

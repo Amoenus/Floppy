@@ -56,6 +56,7 @@ def _igdb_rating_items_queryset():
 
 
 def count_igdb_rating_backfill_items() -> int:
+    """Return the count igdb rating backfill items."""
     return _igdb_rating_items_queryset().count()
 
 
@@ -139,6 +140,7 @@ def populate_igdb_rating_data_for_items(item_ids: list[int]):
 
 
 def enqueue_igdb_rating_backfill_items(item_ids, countdown=10):
+    """Return the enqueue igdb rating backfill items."""
     normalized = _normalize_item_ids(item_ids)
     normalized = _filter_backfill_item_ids(
         normalized, MetadataBackfillField.IGDB_RATINGS

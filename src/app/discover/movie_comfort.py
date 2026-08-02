@@ -389,6 +389,7 @@ def _affinity_fit_from_vector(
 def phase_fit_family(
     profile_payload: dict | None, family: str, values: list[str]
 ) -> float:
+    """Return the phase fit family."""
     return _affinity_fit(
         values,
         _profile_exact_affinity_map(
@@ -401,6 +402,7 @@ def phase_fit_family(
 def recent_fit_family(
     profile_payload: dict | None, family: str, values: list[str]
 ) -> float:
+    """Return the recent fit family."""
     return _affinity_fit(
         values,
         _profile_exact_affinity_map(
@@ -413,6 +415,7 @@ def recent_fit_family(
 def library_fit_family(
     profile_payload: dict | None, family: str, values: list[str]
 ) -> float:
+    """Return the library fit family."""
     return _affinity_fit(
         values,
         _movie_comfort_bundle_map(
@@ -426,6 +429,7 @@ def library_fit_family(
 def rewatch_fit_family(
     profile_payload: dict | None, family: str, values: list[str]
 ) -> float:
+    """Return the rewatch fit family."""
     return _affinity_fit(
         values,
         _movie_comfort_bundle_map(

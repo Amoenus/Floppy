@@ -128,10 +128,12 @@ def _day_key_from_value(value):
 
 
 def history_day_key(value):
+    """Return the history day key."""
     return _day_key_from_value(value)
 
 
 def history_day_keys_for_range(start_dt, end_dt):
+    """Return the history day keys for range."""
     if not start_dt or not end_dt:
         return []
     start_local = _localize_datetime(start_dt)

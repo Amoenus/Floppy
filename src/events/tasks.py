@@ -60,13 +60,13 @@ def reload_calendar(user_id=None, item_ids=None, user=None, items_to_process=Non
 
     resolved_user = None
     if normalized_user_id is not None:
-        User = get_user_model()
-        resolved_user = User.objects.filter(id=normalized_user_id).first()
+        user_model = get_user_model()
+        resolved_user = user_model.objects.filter(id=normalized_user_id).first()
         if resolved_user is None:
             logger.warning(
                 "Skipping calendar reload for missing user_id=%s", normalized_user_id
             )
-            return "User not found"
+            return "user_model not found"
         logger.info("Reloading calendar for user: %s", resolved_user.username)
     else:
         logger.info("Reloading calendar for all users")
@@ -359,11 +359,8 @@ def refresh_podcast_episodes():
                 updated_count += 1
 
         except Exception as e:
-            logger.error(
-                "Failed to refresh episodes for show %s: %s",
-                show.title,
-                e,
-                exc_info=True,
+            logger.exception(
+                "Failed to refresh episodes for show %s: %s", show.title, e
             )
             error_count += 1
 
@@ -379,7 +376,7 @@ def refresh_podcast_episodes():
                 cleanup_stats["duplicates_removed"],
             )
     except Exception as e:
-        logger.error("Failed to cleanup duplicate episodes: %s", e, exc_info=True)
+        logger.exception("Failed to cleanup duplicate episodes: %s", e)
         # Don't fail the whole task if cleanup fails
 
     result = f"Refreshed {updated_count} shows, {error_count} errors"

@@ -45,8 +45,8 @@ def bulk_episode_plays_task(
         user_id,
         media_id,
     )
-    User = get_user_model()
-    user = User.objects.get(id=user_id)
+    user_model = get_user_model()
+    user = user_model.objects.get(id=user_id)
 
     metadata_item = None
     base_metadata = None
@@ -178,8 +178,8 @@ def bulk_music_plays_task(
         context_kind,
         context_id,
     )
-    User = get_user_model()
-    user = User.objects.get(id=user_id)
+    user_model = get_user_model()
+    user = user_model.objects.get(id=user_id)
 
     if context_kind == "artist":
         artist = Artist.objects.filter(id=context_id).first()
