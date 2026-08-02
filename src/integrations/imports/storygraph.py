@@ -89,6 +89,18 @@ def parse_reads(dates_read):
     return reads
 
 
+def read_day(value):
+    """Return the local calendar day a stored or parsed read date falls on.
+
+    ``parse_date`` builds local midnight, which the database keeps in UTC -
+    for any zone east of Greenwich that is the *previous* day. Reading
+    ``.date()`` off either side would compare a local day against a UTC one,
+    so both sides go through this instead. That mismatch is invisible under
+    ``TZ=UTC``, which is why the test suite never caught it.
+    """
+    return timezone.localdate(value) if value else None
+
+
 def determine_status(raw_status):
     """Map a StoryGraph read status onto a Floppy status."""
     return STATUS_MAP.get(
@@ -477,7 +489,7 @@ class StoryGraphImporter:
         for book in model.objects.filter(user=self.user).select_related("item"):
             key = (book.item.source, book.item.media_id)
             if book.status == Status.COMPLETED.value:
-                tracked_dates[key].add(book.end_date.date() if book.end_date else None)
+                tracked_dates[key].add(read_day(book.end_date))
             else:
                 tracked_statuses[key].add(book.status)
         return tracked_dates, tracked_statuses
@@ -579,10 +591,10 @@ class StoryGraphImporter:
 
         instances = []
         for read in reads:
-            read_day = read.end.date() if read.end else None
-            if read_day in tracked_dates:
+            day = read_day(read.end)
+            if day in tracked_dates:
                 continue
-            tracked_dates.add(read_day)
+            tracked_dates.add(day)
             instances.append(
                 self._build_instance(
                     item,

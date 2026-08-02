@@ -4,7 +4,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.test import SimpleTestCase, TestCase
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -967,3 +967,58 @@ class StoryGraphWiring(TestCase):
 
         self.assertEqual(response.status_code, 302)
         delay.assert_called_once()
+
+
+@override_settings(TIME_ZONE="Europe/Berlin")
+class ImportStoryGraphNonUtcTimezone(TestCase):
+    """Dedup must survive a server timezone that is not UTC.
+
+    Dates parsed from the export are local midnight, which Postgres stores as
+    the previous day in UTC for any zone east of Greenwich. Comparing a stored
+    date against a parsed one therefore has to happen in the same zone, or
+    every read looks new on every import.
+    """
+
+    def setUp(self):
+        """Create the user and import the fixture once."""
+        self.user = get_user_model().objects.create_user(
+            username="test",
+            password="12345",
+        )
+        self._import()
+
+    def _import(self, mode="new"):
+        """Import the fixture export with the providers mocked out."""
+        with (
+            patch(
+                "integrations.imports.storygraph.services.search",
+                side_effect=fake_search,
+            ),
+            patch(
+                "integrations.imports.storygraph.services.get_media_metadata",
+                side_effect=fake_metadata,
+            ),
+            Path(mock_path / "import_storygraph.csv").open("rb") as file,
+        ):
+            return storygraph.importer(file, self.user, mode)
+
+    def test_reimport_creates_nothing(self):
+        """Importing the same export twice leaves the entry count unchanged."""
+        before = Book.objects.filter(user=self.user).count()
+        counts, _ = self._import()
+        self.assertEqual(counts.get("book", 0), 0)
+        self.assertEqual(Book.objects.filter(user=self.user).count(), before)
+
+    def test_read_dates_survive_the_round_trip(self):
+        """A read keeps its local calendar day after being stored."""
+        books = list(
+            Book.objects.filter(user=self.user, item__title="Re-read Book").order_by(
+                "end_date",
+            ),
+        )
+        self.assertEqual(len(books), 2)
+        local_days = [timezone.localtime(book.end_date).date() for book in books]
+        self.assertEqual(
+            local_days,
+            [datetime(2021, 9, 14).date(), datetime(2022, 11, 28).date()],
+        )
