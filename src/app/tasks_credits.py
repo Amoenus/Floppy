@@ -60,7 +60,7 @@ def _next_credits_backfill_item_ids(batch_size: int, scan_multiplier: int):
 
 
 def _populate_credits_for_items(items, delay_seconds):
-    from app import credits  # noqa: PLC0415
+    from app import credits  # noqa: PLC0415, A004  # app.credits module, not the site builtin
 
     updated_count = 0
     error_count = 0

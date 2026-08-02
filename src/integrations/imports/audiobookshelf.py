@@ -1090,9 +1090,7 @@ class AudiobookshelfImporter:
         if not title:
             return None
 
-        search_plan = []
-        for isbn in isbns:
-            search_plan.append((isbn, True))
+        search_plan = [(isbn, True) for isbn in isbns]
 
         author_hint = authors[0] if authors else ""
         if author_hint:

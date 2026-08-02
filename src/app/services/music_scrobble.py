@@ -759,12 +759,13 @@ def _get_or_create_track(metadata: ResolvedMusicMetadata, album: Album) -> Track
 
 def _dedupe_null_tracks(album: Album, keep_track: Track, normalized_title: str) -> None:
     """Delete duplicate tracks on the album that lack track_number but match the title."""
-    duplicates = []
-    for extra in album.tracklist.exclude(id=keep_track.id).filter(
-        track_number__isnull=True
-    ):
-        if _normalize(extra.title) == normalized_title:
-            duplicates.append(extra.id)
+    duplicates = [
+        extra.id
+        for extra in album.tracklist.exclude(id=keep_track.id).filter(
+            track_number__isnull=True
+        )
+        if _normalize(extra.title) == normalized_title
+    ]
     if duplicates:
         album.tracklist.filter(id__in=duplicates).delete()
         logger.debug(
@@ -1246,19 +1247,18 @@ def _log_search_candidates(query: str, candidates: list[dict]) -> None:
     if not candidates:
         logger.debug("MusicBrainz search for '%s' returned no candidates", query)
         return
-    summary = []
-    for cand in candidates:
-        summary.append(
-            {
-                "title": cand.get("title"),
-                "artist": cand.get("artist_name"),
-                "album": cand.get("album_title"),
-                "recording_id": cand.get("media_id"),
-                "artist_id": cand.get("artist_id"),
-                "release_id": cand.get("release_id"),
-                "release_group_id": cand.get("release_group_id"),
-            },
-        )
+    summary = [
+        {
+            "title": cand.get("title"),
+            "artist": cand.get("artist_name"),
+            "album": cand.get("album_title"),
+            "recording_id": cand.get("media_id"),
+            "artist_id": cand.get("artist_id"),
+            "release_id": cand.get("release_id"),
+            "release_group_id": cand.get("release_group_id"),
+        }
+        for cand in candidates
+    ]
     logger.debug("Top MusicBrainz candidates for '%s': %s", query, summary)
 
 

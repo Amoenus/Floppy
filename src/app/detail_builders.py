@@ -128,36 +128,32 @@ def _build_game_lengths_context(detail_item):
                 )
             )
 
-        single_player_rows = []
-        for row in hltb_payload.get("single_player_table") or []:
-            single_player_rows.append(
-                {
-                    "label": row.get("label") or "",
-                    "count": row.get("count") or 0,
-                    "average": _format_game_length_minutes(row.get("average_minutes")),
-                    "median": _format_game_length_minutes(row.get("median_minutes")),
-                    "rushed": _format_game_length_minutes(row.get("rushed_minutes")),
-                    "leisure": _format_game_length_minutes(row.get("leisure_minutes")),
-                },
-            )
+        single_player_rows = [
+            {
+                "label": row.get("label") or "",
+                "count": row.get("count") or 0,
+                "average": _format_game_length_minutes(row.get("average_minutes")),
+                "median": _format_game_length_minutes(row.get("median_minutes")),
+                "rushed": _format_game_length_minutes(row.get("rushed_minutes")),
+                "leisure": _format_game_length_minutes(row.get("leisure_minutes")),
+            }
+            for row in hltb_payload.get("single_player_table") or []
+        ]
 
-        platform_rows = []
-        for row in hltb_payload.get("platform_table") or []:
-            platform_rows.append(
-                {
-                    "platform": row.get("platform") or "",
-                    "count": row.get("count") or 0,
-                    "main": _format_game_length_minutes(row.get("main_minutes")),
-                    "main_plus": _format_game_length_minutes(
-                        row.get("main_plus_minutes")
-                    ),
-                    "completionist": _format_game_length_minutes(
-                        row.get("completionist_minutes")
-                    ),
-                    "fastest": _format_game_length_minutes(row.get("fastest_minutes")),
-                    "slowest": _format_game_length_minutes(row.get("slowest_minutes")),
-                },
-            )
+        platform_rows = [
+            {
+                "platform": row.get("platform") or "",
+                "count": row.get("count") or 0,
+                "main": _format_game_length_minutes(row.get("main_minutes")),
+                "main_plus": _format_game_length_minutes(row.get("main_plus_minutes")),
+                "completionist": _format_game_length_minutes(
+                    row.get("completionist_minutes")
+                ),
+                "fastest": _format_game_length_minutes(row.get("fastest_minutes")),
+                "slowest": _format_game_length_minutes(row.get("slowest_minutes")),
+            }
+            for row in hltb_payload.get("platform_table") or []
+        ]
 
         return {
             "available": bool(cards),

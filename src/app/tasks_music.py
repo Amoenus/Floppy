@@ -305,14 +305,16 @@ def enrich_music_library_task(user_id: int):
                     artist.pk,
                 )
             else:
-                for album in Album.objects.filter(
-                    artist_id=artist.pk,
-                    tracks_populated=False,
-                ).exclude(
-                    musicbrainz_release_id__isnull=True,
-                    musicbrainz_release_group_id__isnull=True,
-                ):
-                    albums_to_populate.append(album.id)
+                albums_to_populate.extend(
+                    album.id
+                    for album in Album.objects.filter(
+                        artist_id=artist.pk,
+                        tracks_populated=False,
+                    ).exclude(
+                        musicbrainz_release_id__isnull=True,
+                        musicbrainz_release_group_id__isnull=True,
+                    )
+                )
 
         # Link Music entries to populated tracks by recording_id to unlock runtimes
         try:

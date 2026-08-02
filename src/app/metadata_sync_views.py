@@ -585,9 +585,11 @@ def _build_local_tv_with_seasons_metadata(
         show_title,
         show_image,
     )
-    for local_season in local_related_seasons:
-        if local_season["season_number"] not in seen_season_numbers:
-            provider_related_seasons.append(local_season)
+    provider_related_seasons.extend(
+        local_season
+        for local_season in local_related_seasons
+        if local_season["season_number"] not in seen_season_numbers
+    )
 
     provider_related_seasons.sort(
         key=lambda season: (

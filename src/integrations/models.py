@@ -516,6 +516,10 @@ class RadarrAccount(models.Model):
         verbose_name_plural = "Radarr accounts"
 
     @property
+    def __str__(self):
+        """Return a readable label for this radarr account."""
+        return f"{self.user}"
+
     def is_connected(self):
         """Return True when the account appears connected."""
         return bool(self.base_url and self.api_key) and not self.connection_broken
@@ -544,6 +548,10 @@ class SonarrAccount(models.Model):
         verbose_name_plural = "Sonarr accounts"
 
     @property
+    def __str__(self):
+        """Return a readable label for this sonarr account."""
+        return f"{self.user}"
+
     def is_connected(self):
         """Return True when the account appears connected."""
         return bool(self.base_url and self.api_key) and not self.connection_broken
@@ -583,6 +591,10 @@ class MDBListAccount(models.Model):
         verbose_name_plural = "MDBList accounts"
 
     @property
+    def __str__(self):
+        """Return a readable label for this m d b list account."""
+        return f"{self.user}"
+
     def is_connected(self):
         """Return True when the account appears connected."""
         return bool(self.api_key) and not self.connection_broken
@@ -675,6 +687,10 @@ class CollectionSourceState(models.Model):
             models.Index(fields=["user", "source"]),
             models.Index(fields=["user", "item"]),
         ]
+
+    def __str__(self):
+        """Return a readable label for this collection source state."""
+        return f"{self.user}"
 
 
 class StorytellerAccount(models.Model):

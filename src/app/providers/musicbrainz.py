@@ -968,16 +968,15 @@ def get_artist(artist_id):
 
     # Get releases (albums) for this artist
     release_groups = response.get("release-groups", [])
-    albums = []
-    for rg in release_groups[:20]:  # Limit to 20 albums
-        albums.append(
-            {
-                "release_group_id": rg.get("id"),
-                "title": rg.get("title", ""),
-                "type": rg.get("primary-type", ""),
-                "first_release_date": rg.get("first-release-date", ""),
-            }
-        )
+    albums = [
+        {
+            "release_group_id": rg.get("id"),
+            "title": rg.get("title", ""),
+            "type": rg.get("primary-type", ""),
+            "first_release_date": rg.get("first-release-date", ""),
+        }
+        for rg in release_groups[:20]
+    ]
 
     # Band members: "member of band" relations where this artist is the band
     # (the member is the source of the relation, so it appears with direction

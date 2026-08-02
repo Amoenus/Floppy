@@ -166,15 +166,15 @@ def _extract_item_authors(item):
     if not fallback_names:
         fallback_names = _extract_cached_item_authors(item)
 
-    for name in fallback_names:
-        authors.append(
-            {
-                "name": name,
-                "image": "",
-                "source": "",
-                "person_id": "",
-            },
-        )
+    authors.extend(
+        {
+            "name": name,
+            "image": "",
+            "source": "",
+            "person_id": "",
+        }
+        for name in fallback_names
+    )
     return authors
 
 

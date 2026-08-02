@@ -154,6 +154,10 @@ class MetadataBackfillState(models.Model):
             models.Index(fields=["field", "give_up"]),
         ]
 
+    def __str__(self):
+        """Return the item and field this backfill state tracks."""
+        return f"{self.item} {self.field}"
+
 
 class PersonGender(models.TextChoices):
     """Normalized person genders used across providers."""

@@ -167,6 +167,10 @@ class AlbumArtist(models.Model):
             ),
         ]
 
+    def __str__(self):
+        """Return the album and artist this link joins."""
+        return f"{self.album} - {self.artist}"
+
 
 class ArtistMember(models.Model):
     """Self-referential membership link between a band and a member artist."""

@@ -530,19 +530,18 @@ def _build_single_player_table(profile: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _build_platform_table(platform_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    table = []
-    for row in platform_rows:
-        table.append(
-            {
-                "platform": row.get("platform") or "",
-                "count": _coerce_int(row.get("count_comp")) or 0,
-                "main_minutes": _seconds_to_minutes(row.get("comp_main")),
-                "main_plus_minutes": _seconds_to_minutes(row.get("comp_plus")),
-                "completionist_minutes": _seconds_to_minutes(row.get("comp_100")),
-                "fastest_minutes": _seconds_to_minutes(row.get("comp_low")),
-                "slowest_minutes": _seconds_to_minutes(row.get("comp_high")),
-            },
-        )
+    table = [
+        {
+            "platform": row.get("platform") or "",
+            "count": _coerce_int(row.get("count_comp")) or 0,
+            "main_minutes": _seconds_to_minutes(row.get("comp_main")),
+            "main_plus_minutes": _seconds_to_minutes(row.get("comp_plus")),
+            "completionist_minutes": _seconds_to_minutes(row.get("comp_100")),
+            "fastest_minutes": _seconds_to_minutes(row.get("comp_low")),
+            "slowest_minutes": _seconds_to_minutes(row.get("comp_high")),
+        }
+        for row in platform_rows
+    ]
     return table
 
 

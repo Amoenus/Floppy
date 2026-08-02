@@ -1610,16 +1610,15 @@ def get_crew_credits(credits_data, is_aggregate=False):
 
 def get_companies_full(companies):
     """Return normalized studio/company entries."""
-    studios = []
-    for company in companies or []:
-        studios.append(
-            {
-                "studio_id": str(company.get("id")),
-                "name": company.get("name", ""),
-                "logo": get_profile_image_url(company.get("logo_path")),
-                "origin_country": company.get("origin_country", ""),
-            },
-        )
+    studios = [
+        {
+            "studio_id": str(company.get("id")),
+            "name": company.get("name", ""),
+            "logo": get_profile_image_url(company.get("logo_path")),
+            "origin_country": company.get("origin_country", ""),
+        }
+        for company in companies or []
+    ]
     studios.sort(key=lambda row: row.get("name", "").lower())
     return studios
 

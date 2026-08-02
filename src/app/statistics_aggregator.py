@@ -1031,12 +1031,13 @@ def _aggregate_statistics_from_days(
         meta for _, _, meta in sorted(top_rated_heap, key=lambda x: (-x[0], x[1]))
     ]
 
-    media_refs = []
-    for meta in top_rated_meta:
-        media_refs.append((meta.get("media_type"), meta.get("media_id")))
+    media_refs = [
+        (meta.get("media_type"), meta.get("media_id")) for meta in top_rated_meta
+    ]
     for metas in top_rated_by_type.values():
-        for meta in metas:
-            media_refs.append((meta.get("media_type"), meta.get("media_id")))
+        media_refs.extend(
+            (meta.get("media_type"), meta.get("media_id")) for meta in metas
+        )
 
     media_map = _fetch_media_objects(set(media_refs))
     top_rated_media = [

@@ -1918,6 +1918,10 @@ class UserRecoveryCode(models.Model):
         ordering = ["-created_at"]
 
     @staticmethod
+    def __str__(self):
+        """Return a readable label for this user recovery code."""
+        return f"{self.user}"
+
     def hash_code(raw_code):
         """Return a deterministic hash for a recovery code."""
         normalized = str(raw_code).strip().upper()
