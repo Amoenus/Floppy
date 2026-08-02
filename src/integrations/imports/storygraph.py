@@ -46,7 +46,14 @@ BOOK_METADATA_PROVIDER_ORDER = (Sources.HARDCOVER.value, Sources.OPENLIBRARY.val
 TITLE_MATCH_THRESHOLD = 0.72
 MAX_SEARCH_RESULTS = 5
 MAX_TITLE_CANDIDATES = 3
-BEST_TIER = 3
+# Candidates rank on author agreement first, then on how exactly the title
+# lines up. Author agreement leads because a bare title with no author behind
+# it is the weakest evidence there is; the title rank only breaks ties.
+AUTHOR_RANK = {"match": 2, "unknown": 1}
+EXACT_TITLE_RANK = 2
+LOOSE_TITLE_RANK = 1
+NO_MATCH = (0, 0)
+BEST_MATCH = (AUTHOR_RANK["match"], EXACT_TITLE_RANK)
 
 
 class Read(NamedTuple):
@@ -196,6 +203,24 @@ def authors_overlap(target_authors, provider_authors):
     return False
 
 
+def match_rank(target_title, candidate_title, verdict):
+    """Rank a candidate by author agreement, then by title exactness.
+
+    The title rank exists because ``titles_match`` accepts a prefix in either
+    direction. That is what lets a CSV title of 'Mistborn' match 'Mistborn:
+    The Final Empire', but read the other way it also lets a bare 'The
+    Visitor' answer for 'The Visitor: Kill or Cure' - a different book by the
+    same author. Both agree on the author, so without this tiebreak the two
+    are indistinguishable and whichever query ran first won.
+    """
+    title_rank = (
+        EXACT_TITLE_RANK
+        if normalize_name(target_title) == normalize_name(candidate_title)
+        else LOOSE_TITLE_RANK
+    )
+    return (AUTHOR_RANK[verdict], title_rank)
+
+
 def classify_authors(target_authors, candidate_authors):
     """Classify author agreement as 'match', 'unknown', or 'conflict'."""
     if not target_authors:
@@ -272,8 +297,15 @@ class BookResolver:
         when the truth is that nothing was ever actually checked. Any other
         exception is genuinely unexpected and is not caught here at all, so
         it can abort the import as the design spec requires.
+
+        Only an exact title from an author-confirmed record ends the walk
+        outright; a looser match keeps looking, because the remaining queries
+        are what turn up the record that actually carries the full title. To
+        stop that costing every book a full ladder, an author-confirmed match
+        does end the walk at the provider boundary - Hardcover is the
+        preferred source, and Open Library is only here for coverage.
         """
-        best_tier = 0
+        best_rank = NO_MATCH
         best_result = None
         last_error = None
         any_success = False
@@ -281,15 +313,17 @@ class BookResolver:
         for source in BOOK_METADATA_PROVIDER_ORDER:
             for query in self._queries(title, authors, isbn):
                 try:
-                    tier, result = self._match_query(source, query, title, authors)
+                    rank, result = self._match_query(source, query, title, authors)
                 except services.ProviderAPIError as error:
                     last_error = error
                     continue
                 any_success = True
-                if tier > best_tier:
-                    best_tier, best_result = tier, result
-                    if best_tier == BEST_TIER:
+                if rank > best_rank:
+                    best_rank, best_result = rank, result
+                    if best_rank == BEST_MATCH:
                         return best_result
+            if best_rank[0] == AUTHOR_RANK["match"]:
+                break
 
         if best_result is None and not any_success and last_error is not None:
             raise last_error
@@ -297,7 +331,7 @@ class BookResolver:
         return best_result
 
     def _match_query(self, source, query, title, authors):
-        """Search one provider with one query, returning ``(tier, result)``.
+        """Search one provider with one query, returning ``(rank, result)``.
 
         Provider failures are not caught here: ``services.search`` and
         ``services.get_media_metadata`` only raise ``ProviderAPIError`` once
@@ -309,7 +343,7 @@ class BookResolver:
         response = services.search(MediaTypes.BOOK.value, query, 1, source)
 
         results = response.get("results", []) if isinstance(response, dict) else []
-        best_tier = 0
+        best_rank = NO_MATCH
         best_result = None
 
         for candidate in self._title_candidates(results, title):
@@ -323,21 +357,22 @@ class BookResolver:
                 source,
             )
 
-            if not titles_match(title, str(metadata.get("title") or "")):
+            candidate_title = str(metadata.get("title") or "")
+            if not titles_match(title, candidate_title):
                 continue
 
             verdict = classify_authors(authors, extract_provider_authors(metadata))
             if verdict == "conflict":
                 continue
 
-            tier = BEST_TIER if verdict == "match" else 2
-            if tier > best_tier:
-                best_tier = tier
+            rank = match_rank(title, candidate_title, verdict)
+            if rank > best_rank:
+                best_rank = rank
                 best_result = (source, str(media_id), metadata)
-                if best_tier == BEST_TIER:
+                if best_rank == BEST_MATCH:
                     break
 
-        return best_tier, best_result
+        return best_rank, best_result
 
     def _title_candidates(self, results, title):
         """Return the best title-matching search results, best first."""

@@ -1022,3 +1022,106 @@ class ImportStoryGraphNonUtcTimezone(TestCase):
             local_days,
             [datetime(2021, 9, 14).date(), datetime(2022, 11, 28).date()],
         )
+
+
+class ResolverPrefersTheExactTitle(SimpleTestCase):
+    """A more specific title must not be swallowed by a shorter provider match.
+
+    ``titles_match`` accepts a prefix in either direction so that a CSV title
+    like 'Mistborn' still matches 'Mistborn: The Final Empire'. Read the other
+    way that same rule lets a bare 'The Visitor' answer for 'The Visitor: Kill
+    or Cure' - a different book by the same author. Both agree on the author,
+    so both reached the top tier and whichever query ran first won, which put
+    two unrelated books onto one item.
+
+    The fixtures mirror what Hardcover actually returns for these queries.
+    """
+
+    VAGUE = {
+        "media_id": "535841",
+        "title": "The Visitor",
+        "max_progress": 100,
+        "details": {"author": ["Mark Lawrence"]},
+    }
+    EXACT = {
+        "media_id": "2179794",
+        "title": "The Visitor: Kill or Cure",
+        "max_progress": 120,
+        "details": {"author": ["Mark Lawrence"]},
+    }
+
+    def _resolve(self, title, isbn, results_by_query):
+        def search(_media_type, query, _page, source):
+            if source != Sources.HARDCOVER.value:
+                return {"results": []}
+            return {"results": results_by_query.get(query, [])}
+
+        def metadata(_media_type, media_id, _source):
+            return self.VAGUE if str(media_id) == "535841" else self.EXACT
+
+        with (
+            patch(
+                "integrations.imports.storygraph.services.search",
+                side_effect=search,
+            ),
+            patch(
+                "integrations.imports.storygraph.services.get_media_metadata",
+                side_effect=metadata,
+            ),
+        ):
+            return storygraph.BookResolver({}).resolve(title, ["Mark Lawrence"], isbn)
+
+    def test_exact_title_beats_an_earlier_prefix_match(self):
+        """The title query's exact hit wins over the ISBN query's vaguer one.
+
+        Hardcover maps 9781250265890 to the bare 'The Visitor' record, so the
+        ISBN query - which runs first - used to short circuit the whole ladder.
+        """
+        vague_hit = [{"media_id": "535841", "title": "The Visitor"}]
+        exact_hit = [{"media_id": "2179794", "title": "The Visitor: Kill or Cure"}]
+        resolved = self._resolve(
+            "The Visitor: Kill or Cure",
+            "9781250265890",
+            {
+                "9781250265890": vague_hit,
+                "The Visitor: Kill or Cure Mark Lawrence": exact_hit,
+                "The Visitor: Kill or Cure": exact_hit,
+            },
+        )
+
+        self.assertIsNotNone(resolved)
+        _source, media_id, metadata = resolved
+        self.assertEqual(media_id, "2179794")
+        self.assertEqual(metadata["title"], "The Visitor: Kill or Cure")
+
+    def test_prefix_match_still_resolves_when_nothing_better_exists(self):
+        """A row whose only candidate is the vaguer record still resolves."""
+        vague_hit = [{"media_id": "535841", "title": "The Visitor"}]
+        resolved = self._resolve(
+            "The Visitor: A Wild Cards Story",
+            "",
+            {
+                "The Visitor: A Wild Cards Story Mark Lawrence": vague_hit,
+                "The Visitor: A Wild Cards Story": vague_hit,
+            },
+        )
+
+        self.assertIsNotNone(resolved)
+        _source, media_id, _metadata = resolved
+        self.assertEqual(media_id, "535841")
+
+    def test_shorter_csv_title_still_matches_a_subtitled_edition(self):
+        """The Mistborn case the prefix rule exists for keeps working."""
+        exact_hit = [{"media_id": "2179794", "title": "The Visitor: Kill or Cure"}]
+        resolved = self._resolve(
+            "The Visitor",
+            "",
+            {
+                "The Visitor Mark Lawrence": exact_hit,
+                "The Visitor": exact_hit,
+            },
+        )
+
+        self.assertIsNotNone(resolved)
+        _source, media_id, _metadata = resolved
+        self.assertEqual(media_id, "2179794")
