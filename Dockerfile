@@ -51,6 +51,10 @@ ARG COMMIT_SHA=unknown
 ENV VERSION=$VERSION
 ENV COMMIT_SHA=$COMMIT_SHA
 
+# Default target for the bundled MCP server (see mcp_server/) when invoked
+# via `docker exec` — nginx already listens on 8000 inside the container.
+ENV FLOPPY_URL=http://127.0.0.1:8000
+
 COPY ./requirements.txt /requirements.txt
 COPY ./entrypoint.sh /entrypoint.sh
 COPY ./supervisord.conf /etc/supervisord.conf
@@ -82,6 +86,13 @@ COPY --from=repo_meta /repo_owner /etc/floppy/fork_owner
 # Django app
 COPY src ./
 RUN SECRET=build-time-placeholder python manage.py collectstatic --noinput
+
+# MCP server (mcp/floppy_mcp) — bundled so `docker exec` always runs the
+# version shipped with this image, instead of a user's local checkout that
+# can silently drift from the app version.
+COPY mcp_server ./mcp_server
+RUN pip install --no-cache-dir ./mcp_server \
+    && rm -rf /root/.cache
 
 EXPOSE 8000
 

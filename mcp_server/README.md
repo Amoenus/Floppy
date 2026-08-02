@@ -12,6 +12,10 @@ intent.
 
 ## Setup
 
+The Docker image bundles this package, so if you're running Floppy via
+Docker there's nothing to install — see "Running (Docker)" below. For a
+source/non-Docker install:
+
 ```bash
 cd mcp_server
 pip install -e ".[dev]"   # add [dev] only if you want to run the tests
@@ -25,7 +29,23 @@ Configure the server with two environment variables:
   Settings → Integrations in the web UI (the same token used for webhooks and
   the iCal feed). Sent as an `X-API-Key` header.
 
-## Running
+## Running (Docker)
+
+The image ships `floppy_mcp` and already sets `FLOPPY_URL` internally, so
+`docker exec` into the running container always runs the MCP server version
+that shipped with that image — no separate install or update step, and no
+drift between the app and the tool code:
+
+```bash
+claude mcp add floppy \
+  --env FLOPPY_TOKEN=your-token \
+  -- docker exec -i -e FLOPPY_TOKEN floppy python -m floppy_mcp.server
+```
+
+(`floppy` is the container name from `docker-compose.yml` — adjust if you
+renamed it.)
+
+## Running (source install)
 
 Stdio transport (for Claude Code / Claude Desktop):
 
@@ -43,6 +63,10 @@ claude mcp add floppy \
   --env FLOPPY_TOKEN=your-token \
   -- python -m floppy_mcp.server
 ```
+
+Note this path requires you to manually re-`pip install -e .` after
+pulling changes to `mcp_server/` — the Docker exec path above stays current
+automatically.
 
 For streamable-HTTP transport instead of stdio, call
 `mcp.run(transport="streamable-http")` in `server.py` (see the `FastMCP`
