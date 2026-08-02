@@ -331,6 +331,35 @@ class TVDBProviderTests(TestCase):
         self.assertEqual(result["results"][0]["title"], "Sword Art Online")
         self.assertEqual(result["results"][0]["localized_title"], "Sword Art Online")
 
+    @override_settings(TMDB_LANG="ja")
+    @patch("app.providers.tvdb._request")
+    def test_search_prefers_configured_language_translation_rows(self, mock_request):
+        """Search results should prefer titles in the configured TMDB_LANG."""
+        mock_request.return_value = {
+            "data": [
+                {
+                    "id": 259640,
+                    "name": {"language": "eng", "name": "Sword Art Online"},
+                    "translations": {
+                        "name": [
+                            {"language": "eng", "name": "Sword Art Online"},
+                            {"language": "jpn", "name": "ソードアート・オンライン"},
+                        ],
+                    },
+                    "firstAired": "2012-07-08",
+                },
+            ],
+        }
+
+        result = tvdb.search(MediaTypes.ANIME.value, "sword art online", 1)
+
+        self.assertEqual(result["results"][0]["title"], "ソードアート・オンライン")
+        self.assertEqual(
+            result["results"][0]["localized_title"],
+            "ソードアート・オンライン",
+        )
+        self.assertEqual(mock_request.call_args.kwargs["params"]["lang"], "jpn")
+
     @patch("app.providers.tvdb.tv")
     @patch("app.providers.tvdb.tv_with_seasons")
     def test_episode_returns_tmdb_compatible_episode_payload(

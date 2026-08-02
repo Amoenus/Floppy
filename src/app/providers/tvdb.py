@@ -26,6 +26,24 @@ TOKEN_CACHE_KEY = f"{TVDB_CACHE_NAMESPACE}_access_token"
 TOKEN_CACHE_TIMEOUT = 60 * 60 * 12
 PREFERRED_TRANSLATION_CODES = ("eng", "en", "eng-us", "en-us")
 
+# ISO 639-1 -> TVDB's ISO 639-2/B three-letter language codes.
+# Covers the languages TMDB_LANG is realistically set to; unmapped codes fall
+# back to English.
+ISO_639_1_TO_TVDB = {
+    "en": "eng", "ja": "jpn", "fr": "fra", "de": "deu", "es": "spa",
+    "it": "ita", "pt": "por", "ru": "rus", "ko": "kor", "zh": "zho",
+    "nl": "nld", "sv": "swe", "no": "nor", "da": "dan", "fi": "fin",
+    "pl": "pol", "tr": "tur", "ar": "ara", "he": "heb", "hi": "hin",
+    "th": "tha", "vi": "vie", "id": "ind", "cs": "ces", "el": "ell",
+    "hu": "hun", "ro": "ron", "uk": "ukr",
+}
+
+
+def _preferred_language_code() -> str:
+    """Return the TVDB (3-letter) language code for settings.TMDB_LANG."""
+    primary = str(settings.TMDB_LANG or "en").strip().lower().split("-")[0]
+    return ISO_639_1_TO_TVDB.get(primary, "eng")
+
 
 def _cache_key(*parts: object) -> str:
     """Return a versioned TVDB cache key."""
@@ -112,7 +130,11 @@ def _normalize_language_code(value) -> str:
 
 def _is_preferred_translation_code(code: str) -> bool:
     """Return whether a language code matches the preferred UI locale."""
-    return _normalize_language_code(code) in PREFERRED_TRANSLATION_CODES
+    preferred = _preferred_language_code()
+    normalized = _normalize_language_code(code)
+    return normalized in {preferred, preferred[:2]} or (
+        preferred == "eng" and normalized in PREFERRED_TRANSLATION_CODES
+    )
 
 
 def _translation_language(entry: dict | None) -> str:
@@ -287,7 +309,9 @@ def _find_translation(row: dict | None, *keys: str):
     row = row or {}
     translations = row.get("translations") or {}
     if isinstance(translations, dict):
-        for lang_key in ("eng", "en", "eng-US"):
+        preferred = _preferred_language_code()
+        lang_keys = dict.fromkeys((preferred, preferred[:2], "eng", "en", "eng-US"))
+        for lang_key in lang_keys:
             lang_payload = translations.get(lang_key)
             if not isinstance(lang_payload, dict):
                 continue
@@ -305,10 +329,12 @@ def _find_translation(row: dict | None, *keys: str):
     return None
 
 
-def _get_translation(entity_type: str, entity_id: Any, *, language: str = "eng"):
+def _get_translation(entity_type: str, entity_id: Any, *, language: str | None = None):
     """Return a cached TVDB translation payload for an entity when available."""
     if not entity_id:
         return {}
+
+    language = language or _preferred_language_code()
 
     cache_key = _cache_key("translation", entity_type, entity_id, language)
     cached = cache.get(cache_key)
@@ -334,7 +360,8 @@ def _with_preferred_translation(row: dict | None, entity_type: str):
     if not entity_id:
         return row
 
-    translation = _get_translation(entity_type, entity_id)
+    language = _preferred_language_code()
+    translation = _get_translation(entity_type, entity_id, language=language)
     if not isinstance(translation, dict) or not translation:
         return row
 
@@ -342,13 +369,13 @@ def _with_preferred_translation(row: dict | None, entity_type: str):
     translations = updated.get("translations") or {}
     translations = {} if not isinstance(translations, dict) else dict(translations)
 
-    preferred_payload = translations.get("eng")
+    preferred_payload = translations.get(language)
     if not isinstance(preferred_payload, dict):
         preferred_payload = {}
     preferred_payload.update(
         {key: value for key, value in translation.items() if value not in (None, "")},
     )
-    translations["eng"] = preferred_payload
+    translations[language] = preferred_payload
     updated["translations"] = translations
     return updated
 
@@ -861,7 +888,7 @@ def search(media_type, query, page):
                     "query": query,
                     "type": "series",
                     "page": max(page - 1, 0),
-                    "lang": "eng",
+                    "lang": _preferred_language_code(),
                 },
             ),
         ),
