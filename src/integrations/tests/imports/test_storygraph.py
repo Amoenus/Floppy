@@ -1125,3 +1125,179 @@ class ResolverPrefersTheExactTitle(SimpleTestCase):
         self.assertIsNotNone(resolved)
         _source, media_id, _metadata = resolved
         self.assertEqual(media_id, "2179794")
+
+
+class ResolverPrefersTheClosestTitle(SimpleTestCase):
+    """Split volumes must resolve to their own record, not the whole novel.
+
+    'A Storm of Swords: Blood and Gold' is one half of a novel Hardcover also
+    carries whole, as 'A Storm of Swords'. Both records share the author and
+    neither title matches exactly, so they tie on author and exactness alike.
+    The ISBN query answers with the whole novel and runs first, so without a
+    closeness tiebreak both halves collapse onto it.
+    """
+
+    WHOLE = {
+        "media_id": "236",
+        "title": "A Storm of Swords",
+        "max_progress": 900,
+        "details": {"author": ["George R. R. Martin"]},
+    }
+    PART_TWO = {
+        "media_id": "485846",
+        "title": "A Storm of Swords, Part 2: Blood and Gold",
+        "max_progress": 450,
+        "details": {"author": ["George R. R. Martin"]},
+    }
+
+    def _resolve(self, title, isbn, results_by_query):
+        def search(_media_type, query, _page, source):
+            if source != Sources.HARDCOVER.value:
+                return {"results": []}
+            return {"results": results_by_query.get(query, [])}
+
+        def metadata(_media_type, media_id, _source):
+            return self.WHOLE if str(media_id) == "236" else self.PART_TWO
+
+        with (
+            patch(
+                "integrations.imports.storygraph.services.search",
+                side_effect=search,
+            ),
+            patch(
+                "integrations.imports.storygraph.services.get_media_metadata",
+                side_effect=metadata,
+            ),
+        ):
+            return storygraph.BookResolver({}).resolve(
+                title,
+                ["George R. R. Martin"],
+                isbn,
+            )
+
+    def test_split_volume_beats_the_whole_novel(self):
+        """The half-volume record wins over the whole novel the ISBN points at."""
+        whole = {"media_id": "236", "title": "A Storm of Swords"}
+        part = {
+            "media_id": "485846",
+            "title": "A Storm of Swords, Part 2: Blood and Gold",
+        }
+        resolved = self._resolve(
+            "A Storm of Swords: Blood and Gold",
+            "9780007119554",
+            {
+                "9780007119554": [whole],
+                "A Storm of Swords: Blood and Gold George R. R. Martin": [whole, part],
+                "A Storm of Swords: Blood and Gold": [whole, part],
+            },
+        )
+
+        self.assertIsNotNone(resolved)
+        _source, media_id, metadata = resolved
+        self.assertEqual(media_id, "485846")
+        self.assertEqual(metadata["title"], "A Storm of Swords, Part 2: Blood and Gold")
+
+    def test_whole_novel_still_wins_for_the_whole_novel(self):
+        """A row that really is the whole novel is not dragged onto a half."""
+        whole = {"media_id": "236", "title": "A Storm of Swords"}
+        part = {
+            "media_id": "485846",
+            "title": "A Storm of Swords, Part 2: Blood and Gold",
+        }
+        resolved = self._resolve(
+            "A Storm of Swords",
+            "",
+            {
+                "A Storm of Swords George R. R. Martin": [whole, part],
+                "A Storm of Swords": [whole, part],
+            },
+        )
+
+        self.assertIsNotNone(resolved)
+        _source, media_id, _metadata = resolved
+        self.assertEqual(media_id, "236")
+
+
+class ResolverRejectsPrependedTitles(SimpleTestCase):
+    """A study guide must not outscore the novel it is about.
+
+    'Spark Notes Harry Potter and the Sorcerer's Stone' contains the whole
+    export title, so raw closeness scores it a hair above the real novel,
+    whose US/UK edition differs by one word ('Philosopher's'). What separates
+    them is where the shared text sits: the guide bolts words on in front,
+    while a genuine edition or volume starts on the same word.
+    """
+
+    NOVEL = {
+        "media_id": "328491",
+        "title": "Harry Potter and the Philosopher's Stone",
+        "max_progress": 223,
+        "details": {"author": ["J.K. Rowling"]},
+    }
+    GUIDE = {
+        "media_id": "749475",
+        "title": "Spark Notes Harry Potter and the Sorcerer's Stone",
+        "max_progress": 80,
+        "details": {"author": ["J.K. Rowling"]},
+    }
+
+    def _resolve(self, title):
+        hits = [
+            {"media_id": "328491", "title": self.NOVEL["title"]},
+            {"media_id": "749475", "title": self.GUIDE["title"]},
+        ]
+
+        def search(_media_type, _query, _page, source):
+            return {"results": hits if source == Sources.HARDCOVER.value else []}
+
+        def metadata(_media_type, media_id, _source):
+            return self.NOVEL if str(media_id) == "328491" else self.GUIDE
+
+        with (
+            patch(
+                "integrations.imports.storygraph.services.search",
+                side_effect=search,
+            ),
+            patch(
+                "integrations.imports.storygraph.services.get_media_metadata",
+                side_effect=metadata,
+            ),
+        ):
+            return storygraph.BookResolver({}).resolve(title, ["J.K. Rowling"], "")
+
+    def test_novel_beats_a_study_guide_about_it(self):
+        """The edition difference loses to the novel, not to the companion book."""
+        resolved = self._resolve("Harry Potter and the Sorcerer's Stone")
+
+        self.assertIsNotNone(resolved)
+        _source, media_id, _metadata = resolved
+        self.assertEqual(media_id, "328491")
+
+    def test_only_genuine_prepending_is_flagged(self):
+        """Spelling variants and mid-title inserts are not prepending."""
+        self.assertTrue(
+            storygraph.prepends_extra_words(
+                "Harry Potter and the Sorcerer's Stone",
+                "Spark Notes Harry Potter and the Sorcerer's Stone",
+            ),
+        )
+        # A leading article is not extra framing.
+        self.assertFalse(
+            storygraph.prepends_extra_words("Dragon Keeper", "The Dragon Keeper"),
+        )
+        # A different spelling is a job for closeness, not this guard: flagging
+        # it let an Italian edition of 'Valour' beat the US 'Valor'.
+        self.assertFalse(storygraph.prepends_extra_words("Valour", "Valor"))
+        self.assertFalse(
+            storygraph.prepends_extra_words(
+                "Valour",
+                "Valour. L'astro splendente. La fede e l'inganno",
+            ),
+        )
+        # Words added in the middle are a half-volume, not a companion book.
+        self.assertFalse(
+            storygraph.prepends_extra_words(
+                "A Storm of Swords: Blood and Gold",
+                "A Storm of Swords, Part 2: Blood and Gold",
+            ),
+        )

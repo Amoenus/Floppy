@@ -52,8 +52,9 @@ MAX_TITLE_CANDIDATES = 3
 AUTHOR_RANK = {"match": 2, "unknown": 1}
 EXACT_TITLE_RANK = 2
 LOOSE_TITLE_RANK = 1
-NO_MATCH = (0, 0)
-BEST_MATCH = (AUTHOR_RANK["match"], EXACT_TITLE_RANK)
+LEADING_ARTICLES = frozenset({"a", "an", "the"})
+NO_MATCH = (0, 0, False, 0.0)
+BEST_MATCH = (AUTHOR_RANK["match"], EXACT_TITLE_RANK, True, 1.0)
 
 
 class Read(NamedTuple):
@@ -203,22 +204,69 @@ def authors_overlap(target_authors, provider_authors):
     return False
 
 
+def prepends_extra_words(target_title, candidate_title):
+    """Return whether the candidate is the export title with words bolted on front.
+
+    Closeness alone cannot separate a novel from a companion book about it:
+    'Spark Notes Harry Potter and the Sorcerer's Stone' repeats the export
+    title in full and so scores fractionally above the novel itself, whose
+    edition differs by a word ('Philosopher's'). What gives the guide away is
+    position - it carries the title complete and unaltered, with framing words
+    in front of it.
+
+    The test is deliberately narrow: the export title must appear in the
+    candidate word for word, starting somewhere after the beginning. A title
+    that merely differs in spelling ('Valour' / 'Valor') or gains words in the
+    middle ('A Storm of Swords, Part 2: ...') is not prepended, and is left
+    for closeness to judge. Leading articles vary freely between editions
+    ('Dragon Keeper' / 'The Dragon Keeper'), so they are dropped first.
+    """
+    target = _significant_words(target_title)
+    candidate = _significant_words(candidate_title)
+    if not target or len(candidate) <= len(target):
+        return False
+    return any(
+        candidate[start : start + len(target)] == target
+        for start in range(1, len(candidate) - len(target) + 1)
+    )
+
+
+def _significant_words(value):
+    """Split a title into normalized words, dropping a leading article."""
+    words = normalize_name(value).split()
+    if words and words[0] in LEADING_ARTICLES:
+        words = words[1:]
+    return words
+
+
 def match_rank(target_title, candidate_title, verdict):
-    """Rank a candidate by author agreement, then by title exactness.
+    """Rank a candidate by author agreement, then title exactness, then closeness.
 
     The title rank exists because ``titles_match`` accepts a prefix in either
     direction. That is what lets a CSV title of 'Mistborn' match 'Mistborn:
     The Final Empire', but read the other way it also lets a bare 'The
     Visitor' answer for 'The Visitor: Kill or Cure' - a different book by the
-    same author. Both agree on the author, so without this tiebreak the two
-    are indistinguishable and whichever query ran first won.
+    same author. Both agree on the author, so without a tiebreak the two are
+    indistinguishable and whichever query ran first won.
+
+    Closeness settles the rest. A novel published in halves has a record for
+    each half and one for the whole, all by the same author and none titled
+    exactly as the export writes it: 'A Storm of Swords: Blood and Gold'
+    reads much closer to 'A Storm of Swords, Part 2: Blood and Gold' (0.90)
+    than to the bare 'A Storm of Swords' (0.69), so each half keeps its own
+    book instead of both collapsing onto the whole novel.
     """
     title_rank = (
         EXACT_TITLE_RANK
         if normalize_name(target_title) == normalize_name(candidate_title)
         else LOOSE_TITLE_RANK
     )
-    return (AUTHOR_RANK[verdict], title_rank)
+    return (
+        AUTHOR_RANK[verdict],
+        title_rank,
+        not prepends_extra_words(target_title, candidate_title),
+        title_similarity(target_title, candidate_title),
+    )
 
 
 def classify_authors(target_authors, candidate_authors):
