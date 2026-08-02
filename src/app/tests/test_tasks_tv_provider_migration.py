@@ -50,7 +50,8 @@ class MigrateTvShowsToPreferredProviderTaskTests(TestCase):
 
     @patch("app.services.tv_provider_migration.migrate_tv_item_to_tvdb")
     def test_only_considers_shows_tracked_by_a_tvdb_preferring_user(
-        self, mock_migrate,
+        self,
+        mock_migrate,
     ):
         """A show only tracked by a TMDB-preferring user should be left alone."""
         mock_migrate.return_value = TvMigrationResult(migrated=True)

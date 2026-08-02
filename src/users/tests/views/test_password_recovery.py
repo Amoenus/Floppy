@@ -59,7 +59,9 @@ class PasswordRecoveryViewTests(TestCase):
         self.assertTrue(self.user.check_password("new-secure-pass-123"))
         self.assertContains(response, "Password updated")
 
-    def test_recover_password_falls_back_to_recovery_code_when_no_authenticator_code(self):
+    def test_recover_password_falls_back_to_recovery_code_when_no_authenticator_code(
+        self,
+    ):
         """Recovery code should still work as fallback when authenticator is enabled."""
         self.user.get_or_create_authenticator_secret()
         self.user.authenticator_enabled = True
@@ -80,7 +82,9 @@ class PasswordRecoveryViewTests(TestCase):
         self.assertTrue(self.user.check_password("new-secure-pass-123"))
         self.assertContains(response, "Password updated")
 
-    def test_recover_password_fails_when_enabled_and_no_authenticator_or_recovery_code(self):
+    def test_recover_password_fails_when_enabled_and_no_authenticator_or_recovery_code(
+        self,
+    ):
         """Recovery should fail when neither authenticator code nor recovery code is provided."""
         self.user.get_or_create_authenticator_secret()
         self.user.authenticator_enabled = True

@@ -38,6 +38,10 @@ MULTI_STATUS_PREFERENCE_FIELDS = {
     "music_status",
     "podcast_status",
 }
+# Score-scaling constants: a user's display scale is either 1-5 or the
+# internal storage scale of 0-10 (see RatingScaleChoices).
+FIVE_POINT_RATING_SCALE = 5
+MAX_INTERNAL_RATING_SCORE = 10
 
 
 def generate_token():
@@ -78,7 +82,11 @@ class MediaSortChoices(models.TextChoices):
 
 
 GAME_LIKE_MEDIA_TYPES = {MediaTypes.GAME.value, MediaTypes.BOARDGAME.value}
-READING_MEDIA_TYPES = {MediaTypes.BOOK.value, MediaTypes.COMIC.value, MediaTypes.MANGA.value}
+READING_MEDIA_TYPES = {
+    MediaTypes.BOOK.value,
+    MediaTypes.COMIC.value,
+    MediaTypes.MANGA.value,
+}
 LISTENING_MEDIA_TYPES = {MediaTypes.MUSIC.value, MediaTypes.PODCAST.value}
 
 
@@ -95,7 +103,9 @@ def relabel_end_date_sort_choice(media_type, choices):
     if end_date_label == "Last Watched":
         return choices
     return [
-        (value, end_date_label) if value == MediaSortChoices.END_DATE else (value, label)
+        (value, end_date_label)
+        if value == MediaSortChoices.END_DATE
+        else (value, label)
         for value, label in choices
     ]
 
@@ -226,15 +236,19 @@ class StatisticsRangeChoices(models.TextChoices):
 
 
 class ImportFrequencyChoices(models.TextChoices):
-    ONCE     = "once",  "One Time Import"
-    DAILY    = "daily", "Every Day"
+    """Import frequency choices."""
+
+    ONCE = "once", "One Time Import"
+    DAILY = "daily", "Every Day"
     TWO_DAYS = "2days", "Every 2 Days"
 
 
 class ImportModeChoices(models.TextChoices):
-    NEW               = "new",               "Only Sync New Items"
-    OVERWRITE         = "overwrite",         "Sync New Items and Overwrite Existing"
-    WATCHLIST         = "watchlist",         "Import Watchlist Data Only"
+    """Import mode choices."""
+
+    NEW = "new", "Only Sync New Items"
+    OVERWRITE = "overwrite", "Sync New Items and Overwrite Existing"
+    WATCHLIST = "watchlist", "Import Watchlist Data Only"
     UPDATE_COLLECTION = "update_collection", "Update Collection Metadata Only"
 
 
@@ -692,8 +706,14 @@ class User(AbstractUser):
         max_length=20,
         default=MetadataSourceDefaultChoices.TMDB,
         choices=[
-            (MetadataSourceDefaultChoices.TMDB, MetadataSourceDefaultChoices.TMDB.label),
-            (MetadataSourceDefaultChoices.TVDB, MetadataSourceDefaultChoices.TVDB.label),
+            (
+                MetadataSourceDefaultChoices.TMDB,
+                MetadataSourceDefaultChoices.TMDB.label,
+            ),
+            (
+                MetadataSourceDefaultChoices.TVDB,
+                MetadataSourceDefaultChoices.TVDB.label,
+            ),
         ],
         help_text="Default metadata provider for TV details and search tabs.",
     )
@@ -702,8 +722,14 @@ class User(AbstractUser):
         default=MetadataSourceDefaultChoices.MAL,
         choices=[
             (MetadataSourceDefaultChoices.MAL, MetadataSourceDefaultChoices.MAL.label),
-            (MetadataSourceDefaultChoices.TMDB, MetadataSourceDefaultChoices.TMDB.label),
-            (MetadataSourceDefaultChoices.TVDB, MetadataSourceDefaultChoices.TVDB.label),
+            (
+                MetadataSourceDefaultChoices.TMDB,
+                MetadataSourceDefaultChoices.TMDB.label,
+            ),
+            (
+                MetadataSourceDefaultChoices.TVDB,
+                MetadataSourceDefaultChoices.TVDB.label,
+            ),
         ],
         help_text="Default metadata provider for Anime details and search tabs.",
     )
@@ -1142,7 +1168,9 @@ class User(AbstractUser):
             ),
             models.CheckConstraint(
                 name="anime_library_mode_valid",
-                condition=models.Q(anime_library_mode__in=AnimeLibraryModeChoices.values),
+                condition=models.Q(
+                    anime_library_mode__in=AnimeLibraryModeChoices.values
+                ),
             ),
             models.CheckConstraint(
                 name="lists_sort_valid",
@@ -1154,7 +1182,9 @@ class User(AbstractUser):
             ),
             models.CheckConstraint(
                 name="activity_history_view_valid",
-                condition=models.Q(activity_history_view__in=ActivityHistoryViewChoices.values),
+                condition=models.Q(
+                    activity_history_view__in=ActivityHistoryViewChoices.values
+                ),
             ),
             models.CheckConstraint(
                 name="duration_format_valid",
@@ -1162,19 +1192,27 @@ class User(AbstractUser):
             ),
             models.CheckConstraint(
                 name="media_card_subtitle_display_valid",
-                condition=models.Q(media_card_subtitle_display__in=MediaCardSubtitleDisplayChoices.values),
+                condition=models.Q(
+                    media_card_subtitle_display__in=MediaCardSubtitleDisplayChoices.values
+                ),
             ),
             models.CheckConstraint(
                 name="title_display_preference_valid",
-                condition=models.Q(title_display_preference__in=TitleDisplayPreferenceChoices.values),
+                condition=models.Q(
+                    title_display_preference__in=TitleDisplayPreferenceChoices.values
+                ),
             ),
             models.CheckConstraint(
                 name="statistics_default_range_valid",
-                condition=models.Q(statistics_default_range__in=StatisticsRangeChoices.values),
+                condition=models.Q(
+                    statistics_default_range__in=StatisticsRangeChoices.values
+                ),
             ),
             models.CheckConstraint(
                 name="statistics_compare_mode_valid",
-                condition=models.Q(statistics_compare_mode__in=StatisticsCompareChoices.values),
+                condition=models.Q(
+                    statistics_compare_mode__in=StatisticsCompareChoices.values
+                ),
             ),
             models.CheckConstraint(
                 name="top_talent_sort_by_valid",
@@ -1312,7 +1350,9 @@ class User(AbstractUser):
                     "hidden": list(hidden),
                 }
         else:
-            if isinstance(existing, dict) and ("order" in existing or "hidden" in existing):
+            if isinstance(existing, dict) and (
+                "order" in existing or "hidden" in existing
+            ):
                 scoped_prefs = {
                     key: value
                     for key, value in existing.items()
@@ -1363,8 +1403,8 @@ class User(AbstractUser):
         score_decimal = self._coerce_score_decimal(score)
         if score_decimal is None:
             return None
-        if self.rating_scale_max == 5:
-            score_decimal = score_decimal / Decimal("2")
+        if self.rating_scale_max == FIVE_POINT_RATING_SCALE:
+            score_decimal = score_decimal / Decimal(2)
         return score_decimal.quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
 
     def scale_score_for_storage(self, score):
@@ -1372,13 +1412,13 @@ class User(AbstractUser):
         score_decimal = self._coerce_score_decimal(score)
         if score_decimal is None:
             return None
-        if self.rating_scale_max == 5:
-            score_decimal = score_decimal * Decimal("2")
+        if self.rating_scale_max == FIVE_POINT_RATING_SCALE:
+            score_decimal = score_decimal * Decimal(2)
         score_decimal = score_decimal.quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
         if score_decimal < 0:
-            return Decimal("0")
-        if score_decimal > 10:
-            return Decimal("10")
+            return Decimal(0)
+        if score_decimal > MAX_INTERNAL_RATING_SCORE:
+            return Decimal(10)
         return score_decimal
 
     def format_score_for_display(self, score):
@@ -1432,8 +1472,12 @@ class User(AbstractUser):
             if media_type != MediaTypes.COMIC_ISSUE.value
         ]
         preferred_order = self.sidebar_media_type_order or []
-        ordered = [media_type for media_type in preferred_order if media_type in enabled_types]
-        return ordered + [media_type for media_type in enabled_types if media_type not in ordered]
+        ordered = [
+            media_type for media_type in preferred_order if media_type in enabled_types
+        ]
+        return ordered + [
+            media_type for media_type in enabled_types if media_type not in ordered
+        ]
 
     def get_active_media_types(self):
         """Return a list of active media type values based on user preferences."""
@@ -1496,9 +1540,18 @@ class User(AbstractUser):
             "plex": ["Import from Plex", "Sync Plex Watchlist"],
             "radarr": ["Import from Radarr", "Import from Radarr (Recurring)"],
             "sonarr": ["Import from Sonarr", "Import from Sonarr (Recurring)"],
-            "audiobookshelf": ["Import from Audiobookshelf", "Import from Audiobookshelf (Recurring)"],
-            "storyteller": ["Import from Storyteller", "Import from Storyteller (Recurring)"],
-            "pocketcasts": ["Import from Pocket Casts", "Import from Pocket Casts (Recurring)"],
+            "audiobookshelf": [
+                "Import from Audiobookshelf",
+                "Import from Audiobookshelf (Recurring)",
+            ],
+            "storyteller": [
+                "Import from Storyteller",
+                "Import from Storyteller (Recurring)",
+            ],
+            "pocketcasts": [
+                "Import from Pocket Casts",
+                "Import from Pocket Casts (Recurring)",
+            ],
             "gpodder": ["Import from GPodder", "Import from GPodder (Recurring)"],
             "lastfm": ["Import from Last.fm History"],
             "hardcover": ["Import from Hardcover"],
@@ -1543,14 +1596,18 @@ class User(AbstractUser):
         # — these represent tasks lost to worker crashes or queue buildup.
         seven_days_ago = timezone.now() - timedelta(days=7)
         pending_cutoff = timezone.now() - timedelta(minutes=30)
-        task_results = TaskResult.objects.filter(
-            task_result_filters,
-            task_name__in=result_import_task_names,
-            date_created__gte=seven_days_ago,
-        ).exclude(
-            status=states.PENDING,
-            date_created__lt=pending_cutoff,
-        ).order_by("-date_done", "-date_created")
+        task_results = (
+            TaskResult.objects.filter(
+                task_result_filters,
+                task_name__in=result_import_task_names,
+                date_created__gte=seven_days_ago,
+            )
+            .exclude(
+                status=states.PENDING,
+                date_created__lt=pending_cutoff,
+            )
+            .order_by("-date_done", "-date_created")
+        )
 
         # Build results list
         results = []
@@ -1562,7 +1619,9 @@ class User(AbstractUser):
                     task.result = async_result.result
                     task.traceback = async_result.traceback
                     task.date_done = async_result.date_done or timezone.now()
-                    task.save(update_fields=["status", "result", "traceback", "date_done"])
+                    task.save(
+                        update_fields=["status", "result", "traceback", "date_done"]
+                    )
             elif task.status == states.FAILURE and not task.traceback:
                 async_result = AsyncResult(task.task_id)
                 if async_result.traceback:
@@ -1653,11 +1712,19 @@ class User(AbstractUser):
                 )
 
         # Check for global Last.fm task (uses IntervalSchedule, not user-specific)
-        if hasattr(self, "lastfm_account") and self.lastfm_account and self.lastfm_account.is_connected:
-            lastfm_task = PeriodicTask.objects.filter(
-                task="Poll Last.fm for all users",
-                enabled=True,
-            ).select_related("interval").first()
+        if (
+            hasattr(self, "lastfm_account")
+            and self.lastfm_account
+            and self.lastfm_account.is_connected
+        ):
+            lastfm_task = (
+                PeriodicTask.objects.filter(
+                    task="Poll Last.fm for all users",
+                    enabled=True,
+                )
+                .select_related("interval")
+                .first()
+            )
 
             if lastfm_task and lastfm_task.interval:
                 # Calculate next run from interval schedule
@@ -1779,7 +1846,11 @@ class User(AbstractUser):
 
         import pyotp
 
-        return bool(pyotp.TOTP(self.authenticator_secret).verify(str(code).strip(), valid_window=1))
+        return bool(
+            pyotp.TOTP(self.authenticator_secret).verify(
+                str(code).strip(), valid_window=1
+            )
+        )
 
     def generate_recovery_codes(self, count=8):
         """Generate one-time recovery codes and persist their hashes."""
@@ -1845,7 +1916,13 @@ class UserRecoveryCode(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        """Model and field configuration."""
+
         ordering = ["-created_at"]
+
+    def __str__(self):
+        """Return a readable label for this user recovery code."""
+        return f"{self.user}"
 
     @staticmethod
     def hash_code(raw_code):
@@ -1902,6 +1979,8 @@ class HomeScreenRow(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        """Model and field configuration."""
+
         ordering = ["media_type", "position", "id"]
         constraints = [
             models.CheckConstraint(

@@ -296,7 +296,7 @@ class ListRecommendationsView(drf_views.APIView):
                 season_number,
                 episode_number,
             )
-        except Exception as e:  # noqa: BLE001 — provider metadata failures
+        except Exception as e:
             return Response(
                 {"detail": "Could not resolve item.", "errors": str(e)},
                 status=HTTP.BAD_GATEWAY,

@@ -20,7 +20,7 @@ class HistoryDeletionError(RuntimeError):
     """The record was found but could not be deleted."""
 
 
-def delete_history_record_core(user, media_type, history_id):  # noqa: C901, PLR0912, PLR0915
+def delete_history_record_core(user, media_type, history_id):
     """Delete a consumption-history record for the user.
 
     For play-per-instance types (movie, episode, game, boardgame) the media
@@ -136,7 +136,7 @@ def delete_history_record_core(user, media_type, history_id):  # noqa: C901, PLR
                 raise HistoryDeletionError(msg)  # noqa: TRY301
         except HistoryDeletionError:
             raise
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.warning(
                 "Could not verify deletion of media instance %s: %s",
                 str(media_instance_id),
@@ -167,7 +167,7 @@ def delete_history_record_core(user, media_type, history_id):  # noqa: C901, PLR
                 raise HistoryDeletionError(msg)  # noqa: TRY301
         except HistoryDeletionError:
             raise
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.warning(
                 "Could not verify deletion of history record %s: %s",
                 str(history_id),

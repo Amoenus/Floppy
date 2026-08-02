@@ -105,7 +105,9 @@ class UserUpdatePreferenceTests(TestCase):
 
     def test_update_preference_accepts_multiple_statuses(self):
         """Media-list status preferences accept a comma-separated selection."""
-        value = f"{MediaStatusChoices.COMPLETED.value},{MediaStatusChoices.DROPPED.value}"
+        value = (
+            f"{MediaStatusChoices.COMPLETED.value},{MediaStatusChoices.DROPPED.value}"
+        )
 
         result = self.user.update_preference("movie_status", value)
 
@@ -737,7 +739,9 @@ class UserGetImportTasksTests(TestCase):
         self.assertEqual(mock_process_task_result.call_count, 3)
 
     @patch("users.helpers.process_task_result")
-    def test_get_import_tasks_maps_lastfm_history_results(self, mock_process_task_result):
+    def test_get_import_tasks_maps_lastfm_history_results(
+        self, mock_process_task_result
+    ):
         """Last.fm history task results should appear under the Last.fm source."""
         mock_task = MagicMock()
         mock_task.summary = "Imported 42 Last.fm history scrobbles."
@@ -799,9 +803,10 @@ class UserGetImportTasksTests(TestCase):
         self.assertEqual(task_result.status, "SUCCESS")
         self.assertEqual(task_result.result, "Imported 3 movies.")
 
-
     @patch("users.helpers.process_task_result")
-    def test_get_import_tasks_yamtrack_user_id_first_in_kwargs(self, mock_process_task_result):
+    def test_get_import_tasks_yamtrack_user_id_first_in_kwargs(
+        self, mock_process_task_result
+    ):
         """CSV import tasks appear in history when user_id precedes the file bytes blob."""
         processed_task = MagicMock()
         processed_task.summary = "Imported 5 items."
@@ -898,7 +903,9 @@ class UserGetImportTasksTests(TestCase):
         lastfm_results = [r for r in import_tasks["results"] if r["source"] == "lastfm"]
         self.assertEqual(len(lastfm_results), 1)
         self.assertEqual(lastfm_results[0]["status"], "SUCCESS")
-        self.assertEqual(lastfm_results[0]["summary"], "Automatic Last.fm sync completed.")
+        self.assertEqual(
+            lastfm_results[0]["summary"], "Automatic Last.fm sync completed."
+        )
         self.assertIsNone(lastfm_results[0]["errors"])
 
     def test_get_import_tasks_lastfm_periodic_sync_older_than_7_days(self):

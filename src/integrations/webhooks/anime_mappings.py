@@ -1,3 +1,5 @@
+import contextlib
+
 from django.core.cache import cache
 
 import app
@@ -7,6 +9,10 @@ URL = (
     "https://github.com/anibridge/anibridge-mappings/releases/download/v3/"
     "mappings.min.json"
 )
+
+# Minimum "provider:id" descriptor components; a third "sNN" component adds a season.
+DESCRIPTOR_MIN_PARTS = 2
+DESCRIPTOR_SEASON_PART_INDEX = 3
 
 
 def fetch_mapping_data():
@@ -102,7 +108,7 @@ def find_entries_for_mal_id(mapping_data, mal_id):
 def _parse_source_descriptor_to_link(descriptor, ranges):
     """Parse a source descriptor and ranges into a provider link dict."""
     parts = descriptor.split(":")
-    if len(parts) < 2:
+    if len(parts) < DESCRIPTOR_MIN_PARTS:
         return None
 
     provider = parts[0]
@@ -118,16 +124,22 @@ def _parse_source_descriptor_to_link(descriptor, ranges):
         episode_offset = source_start - target_start
 
     season = None
-    if len(parts) >= 3 and parts[2].startswith("s"):
-        try:
+    if len(parts) >= DESCRIPTOR_SEASON_PART_INDEX and parts[2].startswith("s"):
+        with contextlib.suppress(ValueError):
             season = int(parts[2][1:])
-        except ValueError:
-            pass
 
     if provider == "tvdb_show":
-        return {"tvdb_id": series_id, "season_number": season, "episode_offset": episode_offset}
+        return {
+            "tvdb_id": series_id,
+            "season_number": season,
+            "episode_offset": episode_offset,
+        }
     if provider == "tmdb_show":
-        return {"tmdb_id": series_id, "season_number": season, "episode_offset": episode_offset}
+        return {
+            "tmdb_id": series_id,
+            "season_number": season,
+            "episode_offset": episode_offset,
+        }
 
     return None
 
@@ -158,7 +170,7 @@ def _parse_mal_descriptor(descriptor):
         return None
 
     parts = descriptor.split(":", 2)
-    if len(parts) < 2:
+    if len(parts) < DESCRIPTOR_MIN_PARTS:
         return None
 
     provider, media_id = parts[:2]

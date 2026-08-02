@@ -214,7 +214,9 @@ class MediaDetailsViewTests(TestCase):
         self.assertContains(response, 'id="detail-secondary-content"', html=False)
         self.assertContains(response, "fragment=secondary")
         self.assertNotContains(response, "Your Notes")
-        self.assertNotContains(response, "<h2 class=\"text-xl font-bold\">Collection</h2>", html=False)
+        self.assertNotContains(
+            response, '<h2 class="text-xl font-bold">Collection</h2>', html=False
+        )
         mock_run_retryable_db_operation.assert_not_called()
         mock_enrich_items.assert_not_called()
         mock_fetch_delay.assert_not_called()
@@ -296,9 +298,15 @@ class MediaDetailsViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, "app/components/detail_secondary_content.html")
-        self.assertContains(response, "<h2 class=\"text-xl font-bold\">Your Notes</h2>", html=False)
-        self.assertContains(response, "<h2 class=\"text-xl font-bold\">Collection</h2>", html=False)
+        self.assertTemplateUsed(
+            response, "app/components/detail_secondary_content.html"
+        )
+        self.assertContains(
+            response, '<h2 class="text-xl font-bold">Your Notes</h2>', html=False
+        )
+        self.assertContains(
+            response, '<h2 class="text-xl font-bold">Collection</h2>', html=False
+        )
         self.assertContains(response, "media-grid-row-detail-cast", html=False)
         self.assertNotContains(
             response,
@@ -380,7 +388,9 @@ class MediaDetailsViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, "app/components/detail_secondary_content.html")
+        self.assertTemplateUsed(
+            response, "app/components/detail_secondary_content.html"
+        )
         # The genre-sync branch ran and persisted the resolved genres.
         item.refresh_from_db()
         self.assertEqual(item.genres, ["Comedy", "Romance"])
@@ -423,7 +433,9 @@ class MediaDetailsViewTests(TestCase):
         )
 
     @patch("app.providers.services.get_media_metadata")
-    def test_media_details_renders_top_action_row_between_chips_and_description(self, mock_get_metadata):
+    def test_media_details_renders_top_action_row_between_chips_and_description(
+        self, mock_get_metadata
+    ):
         mock_get_metadata.return_value = {
             "media_id": "238",
             "title": "Test Movie",
@@ -451,8 +463,13 @@ class MediaDetailsViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         content = response.content.decode()
-        self.assertIn('class="order-1 mb-6 flex flex-col gap-3 sm:order-2 sm:flex-row sm:flex-wrap sm:items-center"', content)
-        self.assertIn('class="flex w-full items-center gap-2 sm:w-auto sm:flex-wrap"', content)
+        self.assertIn(
+            'class="order-1 mb-6 flex flex-col gap-3 sm:order-2 sm:flex-row sm:flex-wrap sm:items-center"',
+            content,
+        )
+        self.assertIn(
+            'class="flex w-full items-center gap-2 sm:w-auto sm:flex-wrap"', content
+        )
         self.assertIn(
             'class="inline-flex h-11 w-full items-center justify-center rounded-xl border border-white/10 bg-[#2a2f35] text-gray-100 shadow-sm transition-colors duration-200 hover:bg-[#343a40] cursor-pointer sm:size-11 sm:w-11"',
             content,
@@ -462,7 +479,17 @@ class MediaDetailsViewTests(TestCase):
         self.assertIn('title="Manage tags"', content)
         self.assertIn('title="Sync metadata with provider"', content)
         self.assertIn('method="post"', content)
-        self.assertIn(reverse("sync_metadata", kwargs={"source": Sources.TMDB.value, "media_type": MediaTypes.MOVIE.value, "media_id": "238"}), content)
+        self.assertIn(
+            reverse(
+                "sync_metadata",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.MOVIE.value,
+                    "media_id": "238",
+                },
+            ),
+            content,
+        )
         self.assertNotIn('hx-post="', content)
         self.assertNotIn('<h2 class="text-xl font-bold mb-4">Actions</h2>', content)
         self.assertNotIn("mt-4 p-3 rounded-lg w-full flex items-center", content)
@@ -484,7 +511,9 @@ class MediaDetailsViewTests(TestCase):
         self.assertLess(content.index("Add to tracker"), content.index("Test overview"))
 
     @patch("app.providers.services.get_media_metadata")
-    def test_comic_volume_issue_rows_render_shared_action_buttons(self, mock_get_metadata):
+    def test_comic_volume_issue_rows_render_shared_action_buttons(
+        self, mock_get_metadata
+    ):
         volume_metadata = {
             "media_id": "500",
             "title": "Test Volume",
@@ -521,8 +550,8 @@ class MediaDetailsViewTests(TestCase):
             "max_progress": 1,
             "details": {},
         }
-        mock_get_metadata.side_effect = (
-            lambda requested_media_type, *_args, **_kwargs: issue_metadata
+        mock_get_metadata.side_effect = lambda requested_media_type, *_args, **_kwargs: (
+            issue_metadata
             if requested_media_type == MediaTypes.COMIC_ISSUE.value
             else volume_metadata
         )
@@ -602,7 +631,9 @@ class MediaDetailsViewTests(TestCase):
         )
 
     @patch("app.providers.services.get_media_metadata")
-    def test_media_details_related_sections_use_mobile_card_grid_preferences(self, mock_get_metadata):
+    def test_media_details_related_sections_use_mobile_card_grid_preferences(
+        self, mock_get_metadata
+    ):
         mock_get_metadata.return_value = {
             "media_id": "238",
             "title": "Test Show",
@@ -655,11 +686,17 @@ class MediaDetailsViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         content = response.content.decode()
-        self.assertIn('class="flex flex-col-reverse md:flex-row gap-0 md:gap-10"', content)
+        self.assertIn(
+            'class="flex flex-col-reverse md:flex-row gap-0 md:gap-10"', content
+        )
         self.assertIn('class="detail-media-grid"', content)
         self.assertIn("window.matchMedia('(max-width: 768px)').matches", content)
-        self.assertIn("document.body.dataset.mobileGrid === 'comfortable' ? 4 : 6", content)
-        self.assertIn('class="w-full md:w-1/4 md:max-w-[250px] mx-auto lg:mx-0"', content)
+        self.assertIn(
+            "document.body.dataset.mobileGrid === 'comfortable' ? 4 : 6", content
+        )
+        self.assertIn(
+            'class="w-full md:w-1/4 md:max-w-[250px] mx-auto lg:mx-0"', content
+        )
         self.assertIn('class="w-full md:w-3/4"', content)
         self.assertIn(
             'class="mt-4 inline-flex text-sm font-medium text-indigo-400 hover:text-indigo-300 focus:outline-none transition-colors cursor-pointer md:hidden"',
@@ -667,7 +704,9 @@ class MediaDetailsViewTests(TestCase):
         )
 
     @patch("app.providers.services.get_media_metadata")
-    def test_media_details_renders_notes_as_section_above_related_content(self, mock_get_metadata):
+    def test_media_details_renders_notes_as_section_above_related_content(
+        self, mock_get_metadata
+    ):
         mock_get_metadata.return_value = {
             "media_id": "238",
             "title": "Test Movie",
@@ -717,9 +756,13 @@ class MediaDetailsViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, "app/components/detail_secondary_content.html")
+        self.assertTemplateUsed(
+            response, "app/components/detail_secondary_content.html"
+        )
         content = response.content.decode()
-        self.assertContains(response, '<h2 class="text-xl font-bold">Your Notes</h2>', html=False)
+        self.assertContains(
+            response, '<h2 class="text-xl font-bold">Your Notes</h2>', html=False
+        )
         self.assertContains(response, 'aria-label="Edit notes"', html=False)
         self.assertContains(
             response,
@@ -1448,10 +1491,14 @@ class MediaDetailsViewTests(TestCase):
         source_entry = response.context["detail_link_sections"][0]["entries"][0]
         external_entry = response.context["detail_link_sections"][1]["entries"][0]
         self.assertEqual(source_entry["label"], "TheTVDB")
-        self.assertEqual(source_entry["chip_classes"], "border-teal-400/18 bg-teal-500/[0.07]")
+        self.assertEqual(
+            source_entry["chip_classes"], "border-teal-400/18 bg-teal-500/[0.07]"
+        )
         self.assertEqual(source_entry["logo_src"], "/static/img/tvdb-logo.png")
         self.assertEqual(external_entry["label"], "Wikidata")
-        self.assertEqual(external_entry["chip_classes"], "border-sky-400/18 bg-sky-500/[0.07]")
+        self.assertEqual(
+            external_entry["chip_classes"], "border-sky-400/18 bg-sky-500/[0.07]"
+        )
         self.assertEqual(external_entry["logo_src"], "/static/img/wikidata-logo.png")
 
     @patch("app.providers.services.get_media_metadata")
@@ -1488,7 +1535,9 @@ class MediaDetailsViewTests(TestCase):
 
         source_entry = response.context["detail_link_sections"][0]["entries"][0]
         self.assertEqual(source_entry["label"], "MyAnimeList")
-        self.assertEqual(source_entry["chip_classes"], "border-indigo-400/18 bg-indigo-500/[0.07]")
+        self.assertEqual(
+            source_entry["chip_classes"], "border-indigo-400/18 bg-indigo-500/[0.07]"
+        )
         self.assertEqual(source_entry["logo_src"], "/static/img/myanimelist-logo.svg")
 
     @patch("app.media_details_views._queue_game_lengths_refresh", return_value=True)
@@ -1533,10 +1582,14 @@ class MediaDetailsViewTests(TestCase):
         source_entry = response.context["detail_link_sections"][0]["entries"][0]
         external_entry = response.context["detail_link_sections"][1]["entries"][0]
         self.assertEqual(source_entry["label"], "Internet Game Database")
-        self.assertEqual(source_entry["chip_classes"], "border-orange-400/18 bg-orange-500/[0.07]")
+        self.assertEqual(
+            source_entry["chip_classes"], "border-orange-400/18 bg-orange-500/[0.07]"
+        )
         self.assertEqual(source_entry["logo_src"], "/static/img/igdb-logo.png")
         self.assertEqual(external_entry["label"], "HowLongToBeat")
-        self.assertEqual(external_entry["chip_classes"], "border-amber-400/18 bg-amber-500/[0.07]")
+        self.assertEqual(
+            external_entry["chip_classes"], "border-amber-400/18 bg-amber-500/[0.07]"
+        )
         self.assertEqual(external_entry["logo_src"], "/static/img/hltb-logo.png")
 
     @patch("app.providers.services.get_media_metadata")
@@ -1830,7 +1883,9 @@ class MediaDetailsViewTests(TestCase):
 
         self.assertEqual(shell_response.status_code, 200)
         self.assertContains(shell_response, "Sōdo Āto Onrain")
-        self.assertNotContains(shell_response, "{'language': 'jpn', 'name': 'Sōdo Āto Onrain'}")
+        self.assertNotContains(
+            shell_response, "{'language': 'jpn', 'name': 'Sōdo Āto Onrain'}"
+        )
         self.assertEqual(fragment_response.status_code, 200)
 
         item.refresh_from_db()
@@ -1902,7 +1957,9 @@ class MediaDetailsViewTests(TestCase):
         self.assertEqual(item.localized_title, "Sword Art Online")
 
     @patch("app.providers.services.get_media_metadata")
-    def test_media_details_persists_movie_recommendation_metadata(self, mock_get_metadata):
+    def test_media_details_persists_movie_recommendation_metadata(
+        self, mock_get_metadata
+    ):
         item = Item.objects.create(
             media_id="238",
             source=Sources.TMDB.value,
@@ -1948,7 +2005,9 @@ class MediaDetailsViewTests(TestCase):
         self.assertEqual(item.provider_keywords, ["Whodunit", "Holiday"])
 
     @patch("app.providers.services.get_media_metadata")
-    def test_media_details_renders_trakt_score_card_when_data_exists(self, mock_get_metadata):
+    def test_media_details_renders_trakt_score_card_when_data_exists(
+        self, mock_get_metadata
+    ):
         Item.objects.create(
             media_id="238",
             source=Sources.TMDB.value,
@@ -2029,7 +2088,9 @@ class MediaDetailsViewTests(TestCase):
         self.assertNotContains(response, "trakt-logo.svg")
 
     @patch("app.providers.services.get_media_metadata")
-    def test_media_details_renders_source_score_chip_with_tmdb_logo(self, mock_get_metadata):
+    def test_media_details_renders_source_score_chip_with_tmdb_logo(
+        self, mock_get_metadata
+    ):
         mock_get_metadata.return_value = {
             "media_id": "238",
             "title": "Test Movie",
@@ -2130,7 +2191,9 @@ class MediaDetailsViewTests(TestCase):
         self.assertContains(fragment, "150 votes")
 
     @patch("app.providers.services.get_media_metadata")
-    def test_media_details_renders_source_score_chip_with_mal_logo(self, mock_get_metadata):
+    def test_media_details_renders_source_score_chip_with_mal_logo(
+        self, mock_get_metadata
+    ):
         mock_get_metadata.return_value = {
             "media_id": "52991",
             "title": "Frieren",
@@ -2197,7 +2260,9 @@ class MediaDetailsViewTests(TestCase):
         self.assertContains(response, "12,000 votes")
 
     @patch("app.providers.services.get_media_metadata")
-    def test_tv_media_details_uses_same_title_spacing_as_score_chips(self, mock_get_metadata):
+    def test_tv_media_details_uses_same_title_spacing_as_score_chips(
+        self, mock_get_metadata
+    ):
         mock_get_metadata.return_value = {
             "media_id": "1668",
             "title": "Test TV Show",
@@ -2228,7 +2293,9 @@ class MediaDetailsViewTests(TestCase):
             '<div class="mb-3 sm:mb-1 text-center md:text-start">',
             html=False,
         )
-        self.assertContains(response, '<h1 class="text-3xl font-bold">Test TV Show</h1>', html=False)
+        self.assertContains(
+            response, '<h1 class="text-3xl font-bold">Test TV Show</h1>', html=False
+        )
 
     @patch("app.providers.services.get_media_metadata")
     def test_tv_media_details_renders_progress_and_date_subtitle_without_history_card(
@@ -2317,7 +2384,10 @@ class MediaDetailsViewTests(TestCase):
             content,
         )
         self.assertIn("1h 30min (1/8)", content)
-        self.assertIn('class="hidden flex-wrap items-center justify-center gap-y-1 sm:flex md:justify-start"', content)
+        self.assertIn(
+            'class="hidden flex-wrap items-center justify-center gap-y-1 sm:flex md:justify-start"',
+            content,
+        )
         self.assertNotContains(response, "Your History")
         self.assertNotContains(response, "FIRST PLAYED")
         self.assertNotContains(response, "LAST PLAYED")
@@ -2804,7 +2874,9 @@ class MediaDetailsViewTests(TestCase):
         )
 
     @patch("app.providers.services.get_media_metadata")
-    def test_podcast_media_details_without_episode_context_does_not_crash(self, mock_get_metadata):
+    def test_podcast_media_details_without_episode_context_does_not_crash(
+        self, mock_get_metadata
+    ):
         """Generic podcast details should skip the episode section when no episode list is available."""
         mock_get_metadata.return_value = {
             "media_id": "missing-show",
@@ -2862,11 +2934,15 @@ class MediaDetailsViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["media"]["source"], Sources.MANUAL.value)
-        self.assertEqual(response.context["media"]["media_type"], MediaTypes.MUSIC.value)
+        self.assertEqual(
+            response.context["media"]["media_type"], MediaTypes.MUSIC.value
+        )
         self.assertEqual(response.context["media"]["media_id"], "backrooms-ost")
 
     @patch("app.providers.services.get_media_metadata")
-    def test_media_details_renders_your_score_chip_with_edit_rating(self, mock_get_metadata):
+    def test_media_details_renders_your_score_chip_with_edit_rating(
+        self, mock_get_metadata
+    ):
         mock_get_metadata.return_value = {
             "media_id": "238",
             "title": "Test Movie",
@@ -2906,8 +2982,10 @@ class MediaDetailsViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Edit rating")
-        self.assertContains(response, "x-text=\"formatRating(rating)\">8<", html=False)
-        self.assertContains(response, "x-text=\"rating ? 'Edit rating' : 'Add rating'\"", html=False)
+        self.assertContains(response, 'x-text="formatRating(rating)">8<', html=False)
+        self.assertContains(
+            response, "x-text=\"rating ? 'Edit rating' : 'Add rating'\"", html=False
+        )
 
     @patch("app.providers.services.get_media_metadata")
     def test_media_details_renders_your_score_chip_with_five_point_scale_suffix(
@@ -2956,11 +3034,15 @@ class MediaDetailsViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Edit rating")
         self.assertContains(response, "ratingScaleMax: 5", html=False)
-        self.assertContains(response, "x-text=\"formatRating(rating)\">4/5<", html=False)
-        self.assertContains(response, "x-text=\"rating ? 'Edit rating' : 'Add rating'\"", html=False)
+        self.assertContains(response, 'x-text="formatRating(rating)">4/5<', html=False)
+        self.assertContains(
+            response, "x-text=\"rating ? 'Edit rating' : 'Add rating'\"", html=False
+        )
 
     @patch("app.providers.services.get_media_metadata")
-    def test_media_details_renders_your_score_chip_with_add_rating_when_empty(self, mock_get_metadata):
+    def test_media_details_renders_your_score_chip_with_add_rating_when_empty(
+        self, mock_get_metadata
+    ):
         mock_get_metadata.return_value = {
             "media_id": "238",
             "title": "Test Movie",
@@ -3000,7 +3082,9 @@ class MediaDetailsViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Add rating")
         self.assertNotContains(response, "Click to edit")
-        self.assertContains(response, "x-text=\"rating ? 'Edit rating' : 'Add rating'\"", html=False)
+        self.assertContains(
+            response, "x-text=\"rating ? 'Edit rating' : 'Add rating'\"", html=False
+        )
 
     @override_settings(TVDB_API_KEY="test-tvdb-key")
     @patch("app.views.metadata_resolution.resolve_detail_metadata")
@@ -3211,21 +3295,23 @@ class MediaDetailsViewTests(TestCase):
             title="Pokemon",
             image="https://example.com/pokemon.jpg",
         )
-        mock_resolve_detail_metadata.side_effect = lambda *_args, **_kwargs: MetadataResolutionResult(
-            display_provider=Sources.MAL.value,
-            identity_provider=Sources.MAL.value,
-            mapping_status="identity",
-            header_metadata={
-                **base_metadata,
-                "details": dict(base_metadata["details"]),
-                "related": dict(base_metadata["related"]),
-                "cast": list(base_metadata["cast"]),
-                "crew": list(base_metadata["crew"]),
-                "studios_full": list(base_metadata["studios_full"]),
-            },
-            grouped_preview=None,
-            provider_media_id=item.media_id,
-            grouped_preview_target=None,
+        mock_resolve_detail_metadata.side_effect = lambda *_args, **_kwargs: (
+            MetadataResolutionResult(
+                display_provider=Sources.MAL.value,
+                identity_provider=Sources.MAL.value,
+                mapping_status="identity",
+                header_metadata={
+                    **base_metadata,
+                    "details": dict(base_metadata["details"]),
+                    "related": dict(base_metadata["related"]),
+                    "cast": list(base_metadata["cast"]),
+                    "crew": list(base_metadata["crew"]),
+                    "studios_full": list(base_metadata["studios_full"]),
+                },
+                grouped_preview=None,
+                provider_media_id=item.media_id,
+                grouped_preview_target=None,
+            )
         )
 
         response = self.client.get(
@@ -3385,21 +3471,23 @@ class MediaDetailsViewTests(TestCase):
             title="Pokemon",
             image="https://example.com/pokemon.jpg",
         )
-        mock_resolve_detail_metadata.side_effect = lambda *_args, **_kwargs: MetadataResolutionResult(
-            display_provider=Sources.MAL.value,
-            identity_provider=Sources.MAL.value,
-            mapping_status="identity",
-            header_metadata={
-                **base_metadata,
-                "details": dict(base_metadata["details"]),
-                "related": dict(base_metadata["related"]),
-                "cast": list(base_metadata["cast"]),
-                "crew": list(base_metadata["crew"]),
-                "studios_full": list(base_metadata["studios_full"]),
-            },
-            grouped_preview=None,
-            provider_media_id=item.media_id,
-            grouped_preview_target=None,
+        mock_resolve_detail_metadata.side_effect = lambda *_args, **_kwargs: (
+            MetadataResolutionResult(
+                display_provider=Sources.MAL.value,
+                identity_provider=Sources.MAL.value,
+                mapping_status="identity",
+                header_metadata={
+                    **base_metadata,
+                    "details": dict(base_metadata["details"]),
+                    "related": dict(base_metadata["related"]),
+                    "cast": list(base_metadata["cast"]),
+                    "crew": list(base_metadata["crew"]),
+                    "studios_full": list(base_metadata["studios_full"]),
+                },
+                grouped_preview=None,
+                provider_media_id=item.media_id,
+                grouped_preview_target=None,
+            )
         )
 
         response = self.client.get(
@@ -3522,21 +3610,23 @@ class MediaDetailsViewTests(TestCase):
             title="Frieren",
             image="https://example.com/frieren.jpg",
         )
-        mock_resolve_detail_metadata.side_effect = lambda *_args, **_kwargs: MetadataResolutionResult(
-            display_provider=Sources.MAL.value,
-            identity_provider=Sources.MAL.value,
-            mapping_status="identity",
-            header_metadata={
-                **base_metadata,
-                "details": dict(base_metadata["details"]),
-                "related": dict(base_metadata["related"]),
-                "cast": list(base_metadata["cast"]),
-                "crew": list(base_metadata["crew"]),
-                "studios_full": list(base_metadata["studios_full"]),
-            },
-            grouped_preview=None,
-            provider_media_id=item.media_id,
-            grouped_preview_target=None,
+        mock_resolve_detail_metadata.side_effect = lambda *_args, **_kwargs: (
+            MetadataResolutionResult(
+                display_provider=Sources.MAL.value,
+                identity_provider=Sources.MAL.value,
+                mapping_status="identity",
+                header_metadata={
+                    **base_metadata,
+                    "details": dict(base_metadata["details"]),
+                    "related": dict(base_metadata["related"]),
+                    "cast": list(base_metadata["cast"]),
+                    "crew": list(base_metadata["crew"]),
+                    "studios_full": list(base_metadata["studios_full"]),
+                },
+                grouped_preview=None,
+                provider_media_id=item.media_id,
+                grouped_preview_target=None,
+            )
         )
 
         response = self.client.get(
@@ -3680,21 +3770,23 @@ class MediaDetailsViewTests(TestCase):
             title="Pokemon",
             image="https://example.com/pokemon.jpg",
         )
-        mock_resolve_detail_metadata.side_effect = lambda *_args, **_kwargs: MetadataResolutionResult(
-            display_provider=Sources.MAL.value,
-            identity_provider=Sources.MAL.value,
-            mapping_status="identity",
-            header_metadata={
-                **base_metadata,
-                "details": dict(base_metadata["details"]),
-                "related": dict(base_metadata["related"]),
-                "cast": list(base_metadata["cast"]),
-                "crew": list(base_metadata["crew"]),
-                "studios_full": list(base_metadata["studios_full"]),
-            },
-            grouped_preview=None,
-            provider_media_id=item.media_id,
-            grouped_preview_target=None,
+        mock_resolve_detail_metadata.side_effect = lambda *_args, **_kwargs: (
+            MetadataResolutionResult(
+                display_provider=Sources.MAL.value,
+                identity_provider=Sources.MAL.value,
+                mapping_status="identity",
+                header_metadata={
+                    **base_metadata,
+                    "details": dict(base_metadata["details"]),
+                    "related": dict(base_metadata["related"]),
+                    "cast": list(base_metadata["cast"]),
+                    "crew": list(base_metadata["crew"]),
+                    "studios_full": list(base_metadata["studios_full"]),
+                },
+                grouped_preview=None,
+                provider_media_id=item.media_id,
+                grouped_preview_target=None,
+            )
         )
 
         page_one = self.client.get(
@@ -3712,7 +3804,9 @@ class MediaDetailsViewTests(TestCase):
 
         self.assertEqual(page_one.status_code, 200)
         self.assertEqual(len(page_one.context["media"]["episodes"]), 25)
-        self.assertEqual(page_one.context["episode_load_more"]["label"], "Episodes 26-30")
+        self.assertEqual(
+            page_one.context["episode_load_more"]["label"], "Episodes 26-30"
+        )
         self.assertContains(page_one, "Mapped Episode 25")
         self.assertNotContains(page_one, "Mapped Episode 26")
         self.assertContains(page_one, "Show Episodes 26-30")
@@ -3733,7 +3827,10 @@ class MediaDetailsViewTests(TestCase):
         self.assertEqual(page_two.status_code, 200)
         self.assertEqual(len(page_two.context["media"]["episodes"]), 5)
         self.assertEqual(
-            [episode["episode_number"] for episode in page_two.context["media"]["episodes"]],
+            [
+                episode["episode_number"]
+                for episode in page_two.context["media"]["episodes"]
+            ],
             [26, 27, 28, 29, 30],
         )
         self.assertIsNone(page_two.context["episode_load_more"])
@@ -4085,11 +4182,15 @@ class MediaDetailsViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "already been migrated to grouped series tracking")
+        self.assertContains(
+            response, "already been migrated to grouped series tracking"
+        )
         self.assertContains(response, "Open grouped series")
 
     @patch("app.providers.services.get_media_metadata")
-    def test_game_media_details_renders_cached_iron_meat_hltb_tables(self, mock_get_metadata):
+    def test_game_media_details_renders_cached_iron_meat_hltb_tables(
+        self, mock_get_metadata
+    ):
         Item.objects.create(
             media_id="129742",
             source=Sources.IGDB.value,
@@ -4198,7 +4299,9 @@ class MediaDetailsViewTests(TestCase):
         self.assertContains(response, "Time to Beat")
         self.assertContains(response, "How Long to Beat")
         self.assertContains(response, "Main Story")
-        self.assertContains(response, 'href="https://howlongtobeat.com/game/129742"', html=False)
+        self.assertContains(
+            response, 'href="https://howlongtobeat.com/game/129742"', html=False
+        )
         self.assertNotContains(response, "Based on 1,733 submissions.")
         self.assertNotContains(response, "SINGLE-PLAYER")
         self.assertNotContains(response, "Playstyle")
@@ -4319,7 +4422,9 @@ class MediaDetailsViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Internet Games Database")
-        self.assertContains(response, 'href="https://www.igdb.com/games/dispatch"', html=False)
+        self.assertContains(
+            response, 'href="https://www.igdb.com/games/dispatch"', html=False
+        )
         self.assertContains(response, "Normally")
         self.assertContains(response, "13 submissions")
         mock_queue_game_lengths_refresh.assert_called_once()
@@ -4365,7 +4470,9 @@ class MediaDetailsViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Fetching cached time-to-beat data in the background.")
+        self.assertContains(
+            response, "Fetching cached time-to-beat data in the background."
+        )
         self.assertTrue(
             Item.objects.filter(
                 media_id="325609",
@@ -4435,7 +4542,9 @@ class MediaDetailsViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Fetching cached time-to-beat data in the background.")
+        self.assertContains(
+            response, "Fetching cached time-to-beat data in the background."
+        )
         mock_queue_game_lengths_refresh.assert_not_called()
 
     @patch("app.db_retry.time.sleep")
@@ -4480,7 +4589,9 @@ class MediaDetailsViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, "app/components/detail_secondary_content.html")
+        self.assertTemplateUsed(
+            response, "app/components/detail_secondary_content.html"
+        )
         self.assertContains(response, 'id="detail-secondary-content"', html=False)
         self.assertNotContains(
             response,
@@ -4584,9 +4695,16 @@ class MediaDetailsViewTests(TestCase):
 
         with (
             patch("app.db_retry.time.sleep"),
-            patch("app.providers.services.get_media_metadata", return_value=base_metadata),
-            patch("app.views.metadata_utils.apply_item_metadata", return_value=["genres"]),
-            patch("app.views.Item.save", side_effect=OperationalError("database is locked")),
+            patch(
+                "app.providers.services.get_media_metadata", return_value=base_metadata
+            ),
+            patch(
+                "app.views.metadata_utils.apply_item_metadata", return_value=["genres"]
+            ),
+            patch(
+                "app.views.Item.save",
+                side_effect=OperationalError("database is locked"),
+            ),
         ):
             response = self.client.get(
                 reverse(
@@ -4674,7 +4792,10 @@ class MediaDetailsViewTests(TestCase):
         self.assertTrue(response.context["detail_persistence_deferred"])
         _mock_sleep.assert_not_called()
 
-    @patch("app.media_details_views._queue_game_lengths_refresh", side_effect=RuntimeError("queue unavailable"))
+    @patch(
+        "app.media_details_views._queue_game_lengths_refresh",
+        side_effect=RuntimeError("queue unavailable"),
+    )
     @patch("app.providers.services.get_media_metadata")
     def test_game_media_details_renders_when_refresh_enqueue_raises(
         self,
@@ -4884,7 +5005,9 @@ class MediaDetailsViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, "app/components/detail_secondary_content.html")
+        self.assertTemplateUsed(
+            response, "app/components/detail_secondary_content.html"
+        )
         self.assertContains(response, "Episode 1")
         self.assertContains(
             response,
@@ -5252,7 +5375,9 @@ class MediaDetailsViewTests(TestCase):
 
         self.assertEqual(page_one.status_code, 200)
         self.assertEqual(len(page_one.context["media"]["episodes"]), 25)
-        self.assertEqual(page_one.context["episode_load_more"]["label"], "Episodes 26-30")
+        self.assertEqual(
+            page_one.context["episode_load_more"]["label"], "Episodes 26-30"
+        )
         self.assertContains(page_one, "Long Episode 25")
         self.assertNotContains(page_one, "Long Episode 26")
         self.assertContains(page_one, "Show Episodes 26-30")
@@ -5480,7 +5605,10 @@ class MediaDetailsViewTests(TestCase):
             content,
         )
         self.assertIn('class="relative w-full md:w-auto"', content)
-        self.assertIn('<h2 class="text-sm font-medium text-gray-400 md:hidden">Season 1</h2>', content)
+        self.assertIn(
+            '<h2 class="text-sm font-medium text-gray-400 md:hidden">Season 1</h2>',
+            content,
+        )
         self.assertIn(
             'class="hidden flex-wrap items-center justify-start gap-y-1 text-center text-sm font-medium text-gray-400 md:flex md:text-start"',
             content,
@@ -5519,7 +5647,7 @@ class MediaDetailsViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         content = response.content.decode()
-        self.assertIn("<h1 class=\"text-3xl font-bold\">The Sound of Music</h1>", content)
+        self.assertIn('<h1 class="text-3xl font-bold">The Sound of Music</h1>', content)
         self.assertNotIn('aria-label="Show alternative title"', content)
 
     @patch("app.providers.services.get_media_metadata")
@@ -5574,7 +5702,9 @@ class MediaDetailsViewTests(TestCase):
             r'<h1 class="text-3xl font-bold cursor-pointer hover:text-indigo-500 transition-colors duration-200">\s*<a href="[^"]+">Sword Art Online</a>\s*</h1>\s*<div class="relative shrink-0"',
         )
         self.assertIn('aria-label="Show alternative title"', content)
-        self.assertIn('<h2 class="text-sm font-medium text-gray-400">Season 3</h2>', content)
+        self.assertIn(
+            '<h2 class="text-sm font-medium text-gray-400">Season 3</h2>', content
+        )
         self.assertIn("<p>Alicization</p>", content)
 
     @patch("app.providers.services.get_media_metadata")
@@ -5675,7 +5805,10 @@ class MediaDetailsViewTests(TestCase):
             'class="mb-3 flex flex-col items-center justify-between gap-y-4 md:mb-1 md:flex-row md:gap-y-0"',
             content,
         )
-        self.assertIn('<h2 class="text-sm font-medium text-gray-400 md:hidden">Season 1</h2>', content)
+        self.assertIn(
+            '<h2 class="text-sm font-medium text-gray-400 md:hidden">Season 1</h2>',
+            content,
+        )
         self.assertIn(
             'class="mt-3 flex flex-wrap items-center justify-center gap-y-1 text-center text-sm font-medium text-gray-400 md:hidden"',
             content,
@@ -5958,7 +6091,9 @@ class MediaDetailsViewTests(TestCase):
             ).exists(),
         )
         self.assertEqual(len(response.context["studios_linked"]), 1)
-        self.assertEqual(response.context["studios_linked"][0]["name"], "CD Projekt Red")
+        self.assertEqual(
+            response.context["studios_linked"][0]["name"], "CD Projekt Red"
+        )
 
     @patch("app.providers.services.get_media_metadata")
     def test_media_details_renders_cast_and_crew_links(self, mock_get_metadata):
@@ -6213,6 +6348,7 @@ class MediaDetailsViewTests(TestCase):
     @patch("app.providers.services.get_media_metadata")
     def test_tv_details_view_adds_specials_from_regular_path(self, mock_get_metadata):
         """TV details should show a specials season when season 0 is enriched."""
+
         def metadata_side_effect(
             media_type,
             media_id,
@@ -6493,7 +6629,9 @@ class MediaDetailsViewTests(TestCase):
         self.assertContains(response, 'title="Season 1">Season 1</a>', html=False)
 
     @patch("app.providers.services.get_media_metadata")
-    def test_anime_details_view_renders_named_season_card_titles(self, mock_get_metadata):
+    def test_anime_details_view_renders_named_season_card_titles(
+        self, mock_get_metadata
+    ):
         def metadata_side_effect(
             media_type,
             media_id,
@@ -6674,7 +6812,9 @@ class MediaDetailsViewTests(TestCase):
         )
 
     @patch("app.providers.services.get_media_metadata")
-    def test_media_details_uses_authors_full_fallback_without_item(self, mock_get_metadata):
+    def test_media_details_uses_authors_full_fallback_without_item(
+        self, mock_get_metadata
+    ):
         mock_get_metadata.return_value = {
             "media_id": "72274276213",
             "title": "Metadata Only Manga",
@@ -7015,7 +7155,9 @@ class MediaDetailsViewTests(TestCase):
         mock_reload_calendar.assert_called_once()
 
     @patch("app.tasks.enqueue_genre_backfill_items", return_value=1)
-    def test_media_details_genre_update_refreshes_reading_top_genres(self, _mock_enqueue_genre_backfill_items):
+    def test_media_details_genre_update_refreshes_reading_top_genres(
+        self, _mock_enqueue_genre_backfill_items
+    ):
         """Saving reading genres from details should invalidate stale day caches."""
         played_at = timezone.now() - timedelta(days=30)
         item = Item.objects.create(
@@ -7036,7 +7178,9 @@ class MediaDetailsViewTests(TestCase):
         )
 
         statistics_cache.build_stats_for_day(self.user.id, played_at.date())
-        stale_stats = statistics_cache.refresh_statistics_cache(self.user.id, "All Time")
+        stale_stats = statistics_cache.refresh_statistics_cache(
+            self.user.id, "All Time"
+        )
         self.assertEqual(stale_stats["book_consumption"]["top_genres"], [])
 
         with patch("app.providers.services.get_media_metadata") as mock_get_metadata:
@@ -7068,8 +7212,12 @@ class MediaDetailsViewTests(TestCase):
         self.assertEqual(item.genres, ["Fantasy"])
 
         statistics_cache.invalidate_statistics_cache(self.user.id, "All Time")
-        refreshed_stats = statistics_cache.refresh_statistics_cache(self.user.id, "All Time")
-        refreshed_genres = [entry["name"] for entry in refreshed_stats["book_consumption"]["top_genres"]]
+        refreshed_stats = statistics_cache.refresh_statistics_cache(
+            self.user.id, "All Time"
+        )
+        refreshed_genres = [
+            entry["name"] for entry in refreshed_stats["book_consumption"]["top_genres"]
+        ]
         self.assertIn("Fantasy", refreshed_genres)
 
     @patch("app.providers.services.get_media_metadata")
@@ -7569,7 +7717,9 @@ class MediaDetailsViewTests(TestCase):
 
         self.assertEqual(detail_response.status_code, 200)
         self.assertEqual(detail_response.context["media"]["details"]["runtime"], "25m")
-        self.assertEqual(detail_response.context["media"]["details"]["total_runtime"], "2h 37min")
+        self.assertEqual(
+            detail_response.context["media"]["details"]["total_runtime"], "2h 37min"
+        )
         self.assertEqual(detail_response.context["play_stats"]["total_minutes"], 110)
         self.assertContains(detail_response, "1h 50min watched")
         # The runtime stat card renders in the deferred secondary fragment.
@@ -7783,7 +7933,9 @@ class AnimeNextEpisodeRedirectTests(TestCase):
 
     @patch("app.views._build_flat_anime_episode_preview")
     @patch("app.views.services.get_media_metadata")
-    def test_falls_back_to_detail_page_without_mapping(self, mock_metadata, mock_preview):
+    def test_falls_back_to_detail_page_without_mapping(
+        self, mock_metadata, mock_preview
+    ):
         mock_metadata.return_value = {"title": "Witch Hat Atelier", "details": {}}
         mock_preview.return_value = None
 

@@ -51,7 +51,9 @@ class CalendarOtherTests(CalendarFixturesMixin, TestCase):
         self.assertEqual(events_bulk[0].datetime, date_parser("1949-06-08"))
 
     @patch("events.calendar.other.services.get_media_metadata")
-    def test_process_other_comic_issue_prefers_store_date(self, mock_get_media_metadata):
+    def test_process_other_comic_issue_prefers_store_date(
+        self, mock_get_media_metadata
+    ):
         """Comic issues should use store_date before cover_date."""
         comic_issue_item = Item.objects.create(
             media_id="114214",

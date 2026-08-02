@@ -17,6 +17,9 @@ from app.models import MediaTypes
 
 logger = logging.getLogger(__name__)
 
+RUNTIME_UNKNOWN_AIRED = 999998  # aired but runtime unknown
+MINUTES_PER_HOUR = 60
+
 
 # ── Model serializers ─────────────────────────────────────────────────────────
 
@@ -36,7 +39,9 @@ def _serialize_item(item):
     data = {
         "id": getattr(item, "id", None),
         "media_type": item.media_type,
-        "media_id": str(getattr(item, "media_id", "")) if getattr(item, "media_id", None) is not None else None,
+        "media_id": str(getattr(item, "media_id", ""))
+        if getattr(item, "media_id", None) is not None
+        else None,
         "source": getattr(item, "source", None),
         "title": getattr(item, "title", "") or "",
         "original_title": getattr(item, "original_title", None),
@@ -107,7 +112,7 @@ def _resolve_runtime_minutes(*items):
             continue
         runtime = getattr(item, "runtime_minutes", None)
         # Exclude fallback values: 999998 (aired but runtime unknown) and 999999 (unknown runtime)
-        if runtime and runtime < 999998:
+        if runtime and runtime < RUNTIME_UNKNOWN_AIRED:
             return runtime
     return 0
 
@@ -115,8 +120,8 @@ def _resolve_runtime_minutes(*items):
 def _format_game_hours(minutes: int) -> str:
     """Show hours only if at least 1h, otherwise keep minutes."""
     minutes = minutes or 0
-    if minutes >= 60:
-        return f"{minutes // 60}h"
+    if minutes >= MINUTES_PER_HOUR:
+        return f"{minutes // MINUTES_PER_HOUR}h"
     return f"{minutes}min"
 
 
@@ -132,17 +137,15 @@ def _format_boardgame_plays(plays: int) -> str:
 def _get_episode_poster(episode):
     """Prefer show/season posters over episodic stills for consistent cards."""
     season_item = getattr(episode.related_season, "item", None)
-    episode_item = getattr(episode, "item", None)
+    getattr(episode, "item", None)
     tv_item = getattr(getattr(episode.related_season, "related_tv", None), "item", None)
 
-    poster = (
+    return (
         getattr(tv_item, "image", None)
         or getattr(season_item, "image", None)
         or getattr(episode.item, "image", None)
         or settings.IMG_NONE
     )
-
-    return poster
 
 
 def _get_episode_display_title(episode, episode_title_map=None):
@@ -201,9 +204,17 @@ def _build_episode_entry(episode, episode_title_map=None):
 
     episode_label = None
     episode_code = None
-    if episode_item and episode_item.season_number is not None and episode_item.episode_number is not None:
-        episode_label = f"{episode_item.season_number}x{episode_item.episode_number:02d}"
-        episode_code = f"S{episode_item.season_number:02d}E{episode_item.episode_number:02d}"
+    if (
+        episode_item
+        and episode_item.season_number is not None
+        and episode_item.episode_number is not None
+    ):
+        episode_label = (
+            f"{episode_item.season_number}x{episode_item.episode_number:02d}"
+        )
+        episode_code = (
+            f"S{episode_item.season_number:02d}E{episode_item.episode_number:02d}"
+        )
 
     entry = {
         "media_type": MediaTypes.EPISODE.value,
@@ -215,7 +226,9 @@ def _build_episode_entry(episode, episode_title_map=None):
         "episode_code": episode_code,
         "played_at_local": played_at_local,
         "runtime_minutes": runtime_minutes,
-        "runtime_display": helpers.minutes_to_hhmm(runtime_minutes) if runtime_minutes else None,
+        "runtime_display": helpers.minutes_to_hhmm(runtime_minutes)
+        if runtime_minutes
+        else None,
         "instance_id": episode.id,
         "entry_key": episode.id,
     }
@@ -228,7 +241,9 @@ def _build_episode_entry(episode, episode_title_map=None):
 
 
 def _build_movie_entry(movie):
-    played_at_local = _localize_datetime(movie.end_date or movie.start_date or movie.created_at)
+    played_at_local = _localize_datetime(
+        movie.end_date or movie.start_date or movie.created_at
+    )
     if not played_at_local:
         return None
 
@@ -248,7 +263,9 @@ def _build_movie_entry(movie):
         "episode_code": None,
         "played_at_local": played_at_local,
         "runtime_minutes": runtime_minutes,
-        "runtime_display": helpers.minutes_to_hhmm(runtime_minutes) if runtime_minutes else None,
+        "runtime_display": helpers.minutes_to_hhmm(runtime_minutes)
+        if runtime_minutes
+        else None,
         "instance_id": movie.id,
         "entry_key": movie.id,
     }
@@ -299,7 +316,14 @@ def _get_music_runtime_minutes(music_entry, track_duration_cache=None):
     return 0
 
 
-def _build_music_album_entries(music_entries_for_album, album, day_date, user, track_duration_cache=None, album_scores=None):
+def _build_music_album_entries(
+    music_entries_for_album,
+    album,
+    day_date,
+    user,
+    track_duration_cache=None,
+    album_scores=None,
+):
     """Build a single history entry for an album's plays on a given day.
 
     Groups all track plays for an album on a day into one card showing:
@@ -369,7 +393,9 @@ def _build_music_album_entries(music_entries_for_album, album, day_date, user, t
     entry_item = primary_music.item if primary_music and primary_music.item else None
     instance_id = primary_music.id if primary_music else None
     track = getattr(primary_music, "track", None) if primary_music else None
-    genres = _resolve_music_genres(album=album, artist=album.artist if album else None, track=track)
+    genres = _resolve_music_genres(
+        album=album, artist=album.artist if album else None, track=track
+    )
     implied_genres = _coerce_genre_list(getattr(album, "implied_genres", None))
     entry_key = f"{album.id if album else 'album'}-{day_date.strftime('%Y%m%d')}"
 
@@ -392,7 +418,9 @@ def _build_music_album_entries(music_entries_for_album, album, day_date, user, t
         "episode_code": None,
         "played_at_local": latest_time,  # Use latest play for sorting
         "runtime_minutes": total_runtime_minutes,
-        "runtime_display": helpers.minutes_to_hhmm(total_runtime_minutes) if total_runtime_minutes else None,
+        "runtime_display": helpers.minutes_to_hhmm(total_runtime_minutes)
+        if total_runtime_minutes
+        else None,
         "instance_id": instance_id,
         "entry_key": entry_key,
         "score": album_score,  # Album tracker score

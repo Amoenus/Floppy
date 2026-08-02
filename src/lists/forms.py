@@ -18,6 +18,7 @@ class TagsField(forms.MultipleChoiceField):
     """Allow arbitrary tags while still supporting select2 choices."""
 
     def valid_value(self, value):
+        """Return the valid value."""
         return True
 
 
@@ -169,7 +170,7 @@ class CustomListForm(forms.ModelForm):
             if tag is None:
                 continue
             if not isinstance(tag, str):
-                tag = str(tag)
+                tag = str(tag)  # noqa: PLW2901  # deliberate in-loop normalisation
             normalized = " ".join(tag.strip().split())
             if not normalized:
                 continue

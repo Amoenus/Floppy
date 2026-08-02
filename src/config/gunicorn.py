@@ -17,7 +17,7 @@ accesslog = "-"
 errorlog = "-"
 
 
-def pre_fork(server, worker):  # noqa: ARG001
+def pre_fork(server, worker):
     """Close database and Redis pools in the master before workers are forked.
 
     ``preload_app`` runs ``django.setup()`` (and every ``AppConfig.ready()``)
@@ -28,8 +28,8 @@ def pre_fork(server, worker):  # noqa: ARG001
     worker/thread shares one raw socket and corrupts each other's commands -
     including session writes, which silently fail to persist (#335).
     """
-    from django.core.cache import caches  # noqa: PLC0415
-    from django.db import connections  # noqa: PLC0415
+    from django.core.cache import caches
+    from django.db import connections
 
     connections.close_all()
     for connection in connections.all():
@@ -44,13 +44,13 @@ def pre_fork(server, worker):  # noqa: ARG001
             do_close_clients()
 
 
-def post_fork(server, worker):  # noqa: ARG001
+def post_fork(server, worker):
     """Drop database connections inherited from the preloaded master process.
 
     ``pre_fork`` closes any process-local database/Redis pool before the
     fork; this hook remains as a final guard against inherited database
     connections (issue #335).
     """
-    from django.db import connections  # noqa: PLC0415
+    from django.db import connections
 
     connections.close_all()

@@ -196,7 +196,9 @@ class CreditSyncSourceTests(TestCase):
         )
 
         self.assertIsNotNone(person)
-        person = Person.objects.get(source=Sources.OPENLIBRARY.value, source_person_id="OL11A")
+        person = Person.objects.get(
+            source=Sources.OPENLIBRARY.value, source_person_id="OL11A"
+        )
         self.assertEqual(person.source, Sources.OPENLIBRARY.value)
         self.assertEqual(person.source_person_id, "OL11A")
         self.assertEqual(person.name, "Open Author")

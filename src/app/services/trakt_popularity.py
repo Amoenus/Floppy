@@ -36,6 +36,12 @@ TRAKT_POPULARITY_INTERVAL_FIRST_YEAR_DAYS = 60
 TRAKT_POPULARITY_INTERVAL_FIVE_YEARS_DAYS = 180
 TRAKT_POPULARITY_INTERVAL_OLDER_DAYS = 365
 
+TOP_N_RANK = 10  # size of the "top ten" bucket used for calibration overlap
+AGE_THRESHOLD_NEW_DAYS = 90  # release age below which an item counts as "new"
+AGE_THRESHOLD_FIRST_YEAR_DAYS = (
+    365  # release age below which an item is within its first year
+)
+
 
 def route_media_type_for_item(item: Item, route_media_type: str | None = None) -> str:
     """Return the routed/library media type for a tracked item."""
@@ -172,7 +178,7 @@ def lookup_item_summary(
 
 
 def compute_popularity_score(
-    rating: float | int | None,
+    rating: float | None,
     votes: int | None,
     *,
     prior_mean: float = TRAKT_POPULARITY_PRIOR_MEAN,
@@ -231,7 +237,11 @@ def evaluate_calibration_fixture() -> dict[str, Any]:
     for item in scored_items:
         predicted_rank = predicted_rank_map.get(str(item.get("title")))
         expected_rank = int(item.get("expected_rank") or 0)
-        abs_error = abs(predicted_rank - expected_rank) if predicted_rank and expected_rank else 0
+        abs_error = (
+            abs(predicted_rank - expected_rank)
+            if predicted_rank and expected_rank
+            else 0
+        )
         abs_errors.append(abs_error)
         enriched_items.append(
             {
@@ -244,11 +254,10 @@ def evaluate_calibration_fixture() -> dict[str, Any]:
     top_ten_expected = {
         str(item.get("title"))
         for item in raw_items
-        if int(item.get("expected_rank") or 0) <= 10
+        if int(item.get("expected_rank") or 0) <= TOP_N_RANK
     }
     top_ten_predicted = {
-        str(item.get("title"))
-        for item in predicted_order[:10]
+        str(item.get("title")) for item in predicted_order[:TOP_N_RANK]
     }
 
     return {
@@ -290,7 +299,7 @@ def estimate_rank_from_score(score: float | None) -> int | None:
             if math.isclose(upper, lower):
                 return index + 1
             fraction = (upper - normalized_score) / (upper - lower)
-            return max(1, int(round((index + 1) + fraction)))
+            return max(1, round((index + 1) + fraction))
 
     if normalized_score <= 0:
         return len(reference_scores) + 1
@@ -302,7 +311,7 @@ def estimate_rank_from_score(score: float | None) -> int | None:
     tail_ratio = lowest_reference / normalized_score
     tail_increment = max(
         1,
-        int(round(max(tail_ratio - 1.0, 0.0) * len(reference_scores))),
+        round(max(tail_ratio - 1.0, 0.0) * len(reference_scores)),
     )
     return len(reference_scores) + tail_increment
 
@@ -320,9 +329,9 @@ def refresh_interval_for_item(item: Item, *, now=None):
         release_date = release_dt.date()
 
     age_days = (now.date() - release_date).days
-    if age_days <= 90:
+    if age_days <= AGE_THRESHOLD_NEW_DAYS:
         return timedelta(days=TRAKT_POPULARITY_INTERVAL_NEW_DAYS)
-    if age_days <= 365:
+    if age_days <= AGE_THRESHOLD_FIRST_YEAR_DAYS:
         return timedelta(days=TRAKT_POPULARITY_INTERVAL_FIRST_YEAR_DAYS)
     if age_days <= (365 * 5):
         return timedelta(days=TRAKT_POPULARITY_INTERVAL_FIVE_YEARS_DAYS)
@@ -339,7 +348,9 @@ def needs_refresh(
     if force or not has_popularity_data(item):
         return True
     now = now or timezone.now()
-    return item.trakt_popularity_fetched_at <= (now - refresh_interval_for_item(item, now=now))
+    return item.trakt_popularity_fetched_at <= (
+        now - refresh_interval_for_item(item, now=now)
+    )
 
 
 def tracked_items_queryset(*, media_types: list[str] | tuple[str, ...] | None = None):
@@ -419,16 +430,19 @@ def refresh_trakt_popularity(
     route_media_type = route_media_type_for_item(item, route_media_type)
     lookup_payload = lookup_item_summary(item, route_media_type=route_media_type)
     if not lookup_payload:
-        raise LookupError(f"No Trakt match found for item {item.id}")
+        msg = f"No Trakt match found for item {item.id}"
+        raise LookupError(msg)
     if lookup_payload.get("rating") is None or lookup_payload.get("votes") is None:
-        raise ValueError(f"Trakt payload missing rating/votes for item {item.id}")
+        msg = f"Trakt payload missing rating/votes for item {item.id}"
+        raise ValueError(msg)
 
     popularity_score = compute_popularity_score(
         lookup_payload.get("rating"),
         lookup_payload.get("votes"),
     )
     if popularity_score is None:
-        raise ValueError(f"Unable to compute Trakt popularity score for item {item.id}")
+        msg = f"Unable to compute Trakt popularity score for item {item.id}"
+        raise ValueError(msg)
 
     merged_external_ids = _merge_external_ids(item, lookup_payload)
 

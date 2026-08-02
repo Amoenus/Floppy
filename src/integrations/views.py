@@ -7,6 +7,7 @@ import re
 import secrets
 import zipfile
 from datetime import datetime, timedelta
+from http import HTTPStatus
 from io import BytesIO
 from urllib.parse import unquote
 
@@ -42,12 +43,19 @@ from integrations.imports.audiobookshelf import (
     AudiobookshelfClient,
 )
 from integrations.imports.radarr import RadarrClient
-from integrations.jellyfin_client import JellyfinAuthError, JellyfinClient, JellyfinClientError
-from integrations.jellyfin_sync import JELLYFIN_PUSH_INTERVAL_MINUTES, JELLYFIN_PUSH_TASK_NAME
 from integrations.imports.sonarr import SonarrClient
 from integrations.imports.storyteller import (
     StorytellerClient,
     StorytellerClientError,
+)
+from integrations.jellyfin_client import (
+    JellyfinAuthError,
+    JellyfinClient,
+    JellyfinClientError,
+)
+from integrations.jellyfin_sync import (
+    JELLYFIN_PUSH_INTERVAL_MINUTES,
+    JELLYFIN_PUSH_TASK_NAME,
 )
 from integrations.lastfm_api import (
     LastFMAPIError,
@@ -73,9 +81,6 @@ from integrations.plex_watchlist import (
     WATCHLIST_TASK_NAME,
 )
 from integrations.pocketcasts_api import PocketCastsAuthError
-from integrations.webhooks import emby, jellyfin
-from integrations.webhooks import jellyseerr as jellyseerr_webhooks
-from integrations.webhooks import plex as plex_webhooks
 
 logger = logging.getLogger(__name__)
 ARR_SYNC_INTERVAL_HOURS = 2
@@ -99,7 +104,9 @@ def _save_plex_usernames(user, raw_usernames):
 
     username_list = [u.strip() for u in raw_usernames.split(",") if u.strip()]
     seen = set()
-    deduplicated = [u for u in username_list if not (u.lower() in seen or seen.add(u.lower()))]
+    deduplicated = [
+        u for u in username_list if not (u.lower() in seen or seen.add(u.lower()))
+    ]
     cleaned_usernames = ", ".join(deduplicated)
     if cleaned_usernames != user.plex_usernames:
         user.plex_usernames = cleaned_usernames
@@ -108,12 +115,17 @@ def _save_plex_usernames(user, raw_usernames):
 
 def _plex_watchlist_task_filter(user_id):
     """Match a user's watchlist task regardless of JSON spacing/quotes."""
-    return Q(kwargs__contains=f"'user_id': {user_id},") | Q(
-        kwargs__contains=f"'user_id': {user_id}" + "}",
-    ) | Q(
-        kwargs__contains=f'"user_id": {user_id},',
-    ) | Q(
-        kwargs__contains=f'"user_id": {user_id}' + "}",
+    return (
+        Q(kwargs__contains=f"'user_id': {user_id},")
+        | Q(
+            kwargs__contains=f"'user_id': {user_id}" + "}",
+        )
+        | Q(
+            kwargs__contains=f'"user_id": {user_id},',
+        )
+        | Q(
+            kwargs__contains=f'"user_id": {user_id}' + "}",
+        )
     )
 
 
@@ -126,7 +138,9 @@ def _next_arr_sync_start(now=None):
     """Return the next future ARR sync boundary."""
     current = (now or timezone.now()).astimezone(timezone.get_default_timezone())
     boundary = current.replace(minute=0, second=0, microsecond=0)
-    hours_until_next = ARR_SYNC_INTERVAL_HOURS - (boundary.hour % ARR_SYNC_INTERVAL_HOURS)
+    hours_until_next = ARR_SYNC_INTERVAL_HOURS - (
+        boundary.hour % ARR_SYNC_INTERVAL_HOURS
+    )
     return boundary + timedelta(hours=hours_until_next)
 
 
@@ -134,7 +148,9 @@ def _ensure_plex_watchlist_schedule(user, plex_account):
     """Create or enable the per-user Plex watchlist interval schedule."""
     from django_celery_beat.models import IntervalSchedule, PeriodicTask
 
-    next_interval_start = timezone.now() + timedelta(minutes=WATCHLIST_SYNC_INTERVAL_MINUTES)
+    next_interval_start = timezone.now() + timedelta(
+        minutes=WATCHLIST_SYNC_INTERVAL_MINUTES
+    )
     interval, _ = IntervalSchedule.objects.get_or_create(
         every=WATCHLIST_SYNC_INTERVAL_MINUTES,
         period=IntervalSchedule.MINUTES,
@@ -212,7 +228,9 @@ def _ensure_jellyfin_push_schedule(user, jellyfin_account):
     """Create or enable the per-user Jellyfin watched-state push schedule."""
     from django_celery_beat.models import IntervalSchedule, PeriodicTask
 
-    next_interval_start = timezone.now() + timedelta(minutes=JELLYFIN_PUSH_INTERVAL_MINUTES)
+    next_interval_start = timezone.now() + timedelta(
+        minutes=JELLYFIN_PUSH_INTERVAL_MINUTES
+    )
     interval, _ = IntervalSchedule.objects.get_or_create(
         every=JELLYFIN_PUSH_INTERVAL_MINUTES,
         period=IntervalSchedule.MINUTES,
@@ -357,7 +375,9 @@ def _ensure_lastfm_poll_schedule():
         period=IntervalSchedule.MINUTES,
     )
     task_name = f"Poll Last.fm for all users (every {poll_interval_minutes} minutes)"
-    existing_task = PeriodicTask.objects.filter(task="Poll Last.fm for all users").first()
+    existing_task = PeriodicTask.objects.filter(
+        task="Poll Last.fm for all users"
+    ).first()
 
     if existing_task:
         updated_fields = []
@@ -552,7 +572,9 @@ def plex_connect(request):
         "plex_pin_code": pin["code"],
     }
 
-    auth_url = plex_api.build_auth_url(pin["code"], f"{redirect_uri}?state={state_token}")
+    auth_url = plex_api.build_auth_url(
+        pin["code"], f"{redirect_uri}?state={state_token}"
+    )
     return redirect(auth_url)
 
 
@@ -595,7 +617,10 @@ def plex_callback(request):
     try:
         sections = plex_api.list_sections(plex_token)
     except Exception as exc:  # pragma: no cover - defensive
-        logger.warning("Connected to Plex but could not fetch libraries: %s", exception_summary(exc))
+        logger.warning(
+            "Connected to Plex but could not fetch libraries: %s",
+            exception_summary(exc),
+        )
         messages.warning(
             request,
             "Connected to Plex, but could not load libraries yet. You can refresh from the import page.",
@@ -610,7 +635,7 @@ def plex_callback(request):
             if u.strip()
         ]
         if username.lower() not in [u.lower() for u in existing]:
-            request.user.plex_usernames = ", ".join(existing + [username])
+            request.user.plex_usernames = ", ".join([*existing, username])
             request.user.save(update_fields=["plex_usernames"])
 
     defaults = {
@@ -680,14 +705,18 @@ def import_plex(request):
     # Handle "update_collection" mode separately
     if mode == "update_collection":
         if frequency != "once":
-            messages.error(request, "Collection update mode only supports one-time execution.")
+            messages.error(
+                request, "Collection update mode only supports one-time execution."
+            )
             return redirect("import_data")
 
         tasks.update_collection_metadata_from_plex.delay(
             library=library,
             user_id=request.user.id,
         )
-        messages.info(request, "The task to update collection metadata from Plex has been queued.")
+        messages.info(
+            request, "The task to update collection metadata from Plex has been queued."
+        )
         return redirect("import_data")
 
     if frequency != "once":
@@ -1310,8 +1339,6 @@ def jellyfin_push_now(request):
     return redirect("integrations")
 
 
-
-
 @require_POST
 def audiobookshelf_connect(request):
     """Connect Audiobookshelf account using base URL + API token."""
@@ -1462,7 +1489,7 @@ def storyteller_connect(request):
     except StorytellerClientError as exc:
         messages.error(request, str(exc))
         return redirect("import_data")
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         messages.error(request, f"Failed to reach Storyteller: {exc}")
         return redirect("import_data")
 
@@ -1476,7 +1503,9 @@ def storyteller_connect(request):
         "server_url": server_url,
         "device_code": device_code,
         "user_code": data.get("user_code") or "",
-        "verification_uri": _fix_storyteller_uri(data.get("verification_uri"), server_url),
+        "verification_uri": _fix_storyteller_uri(
+            data.get("verification_uri"), server_url
+        ),
         "verification_uri_complete": _fix_storyteller_uri(
             data.get("verification_uri_complete"),
             server_url,
@@ -1485,7 +1514,9 @@ def storyteller_connect(request):
         "expires_at": (timezone.now() + timedelta(seconds=expires_in)).isoformat(),
     }
     request.session.modified = True
-    messages.info(request, "Approve the login on your Storyteller server to finish connecting.")
+    messages.info(
+        request, "Approve the login on your Storyteller server to finish connecting."
+    )
     return redirect("import_data")
 
 
@@ -1504,7 +1535,7 @@ def storyteller_poll(request):
     client = StorytellerClient(pending["server_url"])
     try:
         data, status_code = client.poll_device_token(pending["device_code"])
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return JsonResponse({"status": "pending", "detail": str(exc)})
 
     access_token = data.get("access_token") if isinstance(data, dict) else None
@@ -1524,7 +1555,10 @@ def storyteller_poll(request):
         return JsonResponse({"status": "connected"})
 
     error = data.get("error") if isinstance(data, dict) else None
-    if error in ("authorization_pending", "slow_down") or status_code == 400:
+    if (
+        error in ("authorization_pending", "slow_down")
+        or status_code == HTTPStatus.BAD_REQUEST
+    ):
         return JsonResponse({"status": "pending"})
 
     request.session.pop(STORYTELLER_PENDING_SESSION_KEY, None)
@@ -1608,7 +1642,9 @@ def stremio_connect(request):
     auth_key = request.POST.get("auth_key", "").strip()
 
     if not auth_key and not (email and password):
-        messages.error(request, "Enter your Stremio email and password, or an auth key.")
+        messages.error(
+            request, "Enter your Stremio email and password, or an auth key."
+        )
         return redirect("import_data")
 
     try:
@@ -1618,7 +1654,7 @@ def stremio_connect(request):
             # Validate a pasted auth key before storing it.
             stremio.get_user(auth_key)
     except helpers.MediaImportError as error:
-        logger.error("Stremio login failed: %s", error)
+        logger.exception("Stremio login failed")
         messages.error(
             request,
             "Could not connect to Stremio. Check your credentials; for accounts created "
@@ -1626,7 +1662,7 @@ def stremio_connect(request):
             f"({error})",
         )
         return redirect("import_data")
-    except Exception as error:  # noqa: BLE001
+    except Exception as error:
         logger.exception("Failed to connect to Stremio")
         messages.error(request, f"Failed to connect to Stremio: {error}")
         return redirect("import_data")
@@ -1698,9 +1734,11 @@ def pocketcasts_connect(request):
         access_token = login_response["accessToken"]
         refresh_token = login_response.get("refreshToken", "")
 
-        logger.info("Successfully logged in to Pocket Casts for user %s", request.user.username)
-    except PocketCastsAuthError as auth_error:
-        logger.error("Pocket Casts login failed: %s", auth_error)
+        logger.info(
+            "Successfully logged in to Pocket Casts for user %s", request.user.username
+        )
+    except PocketCastsAuthError:
+        logger.exception("Pocket Casts login failed")
         messages.error(
             request,
             "Invalid email or password. For accounts created via 'Sign in with Apple' or 'Sign in with Google', "
@@ -1754,14 +1792,18 @@ def pocketcasts_connect(request):
                 timezone=timezone.get_default_timezone(),
             )
 
-            task_name = f"Import from Pocket Casts for {request.user.username} (every 2 hours)"
+            task_name = (
+                f"Import from Pocket Casts for {request.user.username} (every 2 hours)"
+            )
             PeriodicTask.objects.create(
                 name=task_name,
                 task="Import from Pocket Casts (Recurring)",
                 crontab=crontab,
-                kwargs=json.dumps({
-                    "user_id": request.user.id,
-                }),
+                kwargs=json.dumps(
+                    {
+                        "user_id": request.user.id,
+                    }
+                ),
                 start_time=timezone.now(),
                 enabled=True,
             )
@@ -1771,11 +1813,14 @@ def pocketcasts_connect(request):
                 user_id=request.user.id,
                 mode="new",
             )
-            messages.success(request, "Connected to Pocket Casts successfully. Initial import queued. Recurring imports will run every 2 hours.")
+            messages.success(
+                request,
+                "Connected to Pocket Casts successfully. Initial import queued. Recurring imports will run every 2 hours.",
+            )
         else:
             messages.success(request, "Connected to Pocket Casts successfully.")
     except Exception as e:
-        logger.error("Failed to store Pocket Casts credentials: %s", e)
+        logger.exception("Failed to store Pocket Casts credentials")
         messages.error(request, f"Failed to store credentials: {e}")
 
     return redirect("import_data")
@@ -1877,7 +1922,7 @@ def gpodder_connect(request):
             )
         else:
             messages.success(request, "Connected to GPodder successfully.")
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.exception("Failed to store GPodder credentials")
         messages.error(request, f"Failed to save GPodder connection: {exc}")
 
@@ -1913,26 +1958,26 @@ def lastfm_connect(request):
         # Make a minimal API call to verify user exists and has public scrobbles
         lastfm_api.get_recent_tracks(username=username, limit=1, page=1)
         logger.info("Successfully validated Last.fm username: %s", username)
-    except LastFMClientError as e:
-        logger.error("Last.fm username validation failed: %s", e)
+    except LastFMClientError:
+        logger.exception("Last.fm username validation failed")
         messages.error(
             request,
             "Invalid Last.fm username or user not found. Please check your username and ensure your scrobbles are public.",
         )
         return redirect("import_data")
-    except LastFMRateLimitError as e:
-        logger.error("Last.fm rate limit during validation: %s", e)
+    except LastFMRateLimitError:
+        logger.exception("Last.fm rate limit during validation")
         messages.error(
             request,
             "Last.fm API rate limit exceeded. Please try again in a few moments.",
         )
         return redirect("import_data")
     except LastFMAPIError as e:
-        logger.error("Last.fm API error during validation: %s", e)
+        logger.exception("Last.fm API error during validation")
         messages.error(request, f"Failed to connect to Last.fm: {e}")
         return redirect("import_data")
     except Exception as e:
-        logger.error("Unexpected error validating Last.fm username: %s", e, exc_info=True)
+        logger.exception("Unexpected error validating Last.fm username")
         messages.error(request, f"Failed to connect to Last.fm: {e}")
         return redirect("import_data")
 
@@ -1968,7 +2013,7 @@ def lastfm_connect(request):
             ),
         )
     except Exception as e:
-        logger.error("Failed to store Last.fm connection: %s", e, exc_info=True)
+        logger.exception("Failed to store Last.fm connection")
         messages.error(request, f"Failed to save Last.fm connection: {e}")
 
     return redirect("import_data")
@@ -2076,7 +2121,7 @@ def koito_connect(request):
     except koito_api.KoitoAuthError as exc:
         messages.error(request, str(exc))
         return redirect("import_data")
-    except Exception as exc:  # noqa: BLE001 - surface any connection failure
+    except Exception as exc:
         messages.error(request, f"Failed to connect to Koito: {exc}")
         return redirect("import_data")
 
@@ -2157,7 +2202,7 @@ def import_koito_history_manual(request):
 @require_POST
 def import_pocketcasts(request):
     """Queue a Pocket Casts history import for the current user.
-    
+
     Pocket Casts always uses mode="new" and runs every 2 hours automatically.
     First import is "new", subsequent recurring imports are also "new".
     """
@@ -2189,7 +2234,10 @@ def import_pocketcasts(request):
             user_id=request.user.id,
             mode=mode,
         )
-        messages.info(request, "The task to import media from Pocket Casts has been queued. Recurring imports will run every 2 hours.")
+        messages.info(
+            request,
+            "The task to import media from Pocket Casts has been queued. Recurring imports will run every 2 hours.",
+        )
 
         # Set up 2-hour recurring schedule
         from django.utils import timezone as tz
@@ -2205,14 +2253,18 @@ def import_pocketcasts(request):
             timezone=tz.get_default_timezone(),
         )
 
-        task_name = f"Import from Pocket Casts for {request.user.username} (every 2 hours)"
+        task_name = (
+            f"Import from Pocket Casts for {request.user.username} (every 2 hours)"
+        )
         PeriodicTask.objects.create(
             name=task_name,
             task="Import from Pocket Casts (Recurring)",
             crontab=crontab,
-            kwargs=json.dumps({
-                "user_id": request.user.id,
-            }),
+            kwargs=json.dumps(
+                {
+                    "user_id": request.user.id,
+                }
+            ),
             start_time=tz.now(),
             enabled=True,
         )
@@ -2222,7 +2274,9 @@ def import_pocketcasts(request):
             user_id=request.user.id,
             mode=mode,
         )
-        messages.info(request, "The task to import media from Pocket Casts has been queued.")
+        messages.info(
+            request, "The task to import media from Pocket Casts has been queued."
+        )
 
     return redirect("import_data")
 
@@ -2365,7 +2419,9 @@ def import_template_csv(request):
     """View for downloading a sample CSV demonstrating the import format."""
     content = exports.generate_sample_template()
     response = HttpResponse(content, content_type="text/csv")
-    response["Content-Disposition"] = 'attachment; filename="floppy_import_template.csv"'
+    response["Content-Disposition"] = (
+        'attachment; filename="floppy_import_template.csv"'
+    )
     return response
 
 
@@ -2457,7 +2513,9 @@ def plex_webhook(request, token):
         return HttpResponse("Invalid payload", status=400)
 
     event_type = payload.get("event")
-    logger.info("Received Plex webhook request - Event: %s, User: %s", event_type, user.username)
+    logger.info(
+        "Received Plex webhook request - Event: %s, User: %s", event_type, user.username
+    )
 
     tasks.process_webhook.delay("plex", payload, user.id)
     return HttpResponse(status=200)
@@ -2488,6 +2546,7 @@ def emby_webhook(request, token):
     payload = json.loads(data)
     tasks.process_webhook.delay("emby", payload, user.id)
     return HttpResponse(status=200)
+
 
 @login_not_required
 @csrf_exempt
@@ -2549,10 +2608,9 @@ def seerr_global_webhook(request):
         logger.warning("Seerr global webhook: invalid or missing secret")
         return HttpResponse(status=401)
 
-    requester = (
-        (payload.get("requestedBy_username") or "").strip()
-        or (payload.get("notifyuser_username") or "").strip()
-    )
+    requester = (payload.get("requestedBy_username") or "").strip() or (
+        payload.get("notifyuser_username") or ""
+    ).strip()
     if not requester:
         logger.warning("Missing requester in Seerr global webhook request")
         return HttpResponse("Missing requester", status=400)
@@ -2636,7 +2694,7 @@ def _stremio_addon_response(payload, status=200):
 @login_not_required
 @csrf_exempt
 @require_GET
-def stremio_addon_manifest(request, token):  # noqa: ARG001
+def stremio_addon_manifest(request, token):
     """Serve the Stremio addon manifest for a user's install URL."""
     try:
         users.models.User.objects.get(token=token)
@@ -2650,7 +2708,7 @@ def stremio_addon_manifest(request, token):  # noqa: ARG001
 @login_not_required
 @csrf_exempt
 @require_GET
-def stremio_addon_subtitles(request, token, media_type, media_id):  # noqa: ARG001
+def stremio_addon_subtitles(request, token, media_type, media_id):
     """Record a playback-start scrobble from a Stremio subtitles request."""
     from django.core.cache import cache
 

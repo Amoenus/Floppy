@@ -44,8 +44,12 @@ DATE_FORMAT_DJANGO_MAP = {
 
 logger = logging.getLogger(__name__)
 
+NO_CHANGE_DELTA_PERCENT_THRESHOLD = 0.05
 
-def _extend_heatmap_with_future(activity_data, start_date, end_date, week_start_sunday=False):
+
+def _extend_heatmap_with_future(
+    activity_data, start_date, end_date, week_start_sunday=False
+):
     """Extend calendar_weeks beyond today with empty future cells to fill the period.
 
     Runs at render time so it's never affected by the Celery-managed cache.
@@ -72,15 +76,30 @@ def _extend_heatmap_with_future(activity_data, start_date, end_date, week_start_
         return activity_data
 
     # Determine how far to extend.
-    start_local = start_date.date() if start_date and hasattr(start_date, "date") else start_date
+    start_local = (
+        start_date.date() if start_date and hasattr(start_date, "date") else start_date
+    )
     end_local = end_date.date() if end_date and hasattr(end_date, "date") else today
 
-    if start_local and start_local.month == 1 and start_local.day == 1 and end_local >= today - timedelta(days=1):
+    if (
+        start_local
+        and start_local.month == 1
+        and start_local.day == 1
+        and end_local >= today - timedelta(days=1)
+    ):
         display_end = date(today.year, 12, 31)
-    elif start_local and start_local.day == 1 and end_local >= today - timedelta(days=1):
-        display_end = date(today.year, today.month, _calendar.monthrange(today.year, today.month)[1])
+    elif (
+        start_local and start_local.day == 1 and end_local >= today - timedelta(days=1)
+    ):
+        display_end = date(
+            today.year, today.month, _calendar.monthrange(today.year, today.month)[1]
+        )
     else:
-        days_to_end = (6 - today.weekday()) if not week_start_sunday else ((5 - today.weekday()) % 7)
+        days_to_end = (
+            (6 - today.weekday())
+            if not week_start_sunday
+            else ((5 - today.weekday()) % 7)
+        )
         display_end = today + timedelta(days=days_to_end)
 
     if display_end <= last_day:
@@ -88,13 +107,17 @@ def _extend_heatmap_with_future(activity_data, start_date, end_date, week_start_
 
     # Build a lookup of existing cells, then extend through display_end.
     existing = {date.fromisoformat(d["date"]): d for w in weeks for d in w if d}
-    all_days = [first_day + timedelta(days=i) for i in range((display_end - first_day).days + 1)]
+    all_days = [
+        first_day + timedelta(days=i) for i in range((display_end - first_day).days + 1)
+    ]
     all_cells = [
-        existing.get(d, {"date": d.strftime("%Y-%m-%d"), "count": 0, "level": 0, "future": True})
+        existing.get(
+            d, {"date": d.strftime("%Y-%m-%d"), "count": 0, "level": 0, "future": True}
+        )
         for d in all_days
     ]
 
-    new_weeks = [all_cells[i:i + 7] for i in range(0, len(all_cells), 7)]
+    new_weeks = [all_cells[i : i + 7] for i in range(0, len(all_cells), 7)]
 
     # Rebuild month header labels from the full date range.
     week_start_weekday = 6 if week_start_sunday else 0
@@ -111,6 +134,7 @@ def _extend_heatmap_with_future(activity_data, start_date, end_date, week_start_
 
     return {**activity_data, "calendar_weeks": new_weeks, "months": months}
 
+
 STATISTICS_COMPARE_PREVIOUS_PERIOD = "previous_period"
 STATISTICS_COMPARE_LAST_YEAR = "last_year"
 STATISTICS_COMPARE_NONE = "none"
@@ -123,7 +147,9 @@ STATISTICS_CARD_LAST_YEAR_LABELS = {
     "This Year": "last year",
     "This Month": "last year",
 }
-_STATISTICS_HOURS_DISPLAY_RE = re.compile(r"^\s*(\d+(?:\.\d+)?)h\s+(\d+(?:\.\d+)?)min\s*$")
+_STATISTICS_HOURS_DISPLAY_RE = re.compile(
+    r"^\s*(\d+(?:\.\d+)?)h\s+(\d+(?:\.\d+)?)min\s*$"
+)
 
 
 def _statistics_day_boundary(day_value: date | None, *, end_of_day: bool = False):
@@ -271,19 +297,22 @@ def _get_statistics_minutes_by_type(statistics_data):
     raw_minutes = statistics_data.get("minutes_per_media_type")
     if isinstance(raw_minutes, dict):
         return {
-            media_type: float(total or 0)
-            for media_type, total in raw_minutes.items()
+            media_type: float(total or 0) for media_type, total in raw_minutes.items()
         }
 
     return {
         media_type: _parse_statistics_total_display_to_minutes(total)
-        for media_type, total in (statistics_data.get("hours_per_media_type") or {}).items()
+        for media_type, total in (
+            statistics_data.get("hours_per_media_type") or {}
+        ).items()
     }
 
 
-def _format_statistics_total_for_media_type(media_type, total, duration_format="hours_minutes"):
+def _format_statistics_total_for_media_type(
+    media_type, total, duration_format="hours_minutes"
+):
     if media_type == MediaTypes.BOARDGAME.value:
-        rounded_total = int(round(total or 0))
+        rounded_total = round(total or 0)
         return f"{rounded_total} play{'s' if rounded_total != 1 else ''}"
     return stats._format_hours_minutes(total or 0, duration_format)
 
@@ -316,7 +345,9 @@ def _build_hours_per_media_type_comparison(
             for media_type in current_minutes_by_type
         }
 
-    media_types = list(dict.fromkeys([*stats.MEDIA_TYPE_HOURS_ORDER, *current_minutes_by_type.keys()]))
+    media_types = list(
+        dict.fromkeys([*stats.MEDIA_TYPE_HOURS_ORDER, *current_minutes_by_type.keys()])
+    )
     comparisons = {}
 
     for media_type in media_types:
@@ -324,9 +355,13 @@ def _build_hours_per_media_type_comparison(
         if current_total <= 0:
             continue
 
-        current_display = _format_statistics_total_for_media_type(media_type, current_total, duration_format)
+        current_display = _format_statistics_total_for_media_type(
+            media_type, current_total, duration_format
+        )
         previous_total = float(comparison_minutes_by_type.get(media_type, 0) or 0)
-        previous_display = _format_statistics_total_for_media_type(media_type, previous_total, duration_format)
+        previous_display = _format_statistics_total_for_media_type(
+            media_type, previous_total, duration_format
+        )
         tooltip = {
             "current_label": current_period_label,
             "current_total": current_display,
@@ -348,7 +383,7 @@ def _build_hours_per_media_type_comparison(
 
         delta_percent = ((current_total - previous_total) / previous_total) * 100
 
-        if abs(delta_percent) < 0.05:
+        if abs(delta_percent) < NO_CHANGE_DELTA_PERCENT_THRESHOLD:
             comparisons[media_type] = {
                 "badge": "No change",
                 "badge_state": "neutral",
@@ -430,7 +465,9 @@ def statistics(request):
         selected_range_name = _identify_predefined_range(start_date, end_date)
 
         if selected_range_name in statistics_cache.PREDEFINED_RANGES:
-            request.user.update_preference("statistics_default_range", selected_range_name)
+            request.user.update_preference(
+                "statistics_default_range", selected_range_name
+            )
 
         statistics_data = statistics_cache.get_statistics_data(
             request.user,
@@ -455,10 +492,12 @@ def statistics(request):
             compare_mode_source,
             finite_range=has_finite_range,
         )
-        comparison_start_date, comparison_end_date = _resolve_statistics_comparison_range(
-            start_date,
-            end_date,
-            selected_compare_mode,
+        comparison_start_date, comparison_end_date = (
+            _resolve_statistics_comparison_range(
+                start_date,
+                end_date,
+                selected_compare_mode,
+            )
         )
         comparison_range_name = _identify_predefined_range(
             comparison_start_date,
@@ -466,11 +505,13 @@ def statistics(request):
         )
         comparison_minutes_by_type = {}
         if comparison_start_date and comparison_end_date:
-            comparison_minutes_by_type = statistics_cache.get_statistics_minutes_by_type(
-                request.user,
-                comparison_start_date,
-                comparison_end_date,
-                range_name=comparison_range_name,
+            comparison_minutes_by_type = (
+                statistics_cache.get_statistics_minutes_by_type(
+                    request.user,
+                    comparison_start_date,
+                    comparison_end_date,
+                    range_name=comparison_range_name,
+                )
             )
 
         selected_range_dates_label = _get_statistics_card_range_label(
@@ -491,9 +532,11 @@ def statistics(request):
             comparison_start_date,
             comparison_end_date,
         )
-        current_tooltip_label, comparison_tooltip_label = _get_statistics_card_tooltip_labels(
-            selected_range_name,
-            selected_compare_mode,
+        current_tooltip_label, comparison_tooltip_label = (
+            _get_statistics_card_tooltip_labels(
+                selected_range_name,
+                selected_compare_mode,
+            )
         )
         _duration_fmt = getattr(request.user, "duration_format", "hours_minutes")
         _current_minutes_map = _get_statistics_minutes_by_type(statistics_data)
@@ -507,16 +550,21 @@ def statistics(request):
             duration_format=_duration_fmt,
         )
         _current_total_minutes = sum(_current_minutes_map.values())
-        _comparison_total_minutes = sum(float(v or 0) for v in comparison_minutes_by_type.values())
-        total_activity_comparison = _build_hours_per_media_type_comparison(
-            {"all": _current_total_minutes},
-            {"all": _comparison_total_minutes},
-            selected_compare_mode,
-            comparison_card_suffix,
-            current_tooltip_label,
-            comparison_tooltip_label,
-            duration_format=_duration_fmt,
-        ).get("all") or {}
+        _comparison_total_minutes = sum(
+            float(v or 0) for v in comparison_minutes_by_type.values()
+        )
+        total_activity_comparison = (
+            _build_hours_per_media_type_comparison(
+                {"all": _current_total_minutes},
+                {"all": _comparison_total_minutes},
+                selected_compare_mode,
+                comparison_card_suffix,
+                current_tooltip_label,
+                comparison_tooltip_label,
+                duration_format=_duration_fmt,
+            ).get("all")
+            or {}
+        )
 
         # The talent/studio/taste section is rendered asynchronously by
         # statistics_talent_fragment so its featured-player scan and
@@ -530,8 +578,8 @@ def statistics(request):
         top_rated_comic = top_rated_by_type.get("comic", [])
         top_rated_manga = top_rated_by_type.get("manga", [])
 
-        start_date_str_for_url = start_date_str if start_date_str else ""
-        end_date_str_for_url = end_date_str if end_date_str else ""
+        start_date_str_for_url = start_date_str or ""
+        end_date_str_for_url = end_date_str or ""
 
         _compare_label = STATISTICS_COMPARE_LABELS[selected_compare_mode]
         _range_to_comparison_label = {
@@ -544,7 +592,9 @@ def statistics(request):
         if selected_range_name and selected_range_name.lower().startswith("last"):
             activity_comparison_period_label = selected_range_name.lower()
         elif selected_range_name in _range_to_comparison_label:
-            activity_comparison_period_label = _range_to_comparison_label[selected_range_name]
+            activity_comparison_period_label = _range_to_comparison_label[
+                selected_range_name
+            ]
         else:
             activity_comparison_period_label = _compare_label.lower()
 
@@ -563,14 +613,17 @@ def statistics(request):
             "comparison_range_dates_label": comparison_range_dates_label,
             "hours_per_media_type_comparison": hours_per_media_type_comparison,
             "total_activity_comparison": total_activity_comparison,
-            "weekday_hour_chart_data": statistics_data.get("weekday_hour_chart_data", {}),
+            "weekday_hour_chart_data": statistics_data.get(
+                "weekday_hour_chart_data", {}
+            ),
             "combined_plays_charts": statistics_data.get("combined_plays_charts", {}),
             "media_count": statistics_data["media_count"],
             "activity_data": _extend_heatmap_with_future(
                 statistics_data["activity_data"],
                 start_date,
                 end_date,
-                week_start_sunday=request.user.week_start_day == WeekStartDayChoices.SUNDAY,
+                week_start_sunday=request.user.week_start_day
+                == WeekStartDayChoices.SUNDAY,
             ),
             "media_type_distribution": statistics_data["media_type_distribution"],
             "score_distribution": statistics_data["score_distribution"],
@@ -596,9 +649,13 @@ def statistics(request):
             "manga_consumption": statistics_data.get("manga_consumption", {}),
             "daily_hours_by_media_type": statistics_data["daily_hours_by_media_type"],
             "history_highlights": statistics_data.get("history_highlights", {}),
-            "history_highlights_by_type": statistics_data.get("history_highlights_by_type", {}),
+            "history_highlights_by_type": statistics_data.get(
+                "history_highlights_by_type", {}
+            ),
             "summary_stats_by_type": statistics_data.get("summary_stats_by_type", {}),
-            "consumption_stats_by_type": statistics_data.get("consumption_stats_by_type", {}),
+            "consumption_stats_by_type": statistics_data.get(
+                "consumption_stats_by_type", {}
+            ),
             "show_year_charts": show_year_charts,
             "user_django_date_format": DATE_FORMAT_DJANGO_MAP.get(
                 request.user.date_format, ""
@@ -619,12 +676,14 @@ def statistics(request):
         }
 
         return render(request, "app/statistics.html", context)
-    except OperationalError as error:
-        logger.error("Database error in statistics view: %s", error, exc_info=True)
+    except OperationalError:
+        logger.exception("Database error in statistics view")
         timeformat = "%Y-%m-%d"
         today = timezone.localdate()
         one_year_ago = today.replace(year=today.year - 1)
-        start_date_str = request.GET.get("start-date") or one_year_ago.strftime(timeformat)
+        start_date_str = request.GET.get("start-date") or one_year_ago.strftime(
+            timeformat
+        )
         end_date_str = request.GET.get("end-date") or today.strftime(timeformat)
 
         empty_statistics_data = {
@@ -686,12 +745,16 @@ def statistics(request):
             compare_mode_source,
             finite_range=has_finite_range,
         )
-        selected_range_name = _identify_predefined_range(error_start_date, error_end_date)
+        selected_range_name = _identify_predefined_range(
+            error_start_date, error_end_date
+        )
 
         context = {
             "user": request.user,
             "tvdb_enabled": tvdb.enabled(),
-            "start_date": parse_date(start_date_str) if start_date_str != "all" else None,
+            "start_date": parse_date(start_date_str)
+            if start_date_str != "all"
+            else None,
             "end_date": parse_date(end_date_str) if end_date_str != "all" else None,
             "start_date_str": start_date_str,
             "end_date_str": end_date_str,
@@ -740,7 +803,9 @@ def statistics(request):
             "book_consumption": empty_statistics_data["book_consumption"],
             "comic_consumption": empty_statistics_data["comic_consumption"],
             "manga_consumption": empty_statistics_data["manga_consumption"],
-            "daily_hours_by_media_type": empty_statistics_data["daily_hours_by_media_type"],
+            "daily_hours_by_media_type": empty_statistics_data[
+                "daily_hours_by_media_type"
+            ],
             "history_highlights": empty_statistics_data["history_highlights"],
             "media_type_colors": empty_statistics_data["media_type_colors"],
             "show_year_charts": False,
@@ -784,13 +849,15 @@ def _build_talent_fragment_context(
     active_genre_sort = getattr(user, "genre_sort_by", "time")
     active_studio_sort = getattr(user, "studio_sort_by", "plays")
 
-    featured_person, person_media_strip = stats_cast_crew.get_featured_repeat_player_with_strip(
-        user,
-        start_date,
-        end_date,
-        top_talent,
-        total_library_titles=statistics_data.get("media_count", {}).get("total", 0),
-        sort_by=active_top_talent_sort,
+    featured_person, person_media_strip = (
+        stats_cast_crew.get_featured_repeat_player_with_strip(
+            user,
+            start_date,
+            end_date,
+            top_talent,
+            total_library_titles=statistics_data.get("media_count", {}).get("total", 0),
+            sort_by=active_top_talent_sort,
+        )
     )
     person_media_strip_row = stats_cast_crew.build_media_strip_row(
         person_media_strip,
@@ -856,7 +923,7 @@ def statistics_talent_fragment(request):
     user's history version so any tracked-media change (or the refresh
     button) invalidates it automatically.
     """
-    from django.core.cache import cache  # noqa: PLC0415
+    from django.core.cache import cache
 
     range_name = request.GET.get("range_name") or None
     start_date_str = request.GET.get("start-date") or None
@@ -951,7 +1018,9 @@ def select_featured_person(request):
     start_date_str = request.POST.get("start_date")
     end_date_str = request.POST.get("end_date")
     total_library_titles = request.POST.get("total_library_titles")
-    sort_by = request.POST.get("sort_by") or getattr(request.user, "top_talent_sort_by", "plays")
+    sort_by = request.POST.get("sort_by") or getattr(
+        request.user, "top_talent_sort_by", "plays"
+    )
 
     if not person_source or not person_id:
         return JsonResponse(
@@ -979,14 +1048,16 @@ def select_featured_person(request):
         )
         total_library_titles = media_count.get("total", 0)
 
-    featured_person, person_media_strip = stats_cast_crew.get_featured_person_with_strip(
-        request.user,
-        person_source,
-        person_id,
-        start_date,
-        end_date,
-        total_library_titles=total_library_titles,
-        sort_by=sort_by,
+    featured_person, person_media_strip = (
+        stats_cast_crew.get_featured_person_with_strip(
+            request.user,
+            person_source,
+            person_id,
+            start_date,
+            end_date,
+            total_library_titles=total_library_titles,
+            sort_by=sort_by,
+        )
     )
     if not featured_person:
         return JsonResponse({"error": "Person not found"}, status=404)
@@ -1064,8 +1135,12 @@ def update_top_talent_sort(request):
 
     if range_name in statistics_cache.PREDEFINED_RANGES:
         try:
-            if statistics_cache.range_needs_top_talent_upgrade(request.user.id, range_name):
-                statistics_cache.invalidate_statistics_cache(request.user.id, range_name)
+            if statistics_cache.range_needs_top_talent_upgrade(
+                request.user.id, range_name
+            ):
+                statistics_cache.invalidate_statistics_cache(
+                    request.user.id, range_name
+                )
                 statistics_cache.refresh_statistics_cache(request.user.id, range_name)
                 requires_reload = True
         except Exception as exc:  # pragma: no cover - best effort compatibility upgrade
@@ -1108,7 +1183,9 @@ def update_top_talent_sort(request):
 
     if media_type:
         # Filtered variants aren't cached — only the unfiltered per-range payload is.
-        top_talent = _aggregate_top_talent(request.user, start_date, end_date, media_type=media_type)
+        top_talent = _aggregate_top_talent(
+            request.user, start_date, end_date, media_type=media_type
+        )
     else:
         top_talent = statistics_cache.get_top_talent_data(
             request.user,
@@ -1117,13 +1194,15 @@ def update_top_talent_sort(request):
             range_name=range_name,
         )
     role_leaders = stats_cast_crew.get_role_leaders(top_talent, sort_by=sort_by)
-    featured_person, person_media_strip = stats_cast_crew.get_featured_repeat_player_with_strip(
-        request.user,
-        start_date,
-        end_date,
-        top_talent,
-        total_library_titles=total_library_titles,
-        sort_by=sort_by,
+    featured_person, person_media_strip = (
+        stats_cast_crew.get_featured_repeat_player_with_strip(
+            request.user,
+            start_date,
+            end_date,
+            top_talent,
+            total_library_titles=total_library_titles,
+            sort_by=sort_by,
+        )
     )
     studio_footprint = stats_cast_crew.get_studio_footprint(
         request.user,
@@ -1155,9 +1234,7 @@ def update_top_talent_sort(request):
     pct_of_library = 0
 
     if featured_person:
-        selected_person_key = (
-            f"{featured_person.get('source', '')}:{featured_person.get('person_id', '')}"
-        )
+        selected_person_key = f"{featured_person.get('source', '')}:{featured_person.get('person_id', '')}"
         pct_of_library = featured_person.get("pct_of_library", 0)
         featured_html = render_to_string(
             "app/components/featured_repeat_player_content.html",
@@ -1335,7 +1412,9 @@ def update_studio_sort(request):
 
     if media_type:
         # Filtered variants aren't cached — only the unfiltered per-range payload is.
-        top_talent = _aggregate_top_talent(request.user, start_date, end_date, media_type=media_type)
+        top_talent = _aggregate_top_talent(
+            request.user, start_date, end_date, media_type=media_type
+        )
     else:
         top_talent = statistics_cache.get_top_talent_data(
             request.user,
@@ -1376,31 +1455,36 @@ def update_statistics_preferences(request):
     invalidate_cache = False
 
     activity_history_view = request.POST.get("activity_history_view")
-    if activity_history_view and activity_history_view in ActivityHistoryViewChoices.values:
-        if request.user.activity_history_view != activity_history_view:
-            request.user.activity_history_view = activity_history_view
-            fields_to_update.append("activity_history_view")
+    if (
+        activity_history_view
+        and activity_history_view in ActivityHistoryViewChoices.values
+    ) and request.user.activity_history_view != activity_history_view:
+        request.user.activity_history_view = activity_history_view
+        fields_to_update.append("activity_history_view")
 
     duration_format = request.POST.get("duration_format")
-    if duration_format and duration_format in DurationFormatChoices.values:
-        if request.user.duration_format != duration_format:
-            request.user.duration_format = duration_format
-            fields_to_update.append("duration_format")
-            invalidate_cache = True
+    if (
+        duration_format and duration_format in DurationFormatChoices.values
+    ) and request.user.duration_format != duration_format:
+        request.user.duration_format = duration_format
+        fields_to_update.append("duration_format")
+        invalidate_cache = True
 
     week_start_day = request.POST.get("week_start_day")
-    if week_start_day and week_start_day in WeekStartDayChoices.values:
-        if request.user.week_start_day != week_start_day:
-            request.user.week_start_day = week_start_day
-            fields_to_update.append("week_start_day")
-            invalidate_cache = True
+    if (
+        week_start_day and week_start_day in WeekStartDayChoices.values
+    ) and request.user.week_start_day != week_start_day:
+        request.user.week_start_day = week_start_day
+        fields_to_update.append("week_start_day")
+        invalidate_cache = True
 
     rating_scale = request.POST.get("rating_scale")
-    if rating_scale and rating_scale in RatingScaleChoices.values:
-        if request.user.rating_scale != rating_scale:
-            request.user.rating_scale = rating_scale
-            fields_to_update.append("rating_scale")
-            invalidate_cache = True
+    if (
+        rating_scale and rating_scale in RatingScaleChoices.values
+    ) and request.user.rating_scale != rating_scale:
+        request.user.rating_scale = rating_scale
+        fields_to_update.append("rating_scale")
+        invalidate_cache = True
 
     stats_split_tv_anime = request.POST.get("stats_split_tv_anime")
     if stats_split_tv_anime in ("true", "false"):
@@ -1442,7 +1526,9 @@ def update_statistics_compare_mode(request):
         )
 
     previous_mode = request.user.statistics_compare_mode
-    updated_mode = request.user.update_preference("statistics_compare_mode", compare_mode)
+    updated_mode = request.user.update_preference(
+        "statistics_compare_mode", compare_mode
+    )
 
     return JsonResponse(
         {
@@ -1547,7 +1633,9 @@ def _get_predefined_range_date_strings(range_name, today, timeformat):
 def _adjust_month_delta(reference_date, months):
     candidate = reference_date - relativedelta(months=months)
     if candidate.day != reference_date.day:
-        candidate = (candidate.replace(day=1) + relativedelta(months=1)) - timedelta(days=1)
+        candidate = (candidate.replace(day=1) + relativedelta(months=1)) - timedelta(
+            days=1
+        )
     return candidate
 
 

@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
-from app.discover.schemas import CandidateItem
+if TYPE_CHECKING:
+    from app.discover.schemas import CandidateItem
 
 
 class DiscoverProviderAdapter(Protocol):
@@ -22,7 +23,9 @@ class DiscoverProviderAdapter(Protocol):
     def current_cycle(self, media_type: str, *, limit: int = 50) -> list[CandidateItem]:
         """Return currently active releases (now playing/on air/seasonal)."""
 
-    def related(self, media_type: str, media_id: str, *, limit: int = 50) -> list[CandidateItem]:
+    def related(
+        self, media_type: str, media_id: str, *, limit: int = 50
+    ) -> list[CandidateItem]:
         """Return recommendation candidates related to an anchor title."""
 
     def genre_discovery(

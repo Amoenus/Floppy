@@ -2,7 +2,7 @@ import json
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.test import Client, TestCase
+from django.test import Client, TestCase, tag
 from django.urls import reverse
 
 from integrations.webhooks import anime_mappings
@@ -25,6 +25,7 @@ class AnimeMappingsTests(TestCase):
             [{"tvdb_id": "74796", "season_number": 17, "episode_offset": 13}],
         )
 
+    @tag("network")
     def test_fetch_mapping_data_downloads_mapping_data(self):
         """Test mapping data downloads from AniBridge."""
         mapping_data = anime_mappings.fetch_mapping_data()
@@ -32,6 +33,7 @@ class AnimeMappingsTests(TestCase):
         self.assertIn("tvdb_show:74796:s17", mapping_data)
         self.assertIn("anidb:3651:R", mapping_data)
 
+    @tag("network")
     def test_bleach_thousand_year_blood_war_part_two(self):
         """Test Bleach S17E14 maps to Thousand-Year Blood War part two."""
         mal_id, episode_number = anime_mappings.get_mal_id_from_tvdb(
@@ -44,6 +46,7 @@ class AnimeMappingsTests(TestCase):
         self.assertEqual(mal_id, 53998)
         self.assertEqual(episode_number, 1)
 
+    @tag("network")
     def test_bleach_season_one_maps_directly(self):
         """Test Bleach S01E09 maps directly to original Bleach progress."""
         mal_id, episode_number = anime_mappings.get_mal_id_from_tvdb(

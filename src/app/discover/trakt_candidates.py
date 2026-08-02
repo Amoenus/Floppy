@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from django.db.models import Count, Q
 
 from app.discover import cache_repo
@@ -11,13 +13,15 @@ from app.discover.filters import (
     get_feedback_keys_by_media_type,
     get_tracked_keys_by_media_type,
 )
-from app.discover.schemas import CandidateItem
 from app.discover.scoring import score_candidates
 from app.discover.service_helpers import (
     MAX_ITEMS_PER_ROW,
     _model_for_media_type,
 )
 from app.models import MediaTypes, Status
+
+if TYPE_CHECKING:
+    from app.discover.schemas import CandidateItem
 
 TRAKT_POPULAR_PAGE_SIZE = 100
 TRAKT_POPULAR_PULL_STEP = 100
@@ -28,6 +32,7 @@ ROW_CACHE_SCHEMA_META_KEY = "schema_version"
 
 MOVIE_CANON_ROW_SCHEMA_VERSION = 2
 MOVIE_COMING_SOON_ROW_SCHEMA_VERSION = 1
+HIGH_RATING_THRESHOLD = 7.0
 
 
 def _clamp_adaptive_pull_target(value: int | None) -> int:
@@ -36,7 +41,9 @@ def _clamp_adaptive_pull_target(value: int | None) -> int:
     return max(TRAKT_POPULAR_PAGE_SIZE, min(int(value), TRAKT_POPULAR_MAX_PULL_TARGET))
 
 
-def _get_cached_adaptive_pull_target(user_id: int, media_type: str, row_key: str) -> int:
+def _get_cached_adaptive_pull_target(
+    user_id: int, media_type: str, row_key: str
+) -> int:
     cached_payload, _is_stale = cache_repo.get_row_cache(user_id, media_type, row_key)
     if not cached_payload:
         return TRAKT_POPULAR_DEFAULT_PULL_TARGET
@@ -82,7 +89,10 @@ def _trakt_ranked_candidates(
     filtered_candidates: list[CandidateItem] = []
     first_success_pull: int | None = None
 
-    while len(candidates) < required_pull and len(candidates) < TRAKT_POPULAR_MAX_PULL_TARGET:
+    while (
+        len(candidates) < required_pull
+        and len(candidates) < TRAKT_POPULAR_MAX_PULL_TARGET
+    ):
         page_candidates = fetch_page(
             page=page,
             limit=TRAKT_POPULAR_PAGE_SIZE,
@@ -105,8 +115,13 @@ def _trakt_ranked_candidates(
         if len(page_candidates) < TRAKT_POPULAR_PAGE_SIZE:
             break
 
-        if len(candidates) >= required_pull and len(filtered_candidates) < MAX_ITEMS_PER_ROW:
-            required_pull = _clamp_adaptive_pull_target(required_pull + TRAKT_POPULAR_PULL_STEP)
+        if (
+            len(candidates) >= required_pull
+            and len(filtered_candidates) < MAX_ITEMS_PER_ROW
+        ):
+            required_pull = _clamp_adaptive_pull_target(
+                required_pull + TRAKT_POPULAR_PULL_STEP
+            )
 
         if len(candidates) == count_before:
             break
@@ -224,8 +239,7 @@ def _select_recent_anchors(user, media_type: str, *, max_anchors: int = 3):
     anchors = (
         model.objects.filter(user=user)
         .filter(
-            Q(status=Status.COMPLETED.value)
-            | Q(score__gte=8),
+            Q(status=Status.COMPLETED.value) | Q(score__gte=8),
         )
         .select_related("item")
         .order_by("-end_date", "-progressed_at", "-created_at")[: max_anchors * 3]
@@ -312,7 +326,7 @@ def _select_top_picks_anchors(user, media_type: str, *, max_anchors: int = 5):
     endorsed_recent = [
         entry
         for entry in recent
-        if (entry.score is not None and float(entry.score) >= 7.0)
+        if (entry.score is not None and float(entry.score) >= HIGH_RATING_THRESHOLD)
         or entry.item_id in rewatched_id_set
     ]
 
@@ -342,7 +356,9 @@ def _related_candidates_for_anchors(
             seen.add(identity)
             candidate.row_key = row_key
             candidate.anchor_title = anchor.item.title
-            candidate.source_reason = source_reason.format(anchor_title=anchor.item.title)
+            candidate.source_reason = source_reason.format(
+                anchor_title=anchor.item.title
+            )
             candidates.append(candidate)
 
     return candidates
@@ -393,7 +409,9 @@ def _genre_discovery_candidates(
     return candidates
 
 
-def _merge_unique_candidates(*candidate_sets: list[CandidateItem]) -> list[CandidateItem]:
+def _merge_unique_candidates(
+    *candidate_sets: list[CandidateItem],
+) -> list[CandidateItem]:
     merged: list[CandidateItem] = []
     seen: set[tuple[str, str, str]] = set()
     for candidate_set in candidate_sets:
@@ -406,7 +424,9 @@ def _merge_unique_candidates(*candidate_sets: list[CandidateItem]) -> list[Candi
     return merged
 
 
-def _related_row_candidates(user, media_type: str, row_key: str, profile_payload: dict) -> list[CandidateItem]:
+def _related_row_candidates(
+    user, media_type: str, row_key: str, profile_payload: dict
+) -> list[CandidateItem]:
     anchors = _select_recent_anchors(user, media_type, max_anchors=3)
     candidates = _related_candidates_for_anchors(
         anchors,

@@ -1,6 +1,6 @@
 """Redis-backed tab cache for Discover page payloads."""
 
-# ruff: noqa: BLE001, PLC0415, TRY300
+# ruff: noqa: TRY300
 
 from __future__ import annotations
 
@@ -558,7 +558,8 @@ def target_media_types_for_user_change(user, media_type: str | None) -> list[str
     enabled_targets = [
         target_media_type
         for target_media_type in targets
-        if target_media_type != ALL_MEDIA_KEY and target_media_type in enabled_media_types
+        if target_media_type != ALL_MEDIA_KEY
+        and target_media_type in enabled_media_types
     ]
     if not enabled_targets:
         return []
@@ -747,9 +748,7 @@ def schedule_tab_refresh(
             },
             countdown=countdown,
             priority=(
-                DISCOVER_TASK_PRIORITY_INTERACTIVE
-                if priority is None
-                else priority
+                DISCOVER_TASK_PRIORITY_INTERACTIVE if priority is None else priority
             ),
         )
         return True
@@ -839,7 +838,9 @@ def _collect_cached_action_payloads(
 ) -> list[dict]:
     payloads: list[dict] = []
     seen_keys: set[str] = set()
-    for media_type in _action_target_media_types(active_media_type, candidate_media_type):
+    for media_type in _action_target_media_types(
+        active_media_type, candidate_media_type
+    ):
         for show_more in (False, True):
             cache_key = _tab_cache_key(user_id, media_type, show_more=show_more)
             if cache_key in seen_keys:
@@ -868,7 +869,9 @@ def collect_action_payloads(
     Callers that need to pass the same payloads to both store_undo_snapshot and
     apply_cached_action can collect them once here and pass via preloaded_payloads.
     """
-    return _collect_cached_action_payloads(user_id, active_media_type, candidate_media_type)
+    return _collect_cached_action_payloads(
+        user_id, active_media_type, candidate_media_type
+    )
 
 
 def apply_cached_action(
@@ -895,19 +898,25 @@ def apply_cached_action(
     patched_tabs = 0
     hydrated_rows = 0
 
-    entries = preloaded_payloads if preloaded_payloads is not None else _collect_cached_action_payloads(
-        user_id,
-        active_media_type,
-        candidate_media_type,
+    entries = (
+        preloaded_payloads
+        if preloaded_payloads is not None
+        else _collect_cached_action_payloads(
+            user_id,
+            active_media_type,
+            candidate_media_type,
+        )
     )
     for entry in entries:
         rows = _deserialize_rows(entry["payload"].get("rows"))
-        was_active_entry = (
-            entry["media_type"] == normalized_active_media_type
-            and bool(entry["show_more"]) == bool(show_more)
-        )
+        was_active_entry = entry["media_type"] == normalized_active_media_type and bool(
+            entry["show_more"]
+        ) == bool(show_more)
         visible_before = [
-            [candidate.identity() for candidate in row.items[:DISCOVER_VISIBLE_ITEMS_PER_ROW]]
+            [
+                candidate.identity()
+                for candidate in row.items[:DISCOVER_VISIBLE_ITEMS_PER_ROW]
+            ]
             for row in rows
         ]
         for row in rows:
@@ -970,10 +979,14 @@ def store_undo_snapshot(
     preloaded_payloads: list[dict] | None = None,
 ) -> str | None:
     """Persist a short-lived undo snapshot for Discover card actions."""
-    tabs = preloaded_payloads if preloaded_payloads is not None else _collect_cached_action_payloads(
-        user_id,
-        active_media_type,
-        candidate_media_type,
+    tabs = (
+        preloaded_payloads
+        if preloaded_payloads is not None
+        else _collect_cached_action_payloads(
+            user_id,
+            active_media_type,
+            candidate_media_type,
+        )
     )
     if not tabs and not side_effect:
         return None
@@ -1306,9 +1319,7 @@ def _invalidate_targets(
                 else debounce_seconds
             ),
             countdown=(
-                DISCOVER_PRIORITY_REFRESH_COUNTDOWN
-                if prioritized
-                else countdown
+                DISCOVER_PRIORITY_REFRESH_COUNTDOWN if prioritized else countdown
             ),
             priority=(
                 DISCOVER_TASK_PRIORITY_INTERACTIVE

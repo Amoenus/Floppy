@@ -83,9 +83,7 @@ class TagItemToggleViewTest(TestCase):
             url, {"tag_id": self.tag.id, "item_id": self.item.id}
         )
         self.assertEqual(response.status_code, 200)
-        self.assertTrue(
-            ItemTag.objects.filter(tag=self.tag, item=self.item).exists()
-        )
+        self.assertTrue(ItemTag.objects.filter(tag=self.tag, item=self.item).exists())
 
     def test_toggle_returns_oob_preview_refresh(self):
         """Toggle response refreshes the detail-tag preview via OOB swap."""
@@ -132,9 +130,7 @@ class TagItemToggleViewTest(TestCase):
             url, {"tag_id": self.tag.id, "item_id": self.item.id}
         )
         self.assertEqual(response.status_code, 200)
-        self.assertFalse(
-            ItemTag.objects.filter(tag=self.tag, item=self.item).exists()
-        )
+        self.assertFalse(ItemTag.objects.filter(tag=self.tag, item=self.item).exists())
 
     def test_cannot_toggle_other_user_tag(self):
         """Cannot toggle a tag owned by another user."""
@@ -169,13 +165,9 @@ class TagCreateViewTest(TestCase):
     def test_create_tag(self):
         """Creates a new tag for the user."""
         url = reverse("tag_create")
-        response = self.client.post(
-            url, {"name": "New Tag", "item_id": self.item.id}
-        )
+        response = self.client.post(url, {"name": "New Tag", "item_id": self.item.id})
         self.assertEqual(response.status_code, 200)
-        self.assertTrue(
-            Tag.objects.filter(user=self.user, name="New Tag").exists()
-        )
+        self.assertTrue(Tag.objects.filter(user=self.user, name="New Tag").exists())
 
     def test_create_returns_oob_preview_refresh(self):
         """Create response refreshes the detail-tag preview via OOB swap."""
@@ -346,7 +338,9 @@ class TagFilterViewTest(TestCase):
             media_type=MediaTypes.MOVIE.value,
             title="Still Untagged Movie",
         )
-        Movie.objects.create(item=untagged_item, user=self.user, status=Status.COMPLETED)
+        Movie.objects.create(
+            item=untagged_item, user=self.user, status=Status.COMPLETED
+        )
         ItemTag.objects.create(tag=comedy, item=self.item2)
 
         url = reverse("medialist", args=["movie"])

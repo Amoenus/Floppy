@@ -104,10 +104,7 @@ def run_retryable_db_operation(
 
             sleep_for = base_delay * (backoff**attempt)
             active_logger.warning(
-                (
-                    "Retrying %s after %s error "
-                    "(attempt %s/%s, sleeping %.2fs)"
-                ),
+                ("Retrying %s after %s error (attempt %s/%s, sleeping %.2fs)"),
                 operation_name,
                 _error_type(error),
                 attempt + 1,
@@ -151,7 +148,7 @@ def _describe_conflicting_row(manager, lookup: dict, defaults: dict) -> str:
         if not probe:
             return "unknown (no probeable scalar fields in lookup/defaults)"
         rows = list(manager.filter(**probe)[:3])
-    except Exception:  # noqa: BLE001 - diagnostic path must never raise
+    except Exception:
         return "unknown (probe query failed)"
 
     if not rows:

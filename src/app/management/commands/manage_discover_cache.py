@@ -17,6 +17,7 @@ class Command(BaseCommand):
     help = "Clear and optionally rebuild Discover row/profile caches"
 
     def add_arguments(self, parser):
+        """Register this command's command-line options."""
         parser.add_argument(
             "--user-id",
             action="append",
@@ -51,10 +52,13 @@ class Command(BaseCommand):
         if media_type == ALL_MEDIA_KEY:
             return list(DISCOVER_MEDIA_TYPES)
         if media_type not in DISCOVER_MEDIA_TYPES:
-            raise CommandError(f"Unsupported media_type '{media_type}'")
+            msg = f"Unsupported media_type '{media_type}'"
+            raise CommandError(msg)
         return [media_type]
 
-    def _resolve_row_keys(self, media_type: str, raw_row_keys: list[str] | None) -> list[str]:
+    def _resolve_row_keys(
+        self, media_type: str, raw_row_keys: list[str] | None
+    ) -> list[str]:
         if not raw_row_keys:
             if media_type == ALL_MEDIA_KEY:
                 return []
@@ -62,6 +66,7 @@ class Command(BaseCommand):
         return sorted({key.strip() for key in raw_row_keys if key and key.strip()})
 
     def handle(self, *_args, **options):
+        """Clear and optionally rebuild Discover row/profile caches."""
         user_model = get_user_model()
         users = user_model.objects.all().order_by("id")
 

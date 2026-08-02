@@ -32,8 +32,11 @@ class HistorySortTests(FloppyApiTestCase):
         return self.call_api(
             "get",
             "api_media_consumption_history",
-            args=(MediaTypes.MOVIE.value, self.movie_item.source,
-                  self.movie_item.media_id),
+            args=(
+                MediaTypes.MOVIE.value,
+                self.movie_item.source,
+                self.movie_item.media_id,
+            ),
             params=params,
             headers=self.auth_headers,
         )

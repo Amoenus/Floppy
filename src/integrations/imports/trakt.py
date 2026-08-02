@@ -392,9 +392,13 @@ class TraktImporter(TraktMetadataResolverMixin):
         helpers.bulk_create_media(self.bulk_media, self.user)
 
         if self.completed_seasons:
-            bulk_update_with_history(self.completed_seasons, app.models.Season, fields=["status"])
+            bulk_update_with_history(
+                self.completed_seasons, app.models.Season, fields=["status"]
+            )
         if self.completed_tvs:
-            bulk_update_with_history(self.completed_tvs, app.models.TV, fields=["status"])
+            bulk_update_with_history(
+                self.completed_tvs, app.models.TV, fields=["status"]
+            )
         if self.dropped_tvs:
             bulk_update_with_history(self.dropped_tvs, app.models.TV, fields=["status"])
 
@@ -521,7 +525,7 @@ class TraktImporter(TraktMetadataResolverMixin):
             except MediaImportError:
                 # Fatal, importer-level problems (auth, etc.) must still abort.
                 raise
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 # A single malformed/unexpected entry should not abort the whole
                 # import; record it as a warning and continue with the rest.
                 logger.exception("Skipping Trakt history entry")
@@ -604,9 +608,9 @@ class TraktImporter(TraktMetadataResolverMixin):
             )
             return
 
-        tv_exists = tmdb_id in self.existing_media[MediaTypes.TV.value][
-            Sources.TMDB.value
-        ]
+        tv_exists = (
+            tmdb_id in self.existing_media[MediaTypes.TV.value][Sources.TMDB.value]
+        )
         if self.mode == "overwrite" and tv_exists:
             self.to_delete[MediaTypes.TV.value][Sources.TMDB.value].add(tmdb_id)
 
@@ -665,7 +669,10 @@ class TraktImporter(TraktMetadataResolverMixin):
                 if watched_at_dt is not None:
                     tv_obj._history_date = watched_at_dt
                 self.bulk_media[MediaTypes.TV.value].append(tv_obj)
-            elif tmdb_id in self.dropped_tmdb_ids and tv_obj.status != Status.DROPPED.value:
+            elif (
+                tmdb_id in self.dropped_tmdb_ids
+                and tv_obj.status != Status.DROPPED.value
+            ):
                 tv_obj.status = Status.DROPPED.value
                 self.dropped_tvs.append(tv_obj)
             self.media_instances[MediaTypes.TV.value][tv_key] = [tv_obj]

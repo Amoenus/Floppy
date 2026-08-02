@@ -33,7 +33,9 @@ class CreditsBackfillTaskTests(TestCase):
         cache.delete(tasks.CREDITS_BACKFILL_ITEMS_SCHEDULED_KEY)
 
     @patch("app.tasks.populate_credits_backfill_queue.apply_async")
-    def test_enqueue_credits_backfill_filters_unsupported_or_complete_items(self, mock_apply_async):
+    def test_enqueue_credits_backfill_filters_unsupported_or_complete_items(
+        self, mock_apply_async
+    ):
         missing_item = Item.objects.create(
             media_id="1001",
             source=Sources.TMDB.value,
@@ -128,7 +130,9 @@ class CreditsBackfillTaskTests(TestCase):
         mock_apply_async.assert_called_once_with(countdown=1)
 
     @patch("app.tasks.populate_credits_backfill_queue.apply_async")
-    def test_enqueue_credits_backfill_requeues_episode_with_old_strategy_version(self, mock_apply_async):
+    def test_enqueue_credits_backfill_requeues_episode_with_old_strategy_version(
+        self, mock_apply_async
+    ):
         episode_item = Item.objects.create(
             media_id="1006",
             source=Sources.TMDB.value,
@@ -163,13 +167,17 @@ class CreditsBackfillTaskTests(TestCase):
         queued = tasks.enqueue_credits_backfill_items([episode_item.id], countdown=1)
 
         self.assertEqual(queued, 1)
-        self.assertEqual(cache.get(tasks.CREDITS_BACKFILL_ITEMS_QUEUE_KEY), [episode_item.id])
+        self.assertEqual(
+            cache.get(tasks.CREDITS_BACKFILL_ITEMS_QUEUE_KEY), [episode_item.id]
+        )
         mock_apply_async.assert_called_once_with(countdown=1)
 
     @patch("app.tasks.enqueue_credits_backfill_items")
     @patch("app.credits.sync_item_credits_from_metadata")
     @patch("app.providers.services.get_media_metadata")
-    def test_populate_credits_data_for_items_records_success(self, mock_get_metadata, mock_sync, _mock_enqueue):
+    def test_populate_credits_data_for_items_records_success(
+        self, mock_get_metadata, mock_sync, _mock_enqueue
+    ):
         item = Item.objects.create(
             media_id="2001",
             source=Sources.TMDB.value,
@@ -187,14 +195,18 @@ class CreditsBackfillTaskTests(TestCase):
             "crew": [],
             "studios_full": [],
         }
-        MetadataBackfillState.objects.filter(item=item, field=MetadataBackfillField.CREDITS).delete()
+        MetadataBackfillState.objects.filter(
+            item=item, field=MetadataBackfillField.CREDITS
+        ).delete()
 
         result = tasks.populate_credits_data_for_items([item.id])
 
         self.assertEqual(result["updated"], 1)
         self.assertEqual(result["errors"], 0)
         mock_sync.assert_called_once()
-        state = MetadataBackfillState.objects.get(item=item, field=MetadataBackfillField.CREDITS)
+        state = MetadataBackfillState.objects.get(
+            item=item, field=MetadataBackfillField.CREDITS
+        )
         self.assertEqual(state.fail_count, 0)
         self.assertEqual(state.strategy_version, CREDITS_BACKFILL_VERSION)
         self.assertFalse(state.give_up)
@@ -225,7 +237,9 @@ class CreditsBackfillTaskTests(TestCase):
             "cast": [],
             "crew": [],
         }
-        MetadataBackfillState.objects.filter(item=item, field=MetadataBackfillField.CREDITS).delete()
+        MetadataBackfillState.objects.filter(
+            item=item, field=MetadataBackfillField.CREDITS
+        ).delete()
 
         result = tasks.populate_credits_data_for_items([item.id])
 
@@ -239,7 +253,9 @@ class CreditsBackfillTaskTests(TestCase):
             item.episode_number,
         )
         mock_sync.assert_called_once()
-        state = MetadataBackfillState.objects.get(item=item, field=MetadataBackfillField.CREDITS)
+        state = MetadataBackfillState.objects.get(
+            item=item, field=MetadataBackfillField.CREDITS
+        )
         self.assertEqual(state.strategy_version, CREDITS_BACKFILL_VERSION)
 
     @patch("app.tasks.enqueue_credits_backfill_items")
@@ -266,7 +282,9 @@ class CreditsBackfillTaskTests(TestCase):
             "crew": [],
             "studios_full": [],
         }
-        MetadataBackfillState.objects.filter(item=item, field=MetadataBackfillField.CREDITS).delete()
+        MetadataBackfillState.objects.filter(
+            item=item, field=MetadataBackfillField.CREDITS
+        ).delete()
 
         result = tasks.populate_credits_data_for_items([item.id])
 
@@ -279,7 +297,9 @@ class CreditsBackfillTaskTests(TestCase):
             [item.season_number],
         )
         mock_sync.assert_called_once()
-        state = MetadataBackfillState.objects.get(item=item, field=MetadataBackfillField.CREDITS)
+        state = MetadataBackfillState.objects.get(
+            item=item, field=MetadataBackfillField.CREDITS
+        )
         self.assertEqual(state.fail_count, 0)
         self.assertEqual(state.strategy_version, CREDITS_BACKFILL_VERSION)
         self.assertFalse(state.give_up)
@@ -321,7 +341,9 @@ class CreditsBackfillTaskTests(TestCase):
             },
         )
 
-        missing_ids = tasks._missing_credits_item_ids([season_complete.id, season_missing.id])
+        missing_ids = tasks._missing_credits_item_ids(
+            [season_complete.id, season_missing.id]
+        )
 
         self.assertEqual(missing_ids, [season_missing.id])
 
@@ -444,7 +466,9 @@ class CreditsBackfillTaskTests(TestCase):
             strategy_version=max(CREDITS_BACKFILL_VERSION - 1, 1),
         )
 
-        queued = tasks.enqueue_credits_backfill_items([tv_item.id, season_item.id], countdown=1)
+        queued = tasks.enqueue_credits_backfill_items(
+            [tv_item.id, season_item.id], countdown=1
+        )
 
         self.assertEqual(queued, 2)
         self.assertCountEqual(
@@ -457,7 +481,9 @@ class CreditsBackfillTaskTests(TestCase):
 class CreditsBackfillSignalTests(TestCase):
     @patch("app.tasks.enqueue_credits_backfill_items")
     def test_movie_play_save_queues_credits_backfill(self, mock_enqueue):
-        user = get_user_model().objects.create_user(username="signal-user", password="test12345")
+        user = get_user_model().objects.create_user(
+            username="signal-user", password="test12345"
+        )
         item = Item.objects.create(
             media_id="3001",
             source=Sources.TMDB.value,
@@ -486,7 +512,9 @@ class CreditsBackfillSignalTests(TestCase):
         mock_enqueue,
         mock_get_metadata,
     ):
-        user = get_user_model().objects.create_user(username="episode-signal-user", password="test12345")
+        user = get_user_model().objects.create_user(
+            username="episode-signal-user", password="test12345"
+        )
         tv_item = Item.objects.create(
             media_id="4001",
             source=Sources.TMDB.value,

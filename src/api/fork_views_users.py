@@ -81,7 +81,7 @@ class UserPreferencesView(drf_views.APIView):
             status=HTTP.OK,
         )
 
-    def patch(self, request):  # noqa: C901, PLR0912
+    def patch(self, request):
         """Update the provided preference fields."""
         user = request.user
         if user.is_demo:
@@ -321,7 +321,7 @@ class UserNotificationTestView(drf_views.APIView):
                 ),
                 body_format=apprise.NotifyFormat.HTML,
             )
-        except Exception as e:  # noqa: BLE001 — apprise transport failures
+        except Exception as e:
             return Response(
                 {"detail": "Failed to send test notification.", "errors": str(e)},
                 status=HTTP.BAD_GATEWAY,

@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import math
+from typing import TYPE_CHECKING
 
-from app.discover.schemas import CandidateItem
+if TYPE_CHECKING:
+    from app.discover.schemas import CandidateItem
 
 
 def cosine_similarity(vec_a: dict[str, float], vec_b: dict[str, float]) -> float:
@@ -31,7 +33,7 @@ def normalize_numeric_map(values: dict[str, float]) -> dict[str, float]:
         return {}
     max_value = max(float(value) for value in values.values())
     if max_value <= 0:
-        return {key: 0.0 for key in values}
+        return dict.fromkeys(values, 0.0)
     return {key: float(value) / max_value for key, value in values.items()}
 
 
@@ -44,7 +46,7 @@ def normalize_values(values: list[float | None]) -> list[float]:
     min_value = min(cleaned)
     max_value = max(cleaned)
     if math.isclose(min_value, max_value):
-        return [0.5 if value is not None else 0.5 for value in values]
+        return [0.5 for _ in values]
 
     scale = max_value - min_value
     normalized: list[float] = []
@@ -77,20 +79,35 @@ def weighted_pearson_correlation(
     if total_weight <= 0.0:
         return 0.0
 
-    mean_a = sum(value_a * weight for value_a, _value_b, weight in weighted_rows) / total_weight
-    mean_b = sum(value_b * weight for _value_a, value_b, weight in weighted_rows) / total_weight
-    covariance = sum(
-        weight * (value_a - mean_a) * (value_b - mean_b)
-        for value_a, value_b, weight in weighted_rows
-    ) / total_weight
-    variance_a = sum(
-        weight * ((value_a - mean_a) ** 2)
-        for value_a, _value_b, weight in weighted_rows
-    ) / total_weight
-    variance_b = sum(
-        weight * ((value_b - mean_b) ** 2)
-        for _value_a, value_b, weight in weighted_rows
-    ) / total_weight
+    mean_a = (
+        sum(value_a * weight for value_a, _value_b, weight in weighted_rows)
+        / total_weight
+    )
+    mean_b = (
+        sum(value_b * weight for _value_a, value_b, weight in weighted_rows)
+        / total_weight
+    )
+    covariance = (
+        sum(
+            weight * (value_a - mean_a) * (value_b - mean_b)
+            for value_a, value_b, weight in weighted_rows
+        )
+        / total_weight
+    )
+    variance_a = (
+        sum(
+            weight * ((value_a - mean_a) ** 2)
+            for value_a, _value_b, weight in weighted_rows
+        )
+        / total_weight
+    )
+    variance_b = (
+        sum(
+            weight * ((value_b - mean_b) ** 2)
+            for _value_a, value_b, weight in weighted_rows
+        )
+        / total_weight
+    )
     if variance_a <= 0.0 or variance_b <= 0.0:
         return 0.0
 
@@ -127,8 +144,16 @@ def blended_world_quality(
     """Blend TMDb/provider and Trakt quality into a single world score."""
     tmdb_world_quality = bayesian_world_quality(provider_rating, provider_votes)
     trakt_world_quality = bayesian_world_quality(trakt_rating, trakt_votes)
-    tmdb_weight = math.log1p(max(int(provider_votes or 0), 0)) if tmdb_world_quality is not None else 0.0
-    trakt_weight = math.log1p(max(int(trakt_votes or 0), 0)) if trakt_world_quality is not None else 0.0
+    tmdb_weight = (
+        math.log1p(max(int(provider_votes or 0), 0))
+        if tmdb_world_quality is not None
+        else 0.0
+    )
+    trakt_weight = (
+        math.log1p(max(int(trakt_votes or 0), 0))
+        if trakt_world_quality is not None
+        else 0.0
+    )
 
     if tmdb_world_quality is None and trakt_world_quality is None:
         return {
@@ -193,7 +218,9 @@ def score_candidates(
     if not candidates:
         return candidates
 
-    popularity_norm = normalize_values([candidate.popularity for candidate in candidates])
+    popularity_norm = normalize_values(
+        [candidate.popularity for candidate in candidates]
+    )
     rating_norm = normalize_values([candidate.rating for candidate in candidates])
 
     genre_profile = {
@@ -239,7 +266,9 @@ def score_candidates(
         person_vector = _profile_vector(candidate.people)
 
         genre_match = cosine_similarity(genre_vector, genre_profile)
-        tag_match = cosine_similarity(tag_vector, tag_profile) if include_tag_weight else 0.0
+        tag_match = (
+            cosine_similarity(tag_vector, tag_profile) if include_tag_weight else 0.0
+        )
         recency_bonus = cosine_similarity(genre_vector, recent_genre_profile)
         phase_genre_bonus = cosine_similarity(genre_vector, phase_genre_profile)
         recency_tag_bonus = cosine_similarity(tag_vector, recent_tag_profile)

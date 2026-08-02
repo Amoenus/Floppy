@@ -95,7 +95,9 @@ class GamesInTopTalentAggregationTests(TestCase):
         actress_names = {row["name"] for row in result["top_actresses"]}
         self.assertIn("Alice Actor", actress_names)
 
-        entry = next(row for row in result["top_actresses"] if row["name"] == "Alice Actor")
+        entry = next(
+            row for row in result["top_actresses"] if row["name"] == "Alice Actor"
+        )
         self.assertEqual(entry["unique_titles"], 1)
         self.assertEqual(entry["unique_games"], 1)
         self.assertEqual(entry["unique_movies"], 0)
@@ -108,7 +110,9 @@ class GamesInTopTalentAggregationTests(TestCase):
             schedule_missing_backfill=False,
         )
 
-        studio_entry = next(row for row in result["top_studios"] if row["name"] == "Dispatch Studio")
+        studio_entry = next(
+            row for row in result["top_studios"] if row["name"] == "Dispatch Studio"
+        )
         self.assertEqual(studio_entry["plays"], 1)
         self.assertEqual(studio_entry["unique_titles"], 1)
         self.assertEqual(studio_entry["unique_games"], 1)
@@ -143,7 +147,9 @@ class GamesInTopTalentAggregationTests(TestCase):
         self.assertNotIn("Bob Movie Star", actor_names)
         self.assertIn("Alice Actor", actress_names)
 
-    def test_imdb_game_cast_with_unknown_gender_falls_back_to_actor_and_uses_game_minutes(self):
+    def test_imdb_game_cast_with_unknown_gender_falls_back_to_actor_and_uses_game_minutes(
+        self,
+    ):
         unknown_item = Item.objects.create(
             media_id="igdb-101",
             source=Sources.IGDB.value,
@@ -178,7 +184,11 @@ class GamesInTopTalentAggregationTests(TestCase):
             schedule_missing_backfill=False,
         )
 
-        actor_entry = next(row for row in result["top_actors"] if row["name"] == "Unknown Gender Performer")
+        actor_entry = next(
+            row
+            for row in result["top_actors"]
+            if row["name"] == "Unknown Gender Performer"
+        )
         self.assertEqual(actor_entry["watched_minutes"], 135)
         self.assertEqual(actor_entry["watched_time"], "2h 15min")
 

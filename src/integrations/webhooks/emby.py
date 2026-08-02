@@ -118,8 +118,12 @@ class EmbyWebhookProcessor(BaseWebhookProcessor):
             return MediaTypes.MOVIE.value
         return None
 
-    def _update_live_playback_state(  # noqa: C901
-        self, payload, user, ids, playback_media_type,
+    def _update_live_playback_state(
+        self,
+        payload,
+        user,
+        ids,
+        playback_media_type,
     ):
         """Update cache-backed live playback state for home-page UI."""
         event_type = EMBY_EVENT_MAP.get(payload.get("Event"))
@@ -140,8 +144,8 @@ class EmbyWebhookProcessor(BaseWebhookProcessor):
         if playback_media_type == MediaTypes.MOVIE.value:
             media_id = ids.get("tmdb_id")
         else:
-            season_number, episode_number = (
-                self._extract_season_episode_from_payload(payload)
+            season_number, episode_number = self._extract_season_episode_from_payload(
+                payload
             )
             # Prefer TVDB/IMDB resolution — they reliably return the
             # show-level TMDB ID via the TMDB find API.
@@ -169,8 +173,7 @@ class EmbyWebhookProcessor(BaseWebhookProcessor):
         # Duration / offset from ticks (100 ns units, same as Jellyfin)
         duration_seconds = _ticks_to_seconds(item.get("RunTimeTicks"))
         offset_seconds = _ticks_to_seconds(
-            payload.get("PlaybackPositionTicks")
-            or item.get("PlaybackPositionTicks"),
+            payload.get("PlaybackPositionTicks") or item.get("PlaybackPositionTicks"),
         )
 
         live_playback.apply_playback_event(

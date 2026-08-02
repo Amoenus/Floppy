@@ -21,7 +21,7 @@ GAME_METADATA = {
 }
 
 
-def _fake_get_media_metadata(media_type, media_id, source):  # noqa: ARG001
+def _fake_get_media_metadata(media_type, media_id, source):
     return GAME_METADATA[media_id]
 
 

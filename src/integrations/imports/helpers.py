@@ -73,7 +73,13 @@ def get_deleted_media(user):
 
 
 def should_process_media(
-    existing_media, to_delete, media_type, source, media_id, mode, deleted_media=None,
+    existing_media,
+    to_delete,
+    media_type,
+    source,
+    media_id,
+    mode,
+    deleted_media=None,
 ):
     """Determine if a media item should be processed based on mode."""
     if deleted_media and media_id in deleted_media[media_type][source]:
@@ -242,7 +248,9 @@ def _backfill_completed_season_episodes(seasons):
     existing_season_ids = set(
         Episode.objects.filter(
             related_season__in=completed_seasons,
-        ).values_list("related_season_id", flat=True).distinct(),
+        )
+        .values_list("related_season_id", flat=True)
+        .distinct(),
     )
 
     episodes_to_create = []

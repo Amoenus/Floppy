@@ -30,6 +30,7 @@ from app.models import (
     Status,
 )
 
+
 def setUpModule():
     """Silence log noise for this module only."""
     logging.disable(logging.DEBUG)
@@ -146,7 +147,10 @@ class StatisticsPerformanceBenchmarks(TestCase):
                 reverse("statistics") + "?start-date=all&end-date=all&compare=none",
             )
         elapsed_ms = (time.perf_counter() - start) * 1000
-        sql_ms = sum(float(query["time"]) for query in captured_queries.captured_queries) * 1000
+        sql_ms = (
+            sum(float(query["time"]) for query in captured_queries.captured_queries)
+            * 1000
+        )
         html_bytes = len(response.content)
 
         print("\n[PERF] statistics warm cache:")
@@ -202,7 +206,9 @@ class StatisticsColdRebuildBenchmark(TransactionTestCase):
         movies = []
         for offset, item in enumerate(created_items):
             play_day = base_day + timedelta(days=offset * 4)
-            played_at = timezone.make_aware(datetime.combine(play_day, datetime.min.time()), tz)
+            played_at = timezone.make_aware(
+                datetime.combine(play_day, datetime.min.time()), tz
+            )
             movies.append(
                 Movie(
                     user=self.user,

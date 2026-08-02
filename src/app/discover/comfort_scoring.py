@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from typing import TYPE_CHECKING
 
 from app.discover.movie_comfort import (
     MOVIE_COMFORT_FAMILY_WEIGHTS,
@@ -15,7 +16,6 @@ from app.discover.movie_comfort import (
     _prefer_strong_phase_opening_window,
     _promote_phase_lane_candidates,
 )
-from app.discover.schemas import CandidateItem
 from app.discover.service_helpers import (
     COMFORT_DIVERSITY_DECAY,
     COMFORT_ERA_DECAY,
@@ -35,11 +35,18 @@ from app.discover.service_helpers import (
     _is_holiday_window,
 )
 
+if TYPE_CHECKING:
+    from app.discover.schemas import CandidateItem
+
 COMFORT_DEBUG_TOP_N = 12
 COMFORT_SPREAD_COMPRESSION_THRESHOLD = 0.08
 DISPLAY_BASELINE = 0.55
 DISPLAY_RAW_WEIGHT = 0.25
 DISPLAY_COMPRESSED_BASELINE_DROP = 0.06
+LEGACY_ERA_CUTOFF_YEAR = 2000
+MULTIPLIER_APPLIED_THRESHOLD = 0.999
+MULTI_PENALTY_THRESHOLD = 2
+
 
 def _apply_comfort_confidence(
     candidates: list[CandidateItem],
@@ -55,7 +62,10 @@ def _apply_comfort_confidence(
     if (
         use_movie_rewatch_model
         and candidates
-        and all(candidate.media_type in WORLD_QUALITY_MEDIA_TYPES for candidate in candidates)
+        and all(
+            candidate.media_type in WORLD_QUALITY_MEDIA_TYPES
+            for candidate in candidates
+        )
     ):
         behavior_first_candidates = _apply_movie_comfort_confidence(
             candidates,
@@ -90,12 +100,15 @@ def _apply_comfort_confidence(
         "tag_rich"
         if (
             candidate_tag_coverage_pool >= COMFORT_TAG_RICH_CANDIDATE_COVERAGE_THRESHOLD
-            and recent_history_tag_coverage >= COMFORT_TAG_RICH_HISTORY_COVERAGE_THRESHOLD
+            and recent_history_tag_coverage
+            >= COMFORT_TAG_RICH_HISTORY_COVERAGE_THRESHOLD
         )
         else "tag_sparse"
     )
     hot_recency_mode_multiplier = (
-        1.0 if tag_signal_mode == "tag_rich" else COMFORT_HOT_RECENCY_TAG_SPARSE_MULTIPLIER
+        1.0
+        if tag_signal_mode == "tag_rich"
+        else COMFORT_HOT_RECENCY_TAG_SPARSE_MULTIPLIER
     )
 
     for candidate in candidates:
@@ -118,7 +131,9 @@ def _apply_comfort_confidence(
             candidate.score_breakdown.get("tag_match", 0.0),
         )
         phase_fit = _clamp_unit((phase_genre_bonus * 0.45) + (phase_tag_bonus * 0.55))
-        hot_recency_base = _clamp_unit((recency_bonus * 0.35) + (recency_tag_bonus * 0.65))
+        hot_recency_base = _clamp_unit(
+            (recency_bonus * 0.35) + (recency_tag_bonus * 0.65)
+        )
         genre_overlap_ratio = (
             min(phase_genre_bonus, recency_bonus)
             / max(phase_genre_bonus, recency_bonus, 1e-6)
@@ -142,7 +157,7 @@ def _apply_comfort_confidence(
             hot_recency_incremental * (1.0 - phase_hot_overlap_ratio),
         )
         hot_recency = _clamp_unit(
-            (hot_recency_specificity ** COMFORT_HOT_RECENCY_SELECTIVE_EXPONENT)
+            (hot_recency_specificity**COMFORT_HOT_RECENCY_SELECTIVE_EXPONENT)
             * hot_recency_mode_multiplier,
         )
 
@@ -161,14 +176,10 @@ def _apply_comfort_confidence(
             float(candidate.score_breakdown.get("rewatch_count", 1.0)),
         )
         raw_rewatch_bonus = _clamp_unit(
-            math.log1p(rewatch_count - 1) / math.log(8)
-            if rewatch_count > 1
-            else 0.0
+            math.log1p(rewatch_count - 1) / math.log(8) if rewatch_count > 1 else 0.0
         )
         rewatch_gate = _clamp_unit(0.25 + (phase_fit * 0.75))
-        rewatch_bonus = (
-            min(0.85, raw_rewatch_bonus) * rewatch_gate
-        )
+        rewatch_bonus = min(0.85, raw_rewatch_bonus) * rewatch_gate
         inactivity_days = float(
             candidate.score_breakdown.get("days_since_activity", 0.0),
         )
@@ -182,17 +193,12 @@ def _apply_comfort_confidence(
             holiday_window_active=holiday_window_active,
         )
 
-        phase_family_contribution = (
-            (phase_fit * 0.32)
-            + (phase_evidence * 0.10)
-        )
+        phase_family_contribution = (phase_fit * 0.32) + (phase_evidence * 0.10)
         hot_recency_contribution = hot_recency * 0.17
         rewatch_contribution = rewatch_bonus * 0.08
         rating_contribution = rating_confidence * 0.09
         background_contribution = (
-            (inactivity_norm * 0.11)
-            + (genre_match * 0.03)
-            + (tag_match * 0.10)
+            (inactivity_norm * 0.11) + (genre_match * 0.03) + (tag_match * 0.10)
         )
         comfort_score = _clamp_unit(
             phase_family_contribution
@@ -207,9 +213,15 @@ def _apply_comfort_confidence(
         candidate.score_breakdown["hot_recency_base"] = round(hot_recency_base, 6)
         candidate.score_breakdown["genre_overlap_ratio"] = round(genre_overlap_ratio, 6)
         candidate.score_breakdown["tag_overlap_ratio"] = round(tag_overlap_ratio, 6)
-        candidate.score_breakdown["hot_recency_incremental"] = round(hot_recency_incremental, 6)
-        candidate.score_breakdown["hot_recency_specificity"] = round(hot_recency_specificity, 6)
-        candidate.score_breakdown["phase_hot_overlap_ratio"] = round(phase_hot_overlap_ratio, 6)
+        candidate.score_breakdown["hot_recency_incremental"] = round(
+            hot_recency_incremental, 6
+        )
+        candidate.score_breakdown["hot_recency_specificity"] = round(
+            hot_recency_specificity, 6
+        )
+        candidate.score_breakdown["phase_hot_overlap_ratio"] = round(
+            phase_hot_overlap_ratio, 6
+        )
         candidate.score_breakdown["hot_recency"] = round(hot_recency, 6)
         candidate.score_breakdown["tag_signal_mode"] = tag_signal_mode
         candidate.score_breakdown["hot_recency_mode_multiplier"] = round(
@@ -232,12 +244,22 @@ def _apply_comfort_confidence(
         candidate.score_breakdown["phase_evidence"] = round(phase_evidence, 6)
         candidate.score_breakdown["holiday_strength"] = round(holiday_strength, 6)
         candidate.score_breakdown["seasonal_adjustment"] = round(seasonal_adjustment, 6)
-        candidate.score_breakdown["phase_family_contribution"] = round(phase_family_contribution, 6)
-        candidate.score_breakdown["hot_recency_contribution"] = round(hot_recency_contribution, 6)
+        candidate.score_breakdown["phase_family_contribution"] = round(
+            phase_family_contribution, 6
+        )
+        candidate.score_breakdown["hot_recency_contribution"] = round(
+            hot_recency_contribution, 6
+        )
         candidate.score_breakdown["rating_contribution"] = round(rating_contribution, 6)
-        candidate.score_breakdown["rewatch_contribution"] = round(rewatch_contribution, 6)
-        candidate.score_breakdown["background_contribution"] = round(background_contribution, 6)
-        candidate.score_breakdown["dampeners_contribution"] = round(seasonal_adjustment, 6)
+        candidate.score_breakdown["rewatch_contribution"] = round(
+            rewatch_contribution, 6
+        )
+        candidate.score_breakdown["background_contribution"] = round(
+            background_contribution, 6
+        )
+        candidate.score_breakdown["dampeners_contribution"] = round(
+            seasonal_adjustment, 6
+        )
         candidate.score_breakdown["diversity_penalty_contribution"] = 0.0
         candidate.score_breakdown["diversity_dampener_contribution"] = 0.0
         candidate.score_breakdown["era_penalty_contribution"] = 0.0
@@ -254,9 +276,7 @@ def _apply_comfort_confidence(
 
         # Per-card match genres: overlap of candidate genres with phase activity
         if phase_top:
-            cand_genres = {
-                g.strip().lower() for g in (candidate.genres or []) if g
-            }
+            cand_genres = {g.strip().lower() for g in (candidate.genres or []) if g}
             overlap = [g for g in phase_top if g in cand_genres]
             if overlap:
                 candidate.score_breakdown["match_genres"] = ", ".join(
@@ -277,14 +297,18 @@ def _apply_comfort_confidence(
     for candidate in candidates:
         bucket_key = _comfort_bucket_key(candidate)
         bucket_seen_count = bucket_counts.get(bucket_key, 0)
-        diversity_multiplier = COMFORT_DIVERSITY_DECAY ** bucket_seen_count
+        diversity_multiplier = COMFORT_DIVERSITY_DECAY**bucket_seen_count
         before_diversity = float(candidate.final_score or 0.0)
         diversified_score = _clamp_unit(
             before_diversity * diversity_multiplier,
         )
         diversity_penalty_contribution = max(0.0, before_diversity - diversified_score)
-        candidate.score_breakdown["diversity_multiplier"] = round(diversity_multiplier, 6)
-        candidate.score_breakdown["diversity_penalty"] = round(1.0 - diversity_multiplier, 6)
+        candidate.score_breakdown["diversity_multiplier"] = round(
+            diversity_multiplier, 6
+        )
+        candidate.score_breakdown["diversity_penalty"] = round(
+            1.0 - diversity_multiplier, 6
+        )
         candidate.score_breakdown["diversity_penalty_contribution"] = round(
             diversity_penalty_contribution,
             6,
@@ -308,7 +332,9 @@ def _apply_comfort_confidence(
     era_counts: dict[int, int] = {}
     legacy_count = 0
     for index, candidate in enumerate(candidates[: MAX_ITEMS_PER_ROW * 2]):
-        candidate.score_breakdown["era_opening_slot"] = 1.0 if index < COMFORT_ERA_OPENING_WINDOW else 0.0
+        candidate.score_breakdown["era_opening_slot"] = (
+            1.0 if index < COMFORT_ERA_OPENING_WINDOW else 0.0
+        )
         candidate.score_breakdown["era_opening_multiplier"] = 1.0
         candidate.score_breakdown["era_base_multiplier"] = 1.0
         candidate.score_breakdown.setdefault("era_multiplier", 1.0)
@@ -322,15 +348,15 @@ def _apply_comfort_confidence(
             continue
         era_bucket = (release_year // 10) * 10
         era_seen_count = era_counts.get(era_bucket, 0)
-        base_multiplier = COMFORT_ERA_DECAY ** era_seen_count
+        base_multiplier = COMFORT_ERA_DECAY**era_seen_count
         if index < COMFORT_ERA_OPENING_WINDOW:
-            opening_multiplier = COMFORT_ERA_OPENING_DECAY ** era_seen_count
+            opening_multiplier = COMFORT_ERA_OPENING_DECAY**era_seen_count
         else:
             opening_multiplier = 1.0
-        if release_year < 2000:
-            base_multiplier *= COMFORT_LEGACY_ERA_DECAY ** legacy_count
+        if release_year < LEGACY_ERA_CUTOFF_YEAR:
+            base_multiplier *= COMFORT_LEGACY_ERA_DECAY**legacy_count
             if index < COMFORT_ERA_OPENING_WINDOW:
-                opening_multiplier *= COMFORT_LEGACY_OPENING_DECAY ** legacy_count
+                opening_multiplier *= COMFORT_LEGACY_OPENING_DECAY**legacy_count
             legacy_count += 1
         era_multiplier = base_multiplier * opening_multiplier
         before_era = float(candidate.final_score or 0.0)
@@ -341,8 +367,12 @@ def _apply_comfort_confidence(
         era_penalty_contribution = era_base_penalty + opening_era_penalty
         candidate.score_breakdown["era_multiplier"] = round(era_multiplier, 6)
         candidate.score_breakdown["era_base_multiplier"] = round(base_multiplier, 6)
-        candidate.score_breakdown["era_opening_multiplier"] = round(opening_multiplier, 6)
-        candidate.score_breakdown["era_penalty_contribution"] = round(era_penalty_contribution, 6)
+        candidate.score_breakdown["era_opening_multiplier"] = round(
+            opening_multiplier, 6
+        )
+        candidate.score_breakdown["era_penalty_contribution"] = round(
+            era_penalty_contribution, 6
+        )
         candidate.score_breakdown["era_base_penalty_contribution"] = round(
             era_base_penalty,
             6,
@@ -406,11 +436,15 @@ def _apply_comfort_confidence(
     return candidates
 
 
-def _calibrate_comfort_display_scores(candidates: list[CandidateItem]) -> list[CandidateItem]:
+def _calibrate_comfort_display_scores(
+    candidates: list[CandidateItem],
+) -> list[CandidateItem]:
     if not candidates:
         return candidates
 
-    raw_scores = [_clamp_unit(float(candidate.final_score or 0.0)) for candidate in candidates]
+    raw_scores = [
+        _clamp_unit(float(candidate.final_score or 0.0)) for candidate in candidates
+    ]
     min_raw = min(raw_scores)
     max_raw = max(raw_scores)
     spread = max_raw - min_raw
@@ -430,11 +464,7 @@ def _calibrate_comfort_display_scores(candidates: list[CandidateItem]) -> list[C
     calibrated: list[float] = []
     for index, candidate in enumerate(candidates):
         raw_score = _clamp_unit(float(candidate.final_score or 0.0))
-        spread_norm = (
-            (raw_score - min_raw) / spread
-            if spread > 0.0
-            else 0.5
-        )
+        spread_norm = (raw_score - min_raw) / spread if spread > 0.0 else 0.5
         rank_norm = 1.0 - (index / rank_denom)
         display_score = _clamp_unit(
             display_baseline
@@ -515,11 +545,17 @@ def _build_movie_comfort_debug_payload(
 
     raw_scores = [
         _clamp_unit(
-            float(candidate.score_breakdown.get("raw_final_score", candidate.final_score or 0.0)),
+            float(
+                candidate.score_breakdown.get(
+                    "raw_final_score", candidate.final_score or 0.0
+                )
+            ),
         )
         for candidate in candidates
     ]
-    display_scores = [_clamp_unit(float(candidate.display_score or 0.0)) for candidate in candidates]
+    display_scores = [
+        _clamp_unit(float(candidate.display_score or 0.0)) for candidate in candidates
+    ]
     raw_min = min(raw_scores)
     raw_max = max(raw_scores)
     display_min = min(display_scores)
@@ -555,22 +591,30 @@ def _build_movie_comfort_debug_payload(
         seasonal_adjustment = float(score.get("seasonal_adjustment", 0.0))
         if float(score.get("generic_only_match", 0.0)) >= 1.0:
             penalty_count += 1
-        if str(score.get("reason_bucket_quota_action", "")) in {"relaxed_fill", "forced_fill"}:
+        if str(score.get("reason_bucket_quota_action", "")) in {
+            "relaxed_fill",
+            "forced_fill",
+        }:
             penalty_count += 1
         if float(score.get("candidate_is_unrated", 0.0)) >= 1.0:
             penalty_count += 1
-        if float(score.get("saturation_multiplier", 1.0)) < 0.999:
+        if (
+            float(score.get("saturation_multiplier", 1.0))
+            < MULTIPLIER_APPLIED_THRESHOLD
+        ):
             penalty_count += 1
         if seasonal_adjustment < 0.0:
             penalty_count += 1
-        if penalty_count >= 2:
+        if penalty_count >= MULTI_PENALTY_THRESHOLD:
             multi_penalty_ids.append(str(candidate.media_id))
 
         contribution_totals["library"] += float(score.get("library_contribution", 0.0))
         contribution_totals["recency_phase"] += float(
             score.get("recency_phase_contribution", 0.0),
         )
-        contribution_totals["behavior"] += float(score.get("behavior_contribution", 0.0))
+        contribution_totals["behavior"] += float(
+            score.get("behavior_contribution", 0.0)
+        )
         contribution_totals["comfort_safety"] += float(
             score.get("comfort_safety_contribution", 0.0),
         )
@@ -578,7 +622,9 @@ def _build_movie_comfort_debug_payload(
         contribution_totals["shape_coverage"] += float(
             score.get("shape_coverage_contribution", 0.0),
         )
-        contribution_totals["ready_now"] += float(score.get("ready_now_contribution", 0.0))
+        contribution_totals["ready_now"] += float(
+            score.get("ready_now_contribution", 0.0)
+        )
         contribution_totals["planning_confidence"] += float(
             score.get("planning_confidence_contribution", 0.0),
         )
@@ -595,17 +641,27 @@ def _build_movie_comfort_debug_payload(
                 "media_id": str(candidate.media_id),
                 "title": candidate.title,
                 "raw_final_score": round(
-                    _clamp_unit(float(score.get("raw_final_score", candidate.final_score or 0.0))),
+                    _clamp_unit(
+                        float(
+                            score.get("raw_final_score", candidate.final_score or 0.0)
+                        )
+                    ),
                     6,
                 ),
-                "display_score": round(_clamp_unit(float(candidate.display_score or 0.0)), 6),
+                "display_score": round(
+                    _clamp_unit(float(candidate.display_score or 0.0)), 6
+                ),
                 "library_fit": round(float(score.get("library_fit", 0.0)), 6),
-                "recency_phase_fit": round(float(score.get("recency_phase_fit", 0.0)), 6),
+                "recency_phase_fit": round(
+                    float(score.get("recency_phase_fit", 0.0)), 6
+                ),
                 "behavior_score": round(float(score.get("behavior_score", 0.0)), 6),
                 "comfort_safety": round(float(score.get("comfort_safety", 0.0)), 6),
                 "quality_score": round(float(score.get("quality_score", 0.0)), 6),
                 "shape_coverage": round(float(score.get("shape_coverage", 0.0)), 6),
-                "core_affinity_score": round(float(score.get("core_affinity_score", 0.0)), 6),
+                "core_affinity_score": round(
+                    float(score.get("core_affinity_score", 0.0)), 6
+                ),
                 "ready_now_score": round(float(score.get("ready_now_score", 0.0)), 6),
                 "cooldown_penalty": round(float(score.get("cooldown_penalty", 0.0)), 6),
                 "title_cooldown_penalty": round(
@@ -643,7 +699,8 @@ def _build_movie_comfort_debug_payload(
                 ),
                 "title_history_present": float(
                     score.get("title_history_present", 1.0),
-                ) >= 1.0,
+                )
+                >= 1.0,
                 "release_ready_score": round(
                     float(score.get("release_ready_score", 0.0)),
                     6,
@@ -657,8 +714,12 @@ def _build_movie_comfort_debug_payload(
                     float(score.get("planning_confidence_bonus", 0.0)),
                     6,
                 ),
-                "similar_watched_count": int(score.get("similar_watched_count", 0) or 0),
-                "matched_history_families": list(score.get("matched_history_families") or []),
+                "similar_watched_count": int(
+                    score.get("similar_watched_count", 0) or 0
+                ),
+                "matched_history_families": list(
+                    score.get("matched_history_families") or []
+                ),
                 "rich_history_family_count": int(
                     score.get("rich_history_family_count", 0) or 0,
                 ),
@@ -679,14 +740,19 @@ def _build_movie_comfort_debug_payload(
                     float(score.get("cooldown_window_days", 0.0)),
                     6,
                 ),
-                "rating_confidence": round(float(score.get("rating_confidence", 0.0)), 6),
+                "rating_confidence": round(
+                    float(score.get("rating_confidence", 0.0)), 6
+                ),
                 "rewatch_strength": round(float(score.get("rewatch_strength", 0.0)), 6),
                 "rewatch_strength_raw": round(
                     float(score.get("rewatch_strength_raw", 0.0)),
                     6,
                 ),
-                "rotation_pressure": round(float(score.get("rotation_pressure", 0.0)), 6),
-                "absence_gate_active": float(score.get("absence_gate_active", 0.0)) >= 1.0,
+                "rotation_pressure": round(
+                    float(score.get("rotation_pressure", 0.0)), 6
+                ),
+                "absence_gate_active": float(score.get("absence_gate_active", 0.0))
+                >= 1.0,
                 "absence_norm": round(float(score.get("absence_norm", 0.0)), 6),
                 "absence_boost": round(float(score.get("absence_boost", 0.0)), 6),
                 "core_weight_profile": str(
@@ -715,7 +781,8 @@ def _build_movie_comfort_debug_payload(
                 "source_reason": str(candidate.source_reason or ""),
                 "hydrated_from_item": float(
                     score.get("hydrated_from_item", 0.0),
-                ) >= 1.0,
+                )
+                >= 1.0,
                 "family_coverage_weight": round(
                     float(score.get("family_coverage_weight", 0.0)),
                     6,
@@ -729,8 +796,12 @@ def _build_movie_comfort_debug_payload(
                 ),
                 "provider_support": round(float(score.get("provider_support", 0.0)), 6),
                 "world_quality": round(float(score.get("world_quality", 0.5)), 6),
-                "tmdb_world_quality": round(float(score.get("tmdb_world_quality", 0.0)), 6),
-                "trakt_world_quality": round(float(score.get("trakt_world_quality", 0.0)), 6),
+                "tmdb_world_quality": round(
+                    float(score.get("tmdb_world_quality", 0.0)), 6
+                ),
+                "trakt_world_quality": round(
+                    float(score.get("trakt_world_quality", 0.0)), 6
+                ),
                 "world_source_blend": str(score.get("world_source_blend", "neutral")),
                 "world_alignment": round(float(score.get("world_alignment", 0.0)), 6),
                 "world_alignment_confidence": round(
@@ -746,15 +817,27 @@ def _build_movie_comfort_debug_payload(
                     float(score.get("legacy_raw_final_score", 0.0)),
                     6,
                 ),
-                "generic_only_match": float(score.get("generic_only_match", 0.0)) >= 1.0,
-                "candidate_is_unrated": float(score.get("candidate_is_unrated", 0.0)) >= 1.0,
+                "generic_only_match": float(score.get("generic_only_match", 0.0))
+                >= 1.0,
+                "candidate_is_unrated": float(score.get("candidate_is_unrated", 0.0))
+                >= 1.0,
                 "primary_reason_bucket": str(score.get("primary_reason_bucket", "")),
-                "reason_bucket_quota_action": str(score.get("reason_bucket_quota_action", "")),
-                "evaluated_signal_families": list(score.get("evaluated_signal_families") or []),
-                "active_signal_families": list(score.get("active_signal_families") or []),
-                "suppressed_signal_families": list(score.get("suppressed_signal_families") or []),
+                "reason_bucket_quota_action": str(
+                    score.get("reason_bucket_quota_action", "")
+                ),
+                "evaluated_signal_families": list(
+                    score.get("evaluated_signal_families") or []
+                ),
+                "active_signal_families": list(
+                    score.get("active_signal_families") or []
+                ),
+                "suppressed_signal_families": list(
+                    score.get("suppressed_signal_families") or []
+                ),
                 "family_layer_fits": dict(score.get("family_layer_fits") or {}),
-                "library_contribution": round(float(score.get("library_contribution", 0.0)), 6),
+                "library_contribution": round(
+                    float(score.get("library_contribution", 0.0)), 6
+                ),
                 "recency_phase_contribution": round(
                     float(score.get("recency_phase_contribution", 0.0)),
                     6,
@@ -767,7 +850,9 @@ def _build_movie_comfort_debug_payload(
                     float(score.get("comfort_safety_contribution", 0.0)),
                     6,
                 ),
-                "quality_contribution": round(float(score.get("quality_contribution", 0.0)), 6),
+                "quality_contribution": round(
+                    float(score.get("quality_contribution", 0.0)), 6
+                ),
                 "shape_coverage_contribution": round(
                     float(score.get("shape_coverage_contribution", 0.0)),
                     6,
@@ -825,15 +910,15 @@ def _build_movie_comfort_debug_payload(
             "display_min": round(display_min, 6),
             "display_max": round(display_max, 6),
             "display_spread": round(display_max - display_min, 6),
-            "compressed_raw": (raw_max - raw_min) < COMFORT_SPREAD_COMPRESSION_THRESHOLD,
+            "compressed_raw": (raw_max - raw_min)
+            < COMFORT_SPREAD_COMPRESSION_THRESHOLD,
         },
         "penalty_stack": {
             "multi_penalty_count": len(multi_penalty_ids),
             "multi_penalty_media_ids": multi_penalty_ids,
         },
         "contribution_totals": {
-            key: round(value, 6)
-            for key, value in contribution_totals.items()
+            key: round(value, 6) for key, value in contribution_totals.items()
         },
         "profile_layer_weights": dict(MOVIE_COMFORT_PROFILE_LAYER_WEIGHTS),
         "family_weights": dict(MOVIE_COMFORT_FAMILY_WEIGHTS),
@@ -841,7 +926,9 @@ def _build_movie_comfort_debug_payload(
             "legacy_top_titles": [candidate.title for candidate in legacy_top_slice],
             "current_top_titles": [candidate.title for candidate in top_slice],
             "promoted_titles": [
-                candidate.title for candidate in top_slice if id(candidate) not in legacy_top_ids
+                candidate.title
+                for candidate in top_slice
+                if id(candidate) not in legacy_top_ids
             ],
             "dropped_titles": [
                 candidate.title
@@ -851,7 +938,8 @@ def _build_movie_comfort_debug_payload(
             "changed_rank_count": sum(
                 1
                 for current_rank, candidate in enumerate(top_slice, start=1)
-                if int(candidate.score_breakdown.get("legacy_rank", 0) or 0) != current_rank
+                if int(candidate.score_breakdown.get("legacy_rank", 0) or 0)
+                != current_rank
             ),
         },
     }
@@ -951,7 +1039,9 @@ def _build_comfort_debug_payload(
     match_signal_details: dict | None = None,
     profile_payload: dict | None = None,
 ) -> dict:
-    if candidates and any("library_fit" in candidate.score_breakdown for candidate in candidates):
+    if candidates and any(
+        "library_fit" in candidate.score_breakdown for candidate in candidates
+    ):
         payload = _build_movie_comfort_debug_payload(
             candidates,
             top_n=top_n,
@@ -1003,14 +1093,15 @@ def _build_comfort_debug_payload(
     raw_scores = [
         _clamp_unit(
             float(
-                candidate.score_breakdown.get("raw_final_score", candidate.final_score or 0.0),
+                candidate.score_breakdown.get(
+                    "raw_final_score", candidate.final_score or 0.0
+                ),
             ),
         )
         for candidate in candidates
     ]
     display_scores = [
-        _clamp_unit(float(candidate.display_score or 0.0))
-        for candidate in candidates
+        _clamp_unit(float(candidate.display_score or 0.0)) for candidate in candidates
     ]
 
     raw_min = min(raw_scores)
@@ -1034,7 +1125,9 @@ def _build_comfort_debug_payload(
         if recent_history_coverages
         else 0.0,
     )
-    tag_signal_mode = str(candidates[0].score_breakdown.get("tag_signal_mode", "tag_sparse"))
+    tag_signal_mode = str(
+        candidates[0].score_breakdown.get("tag_signal_mode", "tag_sparse")
+    )
     hot_recency_mode_multiplier = _clamp_unit(
         float(
             candidates[0].score_breakdown.get(
@@ -1097,14 +1190,14 @@ def _build_comfort_debug_payload(
         penalty_count = 0
         if seasonal_adjustment < 0.0:
             penalty_count += 1
-        if diversity_multiplier < 0.999:
+        if diversity_multiplier < MULTIPLIER_APPLIED_THRESHOLD:
             penalty_count += 1
-        if era_multiplier < 0.999:
+        if era_multiplier < MULTIPLIER_APPLIED_THRESHOLD:
             penalty_count += 1
         if phase_pool_source in {"weak_backfill", "weak_only"}:
             penalty_count += 1
 
-        if penalty_count >= 2:
+        if penalty_count >= MULTI_PENALTY_THRESHOLD:
             multi_penalty_ids.append(str(candidate.media_id))
 
         top_candidates.append(
@@ -1113,17 +1206,33 @@ def _build_comfort_debug_payload(
                 "media_id": str(candidate.media_id),
                 "title": candidate.title,
                 "raw_final_score": round(
-                    _clamp_unit(float(score.get("raw_final_score", candidate.final_score or 0.0))),
+                    _clamp_unit(
+                        float(
+                            score.get("raw_final_score", candidate.final_score or 0.0)
+                        )
+                    ),
                     6,
                 ),
-                "display_score": round(_clamp_unit(float(candidate.display_score or 0.0)), 6),
+                "display_score": round(
+                    _clamp_unit(float(candidate.display_score or 0.0)), 6
+                ),
                 "phase_fit": round(float(score.get("phase_fit", 0.0)), 6),
                 "hot_recency_base": round(float(score.get("hot_recency_base", 0.0)), 6),
-                "genre_overlap_ratio": round(float(score.get("genre_overlap_ratio", 0.0)), 6),
-                "tag_overlap_ratio": round(float(score.get("tag_overlap_ratio", 0.0)), 6),
-                "hot_recency_incremental": round(float(score.get("hot_recency_incremental", 0.0)), 6),
-                "hot_recency_specificity": round(float(score.get("hot_recency_specificity", 0.0)), 6),
-                "phase_hot_overlap_ratio": round(float(score.get("phase_hot_overlap_ratio", 0.0)), 6),
+                "genre_overlap_ratio": round(
+                    float(score.get("genre_overlap_ratio", 0.0)), 6
+                ),
+                "tag_overlap_ratio": round(
+                    float(score.get("tag_overlap_ratio", 0.0)), 6
+                ),
+                "hot_recency_incremental": round(
+                    float(score.get("hot_recency_incremental", 0.0)), 6
+                ),
+                "hot_recency_specificity": round(
+                    float(score.get("hot_recency_specificity", 0.0)), 6
+                ),
+                "phase_hot_overlap_ratio": round(
+                    float(score.get("phase_hot_overlap_ratio", 0.0)), 6
+                ),
                 "hot_recency": round(float(score.get("hot_recency", 0.0)), 6),
                 "phase_evidence": round(float(score.get("phase_evidence", 0.0)), 6),
                 "tag_signal_mode": str(score.get("tag_signal_mode", "tag_sparse")),
@@ -1139,20 +1248,26 @@ def _build_comfort_debug_payload(
                     float(score.get("recent_history_tag_coverage", 0.0)),
                     6,
                 ),
-                "rating_confidence": round(float(score.get("rating_confidence", 0.0)), 6),
+                "rating_confidence": round(
+                    float(score.get("rating_confidence", 0.0)), 6
+                ),
                 "rewatch_bonus": round(float(score.get("rewatch_bonus", 0.0)), 6),
                 "keyword_fit": round(float(score.get("keyword_fit", 0.0)), 6),
                 "studio_fit": round(float(score.get("studio_fit", 0.0)), 6),
                 "collection_fit": round(float(score.get("collection_fit", 0.0)), 6),
                 "director_fit": round(float(score.get("director_fit", 0.0)), 6),
                 "lead_cast_fit": round(float(score.get("lead_cast_fit", 0.0)), 6),
-                "certification_fit": round(float(score.get("certification_fit", 0.0)), 6),
+                "certification_fit": round(
+                    float(score.get("certification_fit", 0.0)), 6
+                ),
                 "runtime_fit": round(float(score.get("runtime_fit", 0.0)), 6),
                 "decade_fit": round(float(score.get("decade_fit", 0.0)), 6),
                 "recent_shape_fit": round(float(score.get("recent_shape_fit", 0.0)), 6),
                 "comfort_safety": round(float(score.get("comfort_safety", 0.0)), 6),
-                "weak_shape_outlier": float(score.get("weak_shape_outlier", 0.0)) >= 1.0,
-                "candidate_is_unrated": float(score.get("candidate_is_unrated", 0.0)) >= 1.0,
+                "weak_shape_outlier": float(score.get("weak_shape_outlier", 0.0))
+                >= 1.0,
+                "candidate_is_unrated": float(score.get("candidate_is_unrated", 0.0))
+                >= 1.0,
                 "phase_family_contribution": round(phase_family_contribution, 6),
                 "hot_recency_contribution": round(hot_recency_contribution, 6),
                 "rating_contribution": round(rating_contribution, 6),
@@ -1176,13 +1291,16 @@ def _build_comfort_debug_payload(
                 "era_multiplier": round(era_multiplier, 6),
                 "medium_phase_held_opening": float(
                     score.get("medium_phase_held_opening", 0.0),
-                ) >= 1.0,
+                )
+                >= 1.0,
                 "strong_phase_promoted_opening": float(
                     score.get("strong_phase_promoted_opening", 0.0),
-                ) >= 1.0,
+                )
+                >= 1.0,
                 "medium_phase_demoted_opening": float(
                     score.get("medium_phase_demoted_opening", 0.0),
-                ) >= 1.0,
+                )
+                >= 1.0,
                 "phase_lane_promoted": phase_lane_promoted,
                 "phase_pool_source": phase_pool_source,
                 "penalty_count": penalty_count,
@@ -1235,6 +1353,7 @@ def _build_comfort_debug_payload(
     }
     if match_signal_details:
         payload["match_signal"] = dict(match_signal_details)
-        payload["match_signal_label_sources"] = match_signal_details.get("match_signal_label_sources", [])
+        payload["match_signal_label_sources"] = match_signal_details.get(
+            "match_signal_label_sources", []
+        )
     return payload
-

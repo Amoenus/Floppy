@@ -19,6 +19,10 @@ from .helpers import date_parser
 
 logger = logging.getLogger(__name__)
 
+# Episode air dates before this year are treated as placeholder/unknown values
+# rather than real release dates.
+MIN_VALID_RELEASE_YEAR = 1900
+
 
 def _clear_tv_time_left_cache(media_id, source, user_ids=None):
     """Invalidate cached time-left values for users tracking a TV show."""
@@ -269,8 +273,7 @@ def reopen_completed_tv_with_new_seasons(tv_item, season_items, events_bulk):
             if season_number not in existing_season_numbers
         ]
         has_incomplete_discovered_season = any(
-            season.status != Status.COMPLETED.value
-            for season in existing_new_seasons
+            season.status != Status.COMPLETED.value for season in existing_new_seasons
         )
 
         if not missing_season_numbers and not has_incomplete_discovered_season:
@@ -412,7 +415,9 @@ def process_season_episodes(item, metadata, events_bulk):
             existing_episode_items[episode_number] = episode_item
             new_items.append(episode_item)
 
-        release_datetime = episode_datetime if episode_datetime.year > 1900 else None
+        release_datetime = (
+            episode_datetime if episode_datetime.year > MIN_VALID_RELEASE_YEAR else None
+        )
 
         if release_datetime is not None and (
             earliest_release is None or release_datetime < earliest_release
@@ -421,7 +426,9 @@ def process_season_episodes(item, metadata, events_bulk):
 
         runtime_minutes = None
         if episode.get("runtime") is not None:
-            runtime_minutes = int(episode["runtime"]) if episode["runtime"] > 0 else None
+            runtime_minutes = (
+                int(episode["runtime"]) if episode["runtime"] > 0 else None
+            )
         elif release_datetime:
             runtime_minutes = 999998
 

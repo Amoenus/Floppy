@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import requests
 from django.conf import settings
 from django.core.cache import cache
-from django.test import TestCase, override_settings
+from django.test import TestCase, override_settings, tag
 
 from app.credits import _normalize_credit_rows
 from app.models import Episode, Item, MediaTypes, Sources
@@ -62,6 +62,7 @@ class Metadata(TestCase):
         self.assertEqual(response["details"]["status"], "Finished")
         self.assertEqual(response["details"]["number_of_chapters"], 162)
 
+    @tag("network")
     def test_mangaupdates(self):
         """Test the metadata method for manga from mangaupdates."""
         response = mangaupdates.manga("72274276213")
@@ -69,15 +70,20 @@ class Metadata(TestCase):
         self.assertEqual(response["details"]["year"], "1994")
         self.assertEqual(response["details"]["format"], "Manga")
 
+    @tag("network")
     def test_tv(self):
         """Test the metadata method for TV shows."""
         response = tmdb.tv("1396")
         self.assertEqual(response["title"], "Breaking Bad")
-        self.assertEqual(response["details"]["first_air_date"].date().isoformat(), "2008-01-20")
+        self.assertEqual(
+            response["details"]["first_air_date"].date().isoformat(), "2008-01-20"
+        )
         self.assertEqual(response["details"]["status"], "Ended")
         self.assertEqual(response["details"]["episodes"], 62)
 
-    def test_tmdb_original_title_does_not_backfill_from_random_alternative_when_original_exists(self):
+    def test_tmdb_original_title_does_not_backfill_from_random_alternative_when_original_exists(
+        self,
+    ):
         response = {
             "title": "The Sound of Music",
             "original_title": "The Sound of Music",
@@ -143,7 +149,7 @@ class Metadata(TestCase):
             url,
             params=None,
             headers=None,
-        ):  # noqa: ARG001
+        ):
             if source == Sources.TMDB.value and url.endswith("/tv/114410"):
                 return {
                     "id": 114410,
@@ -220,7 +226,7 @@ class Metadata(TestCase):
         """TMDB TV details should not invoke TVDB specials fallback when disabled."""
         tmdb.cache.clear()
 
-        def _mock_api_request(source, _method, url, params=None):  # noqa: ARG001
+        def _mock_api_request(source, _method, url, params=None):
             if source == Sources.TMDB.value and url.endswith("/tv/114410"):
                 return {
                     "id": 114410,
@@ -441,7 +447,7 @@ class Metadata(TestCase):
         tmdb.cache.clear()
         mock_build_specials_season.return_value = None
 
-        def _mock_api_request(source, _method, url, params=None):  # noqa: ARG001
+        def _mock_api_request(source, _method, url, params=None):
             if source == Sources.TMDB.value and url.endswith("/tv/114410"):
                 return {
                     "id": 114410,
@@ -529,7 +535,7 @@ class Metadata(TestCase):
             },
         }
 
-        def _mock_api_request(source, _method, url, params=None):  # noqa: ARG001
+        def _mock_api_request(source, _method, url, params=None):
             if source == Sources.TMDB.value and url.endswith("/tv/114410"):
                 return {
                     "id": 114410,
@@ -679,7 +685,9 @@ class Metadata(TestCase):
         self.assertEqual(result["tvdb_id"], "468632")
         self.assertEqual(result["season/1"]["tvdb_id"], "468632")
         self.assertEqual(
-            tmdb.cache.get(f"{Sources.TMDB.value}_{MediaTypes.TV.value}_294737")["tvdb_id"],
+            tmdb.cache.get(f"{Sources.TMDB.value}_{MediaTypes.TV.value}_294737")[
+                "tvdb_id"
+            ],
             "468632",
         )
 
@@ -1034,7 +1042,9 @@ class Metadata(TestCase):
         self.assertEqual(result["season/1"]["tvdb_id"], "468632")
         self.assertEqual(tmdb.get_tvdb_id_override("294737"), "468632")
         self.assertEqual(
-            tmdb.cache.get(f"{Sources.TMDB.value}_{MediaTypes.TV.value}_294737")["tvdb_id"],
+            tmdb.cache.get(f"{Sources.TMDB.value}_{MediaTypes.TV.value}_294737")[
+                "tvdb_id"
+            ],
             "468632",
         )
         mock_tvdb_search.assert_called_once_with(
@@ -1300,7 +1310,8 @@ class Metadata(TestCase):
                 ],
             },
         }
-        def _mock_episode_request(_source, _method, url, params=None):  # noqa: ARG001
+
+        def _mock_episode_request(_source, _method, url, params=None):
             if url.endswith("/episode/1"):
                 return {
                     "name": "Pilot",
@@ -1356,9 +1367,7 @@ class Metadata(TestCase):
         media_id = "1396"
         season_number = "1"
         episode_number = "1"
-        cache_key = (
-            f"{Sources.TMDB.value}_{MediaTypes.EPISODE.value}_{media_id}_{season_number}_{episode_number}"
-        )
+        cache_key = f"{Sources.TMDB.value}_{MediaTypes.EPISODE.value}_{media_id}_{season_number}_{episode_number}"
         tmdb.cache.delete(cache_key)
 
         mock_tv_with_seasons.return_value = {
@@ -1397,9 +1406,7 @@ class Metadata(TestCase):
         media_id = "episode-cast-priority"
         season_number = "1"
         episode_number = "1"
-        cache_key = (
-            f"{Sources.TMDB.value}_{MediaTypes.EPISODE.value}_{media_id}_{season_number}_{episode_number}"
-        )
+        cache_key = f"{Sources.TMDB.value}_{MediaTypes.EPISODE.value}_{media_id}_{season_number}_{episode_number}"
         tmdb.cache.delete(cache_key)
 
         mock_tv_with_seasons.return_value = {
@@ -1460,15 +1467,20 @@ class Metadata(TestCase):
         next_episode = tmdb.find_next_episode(5, episodes_metadata)
         self.assertIsNone(next_episode)
 
+    @tag("network")
     def test_movie(self):
         """Test the metadata method for movies."""
         response = tmdb.movie("10494")
         self.assertEqual(response["title"], "Perfect Blue")
-        self.assertEqual(response["details"]["release_date"].date().isoformat(), "1998-02-28")
+        self.assertEqual(
+            response["details"]["release_date"].date().isoformat(), "1998-02-28"
+        )
         self.assertEqual(response["details"]["status"], "Released")
 
     @patch("app.providers.tmdb.services.api_request")
-    def test_movie_includes_keywords_certification_and_collection_metadata(self, mock_api_request):
+    def test_movie_includes_keywords_certification_and_collection_metadata(
+        self, mock_api_request
+    ):
         cache_key = f"{Sources.TMDB.value}_{MediaTypes.MOVIE.value}_999"
         tmdb.cache.delete(cache_key)
         mock_api_request.side_effect = [
@@ -1484,8 +1496,12 @@ class Metadata(TestCase):
                 "vote_count": 1200,
                 "status": "Released",
                 "runtime": 102,
-                "production_companies": [{"id": 44, "name": "Pixar Animation Studios", "logo_path": None}],
-                "production_countries": [{"iso_3166_1": "US", "name": "United States of America"}],
+                "production_companies": [
+                    {"id": 44, "name": "Pixar Animation Studios", "logo_path": None}
+                ],
+                "production_countries": [
+                    {"iso_3166_1": "US", "name": "United States of America"}
+                ],
                 "spoken_languages": [{"english_name": "English"}],
                 "credits": {"cast": [], "crew": []},
                 "recommendations": {"results": []},
@@ -1625,7 +1641,9 @@ class Metadata(TestCase):
         """Test the IGDB company profile metadata helper."""
         igdb.cache.clear()
 
-        def _mock_api_request(source, _method, url, data=None, params=None, headers=None):  # noqa: ARG001
+        def _mock_api_request(
+            source, _method, url, data=None, params=None, headers=None
+        ):
             if source == Sources.IGDB.value and url.endswith("/companies"):
                 self.assertIn(
                     "fields name,description,developed,published,logo.image_id,",
@@ -1689,12 +1707,14 @@ class Metadata(TestCase):
         with self.assertRaises(ValueError, msg="IGDB game IDs must be numeric"):
             igdb.game("game-123")
 
+    @tag("network")
     def test_external_game_steam(self):
         """Test the external_game method for Steam games."""
         igdb_game_id = igdb.external_game("292030", igdb.ExternalGameSource.STEAM)
 
         self.assertEqual(igdb_game_id, 1942)
 
+    @tag("network")
     def test_external_game_not_found(self):
         """Test the external_game method with non-existent Steam ID."""
         igdb_game_id = igdb.external_game("999999999", igdb.ExternalGameSource.STEAM)
@@ -1794,7 +1814,9 @@ class Metadata(TestCase):
         self.assertEqual(response["name"], "Hardcover Author")
         self.assertEqual(response["known_for_department"], "Author")
         self.assertEqual(response["bibliography"][0]["media_id"], "7001")
-        self.assertEqual(response["bibliography"][0]["media_type"], MediaTypes.BOOK.value)
+        self.assertEqual(
+            response["bibliography"][0]["media_type"], MediaTypes.BOOK.value
+        )
 
     @patch("app.providers.openlibrary.fetch_author_data")
     def test_openlibrary_get_authors_full(self, mock_fetch_author_data):
@@ -1822,7 +1844,7 @@ class Metadata(TestCase):
     def test_openlibrary_author_profile_normalization(self, mock_api_request):
         openlibrary.cache.delete(f"{Sources.OPENLIBRARY.value}_person_OL1A")
 
-        def _mock_api_request(_source, _method, url, params=None, **kwargs):  # noqa: ARG001
+        def _mock_api_request(_source, _method, url, params=None, **kwargs):
             if url.endswith("/authors/OL1A.json"):
                 return {
                     "name": "Open Author",
@@ -1860,7 +1882,9 @@ class Metadata(TestCase):
         self.assertEqual(response["biography"], "Open bio")
         self.assertEqual(len(response["bibliography"]), 1)
         self.assertEqual(response["bibliography"][0]["media_id"], "OL123M")
-        self.assertEqual(response["bibliography"][0]["media_type"], MediaTypes.BOOK.value)
+        self.assertEqual(
+            response["bibliography"][0]["media_type"], MediaTypes.BOOK.value
+        )
 
     def test_comicvine_get_people_full_writer_only(self):
         people = comicvine.get_people_full(
@@ -1931,7 +1955,9 @@ class Metadata(TestCase):
         self.assertEqual(response["name"], "Manga Author")
         self.assertEqual(response["known_for_department"], "Author")
         self.assertEqual(response["bibliography"][0]["media_id"], "777")
-        self.assertEqual(response["bibliography"][0]["media_type"], MediaTypes.MANGA.value)
+        self.assertEqual(
+            response["bibliography"][0]["media_type"], MediaTypes.MANGA.value
+        )
 
     def test_manual_tv(self):
         """Test the metadata method for manually created TV shows."""

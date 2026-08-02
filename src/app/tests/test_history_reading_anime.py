@@ -29,9 +29,12 @@ class ReadingAnimeHistoryDayTests(TestCase):
         cache.clear()
         _patch_media_metadata(self)
         self.user = get_user_model().objects.create_user(
-            username="reader", password="12345",
+            username="reader",
+            password="12345",
         )
-        self.now = timezone.localtime().replace(hour=12, minute=0, second=0, microsecond=0)
+        self.now = timezone.localtime().replace(
+            hour=12, minute=0, second=0, microsecond=0
+        )
         self.day_key = history_cache.history_day_key(self.now)
         self.addCleanup(cache.clear)
 
@@ -64,7 +67,9 @@ class ReadingAnimeHistoryDayTests(TestCase):
         self.assertIn(MediaTypes.ANIME.value, by_type)
         self.assertEqual(by_type[MediaTypes.BOOK.value]["score"], 9)
         self.assertEqual(by_type[MediaTypes.ANIME.value]["score"], 7)
-        self.assertEqual(by_type[MediaTypes.ANIME.value]["status"], Status.COMPLETED.value)
+        self.assertEqual(
+            by_type[MediaTypes.ANIME.value]["status"], Status.COMPLETED.value
+        )
 
     def test_reading_and_anime_in_uncached_general_timeline(self):
         # The non-cached builder (used for date-range/filtered views) must also
@@ -74,9 +79,7 @@ class ReadingAnimeHistoryDayTests(TestCase):
 
         history_days = history_cache.build_history_days(self.user)
         seen_types = {
-            entry["media_type"]
-            for day in history_days
-            for entry in day["entries"]
+            entry["media_type"] for day in history_days for entry in day["entries"]
         }
         self.assertIn(MediaTypes.BOOK.value, seen_types)
         self.assertIn(MediaTypes.ANIME.value, seen_types)
@@ -93,7 +96,8 @@ class ReadingAnimeHistoryDayTests(TestCase):
         # month-cache refresh.
         day = self.now.date().isoformat()
         response = self.client.get(
-            reverse("history"), {"start-date": day, "end-date": day},
+            reverse("history"),
+            {"start-date": day, "end-date": day},
         )
         self.assertEqual(response.status_code, 200)
         content = response.content.decode()
@@ -103,7 +107,9 @@ class ReadingAnimeHistoryDayTests(TestCase):
     def test_score_change_invalidates_history_day(self):
         book = self._make(Book, MediaTypes.BOOK.value, "book-2", "Rated Book", None)
 
-        with patch("app.signals.history_cache.invalidate_history_days") as mock_invalidate:
+        with patch(
+            "app.signals.history_cache.invalidate_history_days"
+        ) as mock_invalidate:
             book.score = 8
             book.save()
 

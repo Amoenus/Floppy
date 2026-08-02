@@ -2,7 +2,7 @@
 
 import logging
 import time
-from typing import Iterable
+from collections.abc import Iterable
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
@@ -77,16 +77,17 @@ def get_month_history(user, year: int, month: int, logging_style_override=None):
         built_at = cache_entry.get("built_at")
         if built_at:
             cache_age_s = (timezone.now() - built_at).total_seconds()
-        if built_at and timezone.now() - built_at > HISTORY_STALE_AFTER:
-            if refresh_lock is None:
-                scheduled = schedule_history_refresh(user.id, logging_style, warm_days=0)
-                logger.info(
-                    "history_index_stale_refresh user_id=%s logging_style=%s scheduled=%s cache_age_s=%s",
-                    user.id,
-                    logging_style,
-                    scheduled,
-                    cache_age_s,
-                )
+        if (
+            built_at and timezone.now() - built_at > HISTORY_STALE_AFTER
+        ) and refresh_lock is None:
+            scheduled = schedule_history_refresh(user.id, logging_style, warm_days=0)
+            logger.info(
+                "history_index_stale_refresh user_id=%s logging_style=%s scheduled=%s cache_age_s=%s",
+                user.id,
+                logging_style,
+                scheduled,
+                cache_age_s,
+            )
     else:
         logger.warning(
             "history_index_inline_repair user_id=%s logging_style=%s year=%s month=%s",
@@ -102,14 +103,11 @@ def get_month_history(user, year: int, month: int, logging_style_override=None):
     index_days = cache_entry.get("days", [])
     month_prefix = f"{year}{month:02d}"
     month_day_keys = [
-        day_key
-        for day_key in index_days
-        if str(day_key).startswith(month_prefix)
+        day_key for day_key in index_days if str(day_key).startswith(month_prefix)
     ]
 
     day_cache_keys = [
-        _day_cache_key(user.id, logging_style, day_key)
-        for day_key in month_day_keys
+        _day_cache_key(user.id, logging_style, day_key) for day_key in month_day_keys
     ]
     day_payloads = cache.get_many(day_cache_keys)
     cache_hits = len(day_payloads)
@@ -163,7 +161,9 @@ def get_month_history(user, year: int, month: int, logging_style_override=None):
             if payload is not None:
                 history_days.append(_deserialize_history_day(payload))
                 continue
-            history_days.append(_build_and_cache_history_day(user, day_key, logging_style))
+            history_days.append(
+                _build_and_cache_history_day(user, day_key, logging_style)
+            )
         schedule_history_day_cache_coverage(
             user.id,
             logging_style,
@@ -183,7 +183,9 @@ def get_month_history(user, year: int, month: int, logging_style_override=None):
     return history_days, cache_meta
 
 
-def get_history_days(user, filters=None, date_filters=None, logging_style_override=None):
+def get_history_days(
+    user, filters=None, date_filters=None, logging_style_override=None
+):
     """Build history days directly (used for filtered requests)."""
     start = time.perf_counter()
     logger.info(
@@ -195,6 +197,7 @@ def get_history_days(user, filters=None, date_filters=None, logging_style_overri
     )
     # Deferred import: build_history_days still lives in history_cache.py
     from app.history_cache import build_history_days
+
     history_days = build_history_days(
         user,
         filters=filters,
@@ -305,8 +308,7 @@ def get_cached_history_page(user, page_number: int = 1, logging_style_override=N
     )
 
     day_cache_keys = [
-        _day_cache_key(user.id, logging_style, day_key)
-        for day_key in page_day_keys
+        _day_cache_key(user.id, logging_style, day_key) for day_key in page_day_keys
     ]
     day_payloads = cache.get_many(day_cache_keys)
     logger.info(
@@ -359,7 +361,9 @@ def get_cached_history_page(user, page_number: int = 1, logging_style_override=N
     if missing_days:
         build_start = time.perf_counter()
         for day_key in missing_days:
-            day_payload = build_history_day(user, day_key, logging_style_override=logging_style)
+            day_payload = build_history_day(
+                user, day_key, logging_style_override=logging_style
+            )
             if day_payload:
                 built_days[day_key] = day_payload
                 cache.set(
@@ -399,7 +403,9 @@ def get_cached_history_page(user, page_number: int = 1, logging_style_override=N
         if len(built_days) != len(missing_days):
             refresh_lock = _clean_refresh_lock(lock_key)
             if refresh_lock is None:
-                scheduled = schedule_history_refresh(user.id, logging_style, warm_days=0)
+                scheduled = schedule_history_refresh(
+                    user.id, logging_style, warm_days=0
+                )
                 logger.info(
                     "history_day_cache_miss user_id=%s logging_style=%s missing=%s built=%s scheduled=%s",
                     user.id,
@@ -486,7 +492,9 @@ def refresh_history_cache(
         if use_specific_days:
             warm_targets = requested_day_keys or []
         elif index_day_keys:
-            missing_day_keys = _missing_history_day_keys(user_id, logging_style, index_day_keys)
+            missing_day_keys = _missing_history_day_keys(
+                user_id, logging_style, index_day_keys
+            )
             if missing_day_keys:
                 # Bound inline warming so a cold/evicted day-cache can't turn a
                 # "cheap" refresh (e.g. warm_days=0) into a full history rebuild.
@@ -540,9 +548,8 @@ def refresh_history_cache(
             lock_key,
             verify_lock is not None,
         )
-        return index_day_keys
-    except Exception as e:
-        logger.error("Error refreshing history cache for user %s: %s", user_id, e, exc_info=True)
+    except Exception:
+        logger.exception("Error refreshing history cache for user %s", user_id)
         lock_key = _refresh_lock_key(user_id, logging_style)
         refresh_lock = cache.get(lock_key)
         dedupe_key = None
@@ -552,6 +559,8 @@ def refresh_history_cache(
         if dedupe_key and dedupe_key != lock_key:
             cache.delete(dedupe_key)
         raise
+    else:
+        return index_day_keys
 
 
 def repair_history_day_cache_coverage(

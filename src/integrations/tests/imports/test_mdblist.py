@@ -58,7 +58,7 @@ class ImportMDBList(TestCase):
     def _run_import(self, responses, mode="new"):
         """Run a full import with per-path canned responses."""
 
-        def request_side_effect(_api_key, path, params=None):  # noqa: ARG001
+        def request_side_effect(_api_key, path, params=None):
             return responses.get(path, _empty_sync_response())
 
         with (

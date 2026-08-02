@@ -13,7 +13,7 @@ class SearchSuggestionsViewTests(TestCase):
         """Create a user with one saved movie and log them in."""
         self.user = get_user_model().objects.create_user(
             username="suggest-user",
-            password="12345",  # noqa: S106
+            password="12345",
         )
         self.client.force_login(self.user)
 
@@ -72,7 +72,7 @@ class SearchSuggestionsViewTests(TestCase):
         """A different user does not see another user's saved items."""
         other = get_user_model().objects.create_user(
             username="other-user",
-            password="12345",  # noqa: S106
+            password="12345",
         )
         self.client.force_login(other)
         response = self._get("godfa")

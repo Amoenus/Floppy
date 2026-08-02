@@ -127,7 +127,9 @@ class AnimeMigrationTests(TestCase):
             user=self.user,
         )
         watched_episodes = list(
-            Episode.objects.filter(related_season=grouped_season).order_by("item__episode_number")
+            Episode.objects.filter(related_season=grouped_season).order_by(
+                "item__episode_number"
+            )
         )
 
         self.assertEqual(result.grouped_tv, grouped_tv)
@@ -135,7 +137,9 @@ class AnimeMigrationTests(TestCase):
         self.assertEqual(grouped_tv.status, Status.IN_PROGRESS.value)
         self.assertEqual(grouped_tv.score, 9)
         self.assertEqual(grouped_tv.notes, "Great adaptation")
-        self.assertEqual(watched_episodes[0].item.library_media_type, MediaTypes.ANIME.value)
+        self.assertEqual(
+            watched_episodes[0].item.library_media_type, MediaTypes.ANIME.value
+        )
         self.assertEqual(watched_episodes[0].end_date, self.flat_entry.start_date)
         self.assertLessEqual(
             abs(watched_episodes[-1].end_date - self.flat_entry.end_date),

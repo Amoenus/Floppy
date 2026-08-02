@@ -141,6 +141,8 @@ class Album(models.Model):
 
 
 class AlbumArtist(models.Model):
+    """Album artist."""
+
     album = models.ForeignKey(
         Album,
         on_delete=models.CASCADE,
@@ -155,6 +157,8 @@ class AlbumArtist(models.Model):
     join_phrase = models.CharField(max_length=100, blank=True, default="")
 
     class Meta:
+        """Model and field configuration."""
+
         ordering = ["position"]
         constraints = [
             models.UniqueConstraint(
@@ -162,6 +166,10 @@ class AlbumArtist(models.Model):
                 name="unique_album_artist_credit",
             ),
         ]
+
+    def __str__(self):
+        """Return the album and artist this link joins."""
+        return f"{self.album} - {self.artist}"
 
 
 class ArtistMember(models.Model):

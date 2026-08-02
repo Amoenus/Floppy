@@ -52,6 +52,7 @@ def boom_500(_request):
 @login_not_required
 def boom_hardcover_401(_request):
     """Raise a Hardcover auth failure for middleware testing."""
+
     class MockResponse:
         status_code = 401
         headers = {"Content-Type": "application/json"}

@@ -164,7 +164,7 @@ def fetch_episode_ratings_for_season(
     if not show_id:
         return {}
 
-    import time  # noqa: PLC0415
+    import time
 
     results: dict[int, dict] = {}
     for episode_number in episode_numbers:

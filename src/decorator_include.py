@@ -30,7 +30,11 @@ def decorator_include(decorator, arg, namespace=None):
                 callback = pattern.callback
                 for dec in reversed(decorators):
                     callback = dec(callback)
-                result.append(URLPattern(pattern.pattern, callback, pattern.default_args, pattern.name))
+                result.append(
+                    URLPattern(
+                        pattern.pattern, callback, pattern.default_args, pattern.name
+                    )
+                )
         return result
 
     class _DecoratedURLconf:

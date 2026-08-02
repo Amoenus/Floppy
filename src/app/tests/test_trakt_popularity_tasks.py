@@ -49,7 +49,9 @@ class TraktPopularityTaskTests(TestCase):
                 "trakt_popularity_rank": 42,
             }
         if fetched_days_ago is not None:
-            trakt_kwargs["trakt_popularity_fetched_at"] = timezone.now() - timedelta(days=fetched_days_ago)
+            trakt_kwargs["trakt_popularity_fetched_at"] = timezone.now() - timedelta(
+                days=fetched_days_ago
+            )
 
         item = Item.objects.create(
             media_id=str(media_id),
@@ -72,8 +74,12 @@ class TraktPopularityTaskTests(TestCase):
         )
         return item
 
-    @patch("app.management.commands.backfill_trakt_popularity.trakt_popularity.refresh_trakt_popularity")
-    def test_backfill_command_targets_only_missing_supported_tracked_items(self, mock_refresh):
+    @patch(
+        "app.management.commands.backfill_trakt_popularity.trakt_popularity.refresh_trakt_popularity"
+    )
+    def test_backfill_command_targets_only_missing_supported_tracked_items(
+        self, mock_refresh
+    ):
         tracked_movie = self._create_tracked_movie("101", "Tracked Movie")
         self._create_tracked_movie(
             "102",
@@ -126,7 +132,9 @@ class TraktPopularityTaskTests(TestCase):
 
     @patch("app.tasks.enqueue_trakt_popularity_backfill_items")
     def test_nightly_task_queues_only_missing_and_stale_trakt_items(self, mock_enqueue):
-        missing_item = self._create_tracked_movie("201", "Missing Trakt Data", release_days_ago=20)
+        missing_item = self._create_tracked_movie(
+            "201", "Missing Trakt Data", release_days_ago=20
+        )
         recent_stale = self._create_tracked_movie(
             "202",
             "Recent Stale",
@@ -182,7 +190,10 @@ class TraktPopularityTaskTests(TestCase):
         self.assertEqual(summary["selected"]["trakt_popularity"], 4)
         self.assertEqual(summary["queued"]["trakt_popularity"], 4)
 
-    @patch("app.tasks.trakt_popularity_service.refresh_trakt_popularity", side_effect=RuntimeError("boom"))
+    @patch(
+        "app.tasks.trakt_popularity_service.refresh_trakt_popularity",
+        side_effect=RuntimeError("boom"),
+    )
     def test_populate_trakt_popularity_data_for_items_preserves_existing_values_on_failure(
         self,
         _mock_refresh_trakt_popularity,

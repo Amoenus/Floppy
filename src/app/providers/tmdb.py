@@ -1,3 +1,4 @@
+import contextlib
 import logging
 from datetime import timedelta
 from types import SimpleNamespace
@@ -14,6 +15,10 @@ from app.models import MediaTypes, Sources
 from app.providers import services
 
 logger = logging.getLogger(__name__)
+
+YEAR_STRING_LENGTH = 4
+TMDB_GENDER_MALE = 2
+TMDB_GENDER_NON_BINARY = 3
 base_url = "https://api.themoviedb.org/3"
 TVDB_OVERRIDE_CACHE_TIMEOUT = 60 * 60 * 24 * 30
 TMDB_APPEND_TO_RESPONSE_MAX_REMOTE_CALLS = 20
@@ -63,7 +68,9 @@ def handle_error(error):
         except requests.exceptions.JSONDecodeError:
             error_json = None
 
-        details = error_json.get("status_message") if isinstance(error_json, dict) else None
+        details = (
+            error_json.get("status_message") if isinstance(error_json, dict) else None
+        )
         if details:
             # Remove trailing period if present
             details = details.rstrip(".")
@@ -134,9 +141,7 @@ def _apply_tvdb_id_override_to_tv_data(media_id, tv_data):
         seasons = related.get("seasons") if isinstance(related, dict) else None
         if isinstance(seasons, list):
             filtered_seasons = [
-                season
-                for season in seasons
-                if season.get("season_number") != 0
+                season for season in seasons if season.get("season_number") != 0
             ]
             if len(filtered_seasons) != len(seasons):
                 related["seasons"] = filtered_seasons
@@ -198,9 +203,9 @@ def _coerce_provider_year(value):
             return None
 
     text = str(value).strip()
-    if len(text) >= 4 and text[:4].isdigit():
+    if len(text) >= YEAR_STRING_LENGTH and text[:YEAR_STRING_LENGTH].isdigit():
         try:
-            return int(text[:4])
+            return int(text[:YEAR_STRING_LENGTH])
         except ValueError:
             return None
     return None
@@ -215,7 +220,7 @@ def _discover_tmdb_tvdb_id_from_search(media_id, tv_data=None):
     if override_tvdb_id:
         return override_tvdb_id
 
-    from app.providers import tvdb  # noqa: PLC0415
+    from app.providers import tvdb
 
     if not tvdb.enabled():
         return None
@@ -270,7 +275,10 @@ def _discover_tmdb_tvdb_id_from_search(media_id, tv_data=None):
             if not result_id:
                 continue
 
-            if _normalize_provider_title_for_match(result.get("title")) != normalized_candidate:
+            if (
+                _normalize_provider_title_for_match(result.get("title"))
+                != normalized_candidate
+            ):
                 continue
 
             result_year = _coerce_provider_year(result.get("year"))
@@ -304,11 +312,9 @@ def _normalize_season_numbers(season_numbers):
 
     for season_number in season_numbers:
         if isinstance(season_number, str):
-            season_number = season_number.strip()
-            try:
-                season_number = int(season_number)
-            except ValueError:
-                pass
+            season_number = season_number.strip()  # noqa: PLW2901  # deliberate in-loop normalisation
+            with contextlib.suppress(ValueError):
+                season_number = int(season_number)  # noqa: PLW2901  # deliberate in-loop normalisation
 
         normalized_seasons.append(season_number)
 
@@ -456,7 +462,9 @@ def movie(media_id):
             item for item in recommended_items if item["id"] not in collection_ids
         ]
         collection_info = response.get("belongs_to_collection") or {}
-        provider_certification = get_movie_certification(response.get("release_dates", {}))
+        provider_certification = get_movie_certification(
+            response.get("release_dates", {})
+        )
         cast = response.get("credits", {}).get("cast", [])
         movie_details = {
             "format": "Movie",
@@ -504,8 +512,7 @@ def movie(media_id):
                 ),
             },
             "external_links": get_external_links(
-                response.get("external_ids", {}),
-                media_id
+                response.get("external_ids", {}), media_id
             ),
             "providers": response.get("watch/providers", {}).get("results", {}),
         }
@@ -633,7 +640,9 @@ def cache_fallback_season_metadata(media_id, season_number, tv_data, season_data
     ]
     total_runtime = sum(runtimes) if runtimes else None
 
-    air_dates = [episode.get("air_date") for episode in episodes if episode.get("air_date")]
+    air_dates = [
+        episode.get("air_date") for episode in episodes if episode.get("air_date")
+    ]
     details = dict(season_data.get("details") or {})
     if max_progress is not None:
         details.setdefault("episodes", max_progress)
@@ -641,7 +650,9 @@ def cache_fallback_season_metadata(media_id, season_number, tv_data, season_data
         details.setdefault("first_air_date", get_start_date(min(air_dates)))
         details.setdefault("last_air_date", get_start_date(max(air_dates)))
     if total_runtime:
-        details.setdefault("runtime", get_readable_duration(total_runtime / len(runtimes)))
+        details.setdefault(
+            "runtime", get_readable_duration(total_runtime / len(runtimes))
+        )
         details.setdefault("total_runtime", get_readable_duration(total_runtime))
 
     cached_season_data = {
@@ -714,7 +725,7 @@ def _build_specials_season_from_tvdb(media_id, tv_data):
     if not tv_data.get("tvdb_id"):
         return None
 
-    from app.providers import tvdb  # noqa: PLC0415
+    from app.providers import tvdb
 
     if not tvdb.enabled():
         return None
@@ -762,7 +773,7 @@ def get_tvdb_episode_image_map(tvdb_id, season_number, *, tmdb_media_id=None):
         if not tvdb_id:
             return {}
 
-    from app.providers import tvdb  # noqa: PLC0415
+    from app.providers import tvdb
 
     if not tvdb.enabled():
         return {}
@@ -1229,7 +1240,9 @@ def get_preferred_alternative_title(response, current_title=None):
     candidates = []
 
     alternative_titles = response.get("alternative_titles") or {}
-    entries = alternative_titles.get("results") or alternative_titles.get("titles") or []
+    entries = (
+        alternative_titles.get("results") or alternative_titles.get("titles") or []
+    )
 
     current_norm = str(current_title).strip().casefold() if current_title else None
     for entry in entries:
@@ -1289,12 +1302,13 @@ def get_start_date(date):
         # TMDB returns dates in YYYY-MM-DD format
         if isinstance(date, str):
             # Parse the date string and convert to timezone-aware datetime
-            date_obj = datetime.strptime(date, "%Y-%m-%d")
+            date_obj = datetime.strptime(date, "%Y-%m-%d")  # noqa: DTZ007  # date-only value; no timezone applies
             return timezone.make_aware(date_obj, timezone.get_current_timezone())
 
-        return date
     except (ValueError, TypeError):
         # If parsing fails, return the original value
+        return date
+    else:
         return date
 
 
@@ -1309,7 +1323,7 @@ def get_end_date(response):
                 from django.utils import timezone
 
                 # TMDB returns dates in YYYY-MM-DD format
-                date_obj = datetime.strptime(last_episode_date, "%Y-%m-%d")
+                date_obj = datetime.strptime(last_episode_date, "%Y-%m-%d")  # noqa: DTZ007  # date-only value; no timezone applies
                 return timezone.make_aware(date_obj, timezone.get_current_timezone())
             except (ValueError, TypeError):
                 # If parsing fails, return the original value
@@ -1400,7 +1414,9 @@ def get_keyword_names(keyword_payload):
     """Return normalized keyword names from a TMDB keyword payload."""
     keyword_rows = []
     if isinstance(keyword_payload, dict):
-        keyword_rows = keyword_payload.get("keywords") or keyword_payload.get("results") or []
+        keyword_rows = (
+            keyword_payload.get("keywords") or keyword_payload.get("results") or []
+        )
     elif isinstance(keyword_payload, list):
         keyword_rows = keyword_payload
 
@@ -1457,9 +1473,9 @@ def get_gender(value):
     """Normalize TMDB gender integer into a stable string."""
     if value == 1:
         return "female"
-    if value == 2:
+    if value == TMDB_GENDER_MALE:
         return "male"
-    if value == 3:
+    if value == TMDB_GENDER_NON_BINARY:
         return "non_binary"
     return "unknown"
 
@@ -1561,7 +1577,7 @@ def get_crew_credits(credits_data, is_aggregate=False):
             },
         )
 
-    _CREW_PRIORITY_EXACT = {
+    crew_priority_exact = {
         "creator": 0,
         "created by": 0,
         "showrunner": 0,
@@ -1579,7 +1595,7 @@ def get_crew_credits(credits_data, is_aggregate=False):
 
     def _crew_priority(entry):
         role_lower = (entry.get("role") or "").lower().strip()
-        return _CREW_PRIORITY_EXACT.get(role_lower, 99)
+        return crew_priority_exact.get(role_lower, 99)
 
     crew_entries.sort(
         key=lambda row: (
@@ -1594,16 +1610,15 @@ def get_crew_credits(credits_data, is_aggregate=False):
 
 def get_companies_full(companies):
     """Return normalized studio/company entries."""
-    studios = []
-    for company in companies or []:
-        studios.append(
-            {
-                "studio_id": str(company.get("id")),
-                "name": company.get("name", ""),
-                "logo": get_profile_image_url(company.get("logo_path")),
-                "origin_country": company.get("origin_country", ""),
-            },
-        )
+    studios = [
+        {
+            "studio_id": str(company.get("id")),
+            "name": company.get("name", ""),
+            "logo": get_profile_image_url(company.get("logo_path")),
+            "origin_country": company.get("origin_country", ""),
+        }
+        for company in companies or []
+    ]
     studios.sort(key=lambda row: row.get("name", "").lower())
     return studios
 
@@ -1639,7 +1654,9 @@ def get_related(related_medias, media_type, parent_response=None, tv_media_id=No
         }
         if media_type == MediaTypes.SEASON.value:
             episode_count = media.get("episode_count")
-            data["media_id"] = tv_media_id if tv_media_id is not None else parent_response["id"]
+            data["media_id"] = (
+                tv_media_id if tv_media_id is not None else parent_response["id"]
+            )
             data["title"] = get_title(parent_response)
             data["original_title"] = get_original_title(parent_response)
             data["localized_title"] = get_localized_title(parent_response)
@@ -1669,6 +1686,7 @@ def get_related(related_medias, media_type, parent_response=None, tv_media_id=No
 
 def get_collection(collection_response):
     """Format media collection list to match related media."""
+
     def date_key(media):
         date = media.get("release_date", "")
         if date is None or date == "":
@@ -1696,8 +1714,12 @@ def get_collection(collection_response):
 def _person_filmography_entries(combined_credits):
     """Normalize cast and crew filmography entries."""
     entries = []
-    cast = combined_credits.get("cast", []) if isinstance(combined_credits, dict) else []
-    crew = combined_credits.get("crew", []) if isinstance(combined_credits, dict) else []
+    cast = (
+        combined_credits.get("cast", []) if isinstance(combined_credits, dict) else []
+    )
+    crew = (
+        combined_credits.get("crew", []) if isinstance(combined_credits, dict) else []
+    )
 
     for media in cast:
         media_type = media.get("media_type")
@@ -1776,8 +1798,9 @@ def _person_filmography_entries(combined_credits):
 
 
 def search_person_profile(name):
-    """Best-effort headshot + gender lookup by name (no id cross-reference, just a
-    name match).
+    """Look up a headshot and gender by name, with no id cross-reference.
+
+    This is a name match only.
 
     Used to backfill artwork and gender for people synced from a source with no
     (or unusably sparse) profile data of its own — e.g. IMDB-sourced game cast,
@@ -1949,7 +1972,7 @@ def process_episodes(season_metadata, episodes_in_db):
                     date_obj = datetime.fromisoformat(normalized_air_date)
                 else:
                     # TMDB returns dates in YYYY-MM-DD format
-                    date_obj = datetime.strptime(normalized_air_date, "%Y-%m-%d")
+                    date_obj = datetime.strptime(normalized_air_date, "%Y-%m-%d")  # noqa: DTZ007  # date-only value; no timezone applies
                 air_date = (
                     date_obj
                     if timezone.is_aware(date_obj)
@@ -2026,16 +2049,16 @@ def _raise_cached_episode_error(status_code):
 
 def episode(media_id, season_number, episode_number):
     """Return the metadata for the selected episode from The Movie Database."""
-    cache_key = (
-        f"{Sources.TMDB.value}_{MediaTypes.EPISODE.value}_{media_id}_{season_number}_{episode_number}"
-    )
+    cache_key = f"{Sources.TMDB.value}_{MediaTypes.EPISODE.value}_{media_id}_{season_number}_{episode_number}"
     data = cache.get(cache_key)
 
     if isinstance(data, dict) and EPISODE_ERROR_CACHE_KEY in data:
         _raise_cached_episode_error(data[EPISODE_ERROR_CACHE_KEY])
 
     if data is None:
-        url = f"{base_url}/tv/{media_id}/season/{season_number}/episode/{episode_number}"
+        url = (
+            f"{base_url}/tv/{media_id}/season/{season_number}/episode/{episode_number}"
+        )
         params = {
             **base_params,
             "append_to_response": "credits",
@@ -2094,10 +2117,11 @@ def episode(media_id, season_number, episode_number):
                 season_metadata.get("localized_title")
                 or tv_metadata.get("localized_title")
             ),
-            "season_title": season_metadata.get("season_title") or f"Season {season_number}",
+            "season_title": season_metadata.get("season_title")
+            or f"Season {season_number}",
             "episode_title": response.get("name") or f"Episode {episode_number}",
             "score": round(vote_average, 1) if vote_average else None,
-            "score_count": vote_count if vote_count else None,
+            "score_count": vote_count or None,
             "cast": get_cast_credits({"cast": cast_rows}),
             "crew": get_crew_credits({"crew": crew_rows}),
         }

@@ -282,7 +282,14 @@ COLLECTION_FIELD_CONFIG = {
             "collected_at": "Collected At",
         },
         "choices": {
-            "media_type": ["4K Blu-ray", "Blu-ray", "DVD", "Digital", "Streaming", "VHS"],
+            "media_type": [
+                "4K Blu-ray",
+                "Blu-ray",
+                "DVD",
+                "Digital",
+                "Streaming",
+                "VHS",
+            ],
             "resolution": ["480p", "720p", "1080p", "4K", "8K"],
             "hdr": ["HDR10", "HDR10+", "Dolby Vision", "HLG"],
             "audio_codec": [
@@ -333,7 +340,13 @@ COLLECTION_FIELD_CONFIG = {
             "collected_at": "Collected At",
         },
         "choices": {
-            "media_type": ["Hardcover", "Paperback", "Trade Paperback", "Digital", "Audiobook"],
+            "media_type": [
+                "Hardcover",
+                "Paperback",
+                "Trade Paperback",
+                "Digital",
+                "Audiobook",
+            ],
         },
     },
     "games": {

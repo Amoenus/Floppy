@@ -27,8 +27,14 @@ def _metadata_cache_keys_for_item(item: Item):
     keys = {
         f"{item.source}_{item.media_type}_{item.media_id}",
     }
-    if item.source == Sources.TMDB.value and item.media_type == MediaTypes.SEASON.value and item.season_number:
-        keys.add(f"{item.source}_{item.media_type}_{item.media_id}_{item.season_number}")
+    if (
+        item.source == Sources.TMDB.value
+        and item.media_type == MediaTypes.SEASON.value
+        and item.season_number
+    ):
+        keys.add(
+            f"{item.source}_{item.media_type}_{item.media_id}_{item.season_number}"
+        )
     if (
         item.source == Sources.TMDB.value
         and item.media_type == MediaTypes.EPISODE.value
@@ -38,9 +44,15 @@ def _metadata_cache_keys_for_item(item: Item):
         keys.add(
             f"{item.source}_{item.media_type}_{item.media_id}_{item.season_number}_{item.episode_number}",
         )
-    if item.source == Sources.BGG.value and item.media_type == MediaTypes.BOARDGAME.value:
+    if (
+        item.source == Sources.BGG.value
+        and item.media_type == MediaTypes.BOARDGAME.value
+    ):
         keys.add(f"bgg_metadata_{item.media_id}")
-    if item.source == Sources.MUSICBRAINZ.value and item.media_type == MediaTypes.MUSIC.value:
+    if (
+        item.source == Sources.MUSICBRAINZ.value
+        and item.media_type == MediaTypes.MUSIC.value
+    ):
         keys.add(f"musicbrainz_recording_{item.media_id}")
     return [key for key in keys if key]
 
@@ -55,14 +67,15 @@ def _clear_item_metadata_cache(item: Item):
         for key in keys:
             try:
                 cache.delete(key)
-            except Exception:
+            except Exception:  # noqa: S112  # deliberate best-effort; skip the item and continue
                 continue
 
 
 def _fetch_item_metadata(item: Item):
     if item.media_type == MediaTypes.SEASON.value:
         if item.season_number is None:
-            raise ValueError("season item missing season_number")
+            msg = "season item missing season_number"
+            raise ValueError(msg)
         return services.get_media_metadata(
             item.media_type,
             item.media_id,
@@ -71,7 +84,8 @@ def _fetch_item_metadata(item: Item):
         )
     if item.media_type == MediaTypes.EPISODE.value:
         if item.season_number is None or item.episode_number is None:
-            raise ValueError("episode item missing season_number or episode_number")
+            msg = "episode item missing season_number or episode_number"
+            raise ValueError(msg)
         return services.get_media_metadata(
             item.media_type,
             item.media_id,

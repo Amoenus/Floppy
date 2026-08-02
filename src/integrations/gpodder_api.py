@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from http import HTTPStatus
 from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 
 import requests
@@ -125,7 +126,9 @@ def subscription_candidates(feed_url: str, action: dict | None = None) -> set[st
     return {candidate for candidate in candidates if candidate}
 
 
-def _request(method: str, server_url: str, path: str, *, username: str, password: str, **kwargs):
+def _request(
+    method: str, server_url: str, path: str, *, username: str, password: str, **kwargs
+):
     url = api_url(server_url, path)
     headers = {"User-Agent": USER_AGENT, **kwargs.pop("headers", {})}
     timeout = kwargs.pop("timeout", settings.REQUEST_TIMEOUT)
@@ -139,15 +142,17 @@ def _request(method: str, server_url: str, path: str, *, username: str, password
             **kwargs,
         )
     except requests.RequestException as exc:
-        logger.warning("GPodder request failed for %s: %s", safe_url(url), exception_summary(exc))
+        logger.warning(
+            "GPodder request failed for %s: %s", safe_url(url), exception_summary(exc)
+        )
         raise GPodderClientError(str(exc)) from exc
 
     if response.status_code in {401, 403}:
-        raise GPodderAuthError("Invalid GPodder credentials.")
-    if response.status_code >= 400:
-        raise GPodderClientError(
-            f"GPodder request failed with status {response.status_code}: {response.text[:300]}"
-        )
+        msg = "Invalid GPodder credentials."
+        raise GPodderAuthError(msg)
+    if response.status_code >= HTTPStatus.BAD_REQUEST:
+        msg = f"GPodder request failed with status {response.status_code}: {response.text[:300]}"
+        raise GPodderClientError(msg)
     return response
 
 
@@ -186,7 +191,8 @@ def fetch_subscriptions(credentials: GPodderCredentials) -> list[str]:
     )
     payload = response.json()
     if not isinstance(payload, list):
-        raise GPodderClientError("Invalid GPodder subscriptions response.")
+        msg = "Invalid GPodder subscriptions response."
+        raise GPodderClientError(msg)
     return [subscription for subscription in payload if isinstance(subscription, str)]
 
 
@@ -213,15 +219,18 @@ def fetch_episode_actions(
     )
     payload = response.json()
     if not isinstance(payload, dict):
-        raise GPodderClientError("Invalid GPodder episode actions response.")
+        msg = "Invalid GPodder episode actions response."
+        raise GPodderClientError(msg)
 
     actions = payload.get("actions", [])
     timestamp = payload.get("timestamp")
     if not isinstance(actions, list):
-        raise GPodderClientError("Invalid GPodder episode actions payload.")
+        msg = "Invalid GPodder episode actions payload."
+        raise GPodderClientError(msg)
     if timestamp is not None:
         try:
             timestamp = int(timestamp)
         except (TypeError, ValueError) as exc:
-            raise GPodderClientError("Invalid GPodder episode actions cursor.") from exc
+            msg = "Invalid GPodder episode actions cursor."
+            raise GPodderClientError(msg) from exc
     return [action for action in actions if isinstance(action, dict)], timestamp

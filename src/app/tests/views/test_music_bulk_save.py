@@ -55,8 +55,12 @@ class MusicBulkSaveViewTests(TestCase):
             release_date=date(2024, 1, 1),
             tracks_populated=True,
         )
-        Track.objects.create(album=album, title="Track One", track_number=1, duration_ms=180000)
-        Track.objects.create(album=album, title="Track Two", track_number=2, duration_ms=210000)
+        Track.objects.create(
+            album=album, title="Track One", track_number=1, duration_ms=180000
+        )
+        Track.objects.create(
+            album=album, title="Track Two", track_number=2, duration_ms=210000
+        )
 
         response = self.client.get(
             reverse("album_track_modal", args=[album.id]) + "?return_url=/music",
@@ -124,8 +128,12 @@ class MusicBulkSaveViewTests(TestCase):
         # Bulk saves now dispatch a background task and close the modal
         # instead of redirecting.
         self.assertIn("closeModal", response["HX-Trigger"])
-        self.assertTrue(ArtistTracker.objects.filter(user=self.user, artist=artist).exists())
-        self.assertTrue(AlbumTracker.objects.filter(user=self.user, album=album).exists())
+        self.assertTrue(
+            ArtistTracker.objects.filter(user=self.user, artist=artist).exists()
+        )
+        self.assertTrue(
+            AlbumTracker.objects.filter(user=self.user, album=album).exists()
+        )
 
         plays = list(
             Music.objects.filter(user=self.user, album=album)
@@ -206,9 +214,15 @@ class MusicBulkSaveViewTests(TestCase):
         # Bulk saves now dispatch a background task and close the modal
         # instead of redirecting.
         self.assertIn("closeModal", response["HX-Trigger"])
-        self.assertTrue(ArtistTracker.objects.filter(user=self.user, artist=artist).exists())
-        self.assertTrue(AlbumTracker.objects.filter(user=self.user, album=first_album).exists())
-        self.assertTrue(AlbumTracker.objects.filter(user=self.user, album=second_album).exists())
+        self.assertTrue(
+            ArtistTracker.objects.filter(user=self.user, artist=artist).exists()
+        )
+        self.assertTrue(
+            AlbumTracker.objects.filter(user=self.user, album=first_album).exists()
+        )
+        self.assertTrue(
+            AlbumTracker.objects.filter(user=self.user, album=second_album).exists()
+        )
 
         plays = list(
             Music.objects.filter(user=self.user, album__artist=artist)
@@ -311,7 +325,9 @@ class MusicBulkSaveViewTests(TestCase):
         )
 
     @patch("app.services.bulk_music_tracking.flush_media_change_side_effects")
-    def test_music_bulk_save_flushes_side_effects_once_for_touched_days(self, mock_flush):
+    def test_music_bulk_save_flushes_side_effects_once_for_touched_days(
+        self, mock_flush
+    ):
         artist = Artist.objects.create(name="Flush Artist")
         album = Album.objects.create(
             title="Flush Album",

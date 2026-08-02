@@ -31,6 +31,8 @@ BACKGROUND_TASK_PRIORITY = getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 
 
 RUNTIME_BACKFILL_SOURCES = ("tmdb", "mal", "simkl")
 RUNTIME_BACKFILL_QUEUE_TTL = 60 * 60  # 1 hour
+
+SEASON_KEY_TUPLE_LENGTH = 3  # (media_id, source, season_number)
 RUNTIME_BACKFILL_ITEMS_QUEUE_KEY = "runtime_backfill_items_queue"
 RUNTIME_BACKFILL_ITEMS_SCHEDULED_KEY = "runtime_backfill_items_scheduled"
 RUNTIME_BACKFILL_EPISODES_QUEUE_KEY = "runtime_backfill_episode_queue"
@@ -71,25 +73,29 @@ def _reset_stale_give_up_episode_runtimes():
     Episodes aired within the last 30 days (or with no known air date) are eligible.
     Items must have been last attempted more than 7 days ago to avoid immediate re-triggering.
     """
-    from datetime import timedelta  # noqa: PLC0415
+    from datetime import timedelta
 
     now = timezone.now()
     attempt_cutoff = now - timedelta(days=7)
     recent_cutoff = now - timedelta(days=30)
-    count = MetadataBackfillState.objects.filter(
-        field=MetadataBackfillField.RUNTIME,
-        give_up=True,
-        last_attempt_at__lt=attempt_cutoff,
-        item__media_type=MediaTypes.EPISODE.value,
-        item__runtime_minutes__isnull=True,
-        item__source__in=RUNTIME_BACKFILL_SOURCES,
-    ).filter(
-        Q(item__release_datetime__isnull=True)
-        | Q(item__release_datetime__gte=recent_cutoff)
-    ).update(
-        give_up=False,
-        fail_count=0,
-        next_retry_at=None,
+    count = (
+        MetadataBackfillState.objects.filter(
+            field=MetadataBackfillField.RUNTIME,
+            give_up=True,
+            last_attempt_at__lt=attempt_cutoff,
+            item__media_type=MediaTypes.EPISODE.value,
+            item__runtime_minutes__isnull=True,
+            item__source__in=RUNTIME_BACKFILL_SOURCES,
+        )
+        .filter(
+            Q(item__release_datetime__isnull=True)
+            | Q(item__release_datetime__gte=recent_cutoff)
+        )
+        .update(
+            give_up=False,
+            fail_count=0,
+            next_retry_at=None,
+        )
     )
     if count:
         logger.info("reset_stale_episode_runtime_give_up count=%s", count)
@@ -115,7 +121,7 @@ def _decode_season_key(token):
 def _normalize_season_keys(season_keys):
     normalized = []
     for key in season_keys or []:
-        if isinstance(key, (list, tuple)) and len(key) == 3:
+        if isinstance(key, (list, tuple)) and len(key) == SEASON_KEY_TUPLE_LENGTH:
             media_id, source, season_number = key
             token = _encode_season_key(media_id, source, season_number)
         else:
@@ -139,15 +145,20 @@ def _filter_episode_runtime_season_keys(season_keys):
         )
     if not season_filters:
         return []
-    eligible = _episode_runtime_items_queryset().filter(season_filters).values_list(
-        "media_id",
-        "source",
-        "season_number",
+    eligible = (
+        _episode_runtime_items_queryset()
+        .filter(season_filters)
+        .values_list(
+            "media_id",
+            "source",
+            "season_number",
+        )
     )
     return sorted(set(eligible))
 
 
 def enqueue_runtime_backfill_items(item_ids, countdown=10):
+    """Return the enqueue runtime backfill items."""
     normalized = _normalize_item_ids(item_ids)
     normalized = _filter_backfill_item_ids(normalized, MetadataBackfillField.RUNTIME)
     if not normalized:
@@ -155,16 +166,21 @@ def enqueue_runtime_backfill_items(item_ids, countdown=10):
     try:
         queue = cache.get(RUNTIME_BACKFILL_ITEMS_QUEUE_KEY) or []
         queue = list(set(queue).union(normalized))
-        cache.set(RUNTIME_BACKFILL_ITEMS_QUEUE_KEY, queue, timeout=RUNTIME_BACKFILL_QUEUE_TTL)
+        cache.set(
+            RUNTIME_BACKFILL_ITEMS_QUEUE_KEY, queue, timeout=RUNTIME_BACKFILL_QUEUE_TTL
+        )
         if cache.add(RUNTIME_BACKFILL_ITEMS_SCHEDULED_KEY, True, timeout=30):
             populate_runtime_backfill_queue.apply_async(countdown=countdown)
     except Exception as exc:  # pragma: no cover - cache unavailable
         logger.debug("Runtime backfill queue unavailable: %s", exception_summary(exc))
-        populate_runtime_data_for_items.apply_async(args=[normalized], countdown=countdown)
+        populate_runtime_data_for_items.apply_async(
+            args=[normalized], countdown=countdown
+        )
     return len(normalized)
 
 
 def enqueue_episode_runtime_backfill(season_keys, countdown=10):
+    """Return the enqueue episode runtime backfill."""
     normalized = _filter_episode_runtime_season_keys(season_keys)
     if not normalized:
         return 0
@@ -181,23 +197,33 @@ def enqueue_episode_runtime_backfill(season_keys, countdown=10):
             return 0
         queue = cache.get(RUNTIME_BACKFILL_EPISODES_QUEUE_KEY) or []
         queue = list(set(queue).union(tokens))
-        cache.set(RUNTIME_BACKFILL_EPISODES_QUEUE_KEY, queue, timeout=RUNTIME_BACKFILL_QUEUE_TTL)
+        cache.set(
+            RUNTIME_BACKFILL_EPISODES_QUEUE_KEY,
+            queue,
+            timeout=RUNTIME_BACKFILL_QUEUE_TTL,
+        )
         if cache.add(RUNTIME_BACKFILL_EPISODES_SCHEDULED_KEY, True, timeout=30):
             # Deferred to avoid circular import: tasks_episode.py re-exports from app.tasks.
             from app.tasks_episode import (
-                populate_episode_runtime_queue,  # noqa: PLC0415
+                populate_episode_runtime_queue,
             )
+
             populate_episode_runtime_queue.apply_async(countdown=countdown)
     except Exception as exc:  # pragma: no cover - cache unavailable
-        logger.debug("Episode runtime backfill queue unavailable: %s", exception_summary(exc))
-        from app.tasks_episode import populate_episode_runtime_data  # noqa: PLC0415
-        populate_episode_runtime_data.apply_async(kwargs={"season_keys": normalized}, countdown=countdown)
+        logger.debug(
+            "Episode runtime backfill queue unavailable: %s", exception_summary(exc)
+        )
+        from app.tasks_episode import populate_episode_runtime_data
+
+        populate_episode_runtime_data.apply_async(
+            kwargs={"season_keys": normalized}, countdown=countdown
+        )
         return len(normalized)
     return len(tokens)
 
 
 def _populate_runtime_for_items(items, delay_seconds):
-    from app.statistics import parse_runtime_to_minutes  # noqa: PLC0415
+    from app.statistics import parse_runtime_to_minutes
 
     updated_count = 0
     error_count = 0
@@ -215,8 +241,8 @@ def _populate_runtime_for_items(items, delay_seconds):
                     item.title,
                     reason,
                 )
-            except Exception as save_error:
-                logger.error("Failed to mark %s as failed: %s", item.title, save_error)
+            except Exception:
+                logger.exception("Failed to mark %s as failed", item.title)
         return give_up
 
     run = CooperativeRun("runtime_backfill")
@@ -229,13 +255,20 @@ def _populate_runtime_for_items(items, delay_seconds):
             )
 
             if not metadata:
-                logger.warning("No metadata returned for %s (%s, %s)", item.title, item.media_type, item.source)
+                logger.warning(
+                    "No metadata returned for %s (%s, %s)",
+                    item.title,
+                    item.media_type,
+                    item.source,
+                )
                 error_count += 1
                 _mark_runtime_failure(item, "no metadata")
                 continue
 
             if not isinstance(metadata, dict):
-                logger.warning("Invalid metadata format for %s: %s", item.title, type(metadata))
+                logger.warning(
+                    "Invalid metadata format for %s: %s", item.title, type(metadata)
+                )
                 error_count += 1
                 _mark_runtime_failure(item, "invalid metadata")
                 continue
@@ -258,7 +291,9 @@ def _populate_runtime_for_items(items, delay_seconds):
             runtime_minutes = parse_runtime_to_minutes(runtime_str)
 
             if runtime_minutes is None:
-                logger.warning("Failed to parse runtime '%s' for %s", runtime_str, item.title)
+                logger.warning(
+                    "Failed to parse runtime '%s' for %s", runtime_str, item.title
+                )
                 error_count += 1
                 _mark_runtime_failure(item, "parse failure")
                 continue
@@ -270,18 +305,29 @@ def _populate_runtime_for_items(items, delay_seconds):
             _record_backfill_success(item, MetadataBackfillField.RUNTIME)
             updated_count += 1
             updated_items.append(item)
-            logger.info("Updated runtime for %s: %s minutes", item.title, runtime_minutes)
+            logger.info(
+                "Updated runtime for %s: %s minutes", item.title, runtime_minutes
+            )
 
             if delay_seconds > 0:
-                import time  # noqa: PLC0415
+                import time
+
                 time.sleep(delay_seconds)
         except Exception as exc:
             error_count += 1
-            logger.error("Error updating runtime for %s: %s", item.title, exception_summary(exc))
+            logger.exception(
+                "Error updating runtime for %s: %s",
+                item.title,
+                exception_summary(exc),  # noqa: TRY401  # exception_summary() is the project's sanitised rendering
+            )
             _mark_runtime_failure(item, f"exception: {exception_summary(exc)}")
 
     run.reenqueue_if_deferred(enqueue_runtime_backfill_items)
-    logger.info("Runtime population batch completed: %s updated, %s errors", updated_count, error_count)
+    logger.info(
+        "Runtime population batch completed: %s updated, %s errors",
+        updated_count,
+        error_count,
+    )
     if updated_items:
         _schedule_metadata_statistics_refresh(
             updated_items,
@@ -300,13 +346,17 @@ def populate_runtime_data_batch(batch_size=10, delay_seconds=1.0):
         logger.info("No items need runtime data")
         return {"updated": 0, "errors": 0}
 
-    updated_count, error_count = _populate_runtime_for_items(items_to_update, delay_seconds)
+    updated_count, error_count = _populate_runtime_for_items(
+        items_to_update, delay_seconds
+    )
 
     # Check if there are more items to process (exclude previously failed items)
     remaining_items = _runtime_items_queryset().count()
 
     if remaining_items > 0:
-        logger.info("Found %s remaining items. Scheduling next batch...", remaining_items)
+        logger.info(
+            "Found %s remaining items. Scheduling next batch...", remaining_items
+        )
         # Schedule the next batch with a small delay
         populate_runtime_data_batch.apply_async(
             kwargs={"batch_size": batch_size, "delay_seconds": delay_seconds},
@@ -318,7 +368,9 @@ def populate_runtime_data_batch(batch_size=10, delay_seconds=1.0):
             "remaining_items": remaining_items,
             "next_batch_scheduled": True,
         }
-    logger.info("🎉 All runtime data population completed! No more items need processing.")
+    logger.info(
+        "🎉 All runtime data population completed! No more items need processing."
+    )
 
     # Mark as completed in cache to prevent repeated runs
     cache.set("runtime_population_completed", True, timeout=3600)  # 1 hour
@@ -342,9 +394,15 @@ def populate_runtime_data_for_items(item_ids: list[int], delay_seconds: float = 
     items_to_update = list(_runtime_items_queryset().filter(id__in=normalized))
     if not items_to_update:
         logger.info("No targeted items need runtime data")
-        return {"updated": 0, "errors": 0, "message": "No targeted items need runtime data"}
+        return {
+            "updated": 0,
+            "errors": 0,
+            "message": "No targeted items need runtime data",
+        }
 
-    updated_count, error_count = _populate_runtime_for_items(items_to_update, delay_seconds)
+    updated_count, error_count = _populate_runtime_for_items(
+        items_to_update, delay_seconds
+    )
     return {
         "updated": updated_count,
         "errors": error_count,
@@ -364,7 +422,11 @@ def populate_runtime_backfill_queue(batch_size: int = 50, delay_seconds: float =
     batch = queue[:batch_size]
     remaining = queue[batch_size:]
     if remaining:
-        cache.set(RUNTIME_BACKFILL_ITEMS_QUEUE_KEY, remaining, timeout=RUNTIME_BACKFILL_QUEUE_TTL)
+        cache.set(
+            RUNTIME_BACKFILL_ITEMS_QUEUE_KEY,
+            remaining,
+            timeout=RUNTIME_BACKFILL_QUEUE_TTL,
+        )
         if cache.add(RUNTIME_BACKFILL_ITEMS_SCHEDULED_KEY, True, timeout=30):
             populate_runtime_backfill_queue.apply_async(countdown=10)
     else:
@@ -377,39 +439,57 @@ def populate_runtime_backfill_queue(batch_size: int = 50, delay_seconds: float =
 def populate_runtime_data_continuous():
     """Populate runtime data for ALL items that don't have it (startup task)."""
     # Deferred to avoid circular import: tasks_episode.py re-exports from app.tasks.
-    from app.tasks_episode import populate_episode_runtime_data  # noqa: PLC0415
+    from app.tasks_episode import populate_episode_runtime_data
 
     # Check if runtime population has already been completed recently (within last hour)
     cache_key = "runtime_population_completed"
     if cache.get(cache_key):
         # Check if episodes also need runtime data
-        episodes_needing_runtime = Item.objects.filter(
-            runtime_minutes__isnull=True,
-            media_type=MediaTypes.EPISODE.value,
-            source__in=RUNTIME_BACKFILL_SOURCES,
-        ).exclude(runtime_minutes=999999).count()
+        episodes_needing_runtime = (
+            Item.objects.filter(
+                runtime_minutes__isnull=True,
+                media_type=MediaTypes.EPISODE.value,
+                source__in=RUNTIME_BACKFILL_SOURCES,
+            )
+            .exclude(runtime_minutes=999999)
+            .count()
+        )
 
         if episodes_needing_runtime > 0:
-            logger.info("Runtime population completed for movies/TV/anime, but %s episodes still need runtime data. Starting episode population...", episodes_needing_runtime)
+            logger.info(
+                "Runtime population completed for movies/TV/anime, but %s episodes still need runtime data. Starting episode population...",
+                episodes_needing_runtime,
+            )
             # Clear the cache and continue with episode population
             cache.delete(cache_key)
         else:
             logger.info("Runtime population already completed recently - skipping")
-            return {"total_items": 0, "batches_scheduled": 0, "message": "Already completed recently"}
+            return {
+                "total_items": 0,
+                "batches_scheduled": 0,
+                "message": "Already completed recently",
+            }
 
     # Count total items that need runtime data (exclude previously failed items)
     total_items = _runtime_items_queryset().count()
 
     if total_items == 0:
         # Check if episodes also need runtime data
-        episodes_needing_runtime = Item.objects.filter(
-            runtime_minutes__isnull=True,
-            media_type=MediaTypes.EPISODE.value,
-            source__in=RUNTIME_BACKFILL_SOURCES,
-        ).exclude(runtime_minutes=999999).count()
+        episodes_needing_runtime = (
+            Item.objects.filter(
+                runtime_minutes__isnull=True,
+                media_type=MediaTypes.EPISODE.value,
+                source__in=RUNTIME_BACKFILL_SOURCES,
+            )
+            .exclude(runtime_minutes=999999)
+            .count()
+        )
 
         if episodes_needing_runtime > 0:
-            logger.info("No movies/TV/anime need runtime data, but %s episodes still need runtime data. Starting episode population...", episodes_needing_runtime)
+            logger.info(
+                "No movies/TV/anime need runtime data, but %s episodes still need runtime data. Starting episode population...",
+                episodes_needing_runtime,
+            )
             # Start episode population
             episode_result = populate_episode_runtime_data.delay()
             return {
@@ -420,9 +500,16 @@ def populate_runtime_data_continuous():
         logger.info("No items need runtime data - all up to date!")
         # Mark as completed for 1 hour to prevent repeated runs
         cache.set(cache_key, True, timeout=3600)
-        return {"total_items": 0, "batches_scheduled": 0, "message": "All up to date - marked as completed"}
+        return {
+            "total_items": 0,
+            "batches_scheduled": 0,
+            "message": "All up to date - marked as completed",
+        }
 
-    logger.info("Found %s items that need runtime data. Starting comprehensive population...", total_items)
+    logger.info(
+        "Found %s items that need runtime data. Starting comprehensive population...",
+        total_items,
+    )
 
     # Start the first batch - it will chain itself if more items remain
     first_batch = populate_runtime_data_batch.delay(batch_size=20, delay_seconds=1.0)

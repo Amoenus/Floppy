@@ -3,15 +3,19 @@
 Pure data-transform functions; no database access, no I/O.  All functions
 return dicts ready to be serialised as Chart.js chart configs.
 """
+
 import calendar
 import datetime
 from collections import Counter, defaultdict
 
 from app.stats_utils import _localize_datetime
 
+HOUR_NOON = 12  # 24-hour clock hour marking noon, splits am/pm labels
+
 # ---------------------------------------------------------------------------
 # Metric breakdown (rates over time)
 # ---------------------------------------------------------------------------
+
 
 def _compute_metric_breakdown(total_value, datetimes, start_date, end_date):
     """Return aggregate totals alongside per-year/month/day rates."""
@@ -56,6 +60,7 @@ def _compute_metric_breakdown(total_value, datetimes, start_date, end_date):
 # Single-series and grouped chart builders
 # ---------------------------------------------------------------------------
 
+
 def _build_single_series_chart(labels, values, color, dataset_label):
     """Return a Chart.js-friendly dataset for a single-series bar chart."""
     if not values or sum(values) == 0:
@@ -77,11 +82,11 @@ def _format_hour_label(hour):
     """Return a human-friendly label for an hour of day."""
     if hour == 0:
         return "12am"
-    if hour < 12:
+    if hour < HOUR_NOON:
         return f"{hour}am"
-    if hour == 12:
+    if hour == HOUR_NOON:
         return "12pm"
-    return f"{hour - 12}pm"
+    return f"{hour - HOUR_NOON}pm"
 
 
 def _build_media_charts(datetimes, color, dataset_label):
@@ -154,6 +159,7 @@ def _build_media_charts(datetimes, color, dataset_label):
 # ---------------------------------------------------------------------------
 # Specialised distribution charts
 # ---------------------------------------------------------------------------
+
 
 def _build_completed_length_distribution_chart(values, unit_name, color):
     """Build chart showing distribution of completed item lengths."""

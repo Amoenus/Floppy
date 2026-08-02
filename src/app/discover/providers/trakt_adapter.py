@@ -19,6 +19,7 @@ TRAKT_API_PROVIDER = "TRAKT"
 WATCHED_WEEKLY_TTL = 60 * 60
 POPULAR_TTL = 60 * 60 * 24
 ANTICIPATED_TTL = 60 * 60
+ISO_DATE_LENGTH = 10
 
 
 class TraktDiscoverAdapter:
@@ -32,7 +33,7 @@ class TraktDiscoverAdapter:
             return payload
 
         if not trakt_provider.is_configured():
-            return payload if payload else {"results": []}
+            return payload or {"results": []}
 
         headers = {
             "Content-Type": "application/json",
@@ -49,7 +50,9 @@ class TraktDiscoverAdapter:
                 params=params,
                 headers=headers,
             )
-            normalized_payload = {"results": response if isinstance(response, list) else []}
+            normalized_payload = {
+                "results": response if isinstance(response, list) else []
+            }
             cache_repo.set_api_cache(
                 self.provider,
                 endpoint,
@@ -57,8 +60,7 @@ class TraktDiscoverAdapter:
                 normalized_payload,
                 ttl_seconds=ttl_seconds,
             )
-            return normalized_payload
-        except Exception as error:  # noqa: BLE001
+        except Exception as error:
             if payload:
                 logger.warning(
                     "discover_trakt_cache_fallback endpoint=%s error=%s",
@@ -72,6 +74,8 @@ class TraktDiscoverAdapter:
                 error,
             )
             return {"results": []}
+        else:
+            return normalized_payload
 
     def movie_watched_weekly(self, *, limit: int = 100) -> list[CandidateItem]:
         """Return Trakt watched-weekly movies normalized to Discover candidates."""
@@ -120,10 +124,18 @@ class TraktDiscoverAdapter:
                     localized_title=title,
                     image=settings.IMG_NONE,
                     release_date=movie.get("released"),
-                    genres=[str(genre).strip() for genre in (movie.get("genres") or []) if str(genre).strip()],
+                    genres=[
+                        str(genre).strip()
+                        for genre in (movie.get("genres") or [])
+                        if str(genre).strip()
+                    ],
                     popularity=float(popularity) if popularity is not None else None,
-                    rating=float(movie["rating"]) if movie.get("rating") is not None else None,
-                    rating_count=int(movie["votes"]) if movie.get("votes") is not None else None,
+                    rating=float(movie["rating"])
+                    if movie.get("rating") is not None
+                    else None,
+                    rating_count=int(movie["votes"])
+                    if movie.get("votes") is not None
+                    else None,
                     row_key="trending_right_now",
                     source_reason="Trakt watched weekly",
                 ),
@@ -177,10 +189,18 @@ class TraktDiscoverAdapter:
                     localized_title=title,
                     image=settings.IMG_NONE,
                     release_date=movie.get("released"),
-                    genres=[str(genre).strip() for genre in (movie.get("genres") or []) if str(genre).strip()],
+                    genres=[
+                        str(genre).strip()
+                        for genre in (movie.get("genres") or [])
+                        if str(genre).strip()
+                    ],
                     popularity=float(popularity) if popularity is not None else None,
-                    rating=float(movie["rating"]) if movie.get("rating") is not None else None,
-                    rating_count=int(movie["votes"]) if movie.get("votes") is not None else None,
+                    rating=float(movie["rating"])
+                    if movie.get("rating") is not None
+                    else None,
+                    rating_count=int(movie["votes"])
+                    if movie.get("votes") is not None
+                    else None,
                     row_key="all_time_greats_unseen",
                     source_reason="Trakt popular",
                 ),
@@ -188,7 +208,9 @@ class TraktDiscoverAdapter:
 
         return candidates[:page_limit]
 
-    def movie_anticipated(self, *, page: int = 1, limit: int = 100) -> list[CandidateItem]:
+    def movie_anticipated(
+        self, *, page: int = 1, limit: int = 100
+    ) -> list[CandidateItem]:
         """Return Trakt anticipated movies normalized to Discover candidates."""
         if page <= 0 or limit <= 0:
             return []
@@ -238,10 +260,18 @@ class TraktDiscoverAdapter:
                     localized_title=title,
                     image=settings.IMG_NONE,
                     release_date=movie.get("released"),
-                    genres=[str(genre).strip() for genre in (movie.get("genres") or []) if str(genre).strip()],
+                    genres=[
+                        str(genre).strip()
+                        for genre in (movie.get("genres") or [])
+                        if str(genre).strip()
+                    ],
                     popularity=float(popularity) if popularity is not None else None,
-                    rating=float(movie["rating"]) if movie.get("rating") is not None else None,
-                    rating_count=int(movie["votes"]) if movie.get("votes") is not None else None,
+                    rating=float(movie["rating"])
+                    if movie.get("rating") is not None
+                    else None,
+                    rating_count=int(movie["votes"])
+                    if movie.get("votes") is not None
+                    else None,
                     row_key="coming_soon",
                     source_reason="Trakt anticipated",
                 ),
@@ -256,7 +286,7 @@ class TraktDiscoverAdapter:
         raw = str(value).strip()
         if not raw:
             return None
-        if len(raw) >= 10 and raw[4:5] == "-" and raw[7:8] == "-":
+        if len(raw) >= ISO_DATE_LENGTH and raw[4:5] == "-" and raw[7:8] == "-":
             return raw[:10]
         return raw
 
@@ -265,9 +295,7 @@ class TraktDiscoverAdapter:
         if not trakt_genres:
             return None
         normalized = [
-            str(genre).strip().lower()
-            for genre in trakt_genres
-            if str(genre).strip()
+            str(genre).strip().lower() for genre in trakt_genres if str(genre).strip()
         ]
         if not normalized:
             return None
@@ -280,7 +308,7 @@ class TraktDiscoverAdapter:
         media_type: str,
         row_key: str,
         source_reason: str,
-        popularity: float | int | None,
+        popularity: float | None,
         trakt_genres: list[str] | None = None,
     ) -> CandidateItem | None:
         if not show:
@@ -489,32 +517,32 @@ class TraktDiscoverAdapter:
 
         try:
             checks["movie_watched_weekly"] = bool(self.movie_watched_weekly(limit=1))
-        except Exception:  # noqa: BLE001
+        except Exception:
             checks["movie_watched_weekly"] = False
 
         try:
             checks["movie_popular"] = bool(self.movie_popular(limit=1))
-        except Exception:  # noqa: BLE001
+        except Exception:
             checks["movie_popular"] = False
 
         try:
             checks["movie_anticipated"] = bool(self.movie_anticipated(limit=1))
-        except Exception:  # noqa: BLE001
+        except Exception:
             checks["movie_anticipated"] = False
 
         try:
             checks["show_watched_weekly"] = bool(self.show_watched_weekly(limit=1))
-        except Exception:  # noqa: BLE001
+        except Exception:
             checks["show_watched_weekly"] = False
 
         try:
             checks["show_popular"] = bool(self.show_popular(limit=1))
-        except Exception:  # noqa: BLE001
+        except Exception:
             checks["show_popular"] = False
 
         try:
             checks["show_anticipated"] = bool(self.show_anticipated(limit=1))
-        except Exception:  # noqa: BLE001
+        except Exception:
             checks["show_anticipated"] = False
 
         return checks

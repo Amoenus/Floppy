@@ -112,7 +112,9 @@ def _history_play_counts_by_track(music_entries: list[Music]) -> dict[int, int]:
     for entry in music_entries:
         if not entry.track_id:
             continue
-        track_counts[entry.track_id] = track_counts.get(entry.track_id, 0) + counts_by_music_id.get(
+        track_counts[entry.track_id] = track_counts.get(
+            entry.track_id, 0
+        ) + counts_by_music_id.get(
             entry.id,
             0,
         )
@@ -129,7 +131,11 @@ def _ensure_album_tracks(album: Album) -> None:
 
 
 def _build_domain_from_albums(
-    *, albums: list[Album], context_kind: str, context_id: int, skip_missing_fetch: bool = False
+    *,
+    albums: list[Album],
+    context_kind: str,
+    context_id: int,
+    skip_missing_fetch: bool = False,
 ):
     """Return a selector domain that reuses the shared bulk range form."""
     available_albums = []
@@ -141,8 +147,9 @@ def _build_domain_from_albums(
         if not skip_missing_fetch:
             _ensure_album_tracks(album)
         tracks = list(
-            Track.objects.filter(album=album)
-            .order_by("disc_number", "track_number", "title", "id")
+            Track.objects.filter(album=album).order_by(
+                "disc_number", "track_number", "title", "id"
+            )
         )
         if not tracks:
             excluded_albums += 1
@@ -221,7 +228,9 @@ def _build_domain_from_albums(
             "season_number": default_last["season_number"],
             "episode_number": default_last["episode_number"],
         },
-        "locked_season_number": available_albums[0].id if len(available_albums) == 1 else None,
+        "locked_season_number": available_albums[0].id
+        if len(available_albums) == 1
+        else None,
         "hide_season_selectors": len(available_albums) == 1,
         "mode_notice": mode_notice,
         "is_flat_anime_grouped_slice": False,
@@ -375,9 +384,7 @@ def apply_bulk_music_plays(
         )
 
     selected_track_ids = [
-        episode["track_id"]
-        for episode in selected_episodes
-        if episode.get("track_id")
+        episode["track_id"] for episode in selected_episodes if episode.get("track_id")
     ]
     tracks = Track.objects.select_related("album__artist").in_bulk(selected_track_ids)
     existing_music_entries = list(
@@ -387,7 +394,9 @@ def apply_bulk_music_plays(
             "track",
         )
     )
-    existing_by_track = {entry.track_id: entry for entry in existing_music_entries if entry.track_id}
+    existing_by_track = {
+        entry.track_id: entry for entry in existing_music_entries if entry.track_id
+    }
     existing_play_counts = _history_play_counts_by_track(existing_music_entries)
 
     replaced_play_count = 0
@@ -395,18 +404,30 @@ def apply_bulk_music_plays(
     affected_day_keys = set()
     affected_items = []
 
-    with transaction.atomic(), disable_fetch_releases(), suppress_media_change_side_effects():
+    with (
+        transaction.atomic(),
+        disable_fetch_releases(),
+        suppress_media_change_side_effects(),
+    ):
         if write_mode == "replace" and existing_music_entries:
             replaced_play_count = sum(existing_play_counts.values())
             for entry in existing_music_entries:
-                existing_day_key = history_cache.history_day_key(getattr(entry, "end_date", None))
+                existing_day_key = history_cache.history_day_key(
+                    getattr(entry, "end_date", None)
+                )
                 if existing_day_key:
                     affected_day_keys.add(existing_day_key)
-            affected_items.extend(entry.item for entry in existing_music_entries if entry.item_id)
-            Music.objects.filter(id__in=[entry.id for entry in existing_music_entries]).delete()
+            affected_items.extend(
+                entry.item for entry in existing_music_entries if entry.item_id
+            )
+            Music.objects.filter(
+                id__in=[entry.id for entry in existing_music_entries]
+            ).delete()
             existing_by_track.clear()
 
-        for track_payload, played_at in zip(selected_episodes, timestamps, strict=False):
+        for track_payload, played_at in zip(
+            selected_episodes, timestamps, strict=False
+        ):
             track = tracks.get(track_payload.get("track_id"))
             if track is None:
                 continue
@@ -418,7 +439,9 @@ def apply_bulk_music_plays(
             existing_music = existing_by_track.get(track.id)
             if existing_music is not None:
                 affected_items.append(existing_music.item)
-                previous_day_key = history_cache.history_day_key(existing_music.end_date)
+                previous_day_key = history_cache.history_day_key(
+                    existing_music.end_date
+                )
                 if previous_day_key:
                     affected_day_keys.add(previous_day_key)
                 item, _ = _get_or_create_music_item(album, track)

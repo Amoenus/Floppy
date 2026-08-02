@@ -45,7 +45,9 @@ def _serialize_history_day(day):
         "date": date_value,
         "weekday": day.get("weekday", ""),
         "date_display": day.get("date_display", ""),
-        "entries": [_serialize_history_entry(entry) for entry in day.get("entries", [])],
+        "entries": [
+            _serialize_history_entry(entry) for entry in day.get("entries", [])
+        ],
         "total_minutes": day.get("total_minutes", 0),
         "total_runtime_display": day.get("total_runtime_display", "0min"),
     }
@@ -55,14 +57,16 @@ def _deserialize_history_day(day):
     date_value = day.get("date")
     if isinstance(date_value, str):
         try:
-            date_value = datetime.strptime(date_value, "%Y-%m-%d").date()
+            date_value = datetime.strptime(date_value, "%Y-%m-%d").date()  # noqa: DTZ007  # date-only value; no timezone applies
         except ValueError:
             date_value = None
     return {
         "date": date_value,
         "weekday": day.get("weekday", ""),
         "date_display": day.get("date_display", ""),
-        "entries": [_deserialize_history_entry(entry) for entry in day.get("entries", [])],
+        "entries": [
+            _deserialize_history_entry(entry) for entry in day.get("entries", [])
+        ],
         "total_minutes": day.get("total_minutes", 0),
         "total_runtime_display": day.get("total_runtime_display", "0min"),
     }

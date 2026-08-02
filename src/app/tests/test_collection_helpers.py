@@ -131,7 +131,9 @@ class CollectionHelpersTest(TestCase):
             title="Test TV Episode 2",
             image="http://example.com/episode2.jpg",
         )
-        CollectionEntry.objects.create(user=self.user, item=self.tv_item, media_type="digital")
+        CollectionEntry.objects.create(
+            user=self.user, item=self.tv_item, media_type="digital"
+        )
 
         stats = get_tv_show_collection_stats(self.user, self.tv_item)
 
@@ -145,7 +147,9 @@ class CollectionHelpersTest(TestCase):
             },
         )
 
-    def test_get_tv_show_collection_stats_prefers_granular_entries_over_show_level_entry(self):
+    def test_get_tv_show_collection_stats_prefers_granular_entries_over_show_level_entry(
+        self,
+    ):
         """Granular collection rows should win over the show-level fallback."""
         Item.objects.create(
             media_id=self.tv_item.media_id,
@@ -190,8 +194,12 @@ class CollectionHelpersTest(TestCase):
             title="Test TV Episode 3",
             image="http://example.com/episode3.jpg",
         )
-        CollectionEntry.objects.create(user=self.user, item=self.tv_item, media_type="digital")
-        CollectionEntry.objects.create(user=self.user, item=first_episode, media_type="digital")
+        CollectionEntry.objects.create(
+            user=self.user, item=self.tv_item, media_type="digital"
+        )
+        CollectionEntry.objects.create(
+            user=self.user, item=first_episode, media_type="digital"
+        )
 
         stats = get_tv_show_collection_stats(self.user, self.tv_item)
 
@@ -205,7 +213,9 @@ class CollectionHelpersTest(TestCase):
             },
         )
 
-    def test_get_tv_show_collection_stats_excludes_specials_from_show_level_fallback(self):
+    def test_get_tv_show_collection_stats_excludes_specials_from_show_level_fallback(
+        self,
+    ):
         """Season 0 items should not affect fallback totals."""
         Item.objects.create(
             media_id=self.tv_item.media_id,
@@ -250,7 +260,9 @@ class CollectionHelpersTest(TestCase):
             title="Test TV Special 1",
             image="http://example.com/special1.jpg",
         )
-        CollectionEntry.objects.create(user=self.user, item=self.tv_item, media_type="digital")
+        CollectionEntry.objects.create(
+            user=self.user, item=self.tv_item, media_type="digital"
+        )
 
         stats = get_tv_show_collection_stats(self.user, self.tv_item)
 
@@ -264,7 +276,9 @@ class CollectionHelpersTest(TestCase):
             },
         )
 
-    def test_get_tv_show_collection_stats_counts_season_entry_as_full_season_episode_rollup(self):
+    def test_get_tv_show_collection_stats_counts_season_entry_as_full_season_episode_rollup(
+        self,
+    ):
         """Collected seasons should contribute all of their episodes on the show page."""
         season_item = Item.objects.create(
             media_id=self.tv_item.media_id,
@@ -309,7 +323,9 @@ class CollectionHelpersTest(TestCase):
             title="Test TV Episode 3",
             image="http://example.com/episode3.jpg",
         )
-        CollectionEntry.objects.create(user=self.user, item=season_item, media_type="digital")
+        CollectionEntry.objects.create(
+            user=self.user, item=season_item, media_type="digital"
+        )
 
         stats = get_tv_show_collection_stats(self.user, self.tv_item)
 
@@ -368,7 +384,9 @@ class CollectionHelpersTest(TestCase):
             title="Test TV Episode 3",
             image="http://example.com/episode3.jpg",
         )
-        CollectionEntry.objects.create(user=self.user, item=season_one_item, media_type="digital")
+        CollectionEntry.objects.create(
+            user=self.user, item=season_one_item, media_type="digital"
+        )
         CollectionEntry.objects.create(
             user=self.user,
             item=season_one_episode_one,
@@ -420,7 +438,9 @@ class CollectionHelpersTest(TestCase):
             title="Test TV Episode 2",
             image="http://example.com/episode2.jpg",
         )
-        CollectionEntry.objects.create(user=self.user, item=season_item, media_type="digital")
+        CollectionEntry.objects.create(
+            user=self.user, item=season_item, media_type="digital"
+        )
 
         stats = get_season_collection_stats(self.user, season_item)
 
@@ -432,7 +452,9 @@ class CollectionHelpersTest(TestCase):
             },
         )
 
-    def test_get_season_collection_stats_prefers_episode_rows_over_season_level_entry(self):
+    def test_get_season_collection_stats_prefers_episode_rows_over_season_level_entry(
+        self,
+    ):
         """Episode rows should remain the source of truth when they exist."""
         season_item = Item.objects.create(
             media_id=self.tv_item.media_id,
@@ -460,8 +482,12 @@ class CollectionHelpersTest(TestCase):
             title="Test TV Episode 2",
             image="http://example.com/episode2.jpg",
         )
-        CollectionEntry.objects.create(user=self.user, item=season_item, media_type="digital")
-        CollectionEntry.objects.create(user=self.user, item=first_episode, media_type="digital")
+        CollectionEntry.objects.create(
+            user=self.user, item=season_item, media_type="digital"
+        )
+        CollectionEntry.objects.create(
+            user=self.user, item=first_episode, media_type="digital"
+        )
 
         stats = get_season_collection_stats(self.user, season_item)
 
@@ -473,7 +499,9 @@ class CollectionHelpersTest(TestCase):
             },
         )
 
-    def test_get_season_collection_stats_ignores_show_fallback_after_granular_collection_exists(self):
+    def test_get_season_collection_stats_ignores_show_fallback_after_granular_collection_exists(
+        self,
+    ):
         """Show-level fallback should stop once any granular collection rows exist for the show."""
         season_one_item = Item.objects.create(
             media_id=self.tv_item.media_id,
@@ -509,9 +537,15 @@ class CollectionHelpersTest(TestCase):
             title="Test TV Episode 2",
             image="http://example.com/episode2.jpg",
         )
-        CollectionEntry.objects.create(user=self.user, item=self.tv_item, media_type="digital")
-        CollectionEntry.objects.create(user=self.user, item=season_one_item, media_type="digital")
-        CollectionEntry.objects.create(user=self.user, item=first_episode, media_type="digital")
+        CollectionEntry.objects.create(
+            user=self.user, item=self.tv_item, media_type="digital"
+        )
+        CollectionEntry.objects.create(
+            user=self.user, item=season_one_item, media_type="digital"
+        )
+        CollectionEntry.objects.create(
+            user=self.user, item=first_episode, media_type="digital"
+        )
 
         stats = get_season_collection_stats(self.user, season_two_item)
 
@@ -523,7 +557,9 @@ class CollectionHelpersTest(TestCase):
             },
         )
 
-    def test_get_season_collection_metadata_ignores_show_fallback_after_granular_collection_exists(self):
+    def test_get_season_collection_metadata_ignores_show_fallback_after_granular_collection_exists(
+        self,
+    ):
         """Season metadata should not borrow a show-level row once episode/season rows exist."""
         season_one_item = Item.objects.create(
             media_id=self.tv_item.media_id,
@@ -565,8 +601,12 @@ class CollectionHelpersTest(TestCase):
             media_type="digital",
             resolution="1080p",
         )
-        CollectionEntry.objects.create(user=self.user, item=season_one_item, media_type="digital")
-        CollectionEntry.objects.create(user=self.user, item=first_episode, media_type="digital")
+        CollectionEntry.objects.create(
+            user=self.user, item=season_one_item, media_type="digital"
+        )
+        CollectionEntry.objects.create(
+            user=self.user, item=first_episode, media_type="digital"
+        )
 
         metadata = get_season_collection_metadata(self.user, season_two_item)
 

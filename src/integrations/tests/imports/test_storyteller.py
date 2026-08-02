@@ -32,7 +32,7 @@ class StorytellerImporterTests(TestCase):
         """Create a test user and connected Storyteller account."""
         self.user = get_user_model().objects.create_user(
             username="storyteller-user",
-            password="pass",  # noqa: S106
+            password="pass",
         )
         StorytellerAccount.objects.create(
             user=self.user,
@@ -251,8 +251,8 @@ class StorytellerImporterTests(TestCase):
                 "details": {"author": "Jim Butcher"},
             },
         }
-        mock_get_media_metadata.side_effect = (
-            lambda _mt, media_id, _src: metadata_by_id[media_id]
+        mock_get_media_metadata.side_effect = lambda _mt, media_id, _src: (
+            metadata_by_id[media_id]
         )
 
         importer = StorytellerImporter(self.user)

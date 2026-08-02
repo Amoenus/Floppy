@@ -5,6 +5,14 @@ from app import config
 from app.models import MediaTypes
 from app.statistics_cache import STATISTICS_TOP_N
 
+SECONDS_PER_DAY = 86400
+
+# Lengths of the partial-date strings MusicBrainz can return for a release
+# date: "YYYY", "YYYY-MM", or a full "YYYY-MM-DD" (10+ chars).
+DATE_STR_LEN_YEAR_ONLY = 4
+DATE_STR_LEN_YEAR_MONTH = 7
+DATE_STR_LEN_FULL_DATE = 10
+
 
 def _collect_music_play_data(music_queryset, start_date, end_date):
     """Collect music play datetimes and per-play runtime from history records.
@@ -46,20 +54,28 @@ def _collect_music_play_data(music_queryset, start_date, end_date):
                 # Prefer the history record where history_date is closest to end_date
                 # (within reason - if history_date is way after end_date, it's likely a metadata update)
                 existing_history_date = plays_by_end_date[history_end_date][1]
-                time_diff_existing = abs((existing_history_date - history_end_date).total_seconds())
-                time_diff_current = abs((history_date - history_end_date).total_seconds())
+                time_diff_existing = abs(
+                    (existing_history_date - history_end_date).total_seconds()
+                )
+                time_diff_current = abs(
+                    (history_date - history_end_date).total_seconds()
+                )
 
                 # Prefer the one closer to end_date, but only if it's within 24 hours
                 # (metadata updates can happen days/weeks later)
-                if time_diff_current < time_diff_existing and time_diff_current < 86400:  # 24 hours
+                if (
+                    time_diff_current < time_diff_existing
+                    and time_diff_current < SECONDS_PER_DAY
+                ):  # 24 hours
                     plays_by_end_date[history_end_date] = (history_record, history_date)
 
         # Process unique plays within date range
-        for play_end_date, (history_record, _) in plays_by_end_date.items():
+        for play_end_date in plays_by_end_date:
             # Check if within date range
-            if start_date and end_date:
-                if not (start_date <= play_end_date <= end_date):
-                    continue
+            if (start_date and end_date) and not (
+                start_date <= play_end_date <= end_date
+            ):
+                continue
 
             localized_date = _localize_datetime(play_end_date)
             datetimes.append(localized_date)
@@ -81,7 +97,9 @@ def _compute_music_top_lists(play_details, limit=5):
     from app.helpers import minutes_to_hhmm
 
     # Aggregate by artist, album, and track
-    artist_stats = defaultdict(lambda: {"minutes": 0, "plays": 0, "name": "", "image": "", "id": None})
+    artist_stats = defaultdict(
+        lambda: {"minutes": 0, "plays": 0, "name": "", "image": "", "id": None}
+    )
     album_stats = defaultdict(
         lambda: {
             "minutes": 0,
@@ -109,7 +127,7 @@ def _compute_music_top_lists(play_details, limit=5):
         },
     )
 
-    for music, dt, runtime in play_details:
+    for music, _dt, runtime in play_details:
         # Track stats (use music.id as key since each Music is a unique track entry)
         track_key = music.id
         track_stats[track_key]["minutes"] += runtime
@@ -132,7 +150,9 @@ def _compute_music_top_lists(play_details, limit=5):
 
         if album:
             track_stats[track_key]["album"] = album.title
-            track_stats[track_key]["album_image"] = album.image or track_stats[track_key]["album_image"]
+            track_stats[track_key]["album_image"] = (
+                album.image or track_stats[track_key]["album_image"]
+            )
             track_stats[track_key]["album_id"] = album.id
             track_stats[track_key]["album_artist_id"] = artist.id if artist else None
             track_stats[track_key]["album_artist_name"] = artist.name if artist else ""
@@ -146,9 +166,15 @@ def _compute_music_top_lists(play_details, limit=5):
             album_stats[album.id]["id"] = album.id
 
     # Sort by minutes and take top N
-    top_artists = sorted(artist_stats.values(), key=lambda x: x["minutes"], reverse=True)[:limit]
-    top_albums = sorted(album_stats.values(), key=lambda x: x["minutes"], reverse=True)[:limit]
-    top_tracks = sorted(track_stats.values(), key=lambda x: x["minutes"], reverse=True)[:limit]
+    top_artists = sorted(
+        artist_stats.values(), key=lambda x: x["minutes"], reverse=True
+    )[:limit]
+    top_albums = sorted(album_stats.values(), key=lambda x: x["minutes"], reverse=True)[
+        :limit
+    ]
+    top_tracks = sorted(track_stats.values(), key=lambda x: x["minutes"], reverse=True)[
+        :limit
+    ]
 
     album_artist_lookup = {
         album_id: {
@@ -455,12 +481,12 @@ def _parse_release_date_str(date_str):
     if not date_str:
         return None
     try:
-        if len(date_str) >= 10:
-            return datetime.datetime.strptime(date_str[:10], "%Y-%m-%d").date()
-        if len(date_str) == 7:
-            return datetime.datetime.strptime(date_str, "%Y-%m").date()
-        if len(date_str) == 4:
-            return datetime.datetime.strptime(date_str, "%Y").date()
+        if len(date_str) >= DATE_STR_LEN_FULL_DATE:
+            return datetime.datetime.strptime(date_str[:10], "%Y-%m-%d").date()  # noqa: DTZ007  # date-only value; no timezone applies
+        if len(date_str) == DATE_STR_LEN_YEAR_MONTH:
+            return datetime.datetime.strptime(date_str, "%Y-%m").date()  # noqa: DTZ007  # date-only value; no timezone applies
+        if len(date_str) == DATE_STR_LEN_YEAR_ONLY:
+            return datetime.datetime.strptime(date_str, "%Y").date()  # noqa: DTZ007  # date-only value; no timezone applies
     except ValueError:
         return None
     return None
@@ -483,7 +509,7 @@ def _compute_music_top_rollups(play_details, limit=5):
     decade_stats = defaultdict(lambda: {"minutes": 0, "plays": 0, "label": ""})
     country_stats = defaultdict(lambda: {"minutes": 0, "plays": 0, "code": ""})
 
-    for music, dt, runtime in play_details:
+    for music, _dt, runtime in play_details:
         minutes = runtime or 0
 
         # Genres: prefer album genres, fall back to artist genres
@@ -502,7 +528,11 @@ def _compute_music_top_rollups(play_details, limit=5):
             genre_stats[key]["name"] = key
 
         # Decades: from album release_date if available
-        release_date = getattr(music.album, "release_date", None) if getattr(music, "album", None) else None
+        release_date = (
+            getattr(music.album, "release_date", None)
+            if getattr(music, "album", None)
+            else None
+        )
         if release_date and release_date.year:
             decade_label = f"{(release_date.year // 10) * 10}s"
             decade_stats[decade_label]["minutes"] += minutes
@@ -537,7 +567,9 @@ def _compute_music_top_rollups(play_details, limit=5):
     }
 
 
-def get_music_consumption_stats(user_media, start_date, end_date, minutes_per_type=None):
+def get_music_consumption_stats(
+    user_media, start_date, end_date, minutes_per_type=None
+):
     """Return aggregate metrics and chart data for music activity.
 
     This is similar to TV/Movie consumption stats but uses minutes instead of hours
@@ -561,18 +593,24 @@ def get_music_consumption_stats(user_media, start_date, end_date, minutes_per_ty
         music_ids = list(music_queryset.values_list("id", flat=True))
         if music_ids:
             # Recreate queryset with only safe prefetches
-            music_queryset = model.objects.filter(id__in=music_ids).select_related("item", "artist", "album")
+            music_queryset = model.objects.filter(id__in=music_ids).select_related(
+                "item", "artist", "album"
+            )
         else:
             music_queryset = None
 
-    music_datetimes, play_details = _collect_music_play_data(music_queryset, start_date, end_date)
+    music_datetimes, play_details = _collect_music_play_data(
+        music_queryset, start_date, end_date
+    )
 
     # Hydrate missing metadata (genres, country, release_date) from stored data only (no provider calls)
     if music_queryset is not None:
         _hydrate_music_metadata_for_rollups(music_queryset)
 
     if minutes_per_type is None:
-        minutes_per_type = calculate_minutes_per_media_type(user_media or {}, start_date, end_date)
+        minutes_per_type = calculate_minutes_per_media_type(
+            user_media or {}, start_date, end_date
+        )
 
     total_minutes = minutes_per_type.get(MediaTypes.MUSIC.value, 0)
     total_plays = len(music_datetimes)

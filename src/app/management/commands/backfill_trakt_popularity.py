@@ -20,6 +20,7 @@ class Command(BaseCommand):
     help = "Backfill stored Trakt popularity metadata for tracked movie, TV, and anime items"
 
     def add_arguments(self, parser):
+        """Register this command's command-line options."""
         parser.add_argument(
             "--media-types",
             default=f"{MediaTypes.MOVIE.value},{MediaTypes.TV.value},{MediaTypes.ANIME.value}",
@@ -48,6 +49,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *_args, **options):
+        """Backfill stored Trakt popularity metadata for tracked movie, TV, and anime items."""
         media_types = self._parse_media_types(options["media_types"])
         limit = options.get("limit")
         force = bool(options.get("force"))
@@ -64,7 +66,9 @@ class Command(BaseCommand):
 
         if not trakt_provider.is_configured():
             self.stdout.write(
-                self.style.WARNING("TRAKT_API is not configured; skipping Trakt popularity backfill."),
+                self.style.WARNING(
+                    "TRAKT_API is not configured; skipping Trakt popularity backfill."
+                ),
             )
             return
 
@@ -81,7 +85,9 @@ class Command(BaseCommand):
             )
 
         if not items:
-            self.stdout.write(self.style.SUCCESS("No tracked items need Trakt popularity backfill."))
+            self.stdout.write(
+                self.style.SUCCESS("No tracked items need Trakt popularity backfill.")
+            )
             return
 
         updated = 0
@@ -114,7 +120,7 @@ class Command(BaseCommand):
                         f"title={item.title}"
                     ),
                 )
-            except Exception as error:  # noqa: BLE001
+            except Exception as error:
                 failed += 1
                 _record_backfill_failure(
                     item,
@@ -126,10 +132,14 @@ class Command(BaseCommand):
                 )
 
         if dry_run:
-            self.stdout.write(self.style.SUCCESS(f"Dry run complete: {len(items)} item(s) matched."))
+            self.stdout.write(
+                self.style.SUCCESS(f"Dry run complete: {len(items)} item(s) matched.")
+            )
         else:
             self.stdout.write(
-                self.style.SUCCESS(f"Backfill complete: updated {updated} item(s), failed {failed}."),
+                self.style.SUCCESS(
+                    f"Backfill complete: updated {updated} item(s), failed {failed}."
+                ),
             )
 
     def _handle_recompute_scores(self, *, media_types, limit, dry_run):
@@ -144,7 +154,9 @@ class Command(BaseCommand):
         items = list(queryset[:limit] if limit else queryset)
 
         if not items:
-            self.stdout.write(self.style.SUCCESS("No items with stored Trakt rating data found."))
+            self.stdout.write(
+                self.style.SUCCESS("No items with stored Trakt rating data found.")
+            )
             return
 
         updated = 0
@@ -169,9 +181,13 @@ class Command(BaseCommand):
             updated += 1
 
         if dry_run:
-            self.stdout.write(self.style.SUCCESS(f"Dry run complete: {len(items)} item(s) matched."))
+            self.stdout.write(
+                self.style.SUCCESS(f"Dry run complete: {len(items)} item(s) matched.")
+            )
         else:
-            self.stdout.write(self.style.SUCCESS(f"Recomputed scores for {updated} item(s)."))
+            self.stdout.write(
+                self.style.SUCCESS(f"Recomputed scores for {updated} item(s).")
+            )
 
     def _parse_media_types(self, raw_value: str) -> list[str]:
         supported = {
@@ -179,6 +195,8 @@ class Command(BaseCommand):
             MediaTypes.TV.value,
             MediaTypes.ANIME.value,
         }
-        values = [value.strip() for value in str(raw_value or "").split(",") if value.strip()]
+        values = [
+            value.strip() for value in str(raw_value or "").split(",") if value.strip()
+        ]
         parsed = [value for value in values if value in supported]
         return parsed or sorted(supported)

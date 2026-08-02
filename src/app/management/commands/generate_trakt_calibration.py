@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-import os
+from pathlib import Path
 
 from django.core.management.base import BaseCommand
 
@@ -219,7 +219,7 @@ TITLES = [
     (204, "Spectre"),
     (205, "The Hunger Games: Mockingjay - Part 2"),
     (206, "Aladdin"),
-    # rank 207 is also "Aladdin" – skip per spec
+    # rank 207 is also "Aladdin" - skip per spec
     (208, "The Grand Budapest Hotel"),
     (209, "Monsters University"),
     (210, "Dawn of the Planet of the Apes"),
@@ -265,8 +265,7 @@ TITLES = [
     (250, "American Sniper"),
 ]
 
-OUTPUT_PATH = os.path.join(
-    os.path.dirname(__file__),
+OUTPUT_PATH = Path(__file__).parent.joinpath(
     "..",
     "..",
     "data",
@@ -331,10 +330,7 @@ def _find_item(title: str):
             return item
 
     # Strategy 2: "The " article swap
-    if title.lower().startswith("the "):
-        alt = title[4:]
-    else:
-        alt = "The " + title
+    alt = title[4:] if title.lower().startswith("the ") else "The " + title
 
     item = _best_candidate(base.filter(title__iexact=alt))
     if item:
@@ -349,7 +345,8 @@ class Command(BaseCommand):
     help = "Match 250 known movie titles against backfilled DB items and write a calibration fixture"
 
     def handle(self, *_args, **_options):
-        os.makedirs(os.path.dirname(os.path.abspath(OUTPUT_PATH)), exist_ok=True)
+        """Match 250 known movie titles against backfilled DB items and write a calibration fixture."""
+        Path(OUTPUT_PATH).resolve().parent.mkdir(parents=True, exist_ok=True)
 
         found_items = []
         found_count = 0
@@ -367,11 +364,12 @@ class Command(BaseCommand):
             if item:
                 matched_ids.add(item.pk)
                 found_count += 1
-                rating = float(item.trakt_rating) if item.trakt_rating is not None else None
+                rating = (
+                    float(item.trakt_rating) if item.trakt_rating is not None else None
+                )
                 votes = item.trakt_rating_count or 0
                 self.stdout.write(
-                    f"\u2713 {rank:3}. {title} "
-                    f"(rating={rating}, votes={votes})"
+                    f"\u2713 {rank:3}. {title} (rating={rating}, votes={votes})"
                 )
                 found_items.append(
                     {
@@ -382,9 +380,7 @@ class Command(BaseCommand):
                     }
                 )
             else:
-                self.stdout.write(
-                    self.style.WARNING(f"\u2717 {rank:3}. {title}")
-                )
+                self.stdout.write(self.style.WARNING(f"\u2717 {rank:3}. {title}"))
 
         total = len(TITLES)
         self.stdout.write(f"\nFound: {found_count}/{total}")
@@ -403,10 +399,8 @@ class Command(BaseCommand):
             "items": found_items,
         }
 
-        abs_output = os.path.abspath(OUTPUT_PATH)
-        with open(abs_output, "w", encoding="utf-8") as fh:
+        abs_output = Path(OUTPUT_PATH).resolve()
+        with abs_output.open("w", encoding="utf-8") as fh:
             json.dump(fixture, fh, indent=2, ensure_ascii=False)
 
-        self.stdout.write(
-            self.style.SUCCESS(f"Fixture written to {abs_output}")
-        )
+        self.stdout.write(self.style.SUCCESS(f"Fixture written to {abs_output}"))

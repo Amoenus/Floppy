@@ -269,7 +269,6 @@ class CalendarViewTests(TestCase):
         self.assertEqual(len(release_dict[20]), 1)  # One event on the 20th
         self.assertEqual(response.context["selected_day"], today.day)
 
-
     @patch("events.models.Event.objects.get_user_events")
     @patch.object(get_user_model(), "update_preference")
     def test_calendar_list_uses_podcast_show_image_when_item_image_missing(

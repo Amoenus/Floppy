@@ -113,7 +113,8 @@ class SeasonModel(TestCase):
 
     def test_progress_first_watch_with_gap(self):
         """Regression for #327: watching a later episode before a skipped one
-        should report the highest episode number touched, not the gap."""
+        should report the highest episode number touched, not the gap.
+        """
         item_ep4 = Item.objects.create(
             media_id="1668",
             source=Sources.TMDB.value,
@@ -133,7 +134,8 @@ class SeasonModel(TestCase):
 
     def test_progress_rewatch_tolerates_skipped_episode(self):
         """Regression for #327: a second watchthrough that skips one episode
-        should not get stuck at the skip point."""
+        should not get stuck at the skip point.
+        """
         item_season = Item.objects.create(
             media_id="9999",
             source=Sources.TMDB.value,
@@ -532,7 +534,8 @@ class SeasonStatusTests(TestCase):
 
     def test_promote_to_completed_skips_manual_in_progress(self):
         """Regression: promote_to_completed_if_fully_watched must not override
-        a manually set IN_PROGRESS status (rewatch scenario, issue #261)."""
+        a manually set IN_PROGRESS status (rewatch scenario, issue #261).
+        """
         ep_item = Item.objects.create(
             media_id="123",
             source=Sources.TMDB.value,

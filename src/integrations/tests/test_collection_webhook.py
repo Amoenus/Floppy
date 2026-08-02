@@ -32,7 +32,9 @@ class CollectionWebhookTest(TestCase):
 
     @patch("integrations.tasks._plex_collection.plex_api.fetch_metadata")
     @patch("integrations.tasks._plex_collection.extract_collection_metadata_from_plex")
-    def test_update_collection_metadata_from_plex_webhook(self, mock_extract, mock_fetch):
+    def test_update_collection_metadata_from_plex_webhook(
+        self, mock_extract, mock_fetch
+    ):
         """Test collection metadata update from Plex webhook task."""
         # Mock Plex metadata response
         mock_plex_metadata = {
@@ -101,7 +103,9 @@ class CollectionWebhookTest(TestCase):
         )
 
         # Mock the task
-        with patch("integrations.webhooks.plex.tasks.update_collection_metadata_from_plex_webhook.delay") as mock_task:
+        with patch(
+            "integrations.webhooks.plex.tasks.update_collection_metadata_from_plex_webhook.delay"
+        ) as mock_task:
             # Test the method directly
             processor._queue_collection_metadata_update(payload, self.user, self.item)
 
@@ -195,7 +199,9 @@ class CollectionWebhookTest(TestCase):
     @patch("integrations.tasks._plex_collection.plex_api.fetch_section_all_items")
     @patch("integrations.tasks._plex_collection.plex_api.list_resources")
     @patch("integrations.tasks._plex_collection.plex_api.fetch_metadata")
-    @patch("integrations.tasks._plex_collection.update_collection_metadata_from_plex_webhook")
+    @patch(
+        "integrations.tasks._plex_collection.update_collection_metadata_from_plex_webhook"
+    )
     def test_fetch_collection_metadata_cached_only_uses_episode_derived_show_key(
         self,
         mock_update_collection,
@@ -257,7 +263,9 @@ class CollectionWebhookTest(TestCase):
     @patch("integrations.tasks._plex_collection.plex_api.fetch_section_all_items")
     @patch("integrations.tasks._plex_collection.plex_api.list_sections")
     @patch("integrations.tasks._plex_collection.plex_api.list_resources")
-    @patch("integrations.tasks._plex_collection.update_collection_metadata_from_plex_webhook")
+    @patch(
+        "integrations.tasks._plex_collection.update_collection_metadata_from_plex_webhook"
+    )
     def test_fetch_collection_metadata_cached_only_skips_library_enumeration_when_uncached(
         self,
         mock_update_collection,

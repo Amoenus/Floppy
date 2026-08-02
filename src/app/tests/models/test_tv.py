@@ -3,7 +3,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, tag
 
 from app.models import (
     TV,
@@ -137,6 +137,7 @@ class TVModel(TestCase):
             datetime(2023, 6, 5, 0, 0, tzinfo=UTC),
         )
 
+    @tag("network")
     def test_tv_save(self):
         """Test the custom save method of the TV model."""
         self.tv.status = Status.COMPLETED.value

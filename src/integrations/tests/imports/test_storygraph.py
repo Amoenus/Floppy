@@ -24,22 +24,22 @@ class ParseReads(SimpleTestCase):
         """A dash-separated range is a start date and an end date."""
         reads = storygraph.parse_reads("2022/03/16-2022/04/01")
         self.assertEqual(len(reads), 1)
-        self.assertEqual(reads[0].start.date(), datetime(2022, 3, 16).date())  # noqa: DTZ001
-        self.assertEqual(reads[0].end.date(), datetime(2022, 4, 1).date())  # noqa: DTZ001
+        self.assertEqual(reads[0].start.date(), datetime(2022, 3, 16).date())
+        self.assertEqual(reads[0].end.date(), datetime(2022, 4, 1).date())
 
     def test_single_date_is_end_only(self):
         """StoryGraph writes one date when only the finish date is known."""
         reads = storygraph.parse_reads("2021/07/21")
         self.assertEqual(len(reads), 1)
         self.assertIsNone(reads[0].start)
-        self.assertEqual(reads[0].end.date(), datetime(2021, 7, 21).date())  # noqa: DTZ001
+        self.assertEqual(reads[0].end.date(), datetime(2021, 7, 21).date())
 
     def test_multiple_reads_sorted_oldest_first(self):
         """Re-reads are comma separated and come back oldest first."""
         reads = storygraph.parse_reads("2022/10/29-2022/11/28, 2021/09/14")
         self.assertEqual(len(reads), 2)
-        self.assertEqual(reads[0].end.date(), datetime(2021, 9, 14).date())  # noqa: DTZ001
-        self.assertEqual(reads[1].end.date(), datetime(2022, 11, 28).date())  # noqa: DTZ001
+        self.assertEqual(reads[0].end.date(), datetime(2021, 9, 14).date())
+        self.assertEqual(reads[1].end.date(), datetime(2022, 11, 28).date())
 
     def test_blank_and_garbage_ignored(self):
         """Empty or unparseable values produce no reads."""
@@ -126,9 +126,7 @@ class MatchingHelpers(SimpleTestCase):
         self.assertTrue(
             storygraph.titles_match("Mistborn", "Mistborn: The Final Empire")
         )
-        self.assertTrue(
-            storygraph.titles_match("The Blade Itself", "the blade itself")
-        )
+        self.assertTrue(storygraph.titles_match("The Blade Itself", "the blade itself"))
 
     def test_titles_do_not_match_across_books(self):
         """Unrelated titles do not match."""
@@ -215,12 +213,15 @@ class BookResolverTests(SimpleTestCase):
                 ]
             },
         )
-        with patch(
-            "integrations.imports.storygraph.services.search",
-            side_effect=search,
-        ), patch(
-            "integrations.imports.storygraph.services.get_media_metadata",
-            side_effect=self._metadata,
+        with (
+            patch(
+                "integrations.imports.storygraph.services.search",
+                side_effect=search,
+            ),
+            patch(
+                "integrations.imports.storygraph.services.get_media_metadata",
+                side_effect=self._metadata,
+            ),
         ):
             resolved = storygraph.BookResolver({}).resolve(
                 "The Blade Itself",
@@ -243,12 +244,15 @@ class BookResolverTests(SimpleTestCase):
                 ]
             },
         )
-        with patch(
-            "integrations.imports.storygraph.services.search",
-            side_effect=search,
-        ), patch(
-            "integrations.imports.storygraph.services.get_media_metadata",
-            side_effect=self._metadata,
+        with (
+            patch(
+                "integrations.imports.storygraph.services.search",
+                side_effect=search,
+            ),
+            patch(
+                "integrations.imports.storygraph.services.get_media_metadata",
+                side_effect=self._metadata,
+            ),
         ):
             resolved = storygraph.BookResolver({}).resolve(
                 "The Blade Itself",
@@ -268,12 +272,15 @@ class BookResolverTests(SimpleTestCase):
                 ]
             },
         )
-        with patch(
-            "integrations.imports.storygraph.services.search",
-            side_effect=search,
-        ), patch(
-            "integrations.imports.storygraph.services.get_media_metadata",
-            side_effect=self._metadata,
+        with (
+            patch(
+                "integrations.imports.storygraph.services.search",
+                side_effect=search,
+            ),
+            patch(
+                "integrations.imports.storygraph.services.get_media_metadata",
+                side_effect=self._metadata,
+            ),
         ):
             resolved = storygraph.BookResolver({}).resolve(
                 "The Blade Itself",
@@ -295,7 +302,8 @@ class BookResolverTests(SimpleTestCase):
         def search(_media_type, query, _page, source):
             if source == Sources.HARDCOVER.value:
                 raise services.ProviderAPIError(
-                    Sources.HARDCOVER.value, Exception("boom"),
+                    Sources.HARDCOVER.value,
+                    Exception("boom"),
                 )
             if (source, query) == (
                 Sources.OPENLIBRARY.value,
@@ -304,15 +312,20 @@ class BookResolverTests(SimpleTestCase):
                 return {"results": [{"media_id": "1", "title": "The Blade Itself"}]}
             return {"results": []}
 
-        with patch(
-            "integrations.imports.storygraph.services.search",
-            side_effect=search,
-        ), patch(
-            "integrations.imports.storygraph.services.get_media_metadata",
-            side_effect=self._metadata,
+        with (
+            patch(
+                "integrations.imports.storygraph.services.search",
+                side_effect=search,
+            ),
+            patch(
+                "integrations.imports.storygraph.services.get_media_metadata",
+                side_effect=self._metadata,
+            ),
         ):
             resolved = storygraph.BookResolver({}).resolve(
-                "The Blade Itself", ["Joe Abercrombie"], "",
+                "The Blade Itself",
+                ["Joe Abercrombie"],
+                "",
             )
 
         self.assertIsNotNone(resolved)
@@ -325,12 +338,16 @@ class BookResolverTests(SimpleTestCase):
         provider outage as "book not found", which is indistinguishable from
         a book that genuinely does not exist.
         """
-        with patch(
-            "integrations.imports.storygraph.services.search",
-            side_effect=services.ProviderAPIError(
-                Sources.HARDCOVER.value, Exception("boom"),
+        with (
+            patch(
+                "integrations.imports.storygraph.services.search",
+                side_effect=services.ProviderAPIError(
+                    Sources.HARDCOVER.value,
+                    Exception("boom"),
+                ),
             ),
-        ), self.assertRaises(services.ProviderAPIError):
+            self.assertRaises(services.ProviderAPIError),
+        ):
             storygraph.BookResolver({}).resolve("Whatever", [], "")
 
     def test_unexpected_error_is_not_swallowed_by_the_resolver(self):
@@ -340,10 +357,13 @@ class BookResolverTests(SimpleTestCase):
         an unresolvable book to raise ``MediaImportUnexpectedError`` and
         abort the task; that can only happen if the resolver lets it through.
         """
-        with patch(
-            "integrations.imports.storygraph.services.search",
-            side_effect=ValueError("bug, not a provider failure"),
-        ), self.assertRaises(ValueError):
+        with (
+            patch(
+                "integrations.imports.storygraph.services.search",
+                side_effect=ValueError("bug, not a provider failure"),
+            ),
+            self.assertRaises(ValueError),
+        ):
             storygraph.BookResolver({}).resolve("Whatever", [], "")
 
     def test_resolution_is_cached(self):
@@ -357,12 +377,15 @@ class BookResolverTests(SimpleTestCase):
             return {"results": []}
 
         cache = {}
-        with patch(
-            "integrations.imports.storygraph.services.search",
-            side_effect=search,
-        ), patch(
-            "integrations.imports.storygraph.services.get_media_metadata",
-            side_effect=self._metadata,
+        with (
+            patch(
+                "integrations.imports.storygraph.services.search",
+                side_effect=search,
+            ),
+            patch(
+                "integrations.imports.storygraph.services.get_media_metadata",
+                side_effect=self._metadata,
+            ),
         ):
             resolver = storygraph.BookResolver(cache)
             first = resolver.resolve(
@@ -423,20 +446,25 @@ class ImportStoryGraph(TestCase):
         """Import the fixture export with the providers mocked out."""
         self.user = get_user_model().objects.create_user(
             username="test",
-            password="12345",  # noqa: S106 - test credential
+            password="12345",
         )
-        with patch(
-            "integrations.imports.storygraph.services.search",
-            side_effect=fake_search,
-        ), patch(
-            "integrations.imports.storygraph.services.get_media_metadata",
-            side_effect=fake_metadata,
-        ), Path(mock_path / "import_storygraph.csv").open("rb") as file:
+        with (
+            patch(
+                "integrations.imports.storygraph.services.search",
+                side_effect=fake_search,
+            ),
+            patch(
+                "integrations.imports.storygraph.services.get_media_metadata",
+                side_effect=fake_metadata,
+            ),
+            Path(mock_path / "import_storygraph.csv").open("rb") as file,
+        ):
             self.counts, self.messages = storygraph.importer(file, self.user, "new")
 
     def _books(self, title):
         return Book.objects.filter(
-            user=self.user, item__title=title,
+            user=self.user,
+            item__title=title,
         ).order_by("end_date")
 
     def test_entry_count(self):
@@ -448,21 +476,21 @@ class ImportStoryGraph(TestCase):
         """A dash separated read keeps its start and end date."""
         book = self._books("The Blade Itself").get()
         self.assertEqual(book.status, Status.COMPLETED.value)
-        self.assertEqual(book.start_date.date(), datetime(2021, 1, 20).date())  # noqa: DTZ001
-        self.assertEqual(book.end_date.date(), datetime(2021, 2, 9).date())  # noqa: DTZ001
+        self.assertEqual(book.start_date.date(), datetime(2021, 1, 20).date())
+        self.assertEqual(book.end_date.date(), datetime(2021, 2, 9).date())
 
     def test_finish_date_only_leaves_start_null(self):
         """A bare date is a finish date, not a one day read."""
         book = self._books("Kindle Only").get()
         self.assertIsNone(book.start_date)
-        self.assertEqual(book.end_date.date(), datetime(2025, 7, 16).date())  # noqa: DTZ001
+        self.assertEqual(book.end_date.date(), datetime(2025, 7, 16).date())
 
     def test_reread_creates_two_entries(self):
         """Each read in Dates Read becomes its own entry."""
         books = list(self._books("Re-read Book"))
         self.assertEqual(len(books), 2)
-        self.assertEqual(books[0].end_date.date(), datetime(2021, 9, 14).date())  # noqa: DTZ001
-        self.assertEqual(books[1].end_date.date(), datetime(2022, 11, 28).date())  # noqa: DTZ001
+        self.assertEqual(books[0].end_date.date(), datetime(2021, 9, 14).date())
+        self.assertEqual(books[1].end_date.date(), datetime(2022, 11, 28).date())
 
     def test_rating_only_on_newest_read(self):
         """One StoryGraph rating must not be counted once per re-read."""
@@ -518,13 +546,17 @@ class ImportStoryGraph(TestCase):
 
         item.format = "hardcover"
         item.save(update_fields=["format"])
-        with patch(
-            "integrations.imports.storygraph.services.search",
-            side_effect=fake_search,
-        ), patch(
-            "integrations.imports.storygraph.services.get_media_metadata",
-            side_effect=fake_metadata,
-        ), Path(mock_path / "import_storygraph.csv").open("rb") as file:
+        with (
+            patch(
+                "integrations.imports.storygraph.services.search",
+                side_effect=fake_search,
+            ),
+            patch(
+                "integrations.imports.storygraph.services.get_media_metadata",
+                side_effect=fake_metadata,
+            ),
+            Path(mock_path / "import_storygraph.csv").open("rb") as file,
+        ):
             storygraph.importer(file, self.user, "new")
 
         item.refresh_from_db()
@@ -539,7 +571,7 @@ class ImportStoryGraph(TestCase):
         """The history record is stamped with the read's end date."""
         book = self._books("The Blade Itself").get()
         record = book.history.first()
-        self.assertEqual(record.history_date.date(), datetime(2021, 2, 9).date())  # noqa: DTZ001
+        self.assertEqual(record.history_date.date(), datetime(2021, 2, 9).date())
 
 
 class ImportStoryGraphTags(TestCase):
@@ -549,18 +581,22 @@ class ImportStoryGraphTags(TestCase):
         """Create the user and import the fixture."""
         self.user = get_user_model().objects.create_user(
             username="test",
-            password="12345",  # noqa: S106 - test credential
+            password="12345",
         )
         self._import()
 
     def _import(self):
-        with patch(
-            "integrations.imports.storygraph.services.search",
-            side_effect=fake_search,
-        ), patch(
-            "integrations.imports.storygraph.services.get_media_metadata",
-            side_effect=fake_metadata,
-        ), Path(mock_path / "import_storygraph.csv").open("rb") as file:
+        with (
+            patch(
+                "integrations.imports.storygraph.services.search",
+                side_effect=fake_search,
+            ),
+            patch(
+                "integrations.imports.storygraph.services.get_media_metadata",
+                side_effect=fake_metadata,
+            ),
+            Path(mock_path / "import_storygraph.csv").open("rb") as file,
+        ):
             return storygraph.importer(file, self.user, "new")
 
     def test_lists_created_from_tags(self):
@@ -598,7 +634,7 @@ class ImportStoryGraphDeduplication(TestCase):
         """Create the user and import the fixture once."""
         self.user = get_user_model().objects.create_user(
             username="test",
-            password="12345",  # noqa: S106 - test credential
+            password="12345",
         )
         self._import()
 
@@ -610,13 +646,17 @@ class ImportStoryGraphDeduplication(TestCase):
             ).open("rb")
         else:
             source_file = BytesIO(rows.encode("utf-8"))
-        with patch(
-            "integrations.imports.storygraph.services.search",
-            side_effect=fake_search,
-        ), patch(
-            "integrations.imports.storygraph.services.get_media_metadata",
-            side_effect=fake_metadata,
-        ), source_file as file:
+        with (
+            patch(
+                "integrations.imports.storygraph.services.search",
+                side_effect=fake_search,
+            ),
+            patch(
+                "integrations.imports.storygraph.services.get_media_metadata",
+                side_effect=fake_metadata,
+            ),
+            source_file as file,
+        ):
             return storygraph.importer(file, self.user, mode)
 
     def test_reimport_creates_nothing(self):
@@ -638,7 +678,8 @@ class ImportStoryGraphDeduplication(TestCase):
 
         self.assertEqual(counts.get("book", 0), 1)
         books = Book.objects.filter(
-            user=self.user, item__title="The Blade Itself",
+            user=self.user,
+            item__title="The Blade Itself",
         ).order_by("end_date")
         self.assertEqual(books.count(), 2)
         preexisting, new_read = books
@@ -692,7 +733,8 @@ class ImportStoryGraphDeduplication(TestCase):
         books = Book.objects.filter(user=self.user, item__title="Planned Book")
         self.assertEqual(books.count(), 2)
         self.assertEqual(
-            books.filter(status=Status.PLANNING.value).count(), 1,
+            books.filter(status=Status.PLANNING.value).count(),
+            1,
         )
         completed = books.get(status=Status.COMPLETED.value)
         self.assertIsNone(completed.start_date)
@@ -752,11 +794,15 @@ class ImportStoryGraphProviderErrors(TestCase):
         """Create the user importing a single-row CSV each test builds."""
         self.user = get_user_model().objects.create_user(
             username="test",
-            password="12345",  # noqa: S106 - test credential
+            password="12345",
         )
-        self.header = Path(
-            mock_path / "import_storygraph.csv",
-        ).read_text().splitlines()[0]
+        self.header = (
+            Path(
+                mock_path / "import_storygraph.csv",
+            )
+            .read_text()
+            .splitlines()[0]
+        )
         self.row = (
             'The Blade Itself,Joe Abercrombie,"",9780575079793,digital,read,'
             "2021/01/01,2021/02/09,2021/01/20-2021/02/09,1,"
@@ -764,10 +810,13 @@ class ImportStoryGraphProviderErrors(TestCase):
         )
 
     def _import(self, **patches):
-        with patch(
-            "integrations.imports.storygraph.services.search",
-            **patches,
-        ), BytesIO(f"{self.header}\n{self.row}\n".encode()) as file:
+        with (
+            patch(
+                "integrations.imports.storygraph.services.search",
+                **patches,
+            ),
+            BytesIO(f"{self.header}\n{self.row}\n".encode()) as file,
+        ):
             return storygraph.importer(file, self.user, "new")
 
     def test_provider_failure_warns_distinctly_from_not_found(self):
@@ -781,7 +830,8 @@ class ImportStoryGraphProviderErrors(TestCase):
         """
         counts, messages = self._import(
             side_effect=services.ProviderAPIError(
-                Sources.HARDCOVER.value, Exception("boom"),
+                Sources.HARDCOVER.value,
+                Exception("boom"),
             ),
         )
 
@@ -803,15 +853,19 @@ class ImportStoryGraphDateReport(TestCase):
         """Create the user and import the fixture."""
         self.user = get_user_model().objects.create_user(
             username="test",
-            password="12345",  # noqa: S106 - test credential
+            password="12345",
         )
-        with patch(
-            "integrations.imports.storygraph.services.search",
-            side_effect=fake_search,
-        ), patch(
-            "integrations.imports.storygraph.services.get_media_metadata",
-            side_effect=fake_metadata,
-        ), Path(mock_path / "import_storygraph.csv").open("rb") as file:
+        with (
+            patch(
+                "integrations.imports.storygraph.services.search",
+                side_effect=fake_search,
+            ),
+            patch(
+                "integrations.imports.storygraph.services.get_media_metadata",
+                side_effect=fake_metadata,
+            ),
+            Path(mock_path / "import_storygraph.csv").open("rb") as file,
+        ):
             self.counts, self.messages = storygraph.importer(file, self.user, "new")
 
     def test_books_read_without_dates_listed(self):
@@ -839,28 +893,36 @@ class ImportStoryGraphDateReport(TestCase):
         )
         user = get_user_model().objects.create_user(
             username="other",
-            password="12345",  # noqa: S106 - test credential
+            password="12345",
         )
-        with patch(
-            "integrations.imports.storygraph.services.search",
-            side_effect=fake_search,
-        ), patch(
-            "integrations.imports.storygraph.services.get_media_metadata",
-            side_effect=fake_metadata,
-        ), BytesIO(f"{header}\n{row}\n".encode()) as file:
+        with (
+            patch(
+                "integrations.imports.storygraph.services.search",
+                side_effect=fake_search,
+            ),
+            patch(
+                "integrations.imports.storygraph.services.get_media_metadata",
+                side_effect=fake_metadata,
+            ),
+            BytesIO(f"{header}\n{row}\n".encode()) as file,
+        ):
             _counts, messages = storygraph.importer(file, user, "new")
 
         self.assertEqual(messages, "")
 
     def test_gaps_still_reported_on_unfixed_reimport(self):
         """Re-importing the same unfixed export in new mode still names the gaps."""
-        with patch(
-            "integrations.imports.storygraph.services.search",
-            side_effect=fake_search,
-        ), patch(
-            "integrations.imports.storygraph.services.get_media_metadata",
-            side_effect=fake_metadata,
-        ), Path(mock_path / "import_storygraph.csv").open("rb") as file:
+        with (
+            patch(
+                "integrations.imports.storygraph.services.search",
+                side_effect=fake_search,
+            ),
+            patch(
+                "integrations.imports.storygraph.services.get_media_metadata",
+                side_effect=fake_metadata,
+            ),
+            Path(mock_path / "import_storygraph.csv").open("rb") as file,
+        ):
             _counts, messages = storygraph.importer(file, self.user, "new")
 
         self.assertIn("No Isbn Book", messages)
@@ -876,7 +938,7 @@ class StoryGraphWiring(TestCase):
         """Create and sign in a user."""
         self.user = get_user_model().objects.create_user(
             username="test",
-            password="12345",  # noqa: S106 - test credential
+            password="12345",
         )
         self.client.force_login(self.user)
 
@@ -892,9 +954,12 @@ class StoryGraphWiring(TestCase):
 
     def test_view_queues_the_task(self):
         """Posting a CSV queues the import task."""
-        with Path(mock_path / "import_storygraph.csv").open("rb") as file, patch(
-            "integrations.tasks.import_storygraph.delay",
-        ) as delay:
+        with (
+            Path(mock_path / "import_storygraph.csv").open("rb") as file,
+            patch(
+                "integrations.tasks.import_storygraph.delay",
+            ) as delay,
+        ):
             response = self.client.post(
                 reverse("import_storygraph"),
                 {"mode": "new", "storygraph_csv": file},

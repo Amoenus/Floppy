@@ -230,8 +230,7 @@ class GoodReadsImporter:
         page_count = (row.get("Number of Pages") or "").strip()
         book_progress = (
             int(page_count)
-            if book_status == Status.COMPLETED.value
-            and page_count.isnumeric()
+            if book_status == Status.COMPLETED.value and page_count.isnumeric()
             else 0
         )
 

@@ -1,7 +1,7 @@
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, tag
 
 from app.models import TV, Episode, Item, MediaTypes, Movie, Season, Sources, Status
 from integrations.webhooks.generic_scrobble import GenericScrobbleProcessor
@@ -98,6 +98,7 @@ class GenericScrobbleProcessPayloadTests(TestCase):
         )
         self.assertFalse(Movie.objects.filter(user=self.user).exists())
 
+    @tag("network")
     def test_movie_stop_marks_completed(self):
         """A completed movie stop event creates a completed Movie instance."""
         self.processor.process_payload(
@@ -160,10 +161,13 @@ class GenericScrobbleProcessPayloadTests(TestCase):
 
     def test_movie_resolution_failure_propagates(self):
         """A provider failure during resolution is not swallowed here."""
-        with patch(
-            "app.providers.tmdb.movie",
-            side_effect=RuntimeError("tmdb down"),
-        ), self.assertRaises(RuntimeError):
+        with (
+            patch(
+                "app.providers.tmdb.movie",
+                side_effect=RuntimeError("tmdb down"),
+            ),
+            self.assertRaises(RuntimeError),
+        ):
             self.processor.process_payload(
                 {
                     "media_type": "movie",

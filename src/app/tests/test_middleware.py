@@ -17,12 +17,12 @@ class AutoLoginMiddlewareTest(TestCase):
         self.factory = RequestFactory()
         self.existing_active_user = UserModel.objects.create_user(
             username="active_user",
-            password="active_user_password",  # noqa: S106
+            password="active_user_password",
             is_active=True,
         )
         self.existing_inactive_user = UserModel.objects.create_user(
             username="inactive_user",
-            password="inactive_user_password",  # noqa: S106
+            password="inactive_user_password",
             is_active=False,
         )
 
@@ -111,7 +111,7 @@ class HtmxAuthRedirectMiddlewareTest(TestCase):
         """Redirects that aren't to the login page pass through unchanged."""
         user = UserModel.objects.create_user(
             username="htmx_user",
-            password="htmx_user_password",  # noqa: S106
+            password="htmx_user_password",
         )
         self.client.force_login(user)
 
@@ -125,11 +125,11 @@ class SessionDurabilityTest(TestCase):
 
     def test_session_survives_cache_flush(self):
         """Redis restart/eviction falls back to the database session row."""
-        from django.core.cache import cache  # noqa: PLC0415
+        from django.core.cache import cache
 
         user = UserModel.objects.create_user(
             username="session_user",
-            password="session_user_password",  # noqa: S106
+            password="session_user_password",
         )
         self.client.force_login(user)
         self.assertEqual(self.client.get("/").status_code, 200)

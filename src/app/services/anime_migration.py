@@ -47,7 +47,11 @@ def _provider_series_id(entry: dict, provider: str) -> str | None:
 
 
 def _provider_season_number(entry: dict, provider: str) -> int | None:
-    keys = ["tvdb_season"] if provider == "tvdb" else ["tmdb_season", "tvdb_season", "season"]
+    keys = (
+        ["tvdb_season"]
+        if provider == "tvdb"
+        else ["tmdb_season", "tvdb_season", "season"]
+    )
     for key in keys:
         value = entry.get(key)
         if value in (None, ""):
@@ -60,7 +64,9 @@ def _provider_season_number(entry: dict, provider: str) -> int | None:
 
 
 def _provider_episode_offset(entry: dict, provider: str) -> int:
-    keys = ["tvdb_epoffset"] if provider == "tvdb" else ["tmdb_epoffset", "tvdb_epoffset"]
+    keys = (
+        ["tvdb_epoffset"] if provider == "tvdb" else ["tmdb_epoffset", "tvdb_epoffset"]
+    )
     for key in keys:
         value = entry.get(key)
         if value in (None, ""):
@@ -81,7 +87,9 @@ def _distribution_timestamps(anime: Anime, total_episodes: int) -> list:
     )
 
 
-def _entries_for_provider_series(anime_entries: list[Anime], provider: str, series_id: str) -> list[tuple[Anime, dict]]:
+def _entries_for_provider_series(
+    anime_entries: list[Anime], provider: str, series_id: str
+) -> list[tuple[Anime, dict]]:
     matches: list[tuple[Anime, dict]] = []
     for anime in anime_entries:
         mapping_entries = anime_mapping.find_entries_for_mal_id(anime.item.media_id)
@@ -91,8 +99,9 @@ def _entries_for_provider_series(anime_entries: list[Anime], provider: str, seri
             if _provider_series_id(entry, provider) == str(series_id)
         ]
         if len(provider_entries) > 1:
+            msg = f'Ambiguous mapping for "{anime.item.title}" on {provider.upper()}.'
             raise AnimeMigrationError(
-                f'Ambiguous mapping for "{anime.item.title}" on {provider.upper()}.',
+                msg,
             )
         if provider_entries:
             matches.append((anime, provider_entries[0]))
@@ -104,18 +113,22 @@ def _entry_activity_datetime(anime: Anime):
     return anime.end_date or anime.progressed_at or anime.created_at or timezone.now()
 
 
-def migrate_flat_anime_to_grouped(user, anime_item: Item, provider: str) -> AnimeMigrationResult:
+def migrate_flat_anime_to_grouped(
+    user, anime_item: Item, provider: str
+) -> AnimeMigrationResult:
     """Migrate all matching flat anime rows for a user into a grouped series."""
     if anime_item.source != "mal" or anime_item.media_type != MediaTypes.ANIME.value:
-        raise AnimeMigrationError("Only flat MAL anime can be migrated in this phase.")
+        msg = "Only flat MAL anime can be migrated in this phase."
+        raise AnimeMigrationError(msg)
 
     provider_series_id = anime_mapping.resolve_provider_series_id(
         anime_item.media_id,
         provider,
     )
     if not provider_series_id:
+        msg = f"No {provider.upper()} mapping was found for this anime."
         raise AnimeMigrationError(
-            f"No {provider.upper()} mapping was found for this anime.",
+            msg,
         )
 
     flat_anime_entries = list(
@@ -130,13 +143,15 @@ def migrate_flat_anime_to_grouped(user, anime_item: Item, provider: str) -> Anim
         provider_series_id,
     )
     if not mapped_entries:
-        raise AnimeMigrationError("No unmigrated anime entries matched this grouped series.")
+        msg = "No unmigrated anime entries matched this grouped series."
+        raise AnimeMigrationError(msg)
 
     season_numbers = []
     for _anime, mapping_entry in mapped_entries:
         season_number = _provider_season_number(mapping_entry, provider)
         if season_number is None:
-            raise AnimeMigrationError("One or more mapped entries do not define a season.")
+            msg = "One or more mapped entries do not define a season."
+            raise AnimeMigrationError(msg)
         season_numbers.append(season_number)
 
     hydration = ensure_item_metadata(
@@ -176,14 +191,16 @@ def migrate_flat_anime_to_grouped(user, anime_item: Item, provider: str) -> Anim
         season_key = f"season/{season_number}"
         season_metadata = tv_with_seasons.get(season_key)
         if not season_metadata:
+            msg = f"Season {season_number} could not be loaded from {provider.upper()}."
             raise AnimeMigrationError(
-                f"Season {season_number} could not be loaded from {provider.upper()}.",
+                msg,
             )
 
         available_episodes = len(season_metadata.get("episodes") or [])
         if anime.progress > max(available_episodes - episode_offset, 0):
+            msg = f'"{anime.item.title}" has more watched episodes than the mapped season can hold.'
             raise AnimeMigrationError(
-                f'"{anime.item.title}" has more watched episodes than the mapped season can hold.',
+                msg,
             )
 
     latest_score_entry = None
@@ -255,9 +272,13 @@ def migrate_flat_anime_to_grouped(user, anime_item: Item, provider: str) -> Anim
             episode_offset + episode_index
             for episode_index in range(1, int(anime.progress or 0) + 1)
         ]
-        watched_timestamps = _distribution_timestamps(anime, len(watched_episode_numbers))
+        watched_timestamps = _distribution_timestamps(
+            anime, len(watched_episode_numbers)
+        )
 
-        for episode_number, watched_at in zip(watched_episode_numbers, watched_timestamps, strict=False):
+        for episode_number, watched_at in zip(
+            watched_episode_numbers, watched_timestamps, strict=False
+        ):
             episode_item = season_tracker.get_episode_item(
                 episode_number,
                 season_metadata,
@@ -274,12 +295,14 @@ def migrate_flat_anime_to_grouped(user, anime_item: Item, provider: str) -> Anim
 
         if anime.score is not None and (
             latest_score_entry is None
-            or _entry_activity_datetime(anime) > _entry_activity_datetime(latest_score_entry)
+            or _entry_activity_datetime(anime)
+            > _entry_activity_datetime(latest_score_entry)
         ):
             latest_score_entry = anime
         if anime.notes and (
             latest_notes_entry is None
-            or _entry_activity_datetime(anime) > _entry_activity_datetime(latest_notes_entry)
+            or _entry_activity_datetime(anime)
+            > _entry_activity_datetime(latest_notes_entry)
         ):
             latest_notes_entry = anime
 

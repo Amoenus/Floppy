@@ -1,5 +1,3 @@
-# ruff: noqa: D102, S106
-
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model

@@ -125,7 +125,6 @@ def redirect_back(request):
         request.GET.get("next") or request.POST.get("next"),
     )
     if url_has_allowed_host_and_scheme(next_url, None):
-
         # Parse the URL
         parsed_url = urlparse(next_url)
 
@@ -263,7 +262,9 @@ def refresh_item_image_if_missing(item, new_image):
     item.save(update_fields=["image"])
 
 
-def enrich_items_with_user_data(request, items, section_name=None, user=None, library_media_type=None):
+def enrich_items_with_user_data(
+    request, items, section_name=None, user=None, library_media_type=None
+):
     """Enrich a list of items with user tracking data.
 
     Args:
@@ -323,7 +324,9 @@ def enrich_items_with_user_data(request, items, section_name=None, user=None, li
     # This allows multiple plays of the same episode to be tracked separately in the DB
     # but we show the most recent one in the UI
     if media_type == MediaTypes.PODCAST.value:
-        media_queryset = media_queryset.order_by("item__media_id", "item__source", "-created_at")
+        media_queryset = media_queryset.order_by(
+            "item__media_id", "item__source", "-created_at"
+        )
 
     # Create a lookup dictionary for fast matching
     # For podcasts with multiple entries, keep only the most recent one (first after ordering)
@@ -409,7 +412,7 @@ def extract_release_datetime(metadata):
     }
     for fmt, length in format_lengths.items():
         try:
-            dt = datetime.strptime(date_str[:length], fmt)
+            dt = datetime.strptime(date_str[:length], fmt)  # noqa: DTZ007  # date-only value; no timezone applies
             return dt.replace(tzinfo=ZoneInfo("UTC"))
         except (ValueError, TypeError):
             continue
@@ -456,15 +459,15 @@ def is_item_collected(user, item):
 
 def get_album_collection_metadata(user, album):
     """Get aggregated collection metadata for an album from all its tracks.
-    
+
     For music albums, we aggregate collection metadata from all tracks that have
     collection entries. Returns the most common values (or first non-empty value)
     for fields that should be consistent across tracks (like audio_codec, audio_channels).
-    
+
     Args:
         user: Django user object
         album: Album object
-        
+
     Returns:
         Dictionary with collection metadata:
         - audio_codec: Most common audio codec across collected tracks
@@ -517,17 +520,27 @@ def get_album_collection_metadata(user, album):
         if entry.audio_codec:
             audio_codecs[entry.audio_codec] = audio_codecs.get(entry.audio_codec, 0) + 1
         if entry.audio_channels:
-            audio_channels_list[entry.audio_channels] = audio_channels_list.get(entry.audio_channels, 0) + 1
+            audio_channels_list[entry.audio_channels] = (
+                audio_channels_list.get(entry.audio_channels, 0) + 1
+            )
         if entry.bitrate:
             bitrates[entry.bitrate] = bitrates.get(entry.bitrate, 0) + 1
         if entry.media_type:
             media_types[entry.media_type] = media_types.get(entry.media_type, 0) + 1
 
     # Get most common value (or first if tie)
-    audio_codec = max(audio_codecs.items(), key=lambda x: x[1])[0] if audio_codecs else None
-    audio_channels = max(audio_channels_list.items(), key=lambda x: x[1])[0] if audio_channels_list else None
+    audio_codec = (
+        max(audio_codecs.items(), key=lambda x: x[1])[0] if audio_codecs else None
+    )
+    audio_channels = (
+        max(audio_channels_list.items(), key=lambda x: x[1])[0]
+        if audio_channels_list
+        else None
+    )
     bitrate = max(bitrates.items(), key=lambda x: x[1])[0] if bitrates else None
-    media_type = max(media_types.items(), key=lambda x: x[1])[0] if media_types else None
+    media_type = (
+        max(media_types.items(), key=lambda x: x[1])[0] if media_types else None
+    )
 
     return {
         "has_collection": True,
@@ -576,11 +589,11 @@ def get_collection_stats(user):
 
 def get_artist_collection_stats(user, artist):
     """Get collection statistics for an artist.
-    
+
     Args:
         user: Django user object
         artist: Artist object
-        
+
     Returns:
         Dictionary with collection statistics:
         - collected_albums: Number of distinct albums with at least one collected track
@@ -645,12 +658,12 @@ def get_artist_collection_stats(user, artist):
 
 def get_tv_show_collection_stats(user, tv_item, metadata_episode_count=None):
     """Get collection statistics for a TV show.
-    
+
     Args:
         user: Django user object
         tv_item: Item object with media_type='tv' or 'anime'
         metadata_episode_count: Optional episode count from metadata (e.g., TMDB) to match Details pane
-        
+
     Returns:
         Dictionary with collection statistics:
         - collected_seasons: Number of distinct seasons with at least one collected episode
@@ -692,20 +705,28 @@ def get_tv_show_collection_stats(user, tv_item, metadata_episode_count=None):
     episode_item_ids = [item.id for item in all_episode_items]
 
     # Get collection entries for seasons
-    season_collection_item_ids = list(
-        CollectionEntry.objects.filter(
-            user=user,
-            item_id__in=season_item_ids,
-        ).values_list("item_id", flat=True)
-    ) if season_item_ids else []
+    season_collection_item_ids = (
+        list(
+            CollectionEntry.objects.filter(
+                user=user,
+                item_id__in=season_item_ids,
+            ).values_list("item_id", flat=True)
+        )
+        if season_item_ids
+        else []
+    )
 
     # Get collection entries for episodes
-    episode_collection_item_ids = list(
-        CollectionEntry.objects.filter(
-            user=user,
-            item_id__in=episode_item_ids,
-        ).values_list("item_id", flat=True)
-    ) if episode_item_ids else []
+    episode_collection_item_ids = (
+        list(
+            CollectionEntry.objects.filter(
+                user=user,
+                item_id__in=episode_item_ids,
+            ).values_list("item_id", flat=True)
+        )
+        if episode_item_ids
+        else []
+    )
 
     # Match season_details fallback behavior: a show-level collection entry represents
     # the entire show only when no granular season/episode collection rows exist.
@@ -771,11 +792,11 @@ def get_tv_show_collection_stats(user, tv_item, metadata_episode_count=None):
 
 def get_season_collection_stats(user, season_item):
     """Get collection statistics for a specific season.
-    
+
     Args:
         user: Django user object
         season_item: Item object with media_type='season'
-        
+
     Returns:
         Dictionary with collection statistics:
         - collected_episodes: Number of collected episodes in this season
@@ -851,15 +872,15 @@ def get_season_collection_stats(user, season_item):
 
 def get_season_collection_metadata(user, season_item):
     """Get aggregated collection metadata for a season from all its episodes.
-    
+
     Similar to get_album_collection_metadata, this aggregates collection metadata
     from all episodes in the season that have collection entries. Returns the most
     common values for fields that should be consistent across episodes.
-    
+
     Args:
         user: Django user object
         season_item: Item object with media_type='season'
-        
+
     Returns:
         Dictionary with collection metadata (or None if no episodes are collected):
         - resolution: Most common resolution across collected episodes

@@ -423,7 +423,7 @@ class ImportTrakt(TestCase):
         movie_obj = trakt_importer.bulk_media[MediaTypes.MOVIE.value][0]
         # Stored as-is (displays as 3/5), not doubled to the 10 ceiling.
         self.assertEqual(movie_obj.score, 6)
-        self.assertEqual(self.user.scale_score_for_display(Decimal("6")), Decimal("3"))
+        self.assertEqual(self.user.scale_score_for_display(Decimal(6)), Decimal(3))
 
     @patch("integrations.imports.trakt.TraktImporter._make_api_request")
     def test_invalid_username_fails_before_importing(self, mock_make_request):
@@ -816,7 +816,9 @@ class ImportTrakt(TestCase):
             media_type=MediaTypes.TV.value,
             defaults={"title": "Test Show", "image": ""},
         )
-        tv_obj = TV.objects.create(item=item_tv, user=self.user, status=Status.IN_PROGRESS.value)
+        tv_obj = TV.objects.create(
+            item=item_tv, user=self.user, status=Status.IN_PROGRESS.value
+        )
         item_season, _ = Item.objects.get_or_create(
             media_id=TMDB_ID,
             source=Sources.TMDB.value,
@@ -855,7 +857,11 @@ class ImportTrakt(TestCase):
 
         entry = {
             "type": "episode",
-            "episode": {"season": SEASON_NUMBER, "number": TOTAL_EPISODES, "title": "Finale"},
+            "episode": {
+                "season": SEASON_NUMBER,
+                "number": TOTAL_EPISODES,
+                "title": "Finale",
+            },
             "show": {"title": "Test Show", "ids": {"tmdb": TMDB_ID}},
             "watched_at": "2024-06-01T00:00:00.000Z",
         }
@@ -866,10 +872,15 @@ class ImportTrakt(TestCase):
 
         # This is the persistence step that the fix adds to import_data()
         from simple_history.utils import bulk_update_with_history
+
         if trakt_importer.completed_seasons:
-            bulk_update_with_history(trakt_importer.completed_seasons, Season, fields=["status"])
+            bulk_update_with_history(
+                trakt_importer.completed_seasons, Season, fields=["status"]
+            )
         if trakt_importer.completed_tvs:
-            bulk_update_with_history(trakt_importer.completed_tvs, TV, fields=["status"])
+            bulk_update_with_history(
+                trakt_importer.completed_tvs, TV, fields=["status"]
+            )
 
         season_obj.refresh_from_db()
         tv_obj.refresh_from_db()
@@ -880,7 +891,9 @@ class ImportTrakt(TestCase):
     # Episode rating import — gap coverage
     # ------------------------------------------------------------------
 
-    def _make_tv_season_episode(self, tmdb_id, season_num, episode_num, initial_score=None):
+    def _make_tv_season_episode(
+        self, tmdb_id, season_num, episode_num, initial_score=None
+    ):
         """Helper: create TV → Season → Episode hierarchy and return all three objects."""
         tv_item, _ = Item.objects.get_or_create(
             media_id=str(tmdb_id),
@@ -967,7 +980,9 @@ class ImportTrakt(TestCase):
     def test_episode_rating_overwrites_existing_score(self, mock_make_request):
         """A new rating overwrites an episode's pre-existing score."""
         TMDB_ID = 55501
-        _, _, episode_obj = self._make_tv_season_episode(TMDB_ID, 1, 1, initial_score="5.0")
+        _, _, episode_obj = self._make_tv_season_episode(
+            TMDB_ID, 1, 1, initial_score="5.0"
+        )
 
         mock_make_request.side_effect = [
             [
@@ -1031,7 +1046,9 @@ class ImportTrakt(TestCase):
 
         # Should not raise; no Episode created
         TraktImporter("testuser", self.user, "new").process_ratings()
-        self.assertEqual(Episode.objects.filter(related_season__user=self.user).count(), 0)
+        self.assertEqual(
+            Episode.objects.filter(related_season__user=self.user).count(), 0
+        )
 
     @patch("integrations.imports.trakt.TraktImporter._make_api_request")
     def test_episode_rating_no_tmdb_id(self, mock_make_request):
@@ -1051,7 +1068,9 @@ class ImportTrakt(TestCase):
 
         # Should not raise; no DB writes
         TraktImporter("testuser", self.user, "new").process_ratings()
-        self.assertEqual(Episode.objects.filter(related_season__user=self.user).count(), 0)
+        self.assertEqual(
+            Episode.objects.filter(related_season__user=self.user).count(), 0
+        )
 
     @patch("integrations.imports.trakt.TraktImporter._make_api_request")
     @patch("integrations.imports.trakt.TraktImporter._get_metadata")
@@ -1108,7 +1127,7 @@ class ImportTrakt(TestCase):
         mock_get_paginated.side_effect = [
             [],  # history — empty
             [],  # watchlist — empty
-            [    # ratings — one episode entry
+            [  # ratings — one episode entry
                 {
                     "rated_at": "2024-01-01T00:00:00.000Z",
                     "type": "episode",
@@ -1194,11 +1213,11 @@ class ImportTrakt(TestCase):
         # all use paginated data (public import skips process_dropped)
         mock_get_paginated.side_effect = [
             [episode_entry],  # history
-            [],               # watchlist — empty
-            [rating_entry],   # ratings — one episode entry
-            [],               # comments
-            [],               # collection movies — empty
-            [],               # collection shows — empty
+            [],  # watchlist — empty
+            [rating_entry],  # ratings — one episode entry
+            [],  # comments
+            [],  # collection movies — empty
+            [],  # collection shows — empty
         ]
 
         importer(None, self.user, "new", "public_user")
@@ -1207,8 +1226,12 @@ class ImportTrakt(TestCase):
             related_season__user=self.user,
             item__episode_number=1,
         ).first()
-        self.assertIsNotNone(episode_obj, "Episode should have been created by history import")
-        self.assertIsNotNone(episode_obj.score, "Episode score should be set from Trakt rating")
+        self.assertIsNotNone(
+            episode_obj, "Episode should have been created by history import"
+        )
+        self.assertIsNotNone(
+            episode_obj.score, "Episode score should be set from Trakt rating"
+        )
         self.assertEqual(float(episode_obj.score), 9.0)
 
     # ------------------------------------------------------------------
@@ -1221,10 +1244,15 @@ class ImportTrakt(TestCase):
         mock_get_paginated.return_value = [
             {"type": "show", "show": {"title": "Dropped Show", "ids": {"tmdb": 11111}}},
             {"type": "show", "show": {"title": "Also Dropped", "ids": {"tmdb": 22222}}},
-            {"type": "movie", "movie": {"title": "Hidden Movie", "ids": {"tmdb": 33333}}},
+            {
+                "type": "movie",
+                "movie": {"title": "Hidden Movie", "ids": {"tmdb": 33333}},
+            },
         ]
         encrypted_token = helpers.encrypt("test_token")
-        trakt_importer = TraktImporter("testuser", self.user, "new", refresh_token=encrypted_token)
+        trakt_importer = TraktImporter(
+            "testuser", self.user, "new", refresh_token=encrypted_token
+        )
         trakt_importer.process_dropped()
 
         self.assertIn("11111", trakt_importer.dropped_tmdb_ids)
@@ -1261,7 +1289,11 @@ class ImportTrakt(TestCase):
 
         def metadata_side_effect(media_type, tmdb_id, *args, **kwargs):
             if media_type == MediaTypes.TV.value:
-                return {"title": "Dropped Show", "image": "img.jpg", "last_episode_season": None}
+                return {
+                    "title": "Dropped Show",
+                    "image": "img.jpg",
+                    "last_episode_season": None,
+                }
             if media_type == MediaTypes.SEASON.value:
                 return {
                     "source": Sources.TMDB.value,
@@ -1283,7 +1315,12 @@ class ImportTrakt(TestCase):
         mock_get_metadata.side_effect = metadata_side_effect
         mock_get_paginated.side_effect = [
             # process_dropped — progress_watched: show is hidden/dropped
-            [{"type": "show", "show": {"title": "Dropped Show", "ids": {"tmdb": TMDB_ID}}}],
+            [
+                {
+                    "type": "show",
+                    "show": {"title": "Dropped Show", "ids": {"tmdb": TMDB_ID}},
+                }
+            ],
             [],  # process_dropped — progress_watched_reset
             [episode_entry],  # process_history
             [],  # process_watchlist
@@ -1331,7 +1368,11 @@ class ImportTrakt(TestCase):
 
         def metadata_side_effect(media_type, tmdb_id, *args, **kwargs):
             if media_type == MediaTypes.TV.value:
-                return {"title": "Ongoing Show", "image": "img.jpg", "last_episode_season": None}
+                return {
+                    "title": "Ongoing Show",
+                    "image": "img.jpg",
+                    "last_episode_season": None,
+                }
             if media_type == MediaTypes.SEASON.value:
                 return {
                     "source": Sources.TMDB.value,
@@ -1353,7 +1394,12 @@ class ImportTrakt(TestCase):
         mock_get_metadata.side_effect = metadata_side_effect
         mock_get_paginated.side_effect = [
             # process_dropped — progress_watched: show is now dropped
-            [{"type": "show", "show": {"title": "Ongoing Show", "ids": {"tmdb": TMDB_ID}}}],
+            [
+                {
+                    "type": "show",
+                    "show": {"title": "Ongoing Show", "ids": {"tmdb": TMDB_ID}},
+                }
+            ],
             [],  # process_dropped — progress_watched_reset
             [episode_entry],  # process_history
             [],  # process_watchlist
@@ -1435,7 +1481,10 @@ class ImportTrakt(TestCase):
             trakt_importer.process_history()
 
         self.assertTrue(
-            any("skipped a watch entry" in warning for warning in trakt_importer.warnings),
+            any(
+                "skipped a watch entry" in warning
+                for warning in trakt_importer.warnings
+            ),
             trakt_importer.warnings,
         )
 
@@ -1562,7 +1611,7 @@ class ImportTrakt(TestCase):
         mock_get_metadata,
         mock_make_request,
     ):
-        """"new" mode must not touch an existing collection entry's fields."""
+        """ "new" mode must not touch an existing collection entry's fields."""
         item = Item.objects.get_or_create(
             media_id="999",
             source=Sources.TMDB.value,

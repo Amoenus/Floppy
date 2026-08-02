@@ -57,6 +57,8 @@ HISTORY_COVERAGE_REPAIR_LOCK_TTL = getattr(
     60 * 30,
 )
 
+DAY_KEY_LENGTH = 8  # length of a YYYYMMDD day key string
+
 
 # ── Query helpers ─────────────────────────────────────────────────────────────
 
@@ -96,7 +98,7 @@ def _day_key_for_date(day_value):
 
 
 def _date_from_day_key(day_key: str):
-    return datetime.strptime(day_key, "%Y%m%d").date()
+    return datetime.strptime(day_key, "%Y%m%d").date()  # noqa: DTZ007  # date-only value; no timezone applies
 
 
 def _day_key_from_value(value):
@@ -109,10 +111,10 @@ def _day_key_from_value(value):
             return None
     if isinstance(value, str):
         value = value.strip().strip("'").strip('"')
-        if value.isdigit() and len(value) == 8:
+        if value.isdigit() and len(value) == DAY_KEY_LENGTH:
             return value
         try:
-            return _day_key_for_date(datetime.strptime(value, "%Y-%m-%d").date())
+            return _day_key_for_date(datetime.strptime(value, "%Y-%m-%d").date())  # noqa: DTZ007  # date-only value; no timezone applies
         except ValueError:
             return None
     if isinstance(value, datetime):
@@ -126,10 +128,12 @@ def _day_key_from_value(value):
 
 
 def history_day_key(value):
+    """Return the history day key."""
     return _day_key_from_value(value)
 
 
 def history_day_keys_for_range(start_dt, end_dt):
+    """Return the history day keys for range."""
     if not start_dt or not end_dt:
         return []
     start_local = _localize_datetime(start_dt)
@@ -189,6 +193,7 @@ def _localize_datetime(value):
 
 def _coerce_genre_list(value):
     """Normalize a genre field (string, dict, or list) into a list of strings."""
+
     def _coerce_one(v):
         if not v:
             return None

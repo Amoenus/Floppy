@@ -1,5 +1,6 @@
 import logging
 import time
+from http import HTTPStatus
 from urllib.parse import urlparse
 
 from django.conf import settings
@@ -216,7 +217,7 @@ class ProviderAPIErrorMiddleware:
 
             if (
                 exception.provider == Sources.HARDCOVER.value
-                and exception.status_code == 401
+                and exception.status_code == HTTPStatus.UNAUTHORIZED
             ):
                 extra_context = {
                     "error_support_title": "Hardcover token expired",
@@ -239,8 +240,12 @@ class ProviderAPIErrorMiddleware:
                 request,
                 "500.html",
                 status_code=503 if is_provider_unreachable else 500,
-                page_title="Service Unavailable" if is_provider_unreachable else "Server Error",
-                heading="Service Unavailable" if is_provider_unreachable else "Something Went Wrong",
+                page_title="Service Unavailable"
+                if is_provider_unreachable
+                else "Server Error",
+                heading="Service Unavailable"
+                if is_provider_unreachable
+                else "Something Went Wrong",
                 error_message=str(exception),
                 exception=exception,
                 extra_lines=extra_lines,
@@ -278,7 +283,7 @@ class DiscoverWarmupMiddleware:
         if should_mark_interactive_request(request):
             try:
                 mark_interactive_request()
-            except Exception as error:  # noqa: BLE001
+            except Exception as error:
                 logger.debug(
                     "Skipping interactive-request marker for %s due to error: %s",
                     request.path,
@@ -287,7 +292,7 @@ class DiscoverWarmupMiddleware:
         if self._should_warm_discover(request):
             try:
                 discover_tab_cache.maybe_schedule_user_warmup(request.user)
-            except Exception as error:  # noqa: BLE001
+            except Exception as error:
                 logger.debug(
                     "Skipping Discover warmup for %s due to error: %s",
                     request.path,

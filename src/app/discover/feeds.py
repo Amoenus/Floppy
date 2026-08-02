@@ -99,7 +99,7 @@ class DiscoverRowFeed(Feed):
         """Return the feed title."""
         return f"{obj['row_definition'].title} - Floppy"
 
-    def link(self, obj):  # noqa: ARG002
+    def link(self, obj):
         """Return the Discover page URL."""
         return self.request.build_absolute_uri(reverse("discover"))
 
@@ -132,7 +132,7 @@ class DiscoverRowFeed(Feed):
         # by subscribers, and changing them re-marks every item unread.
         return f"yamtrack://{item.media_type}/{item.source}/{item.media_id}"
 
-    def item_guid_is_permalink(self, item):  # noqa: ARG002
+    def item_guid_is_permalink(self, item):
         """Guids are identifiers, not permalinks."""
         return False
 

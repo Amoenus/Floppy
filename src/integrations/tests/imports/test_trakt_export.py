@@ -6,7 +6,7 @@ from unittest.mock import Mock, patch
 import requests
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase
+from django.test import TestCase, tag
 from django.urls import reverse
 
 from app.models import (
@@ -305,6 +305,7 @@ class ImportTraktExport(TestCase):
         )
         self.assertEqual(watched, [1, 2])
 
+    @tag("network")
     @patch("integrations.imports.trakt.TraktImporter._get_metadata")
     def test_ratings_watchlist_and_comments(self, mock_get_metadata):
         """Ratings keep the raw 1-10 score; watchlist plans; comments become notes."""

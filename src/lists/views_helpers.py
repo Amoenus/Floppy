@@ -103,7 +103,9 @@ def _get_completed_item_ids(user, item_ids):
                 item_id__in=item_ids,
                 user=user,
                 status="Completed",
-            ).values_list("item_id", flat=True).distinct()
+            )
+            .values_list("item_id", flat=True)
+            .distinct()
         )
     return completed
 
@@ -214,7 +216,9 @@ def _get_list_last_watched_dates(user, list_ids):
         latest_watch = None
         for item_id in item_ids:
             watched_at = item_last_watched.get(item_id)
-            if watched_at is not None and (latest_watch is None or watched_at > latest_watch):
+            if watched_at is not None and (
+                latest_watch is None or watched_at > latest_watch
+            ):
                 latest_watch = watched_at
         list_last_watched[list_id] = latest_watch
 
@@ -284,7 +288,10 @@ def _episode_title_needs_backfill(item, *, season_item=None):
     """Return whether an episode item is still using a parent show title."""
     if getattr(item, "media_type", None) != MediaTypes.EPISODE.value:
         return False
-    if getattr(item, "season_number", None) is None or getattr(item, "episode_number", None) is None:
+    if (
+        getattr(item, "season_number", None) is None
+        or getattr(item, "episode_number", None) is None
+    ):
         return False
 
     media = getattr(item, "media", None)
@@ -294,8 +301,12 @@ def _episode_title_needs_backfill(item, *, season_item=None):
     current_title = Item._normalize_title_value(getattr(item, "title", None))
     parent_titles = {
         Item._normalize_title_value(getattr(season_item, "title", None)),
-        Item._normalize_title_value(getattr(getattr(related_season, "item", None), "title", None)),
-        Item._normalize_title_value(getattr(getattr(related_tv, "item", None), "title", None)),
+        Item._normalize_title_value(
+            getattr(getattr(related_season, "item", None), "title", None)
+        ),
+        Item._normalize_title_value(
+            getattr(getattr(related_tv, "item", None), "title", None)
+        ),
     }
     parent_titles.discard(None)
 
@@ -316,7 +327,9 @@ def _episode_title_fields_from_season_metadata(item, season_metadata):
     return None
 
 
-def _maybe_backfill_episode_title(item, *, season_item=None, season_metadata=None, force=False):
+def _maybe_backfill_episode_title(
+    item, *, season_item=None, season_metadata=None, force=False
+):
     """Resolve malformed episode item titles that still store the show title."""
     if not force and not _episode_title_needs_backfill(item, season_item=season_item):
         return
@@ -338,7 +351,9 @@ def _maybe_backfill_episode_title(item, *, season_item=None, season_metadata=Non
                 exc,
             )
         else:
-            title_fields = _episode_title_fields_from_season_metadata(item, season_metadata)
+            title_fields = _episode_title_fields_from_season_metadata(
+                item, season_metadata
+            )
 
     if title_fields is None:
         try:
@@ -393,7 +408,11 @@ def _attach_list_card_overrides(item_list):
                 season_number=season_number,
             )
         season_item_by_key = {
-            (str(season_item.media_id), season_item.source, season_item.season_number): season_item
+            (
+                str(season_item.media_id),
+                season_item.source,
+                season_item.season_number,
+            ): season_item
             for season_item in Item.objects.filter(season_filters)
         }
 
@@ -405,9 +424,8 @@ def _attach_list_card_overrides(item_list):
             item,
             season_item=season_item,
         )
-        if (
-            item_key not in season_metadata_by_key
-            and _episode_title_needs_backfill(item, season_item=season_item)
+        if item_key not in season_metadata_by_key and _episode_title_needs_backfill(
+            item, season_item=season_item
         ):
             try:
                 season_metadata_by_key[item_key] = services.get_media_metadata(
@@ -498,16 +516,18 @@ def _resolve_list_table_media_type(selected_media_types, filtered_media_types):
 def _get_trakt_credentials(user):
     """Return decrypted Trakt client credentials for a user, if configured."""
     trakt_account = TraktAccount.objects.filter(user=user).first()
-    if not trakt_account or not trakt_account.client_id or not trakt_account.client_secret:
+    if (
+        not trakt_account
+        or not trakt_account.client_id
+        or not trakt_account.client_secret
+    ):
         return None
     try:
         client_id = import_helpers.decrypt(trakt_account.client_id)
         client_secret = import_helpers.decrypt(trakt_account.client_secret)
     except Exception:
-        logger.error(
-            "Failed to decrypt Trakt credentials for user %s",
-            user.username,
-            exc_info=True,
+        logger.exception(
+            "Failed to decrypt Trakt credentials for user %s", user.username
         )
         return None
     return client_id, client_secret
@@ -556,7 +576,9 @@ def _attach_media_with_aggregation(item_list, media_user):
                     "related_season__related_tv__item",
                 ],
             )
-        queryset = model.objects.filter(**filter_kwargs).select_related(*select_related_fields)
+        queryset = model.objects.filter(**filter_kwargs).select_related(
+            *select_related_fields
+        )
         queryset = media_manager._apply_prefetch_related(queryset, media_type)
         media_manager.annotate_max_progress(queryset, media_type)
 
@@ -571,7 +593,9 @@ def _attach_media_with_aggregation(item_list, media_user):
                 if not hasattr(entry, "progress"):
                     entry.progress = entry.item.episode_number
                 if not hasattr(entry, "max_progress"):
-                    entry.max_progress = getattr(entry.related_season, "max_progress", None)
+                    entry.max_progress = getattr(
+                        entry.related_season, "max_progress", None
+                    )
             entries_by_item.setdefault(entry.item_id, []).append(entry)
 
         for item_id, entries in entries_by_item.items():

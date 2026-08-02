@@ -71,6 +71,7 @@ class JellyfinPushSyncService:
     """Push the user's watched/unwatched Movie and Episode state to Jellyfin."""
 
     def __init__(self, user, account):
+        """Store the extra keyword arguments this form needs."""
         self.user = user
         self.account = account
         self.counts = defaultdict(int)
@@ -80,7 +81,8 @@ class JellyfinPushSyncService:
     def sync(self) -> tuple[dict[str, int], str]:
         """Push watched state and return counts plus a warning message."""
         if not self.account or not self.account.is_connected:
-            raise MediaImportError("Jellyfin is not connected for this user.")
+            msg = "Jellyfin is not connected for this user."
+            raise MediaImportError(msg)
 
         self.counts = defaultdict(int)
         self.warnings = []
@@ -98,16 +100,20 @@ class JellyfinPushSyncService:
 
     def _build_client(self) -> JellyfinClient:
         api_key = decrypt_or_raise(self.account.api_key)
-        client = JellyfinClient(self.account.base_url, api_key, self.account.jellyfin_user_id or None)
+        client = JellyfinClient(
+            self.account.base_url, api_key, self.account.jellyfin_user_id or None
+        )
 
         if not self.account.jellyfin_user_id:
             try:
                 current_user = client.get_current_user()
             except (JellyfinAuthError, JellyfinClientError) as exc:
-                raise MediaImportError(f"Could not connect to Jellyfin: {exc}") from exc
+                msg = f"Could not connect to Jellyfin: {exc}"
+                raise MediaImportError(msg) from exc
             if not current_user or not current_user.get("Id"):
+                msg = "Could not resolve a Jellyfin user for this API key."
                 raise MediaImportError(
-                    "Could not resolve a Jellyfin user for this API key.",
+                    msg,
                 )
             client.user_id = current_user["Id"]
             self.account.jellyfin_user_id = current_user["Id"]
@@ -147,7 +153,8 @@ class JellyfinPushSyncService:
                 elif item_type == "Episode":
                     episodes.append(jf_item)
         except (JellyfinAuthError, JellyfinClientError) as exc:
-            raise MediaImportError(f"Could not read Jellyfin library: {exc}") from exc
+            msg = f"Could not read Jellyfin library: {exc}"
+            raise MediaImportError(msg) from exc
 
         indexed_episode_count = 0
         for jf_item in episodes:
@@ -160,7 +167,9 @@ class JellyfinPushSyncService:
                 continue
             indexed_episode_count += 1
             for provider, value in series_keys:
-                episode_index[(provider, value, season_number, episode_number)] = jf_item
+                episode_index[(provider, value, season_number, episode_number)] = (
+                    jf_item
+                )
 
         logger.info(
             "Indexed %d Jellyfin movies, %d episodes (%d series) for push sync",
@@ -257,7 +266,9 @@ class JellyfinPushSyncService:
             watched = episode.end_date is not None and not episode.dropped
             self._apply_state(client, jf_item, watched=watched)
 
-    def _apply_state(self, client: JellyfinClient, jf_item: dict, *, watched: bool) -> None:
+    def _apply_state(
+        self, client: JellyfinClient, jf_item: dict, *, watched: bool
+    ) -> None:
         currently_played = bool((jf_item.get("UserData") or {}).get("Played"))
         jellyfin_id = jf_item.get("Id")
         if not jellyfin_id:

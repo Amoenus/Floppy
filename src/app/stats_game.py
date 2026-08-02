@@ -66,7 +66,9 @@ def _collect_game_data(game_queryset, start_date, end_date):
         activity_datetime = None
         for entry in entries:
             entry_activity = _get_activity_datetime(entry)
-            if entry_activity and (activity_datetime is None or entry_activity > activity_datetime):
+            if entry_activity and (
+                activity_datetime is None or entry_activity > activity_datetime
+            ):
                 activity_datetime = entry_activity
         if activity_datetime is None:
             continue
@@ -223,14 +225,17 @@ def _build_game_hours_charts(game_data, start_date, end_date, color, dataset_lab
                 segment_end = segment.get("end_date")
 
                 if not segment_start or not segment_end:
-                    activity_dt = segment.get("activity_datetime") or data.get("activity_datetime")
+                    activity_dt = segment.get("activity_datetime") or data.get(
+                        "activity_datetime"
+                    )
                     if not activity_dt:
                         continue
 
                     activity_date = _localize_datetime(activity_dt).date()
-                    if filter_start_date and filter_end_date:
-                        if not (filter_start_date <= activity_date <= filter_end_date):
-                            continue
+                    if (filter_start_date and filter_end_date) and not (
+                        filter_start_date <= activity_date <= filter_end_date
+                    ):
+                        continue
                     year_hours[activity_date.year] += segment_hours
                     month_hours[activity_date.month] += segment_hours
                     continue
@@ -251,7 +256,10 @@ def _build_game_hours_charts(game_data, start_date, end_date, color, dataset_lab
 
                 current_date = range_start
                 while current_date <= range_end:
-                    if not filter_start_date or filter_start_date <= current_date <= filter_end_date:
+                    if (
+                        not filter_start_date
+                        or filter_start_date <= current_date <= filter_end_date
+                    ):
                         year_hours[current_date.year] += hours_per_day
                         month_hours[current_date.month] += hours_per_day
                     current_date += datetime.timedelta(days=1)
@@ -291,7 +299,10 @@ def _build_game_hours_charts(game_data, start_date, end_date, color, dataset_lab
         # Aggregate hours by year and month
         current_date = range_start
         while current_date <= range_end:
-            if not filter_start_date or filter_start_date <= current_date <= filter_end_date:
+            if (
+                not filter_start_date
+                or filter_start_date <= current_date <= filter_end_date
+            ):
                 year_hours[current_date.year] += hours_per_day
                 month_hours[current_date.month] += hours_per_day
 
@@ -302,14 +313,18 @@ def _build_game_hours_charts(game_data, start_date, end_date, color, dataset_lab
         sorted_years = sorted(year_hours.keys())
         year_labels = [str(year) for year in sorted_years]
         year_values = [year_hours[year] for year in sorted_years]
-        year_chart = _build_single_series_chart(year_labels, year_values, color, dataset_label)
+        year_chart = _build_single_series_chart(
+            year_labels, year_values, color, dataset_label
+        )
     else:
         year_chart = empty_chart
 
     # Build month chart
     month_labels = [calendar.month_abbr[i] for i in range(1, 13)]
     month_values = [month_hours.get(i, 0) for i in range(1, 13)]
-    month_chart = _build_single_series_chart(month_labels, month_values, color, dataset_label)
+    month_chart = _build_single_series_chart(
+        month_labels, month_values, color, dataset_label
+    )
 
     return {
         "by_year": year_chart,
@@ -440,11 +455,9 @@ def _compute_game_top_genres(play_details, limit=STATISTICS_TOP_N):
     from app.models import Sources
     from app.statistics import _coerce_genre_list
 
-    genre_stats = defaultdict(
-        lambda: {"minutes": 0, "game_ids": set(), "name": ""}
-    )
+    genre_stats = defaultdict(lambda: {"minutes": 0, "game_ids": set(), "name": ""})
 
-    for game, dt, runtime in play_details:
+    for game, _dt, runtime in play_details:
         minutes = runtime or 0
 
         # Get genres from stored item or cached metadata only (don't trigger API calls)
@@ -454,7 +467,9 @@ def _compute_game_top_genres(play_details, limit=STATISTICS_TOP_N):
 
             if not genres:
                 # Try to get genres from cache directly
-                cache_key = f"{Sources.IGDB.value}_{MediaTypes.GAME.value}_{game.item.media_id}"
+                cache_key = (
+                    f"{Sources.IGDB.value}_{MediaTypes.GAME.value}_{game.item.media_id}"
+                )
                 cached_metadata = cache.get(cache_key)
 
                 if cached_metadata:
@@ -518,10 +533,12 @@ def _compute_game_top_decades(play_details, limit=STATISTICS_TOP_N):
 
     decade_stats = defaultdict(lambda: {"minutes": 0, "game_ids": set(), "label": ""})
 
-    for game, dt, runtime in play_details:
+    for game, _dt, runtime in play_details:
         minutes = runtime or 0
 
-        release_datetime = getattr(getattr(game, "item", None), "release_datetime", None)
+        release_datetime = getattr(
+            getattr(game, "item", None), "release_datetime", None
+        )
         if not release_datetime:
             continue
 
@@ -564,10 +581,7 @@ def _compute_game_top_daily_average(game_data, limit=STATISTICS_TOP_N):
     from app.helpers import minutes_to_hhmm
 
     # Filter games with valid daily averages and sort
-    games_with_average = [
-        data for data in game_data
-        if data["daily_average"] > 0
-    ]
+    games_with_average = [data for data in game_data if data["daily_average"] > 0]
 
     # Sort by daily average (descending)
     sorted_games = sorted(
@@ -691,7 +705,9 @@ def _compute_game_platform_breakdown(game_data, user):
     return sorted(results, key=lambda x: x["hours"], reverse=True)
 
 
-def get_game_consumption_stats(user_media, start_date, end_date, minutes_per_type=None, user=None):
+def get_game_consumption_stats(
+    user_media, start_date, end_date, minutes_per_type=None, user=None
+):
     """Return aggregate metrics and chart data for game activity."""
     from app.statistics import (
         _compute_metric_breakdown,
@@ -710,7 +726,9 @@ def get_game_consumption_stats(user_media, start_date, end_date, minutes_per_typ
     _, play_details = _collect_game_play_data(game_queryset, start_date, end_date)
 
     if minutes_per_type is None:
-        minutes_per_type = calculate_minutes_per_media_type(user_media or {}, start_date, end_date)
+        minutes_per_type = calculate_minutes_per_media_type(
+            user_media or {}, start_date, end_date
+        )
 
     total_minutes = minutes_per_type.get(MediaTypes.GAME.value, 0)
     total_hours = total_minutes / 60 if total_minutes else 0
@@ -733,7 +751,9 @@ def get_game_consumption_stats(user_media, start_date, end_date, minutes_per_typ
     chart_label = "Game Hours"
 
     # Build hours charts
-    hours_charts = _build_game_hours_charts(game_data, start_date, end_date, color, chart_label)
+    hours_charts = _build_game_hours_charts(
+        game_data, start_date, end_date, color, chart_label
+    )
 
     # Build daily average distribution chart (includes top_games_per_band for tooltip)
     daily_avg_chart = _build_daily_average_distribution_chart(game_data, color, "Games")
@@ -752,7 +772,9 @@ def get_game_consumption_stats(user_media, start_date, end_date, minutes_per_typ
     top_decades = _compute_game_top_decades(play_details, limit=STATISTICS_TOP_N)
 
     # Compute top daily average games
-    top_daily_average_games = _compute_game_top_daily_average(game_data, limit=STATISTICS_TOP_N)
+    top_daily_average_games = _compute_game_top_daily_average(
+        game_data, limit=STATISTICS_TOP_N
+    )
 
     # Compute platform breakdown
     platform_breakdown = _compute_game_platform_breakdown(game_data, user)

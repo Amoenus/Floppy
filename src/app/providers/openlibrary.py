@@ -169,7 +169,9 @@ async def async_book(media_id):
         )
         score, score_count = await ratings_task
         authors_full = await authors_full_task
-        author_names = [author.get("name") for author in authors_full if author.get("name")]
+        author_names = [
+            author.get("name") for author in authors_full if author.get("name")
+        ]
 
         data = {
             "media_id": media_id,

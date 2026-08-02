@@ -39,6 +39,7 @@ class RequestPerformanceLoggingMiddlewareTests(TestCase):
     )
     def test_logs_query_heavy_request(self):
         """A request over the query-count threshold is logged."""
+
         def view(_request):
             list(Item.objects.all())
             return HttpResponse("ok")

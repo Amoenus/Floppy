@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 def _migration_candidates_queryset():
-    from app.models import Item, MediaTypes, Sources  # noqa: PLC0415
+    from app.models import Item, MediaTypes, Sources
 
     return (
         Item.objects.filter(
@@ -38,8 +38,8 @@ def migrate_tv_shows_to_preferred_provider_task(batch_size: int = 200):
     future runs stop retrying it. Best-effort — a failure on one show never
     blocks the rest of the batch.
     """
-    from app.providers import tvdb  # noqa: PLC0415
-    from app.services.tv_provider_migration import (  # noqa: PLC0415
+    from app.providers import tvdb
+    from app.services.tv_provider_migration import (
         migrate_tv_item_to_tvdb,
     )
 

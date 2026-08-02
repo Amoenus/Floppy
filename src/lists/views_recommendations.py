@@ -36,6 +36,9 @@ from lists.views_helpers import (
 
 logger = logging.getLogger(__name__)
 
+# Minimum characters required before a search query is sent to providers.
+MIN_SEARCH_QUERY_LENGTH = 2
+
 
 @login_not_required
 @require_GET
@@ -173,7 +176,7 @@ def recommend_search(request, list_id):
     except (TypeError, ValueError):
         page = 1
 
-    if not query or len(query) < 2:
+    if not query or len(query) < MIN_SEARCH_QUERY_LENGTH:
         return render(
             request,
             "lists/components/recommend_search_results.html",

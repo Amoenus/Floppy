@@ -3,6 +3,7 @@
 Extracted from tasks.py. Re-exported from app.tasks for backward compatibility.
 """
 
+import contextlib
 import logging
 
 from celery import shared_task
@@ -52,11 +53,12 @@ _GENRE_BATCH_SIZE_DEFAULT = 1500
 
 
 def _genre_items_queryset():
-    from app.models import MetadataBackfillState  # noqa: PLC0415
-    from app.providers import tvdb  # noqa: PLC0415
+    from app.models import MetadataBackfillState
+    from app.providers import tvdb
 
     tvdb_enabled = tvdb.enabled()
-    from django.db.models import Q  # noqa: PLC0415
+    from django.db.models import Q
+
     genre_filters = Q(genres__isnull=True) | Q(genres=[])
     if tvdb_enabled:
         genre_filters |= Q(
@@ -95,11 +97,10 @@ def is_genre_backfill_reconcile_complete() -> bool:
 
 def _resolve_tmdb_tv_item_tvdb_id(item: Item, tmdb_metadata: dict | None) -> str | None:
     """Return a TVDB series ID for a TMDB TV item, persisting discovered mapping."""
-    from app.services import metadata_resolution  # noqa: PLC0415
+    from app.services import metadata_resolution
 
     if not (
-        item.source == Sources.TMDB.value
-        and item.media_type == MediaTypes.TV.value
+        item.source == Sources.TMDB.value and item.media_type == MediaTypes.TV.value
     ):
         return None
 
@@ -130,9 +131,9 @@ def _resolve_tvdb_id_via_imdb(
     fetch returns 404. The existing upsert_provider_links call in the caller
     will persist the corrected ID automatically.
     """
-    import re  # noqa: PLC0415
+    import re
 
-    from app.providers import tvdb  # noqa: PLC0415
+    from app.providers import tvdb
 
     imdb_link = ((tmdb_metadata or {}).get("external_links") or {}).get("IMDb", "")
     if not imdb_link:
@@ -165,8 +166,8 @@ def _resolve_tvdb_id_via_imdb(
 
 def _tmdb_tv_item_is_tvdb_anime(item: Item, tmdb_metadata: dict | None) -> bool:
     """Return whether TVDB classifies a TMDB TV item as Anime."""
-    from app.providers import tvdb  # noqa: PLC0415
-    from app.services import metadata_resolution  # noqa: PLC0415
+    from app.providers import tvdb
+    from app.services import metadata_resolution
 
     if not tvdb.enabled():
         return False
@@ -175,17 +176,15 @@ def _tmdb_tv_item_is_tvdb_anime(item: Item, tmdb_metadata: dict | None) -> bool:
     if not tvdb_id:
         return False
 
-    from app.providers.services import ProviderAPIError  # noqa: PLC0415
+    from app.providers.services import ProviderAPIError
 
     tvdb_metadata_result = None
-    try:
+    with contextlib.suppress(ProviderAPIError):
         tvdb_metadata_result = services.get_media_metadata(
             MediaTypes.TV.value,
             tvdb_id,
             Sources.TVDB.value,
         )
-    except ProviderAPIError:
-        pass
 
     if not isinstance(tvdb_metadata_result, dict):
         healed_id = _resolve_tvdb_id_via_imdb(tmdb_metadata, stale_tvdb_id=tvdb_id)
@@ -196,12 +195,13 @@ def _tmdb_tv_item_is_tvdb_anime(item: Item, tmdb_metadata: dict | None) -> bool:
                 tvdb_id,
                 Sources.TVDB.value,
             )
-            from app.providers import tmdb as tmdb_provider  # noqa: PLC0415
+            from app.providers import tmdb as tmdb_provider
+
             tmdb_provider.set_tvdb_id_override(item.media_id, healed_id)
 
     if not isinstance(tvdb_metadata_result, dict):
         msg = "no tvdb metadata"
-        raise ValueError(msg)
+        raise TypeError(msg)
 
     metadata_resolution.upsert_provider_links(
         item,
@@ -213,7 +213,7 @@ def _tmdb_tv_item_is_tvdb_anime(item: Item, tmdb_metadata: dict | None) -> bool:
 
 
 def _populate_genres_for_items(items, delay_seconds):
-    from app.providers import tvdb  # noqa: PLC0415
+    from app.providers import tvdb
 
     updated_count = 0
     error_count = 0
@@ -235,20 +235,29 @@ def _populate_genres_for_items(items, delay_seconds):
                     item.source,
                 )
                 error_count += 1
-                _record_backfill_failure(item, MetadataBackfillField.GENRES, "no metadata")
+                _record_backfill_failure(
+                    item, MetadataBackfillField.GENRES, "no metadata"
+                )
                 continue
 
             source_genres = metadata_utils.extract_metadata_genres(metadata)
-            incoming_genres = source_genres or metadata_utils.normalize_genres(item.genres)
+            incoming_genres = source_genres or metadata_utils.normalize_genres(
+                item.genres
+            )
             if not incoming_genres:
                 logger.warning("No genre data available for %s", item.title)
                 error_count += 1
-                _record_backfill_failure(item, MetadataBackfillField.GENRES, "no genres")
+                _record_backfill_failure(
+                    item, MetadataBackfillField.GENRES, "no genres"
+                )
                 continue
 
             add_anime = False
             strategy_version = GENRE_BACKFILL_VERSION
-            if item.source == Sources.TMDB.value and item.media_type == MediaTypes.TV.value:
+            if (
+                item.source == Sources.TMDB.value
+                and item.media_type == MediaTypes.TV.value
+            ):
                 if tvdb.enabled():
                     add_anime = _tmdb_tv_item_is_tvdb_anime(item, metadata)
                 else:
@@ -275,15 +284,28 @@ def _populate_genres_for_items(items, delay_seconds):
             logger.info("Updated genres for %s: %s", item.title, item.genres)
 
             if delay_seconds > 0:
-                import time  # noqa: PLC0415
+                import time
+
                 time.sleep(delay_seconds)
         except Exception as exc:
             error_count += 1
-            logger.error("Error updating genres for %s: %s", item.title, exception_summary(exc))
-            _record_backfill_failure(item, MetadataBackfillField.GENRES, f"exception: {exception_summary(exc)}")
+            logger.exception(
+                "Error updating genres for %s: %s",
+                item.title,
+                exception_summary(exc),  # noqa: TRY401  # exception_summary() is the project's sanitised rendering
+            )
+            _record_backfill_failure(
+                item,
+                MetadataBackfillField.GENRES,
+                f"exception: {exception_summary(exc)}",
+            )
 
     run.reenqueue_if_deferred(enqueue_genre_backfill_items)
-    logger.info("Genre population batch completed: %s updated, %s errors", updated_count, error_count)
+    logger.info(
+        "Genre population batch completed: %s updated, %s errors",
+        updated_count,
+        error_count,
+    )
     if updated_items:
         _schedule_metadata_statistics_refresh(
             updated_items,
@@ -294,13 +316,13 @@ def _populate_genres_for_items(items, delay_seconds):
 
 
 def populate_genres_for_item_sync(item: Item, metadata: dict) -> None:
-    """Synchronously populate genres for a single TMDB TV item during a manual refresh.
+    """Populate genres for one TMDB TV item during a manual refresh.
 
     Runs the full pipeline inline (including TVDB anime check + ID healing) so
     the corrected genres are persisted before the page reloads. Errors are caught
     and logged rather than raised so they don't abort the surrounding sync.
     """
-    from app.providers import tvdb  # noqa: PLC0415
+    from app.providers import tvdb
 
     source_genres = metadata_utils.extract_metadata_genres(metadata)
     incoming_genres = source_genres or metadata_utils.normalize_genres(item.genres)
@@ -337,10 +359,13 @@ def populate_genres_for_item_sync(item: Item, metadata: dict) -> None:
             item.genres,
         )
 
-    _record_backfill_success(item, MetadataBackfillField.GENRES, strategy_version=strategy_version)
+    _record_backfill_success(
+        item, MetadataBackfillField.GENRES, strategy_version=strategy_version
+    )
 
 
 def enqueue_genre_backfill_items(item_ids, countdown=10):
+    """Return the enqueue genre backfill items."""
     normalized = _normalize_item_ids(item_ids)
     normalized = _filter_backfill_item_ids(normalized, MetadataBackfillField.GENRES)
     if not normalized:
@@ -348,12 +373,16 @@ def enqueue_genre_backfill_items(item_ids, countdown=10):
     try:
         queue = cache.get(GENRE_BACKFILL_ITEMS_QUEUE_KEY) or []
         queue = list(set(queue).union(normalized))
-        cache.set(GENRE_BACKFILL_ITEMS_QUEUE_KEY, queue, timeout=GENRE_BACKFILL_QUEUE_TTL)
+        cache.set(
+            GENRE_BACKFILL_ITEMS_QUEUE_KEY, queue, timeout=GENRE_BACKFILL_QUEUE_TTL
+        )
         if cache.add(GENRE_BACKFILL_ITEMS_SCHEDULED_KEY, True, timeout=30):
             populate_genre_backfill_queue.apply_async(countdown=countdown)
     except Exception as exc:  # pragma: no cover - cache unavailable
         logger.debug("Genre backfill queue unavailable: %s", exception_summary(exc))
-        populate_genre_data_for_items.apply_async(args=[normalized], countdown=countdown)
+        populate_genre_data_for_items.apply_async(
+            args=[normalized], countdown=countdown
+        )
     return len(normalized)
 
 
@@ -367,9 +396,15 @@ def populate_genre_data_for_items(item_ids: list[int], delay_seconds: float = 0.
     items_to_update = list(_genre_items_queryset().filter(id__in=normalized))
     if not items_to_update:
         logger.info("No targeted items need genre data")
-        return {"updated": 0, "errors": 0, "message": "No targeted items need genre data"}
+        return {
+            "updated": 0,
+            "errors": 0,
+            "message": "No targeted items need genre data",
+        }
 
-    updated_count, error_count = _populate_genres_for_items(items_to_update, delay_seconds)
+    updated_count, error_count = _populate_genres_for_items(
+        items_to_update, delay_seconds
+    )
     return {
         "updated": updated_count,
         "errors": error_count,
@@ -389,7 +424,9 @@ def populate_genre_backfill_queue(batch_size: int = 50, delay_seconds: float = 0
     batch = queue[:batch_size]
     remaining = queue[batch_size:]
     if remaining:
-        cache.set(GENRE_BACKFILL_ITEMS_QUEUE_KEY, remaining, timeout=GENRE_BACKFILL_QUEUE_TTL)
+        cache.set(
+            GENRE_BACKFILL_ITEMS_QUEUE_KEY, remaining, timeout=GENRE_BACKFILL_QUEUE_TTL
+        )
         if cache.add(GENRE_BACKFILL_ITEMS_SCHEDULED_KEY, True, timeout=30):
             populate_genre_backfill_queue.apply_async(countdown=10)
     else:
@@ -446,7 +483,9 @@ def ensure_genre_backfill_reconcile(
 ):
     """Retry the current genre strategy reconcile until it has completed."""
     if interactive_request_active():
-        logger.info("ensure_genre_backfill_reconcile skipped reason=interactive_request_active")
+        logger.info(
+            "ensure_genre_backfill_reconcile skipped reason=interactive_request_active"
+        )
         return {"skipped": True, "reason": "interactive_request_active"}
 
     resolved_strategy_version = int(strategy_version or GENRE_BACKFILL_VERSION)

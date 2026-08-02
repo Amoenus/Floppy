@@ -14,7 +14,7 @@ class EndpointCase:
 
 def get_endpoint_cases() -> list[EndpointCase]:
     """Return a list of every endpoint and supported method."""
-    from . import fork_endpoints  # noqa: PLC0415 — avoids circular import
+    from . import fork_endpoints
 
     return [
         EndpointCase("get", "api_calendar"),

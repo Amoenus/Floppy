@@ -12,7 +12,9 @@ class JellyseerrWebhookTests(TestCase):
         self.user = User.objects.create_user(username="john", password="pw")
         self.user.token = "x" * 32
         self.user.jellyseerr_enabled = True
-        self.user.jellyseerr_trigger_statuses = "PENDING,PROCESSING,AVAILABLE,PARTIALLY_AVAILABLE"
+        self.user.jellyseerr_trigger_statuses = (
+            "PENDING,PROCESSING,AVAILABLE,PARTIALLY_AVAILABLE"
+        )
         self.user.jellyseerr_allowed_usernames = ""
         self.user.jellyseerr_default_added_status = Status.PLANNING.value
         self.user.save()
@@ -21,7 +23,9 @@ class JellyseerrWebhookTests(TestCase):
         return reverse("jellyseerr_webhook", kwargs={"token": token or self.user.token})
 
     def test_invalid_token_returns_401(self):
-        resp = self.client.post(self._url("badtoken"), data="{}", content_type="application/json")
+        resp = self.client.post(
+            self._url("badtoken"), data="{}", content_type="application/json"
+        )
         self.assertEqual(resp.status_code, 401)
 
     def test_missing_payload_returns_400(self):
@@ -29,7 +33,9 @@ class JellyseerrWebhookTests(TestCase):
         self.assertEqual(resp.status_code, 400)
 
     def test_invalid_json_returns_400(self):
-        resp = self.client.post(self._url(), data="{notjson", content_type="application/json")
+        resp = self.client.post(
+            self._url(), data="{notjson", content_type="application/json"
+        )
         self.assertEqual(resp.status_code, 400)
 
     @patch("app.providers.services.get_media_metadata")
@@ -46,7 +52,9 @@ class JellyseerrWebhookTests(TestCase):
             "requestedBy_username": "alice",
         }
 
-        resp = self.client.post(self._url(), data=payload, content_type="application/json")
+        resp = self.client.post(
+            self._url(), data=payload, content_type="application/json"
+        )
         self.assertEqual(resp.status_code, 200)
 
         self.assertEqual(Item.objects.count(), 1)
@@ -75,7 +83,9 @@ class JellyseerrWebhookTests(TestCase):
             "requestedBy_username": "alice",
         }
 
-        resp = self.client.post(self._url(), data=payload, content_type="application/json")
+        resp = self.client.post(
+            self._url(), data=payload, content_type="application/json"
+        )
         self.assertEqual(resp.status_code, 200)
 
         self.assertEqual(Movie.objects.count(), 0)
@@ -98,7 +108,9 @@ class JellyseerrWebhookTests(TestCase):
             "requestedBy_username": "alice",
         }
 
-        resp = self.client.post(self._url(), data=payload, content_type="application/json")
+        resp = self.client.post(
+            self._url(), data=payload, content_type="application/json"
+        )
         self.assertEqual(resp.status_code, 200)
 
         self.assertEqual(TV.objects.count(), 1)

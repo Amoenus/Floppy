@@ -92,7 +92,7 @@ class AudiobookshelfImporterTests(TestCase):
         """Create test user and connected ABS account."""
         self.user = get_user_model().objects.create_user(
             username="abs-user",
-            password="pass",  # noqa: S106
+            password="pass",
         )
         AudiobookshelfAccount.objects.create(
             user=self.user,
@@ -332,7 +332,7 @@ class AudiobookshelfImporterTests(TestCase):
             ],
         }
 
-        def library_item(library_item_id, *, expanded=False):  # noqa: ARG001
+        def library_item(library_item_id, *, expanded=False):
             if library_item_id == "podcast-item":
                 return podcast_library_item()
             return {
@@ -1090,6 +1090,133 @@ class AudiobookshelfImporterTests(TestCase):
             "mediaProgress": [
                 {
                     "libraryItemId": "healthy-item",
+                    "currentTime": 3_600,
+                    "duration": 12_000,
+                    "lastUpdate": 1_500,
+                },
+            ],
+        }
+
+        importer = AudiobookshelfImporter(self.user)
+        counts, warnings = importer.import_data()
+
+        self.assertEqual(counts, {})
+        self.assertEqual(warnings, "")
+        mock_item.assert_not_called()
+
+    @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_library_item")
+    @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_me")
+    def test_release_date_falls_back_to_abs_published_year(
+        self,
+        mock_me,
+        mock_item,
+    ):
+        """ABS publishedYear should set the release date without a provider."""
+        mock_me.return_value = {
+            "mediaProgress": [
+                {
+                    "libraryItemId": "year-item",
+                    "currentTime": 600,
+                    "duration": 7_200,
+                    "lastUpdate": 1_000,
+                },
+            ],
+        }
+        mock_item.return_value = {
+            "media": {
+                "duration": 7_200,
+                "metadata": {
+                    "title": "Zeitbruch",
+                    "authors": [{"name": "Tom Hillenbrand"}],
+                    "publisher": "Ronin Hörverlag",
+                    "genres": ["Science Fiction"],
+                    "publishedYear": "2021",
+                },
+            },
+            "coverPath": "https://covers.example/zeitbruch.jpg",
+        }
+
+        importer = AudiobookshelfImporter(self.user)
+        importer.import_data()
+
+        item = Book.objects.get(user=self.user).item
+        self.assertEqual(item.release_datetime, datetime(2021, 1, 1, tzinfo=UTC))
+
+    @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_library_item")
+    @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_me")
+    def test_release_date_parses_day_month_year_published_year(
+        self,
+        mock_me,
+        mock_item,
+    ):
+        """ABS sometimes puts a full date in publishedYear."""
+        mock_me.return_value = {
+            "mediaProgress": [
+                {
+                    "libraryItemId": "date-item",
+                    "currentTime": 600,
+                    "duration": 7_200,
+                    "lastUpdate": 1_000,
+                },
+            ],
+        }
+        mock_item.return_value = {
+            "media": {
+                "duration": 7_200,
+                "metadata": {
+                    "title": "Freiheitsgeld",
+                    "authors": [{"name": "Andreas Eschbach"}],
+                    "publisher": "BASTEI LÜBBE",
+                    "genres": ["Thriller"],
+                    "publishedYear": "26-Aug-2022",
+                },
+            },
+            "coverPath": "https://covers.example/freiheitsgeld.jpg",
+        }
+
+        importer = AudiobookshelfImporter(self.user)
+        importer.import_data()
+
+        item = Book.objects.get(user=self.user).item
+        self.assertEqual(item.release_datetime, datetime(2022, 8, 26, tzinfo=UTC))
+
+    @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_library_item")
+    @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_me")
+    def test_does_not_repair_hydrated_book_without_isbn(self, mock_me, mock_item):
+        """Audiobooks without an ISBN are healthy and must not be re-repaired."""
+        account = self.user.audiobookshelf_account
+        account.last_sync_ms = 2_000
+        account.save(update_fields=["last_sync_ms", "updated_at"])
+
+        importer = AudiobookshelfImporter(self.user)
+        media_id = importer._stable_media_id(account.base_url, "no-isbn-item")
+        item = Item.objects.create(
+            media_id=media_id,
+            source=Sources.AUDIOBOOKSHELF.value,
+            media_type=MediaTypes.BOOK.value,
+            title="Der Heimweg",
+            original_title="Der Heimweg",
+            localized_title="Der Heimweg",
+            image="https://covers.example/heimweg.jpg",
+            authors=["Sebastian Fitzek"],
+            isbn=[],
+            publishers="Audible Studios",
+            genres=["Psychothriller"],
+            release_datetime=datetime(2020, 1, 1, tzinfo=UTC),
+            format="audiobook",
+            metadata_fetched_at=timezone.now(),
+        )
+        Book.objects.create(
+            user=self.user,
+            item=item,
+            status=Status.IN_PROGRESS.value,
+            progress=60,
+        )
+
+        mock_me.return_value = {
+            "mediaProgress": [
+                {
+                    "libraryItemId": "no-isbn-item",
                     "currentTime": 3_600,
                     "duration": 12_000,
                     "lastUpdate": 1_500,

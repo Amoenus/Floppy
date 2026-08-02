@@ -64,8 +64,7 @@ def is_regular_show_cast_credit(source, sort_order):
     if source != Sources.TMDB.value:
         return True
     return (
-        sort_order is not None
-        and sort_order < TMDB_SHOW_REGULAR_CAST_SORT_ORDER_CUTOFF
+        sort_order is not None and sort_order < TMDB_SHOW_REGULAR_CAST_SORT_ORDER_CUTOFF
     )
 
 
@@ -156,7 +155,9 @@ def missing_credits_backfill_item_ids(item_ids):
     current_credit_ids = current_credits_backfill_item_ids(candidate_ids)
 
     person_credit_ids = set(
-        ItemPersonCredit.objects.filter(item_id__in=candidate_ids).values_list("item_id", flat=True),
+        ItemPersonCredit.objects.filter(item_id__in=candidate_ids).values_list(
+            "item_id", flat=True
+        ),
     )
     cast_credit_ids = set(
         ItemPersonCredit.objects.filter(
@@ -165,7 +166,9 @@ def missing_credits_backfill_item_ids(item_ids):
         ).values_list("item_id", flat=True),
     )
     studio_credit_ids = set(
-        ItemStudioCredit.objects.filter(item_id__in=candidate_ids).values_list("item_id", flat=True),
+        ItemStudioCredit.objects.filter(item_id__in=candidate_ids).values_list(
+            "item_id", flat=True
+        ),
     )
 
     missing_ids = []
@@ -221,10 +224,13 @@ def _normalize_credit_rows(rows):
                 "image": (row.get("image") or "").strip(),
                 "known_for_department": (row.get("known_for_department") or "").strip(),
                 "gender": _coerce_gender(row.get("gender")),
-                "role": (row.get("role") or row.get("character") or row.get("job") or "").strip(),
+                "role": (
+                    row.get("role") or row.get("character") or row.get("job") or ""
+                ).strip(),
                 "department": (row.get("department") or "").strip(),
                 "sort_order": _as_int(
-                    row["order"] if "order" in row and row["order"] is not None
+                    row["order"]
+                    if "order" in row and row["order"] is not None
                     else row.get("sort_order")
                 ),
             },
@@ -244,7 +250,8 @@ def _normalize_studio_rows(rows):
                 "name": (row.get("name") or "").strip(),
                 "logo": (row.get("logo") or "").strip(),
                 "sort_order": _as_int(
-                    row["order"] if "order" in row and row["order"] is not None
+                    row["order"]
+                    if "order" in row and row["order"] is not None
                     else row.get("sort_order")
                 ),
             },
@@ -328,7 +335,9 @@ def sync_item_credits_from_metadata(item, metadata, person_source=None):
             )
 
         if credits_to_create:
-            ItemPersonCredit.objects.bulk_create(credits_to_create, ignore_conflicts=True)
+            ItemPersonCredit.objects.bulk_create(
+                credits_to_create, ignore_conflicts=True
+            )
 
     if has_studio_payload:
         studios_by_source_id = {}
@@ -372,15 +381,14 @@ def _normalize_author_rows(rows):
                 "name": (row.get("name") or "").strip(),
                 "image": (row.get("image") or "").strip(),
                 "known_for_department": (
-                    row.get("known_for_department")
-                    or row.get("department")
-                    or "Author"
+                    row.get("known_for_department") or row.get("department") or "Author"
                 ).strip(),
                 "gender": _coerce_gender(row.get("gender")),
                 "role": (row.get("role") or "").strip(),
                 "department": (row.get("department") or "").strip(),
                 "sort_order": _as_int(
-                    row["order"] if "order" in row and row["order"] is not None
+                    row["order"]
+                    if "order" in row and row["order"] is not None
                     else row.get("sort_order")
                 ),
             },
@@ -453,7 +461,9 @@ def upsert_person_profile(source, source_person_id, metadata):
         defaults={
             "name": (metadata.get("name") or "").strip() or "Unknown Person",
             "image": (metadata.get("image") or "").strip(),
-            "known_for_department": (metadata.get("known_for_department") or "").strip(),
+            "known_for_department": (
+                metadata.get("known_for_department") or ""
+            ).strip(),
             "biography": (metadata.get("biography") or "").strip(),
             "gender": _coerce_gender(metadata.get("gender")),
             "birth_date": _coerce_iso_date(metadata.get("birth_date")),

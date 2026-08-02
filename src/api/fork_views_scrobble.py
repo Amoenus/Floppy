@@ -94,7 +94,7 @@ def _resolve_live_playback_media_id(media_type, ids):
 
     try:
         find_response = app.providers.tmdb.find(ext_id, ext_type)
-    except Exception:  # noqa: BLE001 - best-effort for the live card
+    except Exception:
         logger.warning("Scrobble live-playback id resolution failed", exc_info=True)
         return None
 
@@ -234,7 +234,7 @@ class ScrobbleView(drf_views.APIView):
         }
         try:
             GenericScrobbleProcessor().process_payload(payload, request.user)
-        except Exception as e:  # noqa: BLE001 - provider metadata failures
+        except Exception as e:
             return Response(
                 {"detail": "Could not resolve media.", "errors": str(e)},
                 status=HTTP.NOT_FOUND,
@@ -276,7 +276,7 @@ class ScrobbleView(drf_views.APIView):
                 max(0, int(duration)) if duration is not None else None,
                 completed=completed,
             )
-        except Exception:  # noqa: BLE001 - progress storage is best-effort
+        except Exception:
             logger.warning("Scrobble playback-progress update failed", exc_info=True)
 
     def _update_live_playback(self, user, action, media_type, ids, data):
@@ -298,5 +298,5 @@ class ScrobbleView(drf_views.APIView):
                 view_offset_seconds=data.get("position_seconds"),
                 duration_seconds=data.get("duration_seconds"),
             )
-        except Exception:  # noqa: BLE001 - the live card is best-effort
+        except Exception:
             logger.warning("Scrobble live-playback update failed", exc_info=True)

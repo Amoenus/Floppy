@@ -69,7 +69,13 @@ class TrackAdmin(admin.ModelAdmin):
     """Custom admin for Track model."""
 
     search_fields = ["title", "musicbrainz_recording_id", "album__title"]
-    list_display = ["title", "album", "track_number", "disc_number", "duration_formatted"]
+    list_display = [
+        "title",
+        "album",
+        "track_number",
+        "disc_number",
+        "duration_formatted",
+    ]
     list_filter = ["album"]
 
 

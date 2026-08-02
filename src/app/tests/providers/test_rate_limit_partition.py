@@ -39,7 +39,7 @@ class ProcessRoleDetectionTests(SimpleTestCase):
             self.assertEqual(services.get_process_role(), "background")
 
     def test_unlabeled_non_celery_process_is_web(self):
-        """gunicorn and manage.py default to the web budget."""
+        """Gunicorn and manage.py default to the web budget."""
         with (
             patch.dict("os.environ", {}, clear=False),
             patch.object(services.sys, "argv", ["gunicorn"]),

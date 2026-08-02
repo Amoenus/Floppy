@@ -37,6 +37,13 @@ BOOK_METADATA_PROVIDER_ORDER = (
     Sources.OPENLIBRARY.value,
 )
 TITLE_MATCH_THRESHOLD = 0.72
+# (strptime format, characters to feed it) pairs, most specific first.
+PUBLISHED_DATE_FORMATS = (
+    ("%Y-%m-%d", 10),
+    ("%d-%b-%Y", 11),
+    ("%Y-%m", 7),
+    ("%Y", 4),
+)
 
 
 class AudiobookshelfClientError(Exception):
@@ -66,10 +73,7 @@ class AudiobookshelfClient:
             msg = "Audiobookshelf token is invalid or expired"
             raise AudiobookshelfAuthError(msg)
         if response.status_code >= HTTP_BAD_REQUEST:
-            msg = (
-                "Audiobookshelf request failed "
-                f"({response.status_code}) for {path}"
-            )
+            msg = f"Audiobookshelf request failed ({response.status_code}) for {path}"
             raise AudiobookshelfClientError(msg)
         return response.json()
 
@@ -89,7 +93,7 @@ class AudiobookshelfClient:
         return self._request(path)
 
 
-def importer(identifier, user, mode):  # noqa: ARG001
+def importer(identifier, user, mode):
     """Import Audiobookshelf progress for a user."""
     return AudiobookshelfImporter(user).import_data()
 
@@ -231,9 +235,7 @@ class AudiobookshelfImporter:
 
         media_info = item_metadata.get("media") or {}
         metadata = (
-            media_info.get("metadata")
-            or item_metadata.get("mediaMetadata")
-            or {}
+            media_info.get("metadata") or item_metadata.get("mediaMetadata") or {}
         )
 
         fallback_title = f"Audiobookshelf {library_item_id}"
@@ -252,15 +254,16 @@ class AudiobookshelfImporter:
         if image:
             _parsed = urlparse(image)
             _abs_host = urlparse(self.account.base_url).netloc.lower()
-            if (
-                _parsed.netloc.lower() == _abs_host
-                and not ("/api/items/" in _parsed.path and "/cover" in _parsed.path)
+            if _parsed.netloc.lower() == _abs_host and not (
+                "/api/items/" in _parsed.path and "/cover" in _parsed.path
             ):
                 image = f"{self.account.base_url.rstrip('/')}/api/items/{library_item_id}/cover"
 
         should_enrich = (
             self._should_prefer_provider_cover(image)
             or not authors_list
+            or not publishers
+            or not genres
         )
         provider_metadata = (
             self._resolve_provider_metadata(
@@ -273,7 +276,11 @@ class AudiobookshelfImporter:
         )
 
         if self._should_prefer_provider_cover(image):
-            image = provider_metadata.get("image") if isinstance(provider_metadata, dict) else image
+            image = (
+                provider_metadata.get("image")
+                if isinstance(provider_metadata, dict)
+                else image
+            )
         if not image:
             image = settings.IMG_NONE
 
@@ -294,12 +301,26 @@ class AudiobookshelfImporter:
             if isinstance(provider_metadata, dict)
             else None
         )
+        if release_datetime is None:
+            release_datetime = self._extract_published_datetime(metadata)
         if not series_name:
-            series_name = provider_metadata.get("series_name") if isinstance(provider_metadata, dict) else None
+            series_name = (
+                provider_metadata.get("series_name")
+                if isinstance(provider_metadata, dict)
+                else None
+            )
         if series_position is None:
-            series_position = provider_metadata.get("series_position") if isinstance(provider_metadata, dict) else None
+            series_position = (
+                provider_metadata.get("series_position")
+                if isinstance(provider_metadata, dict)
+                else None
+            )
 
-        provider_title = provider_metadata.get("title") if isinstance(provider_metadata, dict) else None
+        provider_title = (
+            provider_metadata.get("title")
+            if isinstance(provider_metadata, dict)
+            else None
+        )
         title_fields = app.models.Item.title_fields_from_metadata(
             {
                 "title": title,
@@ -318,9 +339,7 @@ class AudiobookshelfImporter:
         if not title_fields.get("localized_title"):
             title_fields["localized_title"] = title_fields.get("title") or title
         duration_seconds = (
-            media_info.get("duration")
-            or progress_entry.get("duration")
-            or 0
+            media_info.get("duration") or progress_entry.get("duration") or 0
         )
         runtime_minutes = int(duration_seconds // 60) if duration_seconds else None
         metadata_fetched_at = timezone.now()
@@ -632,9 +651,13 @@ class AudiobookshelfImporter:
     ):
         """Prefer the public feed artwork over the authenticated ABS cover."""
         image_url = self._normalize_cover_url(metadata.get("imageUrl"))
-        if image_url and urlparse(image_url).netloc.lower() != urlparse(
-            self.account.base_url,
-        ).netloc.lower():
+        if (
+            image_url
+            and urlparse(image_url).netloc.lower()
+            != urlparse(
+                self.account.base_url,
+            ).netloc.lower()
+        ):
             return image_url
         if item_metadata.get("coverPath") or image_url:
             base = self.account.base_url.rstrip("/")
@@ -891,11 +914,13 @@ class AudiobookshelfImporter:
             return True
 
         image = item.image or ""
+        # A missing ISBN is not a defect for audiobooks: ABS carries an ASIN for
+        # most audio editions and no ISBN at all, so requiring one here marked
+        # those items unhealthy forever and re-repaired them on every sync.
         return any(
             (
                 self._is_stale_abs_cover(image),
                 not item.authors,
-                not item.isbn,
                 not item.publishers,
                 not item.genres,
                 item.release_datetime is None,
@@ -920,9 +945,8 @@ class AudiobookshelfImporter:
         if parsed.scheme not in {"http", "https"}:
             return False
         abs_host = urlparse(self.account.base_url).netloc.lower()
-        return (
-            parsed.netloc.lower() == abs_host
-            and not ("/api/items/" in parsed.path and "/cover" in parsed.path)
+        return parsed.netloc.lower() == abs_host and not (
+            "/api/items/" in parsed.path and "/cover" in parsed.path
         )
 
     def _extract_author_names(self, metadata: dict[str, Any]):
@@ -985,6 +1009,26 @@ class AudiobookshelfImporter:
             return candidate
         return ""
 
+    def _extract_published_datetime(self, metadata: dict[str, Any]):
+        """Build a release datetime from the ABS publication fields.
+
+        ABS exposes publishedDate ("2022-08-26") and publishedYear, which is
+        usually a bare year but sometimes carries a full date ("26-Aug-2022").
+        Used as a fallback when provider enrichment supplies no release date,
+        so books keep a release date even without a provider match.
+        """
+        for raw in (metadata.get("publishedDate"), metadata.get("publishedYear")):
+            if not raw:
+                continue
+            value = str(raw).strip()
+            for fmt, length in PUBLISHED_DATE_FORMATS:
+                try:
+                    parsed = datetime.strptime(value[:length], fmt)  # noqa: DTZ007
+                except ValueError:
+                    continue
+                return parsed.replace(tzinfo=UTC)
+        return None
+
     def _extract_publisher(self, metadata: dict[str, Any]):
         raw = metadata.get("publisher") or metadata.get("publishers")
         if isinstance(raw, list):
@@ -1017,7 +1061,9 @@ class AudiobookshelfImporter:
                     series_name = first_series
         normalized_name = str(series_name).strip() if series_name else None
         try:
-            normalized_position = float(series_position) if series_position is not None else None
+            normalized_position = (
+                float(series_position) if series_position is not None else None
+            )
         except (TypeError, ValueError):
             normalized_position = None
         return normalized_name, normalized_position
@@ -1047,20 +1093,19 @@ class AudiobookshelfImporter:
 
         abs_host = urlparse(self.account.base_url).netloc.lower()
         image_host = parsed_image.netloc.lower()
-        is_abs_api_cover = (
+        return (
             image_host == abs_host
             and "/api/items/" in parsed_image.path
             and "/cover" in parsed_image.path
         )
-        return is_abs_api_cover
 
-    def _resolve_provider_metadata(self, title: str, authors: list[str], isbns: list[str]):
+    def _resolve_provider_metadata(
+        self, title: str, authors: list[str], isbns: list[str]
+    ):
         if not title:
             return None
 
-        search_plan = []
-        for isbn in isbns:
-            search_plan.append((isbn, True))
+        search_plan = [(isbn, True) for isbn in isbns]
 
         author_hint = authors[0] if authors else ""
         if author_hint:
@@ -1085,7 +1130,7 @@ class AudiobookshelfImporter:
                         1,
                         provider_source,
                     )
-                except Exception as error:  # noqa: BLE001
+                except Exception as error:
                     logger.debug(
                         "Audiobookshelf metadata search failed provider=%s isbn_query=%s error=%s",
                         provider_source,
@@ -1094,7 +1139,9 @@ class AudiobookshelfImporter:
                     )
                     continue
 
-                results = response.get("results", []) if isinstance(response, dict) else []
+                results = (
+                    response.get("results", []) if isinstance(response, dict) else []
+                )
                 if not results:
                     continue
 
@@ -1112,7 +1159,7 @@ class AudiobookshelfImporter:
                         str(candidate.get("media_id")),
                         provider_source,
                     )
-                except Exception as error:  # noqa: BLE001
+                except Exception as error:
                     logger.debug(
                         "Audiobookshelf metadata fetch failed provider=%s error=%s",
                         provider_source,
@@ -1180,7 +1227,7 @@ class AudiobookshelfImporter:
         }
         if normalized_target_authors.intersection(normalized_provider_authors):
             return True
-        return title_score >= 0.88
+        return title_score >= TITLE_MATCH_THRESHOLD
 
     def _title_similarity(self, left: str, right: str):
         normalized_left = self._normalize_name(left)
@@ -1203,7 +1250,9 @@ class AudiobookshelfImporter:
 
         raw_authors = details.get("authors") or details.get("author") or []
         if isinstance(raw_authors, str):
-            raw_authors = [part.strip() for part in raw_authors.split(",") if part.strip()]
+            raw_authors = [
+                part.strip() for part in raw_authors.split(",") if part.strip()
+            ]
         elif not isinstance(raw_authors, list):
             raw_authors = [raw_authors] if raw_authors else []
 

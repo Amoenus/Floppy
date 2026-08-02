@@ -187,7 +187,7 @@ class Command(BaseCommand):
         try:
             with transaction.atomic():
                 self._apply_moves(season, moves)
-        except Exception as error:  # noqa: BLE001 - report and continue
+        except Exception as error:
             self.stdout.write(self.style.ERROR(f"{label}: move failed: {error}"))
             return "failed"
         return "remapped"
@@ -238,7 +238,7 @@ class Command(BaseCommand):
         season_metadata,
     ):
         """Return the Season row for the provider's numbering, creating it if needed."""
-        from app.services import metadata_resolution  # noqa: PLC0415
+        from app.services import metadata_resolution
 
         source_item = source_season.item
         target_item = metadata_resolution.get_or_create_tracked_season_item(

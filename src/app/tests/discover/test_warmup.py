@@ -1,5 +1,3 @@
-# ruff: noqa: D102, S106
-
 from importlib import import_module
 from unittest.mock import patch
 

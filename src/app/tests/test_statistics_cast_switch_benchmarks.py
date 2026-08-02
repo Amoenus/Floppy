@@ -28,6 +28,7 @@ from app.models import (
     Status,
 )
 
+
 def setUpModule():
     """Silence log noise for this module only."""
     logging.disable(logging.INFO)
@@ -173,7 +174,8 @@ class StatisticsCastSwitchBenchmarkTests(TestCase):
                 2,
             ),
             "second_round_avg_ms": round(
-                sum(result["duration_ms"] for result in second_round) / len(second_round),
+                sum(result["duration_ms"] for result in second_round)
+                / len(second_round),
                 2,
             ),
             "first_round_avg_queries": round(
@@ -188,7 +190,9 @@ class StatisticsCastSwitchBenchmarkTests(TestCase):
         print(json.dumps(payload, sort_keys=True))
 
         self.assertTrue(all(result["response_bytes"] > 0 for result in first_round))
-        self.assertLessEqual(payload["second_round_avg_queries"], payload["first_round_avg_queries"])
+        self.assertLessEqual(
+            payload["second_round_avg_queries"], payload["first_round_avg_queries"]
+        )
 
     def test_select_featured_person_custom_range_benchmarks(self):
         end_day = timezone.localdate()

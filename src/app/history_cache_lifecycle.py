@@ -1,7 +1,7 @@
 """Cache lifecycle management: invalidation and background-task scheduling."""
 
 import logging
-from typing import Iterable
+from collections.abc import Iterable
 
 from django.conf import settings
 from django.core.cache import cache
@@ -48,7 +48,10 @@ def _delete_history_cache_entries(user_id: int, logging_style: str, day_keys=Non
 
     if normalized_keys:
         cache.delete_many(
-            [_day_cache_key(user_id, logging_style, day_key) for day_key in normalized_keys],
+            [
+                _day_cache_key(user_id, logging_style, day_key)
+                for day_key in normalized_keys
+            ],
         )
     cache.delete(_cache_key(user_id, logging_style))
 
@@ -78,7 +81,10 @@ def invalidate_history_days(
         logging_style = _normalize_logging_style(style)
         if force and normalized_keys:
             cache.delete_many(
-                [_day_cache_key(user_id, logging_style, day_key) for day_key in normalized_keys],
+                [
+                    _day_cache_key(user_id, logging_style, day_key)
+                    for day_key in normalized_keys
+                ],
             )
         logger.info(
             "history_day_invalidate user_id=%s logging_style=%s dates=%s reason=%s deleted=%s",
@@ -96,7 +102,7 @@ def invalidate_history_days(
                 user_id,
                 logging_style,
                 warm_days=0,
-                day_keys=normalized_keys if normalized_keys else None,
+                day_keys=normalized_keys or None,
             )
             logger.info(
                 "history_index_refresh_scheduled user_id=%s logging_style=%s warm_days=0 day_keys=%s scheduled=%s reason=%s",
@@ -234,7 +240,6 @@ def schedule_history_refresh(
                 else priority
             ),
         )
-        return True
     except Exception as exc:  # pragma: no cover - Celery not available
         if not allow_inline:
             cache.delete(dedupe_key)
@@ -254,8 +259,11 @@ def schedule_history_refresh(
         from app.history_cache import (
             refresh_history_cache,  # deferred to avoid circular import
         )
+
         refresh_history_cache(user_id, logging_style=logging_style, warm_days=warm_days)
         return False
+    else:
+        return True
 
 
 def schedule_history_day_cache_coverage(
@@ -298,7 +306,6 @@ def schedule_history_day_cache_coverage(
                 else priority
             ),
         )
-        return True
     except Exception as exc:  # pragma: no cover - Celery not available
         cache.delete(repair_key)
         logger.warning(
@@ -307,3 +314,5 @@ def schedule_history_day_cache_coverage(
             exc,
         )
         return False
+    else:
+        return True

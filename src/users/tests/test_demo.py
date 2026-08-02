@@ -11,7 +11,7 @@ from users.signals import _demo_user_schema_ready, ensure_demo_user_after_migrat
 class EnsureDemoUserTests(TestCase):
     """Tests for built-in demo account provisioning."""
 
-    changed_password = "changed-password"  # noqa: S105
+    changed_password = "changed-password"
 
     def test_creates_demo_user_with_expected_credentials(self):
         """Demo provisioning should create the built-in account."""
@@ -37,11 +37,11 @@ class EnsureDemoUserTests(TestCase):
 
     def test_schema_ready_returns_false_when_user_table_is_missing_columns(self):
         """Provisioning should wait until the current user schema is present."""
-        current_columns = [field.column for field in get_user_model()._meta.local_concrete_fields]
+        current_columns = [
+            field.column for field in get_user_model()._meta.local_concrete_fields
+        ]
         incomplete_columns = [
-            column
-            for column in current_columns
-            if column != "last_discover_type"
+            column for column in current_columns if column != "last_discover_type"
         ]
 
         with (
@@ -60,7 +60,9 @@ class EnsureDemoUserTests(TestCase):
 
     def test_schema_ready_returns_true_when_all_user_columns_exist(self):
         """Provisioning should proceed once the user table matches the model."""
-        current_columns = [field.column for field in get_user_model()._meta.local_concrete_fields]
+        current_columns = [
+            field.column for field in get_user_model()._meta.local_concrete_fields
+        ]
 
         with (
             patch(

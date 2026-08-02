@@ -484,20 +484,32 @@ class ArrImportTaskTests(TestCase):
         self.user = get_user_model().objects.create_user(username="arr-task-user")
 
     @patch("integrations.tasks._media_imports.import_media")
-    def test_import_radarr_task_returns_failure_message_for_expected_errors(self, mock_import_media):
-        mock_import_media.side_effect = helpers.MediaImportError("Could not reach Radarr: connect timed out")
+    def test_import_radarr_task_returns_failure_message_for_expected_errors(
+        self, mock_import_media
+    ):
+        mock_import_media.side_effect = helpers.MediaImportError(
+            "Could not reach Radarr: connect timed out"
+        )
 
         result = tasks.import_radarr(user_id=self.user.id)
 
-        self.assertEqual(result, "Radarr import failed: Could not reach Radarr: connect timed out")
+        self.assertEqual(
+            result, "Radarr import failed: Could not reach Radarr: connect timed out"
+        )
 
     @patch("integrations.tasks._media_imports.import_media")
-    def test_import_sonarr_task_returns_failure_message_for_expected_errors(self, mock_import_media):
-        mock_import_media.side_effect = helpers.MediaImportError("Could not reach Sonarr: connect timed out")
+    def test_import_sonarr_task_returns_failure_message_for_expected_errors(
+        self, mock_import_media
+    ):
+        mock_import_media.side_effect = helpers.MediaImportError(
+            "Could not reach Sonarr: connect timed out"
+        )
 
         result = tasks.import_sonarr(user_id=self.user.id)
 
-        self.assertEqual(result, "Sonarr import failed: Could not reach Sonarr: connect timed out")
+        self.assertEqual(
+            result, "Sonarr import failed: Could not reach Sonarr: connect timed out"
+        )
 
 
 class CollectionSourceSyncTests(TestCase):

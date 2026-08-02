@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 from django.conf import settings
 
 from app.discover.adapters import TMDB_ADAPTER
-from app.discover.schemas import CandidateItem, RowDefinition, RowResult
 from app.discover.service_helpers import MAX_ITEMS_PER_ROW
 from app.models import Item, MediaTypes, Sources
 from app.providers import services
+
+if TYPE_CHECKING:
+    from app.discover.schemas import CandidateItem, RowDefinition, RowResult
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +28,11 @@ PROVIDER_ARTWORK_HYDRATION_ROW_KEYS = {
 
 
 def _row_ttl_seconds(row_definition: RowDefinition) -> int:
-    return ROW_CACHE_TTL_LOCAL_SECONDS if row_definition.source == "local" else ROW_CACHE_TTL_SECONDS
+    return (
+        ROW_CACHE_TTL_LOCAL_SECONDS
+        if row_definition.source == "local"
+        else ROW_CACHE_TTL_SECONDS
+    )
 
 
 def _is_missing_image(candidate: CandidateItem) -> bool:
@@ -42,14 +49,11 @@ def _provider_media_type_for_artwork(candidate_media_type: str) -> str | None:
 
 def _supports_provider_artwork_hydration(candidate: CandidateItem) -> bool:
     return (
-        (
-            candidate.media_type == MediaTypes.BOARDGAME.value
-            and candidate.source == Sources.BGG.value
-        )
-        or (
-            candidate.media_type == MediaTypes.MUSIC.value
-            and candidate.source == Sources.MUSICBRAINZ.value
-        )
+        candidate.media_type == MediaTypes.BOARDGAME.value
+        and candidate.source == Sources.BGG.value
+    ) or (
+        candidate.media_type == MediaTypes.MUSIC.value
+        and candidate.source == Sources.MUSICBRAINZ.value
     )
 
 
@@ -68,7 +72,9 @@ def _hydrate_provider_ranked_artwork(
     if not display_candidates:
         return
 
-    missing = [candidate for candidate in display_candidates if _is_missing_image(candidate)]
+    missing = [
+        candidate for candidate in display_candidates if _is_missing_image(candidate)
+    ]
     if not missing:
         return
 
@@ -99,7 +105,7 @@ def _hydrate_provider_ranked_artwork(
                 candidate.media_id,
                 candidate.source,
             )
-        except Exception as error:  # noqa: BLE001
+        except Exception as error:
             logger.warning(
                 "discover_provider_artwork_lookup_failed media_type=%s source=%s media_id=%s error=%s",
                 candidate.media_type,
@@ -135,7 +141,9 @@ def _hydrate_trakt_ranked_artwork(
     if not display_candidates:
         return
 
-    missing = [candidate for candidate in display_candidates if _is_missing_image(candidate)]
+    missing = [
+        candidate for candidate in display_candidates if _is_missing_image(candidate)
+    ]
     if not missing:
         return
 
@@ -166,7 +174,7 @@ def _hydrate_trakt_ranked_artwork(
                 candidate.media_id,
                 TMDB_ADAPTER.provider,
             )
-        except Exception as error:  # noqa: BLE001
+        except Exception as error:
             logger.warning(
                 "discover_tmdb_artwork_lookup_failed media_id=%s error=%s",
                 candidate.media_id,

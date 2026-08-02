@@ -2,6 +2,7 @@
 
 import logging
 from collections import defaultdict
+from http import HTTPStatus
 
 import requests
 from django.conf import settings
@@ -20,6 +21,7 @@ class RadarrClient:
     """Thin API client for Radarr v3."""
 
     def __init__(self, base_url: str, api_key: str):
+        """Store the extra keyword arguments this form needs."""
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
 
@@ -36,7 +38,7 @@ class RadarrClient:
         if response.status_code in (401, 403):
             msg = "Radarr API key is invalid or unauthorized"
             raise MediaImportError(msg)
-        if response.status_code >= 400:
+        if response.status_code >= HTTPStatus.BAD_REQUEST:
             msg = f"Radarr request failed ({response.status_code}) for {path}"
             raise MediaImportError(msg)
         return response.json()
@@ -50,7 +52,7 @@ class RadarrClient:
         return self._request("/api/v3/movie")
 
 
-def importer(identifier, user, mode):  # noqa: ARG001
+def importer(identifier, user, mode):
     """Import Radarr collection ownership."""
     return RadarrImporter(user).import_data()
 
@@ -59,6 +61,7 @@ class RadarrImporter:
     """Import collection data from Radarr."""
 
     def __init__(self, user):
+        """Store the extra keyword arguments this form needs."""
         self.user = user
         try:
             self.account = user.radarr_account
@@ -80,6 +83,7 @@ class RadarrImporter:
         self.warnings = []
 
     def import_data(self):
+        """Return the import data."""
         imported_counts = defaultdict(int)
 
         try:
@@ -87,7 +91,9 @@ class RadarrImporter:
         except MediaImportError as error:
             self.account.connection_broken = True
             self.account.last_error_message = str(error)
-            self.account.save(update_fields=["connection_broken", "last_error_message", "updated_at"])
+            self.account.save(
+                update_fields=["connection_broken", "last_error_message", "updated_at"]
+            )
             raise
 
         for row in movies:
@@ -99,10 +105,9 @@ class RadarrImporter:
                 imported_counts["skipped_missing_ids"] += 1
                 continue
 
-            quality_label = (
-                (row.get("movieFile") or {}).get("quality", {}).get("quality", {}).get("name")
-                or ""
-            )
+            quality_label = (row.get("movieFile") or {}).get("quality", {}).get(
+                "quality", {}
+            ).get("name") or ""
             updated_at = self._parse_source_timestamp(row)
             upsert_collection_source_state(
                 user=self.user,
@@ -117,7 +122,14 @@ class RadarrImporter:
         self.account.last_sync_at = timezone.now()
         self.account.connection_broken = False
         self.account.last_error_message = ""
-        self.account.save(update_fields=["last_sync_at", "connection_broken", "last_error_message", "updated_at"])
+        self.account.save(
+            update_fields=[
+                "last_sync_at",
+                "connection_broken",
+                "last_error_message",
+                "updated_at",
+            ]
+        )
 
         return dict(imported_counts), "\n".join(dict.fromkeys(self.warnings))
 
@@ -141,7 +153,7 @@ class RadarrImporter:
                     Sources.TMDB.value,
                 )
             except services.ProviderAPIError as error:
-                if getattr(error, "status_code", None) == 404:
+                if getattr(error, "status_code", None) == HTTPStatus.NOT_FOUND:
                     title = row.get("title") or row.get("sortTitle") or tmdb_id
                     self.warnings.append(
                         f"{title}: not found in {Sources.TMDB.label} with ID {tmdb_id}.",
@@ -166,12 +178,11 @@ class RadarrImporter:
             return item
 
         if imdb_id:
-            existing = Item.objects.filter(
+            return Item.objects.filter(
                 media_id=str(imdb_id),
                 source=Sources.TMDB.value,
                 media_type=MediaTypes.MOVIE.value,
             ).first()
-            return existing
 
         return None
 
@@ -183,7 +194,9 @@ class RadarrImporter:
             if not value:
                 continue
             try:
-                return timezone.datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+                return timezone.datetime.fromisoformat(
+                    str(value).replace("Z", "+00:00")
+                )
             except ValueError:
                 continue
         return timezone.now()

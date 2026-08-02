@@ -1,7 +1,7 @@
 import json
 
 from django.contrib.auth import get_user_model
-from django.test import Client, TestCase
+from django.test import Client, TestCase, tag
 from django.urls import reverse
 
 from app.models import TV, Episode, Item, MediaTypes, Movie, Season, Status
@@ -90,6 +90,7 @@ class KodiWebhookMovieTests(TestCase):
             content_type="application/json",
         )
 
+    @tag("network")
     def test_movie_end_event_marks_completed(self):
         payload = {**MOVIE_PAYLOAD, "event": "end"}
         response = self._post(payload)
@@ -119,6 +120,7 @@ class KodiWebhookMovieTests(TestCase):
         movie = Movie.objects.get(item__media_id="603", user=self.user)
         self.assertEqual(movie.status, Status.IN_PROGRESS.value)
 
+    @tag("network")
     def test_movie_start_event_creates_in_progress(self):
         payload = {
             **MOVIE_PAYLOAD,
@@ -130,6 +132,7 @@ class KodiWebhookMovieTests(TestCase):
         movie = Movie.objects.get(item__media_id="603", user=self.user)
         self.assertEqual(movie.status, Status.IN_PROGRESS.value)
 
+    @tag("network")
     def test_movie_repeated_watches_tracked(self):
         payload = {**MOVIE_PAYLOAD, "event": "end"}
         self._post(payload)
@@ -141,6 +144,7 @@ class KodiWebhookMovieTests(TestCase):
         self.assertTrue(all(m.status == Status.COMPLETED.value for m in movies))
 
 
+@tag("network")
 class KodiWebhookTVTests(TestCase):
     """Tests for Kodi TV episode webhook processing."""
 

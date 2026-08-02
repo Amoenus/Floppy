@@ -129,7 +129,9 @@ def song_save(request):
             parsed_date = parse_date(end_date_str)
             if parsed_date:
                 end_date = timezone.make_aware(
-                    timezone.datetime.combine(parsed_date, timezone.datetime.min.time()),
+                    timezone.datetime.combine(
+                        parsed_date, timezone.datetime.min.time()
+                    ),
                 )
 
     album = get_object_or_404(Album, id=album_id)
@@ -151,9 +153,13 @@ def song_save(request):
     )
 
     if existed_before:
-        messages.success(request, f"Added listen for {track.title if track else 'track'}")
+        messages.success(
+            request, f"Added listen for {track.title if track else 'track'}"
+        )
     else:
-        messages.success(request, f"Added {track.title if track else 'track'} to your library")
+        messages.success(
+            request, f"Added {track.title if track else 'track'} to your library"
+        )
 
     if request.headers.get("HX-Request"):
         music = (
@@ -186,7 +192,9 @@ def song_save(request):
                 album=album,
             ).select_related("item", "track"),
         )
-        album_tracker = AlbumTracker.objects.filter(user=request.user, album=album).first()
+        album_tracker = AlbumTracker.objects.filter(
+            user=request.user, album=album
+        ).first()
         first_listened, last_listened, collapse_same_day = _music_activity_date_range(
             user_music_entries,
         )
@@ -279,7 +287,10 @@ def delete_all_album_plays_view(request, album_id):
     count = music_entries.count()
     if count > 0:
         music_entries.delete()
-        messages.success(request, f"Deleted {count} play{'s' if count != 1 else ''} for {album.title}")
+        messages.success(
+            request,
+            f"Deleted {count} play{'s' if count != 1 else ''} for {album.title}",
+        )
     else:
         messages.info(request, f"No plays found for {album.title}")
 
@@ -301,7 +312,10 @@ def delete_all_artist_plays_view(request, artist_id):
     count = music_entries.count()
     if count > 0:
         music_entries.delete()
-        messages.success(request, f"Deleted {count} play{'s' if count != 1 else ''} for {artist.name}")
+        messages.success(
+            request,
+            f"Deleted {count} play{'s' if count != 1 else ''} for {artist.name}",
+        )
     else:
         messages.info(request, f"No plays found for {artist.name}")
 
@@ -320,6 +334,7 @@ def sync_album_metadata_view(request, album_id):
     if album.musicbrainz_release_id:
         try:
             from django.core.cache import cache as django_cache
+
             django_cache.delete(f"musicbrainz_release_{album.musicbrainz_release_id}")
             release_data = musicbrainz.get_release(album.musicbrainz_release_id)
 
@@ -345,18 +360,22 @@ def sync_album_metadata_view(request, album_id):
                         canonical.musicbrainz_release_id = album.musicbrainz_release_id
                         canonical.save(update_fields=["musicbrainz_release_id"])
                     album.delete()
-                    messages.success(request, f"Merged duplicate into {canonical.title}")
+                    messages.success(
+                        request, f"Merged duplicate into {canonical.title}"
+                    )
                     # Use HX-Redirect so HTMX performs a full browser navigation
                     # (plain redirect() returns 302, which HTMX follows internally
                     # but doesn't update the browser URL or stop the spinner).
                     response = HttpResponse(status=204)
                     response["HX-Redirect"] = _music_album_detail_url(canonical)
                     return response
-                elif needs_group_id:
+                if needs_group_id:
                     # No duplicate — just backfill the missing fields.
                     album.musicbrainz_release_group_id = fetched_release_group_id
                     album.release_type = release_data.get("release_type", "")
-                    album.save(update_fields=["musicbrainz_release_group_id", "release_type"])
+                    album.save(
+                        update_fields=["musicbrainz_release_group_id", "release_type"]
+                    )
 
             new_image = release_data.get("image", "")
             if new_image and new_image != settings.IMG_NONE:
@@ -375,14 +394,17 @@ def sync_album_metadata_view(request, album_id):
                         "title": track_data.get("title", "Unknown Track"),
                         "musicbrainz_recording_id": track_data.get("recording_id"),
                         "duration_ms": track_data.get("duration_ms"),
-                        "genres": track_data.get("genres", []) or release_data.get("genres", []),
+                        "genres": track_data.get("genres", [])
+                        or release_data.get("genres", []),
                     },
                 )
 
             album.tracks_populated = True
             album.save(update_fields=["tracks_populated", "image", "genres"])
 
-            messages.success(request, f"Synced {len(tracks_data)} tracks for {album.title}")
+            messages.success(
+                request, f"Synced {len(tracks_data)} tracks for {album.title}"
+            )
         except Exception as e:
             logger.warning("Failed to sync album %s: %s", album.title, e)
             messages.error(request, f"Failed to sync album: {e}")

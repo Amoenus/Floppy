@@ -26,6 +26,7 @@ def _print_crew(title, crew):
 # Helpers to build TMDB-shaped payloads using real role/job names
 # ---------------------------------------------------------------------------
 
+
 def _movie_crew(*members):
     """Wrap crew member dicts in a TMDB credits envelope."""
     return {"crew": list(members)}
@@ -133,19 +134,28 @@ class MovieCrewSortingTests(TestCase):
         names = [c["name"] for c in crew]
 
         # Director must be first
-        self.assertEqual(crew[0]["role"], "Director",
-            f"Expected Director first, got: {list(zip(roles, names))}")
+        self.assertEqual(
+            crew[0]["role"],
+            "Director",
+            f"Expected Director first, got: {list(zip(roles, names))}",
+        )
         self.assertEqual(crew[0]["name"], "Sam Mendes")
 
         # Screenplay second
-        self.assertEqual(crew[1]["role"], "Screenplay",
-            f"Expected Screenplay second, got: {list(zip(roles, names))}")
+        self.assertEqual(
+            crew[1]["role"],
+            "Screenplay",
+            f"Expected Screenplay second, got: {list(zip(roles, names))}",
+        )
 
         # All non-priority roles must come after Screenplay
         priority_count = sum(1 for r in roles if r in ("Director", "Screenplay"))
         for i in range(priority_count, len(crew)):
-            self.assertNotIn(crew[i]["role"], ("Director", "Screenplay"),
-                f"Found priority role at position {i + 1}: {crew[i]}")
+            self.assertNotIn(
+                crew[i]["role"],
+                ("Director", "Screenplay"),
+                f"Found priority role at position {i + 1}: {crew[i]}",
+            )
 
     def test_dune_part_two(self):
         """
@@ -168,11 +178,21 @@ class MovieCrewSortingTests(TestCase):
         screenplay_idx = roles.index("Screenplay")
 
         for i, c in enumerate(crew):
-            if c["role"] in ("Art Director", "Director of Photography", "Production Designer"):
-                self.assertGreater(i, director_idx,
-                    f"'{c['role']}' ({c['name']}) at position {i+1} is before Director at {director_idx+1}")
-                self.assertGreater(i, screenplay_idx,
-                    f"'{c['role']}' ({c['name']}) at position {i+1} is before Screenplay at {screenplay_idx+1}")
+            if c["role"] in (
+                "Art Director",
+                "Director of Photography",
+                "Production Designer",
+            ):
+                self.assertGreater(
+                    i,
+                    director_idx,
+                    f"'{c['role']}' ({c['name']}) at position {i + 1} is before Director at {director_idx + 1}",
+                )
+                self.assertGreater(
+                    i,
+                    screenplay_idx,
+                    f"'{c['role']}' ({c['name']}) at position {i + 1} is before Screenplay at {screenplay_idx + 1}",
+                )
 
     def test_oppenheimer(self):
         """Director + Screenplay (same person, Christopher Nolan) both before Set Decorator."""
@@ -191,8 +211,11 @@ class MovieCrewSortingTests(TestCase):
         dop_idx = roles.index("Director of Photography")
         dec_idx = roles.index("Set Decorator")
 
-        self.assertLess(director_idx, dop_idx,
-            f"Director at {director_idx+1} should be before DoP at {dop_idx+1}")
+        self.assertLess(
+            director_idx,
+            dop_idx,
+            f"Director at {director_idx + 1} should be before DoP at {dop_idx + 1}",
+        )
         self.assertLess(director_idx, dec_idx)
         self.assertLess(screenplay_idx, dop_idx)
         self.assertLess(screenplay_idx, dec_idx)
@@ -214,14 +237,22 @@ class MovieCrewSortingTests(TestCase):
         screenplay_idx = roles.index("Original Screenplay")
 
         non_priority = [
-            (i, c) for i, c in enumerate(crew)
-            if c["role"] in ("Art Director", "Supervising Art Director", "Director of Photography")
+            (i, c)
+            for i, c in enumerate(crew)
+            if c["role"]
+            in ("Art Director", "Supervising Art Director", "Director of Photography")
         ]
         for i, c in non_priority:
-            self.assertGreater(i, director_idx,
-                f"'{c['role']}' ({c['name']}) at pos {i+1} is before Director at {director_idx+1}")
-            self.assertGreater(i, screenplay_idx,
-                f"'{c['role']}' ({c['name']}) at pos {i+1} is before Screenplay at {screenplay_idx+1}")
+            self.assertGreater(
+                i,
+                director_idx,
+                f"'{c['role']}' ({c['name']}) at pos {i + 1} is before Director at {director_idx + 1}",
+            )
+            self.assertGreater(
+                i,
+                screenplay_idx,
+                f"'{c['role']}' ({c['name']}) at pos {i + 1} is before Screenplay at {screenplay_idx + 1}",
+            )
 
     def test_shawshank_redemption(self):
         """Baseline: Director then Screenplay, then all others regardless of TMDB order field."""
@@ -235,8 +266,11 @@ class MovieCrewSortingTests(TestCase):
         crew = self._sorted_crew(credits)
         _print_crew("The Shawshank Redemption", crew)
 
-        self.assertEqual(crew[0]["role"], "Director",
-            f"Expected Director at position 1, got: {[(c['role'], c['name']) for c in crew]}")
+        self.assertEqual(
+            crew[0]["role"],
+            "Director",
+            f"Expected Director at position 1, got: {[(c['role'], c['name']) for c in crew]}",
+        )
         self.assertEqual(crew[0]["name"], "Frank Darabont")
         self.assertEqual(crew[1]["role"], "Screenplay")
 
@@ -278,7 +312,13 @@ class TVCrewSortingTests(TestCase):
         # Realistic aggregate crew (no Director entries — TMDB doesn't include them here)
         aggregate_crew = [
             _tc(1001, "Michael Slovis", ["Director of Photography"], "Camera", order=1),
-            _tc(1002, "Reynaldo Villalobos", ["Director of Photography"], "Camera", order=2),
+            _tc(
+                1002,
+                "Reynaldo Villalobos",
+                ["Director of Photography"],
+                "Camera",
+                order=2,
+            ),
             _tc(1003, "Arthur Albert", ["Director of Photography"], "Camera", order=3),
             _tc(1004, "Paula Dal Santo", ["Assistant Art Director"], "Art", order=4),
             _tc(1005, "Nelson Cragg", ["Director of Photography"], "Camera", order=5),
@@ -290,14 +330,20 @@ class TVCrewSortingTests(TestCase):
         roles = [c["role"] for c in crew]
 
         # Creator must be first
-        self.assertEqual(crew[0]["name"], "Vince Gilligan",
-            f"Expected Vince Gilligan first. Got: {list(zip(names, roles))}")
+        self.assertEqual(
+            crew[0]["name"],
+            "Vince Gilligan",
+            f"Expected Vince Gilligan first. Got: {list(zip(names, roles))}",
+        )
         self.assertEqual(crew[0]["role"], "Creator")
 
         # All DoPs and Art Directors must come after Creator
         for i, c in enumerate(crew[1:], start=1):
-            self.assertNotEqual(c["role"], "Creator",
-                f"Unexpected Creator at position {i+1}: {c['name']}")
+            self.assertNotEqual(
+                c["role"],
+                "Creator",
+                f"Unexpected Creator at position {i + 1}: {c['name']}",
+            )
 
     def test_severance(self):
         """
@@ -316,16 +362,24 @@ class TVCrewSortingTests(TestCase):
         names = [c["name"] for c in crew]
         roles = [c["role"] for c in crew]
 
-        self.assertEqual(crew[0]["name"], "Dan Erickson",
-            f"Creator should be first. Got: {list(zip(names, roles))}")
+        self.assertEqual(
+            crew[0]["name"],
+            "Dan Erickson",
+            f"Creator should be first. Got: {list(zip(names, roles))}",
+        )
         self.assertEqual(crew[0]["role"], "Creator")
 
         # Verify non-priority roles don't sneak above Creator
         creator_idx = roles.index("Creator")
-        for role in ("Director of Photography", "Assistant Art Director", "Set Decorator"):
+        for role in (
+            "Director of Photography",
+            "Assistant Art Director",
+            "Set Decorator",
+        ):
             if role in roles:
-                self.assertGreater(roles.index(role), creator_idx,
-                    f"'{role}' appears before Creator")
+                self.assertGreater(
+                    roles.index(role), creator_idx, f"'{role}' appears before Creator"
+                )
 
     def test_the_bear_creator_deduplication(self):
         """
@@ -347,19 +401,36 @@ class TVCrewSortingTests(TestCase):
         roles = [c["role"] for c in crew]
         names = [c["name"] for c in crew]
 
-        self.assertEqual(len(storer_entries), 1,
-            f"Christopher Storer should appear once, found {len(storer_entries)}: {storer_entries}")
-        self.assertEqual(storer_entries[0]["role"], "Creator",
-            f"Storer's role should be Creator, got '{storer_entries[0]['role']}'")
-        self.assertEqual(crew[0]["name"], "Christopher Storer",
-            f"Creator must be first. Got: {list(zip(names, roles))}")
+        self.assertEqual(
+            len(storer_entries),
+            1,
+            f"Christopher Storer should appear once, found {len(storer_entries)}: {storer_entries}",
+        )
+        self.assertEqual(
+            storer_entries[0]["role"],
+            "Creator",
+            f"Storer's role should be Creator, got '{storer_entries[0]['role']}'",
+        )
+        self.assertEqual(
+            crew[0]["name"],
+            "Christopher Storer",
+            f"Creator must be first. Got: {list(zip(names, roles))}",
+        )
 
         # Writer (Alice Birch) must come before Art/Camera dept
-        writer_idx = next((i for i, c in enumerate(crew) if c["role"] == "Writer"), None)
-        sup_art_idx = next((i for i, c in enumerate(crew) if c["role"] == "Supervising Art Director"), None)
+        writer_idx = next(
+            (i for i, c in enumerate(crew) if c["role"] == "Writer"), None
+        )
+        sup_art_idx = next(
+            (i for i, c in enumerate(crew) if c["role"] == "Supervising Art Director"),
+            None,
+        )
         if writer_idx is not None and sup_art_idx is not None:
-            self.assertLess(writer_idx, sup_art_idx,
-                f"Writer at {writer_idx+1} should be before Supervising Art Director at {sup_art_idx+1}")
+            self.assertLess(
+                writer_idx,
+                sup_art_idx,
+                f"Writer at {writer_idx + 1} should be before Supervising Art Director at {sup_art_idx + 1}",
+            )
 
     def test_succession_full_chain(self):
         """
@@ -380,21 +451,34 @@ class TVCrewSortingTests(TestCase):
         names = [c["name"] for c in crew]
         roles = [c["role"] for c in crew]
 
-        self.assertEqual(crew[0]["name"], "Jesse Armstrong",
-            f"Creator must be first. Got: {list(zip(names, roles))}")
+        self.assertEqual(
+            crew[0]["name"],
+            "Jesse Armstrong",
+            f"Creator must be first. Got: {list(zip(names, roles))}",
+        )
         self.assertEqual(crew[0]["role"], "Creator")
 
         creator_idx = roles.index("Creator")
         writer_idx = next((i for i, r in enumerate(roles) if r == "Writer"), None)
-        sup_art_idx = next((i for i, r in enumerate(roles) if r == "Supervising Art Director"), None)
-        asst_art_idx = next((i for i, r in enumerate(roles) if r == "Assistant Art Director"), None)
+        sup_art_idx = next(
+            (i for i, r in enumerate(roles) if r == "Supervising Art Director"), None
+        )
+        asst_art_idx = next(
+            (i for i, r in enumerate(roles) if r == "Assistant Art Director"), None
+        )
 
         self.assertIsNotNone(writer_idx, "Writer not found in crew")
-        self.assertLess(creator_idx, writer_idx,
-            f"Creator at {creator_idx+1} should be before Writer at {writer_idx+1}")
+        self.assertLess(
+            creator_idx,
+            writer_idx,
+            f"Creator at {creator_idx + 1} should be before Writer at {writer_idx + 1}",
+        )
         if sup_art_idx is not None:
-            self.assertLess(writer_idx, sup_art_idx,
-                f"Writer at {writer_idx+1} should be before Supervising Art Director at {sup_art_idx+1}")
+            self.assertLess(
+                writer_idx,
+                sup_art_idx,
+                f"Writer at {writer_idx + 1} should be before Supervising Art Director at {sup_art_idx + 1}",
+            )
         if asst_art_idx is not None:
             self.assertLess(writer_idx, asst_art_idx)
 
@@ -420,8 +504,11 @@ class TVCrewSortingTests(TestCase):
         roles = [c["role"] for c in crew]
 
         creator_entries = [(i, c) for i, c in enumerate(crew) if c["role"] == "Creator"]
-        self.assertEqual(len(creator_entries), 2,
-            f"Expected 2 creators, found {len(creator_entries)}: {[(i+1, c['name']) for i,c in creator_entries]}")
+        self.assertEqual(
+            len(creator_entries),
+            2,
+            f"Expected 2 creators, found {len(creator_entries)}: {[(i + 1, c['name']) for i, c in creator_entries]}",
+        )
 
         creator_names = {c["name"] for _, c in creator_entries}
         self.assertIn("Graham Wagner", creator_names)
@@ -432,6 +519,9 @@ class TVCrewSortingTests(TestCase):
             (i, c) for i, c in enumerate(crew) if c["role"] != "Creator"
         ]
         for i, c in non_creator_roles:
-            self.assertGreater(i, last_creator_idx,
-                f"'{c['role']}' ({c['name']}) at pos {i+1} appears before last Creator at {last_creator_idx+1}. "
-                f"Full order: {list(zip(names, roles))}")
+            self.assertGreater(
+                i,
+                last_creator_idx,
+                f"'{c['role']}' ({c['name']}) at pos {i + 1} appears before last Creator at {last_creator_idx + 1}. "
+                f"Full order: {list(zip(names, roles))}",
+            )

@@ -2,7 +2,7 @@ import json
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.test import Client, TestCase
+from django.test import Client, TestCase, tag
 from django.urls import reverse
 
 from app.models import TV, Anime, Episode, Item, MediaTypes, Movie, Season, Status
@@ -25,6 +25,7 @@ class EmbyWebhookTests(TestCase):
         response = self.client.post(url, data={}, content_type="application/json")
         self.assertEqual(response.status_code, 401)
 
+    @tag("network")
     def test_tv_episode_mark_played(self):
         """Test webhook handles TV episode mark played event."""
         payload = {
@@ -150,6 +151,7 @@ class EmbyWebhookTests(TestCase):
         self.assertEqual(anime.status, Status.IN_PROGRESS.value)
         self.assertEqual(anime.progress, 1)
 
+    @tag("network")
     def test_movie_mark_played(self):
         """Test webhook handles movie mark played event."""
         payload = {
@@ -191,6 +193,7 @@ class EmbyWebhookTests(TestCase):
         self.assertEqual(movie.status, Status.COMPLETED.value)
         self.assertEqual(movie.progress, 1)
 
+    @tag("network")
     def test_anime_movie_mark_played(self):
         """Test webhook handles movie mark played event."""
         payload = {
@@ -324,6 +327,7 @@ class EmbyWebhookTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(Movie.objects.count(), 0)
 
+    @tag("network")
     def test_repeated_watch(self):
         """Test webhook handles repeated watches."""
         payload = {

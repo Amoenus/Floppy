@@ -1,3 +1,4 @@
+import contextlib
 from io import BytesIO
 
 from app.log_safety import exception_summary
@@ -30,10 +31,8 @@ def _is_expected_plex_lookup_error(exc):
 def _coerce_uploaded_file(file):
     """Normalize uploaded file task args to a binary file-like object."""
     if hasattr(file, "read"):
-        try:
+        with contextlib.suppress(AttributeError, OSError):
             file.seek(0)
-        except (AttributeError, OSError):
-            pass
         return file
     if isinstance(file, str):
         return BytesIO(file.encode("utf-8"))
@@ -69,14 +68,15 @@ def format_import_message(imported_counts, warning_messages=None):
             )
         else:
             # Fallback to standard format if unique tracks not available
-            parts.append(format_media_type_display(music_play_events, MediaTypes.MUSIC.value))
+            parts.append(
+                format_media_type_display(music_play_events, MediaTypes.MUSIC.value)
+            )
 
     # Add other media types (excluding music which we handled above)
     media_type_values = set(MediaTypes.values)
     for media_type, count in imported_counts.items():
         if (
-            media_type == MediaTypes.MUSIC.value
-            or media_type == "music_unique_tracks"
+            media_type in (MediaTypes.MUSIC.value, "music_unique_tracks")
             or media_type not in media_type_values
         ):
             continue

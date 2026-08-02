@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from django.core.cache import cache
-from django.http import HttpRequest
+
+if TYPE_CHECKING:
+    from django.http import HttpRequest
 
 INTERACTIVE_REQUEST_CACHE_KEY = "interactive_request_active"
 INTERACTIVE_REQUEST_TTL_SECONDS = 30

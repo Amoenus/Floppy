@@ -106,7 +106,9 @@ def _expand_collection_entry_to_episodes(user, item, *, cleaned_data):
     )
 
     to_create = [
-        episode_item for episode_item in episode_items if episode_item.id not in already_collected_ids
+        episode_item
+        for episode_item in episode_items
+        if episode_item.id not in already_collected_ids
     ]
     if not to_create:
         return 0, len(episode_items)
@@ -166,7 +168,9 @@ def _collection_quick_add_season_or_show_response(request, item):
     else:
         message = "All episodes are already in your collection"
     if request.headers.get("HX-Request"):
-        return JsonResponse({"success": True, "created": bool(created_count), "message": message})
+        return JsonResponse(
+            {"success": True, "created": bool(created_count), "message": message}
+        )
     return _collection_redirect(request)
 
 
@@ -218,11 +222,15 @@ def collection_add(request):
 
         collected_at = form.cleaned_data.get("collected_at")
         if collected_at:
-            CollectionEntry.objects.filter(id=entry.id).update(collected_at=collected_at)
+            CollectionEntry.objects.filter(id=entry.id).update(
+                collected_at=collected_at
+            )
             entry.collected_at = collected_at
         messages.success(request, f"Added {item.title} to collection")
         if request.headers.get("HX-Request"):
-            return JsonResponse({"success": True, "message": f"Added {item.title} to collection"})
+            return JsonResponse(
+                {"success": True, "message": f"Added {item.title} to collection"}
+            )
     else:
         helpers.form_error_messages(form, request)
         if request.headers.get("HX-Request"):
@@ -279,7 +287,8 @@ def collection_update(request, entry_id):
     except CollectionEntry.DoesNotExist:
         from django.http import Http404
 
-        raise Http404("Collection entry not found")
+        msg = "Collection entry not found"
+        raise Http404(msg) from None
 
     form = CollectionEntryForm(
         request.POST,
@@ -291,11 +300,15 @@ def collection_update(request, entry_id):
         entry = form.save()
         collected_at = form.cleaned_data.get("collected_at")
         if collected_at:
-            CollectionEntry.objects.filter(id=entry.id).update(collected_at=collected_at)
+            CollectionEntry.objects.filter(id=entry.id).update(
+                collected_at=collected_at
+            )
             entry.collected_at = collected_at
         messages.success(request, f"Updated collection entry for {entry.item.title}")
         if request.headers.get("HX-Request"):
-            return JsonResponse({"success": True, "message": "Updated collection entry"})
+            return JsonResponse(
+                {"success": True, "message": "Updated collection entry"}
+            )
     else:
         helpers.form_error_messages(form, request)
         if request.headers.get("HX-Request"):
@@ -311,14 +324,17 @@ def collection_remove(request, entry_id):
     except CollectionEntry.DoesNotExist:
         from django.http import Http404
 
-        raise Http404("Collection entry not found")
+        msg = "Collection entry not found"
+        raise Http404(msg) from None
 
     item_title = entry.item.title
     entry.delete()
     messages.success(request, f"Removed {item_title} from collection")
 
     if request.headers.get("HX-Request"):
-        return JsonResponse({"success": True, "message": f"Removed {item_title} from collection"})
+        return JsonResponse(
+            {"success": True, "message": f"Removed {item_title} from collection"}
+        )
     return _collection_redirect(request)
 
 
@@ -407,9 +423,7 @@ def _collection_quality_labels_by_item_id(user, item_ids, *, source=None):
 def _most_common_quality_label(labels):
     """Return the most common non-empty quality label."""
     normalized_labels = [
-        str(label).strip()
-        for label in labels
-        if str(label or "").strip()
+        str(label).strip() for label in labels if str(label or "").strip()
     ]
     if not normalized_labels:
         return ""
@@ -514,7 +528,9 @@ def _build_collection_season_audit_entries(user, item):
     for episode_item in episode_items:
         if episode_item.season_number is None:
             continue
-        episode_item_ids_by_season_number[episode_item.season_number].add(episode_item.id)
+        episode_item_ids_by_season_number[episode_item.season_number].add(
+            episode_item.id
+        )
 
     collected_episode_ids_by_season_number = defaultdict(set)
     for episode_entry in episode_entries:
@@ -529,8 +545,12 @@ def _build_collection_season_audit_entries(user, item):
         if season_number is None:
             continue
 
-        total_episodes = len(episode_item_ids_by_season_number.get(season_number, set()))
-        collected_episode_ids = collected_episode_ids_by_season_number.get(season_number, set())
+        total_episodes = len(
+            episode_item_ids_by_season_number.get(season_number, set())
+        )
+        collected_episode_ids = collected_episode_ids_by_season_number.get(
+            season_number, set()
+        )
         collected_count = min(total_episodes, len(collected_episode_ids))
         if collected_count == 0:
             continue
@@ -543,7 +563,9 @@ def _build_collection_season_audit_entries(user, item):
         if not source_labels:
             source_labels = ["Manual"]
 
-        collection_entry = helpers.get_season_collection_metadata(user, season_item) or {
+        collection_entry = helpers.get_season_collection_metadata(
+            user, season_item
+        ) or {
             "resolution": "",
             "hdr": "",
             "audio_codec": "",
@@ -614,7 +636,8 @@ def _build_collection_episode_audit_entries(user, item):
             {
                 "entry": entry,
                 "title": f"S{season_number:02d}E{episode_number:02d} - {title}",
-                "source_labels": source_labels_by_item_id.get(entry.item_id) or ["Manual"],
+                "source_labels": source_labels_by_item_id.get(entry.item_id)
+                or ["Manual"],
                 "quality_label": quality_labels_by_item_id.get(entry.item_id, ""),
             },
         )
@@ -700,7 +723,9 @@ def _resolve_collection_item(
     if not item:
         item_defaults = {
             **Item.title_fields_from_metadata(metadata or {}),
-            "library_media_type": ((metadata or {}).get("library_media_type") or media_type),
+            "library_media_type": (
+                (metadata or {}).get("library_media_type") or media_type
+            ),
             "image": settings.IMG_NONE,
         }
         try:
@@ -713,15 +738,16 @@ def _resolve_collection_item(
             item_defaults["image"] = (metadata or {}).get("image") or settings.IMG_NONE
 
             if media_type == MediaTypes.BOOK.value:
-                item_defaults["number_of_pages"] = (
-                    (metadata or {}).get("max_progress")
-                    or (metadata or {}).get("details", {}).get("number_of_pages")
-                )
+                item_defaults["number_of_pages"] = (metadata or {}).get(
+                    "max_progress"
+                ) or (metadata or {}).get("details", {}).get("number_of_pages")
 
             if (metadata or {}).get("details", {}).get("runtime"):
                 from app.statistics import parse_runtime_to_minutes
 
-                runtime_minutes = parse_runtime_to_minutes((metadata or {})["details"]["runtime"])
+                runtime_minutes = parse_runtime_to_minutes(
+                    (metadata or {})["details"]["runtime"]
+                )
                 if runtime_minutes:
                     item_defaults["runtime_minutes"] = runtime_minutes
         except Exception as exc:  # pragma: no cover - defensive
@@ -774,7 +800,9 @@ def build_collection_modal_context(
     form = CollectionEntryForm(
         user=request.user,
         collection_media_type=item.media_type,
-        collection_choices_override={"resolution": platform_choices} if platform_choices else None,
+        collection_choices_override={"resolution": platform_choices}
+        if platform_choices
+        else None,
     )
     form.fields["item"].initial = item.id
 
@@ -836,7 +864,7 @@ def collection_modal(request, source, media_type, media_id):
 @require_GET
 @never_cache
 def collection_status_api(request, item_id):
-    """API endpoint to check if collection entry exists for an item."""
+    """Return whether a collection entry exists for an item."""
     from app.helpers import is_item_collected
 
     try:

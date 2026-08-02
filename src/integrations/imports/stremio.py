@@ -142,7 +142,7 @@ def parse_video_id(video_id):
         return None
 
 
-def importer(identifier, user, mode):  # noqa: ARG001
+def importer(identifier, user, mode):
     """Import movies and TV shows from a connected Stremio account."""
     return StremioImporter(user, mode).import_data()
 

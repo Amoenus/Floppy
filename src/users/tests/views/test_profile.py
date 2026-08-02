@@ -58,7 +58,9 @@ class Profile(TestCase):
         self.assertContains(response, "Scan this QR code")
         self.assertTrue(response.context["authenticator_uri"].startswith("otpauth://"))
         self.assertTrue(
-            response.context["authenticator_qr_data_uri"].startswith("data:image/png;base64,"),
+            response.context["authenticator_qr_data_uri"].startswith(
+                "data:image/png;base64,"
+            ),
         )
 
     def test_account_page_shows_management_actions_when_authenticator_enabled(self):

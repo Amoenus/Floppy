@@ -125,7 +125,9 @@ def _tv_item_dict(media_id="1396", title="Breaking Bad"):
     }
 
 
-def _movie_item_dict(media_id="1865", title="Pirates of the Caribbean: On Stranger Tides"):
+def _movie_item_dict(
+    media_id="1865", title="Pirates of the Caribbean: On Stranger Tides"
+):
     """Serialised TMDB movie dict."""
     return {
         "id": 2,
@@ -230,6 +232,7 @@ def _highlight_entry(item_dict, image=PORTRAIT_POSTER):
 # ---------------------------------------------------------------------------
 # _get_horizontal_history_image
 # ---------------------------------------------------------------------------
+
 
 class GetHorizontalHistoryImageTests(TestCase):
     """
@@ -453,7 +456,9 @@ class GetHorizontalHistoryImageTests(TestCase):
     # ------------------------------------------------------------------
 
     @patch("lists.models.CustomList._get_tmdb_backdrop")
-    def test_allow_network_false_returns_fallback_without_network_call(self, mock_backdrop):
+    def test_allow_network_false_returns_fallback_without_network_call(
+        self, mock_backdrop
+    ):
         """
         When allow_network=False and Redis is cold, the portrait poster must be
         returned without any TMDB call. This is the pre-fix behaviour for the
@@ -486,7 +491,10 @@ class GetHorizontalHistoryImageTests(TestCase):
     # TMDB raises an exception — fall back gracefully
     # ------------------------------------------------------------------
 
-    @patch("lists.models.CustomList._get_tmdb_backdrop", side_effect=Exception("network error"))
+    @patch(
+        "lists.models.CustomList._get_tmdb_backdrop",
+        side_effect=Exception("network error"),
+    )
     def test_tmdb_exception_falls_back_to_portrait(self, mock_backdrop):
         item = _tv_item_dict()
 
@@ -532,7 +540,9 @@ class GetHorizontalHistoryImageTests(TestCase):
         finds a TMDB counterpart. _get_horizontal_history_image must use that
         to fetch the TMDB backdrop.
         """
-        item = _tvdb_tv_item_dict(tvdb_id="121361", tmdb_id="1399", title="Game of Thrones")
+        item = _tvdb_tv_item_dict(
+            tvdb_id="121361", tmdb_id="1399", title="Game of Thrones"
+        )
 
         result = statistics_cache._get_horizontal_history_image(
             item, PORTRAIT_POSTER, allow_network=True
@@ -565,7 +575,9 @@ class GetHorizontalHistoryImageTests(TestCase):
         mock_backdrop.assert_not_called()
 
     @patch("lists.models.CustomList._get_tmdb_backdrop")
-    def test_tvdb_tv_without_tmdb_cross_reference_falls_back_to_portrait(self, mock_backdrop):
+    def test_tvdb_tv_without_tmdb_cross_reference_falls_back_to_portrait(
+        self, mock_backdrop
+    ):
         """
         TVDB show with no tmdb_id in provider_external_ids (e.g. obscure show
         not indexed on TMDB) must fall back to the portrait poster gracefully.
@@ -587,9 +599,12 @@ class GetHorizontalHistoryImageTests(TestCase):
         mock_backdrop.assert_not_called()
 
     @patch("lists.models.CustomList._get_tmdb_backdrop")
-    def test_tvdb_tv_missing_provider_external_ids_falls_back_to_portrait(self, mock_backdrop):
+    def test_tvdb_tv_missing_provider_external_ids_falls_back_to_portrait(
+        self, mock_backdrop
+    ):
         """Old serialised history entries that pre-date the provider_external_ids
-        field must not crash and must fall back to the portrait poster."""
+        field must not crash and must fall back to the portrait poster.
+        """
         item = {
             "id": 10,
             "media_type": MediaTypes.TV.value,
@@ -610,6 +625,7 @@ class GetHorizontalHistoryImageTests(TestCase):
 # ---------------------------------------------------------------------------
 # _normalize_history_highlight_images  (the serve-time fix — issue #211)
 # ---------------------------------------------------------------------------
+
 
 class NormalizeHistoryHighlightImagesTests(TestCase):
     """
@@ -689,7 +705,9 @@ class NormalizeHistoryHighlightImagesTests(TestCase):
             "today_in_user_history": None,
         }
 
-        statistics_cache._normalize_history_highlight_images(highlights)  # must not raise
+        statistics_cache._normalize_history_highlight_images(
+            highlights
+        )  # must not raise
 
         self.assertEqual(highlights["first_play"]["image"], BACKDROP_URL)
 

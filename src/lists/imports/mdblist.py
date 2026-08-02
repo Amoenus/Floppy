@@ -8,6 +8,7 @@ visibility survive recurring refreshes.
 
 import logging
 import re
+from http import HTTPStatus
 
 from django.conf import settings
 from django.db import transaction
@@ -145,7 +146,7 @@ def _get_metadata(media_type, tmdb_id, title):
             Sources.TMDB.value,
         )
     except services.ProviderAPIError as error:
-        if error.status_code == 404:
+        if error.status_code == HTTPStatus.NOT_FOUND:
             logger.warning(
                 "MDBList item %s missing in TMDB (%s)",
                 title,

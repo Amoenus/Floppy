@@ -560,9 +560,7 @@ MEDIA_TYPE_FIELD_ORDER: dict[str, list[str]] = {
 
 DETAIL_VALUE_ORDER: dict[str, list[str]] = {
     media_type: [
-        field_name
-        for field_name in field_names
-        if FIELD_SPECS[field_name].detail_key
+        field_name for field_name in field_names if FIELD_SPECS[field_name].detail_key
     ]
     for media_type, field_names in MEDIA_TYPE_FIELD_ORDER.items()
 }
@@ -967,11 +965,7 @@ def snapshot_custom_metadata(item, metadata: dict) -> list[str]:
     assign("release_datetime", release_datetime)
 
     runtime_value = str(item.runtime or "").strip()
-    runtime_minutes = (
-        parse_runtime_to_minutes(runtime_value)
-        if runtime_value
-        else None
-    )
+    runtime_minutes = parse_runtime_to_minutes(runtime_value) if runtime_value else None
     assign("runtime_minutes", runtime_minutes)
 
     if update_fields:
@@ -1069,9 +1063,7 @@ class ManualMetadataForm(forms.Form):
     def _sync_runtime_minutes(self, update_fields: list[str]) -> None:
         runtime_value = str(self.item.runtime or "").strip()
         runtime_minutes = (
-            parse_runtime_to_minutes(runtime_value)
-            if runtime_value
-            else None
+            parse_runtime_to_minutes(runtime_value) if runtime_value else None
         )
         self._assign_item_value("runtime_minutes", runtime_minutes, update_fields)
 

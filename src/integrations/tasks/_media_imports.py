@@ -84,6 +84,7 @@ def import_media(importer_func, identifier, user_id, mode, oauth_username=None):
     # the newly imported media without requiring a manual page reload or waiting for the
     # next scheduled Celery beat.
     from app import statistics_cache as _statistics_cache
+
     _statistics_cache.schedule_all_ranges_refresh(user.id)
 
     # Queue collection metadata update task for media server imports
@@ -111,13 +112,16 @@ def _queue_post_import_collection_update(user_id, importer_func):
     # Check if this is a media server import that supports collection updates
     # Compare by function reference
     import integrations.imports.plex as plex_import_module
+
     if importer_func == plex_import_module.importer:
         # Queue Plex collection update (run after calendar reload with a delay)
         update_collection_metadata_from_plex.apply_async(
             args=("all", user_id),
             countdown=60,  # Run 60 seconds after import to allow calendar reload to complete
         )
-        logger.info("Queued post-import collection metadata update for user %s", user_id)
+        logger.info(
+            "Queued post-import collection metadata update for user %s", user_id
+        )
     # TODO: Add Jellyfin and Emby when their importers are available
 
 
@@ -131,7 +135,7 @@ def import_trakt(user_id, mode, token=None, username=None):
 
 
 @shared_task(name="Import from MDBList")
-def import_mdblist(user_id, mode, username=None):  # noqa: ARG001
+def import_mdblist(user_id, mode, username=None):
     """Celery task for importing tracking data from MDBList.
 
     The API key is decrypted from the user's MDBListAccount at run time so
@@ -147,7 +151,7 @@ def import_mdblist(user_id, mode, username=None):  # noqa: ARG001
 
 
 @shared_task(name="Import from SIMKL")
-def import_simkl(token, user_id, mode, username=None):  # noqa: ARG001
+def import_simkl(token, user_id, mode, username=None):
     """Celery task for importing media data from SIMKL."""
     return import_media(simkl.importer, token, user_id, mode)
 
@@ -260,13 +264,13 @@ def import_storygraph(file, user_id, mode):
 
 
 @shared_task(name="Import from Plex")
-def import_plex(library, user_id, mode, username=None):  # noqa: ARG001
+def import_plex(library, user_id, mode, username=None):
     """Celery task for importing media data from Plex."""
     return import_media(plex.importer, library, user_id, mode)
 
 
 @shared_task(name="Import from Radarr")
-def import_radarr(user_id, mode="new", username=None):  # noqa: ARG001
+def import_radarr(user_id, mode="new", username=None):
     """Celery task for importing movie collection data from Radarr."""
     return _run_arr_import("Radarr", radarr.importer, user_id, mode)
 
@@ -278,7 +282,7 @@ def import_radarr_recurring(user_id):
 
 
 @shared_task(name="Import from Sonarr")
-def import_sonarr(user_id, mode="new", username=None):  # noqa: ARG001
+def import_sonarr(user_id, mode="new", username=None):
     """Celery task for importing TV collection data from Sonarr."""
     return _run_arr_import("Sonarr", sonarr.importer, user_id, mode)
 
@@ -290,14 +294,15 @@ def import_sonarr_recurring(user_id):
 
 
 @shared_task(name="Sync Plex Watchlist")
-def sync_plex_watchlist(user_id, mode="watchlist"):  # noqa: ARG001
+def sync_plex_watchlist(user_id, mode="watchlist"):
     """Celery task for syncing Plex Discover watchlist items."""
     from integrations.models import PlexAccount
 
     user = get_user_model().objects.get(id=user_id)
     account = getattr(user, "plex_account", None)
     if not account:
-        raise helpers.MediaImportError("Connect Plex before syncing the watchlist.")
+        msg = "Connect Plex before syncing the watchlist."
+        raise helpers.MediaImportError(msg)
 
     try:
         sync_counts, warnings = PlexWatchlistSyncService(user, account).sync()
@@ -334,7 +339,8 @@ def push_jellyfin_watched(user_id):
     user = get_user_model().objects.get(id=user_id)
     account = getattr(user, "jellyfin_account", None)
     if not account:
-        raise helpers.MediaImportError("Connect Jellyfin before syncing.")
+        msg = "Connect Jellyfin before syncing."
+        raise helpers.MediaImportError(msg)
 
     try:
         push_counts, warnings = JellyfinPushSyncService(user, account).sync()
@@ -395,7 +401,9 @@ def import_pocketcasts(user_id, mode="new"):
     """Celery task for importing podcast history from Pocket Casts."""
     lock_key = f"pocketcasts_import_lock_{user_id}"
     if not cache.add(lock_key, "1", timeout=600):
-        logger.info("Pocket Casts import already running for user %s, skipping", user_id)
+        logger.info(
+            "Pocket Casts import already running for user %s, skipping", user_id
+        )
         return "Skipped: import already in progress"
     try:
         return import_media(pocketcasts.importer, None, user_id, mode)
@@ -408,7 +416,9 @@ def import_pocketcasts_history(user_id):
     """Recurring import task for Pocket Casts (called every 2 hours via Celery beat)."""
     lock_key = f"pocketcasts_import_lock_{user_id}"
     if not cache.add(lock_key, "1", timeout=600):
-        logger.info("Pocket Casts import already running for user %s, skipping", user_id)
+        logger.info(
+            "Pocket Casts import already running for user %s, skipping", user_id
+        )
         return "Skipped: import already in progress"
     try:
         return import_media(pocketcasts.importer, None, user_id, "new")
@@ -440,4 +450,3 @@ def import_gpodder_recurring(user_id):
         return import_media(gpodder.importer, None, user_id, "new")
     finally:
         cache.delete(lock_key)
-

@@ -24,6 +24,7 @@ from integrations.imports import helpers, plex
 from integrations.imports.plex import PlexHistoryImporter
 from integrations.models import PlexAccount
 
+
 # Suppress logging during tests
 def setUpModule():
     """Silence provider log noise for this module only."""
@@ -138,7 +139,12 @@ class TestPlexHybridImport(TestCase):
         """Verify that skipped users show names in logs if available."""
         mock_fetch_account.return_value = {"id": "4441952"}
         mock_list_sections.return_value = [
-            {"id": "1", "machine_identifier": "machine", "title": "Anime", "type": "show"}
+            {
+                "id": "1",
+                "machine_identifier": "machine",
+                "title": "Anime",
+                "type": "show",
+            }
         ]
         mock_list_resources.return_value = [
             {"machine_identifier": "machine", "connections": [{"uri": "http://plex"}]}
@@ -184,7 +190,12 @@ class TestPlexHybridImport(TestCase):
         """Verify that TVDB ID extraction works and falls back to title if initial find fails."""
         mock_fetch_account.return_value = {"id": "4441952"}
         mock_list_sections.return_value = [
-            {"id": "1", "machine_identifier": "machine", "title": "Anime", "type": "show"}
+            {
+                "id": "1",
+                "machine_identifier": "machine",
+                "title": "Anime",
+                "type": "show",
+            }
         ]
         mock_list_resources.return_value = [
             {"machine_identifier": "machine", "connections": [{"uri": "http://plex"}]}
@@ -244,7 +255,9 @@ class TestPlexHybridImport(TestCase):
 
         with (
             patch("integrations.webhooks.base.app.providers.tmdb.find") as mock_find,
-            patch("integrations.webhooks.base.app.providers.tmdb.search") as mock_tmdb_search,
+            patch(
+                "integrations.webhooks.base.app.providers.tmdb.search"
+            ) as mock_tmdb_search,
         ):
             # First find fails
             mock_find.return_value = {"tv_results": [], "tv_episode_results": []}
@@ -329,7 +342,7 @@ class TestPlexHybridImport(TestCase):
     @patch("integrations.imports.plex.app.providers.tvdb.enabled", return_value=True)
     def test_new_tv_show_genesis_uses_tvdb_when_preferred(
         self,
-        mock_tvdb_enabled,  # noqa: ARG002
+        mock_tvdb_enabled,
         mock_tvdb_tv_with_seasons,
     ):
         """A never-before-tracked show is genesis'd via TVDB when preferred (#387)."""
@@ -468,10 +481,14 @@ class TestPlexHybridImport(TestCase):
         helpers.bulk_create_media(importer.bulk_media, self.user)
 
         self.assertEqual(
-            Season.objects.filter(related_tv=existing_tv, item__season_number=1).count(),
+            Season.objects.filter(
+                related_tv=existing_tv, item__season_number=1
+            ).count(),
             1,
         )
-        self.assertEqual(Episode.objects.filter(related_season=existing_season).count(), 1)
+        self.assertEqual(
+            Episode.objects.filter(related_season=existing_season).count(), 1
+        )
 
     @patch("integrations.imports.plex.plex_api.fetch_section_all_items")
     @patch("integrations.imports.plex.PlexWebhookProcessor._find_tv_media_id")
@@ -599,7 +616,10 @@ class TestPlexImportScenarios(TestCase):
         # Mock account.plex_account_id to avoid NoneType error in __init__
         self.account.plex_account_id = "12345"
         self.importer = PlexHistoryImporter(
-            self.user, self.account, mode="new", library={"key": "1", "title": "Library"}
+            self.user,
+            self.account,
+            mode="new",
+            library={"key": "1", "title": "Library"},
         )
 
     def _create_404_error(self):
@@ -972,7 +992,10 @@ class TestPlexAnimeImportRouting(TestCase):
         self.assertEqual(len(importer.bulk_media[MediaTypes.EPISODE.value]), 0)
 
     @patch("integrations.webhooks.anime_mappings.fetch_mapping_data", return_value={})
-    @patch("integrations.imports.plex.app.providers.tvdb.series_has_anime_genre", return_value=True)
+    @patch(
+        "integrations.imports.plex.app.providers.tvdb.series_has_anime_genre",
+        return_value=True,
+    )
     @patch("integrations.imports.plex.app.providers.tvdb.tv")
     @patch("integrations.imports.plex.app.providers.tvdb.enabled", return_value=True)
     def test_unmapped_anime_special_is_skipped_without_tv_progress(
@@ -1553,7 +1576,8 @@ class TestPlexMultiServerImport(TestCase):
 
 class TestOverwriteMetadataFailureSafety(TestCase):
     """Regression tests for issue #252: overwrite import must not permanently delete media
-    when TMDB metadata is unavailable (404) or when the import aborts mid-run."""
+    when TMDB metadata is unavailable (404) or when the import aborts mid-run.
+    """
 
     def setUp(self):
         User = get_user_model()
@@ -1570,16 +1594,38 @@ class TestOverwriteMetadataFailureSafety(TestCase):
     def _make_base_patches(self):
         """Return common patcher objects used by every test in this class."""
         return [
-            patch("integrations.imports.plex.plex_api.fetch_account", return_value={"id": "111"}),
+            patch(
+                "integrations.imports.plex.plex_api.fetch_account",
+                return_value={"id": "111"},
+            ),
             patch("integrations.imports.plex.plex_api.list_users", return_value=[]),
-            patch("integrations.imports.plex.plex_api.fetch_metadata", return_value=None),
-            patch("integrations.imports.plex.plex_api.fetch_section_all_items", return_value=([], 0)),
-            patch("integrations.imports.plex.plex_api.list_sections", return_value=[
-                {"id": "1", "machine_identifier": "m", "title": "TV", "type": "show"},
-            ]),
-            patch("integrations.imports.plex.plex_api.list_resources", return_value=[
-                {"machine_identifier": "m", "connections": [{"uri": "http://plex"}]},
-            ]),
+            patch(
+                "integrations.imports.plex.plex_api.fetch_metadata", return_value=None
+            ),
+            patch(
+                "integrations.imports.plex.plex_api.fetch_section_all_items",
+                return_value=([], 0),
+            ),
+            patch(
+                "integrations.imports.plex.plex_api.list_sections",
+                return_value=[
+                    {
+                        "id": "1",
+                        "machine_identifier": "m",
+                        "title": "TV",
+                        "type": "show",
+                    },
+                ],
+            ),
+            patch(
+                "integrations.imports.plex.plex_api.list_resources",
+                return_value=[
+                    {
+                        "machine_identifier": "m",
+                        "connections": [{"uri": "http://plex"}],
+                    },
+                ],
+            ),
         ]
 
     def test_tv_show_preserved_when_tmdb_returns_404_in_overwrite(self):
@@ -1591,7 +1637,9 @@ class TestOverwriteMetadataFailureSafety(TestCase):
             media_type=MediaTypes.TV.value,
             title="For All Mankind",
         )
-        tv = TV.objects.create(user=self.user, item=item, status=Status.IN_PROGRESS.value)
+        tv = TV.objects.create(
+            user=self.user, item=item, status=Status.IN_PROGRESS.value
+        )
 
         episode_history_entry = {
             "type": "episode",
@@ -1606,14 +1654,24 @@ class TestOverwriteMetadataFailureSafety(TestCase):
         def metadata_side_effect(media_type, media_id, source, **kwargs):
             # Simulate TMDB returning 404 for this show
             from app.providers.services import ProviderAPIError
+
             err = ProviderAPIError("tmdb", Exception("Not Found"))
             err.status_code = 404
             raise err
 
         patches = self._make_base_patches() + [
-            patch("integrations.imports.plex.plex_api.fetch_history", return_value=([episode_history_entry], 1)),
-            patch("integrations.imports.plex.services.get_media_metadata", side_effect=metadata_side_effect),
-            patch("integrations.imports.plex.services.search", return_value={"results": []}),
+            patch(
+                "integrations.imports.plex.plex_api.fetch_history",
+                return_value=([episode_history_entry], 1),
+            ),
+            patch(
+                "integrations.imports.plex.services.get_media_metadata",
+                side_effect=metadata_side_effect,
+            ),
+            patch(
+                "integrations.imports.plex.services.search",
+                return_value={"results": []},
+            ),
         ]
         for p in patches:
             p.start()
@@ -1631,14 +1689,17 @@ class TestOverwriteMetadataFailureSafety(TestCase):
 
     def test_tv_show_preserved_when_tmdb_raises_during_metadata_warm(self):
         """If TMDB raises a non-404 error during metadata warm-up, the import must abort
-        before deleting any existing records."""
+        before deleting any existing records.
+        """
         item = Item.objects.create(
             media_id="8888",
             source=Sources.TMDB.value,
             media_type=MediaTypes.TV.value,
             title="For All Mankind",
         )
-        tv = TV.objects.create(user=self.user, item=item, status=Status.IN_PROGRESS.value)
+        tv = TV.objects.create(
+            user=self.user, item=item, status=Status.IN_PROGRESS.value
+        )
 
         episode_history_entry = {
             "type": "episode",
@@ -1655,14 +1716,24 @@ class TestOverwriteMetadataFailureSafety(TestCase):
         def metadata_side_effect(media_type, media_id, source, **kwargs):
             call_count["n"] += 1
             from app.providers.services import ProviderAPIError
+
             err = ProviderAPIError("tmdb", Exception("Rate limit exceeded"))
             err.status_code = 429
             raise err
 
         patches = self._make_base_patches() + [
-            patch("integrations.imports.plex.plex_api.fetch_history", return_value=([episode_history_entry], 1)),
-            patch("integrations.imports.plex.services.get_media_metadata", side_effect=metadata_side_effect),
-            patch("integrations.imports.plex.services.search", return_value={"results": []}),
+            patch(
+                "integrations.imports.plex.plex_api.fetch_history",
+                return_value=([episode_history_entry], 1),
+            ),
+            patch(
+                "integrations.imports.plex.services.get_media_metadata",
+                side_effect=metadata_side_effect,
+            ),
+            patch(
+                "integrations.imports.plex.services.search",
+                return_value={"results": []},
+            ),
         ]
         started = [p.start() for p in patches]
         try:

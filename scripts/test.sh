@@ -8,6 +8,9 @@
 #   scripts/test.sh --full                Full suite incl. slow tests (20+ min,
 #                                         needs `playwright install`)
 #   scripts/test.sh --slow                Only @tag("slow") tests
+#   scripts/test.sh --network             Only @tag("network") tests (needs API
+#                                         keys and internet; excluded by default
+#                                         because they are slow and flaky)
 #
 # Extra manage.py test flags (e.g. -v 2, --failfast) pass through after the mode.
 set -euo pipefail
@@ -26,8 +29,13 @@ case "${1:-}" in
     shift
     exec python src/manage.py test "${APPS[@]}" "${COMMON[@]}" --tag slow "$@"
     ;;
+  --network)
+    shift
+    exec python src/manage.py test "${APPS[@]}" "${COMMON[@]}" --tag network "$@"
+    ;;
   "")
-    exec python src/manage.py test "${APPS[@]}" "${COMMON[@]}" --exclude-tag slow
+    exec python src/manage.py test "${APPS[@]}" "${COMMON[@]}" \
+      --exclude-tag slow --exclude-tag network
     ;;
   *)
     exec python src/manage.py test "${COMMON[@]}" "$@"

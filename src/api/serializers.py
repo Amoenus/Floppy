@@ -563,7 +563,7 @@ class HistorySerializer(serializers.Serializer):
 class InfoSerializer(serializers.Serializer):
     """Serializer for the info endpoint."""
 
-    def to_representation(self, instance):  # noqa: ARG002
+    def to_representation(self, instance):
         """Transform to representation."""
         return {
             "version": settings.VERSION,

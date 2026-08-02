@@ -293,7 +293,7 @@ class MDBListImporter(TraktMetadataResolverMixin):
                 self.process_watched_movie(entry)
             except MediaImportError:
                 raise
-            except Exception:  # noqa: BLE001
+            except Exception:
                 self._entry_error_warning(entry, "watched movie")
 
         for entry in data.get("shows", []):
@@ -301,7 +301,7 @@ class MDBListImporter(TraktMetadataResolverMixin):
                 self.process_watched_show(entry)
             except MediaImportError:
                 raise
-            except Exception:  # noqa: BLE001
+            except Exception:
                 self._entry_error_warning(entry, "watched show")
 
         for entry in data.get("seasons", []):
@@ -309,7 +309,7 @@ class MDBListImporter(TraktMetadataResolverMixin):
                 self.process_watched_season(entry)
             except MediaImportError:
                 raise
-            except Exception:  # noqa: BLE001
+            except Exception:
                 self._entry_error_warning(entry, "watched season")
 
         for entry in data.get("episodes", []):
@@ -324,7 +324,7 @@ class MDBListImporter(TraktMetadataResolverMixin):
                 )
             except MediaImportError:
                 raise
-            except Exception:  # noqa: BLE001
+            except Exception:
                 self._entry_error_warning(entry, "watched episode")
 
     def process_watched_movie(self, entry):
@@ -576,10 +576,7 @@ class MDBListImporter(TraktMetadataResolverMixin):
             if history_date is not None:
                 tv_obj._history_date = history_date
             self.bulk_media[MediaTypes.TV.value].append(tv_obj)
-        elif (
-            tmdb_id in self.dropped_tmdb_ids
-            and tv_obj.status != Status.DROPPED.value
-        ):
+        elif tmdb_id in self.dropped_tmdb_ids and tv_obj.status != Status.DROPPED.value:
             tv_obj.status = Status.DROPPED.value
             self.dropped_tvs.append(tv_obj)
         self.media_instances[MediaTypes.TV.value][tv_key] = [tv_obj]
@@ -634,7 +631,7 @@ class MDBListImporter(TraktMetadataResolverMixin):
                 self._process_watchlist_entry(entry)
             except MediaImportError:
                 raise
-            except Exception:  # noqa: BLE001
+            except Exception:
                 self._entry_error_warning(entry, "watchlist")
 
     def _process_watchlist_entry(self, entry):
@@ -671,9 +668,7 @@ class MDBListImporter(TraktMetadataResolverMixin):
 
         item = self._get_or_create_item(media_type, tmdb_id, metadata)
         model_class = (
-            app.models.Movie
-            if media_type == MediaTypes.MOVIE.value
-            else app.models.TV
+            app.models.Movie if media_type == MediaTypes.MOVIE.value else app.models.TV
         )
         media_obj = model_class(
             item=item,
@@ -700,7 +695,7 @@ class MDBListImporter(TraktMetadataResolverMixin):
                     handler(entry)
                 except MediaImportError:
                     raise
-                except Exception:  # noqa: BLE001
+                except Exception:
                     self._entry_error_warning(entry, "rating")
 
     def _process_movie_rating(self, entry):
@@ -741,9 +736,7 @@ class MDBListImporter(TraktMetadataResolverMixin):
 
         season_key = f"{tmdb_id}:{season_number}"
         if season_key in self.media_instances[MediaTypes.SEASON.value]:
-            for season_obj in self.media_instances[MediaTypes.SEASON.value][
-                season_key
-            ]:
+            for season_obj in self.media_instances[MediaTypes.SEASON.value][season_key]:
                 season_obj.score = entry["rating"]
             return
 
@@ -941,5 +934,5 @@ class MDBListImporter(TraktMetadataResolverMixin):
                         ),
                         metadata=None,
                     )
-                except Exception:  # noqa: BLE001
+                except Exception:
                     self._entry_error_warning(entry, "collection")

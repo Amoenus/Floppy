@@ -86,24 +86,46 @@ class ImportDataViewTests(TestCase):
         self.assertContains(response, "Page 2 of 6")
         self.assertContains(response, "Reimport full history")
 
-    @override_settings(TRAKT_API="test-client-id", TRAKT_API_SECRET="test-client-secret")
+    @override_settings(
+        TRAKT_API="test-client-id", TRAKT_API_SECRET="test-client-secret"
+    )
     def test_import_data_renders_trakt_profile_dropdown_when_configured(self):
         """With TRAKT_API/SECRET set, the Trakt card offers the public/private dropdown."""
         response = self.client.get(reverse("import_data"))
 
-        self.assertContains(response, 'x-data="{ traktProfileType: \'public\' }"', html=False)
-        self.assertContains(response, '<label class="block text-sm text-gray-300 mb-2">Profile</label>', html=False)
-        self.assertContains(response, '<option value="public">Public profile</option>', html=False)
-        self.assertContains(response, '<option value="private">Private profile (OAuth)</option>', html=False)
+        self.assertContains(
+            response, "x-data=\"{ traktProfileType: 'public' }\"", html=False
+        )
+        self.assertContains(
+            response,
+            '<label class="block text-sm text-gray-300 mb-2">Profile</label>',
+            html=False,
+        )
+        self.assertContains(
+            response, '<option value="public">Public profile</option>', html=False
+        )
+        self.assertContains(
+            response,
+            '<option value="private">Private profile (OAuth)</option>',
+            html=False,
+        )
 
     @override_settings(TRAKT_API="", TRAKT_API_SECRET="")
     def test_import_data_hides_trakt_public_private_when_unconfigured(self):
         """Without TRAKT_API/SECRET, only the data-export fallback should render."""
         response = self.client.get(reverse("import_data"))
 
-        self.assertContains(response, 'x-data="{ traktProfileType: \'csv\' }"', html=False)
-        self.assertNotContains(response, '<option value="public">Public profile</option>', html=False)
-        self.assertNotContains(response, '<option value="private">Private profile (OAuth)</option>', html=False)
+        self.assertContains(
+            response, "x-data=\"{ traktProfileType: 'csv' }\"", html=False
+        )
+        self.assertNotContains(
+            response, '<option value="public">Public profile</option>', html=False
+        )
+        self.assertNotContains(
+            response,
+            '<option value="private">Private profile (OAuth)</option>',
+            html=False,
+        )
         self.assertContains(response, "Select Export File", html=False)
 
     def test_import_data_renders_trakt_export_upload(self):

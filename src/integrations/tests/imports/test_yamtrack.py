@@ -3,7 +3,7 @@ from io import BytesIO
 from pathlib import Path
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, tag
 
 from app.models import (
     TV,
@@ -84,6 +84,7 @@ class ImportYamtrack(TestCase):
             datetime(2024, 2, 9, 12, 0, 0, tzinfo=UTC),
         )
 
+    @tag("network")
     def test_missing_metadata_handling(self):
         """Test _handle_missing_metadata method directly."""
         test_rows = [
@@ -136,6 +137,7 @@ class ImportYamtrack(TestCase):
             self.assertNotEqual(row["image"], original_row["image"])
 
 
+@tag("network")
 class ImportYamtrackPartials(TestCase):
     """Test importing yamtrack media with no ID."""
 
@@ -188,7 +190,9 @@ class ImportYamtrackLists(TestCase):
 
     def test_list_created(self):
         """Ensure list rows create lists."""
-        custom_list = CustomList.objects.filter(owner=self.user, name="Favorites").first()
+        custom_list = CustomList.objects.filter(
+            owner=self.user, name="Favorites"
+        ).first()
         self.assertIsNotNone(custom_list)
         self.assertEqual(custom_list.description, "Top picks")
         self.assertEqual(custom_list.tags, ["tag1", "tag2"])
@@ -196,7 +200,9 @@ class ImportYamtrackLists(TestCase):
     def test_list_item_created(self):
         """Ensure list item rows create list items without tracking media."""
         custom_list = CustomList.objects.get(owner=self.user, name="Favorites")
-        self.assertEqual(CustomListItem.objects.filter(custom_list=custom_list).count(), 2)
+        self.assertEqual(
+            CustomListItem.objects.filter(custom_list=custom_list).count(), 2
+        )
         titles = set(
             CustomListItem.objects.filter(custom_list=custom_list).values_list(
                 "item__title", flat=True
@@ -220,7 +226,9 @@ class ImportYamtrackLists(TestCase):
     def test_list_item_does_not_track_media(self):
         """List items should not create tracked media entries."""
         self.assertEqual(Book.objects.filter(user=self.user).count(), 0)
-        self.assertEqual(Episode.objects.filter(related_season__user=self.user).count(), 0)
+        self.assertEqual(
+            Episode.objects.filter(related_season__user=self.user).count(), 0
+        )
 
 
 class ImportYamtrackListsOnly(TestCase):
@@ -231,13 +239,19 @@ class ImportYamtrackListsOnly(TestCase):
         self.credentials = {"username": "test", "password": "12345"}
         self.user = get_user_model().objects.create_user(**self.credentials)
         with Path(mock_path / "import_yamtrack_with_lists.csv").open("rb") as file:
-            self.import_results = yamtrack.importer(file, self.user, "new", lists_only=True)
+            self.import_results = yamtrack.importer(
+                file, self.user, "new", lists_only=True
+            )
 
     def test_list_and_list_items_still_created(self):
         """List and list_item rows are processed even with lists_only=True."""
-        custom_list = CustomList.objects.filter(owner=self.user, name="Favorites").first()
+        custom_list = CustomList.objects.filter(
+            owner=self.user, name="Favorites"
+        ).first()
         self.assertIsNotNone(custom_list)
-        self.assertEqual(CustomListItem.objects.filter(custom_list=custom_list).count(), 2)
+        self.assertEqual(
+            CustomListItem.objects.filter(custom_list=custom_list).count(), 2
+        )
 
     def test_media_row_skipped(self):
         """Media rows in the CSV are ignored when lists_only=True."""
@@ -252,7 +266,9 @@ class ImportYamtrackStatusNormalization(TestCase):
         """Create user for the tests."""
         self.credentials = {"username": "test", "password": "12345"}
         self.user = get_user_model().objects.create_user(**self.credentials)
-        with Path(mock_path / "import_yamtrack_status_normalization.csv").open("rb") as file:
+        with Path(mock_path / "import_yamtrack_status_normalization.csv").open(
+            "rb"
+        ) as file:
             self.import_results = yamtrack.importer(file, self.user, "new")
 
     def test_status_values_are_normalized(self):
@@ -273,11 +289,11 @@ class ImportYamtrackStatuslessRoundTrip(TestCase):
         """Export a statusless, rated movie for a second user to import."""
         self.exporter = get_user_model().objects.create_user(
             username="statusless-exporter",
-            password="12345",  # noqa: S106
+            password="12345",
         )
         self.importer_user = get_user_model().objects.create_user(
             username="statusless-importer",
-            password="12345",  # noqa: S106
+            password="12345",
         )
         item, _ = Item.objects.get_or_create(
             media_id="10494",
@@ -315,6 +331,7 @@ class ImportSampleTemplate(TestCase):
         file = BytesIO(content.encode("utf-8"))
         self.import_results, self.warnings = yamtrack.importer(file, self.user, "new")
 
+    @tag("network")
     def test_no_warnings(self):
         """The sample template should import without any warnings."""
         self.assertEqual(self.warnings, "")
@@ -334,9 +351,13 @@ class ImportSampleTemplate(TestCase):
 
     def test_real_titles_used(self):
         """Imported items should carry real, recognizable titles, not placeholders."""
-        movie_titles = set(Movie.objects.filter(user=self.user).values_list("item__title", flat=True))
+        movie_titles = set(
+            Movie.objects.filter(user=self.user).values_list("item__title", flat=True)
+        )
         self.assertIn("Pulp Fiction", movie_titles)
-        tv_titles = set(TV.objects.filter(user=self.user).values_list("item__title", flat=True))
+        tv_titles = set(
+            TV.objects.filter(user=self.user).values_list("item__title", flat=True)
+        )
         self.assertIn("Friends", tv_titles)
         self.assertFalse(any("Sample" in title for title in movie_titles | tv_titles))
 
@@ -372,7 +393,9 @@ class ImportSampleTemplate(TestCase):
 
     def test_no_music_list_since_trackers_are_not_item_backed(self):
         """Music can't join a CustomList since Artist/Album aren't Item-backed."""
-        self.assertFalse(CustomList.objects.filter(owner=self.user, name__icontains="Music").exists())
+        self.assertFalse(
+            CustomList.objects.filter(owner=self.user, name__icontains="Music").exists()
+        )
 
     def test_smart_list_created_and_synced(self):
         """The cross-type smart list should be created and auto-populated."""
@@ -381,7 +404,9 @@ class ImportSampleTemplate(TestCase):
             name="Top-Rated Completed (All Types)",
         )
         self.assertTrue(custom_list.is_smart)
-        self.assertEqual(custom_list.smart_filters, {"status": "Completed", "rating_min": "8"})
+        self.assertEqual(
+            custom_list.smart_filters, {"status": "Completed", "rating_min": "8"}
+        )
 
         list_item_media_types = set(
             CustomListItem.objects.filter(custom_list=custom_list).values_list(
