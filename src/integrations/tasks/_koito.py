@@ -12,6 +12,7 @@ from django.core.cache import cache
 from django.utils import timezone
 
 from app.log_safety import exception_summary
+from integrations.imports.helpers import retry_on_lock
 
 logger = logging.getLogger(__name__)
 
@@ -63,13 +64,15 @@ def _record_koito_failure(account, message, *, broken=False):
     account.failure_count += 1
     account.last_error_message = str(message)[:500]
     account.last_failed_at = timezone.now()
-    account.save(
-        update_fields=[
-            "connection_broken",
-            "failure_count",
-            "last_error_message",
-            "last_failed_at",
-        ],
+    retry_on_lock(
+        lambda: account.save(
+            update_fields=[
+                "connection_broken",
+                "failure_count",
+                "last_error_message",
+                "last_failed_at",
+            ],
+        ),
     )
 
 
@@ -174,7 +177,7 @@ def _run_incremental_koito_sync(account) -> dict:
         status = "partial"
         message = KOITO_PARTIAL_SYNC_ERROR
 
-    account.save(update_fields=update_fields)
+    retry_on_lock(lambda: account.save(update_fields=update_fields))
     return {
         "status": status,
         "processed": sync_result["processed"],
@@ -276,13 +279,15 @@ def import_koito_history(user_id, reset=False):
 
     if reset:
         account.reset_history_import()
-        account.save(
-            update_fields=[
-                "history_import_status",
-                "history_import_started_at",
-                "history_import_completed_at",
-                "history_import_last_error_message",
-            ],
+        retry_on_lock(
+            lambda: account.save(
+                update_fields=[
+                    "history_import_status",
+                    "history_import_started_at",
+                    "history_import_completed_at",
+                    "history_import_last_error_message",
+                ],
+            ),
         )
 
     lock_key = koito_sync.get_koito_history_import_lock_key(user_id)
@@ -299,12 +304,14 @@ def import_koito_history(user_id, reset=False):
         account.history_import_status = LastFMHistoryImportStatus.RUNNING
         account.history_import_started_at = timezone.now()
         account.history_import_last_error_message = ""
-        account.save(
-            update_fields=[
-                "history_import_status",
-                "history_import_started_at",
-                "history_import_last_error_message",
-            ],
+        retry_on_lock(
+            lambda: account.save(
+                update_fields=[
+                    "history_import_status",
+                    "history_import_started_at",
+                    "history_import_last_error_message",
+                ],
+            ),
         )
 
         try:
@@ -316,12 +323,14 @@ def import_koito_history(user_id, reset=False):
             account.history_import_last_error_message = str(exc)[:500]
             if isinstance(exc, koito_api.KoitoAuthError):
                 account.connection_broken = True
-            account.save(
-                update_fields=[
-                    "history_import_status",
-                    "history_import_last_error_message",
-                    "connection_broken",
-                ],
+            retry_on_lock(
+                lambda: account.save(
+                    update_fields=[
+                        "history_import_status",
+                        "history_import_last_error_message",
+                        "connection_broken",
+                    ],
+                ),
             )
             raise
 
@@ -337,12 +346,14 @@ def import_koito_history(user_id, reset=False):
         account.history_import_status = LastFMHistoryImportStatus.COMPLETED
         account.history_import_completed_at = timezone.now()
         account.history_import_last_error_message = ""
-        account.save(
-            update_fields=[
-                "history_import_status",
-                "history_import_completed_at",
-                "history_import_last_error_message",
-            ],
+        retry_on_lock(
+            lambda: account.save(
+                update_fields=[
+                    "history_import_status",
+                    "history_import_completed_at",
+                    "history_import_last_error_message",
+                ],
+            ),
         )
 
         _enqueue_koito_music_enrichment(user_id)

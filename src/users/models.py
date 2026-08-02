@@ -1503,6 +1503,7 @@ class User(AbstractUser):
             "lastfm": ["Import from Last.fm History"],
             "hardcover": ["Import from Hardcover"],
             "storygraph": ["Import from StoryGraph"],
+            "koito": ["Import from Koito History"],
         }
         schedule_task_names = {
             **result_task_names,
@@ -1513,6 +1514,7 @@ class User(AbstractUser):
             "pocketcasts": ["Import from Pocket Casts (Recurring)"],
             "gpodder": ["Import from GPodder (Recurring)"],
             "lastfm": ["Poll Last.fm for all users"],
+            "koito": ["Poll Koito for user"],
         }
 
         # Reverse mapping to get source from task name

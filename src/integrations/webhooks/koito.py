@@ -15,6 +15,7 @@ from django.utils import timezone
 
 from app.services import music_scrobble
 from integrations import koito_api
+from integrations.imports.helpers import retry_on_lock
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +111,7 @@ class KoitoScrobbleProcessor:
         )
 
         try:
-            music_entry = music_scrobble.record_music_playback(event)
+            music_entry = retry_on_lock(lambda: music_scrobble.record_music_playback(event))
         except Exception:
             logger.exception(
                 "Error processing Koito listen for %s: %s - %s",

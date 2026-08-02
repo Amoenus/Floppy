@@ -1,6 +1,7 @@
 import json
 import re
 from datetime import timedelta
+from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
@@ -662,6 +663,26 @@ class MediaListViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["filter_data"]["genres"], ["Art Rock"])
         self.assertNotIn("implied_genres", response.context["filter_data"])
+
+    def test_music_media_list_queues_background_artist_image_backfill(self):
+        """Missing artist images should be backfilled via a queued Celery task,
+        not a synchronous write during the GET request (avoids DB lock 503s
+        when this races with a concurrent importer)."""
+        artist = Artist.objects.create(name="No Image Artist", image="")
+        ArtistTracker.objects.create(
+            user=self.user,
+            artist=artist,
+            status=Status.COMPLETED.value,
+        )
+
+        with mock.patch("app.tasks.prefetch_album_covers_batch.delay") as mock_delay:
+            response = self.client.get(reverse("medialist", args=[MediaTypes.MUSIC.value]))
+
+        self.assertEqual(response.status_code, 200)
+        mock_delay.assert_called_once_with([artist.id], limit_per_artist=5)
+
+        artist.refresh_from_db()
+        self.assertEqual(artist.image, "")
 
     def test_movie_grid_aggregates_duplicate_completed_plays(self):
         """Grid cards should show total plays across duplicate completed movie entries."""

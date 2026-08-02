@@ -601,6 +601,46 @@ class UserGetImportTasksTests(TestCase):
         self.assertEqual(mock_get_next_run_info.call_count, 2)
 
     @patch("users.helpers.process_task_result")
+    def test_get_import_tasks_maps_koito_results_and_schedule(
+        self,
+        mock_process_task_result,
+    ):
+        """Koito's one-off import and per-user poll schedule should appear in
+        import history and Active Periodic Imports."""
+        mock_task = MagicMock()
+        mock_task.summary = "Imported 10 Koito listen(s)."
+        mock_task.errors = None
+        mock_process_task_result.return_value = mock_task
+
+        TaskResult.objects.create(
+            task_id="task-koito",
+            task_name="Import from Koito History",
+            task_kwargs=(f'{{"user_id": {self.user.id}}}'),
+            status="SUCCESS",
+            date_done=timezone.now(),
+            result='"Imported 10 Koito listen(s)."',
+        )
+
+        PeriodicTask.objects.create(
+            name=f"Poll Koito for {self.user.username} (every 15 minutes)",
+            task="Poll Koito for user",
+            kwargs=(f'{{"user_id": {self.user.id}}}'),
+            crontab=self.crontab,
+            enabled=True,
+        )
+
+        import_tasks = self.user.get_import_tasks()
+
+        self.assertEqual(
+            [result["source"] for result in import_tasks["results"]],
+            ["koito"],
+        )
+        self.assertEqual(
+            [schedule["source"] for schedule in import_tasks["schedules"]],
+            ["koito"],
+        )
+
+    @patch("users.helpers.process_task_result")
     def test_get_import_tasks_unknown_source(self, mock_process_task_result):
         """Test get_import_tasks with an unknown task source."""
         # Create mock processed task

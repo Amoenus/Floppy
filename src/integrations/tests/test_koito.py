@@ -3,11 +3,13 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
+from django.db.utils import OperationalError
 from django.test import TestCase
 from django.urls import reverse
 from django_celery_beat.models import CrontabSchedule, PeriodicTask
 
 from app.models import Music
+from app.services import music_scrobble
 from integrations import koito_api, koito_sync, tasks
 from integrations.imports import helpers
 from integrations.models import KoitoAccount, LastFMHistoryImportStatus
@@ -384,6 +386,40 @@ class KoitoHydrationTests(KoitoTestCase):
         )
         processor.process_listen(_listen(), self.user)
 
+        self.assertEqual(Music.objects.filter(user=self.user).count(), 1)
+
+    @patch("integrations.koito_api.get_album")
+    @patch("integrations.koito_api.get_track")
+    def test_listen_recording_retries_on_database_lock(self, mock_track, mock_album):
+        """A transient 'database is locked' error should be retried, not dropped."""
+        mock_track.return_value = {
+            "musicbrainz_id": "rec-1",
+            "duration": 210,
+            "album_id": 5,
+        }
+        mock_album.return_value = {"title": "Geogaddi", "musicbrainz_id": "rel-1"}
+
+        processor = KoitoScrobbleProcessor(
+            BASE_URL,
+            API_KEY,
+            account_id=self.account.id,
+        )
+        real_record = music_scrobble.record_music_playback
+        call_count = {"n": 0}
+
+        def flaky_record(event):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                raise OperationalError("database is locked")
+            return real_record(event)
+
+        with patch(
+            "integrations.webhooks.koito.music_scrobble.record_music_playback",
+            side_effect=flaky_record,
+        ):
+            processor.process_listen(_listen(), self.user)
+
+        self.assertEqual(call_count["n"], 2)
         self.assertEqual(Music.objects.filter(user=self.user).count(), 1)
 
 

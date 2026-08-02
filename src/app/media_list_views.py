@@ -2368,13 +2368,9 @@ def media_list(request, media_type):
                         (not old_image or old_image == settings.IMG_NONE or old_image == "")):
                         refreshed_with_images += 1
 
-            # Only backfill images for artists on the current page to avoid full queryset evaluation
+            # Only check artists on the current page to avoid full queryset evaluation
             # Use object_list to avoid consuming the page iterator (important for HTMX pagination)
-            from app.models import Album
-
-            artists_to_update = []
             seen_artist_ids = set()
-            artist_id_to_updated_image = {}  # Track which artists got updated images
             artists_checked = 0
             artists_with_images = 0
             artists_missing_images = 0
@@ -2393,29 +2389,19 @@ def media_list(request, media_type):
                         artists_missing_images += 1
                         artists_missing_image_objects.append(artist)
 
-            # Batch fetch earliest album image for all artists missing one — 1 query instead of 2 per artist.
-            hero_image_map: dict[int, str] = {}
+            # Queue a background backfill for artists missing images instead of writing
+            # synchronously during this GET request (avoids racing concurrent importers'
+            # writes and 503s from SQLite lock contention). The Celery task performs the
+            # same "hero image from earliest album cover" lookup and single-row save.
+            queued_for_backfill = 0
             if artists_missing_image_objects:
-                missing_ids = [a.id for a in artists_missing_image_objects]
-                seen_for_hero: set[int] = set()
-                for row in (
-                    Album.objects.filter(artist_id__in=missing_ids)
-                    .exclude(image="")
-                    .exclude(image=settings.IMG_NONE)
-                    .order_by("artist_id", "release_date")
-                    .values("artist_id", "image")
-                ):
-                    aid = row["artist_id"]
-                    if aid not in seen_for_hero:
-                        seen_for_hero.add(aid)
-                        hero_image_map[aid] = row["image"]
+                from app.tasks import prefetch_album_covers_batch
 
-            for artist in artists_missing_image_objects:
-                hero_image = hero_image_map.get(artist.id)
-                if hero_image and hero_image != settings.IMG_NONE:
-                    artist.image = hero_image
-                    artists_to_update.append(artist)
-                    artist_id_to_updated_image[artist.id] = hero_image
+                for artist in artists_missing_image_objects:
+                    cache_key = f"music:cover-prefetch:{artist.id}"
+                    if cache.add(cache_key, True, 60 * 10):
+                        prefetch_album_covers_batch.delay([artist.id], limit_per_artist=5)
+                        queued_for_backfill += 1
 
             # Log backfill attempt (always, not just when updates happen)
             is_pagination_req = bool(request.GET.get("page") and int(request.GET.get("page", 1)) > 1)
@@ -2424,31 +2410,15 @@ def media_list(request, media_type):
             import logging as _logging_module
             _log = _logging_module.getLogger(__name__)
             _log.debug(
-                "Artist image backfill check (page %d, pagination=%s): checked %d artists, %d had images in DB, %d had images after refresh, %d missing, %d updated from albums",
+                "Artist image backfill check (page %d, pagination=%s): checked %d artists, %d had images in DB, %d had images after refresh, %d missing, %d queued for backfill",
                 page,
                 is_pagination_req,
                 artists_checked,
                 images_in_db_count,
                 artists_with_images,
                 artists_missing_images,
-                len(artists_to_update),
+                queued_for_backfill,
             )
-
-            if artists_to_update:
-                Artist.objects.bulk_update(artists_to_update, ["image"])
-                _log.info(
-                    "Backfilled %d artist images from album covers (page %d, pagination=%s)",
-                    len(artists_to_update),
-                    page,
-                    is_pagination_req,
-                )
-
-            # Ensure all tracker artist references have the correct image
-            # Update in-memory objects with images we just set via bulk_update
-            for tracker in artist_page.object_list:
-                if tracker.artist.id in artist_id_to_updated_image:
-                    # Update the in-memory artist object with the new image we just set
-                    tracker.artist.image = artist_id_to_updated_image[tracker.artist.id]
 
             if refreshed_with_images > 0:
                 _log.info(
