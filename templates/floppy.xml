@@ -15,7 +15,7 @@ Requires a reachable Redis instance (used for caching and as the Celery broker).
   <Category>MediaApp:Other Productivity:</Category>
   <WebUI>http://[IP]:[PORT:8000]</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/dannyvfilms/Floppy/latest/templates/floppy.xml</TemplateURL>
-  <Icon>https://raw.githubusercontent.com/dannyvfilms/Floppy/latest/src/static/img/floppy-icon.png</Icon>
+  <Icon>https://raw.githubusercontent.com/dannyvfilms/Floppy/latest/src/static/favicon/android-chrome-512x512.png</Icon>
   <ExtraParams>--add-host=host.docker.internal:host-gateway</ExtraParams>
   <DonateText></DonateText>
   <DonateLink></DonateLink>
