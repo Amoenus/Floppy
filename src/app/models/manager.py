@@ -1641,7 +1641,7 @@ class MediaManager(models.Manager):
             media_types: Iterable of media type strings to query
             item_ids: QuerySet or list of item IDs to fetch media for
             user: User to filter media by
-            status_filter: Optional status value to filter by
+            status_filter: Optional iterable of status values to filter by
 
         Returns:
             dict mapping item_id to media object
@@ -1657,14 +1657,14 @@ class MediaManager(models.Manager):
                     "related_season__user": user,
                 }
                 if status_filter:
-                    filter_kwargs["related_season__status"] = status_filter
+                    filter_kwargs["related_season__status__in"] = status_filter
             else:
                 filter_kwargs = {
                     "item__in": item_ids,
                     "user": user,
                 }
                 if status_filter:
-                    filter_kwargs["status"] = status_filter
+                    filter_kwargs["status__in"] = status_filter
 
             queryset = model.objects.filter(**filter_kwargs).select_related("item")
             queryset = self._apply_prefetch_related(queryset, media_type)

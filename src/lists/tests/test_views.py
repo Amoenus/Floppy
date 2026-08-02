@@ -571,7 +571,11 @@ class ListDetailViewTests(TestCase):
         mock_update_preference,
     ):
         """Test the list_detail view with status filter."""
-        mock_update_preference.side_effect = ["date_added", Status.PLANNING.value]
+        mock_update_preference.side_effect = [
+            "date_added",
+            Status.PLANNING.value,
+            None,
+        ]
         mock_user_can_view.return_value = True
 
         # Create model instances
@@ -602,8 +606,8 @@ class ListDetailViewTests(TestCase):
 
         # Check that filters are applied
         self.assertEqual(
-            response.context["current_status"],
-            Status.PLANNING.value,
+            response.context["current_statuses"],
+            (Status.PLANNING.value,),
         )
         # Should only have the PLANNING item of media type ANIME
         self.assertEqual(len(response.context["items"]), 1)
@@ -1070,7 +1074,7 @@ class ListDetailViewTests(TestCase):
         mock_update_preference,
     ):
         """Full list detail renders the table layout when requested."""
-        mock_update_preference.side_effect = ["date_added", None]
+        mock_update_preference.side_effect = ["date_added", "table"]
         mock_user_can_view.return_value = True
         mock_get_media_metadata.return_value = {
             "max_progress": 1,
@@ -1119,7 +1123,7 @@ class ListDetailViewTests(TestCase):
         mock_update_preference,
     ):
         """HTMX table layout requests should return the list-table partial."""
-        mock_update_preference.side_effect = ["date_added", None]
+        mock_update_preference.side_effect = ["date_added", "table"]
         mock_user_can_view.return_value = True
         mock_get_media_metadata.return_value = {
             "max_progress": 1,
@@ -1140,6 +1144,178 @@ class ListDetailViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "lists/components/list_table.html")
         self.assertContains(response, 'class="w-full bg-[#2a2f35] media-table"')
+
+    @patch.object(get_user_model(), "update_preference")
+    @patch.object(CustomList, "user_can_view")
+    def test_list_detail_view_table_platform_column_for_game_list(
+        self,
+        mock_user_can_view,
+        mock_update_preference,
+    ):
+        """Table view shows real platform values for a game-only list."""
+        mock_update_preference.side_effect = ["date_added", "table"]
+        mock_user_can_view.return_value = True
+
+        game_list = CustomList.objects.create(
+            name="Game List",
+            description="Games only",
+            owner=self.user,
+        )
+        pc_item = Item.objects.create(
+            media_id="pc-game",
+            source=Sources.IGDB.value,
+            media_type=MediaTypes.GAME.value,
+            title="PC Game",
+            platforms=["PC"],
+        )
+        with (
+            patch(
+                "app.models.providers.services.get_media_metadata",
+                return_value={"max_progress": None},
+            ),
+            patch("app.models.Item.fetch_releases"),
+        ):
+            Game.objects.create(
+                item=pc_item,
+                user=self.user,
+                status=Status.PLANNING.value,
+            )
+        CustomListItem.objects.create(custom_list=game_list, item=pc_item)
+
+        response = self.client.get(
+            reverse("list_detail", args=[game_list.id]) + "?layout=table",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(
+            "platform",
+            [column.key for column in response.context["resolved_columns"]],
+        )
+        self.assertContains(response, "PC")
+
+    @patch.object(get_user_model(), "update_preference")
+    @patch.object(CustomList, "user_can_view")
+    def test_list_detail_view_sort_by_platform(
+        self,
+        mock_user_can_view,
+        mock_update_preference,
+    ):
+        """Sorting by platform orders game items alphabetically, no-platform last."""
+        mock_update_preference.side_effect = ["platform", None]
+        mock_user_can_view.return_value = True
+
+        game_list = CustomList.objects.create(
+            name="Game List",
+            description="Games only",
+            owner=self.user,
+        )
+        xbox_item = Item.objects.create(
+            media_id="xbox-game",
+            source=Sources.IGDB.value,
+            media_type=MediaTypes.GAME.value,
+            title="Xbox Game",
+            platforms=["Xbox"],
+        )
+        pc_item = Item.objects.create(
+            media_id="pc-game",
+            source=Sources.IGDB.value,
+            media_type=MediaTypes.GAME.value,
+            title="PC Game",
+            platforms=["PC"],
+        )
+        no_platform_item = Item.objects.create(
+            media_id="no-platform-game",
+            source=Sources.IGDB.value,
+            media_type=MediaTypes.GAME.value,
+            title="Unknown Platform Game",
+        )
+        with (
+            patch(
+                "app.models.providers.services.get_media_metadata",
+                return_value={"max_progress": None},
+            ),
+            patch("app.models.Item.fetch_releases"),
+        ):
+            for item in (xbox_item, pc_item, no_platform_item):
+                Game.objects.create(
+                    item=item,
+                    user=self.user,
+                    status=Status.PLANNING.value,
+                )
+        for item in (xbox_item, pc_item, no_platform_item):
+            CustomListItem.objects.create(custom_list=game_list, item=item)
+
+        response = self.client.get(
+            reverse("list_detail", args=[game_list.id]) + "?sort=platform",
+        )
+        self.assertEqual(response.status_code, 200)
+        titles = [item.title for item in response.context["items"]]
+        self.assertEqual(
+            titles,
+            ["PC Game", "Xbox Game", "Unknown Platform Game"],
+        )
+
+    @patch.object(get_user_model(), "update_preference")
+    @patch.object(CustomList, "user_can_view")
+    def test_list_detail_view_sort_choices_platform_scoped_to_game_lists(
+        self,
+        mock_user_can_view,
+        mock_update_preference,
+    ):
+        """Platform sort option only appears for lists that resolve to games."""
+        mock_update_preference.side_effect = ["date_added", None]
+        mock_user_can_view.return_value = True
+
+        response = self.client.get(reverse("list_detail", args=[self.custom_list.id]))
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("platform", dict(response.context["sort_choices"]))
+
+        game_list = CustomList.objects.create(
+            name="Game List",
+            description="Games only",
+            owner=self.user,
+        )
+        pc_item = Item.objects.create(
+            media_id="pc-game",
+            source=Sources.IGDB.value,
+            media_type=MediaTypes.GAME.value,
+            title="PC Game",
+            platforms=["PC"],
+        )
+        with (
+            patch(
+                "app.models.providers.services.get_media_metadata",
+                return_value={"max_progress": None},
+            ),
+            patch("app.models.Item.fetch_releases"),
+        ):
+            Game.objects.create(
+                item=pc_item,
+                user=self.user,
+                status=Status.PLANNING.value,
+            )
+        CustomListItem.objects.create(custom_list=game_list, item=pc_item)
+
+        mock_update_preference.side_effect = ["date_added", None]
+        response = self.client.get(reverse("list_detail", args=[game_list.id]))
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("platform", dict(response.context["sort_choices"]))
+
+    def test_list_detail_view_layout_persists_without_query_param(self):
+        """A saved layout preference applies even without a ?layout= param."""
+        self.user.list_detail_layout = "table"
+        self.user.save(update_fields=["list_detail_layout"])
+
+        response = self.client.get(reverse("list_detail", args=[self.custom_list.id]))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["current_layout"], "table")
+
+        response = self.client.get(
+            reverse("list_detail", args=[self.custom_list.id]) + "?layout=grid",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["current_layout"], "grid")
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.list_detail_layout, "grid")
 
     @patch.object(get_user_model(), "update_preference")
     @patch.object(CustomList, "user_can_view")
@@ -1201,6 +1377,45 @@ class ListDetailViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "lists/smart_list_detail.html")
         self.assertTrue(response.context["is_smart_list"])
+
+    def test_smart_list_detail_shares_layout_preference_with_manual_lists(self):
+        """Smart lists respect the same saved list_detail_layout preference."""
+        self.user.list_detail_layout = "table"
+        self.user.save(update_fields=["list_detail_layout"])
+
+        smart_list = CustomList.objects.create(
+            name="Smart List",
+            owner=self.user,
+            is_smart=True,
+            smart_media_types=[MediaTypes.MOVIE.value],
+            smart_filters={"status": "all"},
+        )
+
+        response = self.client.get(reverse("list_detail", args=[smart_list.id]))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["current_layout"], "table")
+
+        response = self.client.get(
+            reverse("list_detail", args=[smart_list.id]) + "?layout=grid",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["current_layout"], "grid")
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.list_detail_layout, "grid")
+
+    def test_smart_list_detail_sort_choices_include_platform_for_game_list(self):
+        """A game-only smart list exposes Platform as a sort choice."""
+        smart_list = CustomList.objects.create(
+            name="Smart Game List",
+            owner=self.user,
+            is_smart=True,
+            smart_media_types=[MediaTypes.GAME.value],
+            smart_filters={"status": "all"},
+        )
+
+        response = self.client.get(reverse("list_detail", args=[smart_list.id]))
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("platform", dict(response.context["sort_choices"]))
 
     def test_manual_list_detail_exposes_quick_add_split_actions(self):
         """Editable manual lists should use quick-add actions in the detail header."""

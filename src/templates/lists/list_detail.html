@@ -368,7 +368,11 @@
     direction: '{{ current_direction|default:'desc' }}',
     layout: '{{ current_layout|default:'grid' }}',
     renderedLayout: '{{ current_layout|default:'grid' }}',
-    status: '{{ current_status }}',
+    statuses: [
+      {% for value in current_statuses %}
+        '{{ value }}'{% if not forloop.last %},{% endif %}
+      {% endfor %}
+    ],
     type: '{{ request.GET.type|default:'all' }}',
     query: '{{ request.GET.q|default:''|escapejs }}',
     searchMode: false,
@@ -386,7 +390,17 @@
       return this.mediaTypeLabels[this.type] || this.type;
     },
     getStatusLabel() {
-      return this.statusLabels[this.status] || this.status;
+      if (this.statuses.length === 0) return 'Status';
+      if (this.statuses.length === 1) return this.statusLabels[this.statuses[0]] || this.statuses[0];
+      return this.statuses.length + ' Statuses';
+    },
+    isStatusSelected(value) { return this.statuses.includes(value); },
+    toggleStatus(value) {
+      if (this.statuses.includes(value)) {
+        this.statuses = this.statuses.filter((s) => s !== value);
+      } else {
+        this.statuses = [...this.statuses, value];
+      }
     },
     defaultDirection(value) {
       return ['title', 'media_type', 'release_date', 'start_date'].includes(value) ? 'asc' : 'desc';
@@ -422,7 +436,10 @@
       <input type="hidden" name="direction" x-model="direction">
       <input type="hidden" name="layout" x-model="layout">
       <input type="hidden" name="type" x-model="type">
-      <input type="hidden" name="status" x-model="status">
+      <template x-for="s in statuses" :key="`status-${s}`">
+        <input type="hidden" name="status" :value="s">
+      </template>
+      <input type="hidden" name="status" value="all" :disabled="statuses.length > 0">
       <input type="hidden" name="q" x-model="query">
     </form>
     {% if column_config %}
@@ -560,15 +577,30 @@
                  x-transition:leave="transition ease-in duration-75"
                  x-transition:leave-start="transform opacity-100 scale-100"
                  x-transition:leave-end="transform opacity-0 scale-95">
+              <button hx-get="{% url 'list_detail' custom_list.public_reference %}"
+                      hx-target="#items-view"
+                      hx-include="#filter-form"
+                      hx-indicator="#loading-indicator"
+                      class="block w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
+                      :class="statuses.length === 0 ? 'bg-indigo-600 text-white font-medium' : 'text-gray-300 hover:bg-[#454d5a] hover:text-white'"
+                      @click="statuses = []"
+                      type="button">All</button>
               {% for value, label in status_choices %}
-                <button hx-get="{% url 'list_detail' custom_list.public_reference %}"
-                        hx-target="#items-view"
-                        hx-include="#filter-form"
-                        hx-indicator="#loading-indicator"
-                        class="block w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
-                        :class="status === '{{ value }}' ? 'bg-indigo-600 text-white font-medium' : 'text-gray-300 hover:bg-[#454d5a] hover:text-white'"
-                        @click="status = '{{ value }}'; open = false"
-                        type="button">{{ label }}</button>
+                {% if value != 'All' %}
+                  <button hx-get="{% url 'list_detail' custom_list.public_reference %}"
+                          hx-target="#items-view"
+                          hx-include="#filter-form"
+                          hx-indicator="#loading-indicator"
+                          class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
+                          :class="isStatusSelected('{{ value }}') ? 'bg-indigo-600 text-white font-medium' : 'text-gray-300 hover:bg-[#454d5a] hover:text-white'"
+                          @click="toggleStatus('{{ value }}')"
+                          type="button">
+                    <span>{{ label }}</span>
+                    <span class="ml-auto" x-show="isStatusSelected('{{ value }}')">
+                      {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-white" %}
+                    </span>
+                  </button>
+                {% endif %}
               {% endfor %}
             </div>
           </div>

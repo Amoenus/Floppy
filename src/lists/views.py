@@ -156,17 +156,35 @@ def list_detail(request, list_reference):
         request.GET.get("direction"),
     )
 
+    raw_status_filter = request.GET.getlist("status")
+    valid_status_values = set(valid_statuses) - {MediaStatusChoices.ALL}
     if request.user.is_authenticated:
-        status_filter = request.user.update_preference(
-            "list_detail_status",
-            request.GET.get("status"),
+        persisted_status_pref = request.user.list_detail_status
+        persisted_status_filter = tuple(
+            value
+            for value in str(persisted_status_pref or "").split(",")
+            if value and value in valid_status_values
         )
-        if status_filter not in valid_statuses:
-            status_filter = MediaStatusChoices.ALL
+        if "status" in request.GET:
+            status_filter = tuple(
+                dict.fromkeys(
+                    value
+                    for value in raw_status_filter
+                    if value in valid_status_values
+                ),
+            )
+            request.user.update_preference(
+                "list_detail_status",
+                ",".join(status_filter),
+            )
+        else:
+            status_filter = persisted_status_filter
     else:
-        status_filter = request.GET.get("status", MediaStatusChoices.ALL)
-        if status_filter not in valid_statuses:
-            status_filter = MediaStatusChoices.ALL
+        status_filter = tuple(
+            dict.fromkeys(
+                value for value in raw_status_filter if value in valid_status_values
+            ),
+        )
 
     selected_media_types = request.GET.getlist("type")
     if not selected_media_types:
@@ -228,7 +246,7 @@ def list_detail(request, list_reference):
     media_by_item_id = {}
 
     # Filter by status if specified
-    if params["status_filter"] != MediaStatusChoices.ALL:
+    if params["status_filter"]:
         item_ids = items.values_list("id", flat=True)
         media_by_item_id = media_manager.fetch_media_for_items(
             media_types,
@@ -360,7 +378,7 @@ def list_detail(request, list_reference):
         "current_sort": params["sort_by"],
         "current_direction": params["direction"],
         "chip_sort": chip_sort,
-        "current_status": params["status_filter"] or MediaStatusChoices.ALL,
+        "current_statuses": params["status_filter"],
         "current_layout": layout,
         "sort_choices": sorted(ListDetailSortChoices.choices, key=lambda x: x[1]),
         "status_choices": MediaStatusChoices.choices,

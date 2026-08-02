@@ -37,6 +37,7 @@ MULTI_STATUS_PREFERENCE_FIELDS = {
     "comic_status",
     "music_status",
     "podcast_status",
+    "list_detail_status",
 }
 # Score-scaling constants: a user's display scale is either 1-5 or the
 # internal storage scale of 0-10 (see RatingScaleChoices).
@@ -165,6 +166,7 @@ class ListDetailSortChoices(models.TextChoices):
     RELEASE_DATE = "release_date", "Release Date"
     START_DATE = "start_date", "Start Date"
     END_DATE = "end_date", "End Date"
+    PLATFORM = "platform", "Platform"
 
 
 class DateFormatChoices(models.TextChoices):
@@ -768,9 +770,14 @@ class User(AbstractUser):
         choices=ListDetailSortChoices,
     )
     list_detail_status = models.CharField(
-        max_length=20,
+        max_length=128,
         default=MediaStatusChoices.ALL,
         choices=MediaStatusChoices,
+    )
+    list_detail_layout = models.CharField(
+        max_length=20,
+        default=LayoutChoices.GRID,
+        choices=LayoutChoices,
     )
 
     # Notification settings
@@ -1231,8 +1238,8 @@ class User(AbstractUser):
                 condition=models.Q(list_detail_sort__in=ListDetailSortChoices.values),
             ),
             models.CheckConstraint(
-                name="list_detail_status_valid",
-                condition=models.Q(list_detail_status__in=MediaStatusChoices.values),
+                name="list_detail_layout_valid",
+                condition=models.Q(list_detail_layout__in=LayoutChoices.values),
             ),
             models.CheckConstraint(
                 name="music_layout_valid",
