@@ -441,7 +441,8 @@ document.addEventListener("alpine:init", () => {
         progressField.type !== "text" ||
         !startDateField ||
         !endDateField ||
-        this.manualStartDate
+        this.manualStartDate ||
+        (startDateField.value && !this.autoFilled.start_date)
       ) {
         return;
       }
