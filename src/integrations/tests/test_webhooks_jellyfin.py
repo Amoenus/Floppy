@@ -845,7 +845,7 @@ class JellyfinWebhookTests(TestCase):
         tmdb_show_id = "1668"
         show_level_tvdb_id = "76669"
 
-        def find_side_effect(ext_id, ext_type):  # noqa: ARG001
+        def find_side_effect(ext_id, ext_type):
             episode_number = 1 if ext_id == "303821" else 2
             return {
                 "tv_episode_results": [

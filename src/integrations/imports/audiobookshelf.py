@@ -1080,12 +1080,11 @@ class AudiobookshelfImporter:
 
         abs_host = urlparse(self.account.base_url).netloc.lower()
         image_host = parsed_image.netloc.lower()
-        is_abs_api_cover = (
+        return (
             image_host == abs_host
             and "/api/items/" in parsed_image.path
             and "/cover" in parsed_image.path
         )
-        return is_abs_api_cover
 
     def _resolve_provider_metadata(self, title: str, authors: list[str], isbns: list[str]):
         if not title:

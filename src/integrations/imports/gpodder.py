@@ -45,7 +45,8 @@ class GPodderImporter:
         try:
             self.account = user.gpodder_account
         except integration_models.GPodderAccount.DoesNotExist as exc:
-            raise MediaImportError("GPodder account not connected.") from exc
+            msg = "GPodder account not connected."
+            raise MediaImportError(msg) from exc
 
         try:
             self.credentials = gpodder_api.GPodderCredentials(

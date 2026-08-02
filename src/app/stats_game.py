@@ -456,7 +456,7 @@ def _compute_game_top_genres(play_details, limit=STATISTICS_TOP_N):
 
     genre_stats = defaultdict(lambda: {"minutes": 0, "game_ids": set(), "name": ""})
 
-    for game, dt, runtime in play_details:
+    for game, _dt, runtime in play_details:
         minutes = runtime or 0
 
         # Get genres from stored item or cached metadata only (don't trigger API calls)
@@ -532,7 +532,7 @@ def _compute_game_top_decades(play_details, limit=STATISTICS_TOP_N):
 
     decade_stats = defaultdict(lambda: {"minutes": 0, "game_ids": set(), "label": ""})
 
-    for game, dt, runtime in play_details:
+    for game, _dt, runtime in play_details:
         minutes = runtime or 0
 
         release_datetime = getattr(

@@ -181,7 +181,7 @@ def _compute_podcast_top_lists(play_details, limit=STATISTICS_TOP_N):
         }
     )
 
-    for podcast, dt, runtime in play_details:
+    for podcast, _dt, runtime in play_details:
         # Aggregate by show for most_played and most_listened
         if podcast.show:
             show_key = podcast.show.id

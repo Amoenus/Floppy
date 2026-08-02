@@ -48,7 +48,7 @@ _CREW_CATEGORIES = {
 
 
 def _title_key(title: str) -> str:
-    return Item._title_comparison_key(title)  # noqa: SLF001
+    return Item._title_comparison_key(title)
 
 
 def resolve_game_imdb_ids() -> int:

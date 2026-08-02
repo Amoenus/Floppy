@@ -537,14 +537,11 @@ class Item(CalendarTriggerMixin, models.Model):
         display_script = cls._title_script_bucket(display_title)
         alternative_script = cls._title_script_bucket(alternative_title)
 
-        if (
+        return not (
             display_script in locale_scripts
             and alternative_script not in locale_scripts
             and alternative_script != "unknown"
-        ):
-            return False
-
-        return True
+        )
 
     @classmethod
     def resolve_title_variants(

@@ -59,13 +59,15 @@ class Command(BaseCommand):
         try:
             user = User.objects.get(username=username)
         except User.DoesNotExist:
-            raise CommandError(f"User '{username}' not found.")
+            msg = f"User '{username}' not found."
+            raise CommandError(msg)
 
         # Enable query logging and allow the test client's default host.
         original_debug = conf.settings.DEBUG
         original_allowed_hosts = conf.settings.ALLOWED_HOSTS
         conf.settings.DEBUG = True
-        conf.settings.ALLOWED_HOSTS = list(original_allowed_hosts) + [
+        conf.settings.ALLOWED_HOSTS = [
+            *list(original_allowed_hosts),
             "testserver",
             "localhost",
         ]

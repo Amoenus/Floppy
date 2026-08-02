@@ -148,7 +148,7 @@ def _populate_credits_for_items(items, delay_seconds):
                 time.sleep(delay_seconds)
         except Exception as exc:
             error_count += 1
-            logger.error(
+            logger.exception(
                 "Error syncing credits for %s: %s", item.title, exception_summary(exc)
             )
             _record_backfill_failure(

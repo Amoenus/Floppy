@@ -347,7 +347,7 @@ def normalize_rule_payload(payload, owner):
         seen_tags.add(key)
         deduped_tags.append(value)
 
-    normalized = {
+    return {
         "media_types": normalized_media_types,
         "status": normalized_statuses,
         "rating": rating,
@@ -375,7 +375,6 @@ def normalize_rule_payload(payload, owner):
         "tag": deduped_tags,
         "tag_mode": tag_mode,
     }
-    return normalized
 
 
 def normalize_list_rules(custom_list) -> dict:

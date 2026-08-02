@@ -23,7 +23,8 @@ class RefreshImdbGameCreditsTaskTests(TestCase):
     def test_backfills_images_even_when_no_new_credits_to_sync(self):
         """Regression: a game already synced in a prior run has no new tconsts to
         fetch, but its cast can still be missing images from before this backfill
-        existed — that shouldn't skip the image backfill step entirely."""
+        existed — that shouldn't skip the image backfill step entirely.
+        """
         item = Item.objects.create(
             media_id="igdb-1",
             source=Sources.IGDB.value,

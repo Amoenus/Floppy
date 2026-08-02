@@ -369,7 +369,7 @@ def sync_album_metadata_view(request, album_id):
                     response = HttpResponse(status=204)
                     response["HX-Redirect"] = _music_album_detail_url(canonical)
                     return response
-                elif needs_group_id:
+                if needs_group_id:
                     # No duplicate — just backfill the missing fields.
                     album.musicbrainz_release_group_id = fetched_release_group_id
                     album.release_type = release_data.get("release_type", "")

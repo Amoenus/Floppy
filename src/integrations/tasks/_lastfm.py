@@ -103,7 +103,9 @@ def _run_incremental_lastfm_sync(account) -> dict:
             "message": "Last.fm rate limit exceeded.",
         }
     except lastfm_api.LastFMClientError as exc:
-        logger.error("Last.fm client error for user %s: %s", account.user.username, exc)
+        logger.exception(
+            "Last.fm client error for user %s: %s", account.user.username, exc
+        )
         now = timezone.now()
         account.connection_broken = True
         account.failure_count += 1
@@ -127,7 +129,9 @@ def _run_incremental_lastfm_sync(account) -> dict:
             "message": "Last.fm account is no longer valid.",
         }
     except lastfm_api.LastFMAPIError as exc:
-        logger.error("Last.fm API error for user %s: %s", account.user.username, exc)
+        logger.exception(
+            "Last.fm API error for user %s: %s", account.user.username, exc
+        )
         now = timezone.now()
         account.connection_broken = False
         account.failure_count += 1
@@ -291,7 +295,8 @@ def import_lastfm_history(user_id, reset=False):
         account.save(
             update_fields=["history_import_status", "history_import_last_error_message"]
         )
-        raise ValueError("Enable music tracking before importing Last.fm history.")
+        msg = "Enable music tracking before importing Last.fm history."
+        raise ValueError(msg)
 
     if account.history_import_cutoff_uts is None:
         cutoff_uts = (account.last_fetch_timestamp_uts or int(time.time())) - 1

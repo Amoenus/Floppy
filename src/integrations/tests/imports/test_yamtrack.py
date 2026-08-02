@@ -287,11 +287,11 @@ class ImportYamtrackStatuslessRoundTrip(TestCase):
         """Export a statusless, rated movie for a second user to import."""
         self.exporter = get_user_model().objects.create_user(
             username="statusless-exporter",
-            password="12345",  # noqa: S106
+            password="12345",
         )
         self.importer_user = get_user_model().objects.create_user(
             username="statusless-importer",
-            password="12345",  # noqa: S106
+            password="12345",
         )
         item, _ = Item.objects.get_or_create(
             media_id="10494",

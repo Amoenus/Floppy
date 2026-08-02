@@ -108,12 +108,13 @@ def login(email: str, password: str) -> dict[str, Any]:
         }
     except requests.HTTPError as e:
         if e.response.status_code == 401:
-            raise PocketCastsAuthError("Invalid email or password")
-        raise PocketCastsClientError(
-            f"Pocket Casts API error: {e.response.status_code}"
-        ) from e
+            msg = "Invalid email or password"
+            raise PocketCastsAuthError(msg)
+        msg = f"Pocket Casts API error: {e.response.status_code}"
+        raise PocketCastsClientError(msg) from e
     except requests.RequestException as e:
-        raise PocketCastsClientError(f"Failed to connect to Pocket Casts: {e}") from e
+        msg = f"Failed to connect to Pocket Casts: {e}"
+        raise PocketCastsClientError(msg) from e
 
 
 def refresh_token(refresh_token: str) -> dict[str, Any]:
@@ -139,7 +140,8 @@ def refresh_token(refresh_token: str) -> dict[str, Any]:
                 "Token refresh response missing accessToken. Response keys: %s",
                 list(data.keys()) if isinstance(data, dict) else "not a dict",
             )
-            raise PocketCastsAuthError("Invalid response from token refresh")
+            msg = "Invalid response from token refresh"
+            raise PocketCastsAuthError(msg)
 
         logger.debug("Token refresh successful")
         return {
@@ -150,23 +152,26 @@ def refresh_token(refresh_token: str) -> dict[str, Any]:
         status_code = e.response.status_code if e.response else None
         try:
             error_body = e.response.text[:500] if e.response else "No response"
-            logger.error(
+            logger.exception(
                 "Token refresh failed with status %d. Response: %s",
                 status_code,
                 error_body,
             )
         except Exception:
-            logger.error(
+            logger.exception(
                 "Token refresh failed with status %d (could not read response body)",
                 status_code,
             )
 
         if status_code == 401:
-            raise PocketCastsAuthError("Refresh token is invalid or expired")
-        raise PocketCastsClientError(f"Pocket Casts API error: {status_code}") from e
+            msg = "Refresh token is invalid or expired"
+            raise PocketCastsAuthError(msg)
+        msg = f"Pocket Casts API error: {status_code}"
+        raise PocketCastsClientError(msg) from e
     except requests.RequestException as e:
-        logger.error("Network error during token refresh: %s", e)
-        raise PocketCastsClientError(f"Failed to refresh token: {e}") from e
+        logger.exception("Network error during token refresh: %s", e)
+        msg = f"Failed to refresh token: {e}"
+        raise PocketCastsClientError(msg) from e
 
 
 def parse_token_expiration(access_token: str) -> datetime:
@@ -237,7 +242,7 @@ def validate_token(access_token: str) -> bool:
         return response.status_code < 500
     except requests.RequestException as e:
         # Network errors - can't validate, assume invalid to be safe
-        logger.error("Network error during access token validation: %s", e)
+        logger.exception("Network error during access token validation: %s", e)
         return False
 
 
@@ -266,25 +271,24 @@ def get_podcast_list(access_token: str) -> dict[str, Any]:
         data = response.json()
     except requests.HTTPError as e:
         if e.response is not None and e.response.status_code == 401:
-            raise PocketCastsAuthError(
-                "Pocket Casts token is invalid or expired"
-            ) from e
+            msg = "Pocket Casts token is invalid or expired"
+            raise PocketCastsAuthError(msg) from e
         status_code = e.response.status_code if e.response is not None else "unknown"
+        msg = f"Pocket Casts podcast list request failed: {status_code}"
         raise PocketCastsClientError(
-            f"Pocket Casts podcast list request failed: {status_code}",
+            msg,
         ) from e
     except requests.RequestException as e:
-        logger.error("Failed to fetch podcast list: %s", e)
-        raise PocketCastsClientError(
-            f"Failed to fetch Pocket Casts podcast list: {e}"
-        ) from e
+        logger.exception("Failed to fetch podcast list: %s", e)
+        msg = f"Failed to fetch Pocket Casts podcast list: {e}"
+        raise PocketCastsClientError(msg) from e
     except ValueError as e:
-        raise PocketCastsClientError(
-            "Invalid Pocket Casts podcast list response"
-        ) from e
+        msg = "Invalid Pocket Casts podcast list response"
+        raise PocketCastsClientError(msg) from e
 
     if not isinstance(data, dict) or not isinstance(data.get("podcasts", []), list):
-        raise PocketCastsClientError("Invalid Pocket Casts podcast list response")
+        msg = "Invalid Pocket Casts podcast list response"
+        raise PocketCastsClientError(msg)
 
     return data
 

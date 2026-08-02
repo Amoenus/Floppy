@@ -11,7 +11,7 @@ from users.signals import _demo_user_schema_ready, ensure_demo_user_after_migrat
 class EnsureDemoUserTests(TestCase):
     """Tests for built-in demo account provisioning."""
 
-    changed_password = "changed-password"  # noqa: S105
+    changed_password = "changed-password"
 
     def test_creates_demo_user_with_expected_credentials(self):
         """Demo provisioning should create the built-in account."""

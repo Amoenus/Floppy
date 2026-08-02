@@ -389,10 +389,10 @@ def build_statistics_days_task(user_id: int, start_token: str, end_token: str):
     start_date = datetime.fromisoformat(start_token) if start_token != "all" else None
     end_date = datetime.fromisoformat(end_token) if end_token != "all" else None
 
-    day_list = statistics_cache._resolve_day_list(user, start_date, end_date)  # noqa: SLF001
+    day_list = statistics_cache._resolve_day_list(user, start_date, end_date)
     if not day_list:
         return
-    statistics_cache._aggregate_minutes_per_media_type_from_days(  # noqa: SLF001
+    statistics_cache._aggregate_minutes_per_media_type_from_days(
         user,
         day_list,
         build_missing=True,
@@ -433,7 +433,7 @@ def refresh_item_game_lengths(
                 MetadataBackfillField.GAME_LENGTHS,
                 f"exception: {error_message}",
             )
-            logger.error(
+            logger.exception(
                 "game_lengths_refresh_error item_id=%s media_id=%s error=%s",
                 item.id,
                 item.media_id,
@@ -946,7 +946,7 @@ def backfill_item_metadata_task(
             item.metadata_fetched_at = timezone.now()
             item.save(update_fields=["metadata_fetched_at"])
 
-            logger.error(
+            logger.exception(
                 "metadata_backfill_error item_id=%s media_type=%s error=%s",
                 item.id,
                 item.media_type,
@@ -982,3 +982,84 @@ def backfill_item_metadata_task(
         result["deferred"] = True
         result["reason"] = "interactive_request_active"
     return result
+
+
+__all__ = [
+    "CREDITS_BACKFILL_ITEMS_QUEUE_KEY",
+    "CREDITS_BACKFILL_ITEMS_SCHEDULED_KEY",
+    "CREDITS_BACKFILL_QUEUE_TTL",
+    "CREDITS_BACKFILL_SOURCES",
+    "GENRE_BACKFILL_ITEMS_QUEUE_KEY",
+    "GENRE_BACKFILL_ITEMS_SCHEDULED_KEY",
+    "GENRE_BACKFILL_QUEUE_TTL",
+    "GENRE_BACKFILL_RECONCILE_FALLBACK_INTERVAL_SECONDS",
+    "GENRE_BACKFILL_SOURCES",
+    "GENRE_BACKFILL_VERSION",
+    "IGDB_RATINGS_BACKFILL_ITEMS_QUEUE_KEY",
+    "IGDB_RATINGS_BACKFILL_ITEMS_SCHEDULED_KEY",
+    "IGDB_RATINGS_BACKFILL_QUEUE_TTL",
+    "IGDB_RATINGS_BACKFILL_VERSION",
+    "METADATA_BACKFILL_BASE_DELAY_SECONDS",
+    "METADATA_BACKFILL_MAX_ATTEMPTS",
+    "METADATA_BACKFILL_MAX_DELAY_SECONDS",
+    "RUNTIME_BACKFILL_EPISODES_LOCK_PREFIX",
+    "RUNTIME_BACKFILL_EPISODES_LOCK_TTL",
+    "RUNTIME_BACKFILL_EPISODES_QUEUE_KEY",
+    "RUNTIME_BACKFILL_EPISODES_SCHEDULED_KEY",
+    "RUNTIME_BACKFILL_ITEMS_QUEUE_KEY",
+    "RUNTIME_BACKFILL_ITEMS_SCHEDULED_KEY",
+    "RUNTIME_BACKFILL_QUEUE_TTL",
+    "RUNTIME_BACKFILL_SOURCES",
+    "TRAKT_POPULARITY_BACKFILL_ITEMS_QUEUE_KEY",
+    "TRAKT_POPULARITY_BACKFILL_ITEMS_SCHEDULED_KEY",
+    "TRAKT_POPULARITY_BACKFILL_QUEUE_TTL",
+    "_add_user_day_key",
+    "_backfill_delay_seconds",
+    "_collect_backfill_day_keys",
+    "_filter_backfill_item_ids",
+    "_filter_episode_runtime_season_keys",
+    "_igdb_rating_items_queryset",
+    "_metadata_cache_keys_for_item",
+    "_missing_credits_item_ids",
+    "_normalize_item_ids",
+    "_normalize_season_keys",
+    "_populate_credits_for_items",
+    "_populate_genres_for_items",
+    "_populate_runtime_for_items",
+    "_schedule_metadata_statistics_refresh",
+    "bulk_episode_plays_task",
+    "bulk_music_plays_task",
+    "count_igdb_rating_backfill_items",
+    "enqueue_igdb_rating_backfill_items",
+    "enrich_albums_task",
+    "enrich_music_library_task",
+    "ensure_genre_backfill_reconcile",
+    "fast_runtime_backfill_task",
+    "is_genre_backfill_reconcile_complete",
+    "migrate_tv_shows_to_preferred_provider_task",
+    "populate_album_tracks_batch",
+    "populate_credits_backfill_queue",
+    "populate_credits_data_for_items",
+    "populate_episode_runtime_data",
+    "populate_episode_runtime_queue",
+    "populate_genre_backfill_queue",
+    "populate_genre_data_for_items",
+    "populate_igdb_rating_backfill_queue",
+    "populate_igdb_rating_data_for_items",
+    "populate_runtime_backfill_queue",
+    "populate_runtime_data_batch",
+    "populate_runtime_data_continuous",
+    "populate_runtime_data_for_items",
+    "populate_trakt_episode_ratings_for_season",
+    "populate_trakt_popularity_backfill_queue",
+    "populate_trakt_popularity_data_for_items",
+    "prefetch_album_covers_batch",
+    "prefetch_artist_images_batch",
+    "reconcile_genre_backfill",
+    "reconcile_igdb_rating_backfill",
+    "reconcile_trakt_popularity",
+    "refresh_discover_rows",
+    "warm_discover_api_cache",
+    "warm_discover_startup_tabs",
+    "warm_history_day_cache_coverage",
+]

@@ -310,7 +310,7 @@ def _format_statistics_total_for_media_type(
     media_type, total, duration_format="hours_minutes"
 ):
     if media_type == MediaTypes.BOARDGAME.value:
-        rounded_total = int(round(total or 0))
+        rounded_total = round(total or 0)
         return f"{rounded_total} play{'s' if rounded_total != 1 else ''}"
     return stats._format_hours_minutes(total or 0, duration_format)
 
@@ -576,8 +576,8 @@ def statistics(request):
         top_rated_comic = top_rated_by_type.get("comic", [])
         top_rated_manga = top_rated_by_type.get("manga", [])
 
-        start_date_str_for_url = start_date_str if start_date_str else ""
-        end_date_str_for_url = end_date_str if end_date_str else ""
+        start_date_str_for_url = start_date_str or ""
+        end_date_str_for_url = end_date_str or ""
 
         _compare_label = STATISTICS_COMPARE_LABELS[selected_compare_mode]
         _range_to_comparison_label = {
@@ -1456,10 +1456,9 @@ def update_statistics_preferences(request):
     if (
         activity_history_view
         and activity_history_view in ActivityHistoryViewChoices.values
-    ):
-        if request.user.activity_history_view != activity_history_view:
-            request.user.activity_history_view = activity_history_view
-            fields_to_update.append("activity_history_view")
+    ) and request.user.activity_history_view != activity_history_view:
+        request.user.activity_history_view = activity_history_view
+        fields_to_update.append("activity_history_view")
 
     duration_format = request.POST.get("duration_format")
     if duration_format and duration_format in DurationFormatChoices.values:

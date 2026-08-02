@@ -5,10 +5,7 @@ from collections import Counter, defaultdict
 from types import SimpleNamespace
 
 from django.conf import settings
-from django.contrib.auth import get_user_model
-from django.core.cache import cache
 from django.db.models import Q
-from django.utils import timezone
 
 from app import credits as credit_helpers
 from app import statistics as stats
@@ -23,7 +20,6 @@ from app.models import (
     Movie,
     Person,
     PersonGender,
-    Sources,
 )
 
 logger = logging.getLogger(__name__)

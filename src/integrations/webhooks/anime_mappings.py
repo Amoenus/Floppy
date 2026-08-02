@@ -1,6 +1,7 @@
 from django.core.cache import cache
 
 import app
+import contextlib
 
 CACHE_KEY = "anibridge_v3_mapping_data"
 URL = (
@@ -119,10 +120,8 @@ def _parse_source_descriptor_to_link(descriptor, ranges):
 
     season = None
     if len(parts) >= 3 and parts[2].startswith("s"):
-        try:
+        with contextlib.suppress(ValueError):
             season = int(parts[2][1:])
-        except ValueError:
-            pass
 
     if provider == "tvdb_show":
         return {

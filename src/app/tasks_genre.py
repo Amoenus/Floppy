@@ -25,6 +25,7 @@ from app.tasks_backfill_state import (
     _record_backfill_success,
     _schedule_metadata_statistics_refresh,
 )
+import contextlib
 
 logger = logging.getLogger(__name__)
 
@@ -178,14 +179,12 @@ def _tmdb_tv_item_is_tvdb_anime(item: Item, tmdb_metadata: dict | None) -> bool:
     from app.providers.services import ProviderAPIError  # noqa: PLC0415
 
     tvdb_metadata_result = None
-    try:
+    with contextlib.suppress(ProviderAPIError):
         tvdb_metadata_result = services.get_media_metadata(
             MediaTypes.TV.value,
             tvdb_id,
             Sources.TVDB.value,
         )
-    except ProviderAPIError:
-        pass
 
     if not isinstance(tvdb_metadata_result, dict):
         healed_id = _resolve_tvdb_id_via_imdb(tmdb_metadata, stale_tvdb_id=tvdb_id)
@@ -290,7 +289,7 @@ def _populate_genres_for_items(items, delay_seconds):
                 time.sleep(delay_seconds)
         except Exception as exc:
             error_count += 1
-            logger.error(
+            logger.exception(
                 "Error updating genres for %s: %s", item.title, exception_summary(exc)
             )
             _record_backfill_failure(

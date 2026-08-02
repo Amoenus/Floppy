@@ -8,18 +8,13 @@ from django.views.decorators.http import require_GET
 from app import helpers
 from app.log_safety import exception_summary
 from app.models import (
-    Album,
     AlbumTracker,
-    Artist,
     ArtistTracker,
     BasicMedia,
     Item,
     MediaTypes,
-    Music,
-    PodcastShow,
     PodcastShowTracker,
     Sources,
-    Track,
 )
 from app.providers import services
 from app.services import metadata_resolution
@@ -35,10 +30,10 @@ MIN_SUGGESTION_QUERY_LENGTH = 2
 def _mark_grouped_anime_route(media_items):
     """Annotate grouped-anime rows so templates route them through the Anime UI."""
     for media in media_items or []:
-        setattr(media, "route_media_type", MediaTypes.ANIME.value)
+        media.route_media_type = MediaTypes.ANIME.value
         item = getattr(media, "item", None)
         if item is not None:
-            setattr(item, "route_media_type", MediaTypes.ANIME.value)
+            item.route_media_type = MediaTypes.ANIME.value
     return media_items
 
 

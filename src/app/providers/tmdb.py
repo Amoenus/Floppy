@@ -12,6 +12,7 @@ from app import helpers
 from app.log_safety import exception_summary
 from app.models import MediaTypes, Sources
 from app.providers import services
+import contextlib
 
 logger = logging.getLogger(__name__)
 base_url = "https://api.themoviedb.org/3"
@@ -308,10 +309,8 @@ def _normalize_season_numbers(season_numbers):
     for season_number in season_numbers:
         if isinstance(season_number, str):
             season_number = season_number.strip()
-            try:
+            with contextlib.suppress(ValueError):
                 season_number = int(season_number)
-            except ValueError:
-                pass
 
         normalized_seasons.append(season_number)
 
@@ -2117,7 +2116,7 @@ def episode(media_id, season_number, episode_number):
             or f"Season {season_number}",
             "episode_title": response.get("name") or f"Episode {episode_number}",
             "score": round(vote_average, 1) if vote_average else None,
-            "score_count": vote_count if vote_count else None,
+            "score_count": vote_count or None,
             "cast": get_cast_credits({"cast": cast_rows}),
             "crew": get_crew_credits({"crew": crew_rows}),
         }

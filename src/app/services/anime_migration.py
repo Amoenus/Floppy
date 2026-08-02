@@ -99,8 +99,9 @@ def _entries_for_provider_series(
             if _provider_series_id(entry, provider) == str(series_id)
         ]
         if len(provider_entries) > 1:
+            msg = f'Ambiguous mapping for "{anime.item.title}" on {provider.upper()}.'
             raise AnimeMigrationError(
-                f'Ambiguous mapping for "{anime.item.title}" on {provider.upper()}.',
+                msg,
             )
         if provider_entries:
             matches.append((anime, provider_entries[0]))
@@ -117,15 +118,17 @@ def migrate_flat_anime_to_grouped(
 ) -> AnimeMigrationResult:
     """Migrate all matching flat anime rows for a user into a grouped series."""
     if anime_item.source != "mal" or anime_item.media_type != MediaTypes.ANIME.value:
-        raise AnimeMigrationError("Only flat MAL anime can be migrated in this phase.")
+        msg = "Only flat MAL anime can be migrated in this phase."
+        raise AnimeMigrationError(msg)
 
     provider_series_id = anime_mapping.resolve_provider_series_id(
         anime_item.media_id,
         provider,
     )
     if not provider_series_id:
+        msg = f"No {provider.upper()} mapping was found for this anime."
         raise AnimeMigrationError(
-            f"No {provider.upper()} mapping was found for this anime.",
+            msg,
         )
 
     flat_anime_entries = list(
@@ -140,17 +143,15 @@ def migrate_flat_anime_to_grouped(
         provider_series_id,
     )
     if not mapped_entries:
-        raise AnimeMigrationError(
-            "No unmigrated anime entries matched this grouped series."
-        )
+        msg = "No unmigrated anime entries matched this grouped series."
+        raise AnimeMigrationError(msg)
 
     season_numbers = []
     for _anime, mapping_entry in mapped_entries:
         season_number = _provider_season_number(mapping_entry, provider)
         if season_number is None:
-            raise AnimeMigrationError(
-                "One or more mapped entries do not define a season."
-            )
+            msg = "One or more mapped entries do not define a season."
+            raise AnimeMigrationError(msg)
         season_numbers.append(season_number)
 
     hydration = ensure_item_metadata(
@@ -190,14 +191,16 @@ def migrate_flat_anime_to_grouped(
         season_key = f"season/{season_number}"
         season_metadata = tv_with_seasons.get(season_key)
         if not season_metadata:
+            msg = f"Season {season_number} could not be loaded from {provider.upper()}."
             raise AnimeMigrationError(
-                f"Season {season_number} could not be loaded from {provider.upper()}.",
+                msg,
             )
 
         available_episodes = len(season_metadata.get("episodes") or [])
         if anime.progress > max(available_episodes - episode_offset, 0):
+            msg = f'"{anime.item.title}" has more watched episodes than the mapped season can hold.'
             raise AnimeMigrationError(
-                f'"{anime.item.title}" has more watched episodes than the mapped season can hold.',
+                msg,
             )
 
     latest_score_entry = None

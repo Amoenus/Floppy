@@ -15,21 +15,17 @@ from app.discover import tab_cache as discover_tab_cache
 from app.forms import BulkEpisodeTrackForm
 from app.log_safety import exception_summary
 from app.models import (
-    TV,
     Album,
     Artist,
     CollectionEntry,
     Item,
     MediaTypes,
     Music,
-    Season,
     Sources,
-    Status,
     Track,
 )
 from app.services import bulk_music_tracking
 from app.services import music as sync_services
-from app.signals import suppress_media_cache_change_signals
 from app.tag_views import _build_detail_tag_sections
 from app.templatetags import app_tags
 
@@ -174,9 +170,9 @@ def _render_music_tracker_modal(
     track_form_id = f"track-form-{uuid4().hex}"
     field_groups = view_barrel._track_modal_field_groups(
         form,
-        hidden_field_names=set(
+        hidden_field_names={
             field_name for field_name in form.fields if field_name.endswith("_id")
-        ),
+        },
         metadata_field_names=set(),
     )
     episode_plays_tab_available = bool(bulk_domain)
@@ -328,9 +324,9 @@ def _queue_artist_relation_image_prefetch(artist, band_members, member_of_bands)
         if cache.add(cache_key, True, 60 * 10):
             try:
                 prefetch_artist_images_batch.delay(missing_ids)
-            except Exception as queue_exc:  # pragma: no cover - defensive
+            except Exception:  # pragma: no cover - defensive
                 cache.delete(cache_key)
-                raise queue_exc
+                raise
     except Exception as exc:  # pragma: no cover - defensive
         logger.debug(
             "Artist relation image prefetch queue failed for artist %s: %s",
@@ -1205,9 +1201,9 @@ def prefetch_artist_covers(request, artist_id):
                     prefetch_album_covers_batch.delay(
                         [artist.id], limit_per_artist=None
                     )
-                except Exception as queue_exc:  # pragma: no cover - defensive
+                except Exception:  # pragma: no cover - defensive
                     cache.delete(cache_key)
-                    raise queue_exc
+                    raise
             poll_for_covers = bool(cache.get(cache_key))
         except Exception as exc:  # pragma: no cover - defensive
             logger.debug(

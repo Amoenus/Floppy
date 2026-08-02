@@ -281,7 +281,7 @@ def populate_episode_runtime_data(season_keys: list[str] | None = None):
             time.sleep(0.1)
 
         except Exception as e:
-            logger.error(
+            logger.exception(
                 "Episode runtime backfill failed source=%s season=%s error=%s",
                 source,
                 season_number,

@@ -135,7 +135,8 @@ class AuthenticatorSetupForm(forms.Form):
         """Validate TOTP code against the user's pending secret."""
         code = self.cleaned_data["code"].strip()
         if not self.user.verify_totp_code(code):
-            raise ValidationError("Invalid authenticator code.")
+            msg = "Invalid authenticator code."
+            raise ValidationError(msg)
         return code
 
 
@@ -151,7 +152,8 @@ class RegenerateRecoveryCodesForm(forms.Form):
     def clean_current_password(self):
         password = self.cleaned_data["current_password"]
         if not self.user.check_password(password):
-            raise ValidationError("Current password is incorrect.")
+            msg = "Current password is incorrect."
+            raise ValidationError(msg)
         return password
 
 

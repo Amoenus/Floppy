@@ -1315,7 +1315,7 @@ def sync_metadata(request, source, media_type, media_id, season_number=None):
             media_type,
         )
         preferred_provider_synced = False
-        if preferred_provider != source and preferred_provider != Sources.MANUAL.value:
+        if preferred_provider not in (source, Sources.MANUAL.value):
             preferred_media_id = metadata_resolution.resolve_provider_media_id(
                 item,
                 preferred_provider,
@@ -1397,7 +1397,7 @@ def sync_metadata(request, source, media_type, media_id, season_number=None):
             # visible message; that's the right layer for rate-limiting, not a
             # silent global gate here.
             from app.tasks_imdb import (
-                refresh_imdb_game_credits_from_datasets,  # noqa: PLC0415
+                refresh_imdb_game_credits_from_datasets,
             )
 
             refresh_imdb_game_credits_from_datasets.apply_async(countdown=2)
@@ -1549,7 +1549,7 @@ def _sync_plex_rating(request, item, media_type):
     else:
         # Search for item in Plex library
         try:
-            resources = plex_api.list_resources(plex_account.plex_token)
+            plex_api.list_resources(plex_account.plex_token)
         except Exception as exc:
             logger.debug(
                 "Failed to list Plex resources for rating sync: %s",
@@ -1583,7 +1583,7 @@ def _sync_plex_rating(request, item, media_type):
 
             try:
                 # Search library items (first 100 should be enough for most cases)
-                library_items, total = plex_api.fetch_section_all_items(
+                library_items, _total = plex_api.fetch_section_all_items(
                     plex_account.plex_token,
                     section_uri,
                     str(section.get("key") or section.get("id")),
@@ -1604,12 +1604,18 @@ def _sync_plex_rating(request, item, media_type):
                     # Check if this matches our item
                     matches = False
                     if (
-                        item.source == "tmdb"
-                        and external_ids.get("tmdb_id") == str(item.media_id)
-                        or item.source == "imdb"
-                        and external_ids.get("imdb_id") == item.media_id
-                        or item.source == "tvdb"
-                        and external_ids.get("tvdb_id") == str(item.media_id)
+                        (
+                            item.source == "tmdb"
+                            and external_ids.get("tmdb_id") == str(item.media_id)
+                        )
+                        or (
+                            item.source == "imdb"
+                            and external_ids.get("imdb_id") == item.media_id
+                        )
+                        or (
+                            item.source == "tvdb"
+                            and external_ids.get("tvdb_id") == str(item.media_id)
+                        )
                     ):
                         matches = True
 

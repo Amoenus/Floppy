@@ -52,7 +52,8 @@ def create_pin() -> dict[str, Any]:
     code = data.get("code") or data.get("pin", {}).get("code")
 
     if not pin_id or not code:
-        raise PlexClientError("Unexpected response when creating Plex pin")
+        msg = "Unexpected response when creating Plex pin"
+        raise PlexClientError(msg)
 
     return {"id": pin_id, "code": code}
 
@@ -84,7 +85,8 @@ def poll_pin(pin_id: str) -> str:
     token = data.get("authToken") or data.get("auth_token") or data.get("token")
 
     if not token:
-        raise PlexAuthError("Plex did not return an authentication token")
+        msg = "Plex did not return an authentication token"
+        raise PlexAuthError(msg)
 
     return token
 
@@ -260,7 +262,8 @@ def fetch_watchlist(
 
     content_type = response.headers.get("Content-Type", "")
     if "json" not in content_type:
-        raise PlexClientError("Unexpected Plex watchlist response format")
+        msg = "Unexpected Plex watchlist response format"
+        raise PlexClientError(msg)
 
     payload = response.json()
     container = payload.get("MediaContainer") or payload
@@ -289,13 +292,15 @@ def fetch_watchlist_metadata(token: str, rating_key: str) -> dict[str, Any]:
 
     content_type = response.headers.get("Content-Type", "")
     if "json" not in content_type:
-        raise PlexClientError("Unexpected Plex watchlist metadata response format")
+        msg = "Unexpected Plex watchlist metadata response format"
+        raise PlexClientError(msg)
 
     payload = response.json()
     container = payload.get("MediaContainer") or payload
     metadata = container.get("Metadata")
     if not isinstance(metadata, list) or not metadata:
-        raise PlexClientError("Plex watchlist metadata payload was empty")
+        msg = "Plex watchlist metadata payload was empty"
+        raise PlexClientError(msg)
 
     return metadata[0]
 
@@ -341,7 +346,8 @@ def fetch_history(
     try:
         entries, total = _parse_history_xml(response.text)
     except ElementTree.ParseError as exc:  # pragma: no cover - defensive
-        raise PlexClientError(f"Could not parse Plex history: {exc}") from exc
+        msg = f"Could not parse Plex history: {exc}"
+        raise PlexClientError(msg) from exc
     return entries, total
 
 
@@ -411,9 +417,8 @@ def fetch_section_all_items(
                     max_retries,
                     exc,
                 )
-                raise PlexClientError(
-                    f"Failed after {max_retries} attempts: {exc}"
-                ) from exc
+                msg = f"Failed after {max_retries} attempts: {exc}"
+                raise PlexClientError(msg) from exc
 
     if last_exc:
         raise PlexClientError(str(last_exc)) from last_exc
@@ -429,7 +434,8 @@ def fetch_section_all_items(
     try:
         entries, total = _parse_history_xml(response.text)
     except ElementTree.ParseError as exc:  # pragma: no cover - defensive
-        raise PlexClientError(f"Could not parse Plex library items: {exc}") from exc
+        msg = f"Could not parse Plex library items: {exc}"
+        raise PlexClientError(msg) from exc
     return entries, total
 
 
@@ -467,7 +473,8 @@ def fetch_metadata(
     try:
         entries, _ = _parse_history_xml(response.text)
     except ElementTree.ParseError as exc:  # pragma: no cover - defensive
-        raise PlexClientError(f"Could not parse Plex metadata: {exc}") from exc
+        msg = f"Could not parse Plex metadata: {exc}"
+        raise PlexClientError(msg) from exc
     return entries[0] if entries else None
 
 
@@ -479,7 +486,8 @@ def _fetch_sections_from_connection(
     """Fetch library sections from a specific Plex server connection."""
     uri = connection.get("uri")
     if not uri:
-        raise PlexClientError("Connection is missing a URI")
+        msg = "Connection is missing a URI"
+        raise PlexClientError(msg)
 
     try:
         response = requests.get(
@@ -492,10 +500,12 @@ def _fetch_sections_from_connection(
     except RequestException as exc:
         raise PlexClientError(str(exc)) from exc
     if response.status_code == 401:
-        raise PlexAuthError("Plex token is unauthorized for this server")
+        msg = "Plex token is unauthorized for this server"
+        raise PlexAuthError(msg)
 
     if not response.ok:
-        raise PlexClientError(f"Failed to fetch library sections: {response.text}")
+        msg = f"Failed to fetch library sections: {response.text}"
+        raise PlexClientError(msg)
 
     content_type = response.headers.get("Content-Type", "")
     if "json" in content_type:
@@ -506,7 +516,8 @@ def _fetch_sections_from_connection(
         try:
             directories = _parse_sections_xml(response.text)
         except ElementTree.ParseError as exc:  # pragma: no cover - defensive
-            raise PlexClientError(f"Could not parse library response: {exc}") from exc
+            msg = f"Could not parse library response: {exc}"
+            raise PlexClientError(msg) from exc
 
     sections: list[dict[str, Any]] = []
     for directory in directories:
@@ -614,12 +625,14 @@ def _parse_response(response: requests.Response) -> dict[str, Any]:
         try:
             return response.json()
         except ValueError as exc:  # pragma: no cover - defensive
-            raise PlexClientError("Invalid JSON from Plex") from exc
+            msg = "Invalid JSON from Plex"
+            raise PlexClientError(msg) from exc
 
     try:
         root = ElementTree.fromstring(response.text or "")
     except ElementTree.ParseError as exc:  # pragma: no cover - defensive
-        raise PlexClientError("Invalid XML from Plex") from exc
+        msg = "Invalid XML from Plex"
+        raise PlexClientError(msg) from exc
 
     # Flatten simple XML responses (like pin endpoints)
     data = dict(root.attrib)
@@ -721,10 +734,12 @@ def _extract_watchlist_entries(container: dict[str, Any]) -> list[dict[str, Any]
 def _raise_for_auth(response: requests.Response):
     """Raise auth errors consistently."""
     if response.status_code == 401:
-        raise PlexAuthError("Plex token is invalid or expired")
+        msg = "Plex token is invalid or expired"
+        raise PlexAuthError(msg)
     try:
         response.raise_for_status()
     except requests.HTTPError as exc:
+        msg = f"Plex request failed with status {response.status_code}"
         raise PlexClientError(
-            f"Plex request failed with status {response.status_code}",
+            msg,
         ) from exc

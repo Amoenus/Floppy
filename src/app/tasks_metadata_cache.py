@@ -74,7 +74,8 @@ def _clear_item_metadata_cache(item: Item):
 def _fetch_item_metadata(item: Item):
     if item.media_type == MediaTypes.SEASON.value:
         if item.season_number is None:
-            raise ValueError("season item missing season_number")
+            msg = "season item missing season_number"
+            raise ValueError(msg)
         return services.get_media_metadata(
             item.media_type,
             item.media_id,
@@ -83,7 +84,8 @@ def _fetch_item_metadata(item: Item):
         )
     if item.media_type == MediaTypes.EPISODE.value:
         if item.season_number is None or item.episode_number is None:
-            raise ValueError("episode item missing season_number or episode_number")
+            msg = "episode item missing season_number or episode_number"
+            raise ValueError(msg)
         return services.get_media_metadata(
             item.media_type,
             item.media_id,

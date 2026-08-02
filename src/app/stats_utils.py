@@ -176,12 +176,10 @@ def parse_runtime_to_minutes(runtime_str):
             return hours * 60
         if "min" in runtime_str:
             # Format like "45min" or "12 min" (MAL format)
-            minutes = int(runtime_str.replace("min", "").replace(" ", ""))
-            return minutes
+            return int(runtime_str.replace("min", "").replace(" ", ""))
         if "m" in runtime_str:
             # Format like "45m" (TMDB format)
-            minutes = int(runtime_str.replace("m", ""))
-            return minutes
+            return int(runtime_str.replace("m", ""))
         return None
     except (ValueError, AttributeError):
         return None

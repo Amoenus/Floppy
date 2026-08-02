@@ -42,6 +42,11 @@ from integrations.imports.audiobookshelf import (
     AudiobookshelfClient,
 )
 from integrations.imports.radarr import RadarrClient
+from integrations.imports.sonarr import SonarrClient
+from integrations.imports.storyteller import (
+    StorytellerClient,
+    StorytellerClientError,
+)
 from integrations.jellyfin_client import (
     JellyfinAuthError,
     JellyfinClient,
@@ -50,11 +55,6 @@ from integrations.jellyfin_client import (
 from integrations.jellyfin_sync import (
     JELLYFIN_PUSH_INTERVAL_MINUTES,
     JELLYFIN_PUSH_TASK_NAME,
-)
-from integrations.imports.sonarr import SonarrClient
-from integrations.imports.storyteller import (
-    StorytellerClient,
-    StorytellerClientError,
 )
 from integrations.lastfm_api import (
     LastFMAPIError,
@@ -80,9 +80,6 @@ from integrations.plex_watchlist import (
     WATCHLIST_TASK_NAME,
 )
 from integrations.pocketcasts_api import PocketCastsAuthError
-from integrations.webhooks import emby, jellyfin
-from integrations.webhooks import jellyseerr as jellyseerr_webhooks
-from integrations.webhooks import plex as plex_webhooks
 
 logger = logging.getLogger(__name__)
 ARR_SYNC_INTERVAL_HOURS = 2
@@ -637,7 +634,7 @@ def plex_callback(request):
             if u.strip()
         ]
         if username.lower() not in [u.lower() for u in existing]:
-            request.user.plex_usernames = ", ".join(existing + [username])
+            request.user.plex_usernames = ", ".join([*existing, username])
             request.user.save(update_fields=["plex_usernames"])
 
     defaults = {
@@ -1653,7 +1650,7 @@ def stremio_connect(request):
             # Validate a pasted auth key before storing it.
             stremio.get_user(auth_key)
     except helpers.MediaImportError as error:
-        logger.error("Stremio login failed: %s", error)
+        logger.exception("Stremio login failed: %s", error)
         messages.error(
             request,
             "Could not connect to Stremio. Check your credentials; for accounts created "
@@ -1661,7 +1658,7 @@ def stremio_connect(request):
             f"({error})",
         )
         return redirect("import_data")
-    except Exception as error:  # noqa: BLE001
+    except Exception as error:
         logger.exception("Failed to connect to Stremio")
         messages.error(request, f"Failed to connect to Stremio: {error}")
         return redirect("import_data")
@@ -1737,7 +1734,7 @@ def pocketcasts_connect(request):
             "Successfully logged in to Pocket Casts for user %s", request.user.username
         )
     except PocketCastsAuthError as auth_error:
-        logger.error("Pocket Casts login failed: %s", auth_error)
+        logger.exception("Pocket Casts login failed: %s", auth_error)
         messages.error(
             request,
             "Invalid email or password. For accounts created via 'Sign in with Apple' or 'Sign in with Google', "
@@ -1819,7 +1816,7 @@ def pocketcasts_connect(request):
         else:
             messages.success(request, "Connected to Pocket Casts successfully.")
     except Exception as e:
-        logger.error("Failed to store Pocket Casts credentials: %s", e)
+        logger.exception("Failed to store Pocket Casts credentials: %s", e)
         messages.error(request, f"Failed to store credentials: {e}")
 
     return redirect("import_data")
@@ -1921,7 +1918,7 @@ def gpodder_connect(request):
             )
         else:
             messages.success(request, "Connected to GPodder successfully.")
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.exception("Failed to store GPodder credentials")
         messages.error(request, f"Failed to save GPodder connection: {exc}")
 
@@ -1958,21 +1955,21 @@ def lastfm_connect(request):
         lastfm_api.get_recent_tracks(username=username, limit=1, page=1)
         logger.info("Successfully validated Last.fm username: %s", username)
     except LastFMClientError as e:
-        logger.error("Last.fm username validation failed: %s", e)
+        logger.exception("Last.fm username validation failed: %s", e)
         messages.error(
             request,
             "Invalid Last.fm username or user not found. Please check your username and ensure your scrobbles are public.",
         )
         return redirect("import_data")
     except LastFMRateLimitError as e:
-        logger.error("Last.fm rate limit during validation: %s", e)
+        logger.exception("Last.fm rate limit during validation: %s", e)
         messages.error(
             request,
             "Last.fm API rate limit exceeded. Please try again in a few moments.",
         )
         return redirect("import_data")
     except LastFMAPIError as e:
-        logger.error("Last.fm API error during validation: %s", e)
+        logger.exception("Last.fm API error during validation: %s", e)
         messages.error(request, f"Failed to connect to Last.fm: {e}")
         return redirect("import_data")
     except Exception as e:

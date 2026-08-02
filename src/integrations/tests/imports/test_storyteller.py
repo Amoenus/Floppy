@@ -32,7 +32,7 @@ class StorytellerImporterTests(TestCase):
         """Create a test user and connected Storyteller account."""
         self.user = get_user_model().objects.create_user(
             username="storyteller-user",
-            password="pass",  # noqa: S106
+            password="pass",
         )
         StorytellerAccount.objects.create(
             user=self.user,

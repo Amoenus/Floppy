@@ -201,7 +201,7 @@ def enqueue_episode_runtime_backfill(season_keys, countdown=10):
         if cache.add(RUNTIME_BACKFILL_EPISODES_SCHEDULED_KEY, True, timeout=30):
             # Deferred to avoid circular import: tasks_episode.py re-exports from app.tasks.
             from app.tasks_episode import (
-                populate_episode_runtime_queue,  # noqa: PLC0415
+                populate_episode_runtime_queue,
             )
 
             populate_episode_runtime_queue.apply_async(countdown=countdown)
@@ -238,7 +238,9 @@ def _populate_runtime_for_items(items, delay_seconds):
                     reason,
                 )
             except Exception as save_error:
-                logger.error("Failed to mark %s as failed: %s", item.title, save_error)
+                logger.exception(
+                    "Failed to mark %s as failed: %s", item.title, save_error
+                )
         return give_up
 
     run = CooperativeRun("runtime_backfill")
@@ -311,7 +313,7 @@ def _populate_runtime_for_items(items, delay_seconds):
                 time.sleep(delay_seconds)
         except Exception as exc:
             error_count += 1
-            logger.error(
+            logger.exception(
                 "Error updating runtime for %s: %s", item.title, exception_summary(exc)
             )
             _mark_runtime_failure(item, f"exception: {exception_summary(exc)}")

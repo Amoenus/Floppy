@@ -14,8 +14,8 @@ from rest_framework.response import Response
 
 from app import statistics_cache
 from app.statistics_views import (
-    _get_predefined_range_date_strings,  # noqa: PLC2701 — shared with web view
-    _identify_predefined_range,  # noqa: PLC2701 — shared with web view
+    _get_predefined_range_date_strings,
+    _identify_predefined_range,
 )
 
 logger = logging.getLogger(__name__)

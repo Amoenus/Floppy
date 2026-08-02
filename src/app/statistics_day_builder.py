@@ -2,7 +2,7 @@
 
 import logging
 from collections import defaultdict
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 from types import SimpleNamespace
 
 from django.apps import apps
@@ -162,7 +162,7 @@ def _build_prefetch_for_range(user, day_list):
     if not day_list:
         return None
 
-    active_media_types = set(getattr(user, "get_active_media_types", lambda: [])())
+    active_media_types = set(getattr(user, "get_active_media_types", list)())
     if not active_media_types:
         active_media_types = set(MediaTypes.values)
 
@@ -468,7 +468,7 @@ def build_stats_for_day(
     if not day_start or not day_end:
         return None
 
-    active_media_types = set(getattr(user, "get_active_media_types", lambda: [])())
+    active_media_types = set(getattr(user, "get_active_media_types", list)())
     if not active_media_types:
         active_media_types = set(MediaTypes.values)
     split_tv_anime = not getattr(user, "anime_enabled", True) and getattr(
@@ -1291,7 +1291,7 @@ def build_stats_for_day(
                                 "duration_ms"
                             ]
 
-        for (music_id, play_end), _ in plays_by_key.items():
+        for music_id, play_end in plays_by_key:
             music = music_map.get(music_id)
             if not music:
                 continue

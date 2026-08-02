@@ -24,6 +24,7 @@ from integrations.imports import helpers
 from integrations.imports.helpers import MediaImportError, MediaImportUnexpectedError
 from integrations.webhooks import anime_mappings
 from integrations.webhooks.plex import PlexWebhookProcessor
+import contextlib
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,8 @@ def importer(library, user, mode):
     """Import Plex watch/listen history for the user."""
     account = getattr(user, "plex_account", None)
     if not account or not account.plex_token:
-        raise MediaImportError("Plex is not connected for this user.")
+        msg = "Plex is not connected for this user."
+        raise MediaImportError(msg)
 
     plex_importer = PlexHistoryImporter(
         user=user,
@@ -111,13 +113,13 @@ class PlexHistoryImporter:
         try:
             self.resources = plex_api.list_resources(self.account.plex_token)
         except plex_api.PlexAuthError as exc:
-            raise MediaImportError(
-                "Plex token expired; reconnect and try again."
-            ) from exc
+            msg = "Plex token expired; reconnect and try again."
+            raise MediaImportError(msg) from exc
 
         sections = self._get_target_sections()
         if not sections:
-            raise MediaImportError("No Plex libraries are available to import.")
+            msg = "No Plex libraries are available to import."
+            raise MediaImportError(msg)
 
         for section in sections:
             try:
@@ -219,7 +221,7 @@ class PlexHistoryImporter:
         if username.lower() in [u.lower() for u in existing]:
             return
 
-        updated = existing + [username]
+        updated = [*existing, username]
         self.user.plex_usernames = ", ".join(updated)
         self.user.save(update_fields=["plex_usernames"])
 
@@ -231,9 +233,8 @@ class PlexHistoryImporter:
         try:
             account_info = plex_api.fetch_account(self.account.plex_token)
         except plex_api.PlexAuthError as exc:
-            raise MediaImportError(
-                "Plex token expired; reconnect and try again."
-            ) from exc
+            msg = "Plex token expired; reconnect and try again."
+            raise MediaImportError(msg) from exc
         except plex_api.PlexClientError as exc:
             logger.warning(
                 "Could not fetch Plex account ID: %s",
@@ -291,9 +292,8 @@ class PlexHistoryImporter:
             plex_users = plex_api.list_users(self.account.plex_token)
         except plex_api.PlexAuthError as exc:
             if unresolved:
-                raise MediaImportError(
-                    "Plex token expired; reconnect and try again."
-                ) from exc
+                msg = "Plex token expired; reconnect and try again."
+                raise MediaImportError(msg) from exc
             logger.warning(
                 "Could not fetch Plex users for history diagnostics: Token expired"
             )
@@ -349,7 +349,8 @@ class PlexHistoryImporter:
         try:
             machine_id, section_id = self.library.split("::", 1)
         except ValueError:
-            raise MediaImportError("Invalid Plex library selection.")
+            msg = "Invalid Plex library selection."
+            raise MediaImportError(msg)
 
         filtered = [
             section
@@ -359,7 +360,8 @@ class PlexHistoryImporter:
         ]
 
         if not filtered:
-            raise MediaImportError("The selected Plex library is no longer available.")
+            msg = "The selected Plex library is no longer available."
+            raise MediaImportError(msg)
         return filtered
 
     def _import_section(self, section: dict):
@@ -381,8 +383,9 @@ class PlexHistoryImporter:
             c for c in connections if c and not (c in seen or seen.append(c))
         ]
         if not connections:
+            msg = f"Could not find a Plex connection for {section.get('server_name') or 'server'}."
             raise MediaImportError(
-                f"Could not find a Plex connection for {section.get('server_name') or 'server'}.",
+                msg,
             )
 
         section_type = (section.get("type") or "").lower()
@@ -471,11 +474,12 @@ class PlexHistoryImporter:
                 uri_used = uri
                 break
             except plex_api.PlexAuthError as exc:
-                raise MediaImportError(
+                msg = (
                     f"Authentication failed for Plex server at {uri}; "
                     "the token may be expired or this may be a shared server. "
                     "Reconnect Plex and try again."
-                ) from exc
+                )
+                raise MediaImportError(msg) from exc
             except plex_api.PlexClientError as exc:
                 failures.append((uri, str(exc)))
                 uri_index += 1
@@ -490,8 +494,9 @@ class PlexHistoryImporter:
             max_items if max_items is not None else "no limit",
         )
         if not entries and failures:
+            msg = f"Could not fetch Plex history after trying connections: {failures}"
             raise MediaImportUnexpectedError(
-                f"Could not fetch Plex history after trying connections: {failures}",
+                msg,
             )
         if max_items is None:
             return entries, uri_used
@@ -777,9 +782,8 @@ class PlexHistoryImporter:
             sample = username
         elif account_id:
             sample = f"accountID={account_id}"
-        if sample:
-            if len(self._skipped_user_samples) < 5:
-                self._skipped_user_samples.add(sample)
+        if sample and len(self._skipped_user_samples) < 5:
+            self._skipped_user_samples.add(sample)
 
     def _track_unknown_type(self, metadata: dict):
         """Record a skipped entry with an unsupported media type."""
@@ -839,9 +843,12 @@ class PlexHistoryImporter:
                     rating_key,
                 )
             except plex_api.PlexAuthError as exc:
-                raise MediaImportError(
+                msg = (
                     "Authentication failed fetching Plex metadata; "
-                    "the token may be expired or this may be a shared server.",
+                    "the token may be expired or this may be a shared server."
+                )
+                raise MediaImportError(
+                    msg,
                 ) from exc
             except plex_api.PlexClientError as exc:
                 self.warnings.append(
@@ -889,9 +896,12 @@ class PlexHistoryImporter:
                     str(grandparent_key),
                 )
             except plex_api.PlexAuthError as exc:
-                raise MediaImportError(
+                msg = (
                     "Authentication failed fetching Plex show metadata; "
-                    "the token may be expired or this may be a shared server.",
+                    "the token may be expired or this may be a shared server."
+                )
+                raise MediaImportError(
+                    msg,
                 ) from exc
             except plex_api.PlexClientError as exc:
                 logger.debug(
@@ -1205,10 +1215,11 @@ class PlexHistoryImporter:
                     size=page_size,
                 )
             except plex_api.PlexAuthError as exc:
-                raise MediaImportError(
+                msg = (
                     f"Authentication failed fetching ratings from Plex server at {uri}; "
                     "the token may be expired or this may be a shared server."
-                ) from exc
+                )
+                raise MediaImportError(msg) from exc
             except plex_api.PlexClientError as exc:
                 logger.warning(
                     "Failed to fetch library items for rating import: %s",
@@ -2480,10 +2491,8 @@ class PlexHistoryImporter:
             "viewOffset",
         ):
             if key in metadata and metadata[key] is not None:
-                try:
+                with contextlib.suppress(TypeError, ValueError):
                     metadata[key] = int(metadata[key])
-                except (TypeError, ValueError):
-                    pass
 
         return metadata
 

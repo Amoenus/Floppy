@@ -110,12 +110,13 @@ if not SECRET_KEY:
     else:
         from django.core.exceptions import ImproperlyConfigured
 
-        raise ImproperlyConfigured(
+        msg = (
             "SECRET env var is not set. To fix, run:\n\n"
             '  python -c "'
             "import secrets; print('SECRET=' + secrets.token_urlsafe(50))"
             '" >> .env\n'
         )
+        raise ImproperlyConfigured(msg)
 
 
 # SECURITY WARNING: don't run with debug turned on in production!
@@ -713,8 +714,7 @@ def _parse_repo_owner(value):
     parsed = urlparse(value)
     repo_path = parsed.path if parsed.netloc else value
     repo_path = repo_path.strip("/")
-    if repo_path.endswith(".git"):
-        repo_path = repo_path[:-4]
+    repo_path = repo_path.removesuffix(".git")
     if not repo_path:
         return None
     return repo_path.split("/", 1)[0]
@@ -729,8 +729,7 @@ def _parse_repo_slug(value):
     parsed = urlparse(value)
     repo_path = parsed.path if parsed.netloc else value
     repo_path = repo_path.strip("/")
-    if repo_path.endswith(".git"):
-        repo_path = repo_path[:-4]
+    repo_path = repo_path.removesuffix(".git")
     if "/" not in repo_path:
         return None
     owner, repo = repo_path.split("/", 1)
@@ -778,8 +777,7 @@ def _get_fork_owner():
             ["git", "config", "--get", "remote.origin.url"],
             cwd=BASE_DIR,
             check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
             text=True,
         ).stdout.strip()
         return _parse_repo_owner(git_remote)
@@ -806,8 +804,7 @@ def _get_fork_repository():
             ["git", "config", "--get", "remote.origin.url"],
             cwd=BASE_DIR,
             check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
             text=True,
         ).stdout.strip()
         return _parse_repo_slug(git_remote)

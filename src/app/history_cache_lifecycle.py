@@ -1,7 +1,7 @@
 """Cache lifecycle management: invalidation and background-task scheduling."""
 
 import logging
-from typing import Iterable
+from collections.abc import Iterable
 
 from django.conf import settings
 from django.core.cache import cache
@@ -102,7 +102,7 @@ def invalidate_history_days(
                 user_id,
                 logging_style,
                 warm_days=0,
-                day_keys=normalized_keys if normalized_keys else None,
+                day_keys=normalized_keys or None,
             )
             logger.info(
                 "history_index_refresh_scheduled user_id=%s logging_style=%s warm_days=0 day_keys=%s scheduled=%s reason=%s",

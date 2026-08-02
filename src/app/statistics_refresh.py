@@ -336,7 +336,7 @@ def _get_activity_bounds(user):
 
 
 def _get_sparse_activity_days(user):
-    active_media_types = set(getattr(user, "get_active_media_types", lambda: [])())
+    active_media_types = set(getattr(user, "get_active_media_types", list)())
     if not active_media_types:
         active_media_types = set(MediaTypes.values)
 

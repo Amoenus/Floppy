@@ -128,7 +128,7 @@ def _get_season_metadata_with_episodes(media, season, logger):
         return season_metadata
 
     except Exception as e:
-        logger.error(
+        logger.exception(
             "Failed to get season metadata with episodes for %s S%s: %s",
             media.item.title,
             season.item.season_number,
@@ -140,17 +140,15 @@ def _get_season_metadata_with_episodes(media, season, logger):
 def _calculate_episode_time_from_data(episode_data, logger):
     """Calculate episode time from processed episode data."""
     if "runtime" not in episode_data or not episode_data["runtime"]:
-        raise ValueError(
-            f"Runtime data missing for episode {episode_data.get('episode_number', 'unknown')}"
-        )
+        msg = f"Runtime data missing for episode {episode_data.get('episode_number', 'unknown')}"
+        raise ValueError(msg)
 
     runtime_str = episode_data["runtime"]
     episode_minutes = parse_runtime_to_minutes(runtime_str)
 
     if episode_minutes is None:
-        raise ValueError(
-            f"Failed to parse runtime '{runtime_str}' for episode {episode_data.get('episode_number', 'unknown')}"
-        )
+        msg = f"Failed to parse runtime '{runtime_str}' for episode {episode_data.get('episode_number', 'unknown')}"
+        raise ValueError(msg)
 
     return episode_minutes
 
@@ -282,7 +280,8 @@ def _get_media_metadata_for_statistics(media):
             media.item.source,
         )
     except Exception as e:
-        raise ValueError(f"Failed to get metadata for {media.item.title}: {e}")
+        msg = f"Failed to get metadata for {media.item.title}: {e}"
+        raise ValueError(msg)
 
 
 def _get_media_runtime_from_cache(media, logger, context=""):
@@ -584,13 +583,16 @@ def calculate_minutes_per_media_type(user_media, start_date, end_date, user=None
 
             if media_type == MediaTypes.MOVIE.value:
                 activity_dt = _get_activity_datetime(media)
-                if start_date and end_date:
-                    if (
+                if (
+                    start_date
+                    and end_date
+                    and (
                         not activity_dt
                         or activity_dt < start_date
                         or activity_dt > end_date
-                    ):
-                        continue
+                    )
+                ):
+                    continue
                 total_minutes += _calculate_movie_time(
                     media,
                     start_date,

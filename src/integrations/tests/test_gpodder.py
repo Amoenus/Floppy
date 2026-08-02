@@ -57,7 +57,7 @@ class GPodderViewAndTaskTests(TestCase):
     def setUp(self):
         self.user = get_user_model().objects.create_user(
             username="listener",
-            password="pass12345",  # noqa: S106
+            password="pass12345",
         )
         self.client.login(username="listener", password="pass12345")
 

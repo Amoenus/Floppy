@@ -11,7 +11,6 @@ from datetime import datetime, timedelta
 
 from django.apps import apps
 from django.core.cache import cache
-from django.db.models import Q
 from django.utils import timezone
 
 from app import config, helpers
@@ -20,7 +19,6 @@ from app.models import Item, MediaTypes, Status
 from app.statistics_day_builder import (
     _day_boundary_datetime,
     _day_cache_key,
-    _normalize_day_value,
     build_stats_for_day,
 )
 from app.statistics_highlights import (
@@ -191,7 +189,7 @@ def _build_daily_hours_chart(day_minutes_by_type, day_list):
     ordered_types.extend(
         [
             media_type
-            for media_type in day_minutes_by_type.keys()
+            for media_type in day_minutes_by_type
             if media_type not in ordered_types
         ]
     )
@@ -828,7 +826,7 @@ def _aggregate_statistics_from_days(
                 activity_total = 1
             activity_counts[day] = activity_total
 
-    active_types = list(getattr(user, "get_active_media_types", lambda: [])())
+    active_types = list(getattr(user, "get_active_media_types", list)())
     if not active_types:
         active_types = list(MediaTypes.values)
 
@@ -1158,7 +1156,7 @@ def _aggregate_statistics_from_days(
 
     activity_counts_by_date = {day: activity_counts.get(day, 0) for day in day_list}
     from users.models import (
-        WeekStartDayChoices,  # noqa: PLC0415 - avoid circular import
+        WeekStartDayChoices,
     )
 
     week_start_sunday = user.week_start_day == WeekStartDayChoices.SUNDAY
@@ -1647,7 +1645,7 @@ def _aggregate_statistics_from_days(
         color = config.get_stats_color(media_type)
         units_by_day = day_minutes_by_type.get(media_type, {})
         unit_total = sum(units_by_day.values()) if units_by_day else 0
-        completion_total = int(round((minutes_by_type.get(media_type, 0) or 0) / 60))
+        completion_total = round((minutes_by_type.get(media_type, 0) or 0) / 60)
         item_ids = [
             meta.get("item_id")
             for meta in items_by_type.get(media_type, {}).values()
@@ -1754,7 +1752,7 @@ def _aggregate_statistics_from_days(
                     "media": media,
                     "units": units,
                     "entry_count": entry.get("plays", 0),
-                    "formatted_units": f"{int(round(units))} {unit_name.lower()}{'' if int(round(units)) == 1 else 's'}",
+                    "formatted_units": f"{round(units)} {unit_name.lower()}{'' if round(units) == 1 else 's'}",
                 }
             )
 
@@ -1769,7 +1767,7 @@ def _aggregate_statistics_from_days(
                     "name": payload.get("name") or "",
                     "units": units,
                     "titles": titles,
-                    "formatted_units": f"{int(round(units))} {unit_name.lower()}{'' if int(round(units)) == 1 else 's'}",
+                    "formatted_units": f"{round(units)} {unit_name.lower()}{'' if round(units) == 1 else 's'}",
                 }
             )
         genre_items = sorted(

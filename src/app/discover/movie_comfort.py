@@ -48,6 +48,7 @@ from app.discover.service_helpers import (
     _model_has_field,
 )
 from app.models import MediaTypes, Status
+import itertools
 
 MOVIE_COMFORT_PROFILE_LAYER_WEIGHTS = {
     "phase": 0.60,
@@ -573,7 +574,7 @@ def _movie_cadence_signal(
     days_since_last_watch = float(max(0, (now - ordered[0]).days))
     gaps = [
         float(max(0, (earlier - later).days))
-        for earlier, later in zip(ordered, ordered[1:], strict=False)
+        for earlier, later in itertools.pairwise(ordered)
     ]
     median_gap_days = (
         float(statistics.median(gaps)) if gaps else MOVIE_COMFORT_COOLDOWN_DEFAULT_DAYS
@@ -584,9 +585,7 @@ def _movie_cadence_signal(
     recent_180_activity = [dt for dt in ordered if dt >= recent_180_cutoff]
     recent_gaps = [
         float(max(0, (earlier - later).days))
-        for earlier, later in zip(
-            recent_180_activity, recent_180_activity[1:], strict=False
-        )
+        for earlier, later in itertools.pairwise(recent_180_activity)
     ]
     recent_gap_median_days = (
         float(statistics.median(recent_gaps)) if recent_gaps else 0.0

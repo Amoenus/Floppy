@@ -342,7 +342,7 @@ class TestPlexHybridImport(TestCase):
     @patch("integrations.imports.plex.app.providers.tvdb.enabled", return_value=True)
     def test_new_tv_show_genesis_uses_tvdb_when_preferred(
         self,
-        mock_tvdb_enabled,  # noqa: ARG002
+        mock_tvdb_enabled,
         mock_tvdb_tv_with_seasons,
     ):
         """A never-before-tracked show is genesis'd via TVDB when preferred (#387)."""
@@ -1576,7 +1576,8 @@ class TestPlexMultiServerImport(TestCase):
 
 class TestOverwriteMetadataFailureSafety(TestCase):
     """Regression tests for issue #252: overwrite import must not permanently delete media
-    when TMDB metadata is unavailable (404) or when the import aborts mid-run."""
+    when TMDB metadata is unavailable (404) or when the import aborts mid-run.
+    """
 
     def setUp(self):
         User = get_user_model()
@@ -1688,7 +1689,8 @@ class TestOverwriteMetadataFailureSafety(TestCase):
 
     def test_tv_show_preserved_when_tmdb_raises_during_metadata_warm(self):
         """If TMDB raises a non-404 error during metadata warm-up, the import must abort
-        before deleting any existing records."""
+        before deleting any existing records.
+        """
         item = Item.objects.create(
             media_id="8888",
             source=Sources.TMDB.value,

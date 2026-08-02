@@ -953,7 +953,7 @@ def schedule_runtime_backfill_on_item_save(
     created,
     update_fields=None,
     **kwargs,
-):  # noqa: ARG001
+):
     """Queue runtime/genre/credits backfills for newly created or missing metadata items.
 
     Also invalidates time_left cache when episode runtime changes.

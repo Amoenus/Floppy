@@ -29,7 +29,7 @@ def fetch_album_artwork(album_title: str, artist_name: str) -> str | None:
     cache_key = f"itunes_album_artwork_{artist_name}_{album_title}".lower()
     cached = cache.get(cache_key)
     if cached is not None:
-        return cached if cached else None
+        return cached or None
 
     try:
         # Build search query: "artist_name album_title"
@@ -152,7 +152,7 @@ def fetch_artist_artwork(artist_name: str) -> str | None:
     cache_key = f"itunes_artist_artwork_{artist_name}".lower()
     cached = cache.get(cache_key)
     if cached is not None:
-        return cached if cached else None
+        return cached or None
 
     try:
         # Build search query: just artist name
@@ -206,7 +206,7 @@ def fetch_artist_artwork(artist_name: str) -> str | None:
             return None
 
         # Sort by release date (earliest first) and use first one
-        artist_albums.sort(key=lambda x: x[0] if x[0] else "9999-12-31")
+        artist_albums.sort(key=lambda x: x[0] or "9999-12-31")
         artwork_url = artist_albums[0][1]
 
         logger.debug("Found iTunes artwork for artist %s", artist_name)

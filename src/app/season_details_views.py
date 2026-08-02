@@ -346,16 +346,16 @@ def season_details(
                 continue
 
             # Get or create episode item — retry on race condition
-            lookup = dict(
-                media_id=media_id,
-                source=source,
-                media_type=MediaTypes.EPISODE.value,
-                library_media_type=parent_media_type
+            lookup = {
+                "media_id": media_id,
+                "source": source,
+                "media_type": MediaTypes.EPISODE.value,
+                "library_media_type": parent_media_type
                 if parent_media_type == MediaTypes.ANIME.value
                 else MediaTypes.EPISODE.value,
-                season_number=season_number,
-                episode_number=episode_number,
-            )
+                "season_number": season_number,
+                "episode_number": episode_number,
+            }
             try:
                 with transaction.atomic():
                     episode_item, _ = Item.objects.get_or_create(
@@ -466,7 +466,7 @@ def season_details(
             ).exists()
         ):
             from app.tasks_trakt import (
-                populate_trakt_episode_ratings_for_season,  # noqa: PLC0415
+                populate_trakt_episode_ratings_for_season,
             )
 
             populate_trakt_episode_ratings_for_season.delay(
@@ -706,7 +706,6 @@ def season_details(
                     media_id,
                     source,
                 )
-                pass
             except Exception as exc:
                 logger.error(
                     "Error checking show collection entry in season_details: %s",

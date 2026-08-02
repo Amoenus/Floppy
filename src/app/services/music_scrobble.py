@@ -450,9 +450,8 @@ def _populate_from_search(metadata: ResolvedMusicMetadata) -> None:
         res_title = _normalize(result.get("title") or metadata.track_title or "")
 
         # Require track title match when present
-        if expected_track:
-            if not res_title or res_title != expected_track:
-                continue
+        if expected_track and (not res_title or res_title != expected_track):
+            continue
 
         artist_match = False
         if artist_is_various:

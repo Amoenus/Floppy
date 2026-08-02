@@ -459,11 +459,7 @@ def build_history_day(user, day_key, logging_style_override=None):
                 poster = podcast.item.image
 
             minutes_listened = podcast.progress or 0
-            runtime_minutes = (
-                podcast.item.runtime_minutes
-                if podcast.item.runtime_minutes
-                else minutes_listened
-            )
+            runtime_minutes = podcast.item.runtime_minutes or minutes_listened
             key = (podcast.item.media_id, podcast.item.source)
             play_count = podcast_play_counts.get(key, 1)
 

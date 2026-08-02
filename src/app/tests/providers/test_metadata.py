@@ -147,7 +147,7 @@ class Metadata(TestCase):
             url,
             params=None,
             headers=None,
-        ):  # noqa: ARG001
+        ):
             if source == Sources.TMDB.value and url.endswith("/tv/114410"):
                 return {
                     "id": 114410,
@@ -224,7 +224,7 @@ class Metadata(TestCase):
         """TMDB TV details should not invoke TVDB specials fallback when disabled."""
         tmdb.cache.clear()
 
-        def _mock_api_request(source, _method, url, params=None):  # noqa: ARG001
+        def _mock_api_request(source, _method, url, params=None):
             if source == Sources.TMDB.value and url.endswith("/tv/114410"):
                 return {
                     "id": 114410,
@@ -445,7 +445,7 @@ class Metadata(TestCase):
         tmdb.cache.clear()
         mock_build_specials_season.return_value = None
 
-        def _mock_api_request(source, _method, url, params=None):  # noqa: ARG001
+        def _mock_api_request(source, _method, url, params=None):
             if source == Sources.TMDB.value and url.endswith("/tv/114410"):
                 return {
                     "id": 114410,
@@ -533,7 +533,7 @@ class Metadata(TestCase):
             },
         }
 
-        def _mock_api_request(source, _method, url, params=None):  # noqa: ARG001
+        def _mock_api_request(source, _method, url, params=None):
             if source == Sources.TMDB.value and url.endswith("/tv/114410"):
                 return {
                     "id": 114410,
@@ -1309,7 +1309,7 @@ class Metadata(TestCase):
             },
         }
 
-        def _mock_episode_request(_source, _method, url, params=None):  # noqa: ARG001
+        def _mock_episode_request(_source, _method, url, params=None):
             if url.endswith("/episode/1"):
                 return {
                     "name": "Pilot",
@@ -1640,7 +1640,7 @@ class Metadata(TestCase):
 
         def _mock_api_request(
             source, _method, url, data=None, params=None, headers=None
-        ):  # noqa: ARG001
+        ):
             if source == Sources.IGDB.value and url.endswith("/companies"):
                 self.assertIn(
                     "fields name,description,developed,published,logo.image_id,",
@@ -1839,7 +1839,7 @@ class Metadata(TestCase):
     def test_openlibrary_author_profile_normalization(self, mock_api_request):
         openlibrary.cache.delete(f"{Sources.OPENLIBRARY.value}_person_OL1A")
 
-        def _mock_api_request(_source, _method, url, params=None, **kwargs):  # noqa: ARG001
+        def _mock_api_request(_source, _method, url, params=None, **kwargs):
             if url.endswith("/authors/OL1A.json"):
                 return {
                     "name": "Open Author",

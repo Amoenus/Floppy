@@ -21,6 +21,7 @@ import events
 import users
 from app.models.choices import MediaTypes, Sources, Status
 from app.models.item import Item
+import contextlib
 
 logger = logging.getLogger(__name__)
 
@@ -133,10 +134,8 @@ class MediaManager(models.Manager):
             if normalized_year == "unknown":
                 queryset = queryset.filter(item__release_datetime__isnull=True)
             else:
-                try:
+                with contextlib.suppress(TypeError, ValueError):
                     queryset = queryset.filter(item__release_datetime__year=int(year))
-                except (TypeError, ValueError):
-                    pass
 
         release = str(filters.get("release") or "all").strip().lower()
         today = timezone.localdate()

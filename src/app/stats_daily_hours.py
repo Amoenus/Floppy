@@ -76,7 +76,7 @@ def get_daily_hours_by_media_type(user_media, start_date, end_date):
     ]
 
     # Prepare per-media-type mapping of date -> minutes
-    per_type_minutes = {mt: dict.fromkeys(labels, 0) for mt in user_media.keys()}
+    per_type_minutes = {mt: dict.fromkeys(labels, 0) for mt in user_media}
 
     # We'll need the runtime lookup function and logger
     for media_type, media_list in user_media.items():
@@ -102,7 +102,7 @@ def get_daily_hours_by_media_type(user_media, start_date, end_date):
                     per_type_minutes[media_type][label] += minutes
 
         # TV shows / Seasons: use per-episode end_date and runtime from episode cache
-        elif media_type == MediaTypes.TV.value or media_type == MediaTypes.SEASON.value:
+        elif media_type in (MediaTypes.TV.value, MediaTypes.SEASON.value):
             for tv in _iter_media_list(media_list):
                 seasons = getattr(tv, "seasons", None)
                 if seasons is None:
@@ -304,7 +304,7 @@ def get_daily_hours_by_media_type(user_media, start_date, end_date):
     ordered_types.extend(
         [
             media_type
-            for media_type in per_type_minutes.keys()
+            for media_type in per_type_minutes
             if media_type not in ordered_types
         ]
     )

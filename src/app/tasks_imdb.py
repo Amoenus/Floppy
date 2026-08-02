@@ -79,7 +79,7 @@ def schedule_imdb_game_person_profile_backfill_if_needed():
 def _resolved_game_items():
     from app.models import Item, MediaTypes, Sources  # noqa: PLC0415
     from app.services.imdb_game_credits import (
-        _apply_credit_backfill_filters,  # noqa: PLC0415
+        _apply_credit_backfill_filters,
     )
 
     items_qs = Item.objects.filter(

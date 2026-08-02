@@ -141,14 +141,13 @@ def _build_detail_tag_sections(
 
     tag_names = []
     is_authenticated_user = getattr(user, "is_authenticated", False)
-    if is_authenticated_user:
-        if item is not None:
-            tag_names = list(
-                ItemTag.objects.filter(item=item, tag__user=user)
-                .select_related("tag")
-                .order_by("tag__name")
-                .values_list("tag__name", flat=True)
-            )
+    if is_authenticated_user and item is not None:
+        tag_names = list(
+            ItemTag.objects.filter(item=item, tag__user=user)
+            .select_related("tag")
+            .order_by("tag__name")
+            .values_list("tag__name", flat=True)
+        )
 
     if is_authenticated_user:
         tag_section = {

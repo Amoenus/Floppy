@@ -17,7 +17,7 @@ class ApplyPlaybackEventImageTests(TestCase):
     def setUp(self):
         self.user = get_user_model().objects.create_user(
             username="playbackimg",
-            password="pw",  # noqa: S106
+            password="pw",
         )
 
     def tearDown(self):
@@ -118,7 +118,7 @@ class RequestPathPurityTests(TestCase):
     def setUp(self):
         self.user = get_user_model().objects.create_user(
             username="purity",
-            password="pw",  # noqa: S106
+            password="pw",
         )
         self.client.force_login(self.user)
 
@@ -207,7 +207,7 @@ class ResolveStateImageTaskTests(TestCase):
     def setUp(self):
         self.user = get_user_model().objects.create_user(
             username="filltask",
-            password="pw",  # noqa: S106
+            password="pw",
         )
 
     def tearDown(self):

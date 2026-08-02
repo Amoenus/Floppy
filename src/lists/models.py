@@ -350,11 +350,10 @@ class CustomList(models.Model):
                         backdrop_url,
                     )
                     return backdrop_url
-                else:
-                    logger.debug(
-                        "No IGDB backdrop found, falling back to cover art for game %s",
-                        first_item.media_id,
-                    )
+                logger.debug(
+                    "No IGDB backdrop found, falling back to cover art for game %s",
+                    first_item.media_id,
+                )
             except Exception as exc:
                 import logging
 
@@ -365,7 +364,6 @@ class CustomList(models.Model):
                     exc_info=True,
                 )
                 # If anything fails, fall back to regular cover
-                pass
 
         # Fall back to regular poster image
         return first_item.image
@@ -777,12 +775,11 @@ class CustomList(models.Model):
                             )
                             cache.set(cache_key, backdrop_url, 60 * 60 * 24 * 7)
                             return backdrop_url
-                        else:
-                            logger.debug(
-                                "Artwork image_id=%s failed aspect ratio check for game %s",
-                                artwork_id,
-                                media_id,
-                            )
+                        logger.debug(
+                            "Artwork image_id=%s failed aspect ratio check for game %s",
+                            artwork_id,
+                            media_id,
+                        )
 
                 if key_arts or other_artworks:
                     logger.debug(
@@ -817,11 +814,10 @@ class CustomList(models.Model):
                         # Cache for 7 days
                         cache.set(cache_key, backdrop_url, 60 * 60 * 24 * 7)
                         return backdrop_url
-                    else:
-                        logger.debug(
-                            "First screenshot in list has no image_id for game %s",
-                            media_id,
-                        )
+                    logger.debug(
+                        "First screenshot in list has no image_id for game %s",
+                        media_id,
+                    )
                 else:
                     logger.debug("No screenshots found for game %s", media_id)
 

@@ -43,7 +43,7 @@ def trakt_lists_credentials(request):
             },
         )
     except Exception as error:
-        logger.error(
+        logger.exception(
             "Failed to store Trakt credentials for user %s: %s",
             request.user.username,
             error,

@@ -7,7 +7,6 @@ import app
 from app import live_playback
 from app.log_safety import exception_summary, mapping_keys, presence_map, safe_url
 from app.models import MediaTypes, Sources
-from app.providers import services
 from app.services import music_scrobble
 from integrations import plex as plex_api
 
@@ -940,10 +939,7 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
             metadata = payload.get("Metadata", {})
             artist = metadata.get("grandparentTitle")
             track = metadata.get("title")
-            if artist and track:
-                title = f"{artist} - {track}"
-            else:
-                title = track or artist
+            title = f"{artist} - {track}" if artist and track else track or artist
 
         return title
 
@@ -1204,12 +1200,11 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
         # Method 4: Last resort - try Player addresses (may not be server URI)
         if not plex_uri:
             player_info = payload.get("Player", {})
-            if player_info:
-                if isinstance(player_info, dict):
-                    # Prefer localAddress over publicAddress for local connections
-                    plex_uri = player_info.get("localAddress") or player_info.get(
-                        "publicAddress"
-                    )
+            if player_info and isinstance(player_info, dict):
+                # Prefer localAddress over publicAddress for local connections
+                plex_uri = player_info.get("localAddress") or player_info.get(
+                    "publicAddress"
+                )
 
         if not plex_uri:
             logger.warning(

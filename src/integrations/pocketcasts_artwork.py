@@ -45,7 +45,7 @@ def fetch_podcast_artwork(
     cache_key = f"podcast_artwork_{podcast_uuid}"
     cached = cache.get(cache_key)
     if cached is not None:
-        return cached if cached else None
+        return cached or None
 
     image_url = None
 
@@ -90,10 +90,7 @@ def fetch_podcast_artwork_and_rss(
     """
     try:
         # Build search query
-        if author:
-            query = f"{show_title} {author}"
-        else:
-            query = show_title
+        query = f"{show_title} {author}" if author else show_title
 
         # iTunes API expects URL-encoded query
         params = {
@@ -254,10 +251,7 @@ def _fetch_from_itunes(show_title: str, author: str | None = None) -> str | None
     """
     try:
         # Build search query
-        if author:
-            query = f"{show_title} {author}"
-        else:
-            query = show_title
+        query = f"{show_title} {author}" if author else show_title
 
         # iTunes API expects URL-encoded query
         params = {
@@ -297,7 +291,7 @@ def _fetch_from_itunes(show_title: str, author: str | None = None) -> str | None
                     # artworkUrl600 is 600x600, but we can get 1400x1400 by replacing dimensions
                     if "artworkUrl600" in result:
                         # Try to get larger version
-                        large_url = artwork_url.replace("600x600", "1400x1400")
+                        artwork_url.replace("600x600", "1400x1400")
                         # Verify it exists (or just use 600x600 which is usually fine)
                         return artwork_url
                     return artwork_url

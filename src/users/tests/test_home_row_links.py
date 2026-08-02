@@ -18,7 +18,7 @@ class HomeRowLinkTests(TestCase):
         """Create a user for the row owner."""
         self.user = get_user_model().objects.create_user(
             username="rowlink",
-            password="pass",  # noqa: S106
+            password="pass",
         )
 
     def test_library_query_row_link_has_sort_direction_layout_filters(self):

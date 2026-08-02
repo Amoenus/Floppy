@@ -175,7 +175,7 @@ class PodcastShowEpisodesView(drf_views.APIView):
         """Return catalog episodes with play state (page/page_size params)."""
         if not PodcastShow.objects.filter(id=show_id).exists():
             return Response({"detail": "Show not found."}, status=HTTP.NOT_FOUND)
-        return podcast_episodes_api(request._request, show_id)  # noqa: SLF001
+        return podcast_episodes_api(request._request, show_id)
 
 
 # /api/v1/podcasts/shows/[show_id]/mark-all-played/

@@ -172,7 +172,7 @@ def lookup_item_summary(
 
 
 def compute_popularity_score(
-    rating: float | int | None,
+    rating: float | None,
     votes: int | None,
     *,
     prior_mean: float = TRAKT_POPULARITY_PRIOR_MEAN,
@@ -291,7 +291,7 @@ def estimate_rank_from_score(score: float | None) -> int | None:
             if math.isclose(upper, lower):
                 return index + 1
             fraction = (upper - normalized_score) / (upper - lower)
-            return max(1, int(round((index + 1) + fraction)))
+            return max(1, round((index + 1) + fraction))
 
     if normalized_score <= 0:
         return len(reference_scores) + 1
@@ -303,7 +303,7 @@ def estimate_rank_from_score(score: float | None) -> int | None:
     tail_ratio = lowest_reference / normalized_score
     tail_increment = max(
         1,
-        int(round(max(tail_ratio - 1.0, 0.0) * len(reference_scores))),
+        round(max(tail_ratio - 1.0, 0.0) * len(reference_scores)),
     )
     return len(reference_scores) + tail_increment
 
@@ -422,16 +422,19 @@ def refresh_trakt_popularity(
     route_media_type = route_media_type_for_item(item, route_media_type)
     lookup_payload = lookup_item_summary(item, route_media_type=route_media_type)
     if not lookup_payload:
-        raise LookupError(f"No Trakt match found for item {item.id}")
+        msg = f"No Trakt match found for item {item.id}"
+        raise LookupError(msg)
     if lookup_payload.get("rating") is None or lookup_payload.get("votes") is None:
-        raise ValueError(f"Trakt payload missing rating/votes for item {item.id}")
+        msg = f"Trakt payload missing rating/votes for item {item.id}"
+        raise ValueError(msg)
 
     popularity_score = compute_popularity_score(
         lookup_payload.get("rating"),
         lookup_payload.get("votes"),
     )
     if popularity_score is None:
-        raise ValueError(f"Unable to compute Trakt popularity score for item {item.id}")
+        msg = f"Unable to compute Trakt popularity score for item {item.id}"
+        raise ValueError(msg)
 
     merged_external_ids = _merge_external_ids(item, lookup_payload)
 

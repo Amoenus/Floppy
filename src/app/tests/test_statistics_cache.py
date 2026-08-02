@@ -603,7 +603,8 @@ class GetHorizontalHistoryImageTests(TestCase):
         self, mock_backdrop
     ):
         """Old serialised history entries that pre-date the provider_external_ids
-        field must not crash and must fall back to the portrait poster."""
+        field must not crash and must fall back to the portrait poster.
+        """
         item = {
             "id": 10,
             "media_type": MediaTypes.TV.value,

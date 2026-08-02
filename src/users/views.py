@@ -816,19 +816,21 @@ def preferences(request):
                     setattr(request.user, enabled_field, is_enabled)
                     fields_to_update.append(enabled_field)
 
-        if date_format and date_format in [
-            choice[0] for choice in DateFormatChoices.choices
-        ]:
-            if request.user.date_format != date_format:
-                request.user.date_format = date_format
-                fields_to_update.append("date_format")
+        if (
+            date_format
+            and date_format in [choice[0] for choice in DateFormatChoices.choices]
+            and request.user.date_format != date_format
+        ):
+            request.user.date_format = date_format
+            fields_to_update.append("date_format")
 
-        if time_format and time_format in [
-            choice[0] for choice in TimeFormatChoices.choices
-        ]:
-            if request.user.time_format != time_format:
-                request.user.time_format = time_format
-                fields_to_update.append("time_format")
+        if (
+            time_format
+            and time_format in [choice[0] for choice in TimeFormatChoices.choices]
+            and request.user.time_format != time_format
+        ):
+            request.user.time_format = time_format
+            fields_to_update.append("time_format")
 
         week_start_day = request.POST.get("week_start_day")
         if week_start_day and week_start_day in WeekStartDayChoices.values:
@@ -837,12 +839,14 @@ def preferences(request):
                 fields_to_update.append("week_start_day")
                 week_start_day_changed = True
 
-        if activity_history_view and activity_history_view in [
-            choice[0] for choice in ActivityHistoryViewChoices.choices
-        ]:
-            if request.user.activity_history_view != activity_history_view:
-                request.user.activity_history_view = activity_history_view
-                fields_to_update.append("activity_history_view")
+        if (
+            activity_history_view
+            and activity_history_view
+            in [choice[0] for choice in ActivityHistoryViewChoices.choices]
+            and request.user.activity_history_view != activity_history_view
+        ):
+            request.user.activity_history_view = activity_history_view
+            fields_to_update.append("activity_history_view")
 
         if duration_format and duration_format in DurationFormatChoices.values:
             if request.user.duration_format != duration_format:
@@ -850,53 +854,64 @@ def preferences(request):
                 fields_to_update.append("duration_format")
                 duration_format_changed = True
 
-        if game_logging_style and game_logging_style in [
-            choice[0] for choice in GameLoggingStyleChoices.choices
-        ]:
-            if request.user.game_logging_style != game_logging_style:
-                request.user.game_logging_style = game_logging_style
-                fields_to_update.append("game_logging_style")
-                history_cache.invalidate_history_cache(request.user.id)
-                history_cache.schedule_history_refresh(
-                    request.user.id, game_logging_style, debounce_seconds=0
-                )
+        if (
+            game_logging_style
+            and game_logging_style
+            in [choice[0] for choice in GameLoggingStyleChoices.choices]
+            and request.user.game_logging_style != game_logging_style
+        ):
+            request.user.game_logging_style = game_logging_style
+            fields_to_update.append("game_logging_style")
+            history_cache.invalidate_history_cache(request.user.id)
+            history_cache.schedule_history_refresh(
+                request.user.id, game_logging_style, debounce_seconds=0
+            )
 
-        if mobile_grid_layout and mobile_grid_layout in [
-            choice[0] for choice in MobileGridLayoutChoices.choices
-        ]:
-            if request.user.mobile_grid_layout != mobile_grid_layout:
-                request.user.mobile_grid_layout = mobile_grid_layout
-                fields_to_update.append("mobile_grid_layout")
+        if (
+            mobile_grid_layout
+            and mobile_grid_layout
+            in [choice[0] for choice in MobileGridLayoutChoices.choices]
+            and request.user.mobile_grid_layout != mobile_grid_layout
+        ):
+            request.user.mobile_grid_layout = mobile_grid_layout
+            fields_to_update.append("mobile_grid_layout")
 
-        if media_card_subtitle_display and media_card_subtitle_display in [
-            choice[0] for choice in MediaCardSubtitleDisplayChoices.choices
-        ]:
-            if request.user.media_card_subtitle_display != media_card_subtitle_display:
-                request.user.media_card_subtitle_display = media_card_subtitle_display
-                fields_to_update.append("media_card_subtitle_display")
+        if (
+            media_card_subtitle_display
+            and media_card_subtitle_display
+            in [choice[0] for choice in MediaCardSubtitleDisplayChoices.choices]
+            and request.user.media_card_subtitle_display != media_card_subtitle_display
+        ):
+            request.user.media_card_subtitle_display = media_card_subtitle_display
+            fields_to_update.append("media_card_subtitle_display")
 
-        if title_display_preference and title_display_preference in [
-            choice[0] for choice in TitleDisplayPreferenceChoices.choices
-        ]:
-            if request.user.title_display_preference != title_display_preference:
-                request.user.title_display_preference = title_display_preference
-                fields_to_update.append("title_display_preference")
+        if (
+            title_display_preference
+            and title_display_preference
+            in [choice[0] for choice in TitleDisplayPreferenceChoices.choices]
+            and request.user.title_display_preference != title_display_preference
+        ):
+            request.user.title_display_preference = title_display_preference
+            fields_to_update.append("title_display_preference")
 
-        if top_talent_sort_by and top_talent_sort_by in [
-            choice[0] for choice in TopTalentSortChoices.choices
-        ]:
-            if request.user.top_talent_sort_by != top_talent_sort_by:
-                request.user.top_talent_sort_by = top_talent_sort_by
-                fields_to_update.append("top_talent_sort_by")
-                top_talent_sort_changed = True
+        if (
+            top_talent_sort_by
+            and top_talent_sort_by
+            in [choice[0] for choice in TopTalentSortChoices.choices]
+            and request.user.top_talent_sort_by != top_talent_sort_by
+        ):
+            request.user.top_talent_sort_by = top_talent_sort_by
+            fields_to_update.append("top_talent_sort_by")
+            top_talent_sort_changed = True
 
-        if rating_scale and rating_scale in [
-            choice[0] for choice in RatingScaleChoices.choices
-        ]:
-            if request.user.rating_scale != rating_scale:
-                request.user.rating_scale = rating_scale
-                fields_to_update.append("rating_scale")
-                rating_scale_changed = True
+        if (
+            rating_scale
+            and rating_scale in [choice[0] for choice in RatingScaleChoices.choices]
+            and request.user.rating_scale != rating_scale
+        ):
+            request.user.rating_scale = rating_scale
+            fields_to_update.append("rating_scale")
+            rating_scale_changed = True
 
         if hide_completed_recommendations_raw is not None:
             hide_completed_recommendations = hide_completed_recommendations_raw == "1"
@@ -927,12 +942,13 @@ def preferences(request):
 
         show_planned_on_home = request.POST.get("show_planned_on_home")
 
-        if show_planned_on_home in [
-            choice[0] for choice in PlannedHomeDisplayChoices.choices
-        ]:
-            if request.user.show_planned_on_home != show_planned_on_home:
-                request.user.show_planned_on_home = show_planned_on_home
-                fields_to_update.append("show_planned_on_home")
+        if (
+            show_planned_on_home
+            in [choice[0] for choice in PlannedHomeDisplayChoices.choices]
+            and request.user.show_planned_on_home != show_planned_on_home
+        ):
+            request.user.show_planned_on_home = show_planned_on_home
+            fields_to_update.append("show_planned_on_home")
 
         auto_pause_enabled = request.POST.get("auto_pause_enabled") == "1"
         raw_rules = request.POST.get("auto_pause_rules", "[]")
@@ -964,31 +980,29 @@ def preferences(request):
             request.user.watch_provider_region = "UNSET"
             fields_to_update.append("watch_provider_region")
 
-        if tv_metadata_source_default in {
-            choice[0] for choice in tv_metadata_source_choices
-        }:
-            if request.user.tv_metadata_source_default != tv_metadata_source_default:
-                request.user.tv_metadata_source_default = tv_metadata_source_default
-                fields_to_update.append("tv_metadata_source_default")
+        if (
+            tv_metadata_source_default
+            in {choice[0] for choice in tv_metadata_source_choices}
+            and request.user.tv_metadata_source_default != tv_metadata_source_default
+        ):
+            request.user.tv_metadata_source_default = tv_metadata_source_default
+            fields_to_update.append("tv_metadata_source_default")
 
         if anime_metadata_source_default in {
             choice[0] for choice in anime_metadata_source_choices
-        }:
-            if (
-                request.user.anime_metadata_source_default
-                != anime_metadata_source_default
-            ):
-                request.user.anime_metadata_source_default = (
-                    anime_metadata_source_default
-                )
-                fields_to_update.append("anime_metadata_source_default")
+        } and (
+            request.user.anime_metadata_source_default != anime_metadata_source_default
+        ):
+            request.user.anime_metadata_source_default = anime_metadata_source_default
+            fields_to_update.append("anime_metadata_source_default")
 
-        if anime_library_mode in [
-            choice[0] for choice in AnimeLibraryModeChoices.choices
-        ]:
-            if request.user.anime_library_mode != anime_library_mode:
-                request.user.anime_library_mode = anime_library_mode
-                fields_to_update.append("anime_library_mode")
+        if (
+            anime_library_mode
+            in [choice[0] for choice in AnimeLibraryModeChoices.choices]
+            and request.user.anime_library_mode != anime_library_mode
+        ):
+            request.user.anime_library_mode = anime_library_mode
+            fields_to_update.append("anime_library_mode")
 
         session_duration = request.POST.get("session_duration")
         if session_duration is not None:

@@ -5,6 +5,7 @@ from app.models import MediaTypes
 from app.templatetags import app_tags
 from integrations import plex as plex_api
 from integrations.imports import helpers
+import contextlib
 
 ERROR_TITLE = "\n\n\n Couldn't import the following media: \n\n"
 GOODREADS_IMPORT_TASK_NAME = "Import from Goodreads"
@@ -30,10 +31,8 @@ def _is_expected_plex_lookup_error(exc):
 def _coerce_uploaded_file(file):
     """Normalize uploaded file task args to a binary file-like object."""
     if hasattr(file, "read"):
-        try:
+        with contextlib.suppress(AttributeError, OSError):
             file.seek(0)
-        except (AttributeError, OSError):
-            pass
         return file
     if isinstance(file, str):
         return BytesIO(file.encode("utf-8"))
@@ -77,8 +76,7 @@ def format_import_message(imported_counts, warning_messages=None):
     media_type_values = set(MediaTypes.values)
     for media_type, count in imported_counts.items():
         if (
-            media_type == MediaTypes.MUSIC.value
-            or media_type == "music_unique_tracks"
+            media_type in (MediaTypes.MUSIC.value, "music_unique_tracks")
             or media_type not in media_type_values
         ):
             continue

@@ -385,17 +385,14 @@ class BaseWebhookProcessor:
         ).exists():
             return True
 
-        if (
+        return bool(
             tvdb_id not in (None, "")
             and app.models.ItemProviderLink.objects.filter(
                 provider=Sources.TVDB.value,
                 provider_media_type=MediaTypes.TV.value,
                 provider_media_id=str(tvdb_id),
             ).exists()
-        ):
-            return True
-
-        return False
+        )
 
     def _find_existing_tracked_tv_item(self, user, ids, tmdb_media_id):
         """Return an existing TV Item this user already tracks that matches any
@@ -1084,7 +1081,7 @@ class BaseWebhookProcessor:
         Subclasses whose source exposes this override it; the default means
         "unknown", which keeps a local-only season conservatively in progress.
         """
-        return None
+        return
 
     def _remap_episode_numbering(
         self,
@@ -1689,4 +1686,3 @@ class BaseWebhookProcessor:
         This is a no-op by default. Subclasses should override to implement
         collection metadata extraction for their specific media server.
         """
-        pass

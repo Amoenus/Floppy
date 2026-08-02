@@ -18,15 +18,14 @@ from django.utils.dateparse import parse_date
 from django.views.decorators.http import require_GET, require_http_methods
 
 from app import (
-    cache_utils,
     fork_services_history,
     helpers,
     history_cache,
     history_processor,
-    statistics_cache,
 )
 from app import statistics as stats
 from app.models import BasicMedia, MediaTypes
+import contextlib
 
 logger = logging.getLogger(__name__)
 
@@ -624,10 +623,7 @@ def _can_use_cached_month_history(
         return False
     if any(key in filters for key in _MONTH_CACHE_UNSUPPORTED_FILTER_KEYS):
         return False
-    if filters.get("media_id") or filters.get("source"):
-        return False
-
-    return True
+    return not (filters.get("media_id") or filters.get("source"))
 
 
 def _cached_history_entry_matches_filters(entry, filters):
@@ -687,10 +683,9 @@ def _cached_history_entry_matches_filters(entry, filters):
         return False
 
     target_source = filters.get("source")
-    if target_source is not None and str(item.get("source")) != str(target_source):
-        return False
-
-    return True
+    return not (
+        target_source is not None and str(item.get("source")) != str(target_source)
+    )
 
 
 def _filter_cached_history_days(history_days, filters):
@@ -731,11 +726,8 @@ def history_genres(request):
 
     from app.models import (
         BoardGame,
-        Book,
-        Comic,
         Episode,
         Game,
-        Manga,
         Movie,
         Music,
         Podcast,
@@ -812,10 +804,8 @@ def history(request):
         for param in int_params:
             value = request.GET.get(param)
             if value:
-                try:
+                with contextlib.suppress(TypeError, ValueError):
                     filters[param] = int(value)
-                except (TypeError, ValueError):
-                    pass
         for param in str_params:
             value = request.GET.get(param)
             if value:

@@ -32,7 +32,7 @@ class TraktDiscoverAdapter:
             return payload
 
         if not trakt_provider.is_configured():
-            return payload if payload else {"results": []}
+            return payload or {"results": []}
 
         headers = {
             "Content-Type": "application/json",
@@ -306,7 +306,7 @@ class TraktDiscoverAdapter:
         media_type: str,
         row_key: str,
         source_reason: str,
-        popularity: float | int | None,
+        popularity: float | None,
         trakt_genres: list[str] | None = None,
     ) -> CandidateItem | None:
         if not show:

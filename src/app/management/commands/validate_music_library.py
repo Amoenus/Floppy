@@ -57,7 +57,7 @@ class Command(BaseCommand):
 
         # Run comprehensive validation
         validation = validate_music_library(user)
-        track_counts = count_user_tracks(user)
+        count_user_tracks(user)
         enrichment_status = get_enrichment_status(user)
         missing_linkages = get_missing_linkages(user)
 

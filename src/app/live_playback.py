@@ -675,7 +675,7 @@ def _stored_episode_image_is_inherited(state_item):
     )
 
 
-def _resolve_landscape_image(state, state_item):  # noqa: C901
+def _resolve_landscape_image(state, state_item):
     """Resolve a landscape image for the playback card.
 
     For episodes: prefers the episode-specific still (the same image
@@ -785,13 +785,11 @@ def build_home_playback_card(user) -> dict | None:
                 .values("library_media_type", "genres")
                 .first()
             )
-            if tv_item:
-                if tv_item[
-                    "library_media_type"
-                ] == MediaTypes.ANIME.value or genre_list_has_name(
-                    tv_item["genres"], ANIME_SUPPLEMENT_GENRE
-                ):
-                    library_media_type = MediaTypes.ANIME.value
+            if tv_item and (
+                tv_item["library_media_type"] == MediaTypes.ANIME.value
+                or genre_list_has_name(tv_item["genres"], ANIME_SUPPLEMENT_GENRE)
+            ):
+                library_media_type = MediaTypes.ANIME.value
 
     return {
         "title": title,

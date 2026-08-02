@@ -27,7 +27,7 @@ class PocketCastsInferenceTests(TestCase):
     def setUp(self):
         """Set up test fixtures."""
         User = get_user_model()
-        self.user = User.objects.create_user(username="testuser", password="pass")  # noqa: S106
+        self.user = User.objects.create_user(username="testuser", password="pass")
         self.sync_start = datetime(2025, 1, 1, 12, 0, tzinfo=UTC)
         self.sync_end = datetime(2025, 1, 1, 14, 0, tzinfo=UTC)
         PocketCastsAccount.objects.create(
@@ -276,7 +276,7 @@ class PocketCastsDistributionSimulatorTest(TestCase):
     def setUp(self):
         """Set up test fixtures."""
         User = get_user_model()
-        self.user = User.objects.create_user(username="simuser", password="pass")  # noqa: S106
+        self.user = User.objects.create_user(username="simuser", password="pass")
         PocketCastsAccount.objects.create(
             user=self.user,
             access_token="token",
@@ -347,7 +347,7 @@ class PocketCastsImportFlowTests(TestCase):
     def setUp(self):
         """Set up a user, account, and importer. _ensure_valid_token is patched off."""
         User = get_user_model()
-        self.user = User.objects.create_user(username="flowuser", password="pass")  # noqa: S106
+        self.user = User.objects.create_user(username="flowuser", password="pass")
         PocketCastsAccount.objects.create(
             user=self.user,
             access_token="token",

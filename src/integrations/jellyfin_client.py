@@ -41,10 +41,12 @@ class JellyfinClient:
                 **kwargs,
             )
         except requests.RequestException as exc:
-            raise JellyfinClientError(f"Could not reach Jellyfin: {exc}") from exc
+            msg = f"Could not reach Jellyfin: {exc}"
+            raise JellyfinClientError(msg) from exc
 
         if response.status_code == 401:
-            raise JellyfinAuthError("Jellyfin API key is invalid or unauthorized")
+            msg = "Jellyfin API key is invalid or unauthorized"
+            raise JellyfinAuthError(msg)
         if response.status_code >= 400:
             body_snippet = (response.text or "").strip()[:200]
             logger.warning(
@@ -92,7 +94,8 @@ class JellyfinClient:
     def iter_library_items(self):
         """Yield Movie/Episode/Series items with provider ids and play state."""
         if not self.user_id:
-            raise JellyfinClientError("Jellyfin user id is not set")
+            msg = "Jellyfin user id is not set"
+            raise JellyfinClientError(msg)
 
         start_index = 0
         while True:
@@ -119,11 +122,13 @@ class JellyfinClient:
     def mark_played(self, item_id: str) -> None:
         """Mark a Jellyfin item as played for the connected user."""
         if not self.user_id:
-            raise JellyfinClientError("Jellyfin user id is not set")
+            msg = "Jellyfin user id is not set"
+            raise JellyfinClientError(msg)
         self._request("POST", f"/Users/{self.user_id}/PlayedItems/{item_id}")
 
     def mark_unplayed(self, item_id: str) -> None:
         """Mark a Jellyfin item as unplayed for the connected user."""
         if not self.user_id:
-            raise JellyfinClientError("Jellyfin user id is not set")
+            msg = "Jellyfin user id is not set"
+            raise JellyfinClientError(msg)
         self._request("DELETE", f"/Users/{self.user_id}/PlayedItems/{item_id}")

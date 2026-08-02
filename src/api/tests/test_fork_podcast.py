@@ -28,14 +28,14 @@ class PodcastApiTestCase(FloppyApiTestCase):
             show=self.show,
             episode_uuid="ep-uuid-1",
             title="Episode One",
-            published=datetime.datetime(2024, 1, 1, tzinfo=datetime.timezone.utc),
+            published=datetime.datetime(2024, 1, 1, tzinfo=datetime.UTC),
             duration=1800,
         )
         self.episode2 = PodcastEpisode.objects.create(
             show=self.show,
             episode_uuid="ep-uuid-2",
             title="Episode Two",
-            published=datetime.datetime(2024, 2, 1, tzinfo=datetime.timezone.utc),
+            published=datetime.datetime(2024, 2, 1, tzinfo=datetime.UTC),
             duration=2400,
         )
 

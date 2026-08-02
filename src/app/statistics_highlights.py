@@ -355,7 +355,7 @@ def _get_today_history_entries(user, media_type_filter=None):
 
 def _get_today_release_entry(user, media_type_filter=None):
     today = timezone.localdate()
-    active_types = list(getattr(user, "get_active_media_types", lambda: [])())
+    active_types = list(getattr(user, "get_active_media_types", list)())
     if not active_types:
         active_types = list(MediaTypes.values)
     include_podcasts = MediaTypes.PODCAST.value in active_types
@@ -414,9 +414,7 @@ def _get_today_release_entry(user, media_type_filter=None):
                 }
             )
 
-    include_episodes = not media_type_filter or media_type_filter in (
-        MediaTypes.TV.value,
-    )
+    include_episodes = not media_type_filter or media_type_filter == MediaTypes.TV.value
     Episode = apps.get_model("app", "Episode")
     episode_qs = (
         Episode.objects.filter(

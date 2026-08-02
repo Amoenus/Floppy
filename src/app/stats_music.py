@@ -117,7 +117,7 @@ def _compute_music_top_lists(play_details, limit=5):
         },
     )
 
-    for music, dt, runtime in play_details:
+    for music, _dt, runtime in play_details:
         # Track stats (use music.id as key since each Music is a unique track entry)
         track_key = music.id
         track_stats[track_key]["minutes"] += runtime
@@ -499,7 +499,7 @@ def _compute_music_top_rollups(play_details, limit=5):
     decade_stats = defaultdict(lambda: {"minutes": 0, "plays": 0, "label": ""})
     country_stats = defaultdict(lambda: {"minutes": 0, "plays": 0, "code": ""})
 
-    for music, dt, runtime in play_details:
+    for music, _dt, runtime in play_details:
         minutes = runtime or 0
 
         # Genres: prefer album genres, fall back to artist genres

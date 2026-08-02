@@ -39,7 +39,7 @@ def _get_media_types_to_export(media_types=None):
     children (season → episode, tv → season+episode) are returned.
     """
     if media_types is None:
-        return list(MediaTypes.values) + ["music_artist", "music_album"]
+        return [*list(MediaTypes.values), "music_artist", "music_album"]
 
     out = list(media_types)
     # If TV is selected, ensure season & episode are included
@@ -374,13 +374,14 @@ def write_backup(user, media_types=None, include_lists=True, include_collection=
     filepath = backup_dir / filename
 
     with open(filepath, "w", newline="", encoding="utf-8") as f:
-        for row_data in generate_rows(
-            user,
-            media_types=media_types,
-            include_lists=include_lists,
-            include_collection=include_collection,
-        ):
-            f.write(row_data)
+        f.writelines(
+            generate_rows(
+                user,
+                media_types=media_types,
+                include_lists=include_lists,
+                include_collection=include_collection,
+            )
+        )
 
     logger.info("Backup written to %s for user %s", filepath, user.username)
     return str(filepath)

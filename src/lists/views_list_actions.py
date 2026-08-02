@@ -53,7 +53,8 @@ def update_list_table_columns(request, list_id):
         id=list_id,
     )
     if not custom_list.user_can_view(request.user):
-        raise Http404("List not found")
+        msg = "List not found"
+        raise Http404(msg)
 
     media_type = request.POST.get("media_type_key", "all")
     if media_type != "all" and media_type not in MediaTypes.values:

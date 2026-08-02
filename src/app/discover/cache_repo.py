@@ -227,7 +227,8 @@ def set_taste_profile(
             if "database is locked" not in str(exc) or attempt >= max_attempts - 1:
                 raise
             time.sleep(0.2 * (attempt + 1) + random.random() * 0.3)
-    raise RuntimeError("unreachable")
+    msg = "unreachable"
+    raise RuntimeError(msg)
 
 
 def delete_row_caches(user_ids: list[int], media_types: list[str]) -> int:

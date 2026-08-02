@@ -8,6 +8,7 @@ from app.models import MediaTypes, Sources
 from app.services import game_lengths as game_length_services
 from app.services import trakt_popularity as trakt_popularity_service
 from app.templatetags import app_tags
+import contextlib
 
 
 def _format_game_length_minutes(minutes):
@@ -413,7 +414,6 @@ def _build_episode_graph_from_season_cache(source, media_id, related_seasons):
         return None
 
     from app.providers.tmdb import (  # noqa: PLC0415
-        TMDB_SEASON_CACHE_VERSION,
         _season_cache_key,
     )
 
@@ -593,15 +593,13 @@ def _build_trakt_popularity_context(detail_item, route_media_type):
 
     rating = detail_item.trakt_rating
     if rating is not None:
-        try:
+        with contextlib.suppress(InvalidOperation, TypeError, ValueError):
             rating = float(
                 Decimal(str(rating)).quantize(
                     Decimal("0.1"),
                     rounding=ROUND_DOWN,
                 ),
             )
-        except (InvalidOperation, TypeError, ValueError):
-            pass
 
     return {
         "rating": rating,

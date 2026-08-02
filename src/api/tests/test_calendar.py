@@ -23,7 +23,7 @@ class CalendarTests(FloppyApiTestCase):
         """Calendar GET should return paginated response data."""
         today = timezone.localdate()
         month_start = today.replace(day=1)
-        if today.month == 12:  # noqa: PLR2004
+        if today.month == 12:
             next_month_start = today.replace(year=today.year + 1, month=1, day=1)
         else:
             next_month_start = today.replace(month=today.month + 1, day=1)

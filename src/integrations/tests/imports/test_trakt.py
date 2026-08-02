@@ -423,7 +423,7 @@ class ImportTrakt(TestCase):
         movie_obj = trakt_importer.bulk_media[MediaTypes.MOVIE.value][0]
         # Stored as-is (displays as 3/5), not doubled to the 10 ceiling.
         self.assertEqual(movie_obj.score, 6)
-        self.assertEqual(self.user.scale_score_for_display(Decimal("6")), Decimal("3"))
+        self.assertEqual(self.user.scale_score_for_display(Decimal(6)), Decimal(3))
 
     @patch("integrations.imports.trakt.TraktImporter._make_api_request")
     def test_invalid_username_fails_before_importing(self, mock_make_request):

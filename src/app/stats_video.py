@@ -189,7 +189,7 @@ def _compute_movie_tv_top_genres(play_details, limit=STATISTICS_TOP_N):
 
     genre_stats = defaultdict(lambda: {"minutes": 0, "plays": 0, "name": ""})
 
-    for media, dt, runtime in play_details:
+    for media, _dt, runtime in play_details:
         minutes = runtime or 0
 
         # Get genres from media.item.details or metadata
@@ -276,7 +276,7 @@ def _compute_movie_tv_top_decades(play_details, limit=STATISTICS_TOP_N):
 
     decade_stats = defaultdict(lambda: {"minutes": 0, "plays": 0, "label": ""})
 
-    for media, dt, runtime in play_details:
+    for media, _dt, runtime in play_details:
         minutes = runtime or 0
 
         # For TV episodes, use the parent TV show's release year.

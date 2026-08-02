@@ -1,4 +1,3 @@
-import datetime
 import logging
 
 from django.contrib import messages
@@ -94,7 +93,8 @@ def list_detail(request, list_reference):
                 )
                 return redirect("lists")
         # For anonymous users, just show 404
-        raise Http404("List not found")
+        msg = "List not found"
+        raise Http404(msg)
 
     # Check access: public lists are viewable by anyone, private lists require auth
     if not custom_list.user_can_view(request.user):

@@ -81,7 +81,7 @@ class Command(BaseCommand):
 
             except Exception as e:
                 error_count += 1
-                self.stderr.write(f"[{i}/{total}] ✗ Error for {item.title}: {str(e)}")
+                self.stderr.write(f"[{i}/{total}] ✗ Error for {item.title}: {e!s}")
 
         self.stdout.write(
             self.style.SUCCESS(

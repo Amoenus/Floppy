@@ -1,8 +1,7 @@
-import hashlib
 import json
 import logging
 import time
-from datetime import datetime
+from datetime import UTC
 
 from django.apps import apps
 from django.conf import settings
@@ -22,10 +21,8 @@ from app import (
 )
 from app import statistics as stats
 from app.activity_builders import (
-    DETAIL_EPISODES_PER_PAGE,
     _build_detail_activity_state,
     _build_detail_activity_subtitle,
-    _detail_episode_page_label,
     _get_game_lengths_refresh_lock,
     _normalize_detail_episode_actions,
     _paginate_detail_episodes,
@@ -48,24 +45,17 @@ from app.log_safety import exception_summary
 from app.media_list_views import _collect_reading_activity_day_keys
 from app.metadata_sync_views import _build_flat_anime_episode_preview
 from app.models import (
-    TV,
-    Album,
     Anime,
     BasicMedia,
     ComicIssue,
     CreditRoleType,
-    Episode,
     Item,
     MediaTypes,
-    PodcastShow,
-    Season,
     Sources,
     Status,
-    Track,
 )
-from app.providers import igdb, services, tmdb
+from app.providers import services, tmdb
 from app.services import metadata_resolution
-from app.services import trakt_popularity as trakt_popularity_service
 from app.tag_views import (
     _build_detail_tag_sections,
     _detail_request_url,
@@ -532,7 +522,6 @@ def media_details(
             # Get all episodes for this show, ordered by published date (newest first)
             # Use Coalesce to handle None published dates (put them at the end)
             from datetime import datetime
-            from datetime import timezone as dt_timezone
 
             from django.db.models import DateTimeField, Value
             from django.db.models.functions import Coalesce
@@ -543,7 +532,7 @@ def media_details(
                     published_or_old=Coalesce(
                         "published",
                         Value(
-                            datetime(1970, 1, 1, tzinfo=dt_timezone.utc),
+                            datetime(1970, 1, 1, tzinfo=UTC),
                             output_field=DateTimeField(),
                         ),
                     ),
@@ -731,8 +720,7 @@ def media_details(
                     all_history.sort(
                         key=lambda x: (
                             x.end_date
-                            if x.end_date
-                            else timezone.datetime.min.replace(tzinfo=timezone.utc)
+                            or timezone.datetime.min.replace(tzinfo=timezone.utc)
                         ),
                         reverse=True,
                     )
@@ -798,8 +786,7 @@ def media_details(
                                             self._history,
                                             key=lambda x: (
                                                 x.end_date
-                                                if x.end_date
-                                                else timezone.datetime.min.replace(
+                                                or timezone.datetime.min.replace(
                                                     tzinfo=timezone.utc
                                                 )
                                             ),
@@ -809,8 +796,7 @@ def media_details(
                                             self._history,
                                             key=lambda x: (
                                                 x.end_date
-                                                if x.end_date
-                                                else timezone.datetime.min.replace(
+                                                or timezone.datetime.min.replace(
                                                     tzinfo=timezone.utc
                                                 )
                                             ),
@@ -1150,29 +1136,28 @@ def media_details(
             MediaTypes.SEASON.value,
         )
         and isinstance(media_metadata, dict)
-    ):
-        if detail_item:
-            metadata_update_fields = metadata_utils.apply_item_metadata(
-                detail_item,
-                identity_media_metadata,
+    ) and detail_item:
+        metadata_update_fields = metadata_utils.apply_item_metadata(
+            detail_item,
+            identity_media_metadata,
+        )
+        if metadata_update_fields:
+            detail_item.metadata_fetched_at = timezone.now()
+            metadata_update_fields.append("metadata_fetched_at")
+            _best_effort_detail_db_work(
+                lambda: detail_item.save(update_fields=metadata_update_fields),
+                operation_name="TMDB detail metadata sync",
             )
-            if metadata_update_fields:
-                detail_item.metadata_fetched_at = timezone.now()
-                metadata_update_fields.append("metadata_fetched_at")
-                _best_effort_detail_db_work(
-                    lambda: detail_item.save(update_fields=metadata_update_fields),
-                    operation_name="TMDB detail metadata sync",
-                )
-            missing_people = not detail_item.person_credits.exists()
-            missing_studios = not detail_item.studio_credits.exists()
-            if missing_people or missing_studios:
-                _best_effort_detail_db_work(
-                    lambda: credits.sync_item_credits_from_metadata(
-                        detail_item,
-                        media_metadata,
-                    ),
-                    operation_name="TMDB detail credits sync",
-                )
+        missing_people = not detail_item.person_credits.exists()
+        missing_studios = not detail_item.studio_credits.exists()
+        if missing_people or missing_studios:
+            _best_effort_detail_db_work(
+                lambda: credits.sync_item_credits_from_metadata(
+                    detail_item,
+                    media_metadata,
+                ),
+                operation_name="TMDB detail credits sync",
+            )
 
     should_refresh_igdb_game_studios = (
         source == Sources.IGDB.value

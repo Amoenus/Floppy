@@ -95,7 +95,7 @@ class Command(BaseCommand):
                 except Exception as e:
                     error_count += 1
                     self.stdout.write(f"  ✗ Error updating {item.title}: {e}")
-                    logger.error(f"Error updating runtime for {item.title}: {e}")
+                    logger.exception(f"Error updating runtime for {item.title}: {e}")
 
         self.stdout.write(
             f"\nCompleted! Updated {updated_count} items, {error_count} errors"
@@ -112,13 +112,16 @@ class Command(BaseCommand):
             )
 
             if not metadata:
-                raise ValueError("No metadata returned from provider")
+                msg = "No metadata returned from provider"
+                raise ValueError(msg)
 
             if not metadata.get("details"):
-                raise ValueError("No details in metadata")
+                msg = "No details in metadata"
+                raise ValueError(msg)
 
             if not metadata["details"].get("runtime"):
-                raise ValueError("No runtime data in metadata")
+                msg = "No runtime data in metadata"
+                raise ValueError(msg)
 
             runtime_str = metadata["details"]["runtime"]
 
@@ -128,7 +131,8 @@ class Command(BaseCommand):
             runtime_minutes = parse_runtime_to_minutes(runtime_str)
 
             if runtime_minutes is None:
-                raise ValueError(f"Failed to parse runtime '{runtime_str}'")
+                msg = f"Failed to parse runtime '{runtime_str}'"
+                raise ValueError(msg)
 
             # Update the item
             with transaction.atomic():
@@ -136,5 +140,5 @@ class Command(BaseCommand):
                 item.save()
 
         except Exception as e:
-            logger.error(f"Failed to update runtime for {item.title}: {e}")
+            logger.exception(f"Failed to update runtime for {item.title}: {e}")
             raise

@@ -35,7 +35,8 @@ class PlexWatchlistSyncService:
     def sync(self) -> tuple[dict[str, int], str]:
         """Run the watchlist sync and return counts plus warning text."""
         if not self.account or not self.account.plex_token:
-            raise MediaImportError("Plex is not connected for this user.")
+            msg = "Plex is not connected for this user."
+            raise MediaImportError(msg)
 
         self.counts = defaultdict(int)
         self.warnings = []
@@ -64,13 +65,11 @@ class PlexWatchlistSyncService:
         try:
             account_data = plex_api.fetch_account(self.account.plex_token)
         except plex_api.PlexAuthError as exc:
-            raise MediaImportError(
-                "Plex token expired; reconnect and try again."
-            ) from exc
+            msg = "Plex token expired; reconnect and try again."
+            raise MediaImportError(msg) from exc
         except plex_api.PlexClientError as exc:
-            raise MediaImportError(
-                f"Could not read Plex account details: {exc}"
-            ) from exc
+            msg = f"Could not read Plex account details: {exc}"
+            raise MediaImportError(msg) from exc
 
         username = username or (account_data.get("username") or "").strip()
         account_id = account_id or str(account_data.get("id") or "").strip()
@@ -100,13 +99,11 @@ class PlexWatchlistSyncService:
                     size=WATCHLIST_PAGE_SIZE,
                 )
             except plex_api.PlexAuthError as exc:
-                raise MediaImportError(
-                    "Plex token expired; reconnect and try again."
-                ) from exc
+                msg = "Plex token expired; reconnect and try again."
+                raise MediaImportError(msg) from exc
             except plex_api.PlexClientError as exc:
-                raise MediaImportError(
-                    f"Could not fetch Plex watchlist: {exc}"
-                ) from exc
+                msg = f"Could not fetch Plex watchlist: {exc}"
+                raise MediaImportError(msg) from exc
 
             if not page_entries:
                 break
@@ -181,9 +178,8 @@ class PlexWatchlistSyncService:
                 self.account.plex_token, rating_key
             )
         except plex_api.PlexAuthError as exc:
-            raise MediaImportError(
-                "Plex token expired; reconnect and try again."
-            ) from exc
+            msg = "Plex token expired; reconnect and try again."
+            raise MediaImportError(msg) from exc
         except plex_api.PlexClientError as exc:
             self._warn(
                 f"Could not load Plex watchlist metadata for {entry.get('title') or rating_key}: {exc}",
@@ -468,10 +464,7 @@ class PlexWatchlistSyncService:
             return False
         if getattr(media_obj, "start_date", None) is not None:
             return False
-        if getattr(media_obj, "end_date", None) is not None:
-            return False
-
-        return True
+        return getattr(media_obj, "end_date", None) is None
 
     def _warn(self, message: str) -> None:
         """Collect a warning without duplicating format logic in callers."""

@@ -1,5 +1,3 @@
-# ruff: noqa: D102
-
 import json
 from datetime import UTC, datetime
 from unittest.mock import ANY, call, patch

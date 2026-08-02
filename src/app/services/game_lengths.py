@@ -132,7 +132,8 @@ def refresh_game_lengths(
         match_type = match_type or "igdb_fallback"
 
     if not result.get("hltb") and not result.get("igdb"):
-        raise ValueError(f"No game length data available for item {item.id}")
+        msg = f"No game length data available for item {item.id}"
+        raise ValueError(msg)
 
     item.provider_external_ids = external_ids
     item.provider_game_lengths = result
@@ -256,7 +257,8 @@ def fetch_hltb_search(title: str) -> dict[str, Any]:
     """Search HLTB for a game title using the bleed API."""
     query = (title or "").strip()
     if not query:
-        raise ValueError("HLTB search title cannot be empty")
+        msg = "HLTB search title cannot be empty"
+        raise ValueError(msg)
 
     auth = _fetch_hltb_search_auth()
     search_response = _post_hltb_search(query, auth)
@@ -267,7 +269,8 @@ def fetch_hltb_search(title: str) -> dict[str, Any]:
 
     search_payload = search_response.json()
     if not isinstance(search_payload, dict):
-        raise ValueError("HLTB search response must be a JSON object")
+        msg = "HLTB search response must be a JSON object"
+        raise ValueError(msg)
 
     normalized_candidates = []
     for candidate in search_payload.get("data") or []:
@@ -297,13 +300,15 @@ def _fetch_hltb_search_auth() -> dict[str, str]:
     response.raise_for_status()
     auth_payload = response.json()
     if not isinstance(auth_payload, dict):
-        raise ValueError("HLTB search auth response must be a JSON object")
+        msg = "HLTB search auth response must be a JSON object"
+        raise ValueError(msg)
 
     token = str(auth_payload.get("token") or "").strip()
     hp_key = str(auth_payload.get("hpKey") or "").strip()
     hp_val = str(auth_payload.get("hpVal") or "").strip()
     if not token or not hp_key or not hp_val:
-        raise ValueError("HLTB search auth response missing token or honeypot values")
+        msg = "HLTB search auth response missing token or honeypot values"
+        raise ValueError(msg)
     return {
         "token": token,
         "hpKey": hp_key,
@@ -364,7 +369,8 @@ def fetch_hltb_detail(hltb_id: int | str) -> dict[str, Any]:
     """Fetch and normalize a HLTB game detail page."""
     normalized_id = _coerce_int(hltb_id)
     if not normalized_id:
-        raise ValueError(f"Invalid HLTB id: {hltb_id!r}")
+        msg = f"Invalid HLTB id: {hltb_id!r}"
+        raise ValueError(msg)
 
     response = provider_services.session.get(
         f"{HLTB_BASE_URL}/game/{normalized_id}",
@@ -375,13 +381,15 @@ def fetch_hltb_detail(hltb_id: int | str) -> dict[str, Any]:
 
     next_data = _extract_hltb_next_data(response.text)
     if next_data is None:
-        raise ValueError(f"HLTB detail page missing __NEXT_DATA__ for {normalized_id}")
+        msg = f"HLTB detail page missing __NEXT_DATA__ for {normalized_id}"
+        raise ValueError(msg)
 
     page_props = ((next_data.get("props") or {}).get("pageProps")) or {}
     game_data = ((page_props.get("game") or {}).get("data")) or {}
     game_rows = list(game_data.get("game") or [])
     if not game_rows:
-        raise ValueError(f"HLTB detail payload missing game rows for {normalized_id}")
+        msg = f"HLTB detail payload missing game rows for {normalized_id}"
+        raise ValueError(msg)
     profile = game_rows[0]
 
     return {
@@ -412,7 +420,8 @@ def fetch_igdb_time_to_beat(igdb_id: int | str) -> dict[str, Any]:
     """Fetch IGDB's official time-to-beat data for a game id."""
     game_id = _coerce_int(igdb_id)
     if not game_id:
-        raise ValueError(f"Invalid IGDB id: {igdb_id!r}")
+        msg = f"Invalid IGDB id: {igdb_id!r}"
+        raise ValueError(msg)
 
     access_token = igdb.get_access_token()
     response = provider_services.api_request(
@@ -561,7 +570,7 @@ def _extract_igdb_external_ids(metadata: dict[str, Any] | None) -> dict[str, Any
         if key in external_ids:
             result[key] = external_ids[key]
     direct_hltb_id = _extract_hltb_id(
-        ((payload.get("external_links") or {}).get("HowLongToBeat"))
+        (payload.get("external_links") or {}).get("HowLongToBeat")
     )
     if direct_hltb_id:
         result["hltb_game_id"] = direct_hltb_id
@@ -611,7 +620,7 @@ def _seconds_to_minutes(value: Any) -> int:
     seconds = _coerce_int(value) or 0
     if seconds <= 0:
         return 0
-    return int(round(seconds / 60))
+    return round(seconds / 60)
 
 
 def _extract_hltb_id(url: str | None) -> int | None:
@@ -757,14 +766,13 @@ def _build_hltb_search_candidate_from_detail(
         )
         if platform
     )
-    candidate = {
+    return {
         "game_id": game_id,
         "game_name": game_name,
         "release_world": detail.get("release_year"),
         "profile_platform": profile_platforms,
         "detail": detail,
     }
-    return candidate
 
 
 def _extract_hltb_candidate_title(payload: dict[str, Any]) -> str | None:

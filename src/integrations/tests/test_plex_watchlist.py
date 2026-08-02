@@ -146,7 +146,7 @@ class PlexWatchlistSyncServiceTests(TestCase):
             "Guid": [{"id": guid}],
         }
 
-    def _metadata_side_effect(self, media_type, media_id, source):  # noqa: ARG002
+    def _metadata_side_effect(self, media_type, media_id, source):
         if media_type == MediaTypes.MOVIE.value:
             return {
                 "title": "Movie Title",

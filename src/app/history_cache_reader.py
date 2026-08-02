@@ -2,7 +2,7 @@
 
 import logging
 import time
-from typing import Iterable
+from collections.abc import Iterable
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache

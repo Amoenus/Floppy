@@ -2791,7 +2791,7 @@ class MediaListViewTests(TestCase):
         header_count = first_html.count("<th ")
         self.assertGreater(header_count, 0)
 
-        first_rows = re.findall(r"<tr[^>]*>(.*?)</tr>", first_html, flags=re.S)
+        first_rows = re.findall(r"<tr[^>]*>(.*?)</tr>", first_html, flags=re.DOTALL)
         self.assertGreater(len(first_rows), 0)
         for row_html in first_rows:
             if "<td " not in row_html:
@@ -2806,7 +2806,7 @@ class MediaListViewTests(TestCase):
         second_html = second_page.content.decode()
         self.assertNotIn("<thead", second_html)
 
-        second_rows = re.findall(r"<tr[^>]*>(.*?)</tr>", second_html, flags=re.S)
+        second_rows = re.findall(r"<tr[^>]*>(.*?)</tr>", second_html, flags=re.DOTALL)
         self.assertGreater(len(second_rows), 0)
         for row_html in second_rows:
             self.assertEqual(row_html.count("<td "), header_count)

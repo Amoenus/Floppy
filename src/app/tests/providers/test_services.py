@@ -83,7 +83,7 @@ class ServicesTests(TestCase):
         """TMDB requests should route through a configured user's proxy URL."""
         User.objects.create_user(
             username="proxy-user",
-            password="testpass123",  # noqa: S106
+            password="testpass123",
             tmdb_proxy_url=encrypt("socks5://127.0.0.1:1080"),
         )
         mock_response = MagicMock()
@@ -115,7 +115,7 @@ class ServicesTests(TestCase):
         """Non-TMDB providers should not pick up the TMDB proxy setting."""
         User.objects.create_user(
             username="proxy-user",
-            password="testpass123",  # noqa: S106
+            password="testpass123",
             tmdb_proxy_url=encrypt("socks5://127.0.0.1:1080"),
         )
         mock_response = MagicMock()

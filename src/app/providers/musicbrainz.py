@@ -131,7 +131,7 @@ def get_wikipedia_data(title):
 
             # Get the extract (bio)
             extract = data.get("extract", "")
-            result["extract"] = extract if extract else None
+            result["extract"] = extract or None
 
             # Get the image - prefer originalimage, fall back to thumbnail
             original = data.get("originalimage", {})
@@ -189,14 +189,13 @@ def _mb_request(endpoint, params=None):
     }
 
     try:
-        response = services.api_request(
+        return services.api_request(
             Sources.MUSICBRAINZ.value,
             "GET",
             url,
             params=params,
             headers=headers,
         )
-        return response
     except requests.exceptions.HTTPError as error:
         # Downgrade noise for missing/invalid IDs
         if error.response is not None and error.response.status_code == 404:
@@ -379,9 +378,8 @@ def search(query, page=1, skip_cover_art=False):
             )
             release_group_id = release_group.get("id")
             # Try to get cover art from the first release (skip if requested for faster search)
-            if not skip_cover_art:
-                if release_id:
-                    image = _get_cover_art(release_id)
+            if not skip_cover_art and release_id:
+                image = _get_cover_art(release_id)
 
         # Get duration in milliseconds, convert to minutes
         duration_ms = recording.get("length")

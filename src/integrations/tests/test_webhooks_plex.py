@@ -2448,7 +2448,8 @@ class PlexWebhookTests(TestCase):
         """Plex scrobble should land in the anime bucket when the show is already tracked
         as anime (TMDB-based, library_media_type='anime').  The Season Item created by
         the scrobble must carry library_media_type='anime' so it appears on the anime
-        season page rather than the TV season page."""
+        season page rather than the TV season page.
+        """
         # Pre-create a TV Item with library_media_type='anime' to simulate the user
         # having previously tracked this show via the grouped-anime pathway (the bucket
         # signal lives on the TV item, matching item_uses_grouped_anime elsewhere in
@@ -2533,7 +2534,8 @@ class PlexWebhookTests(TestCase):
         #326. The scrobble must land in the bucket that matches the show's
         real TV-level tracking (season), and self-healing should clean up the
         orphaned stray anime-typed Item rather than leave two Season Items
-        around."""
+        around.
+        """
         # TVDB-first resolution → show tracked under correct show TMDB ID 1668.
         # No library_media_type='anime' on the TV item — this show is NOT
         # actually anime-tracked.

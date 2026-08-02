@@ -50,7 +50,7 @@ class StremioAddonViewTests(TestCase):
     def test_subtitles_invalid_token(self):
         """An unknown token returns 401 on the subtitles resource."""
         response = self.client.get(
-            self._subtitles_url("movie", "tt0133093", token="bad-token"),  # noqa: S106
+            self._subtitles_url("movie", "tt0133093", token="bad-token"),
         )
 
         self.assertEqual(response.status_code, 401)

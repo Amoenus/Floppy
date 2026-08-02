@@ -1,5 +1,3 @@
-# ruff: noqa: D102, S106
-
 from datetime import timedelta
 from unittest.mock import call, patch
 

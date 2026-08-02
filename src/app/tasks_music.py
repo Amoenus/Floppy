@@ -115,7 +115,7 @@ def enrich_music_library_task(user_id: int):
 
     # Phase 2: API operations (MBID resolution, discography sync, track population)
     artists_processed_count = 0
-    for idx, artist in enumerate(artists):
+    for _idx, artist in enumerate(artists):
         artists_processed_count += 1
         # Log progress every 50 artists to track if we're processing the full list
         if artists_processed_count % 50 == 0 or artists_processed_count == len(artists):
@@ -123,7 +123,7 @@ def enrich_music_library_task(user_id: int):
                 "enrich_music_library_task: Progress - processed %d/%d artists (current: '%s', id=%s)",
                 artists_processed_count,
                 len(artists),
-                artist.name if artist.name else "Unknown",
+                artist.name or "Unknown",
                 artist.id,
             )
         # Heal blank names that slipped in during fast import
@@ -780,7 +780,7 @@ def enrich_albums_task(user_id: int):
                 "enrich_albums_task: Progress - processed %d/%d albums (current: '%s', id=%s)",
                 albums_processed_count,
                 len(albums),
-                album.title if album.title else "Unknown",
+                album.title or "Unknown",
                 album.id,
             )
 
@@ -1010,11 +1010,12 @@ def enrich_albums_task(user_id: int):
             continue
 
         # Collect albums that need track population (only albums with MBIDs)
-        if album.pk and (
-            album.musicbrainz_release_id or album.musicbrainz_release_group_id
+        if (
+            album.pk
+            and (album.musicbrainz_release_id or album.musicbrainz_release_group_id)
+            and not album.tracks_populated
         ):
-            if not album.tracks_populated:
-                albums_to_populate.append(album.id)
+            albums_to_populate.append(album.id)
 
     # Phase 3: Populate tracks for albums that now have MBIDs
     populated_count = 0

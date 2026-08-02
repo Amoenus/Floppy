@@ -39,7 +39,7 @@ def _reading_entry_in_range(entry, start_date, end_date):
 
 
 def _format_reading_unit(value, unit_name):
-    numeric = int(round(value or 0))
+    numeric = round(value or 0)
     unit_lower = (unit_name or "Unit").lower()
     if numeric == 1:
         return f"{numeric} {unit_lower}"

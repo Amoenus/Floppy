@@ -125,7 +125,7 @@ class SubmitListensView(drf_views.APIView):
                 reason="listenbrainz_submission",
             )
             statistics_cache.schedule_all_ranges_refresh(user.id)
-        except Exception:  # noqa: BLE001 - cache refresh must never fail ingest
+        except Exception:
             logger.exception(
                 "Failed to refresh statistics after ListenBrainz submission"
             )

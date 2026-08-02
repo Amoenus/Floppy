@@ -14,6 +14,7 @@ import requests
 from django.utils import timezone
 
 from app.log_safety import exception_summary, safe_url
+import contextlib
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +43,7 @@ def fetch_show_metadata_from_rss(rss_feed_url: str) -> dict:
         try:
             root = ET.fromstring(response.content)
         except ET.ParseError as e:
-            logger.error("Failed to parse RSS feed XML: %s", e)
+            logger.exception("Failed to parse RSS feed XML: %s", e)
             return {}
 
         metadata = {}
@@ -88,7 +89,7 @@ def fetch_show_metadata_from_rss(rss_feed_url: str) -> dict:
         return metadata
 
     except requests.RequestException as e:
-        logger.error(
+        logger.exception(
             "Failed to fetch RSS feed %s: %s",
             safe_url(rss_feed_url),
             exception_summary(e),
@@ -132,7 +133,7 @@ def fetch_episodes_from_rss(rss_feed_url: str, limit: int | None = None) -> list
         try:
             root = ET.fromstring(response.content)
         except ET.ParseError as e:
-            logger.error("Failed to parse RSS feed XML: %s", e)
+            logger.exception("Failed to parse RSS feed XML: %s", e)
             return []
 
         # Determine feed type
@@ -151,7 +152,7 @@ def fetch_episodes_from_rss(rss_feed_url: str, limit: int | None = None) -> list
         return episodes
 
     except requests.RequestException as e:
-        logger.error(
+        logger.exception(
             "Failed to fetch RSS feed %s: %s",
             safe_url(rss_feed_url),
             exception_summary(e),
@@ -198,9 +199,7 @@ def _parse_rss_feed(root: ET.Element, limit: int | None) -> list[dict]:
         # GUID
         guid_elem = item.find("guid")
         if guid_elem is not None:
-            guid_text = (
-                guid_elem.text if guid_elem.text else guid_elem.get("isPermaLink", "")
-            )
+            guid_text = guid_elem.text or guid_elem.get("isPermaLink", "")
             if guid_text:
                 episode["guid"] = guid_text.strip()
 
@@ -219,18 +218,14 @@ def _parse_rss_feed(root: ET.Element, limit: int | None) -> list[dict]:
         # Episode number (iTunes)
         episode_elem = item.find("itunes:episode", namespaces)
         if episode_elem is not None and episode_elem.text:
-            try:
+            with contextlib.suppress(ValueError):
                 episode["episode_number"] = int(episode_elem.text.strip())
-            except ValueError:
-                pass
 
         # Season number (iTunes)
         season_elem = item.find("itunes:season", namespaces)
         if season_elem is not None and season_elem.text:
-            try:
+            with contextlib.suppress(ValueError):
                 episode["season_number"] = int(season_elem.text.strip())
-            except ValueError:
-                pass
 
         # Description
         description_elem = item.find("description")
@@ -308,18 +303,14 @@ def _parse_atom_feed(root: ET.Element, limit: int | None) -> list[dict]:
         # Episode number (iTunes)
         episode_elem = entry.find("itunes:episode", namespaces)
         if episode_elem is not None and episode_elem.text:
-            try:
+            with contextlib.suppress(ValueError):
                 episode["episode_number"] = int(episode_elem.text.strip())
-            except ValueError:
-                pass
 
         # Season number (iTunes)
         season_elem = entry.find("itunes:season", namespaces)
         if season_elem is not None and season_elem.text:
-            try:
+            with contextlib.suppress(ValueError):
                 episode["season_number"] = int(season_elem.text.strip())
-            except ValueError:
-                pass
 
         # Description/Summary
         summary_elem = entry.find("{http://www.w3.org/2005/Atom}summary")

@@ -24,22 +24,22 @@ class ParseReads(SimpleTestCase):
         """A dash-separated range is a start date and an end date."""
         reads = storygraph.parse_reads("2022/03/16-2022/04/01")
         self.assertEqual(len(reads), 1)
-        self.assertEqual(reads[0].start.date(), datetime(2022, 3, 16).date())  # noqa: DTZ001
-        self.assertEqual(reads[0].end.date(), datetime(2022, 4, 1).date())  # noqa: DTZ001
+        self.assertEqual(reads[0].start.date(), datetime(2022, 3, 16).date())
+        self.assertEqual(reads[0].end.date(), datetime(2022, 4, 1).date())
 
     def test_single_date_is_end_only(self):
         """StoryGraph writes one date when only the finish date is known."""
         reads = storygraph.parse_reads("2021/07/21")
         self.assertEqual(len(reads), 1)
         self.assertIsNone(reads[0].start)
-        self.assertEqual(reads[0].end.date(), datetime(2021, 7, 21).date())  # noqa: DTZ001
+        self.assertEqual(reads[0].end.date(), datetime(2021, 7, 21).date())
 
     def test_multiple_reads_sorted_oldest_first(self):
         """Re-reads are comma separated and come back oldest first."""
         reads = storygraph.parse_reads("2022/10/29-2022/11/28, 2021/09/14")
         self.assertEqual(len(reads), 2)
-        self.assertEqual(reads[0].end.date(), datetime(2021, 9, 14).date())  # noqa: DTZ001
-        self.assertEqual(reads[1].end.date(), datetime(2022, 11, 28).date())  # noqa: DTZ001
+        self.assertEqual(reads[0].end.date(), datetime(2021, 9, 14).date())
+        self.assertEqual(reads[1].end.date(), datetime(2022, 11, 28).date())
 
     def test_blank_and_garbage_ignored(self):
         """Empty or unparseable values produce no reads."""
@@ -446,7 +446,7 @@ class ImportStoryGraph(TestCase):
         """Import the fixture export with the providers mocked out."""
         self.user = get_user_model().objects.create_user(
             username="test",
-            password="12345",  # noqa: S106 - test credential
+            password="12345",
         )
         with (
             patch(
@@ -476,21 +476,21 @@ class ImportStoryGraph(TestCase):
         """A dash separated read keeps its start and end date."""
         book = self._books("The Blade Itself").get()
         self.assertEqual(book.status, Status.COMPLETED.value)
-        self.assertEqual(book.start_date.date(), datetime(2021, 1, 20).date())  # noqa: DTZ001
-        self.assertEqual(book.end_date.date(), datetime(2021, 2, 9).date())  # noqa: DTZ001
+        self.assertEqual(book.start_date.date(), datetime(2021, 1, 20).date())
+        self.assertEqual(book.end_date.date(), datetime(2021, 2, 9).date())
 
     def test_finish_date_only_leaves_start_null(self):
         """A bare date is a finish date, not a one day read."""
         book = self._books("Kindle Only").get()
         self.assertIsNone(book.start_date)
-        self.assertEqual(book.end_date.date(), datetime(2025, 7, 16).date())  # noqa: DTZ001
+        self.assertEqual(book.end_date.date(), datetime(2025, 7, 16).date())
 
     def test_reread_creates_two_entries(self):
         """Each read in Dates Read becomes its own entry."""
         books = list(self._books("Re-read Book"))
         self.assertEqual(len(books), 2)
-        self.assertEqual(books[0].end_date.date(), datetime(2021, 9, 14).date())  # noqa: DTZ001
-        self.assertEqual(books[1].end_date.date(), datetime(2022, 11, 28).date())  # noqa: DTZ001
+        self.assertEqual(books[0].end_date.date(), datetime(2021, 9, 14).date())
+        self.assertEqual(books[1].end_date.date(), datetime(2022, 11, 28).date())
 
     def test_rating_only_on_newest_read(self):
         """One StoryGraph rating must not be counted once per re-read."""
@@ -571,7 +571,7 @@ class ImportStoryGraph(TestCase):
         """The history record is stamped with the read's end date."""
         book = self._books("The Blade Itself").get()
         record = book.history.first()
-        self.assertEqual(record.history_date.date(), datetime(2021, 2, 9).date())  # noqa: DTZ001
+        self.assertEqual(record.history_date.date(), datetime(2021, 2, 9).date())
 
 
 class ImportStoryGraphTags(TestCase):
@@ -581,7 +581,7 @@ class ImportStoryGraphTags(TestCase):
         """Create the user and import the fixture."""
         self.user = get_user_model().objects.create_user(
             username="test",
-            password="12345",  # noqa: S106 - test credential
+            password="12345",
         )
         self._import()
 
@@ -634,7 +634,7 @@ class ImportStoryGraphDeduplication(TestCase):
         """Create the user and import the fixture once."""
         self.user = get_user_model().objects.create_user(
             username="test",
-            password="12345",  # noqa: S106 - test credential
+            password="12345",
         )
         self._import()
 
@@ -794,7 +794,7 @@ class ImportStoryGraphProviderErrors(TestCase):
         """Create the user importing a single-row CSV each test builds."""
         self.user = get_user_model().objects.create_user(
             username="test",
-            password="12345",  # noqa: S106 - test credential
+            password="12345",
         )
         self.header = (
             Path(
@@ -853,7 +853,7 @@ class ImportStoryGraphDateReport(TestCase):
         """Create the user and import the fixture."""
         self.user = get_user_model().objects.create_user(
             username="test",
-            password="12345",  # noqa: S106 - test credential
+            password="12345",
         )
         with (
             patch(
@@ -893,7 +893,7 @@ class ImportStoryGraphDateReport(TestCase):
         )
         user = get_user_model().objects.create_user(
             username="other",
-            password="12345",  # noqa: S106 - test credential
+            password="12345",
         )
         with (
             patch(
@@ -938,7 +938,7 @@ class StoryGraphWiring(TestCase):
         """Create and sign in a user."""
         self.user = get_user_model().objects.create_user(
             username="test",
-            password="12345",  # noqa: S106 - test credential
+            password="12345",
         )
         self.client.force_login(self.user)
 

@@ -73,7 +73,7 @@ class DecodeWatchedBitfieldTests(TestCase):
         self.assertEqual(watched, {"tt1:1:2"})
 
 
-def fake_tmdb_find(imdb_id, external_source):  # noqa: ARG001
+def fake_tmdb_find(imdb_id, external_source):
     """Return a deterministic TMDB find payload keyed by IMDB id."""
     catalog = {
         "tt0111161": {
@@ -129,7 +129,7 @@ class ImportStremioTests(TestCase):
         """Create a user with a connected Stremio account."""
         self.user = get_user_model().objects.create_user(
             username="test",
-            password="12345",  # noqa: S106
+            password="12345",
         )
         self.account = StremioAccount.objects.create(
             user=self.user,
@@ -504,7 +504,7 @@ class StremioViewTests(TestCase):
         "integrations.views.stremio.login",
         side_effect=helpers.MediaImportError("Stremio API error: wrong password"),
     )
-    def test_connect_bad_credentials(self, mock_login):  # noqa: ARG002
+    def test_connect_bad_credentials(self, mock_login):
         """A failed login shows an error and stores nothing."""
         response = self.client.post(
             reverse("stremio_connect"),
@@ -526,7 +526,7 @@ class StremioViewTests(TestCase):
 
     @patch("integrations.views.tasks.import_stremio.delay")
     @patch("integrations.views.stremio.login", return_value="auth-key")
-    def test_disconnect_removes_account_and_schedule(self, mock_login, mock_delay):  # noqa: ARG002
+    def test_disconnect_removes_account_and_schedule(self, mock_login, mock_delay):
         """Disconnecting removes the account and its periodic task."""
         self.client.post(
             reverse("stremio_connect"),

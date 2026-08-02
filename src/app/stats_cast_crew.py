@@ -18,7 +18,6 @@ from app.models import (
     CreditRoleType,
     Item,
     ItemPersonCredit,
-    MediaTypes,
     Person,
     PersonGender,
 )

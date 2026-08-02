@@ -26,7 +26,7 @@ from app.models import Item, MediaTypes
 from app.release_years import prefill_display_release_years
 from lists import smart_rules
 from lists.forms import CustomListForm
-from lists.models import CustomList, CustomListItem
+from lists.models import CustomListItem
 from lists.views_helpers import (
     _adapt_list_items_for_table,
     _attach_media_with_aggregation,

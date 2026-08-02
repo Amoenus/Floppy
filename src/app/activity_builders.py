@@ -271,7 +271,7 @@ def _build_detail_activity_state(
                     days_played.update(stats._get_entry_play_dates(entry))
                 total_days = len(days_played)
                 if total_days:
-                    avg_minutes = int(round(total_minutes_for_avg / total_days))
+                    avg_minutes = round(total_minutes_for_avg / total_days)
                 else:
                     avg_minutes = 0
                 play_stats["avg_time_per_day"] = helpers.minutes_to_hhmm(avg_minutes)

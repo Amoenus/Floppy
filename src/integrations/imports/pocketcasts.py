@@ -228,7 +228,7 @@ class PocketCastsImporter:
                     self.user.username,
                 )
             except Exception as e:
-                logger.error("Failed to login when access token was missing: %s", e)
+                logger.exception("Failed to login when access token was missing: %s", e)
                 # Mark as broken but don't fail yet - let _ensure_valid_token handle it
                 self.account.connection_broken = True
                 self.account.save()
@@ -245,7 +245,7 @@ class PocketCastsImporter:
                     self.user.username,
                 )
             except Exception as e:
-                logger.error(
+                logger.exception(
                     "Failed to refresh token when access token was missing: %s", e
                 )
                 # Mark as broken but don't fail yet - let _ensure_valid_token handle it
@@ -399,7 +399,7 @@ class PocketCastsImporter:
                     if episode_data.get("published"):
                         try:
                             published = datetime.fromisoformat(
-                                episode_data["published"].replace("Z", "+00:00")
+                                episode_data["published"]
                             )
                             if published and timezone.is_naive(published):
                                 published = timezone.make_aware(published)
@@ -655,7 +655,9 @@ class PocketCastsImporter:
                     )
                     return
                 except Exception as e:
-                    logger.error("Failed to login when access token was missing: %s", e)
+                    logger.exception(
+                        "Failed to login when access token was missing: %s", e
+                    )
                     # If login fails, try refresh token as fallback (legacy accounts)
                     if self.account.refresh_token:
                         logger.info(
@@ -686,7 +688,7 @@ class PocketCastsImporter:
                     )
                     return
                 except Exception as e:
-                    logger.error(
+                    logger.exception(
                         "Failed to refresh token when access token was missing: %s", e
                     )
                     msg = "No access token available and refresh failed"
@@ -727,9 +729,8 @@ class PocketCastsImporter:
                         except Exception:
                             pass  # Will raise below
                     # Both login and refresh failed
-                    raise MediaImportError(
-                        "Token expired and both login and refresh failed"
-                    ) from login_error
+                    msg = "Token expired and both login and refresh failed"
+                    raise MediaImportError(msg) from login_error
             elif self.account.refresh_token:
                 # Legacy: only refresh token available
                 logger.info(
@@ -793,7 +794,7 @@ class PocketCastsImporter:
             decrypted_email = decrypt(self.account.email)
             decrypted_password = decrypt(self.account.password)
         except Exception as e:
-            logger.error(
+            logger.exception(
                 "Failed to decrypt credentials for user %s: %s", self.user.username, e
             )
             msg = "Failed to decrypt stored credentials"
@@ -834,7 +835,7 @@ class PocketCastsImporter:
             )
 
         except pocketcasts_api.PocketCastsAuthError as e:
-            logger.error(
+            logger.exception(
                 "Pocket Casts login failed for user %s: %s", self.user.username, e
             )
             # Mark as broken but preserve credentials (user might fix password)
@@ -845,7 +846,7 @@ class PocketCastsImporter:
             )
             raise MediaImportError(msg) from e
         except Exception as e:
-            logger.error(
+            logger.exception(
                 "Failed to login to Pocket Casts for user %s: %s", self.user.username, e
             )
             msg = f"Failed to login to Pocket Casts: {e}"
@@ -1360,7 +1361,7 @@ class PocketCastsImporter:
         try:
             decrypted_refresh_token = decrypt(self.account.refresh_token)
         except Exception as e:
-            logger.error("Failed to decrypt refresh token: %s", e)
+            logger.exception("Failed to decrypt refresh token: %s", e)
             # If we can't decrypt, the token is corrupted - disconnect
             self._disconnect_account(
                 "Refresh token decryption failed - token may be corrupted"
@@ -1426,7 +1427,7 @@ class PocketCastsImporter:
                         return  # Successfully logged in, tokens are now stored
                     except MediaImportError:
                         # Login also failed - mark as broken but preserve credentials
-                        logger.error(
+                        logger.exception(
                             "Both refresh and login failed for user %s",
                             self.user.username,
                         )
@@ -1447,7 +1448,7 @@ class PocketCastsImporter:
         try:
             return decrypt(self.account.access_token)
         except Exception as e:
-            logger.error("Failed to decrypt access token: %s", e)
+            logger.exception("Failed to decrypt access token: %s", e)
             msg = "Invalid access token"
             raise MediaImportError(msg) from e
 
@@ -1601,7 +1602,7 @@ class PocketCastsImporter:
             "published": metadata_ep.get("published", ""),
             "url": metadata_ep.get("url", ""),
             "fileType": metadata_ep.get("file_type", ""),
-            "duration": play_state.get("duration") or metadata_ep.get("duration", 0),  # noqa: E501
+            "duration": play_state.get("duration") or metadata_ep.get("duration", 0),
             "episodeType": metadata_ep.get("type", "full"),
             "episodeSeason": metadata_ep.get("season"),
             "episodeNumber": metadata_ep.get("number"),
@@ -2070,9 +2071,7 @@ class PocketCastsImporter:
                             existing_podcast.id,
                         )
                         return
-            if self.debug_uuid and (
-                incoming_uuid == self.debug_uuid or episode_uuid == self.debug_uuid
-            ):
+            if self.debug_uuid and (self.debug_uuid in (incoming_uuid, episode_uuid)):
                 logger.info(
                     "Resolved episode UUID %s (incoming %s). Existing podcast: %s",
                     episode_uuid,
@@ -2103,7 +2102,7 @@ class PocketCastsImporter:
                 playing_status,
             ):
                 if self.debug_uuid and (
-                    incoming_uuid == self.debug_uuid or episode_uuid == self.debug_uuid
+                    self.debug_uuid in (incoming_uuid, episode_uuid)
                 ):
                     logger.info(
                         "Skipping duplicate completed episode %s (UUID: %s)",
@@ -2170,34 +2169,33 @@ class PocketCastsImporter:
 
             if should_set_completion_date and existing_podcast:
                 # Existing podcast just completed or missing completion data
-                if completion_date is None:
-                    if (
-                        existing_podcast.status != Status.COMPLETED.value
-                        or not existing_podcast.end_date
-                        or delta_seconds > 0
-                    ):
-                        episode_uuid = episode_data.get("uuid")
-                        sync_window_start, sync_window_end, existing_history = (
-                            self._get_inference_window()
-                        )
-                        debug_context = {
-                            "played_up_to": played_up_to,
-                            "old_played_up_to": old_played_up_to,
-                            "old_status": old_status,
-                            "new_status": new_status,
-                            "duration_seconds": duration_seconds,
-                        }
-                        completion_date = self._infer_completion_date(
-                            duration_seconds,
-                            sync_window_start,
-                            sync_window_end,
-                            existing_history,
-                            [],
-                            published,
-                            episode_uuid,
-                            self.previous_sync_at,
-                            debug_context=debug_context,
-                        )
+                if completion_date is None and (
+                    existing_podcast.status != Status.COMPLETED.value
+                    or not existing_podcast.end_date
+                    or delta_seconds > 0
+                ):
+                    episode_uuid = episode_data.get("uuid")
+                    sync_window_start, sync_window_end, existing_history = (
+                        self._get_inference_window()
+                    )
+                    debug_context = {
+                        "played_up_to": played_up_to,
+                        "old_played_up_to": old_played_up_to,
+                        "old_status": old_status,
+                        "new_status": new_status,
+                        "duration_seconds": duration_seconds,
+                    }
+                    completion_date = self._infer_completion_date(
+                        duration_seconds,
+                        sync_window_start,
+                        sync_window_end,
+                        existing_history,
+                        [],
+                        published,
+                        episode_uuid,
+                        self.previous_sync_at,
+                        debug_context=debug_context,
+                    )
             elif should_set_completion_date and published:
                 if defer_completion_date:
                     # Will be inferred later in import_data()
@@ -2670,8 +2668,7 @@ class PocketCastsImporter:
         Returns:
             dict: Statistics about the cleanup (duplicates_removed, episodes_merged, items_merged)
         """
-        stats = _cleanup_duplicate_episodes_global()
-        return stats
+        return _cleanup_duplicate_episodes_global()
 
     def _parse_history_timestamp(self, value):
         """Parse a history timestamp into epoch seconds."""
@@ -2684,7 +2681,7 @@ class PocketCastsImporter:
             return timestamp
         if isinstance(value, str):
             try:
-                parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+                parsed = datetime.fromisoformat(value)
                 if timezone.is_naive(parsed):
                     parsed = parsed.replace(tzinfo=UTC)
                 return parsed.timestamp()
@@ -2705,7 +2702,7 @@ class PocketCastsImporter:
             "last_modified",
             "timestamp",
         ):
-            if field in episode_data and episode_data[field]:
+            if episode_data.get(field):
                 parsed = self._parse_history_timestamp(episode_data[field])
                 if parsed is not None:
                     return parsed
@@ -2742,8 +2739,7 @@ class PocketCastsImporter:
 
         if self._should_keep_existing_episode_uuid(episode):
             if self.debug_uuid and (
-                incoming_uuid == self.debug_uuid
-                or episode.episode_uuid == self.debug_uuid
+                self.debug_uuid in (incoming_uuid, episode.episode_uuid)
             ):
                 logger.info(
                     "Keeping existing episode UUID %s for %s (incoming %s)",
@@ -2754,7 +2750,7 @@ class PocketCastsImporter:
             return episode.episode_uuid
 
         if self.debug_uuid and (
-            incoming_uuid == self.debug_uuid or episode.episode_uuid == self.debug_uuid
+            self.debug_uuid in (incoming_uuid, episode.episode_uuid)
         ):
             logger.info(
                 "Updating episode UUID %s -> %s for %s",
@@ -2781,10 +2777,7 @@ class PocketCastsImporter:
             import requests
 
             # Build search query
-            if author:
-                query = f"{show_title} {author}"
-            else:
-                query = show_title
+            query = f"{show_title} {author}" if author else show_title
 
             # iTunes API expects URL-encoded query
             params = {

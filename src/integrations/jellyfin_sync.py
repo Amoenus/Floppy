@@ -80,7 +80,8 @@ class JellyfinPushSyncService:
     def sync(self) -> tuple[dict[str, int], str]:
         """Push watched state and return counts plus a warning message."""
         if not self.account or not self.account.is_connected:
-            raise MediaImportError("Jellyfin is not connected for this user.")
+            msg = "Jellyfin is not connected for this user."
+            raise MediaImportError(msg)
 
         self.counts = defaultdict(int)
         self.warnings = []
@@ -106,10 +107,12 @@ class JellyfinPushSyncService:
             try:
                 current_user = client.get_current_user()
             except (JellyfinAuthError, JellyfinClientError) as exc:
-                raise MediaImportError(f"Could not connect to Jellyfin: {exc}") from exc
+                msg = f"Could not connect to Jellyfin: {exc}"
+                raise MediaImportError(msg) from exc
             if not current_user or not current_user.get("Id"):
+                msg = "Could not resolve a Jellyfin user for this API key."
                 raise MediaImportError(
-                    "Could not resolve a Jellyfin user for this API key.",
+                    msg,
                 )
             client.user_id = current_user["Id"]
             self.account.jellyfin_user_id = current_user["Id"]
@@ -149,7 +152,8 @@ class JellyfinPushSyncService:
                 elif item_type == "Episode":
                     episodes.append(jf_item)
         except (JellyfinAuthError, JellyfinClientError) as exc:
-            raise MediaImportError(f"Could not read Jellyfin library: {exc}") from exc
+            msg = f"Could not read Jellyfin library: {exc}"
+            raise MediaImportError(msg) from exc
 
         indexed_episode_count = 0
         for jf_item in episodes:

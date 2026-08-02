@@ -644,7 +644,7 @@ def _movie_night_candidates(
         row_key=row_key,
         source_reason="Short runtime planning pick",
     )
-    filtered = [
+    return [
         candidate
         for candidate in candidates
         if (
@@ -656,7 +656,6 @@ def _movie_night_candidates(
             ).exists()
         )
     ]
-    return filtered
 
 
 def _short_runs_candidates(
@@ -668,7 +667,7 @@ def _short_runs_candidates(
         row_key=row_key,
         source_reason="Lower commitment planning pick",
     )
-    filtered = [
+    return [
         candidate
         for candidate in candidates
         if (
@@ -680,7 +679,6 @@ def _short_runs_candidates(
             ).exists()
         )
     ]
-    return filtered
 
 
 def _build_row_candidates(
@@ -1131,12 +1129,10 @@ def _allow_empty_row(
 ) -> bool:
     if row_key in ALWAYS_VISIBLE_EMPTY_ROWS:
         return True
-    if (
-        media_type in (FIVE_ROW_MEDIA_TYPES - {MediaTypes.MOVIE.value})
+    return bool(
+        media_type in FIVE_ROW_MEDIA_TYPES - {MediaTypes.MOVIE.value}
         and row_key in FIVE_ROW_DISCOVER_KEYS
-    ):
-        return True
-    return False
+    )
 
 
 def _media_type_readable_plural(media_type: str) -> str:
@@ -1316,7 +1312,7 @@ def get_discover_rows(
                     show_more=show_more,
                 )
 
-        except Exception as error:  # noqa: BLE001
+        except Exception as error:
             logger.exception(
                 "discover_row_failed user_id=%s media_type=%s row_key=%s error=%s",
                 user.id,

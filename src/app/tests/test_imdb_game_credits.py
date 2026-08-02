@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from unittest.mock import patch
 
 from django.test import TestCase
@@ -21,7 +21,7 @@ from app.services import imdb_game_credits
 
 
 def _make_game(media_id, title, year=2025, **extra):
-    release = datetime(year, 1, 1, tzinfo=timezone.utc) if year else None
+    release = datetime(year, 1, 1, tzinfo=UTC) if year else None
     return Item.objects.create(
         media_id=media_id,
         source=Sources.IGDB.value,

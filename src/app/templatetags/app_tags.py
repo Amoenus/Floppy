@@ -256,7 +256,7 @@ def match_percent(value):
     except (TypeError, ValueError):
         return None
     normalized = max(0.0, min(1.0, normalized))
-    return int(round(normalized * 100))
+    return round(normalized * 100)
 
 
 @register.filter
@@ -700,7 +700,7 @@ def get_search_media_types(user):
         enabled_types = [
             mt
             for mt in MediaTypes.values
-            if mt != MediaTypes.EPISODE.value and mt != MediaTypes.SEASON.value
+            if mt not in (MediaTypes.EPISODE.value, MediaTypes.SEASON.value)
         ]
     else:
         enabled_types = user.get_enabled_media_types()

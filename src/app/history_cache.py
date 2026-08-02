@@ -610,11 +610,7 @@ def _build_podcast_entries(user, podcast_history_records, podcasts_lookup):
                 poster = podcast.item.image
 
             minutes_listened = podcast.progress or 0
-            runtime_minutes = (
-                podcast.item.runtime_minutes
-                if podcast.item.runtime_minutes
-                else minutes_listened
-            )
+            runtime_minutes = podcast.item.runtime_minutes or minutes_listened
             play_count = podcast_play_counts.get(
                 (podcast.item.media_id, podcast.item.source), 1
             )
@@ -723,11 +719,10 @@ def _build_game_entries(
             for boardgame in boardgames:
                 if not (boardgame.start_date or boardgame.end_date):
                     continue
-                if genre_filters:
-                    if not {
-                        str(g).lower() for g in _resolve_genres(boardgame.item)
-                    } & set(genre_filters):
-                        continue
+                if genre_filters and not {
+                    str(g).lower() for g in _resolve_genres(boardgame.item)
+                } & set(genre_filters):
+                    continue
                 activity_dt = (
                     boardgame.end_date or boardgame.start_date or boardgame.created_at
                 )
@@ -839,11 +834,10 @@ def _build_game_entries(
             for boardgame in boardgames:
                 if not (boardgame.start_date or boardgame.end_date):
                     continue
-                if genre_filters:
-                    if not {
-                        str(g).lower() for g in _resolve_genres(boardgame.item)
-                    } & set(genre_filters):
-                        continue
+                if genre_filters and not {
+                    str(g).lower() for g in _resolve_genres(boardgame.item)
+                } & set(genre_filters):
+                    continue
                 total_plays = boardgame.progress or 0
                 if total_plays <= 0:
                     continue

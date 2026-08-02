@@ -337,10 +337,7 @@ def _with_preferred_translation(row: dict | None, entity_type: str):
 
     updated = dict(row)
     translations = updated.get("translations") or {}
-    if not isinstance(translations, dict):
-        translations = {}
-    else:
-        translations = dict(translations)
+    translations = {} if not isinstance(translations, dict) else dict(translations)
 
     preferred_payload = translations.get("eng")
     if not isinstance(preferred_payload, dict):
@@ -392,10 +389,7 @@ def _get_genres(row: dict | None):
     """Return genre names for a TVDB entity."""
     genres = []
     for genre in _coerce_list((row or {}).get("genres")):
-        if isinstance(genre, dict):
-            name = genre.get("name")
-        else:
-            name = genre
+        name = genre.get("name") if isinstance(genre, dict) else genre
         if name:
             genres.append(str(name))
     return genres or None
@@ -563,10 +557,7 @@ def _get_company_names(row: dict | None):
     """Return production company names."""
     companies = []
     for company in _coerce_list((row or {}).get("companies")):
-        if isinstance(company, dict):
-            name = company.get("name")
-        else:
-            name = company
+        name = company.get("name") if isinstance(company, dict) else company
         if name:
             companies.append(str(name))
     return companies or None

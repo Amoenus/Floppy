@@ -801,7 +801,7 @@ def build_filter_field_data(
         {
             "key": "year",
             "label": "Year",
-            "options": [{"value": "", "label": "Any"}] + filter_data.get("years", []),
+            "options": [{"value": "", "label": "Any"}, *filter_data.get("years", [])],
         },
         {
             "key": "release",
@@ -815,45 +815,51 @@ def build_filter_field_data(
         {
             "key": "source",
             "label": "Source",
-            "options": [{"value": "", "label": "Any"}] + filter_data.get("sources", []),
+            "options": [{"value": "", "label": "Any"}, *filter_data.get("sources", [])],
         },
         {
             "key": "language",
             "label": "Language",
-            "options": [{"value": "", "label": "Any"}]
-            + filter_data.get("languages", []),
+            "options": [
+                {"value": "", "label": "Any"},
+                *filter_data.get("languages", []),
+            ],
             "visible": filter_data.get("show_languages", False),
         },
         {
             "key": "country",
             "label": "Country",
-            "options": [{"value": "", "label": "Any"}]
-            + filter_data.get("countries", []),
+            "options": [
+                {"value": "", "label": "Any"},
+                *filter_data.get("countries", []),
+            ],
             "visible": filter_data.get("show_countries", False),
         },
         {
             "key": "platform",
             "label": "Platform",
-            "options": [{"value": "", "label": "Any"}]
-            + filter_data.get("platforms", []),
+            "options": [
+                {"value": "", "label": "Any"},
+                *filter_data.get("platforms", []),
+            ],
             "visible": filter_data.get("show_platforms", False),
         },
         {
             "key": "origin",
             "label": "Origin",
-            "options": [{"value": "", "label": "Any"}] + filter_data.get("origins", []),
+            "options": [{"value": "", "label": "Any"}, *filter_data.get("origins", [])],
             "visible": filter_data.get("show_origins", False),
         },
         {
             "key": "format",
             "label": "Format",
-            "options": [{"value": "", "label": "Any"}] + filter_data.get("formats", []),
+            "options": [{"value": "", "label": "Any"}, *filter_data.get("formats", [])],
             "visible": filter_data.get("show_formats", False),
         },
         {
             "key": "author",
             "label": "Author",
-            "options": [{"value": "", "label": "Any"}] + filter_data.get("authors", []),
+            "options": [{"value": "", "label": "Any"}, *filter_data.get("authors", [])],
             "visible": filter_data.get("show_authors", False),
         },
         {
@@ -1122,7 +1128,8 @@ def toggle_home_row_direction(user, row_id: int) -> HomeScreenRow:
         .first()
     )
     if not row:
-        raise HomeScreenValidationError("Home row not found.")
+        msg = "Home row not found."
+        raise HomeScreenValidationError(msg)
 
     row.direction = (
         DirectionChoices.DESC
@@ -1198,7 +1205,8 @@ def _row_payload_to_model(
 ) -> HomeScreenRow:
     row_type = str(row_payload.get("row_type") or "").strip()
     if row_type not in HomeScreenRowTypeChoices.values:
-        raise HomeScreenValidationError(f"Unsupported row type for {media_type}.")
+        msg = f"Unsupported row type for {media_type}."
+        raise HomeScreenValidationError(msg)
 
     enabled = bool(row_payload.get("enabled", True))
     custom_list = None
@@ -1213,9 +1221,8 @@ def _row_payload_to_model(
             CustomList.objects.get_user_lists(user).filter(id=custom_list_id).first()
         )
         if not custom_list:
-            raise HomeScreenValidationError(
-                f"Choose an accessible list for {media_type}."
-            )
+            msg = f"Choose an accessible list for {media_type}."
+            raise HomeScreenValidationError(msg)
         sort_choices = get_allowed_sort_choices(media_type, row_type)
     elif row_type == HomeScreenRowTypeChoices.RECENTLY_UNRATED:
         sort_choices = []
@@ -1230,10 +1237,12 @@ def _row_payload_to_model(
         direction = _default_recent_row_direction()
     else:
         if sort_by not in allowed_sort_values:
-            raise HomeScreenValidationError(f"Unsupported sort for {media_type}.")
+            msg = f"Unsupported sort for {media_type}."
+            raise HomeScreenValidationError(msg)
         direction = resolve_home_row_direction(sort_by, row_payload.get("direction"))
         if direction not in DirectionChoices.values:
-            raise HomeScreenValidationError(f"Unsupported direction for {media_type}.")
+            msg = f"Unsupported direction for {media_type}."
+            raise HomeScreenValidationError(msg)
 
     custom_title = str(row_payload.get("custom_title") or "").strip()[:100]
 
@@ -1256,36 +1265,35 @@ def validate_library_row_filters(raw_filters: dict | None, media_type: str) -> d
     if raw_filters is None:
         raw_filters = {}
     if not isinstance(raw_filters, dict):
-        raise HomeScreenValidationError("Library row filters must be an object.")
+        msg = "Library row filters must be an object."
+        raise HomeScreenValidationError(msg)
 
     supported = SUPPORTED_FILTERS_BY_MEDIA_TYPE.get(media_type, set())
     if "tag" in supported:
         supported = supported | {"tag_mode"}
     for key, value in raw_filters.items():
         if key not in HOME_SCREEN_FILTER_KEYS:
-            raise HomeScreenValidationError(
-                f"Unsupported filter '{key}' for {media_type}."
-            )
+            msg = f"Unsupported filter '{key}' for {media_type}."
+            raise HomeScreenValidationError(msg)
         if key not in supported and str(value or "").strip():
             if key == "progress" and _canonical_progress_filter(value, "all") == "all":
                 continue
-            raise HomeScreenValidationError(
-                f"Filter '{key}' is not available for {media_type}."
-            )
+            msg = f"Filter '{key}' is not available for {media_type}."
+            raise HomeScreenValidationError(msg)
 
     normalized = _normalized_filter_payload(raw_filters, media_type)
     if "status" in raw_filters:
         for raw_status in _as_list(raw_filters.get("status")):
             canonical_status = _canonical_status_filter(raw_status, None)
             if canonical_status not in STATUS_FILTER_VALUES:
-                raise HomeScreenValidationError(
-                    f"Unsupported status filter for {media_type}."
-                )
+                msg = f"Unsupported status filter for {media_type}."
+                raise HomeScreenValidationError(msg)
     raw_rating = (
         str(raw_filters.get("rating", normalized["rating"]) or "").strip().lower()
     )
     if raw_rating and raw_rating not in {"all", "rated", "not_rated"}:
-        raise HomeScreenValidationError(f"Unsupported rating filter for {media_type}.")
+        msg = f"Unsupported rating filter for {media_type}."
+        raise HomeScreenValidationError(msg)
     raw_progress_value = (
         str(raw_filters.get("progress", normalized["progress"]) or "")
         .strip()
@@ -1298,43 +1306,44 @@ def validate_library_row_filters(raw_filters: dict | None, media_type: str) -> d
         "not caught up",
         "not_caught_up",
     }:
-        raise HomeScreenValidationError(
-            f"Unsupported progress filter for {media_type}."
-        )
+        msg = f"Unsupported progress filter for {media_type}."
+        raise HomeScreenValidationError(msg)
     raw_progress = _canonical_progress_filter(raw_progress_value, None)
     if (
         raw_progress
-        and raw_progress not in {"all"}
+        and raw_progress != "all"
         and media_type not in HOME_PROGRESS_MEDIA_TYPES
     ):
-        raise HomeScreenValidationError(
-            f"Filter 'progress' is not available for {media_type}."
-        )
+        msg = f"Filter 'progress' is not available for {media_type}."
+        raise HomeScreenValidationError(msg)
     raw_collection = (
         str(raw_filters.get("collection", normalized["collection"]) or "")
         .strip()
         .lower()
     )
     if raw_collection and raw_collection not in {"all", "collected", "not_collected"}:
-        raise HomeScreenValidationError(
-            f"Unsupported collection filter for {media_type}."
-        )
+        msg = f"Unsupported collection filter for {media_type}."
+        raise HomeScreenValidationError(msg)
     raw_release = (
         str(raw_filters.get("release", normalized["release"]) or "").strip().lower()
     )
     if raw_release and raw_release not in {"all", "released", "not_released"}:
-        raise HomeScreenValidationError(f"Unsupported release filter for {media_type}.")
+        msg = f"Unsupported release filter for {media_type}."
+        raise HomeScreenValidationError(msg)
     raw_year = str(raw_filters.get("year", normalized["year"]) or "").strip().lower()
     if raw_year and raw_year != "unknown" and not raw_year.isdigit():
-        raise HomeScreenValidationError(f"Unsupported year filter for {media_type}.")
+        msg = f"Unsupported year filter for {media_type}."
+        raise HomeScreenValidationError(msg)
     raw_source = (
         str(raw_filters.get("source", normalized["source"]) or "").strip().lower()
     )
     if raw_source and raw_source not in Sources.values:
-        raise HomeScreenValidationError(f"Unsupported source filter for {media_type}.")
+        msg = f"Unsupported source filter for {media_type}."
+        raise HomeScreenValidationError(msg)
     raw_subview = str(raw_filters.get("subview", "") or "").strip().lower()
     if raw_subview and raw_subview not in MUSIC_SUBVIEW_VALUES:
-        raise HomeScreenValidationError(f"Unsupported media type for {media_type}.")
+        msg = f"Unsupported media type for {media_type}."
+        raise HomeScreenValidationError(msg)
     return normalized
 
 
@@ -1343,12 +1352,12 @@ def save_home_screen_configuration(user, raw_payload: str) -> None:
     try:
         parsed_payload = json.loads(raw_payload or "[]")
     except (TypeError, ValueError) as exc:
-        raise HomeScreenValidationError(
-            "Home Screen settings payload is invalid JSON."
-        ) from exc
+        msg = "Home Screen settings payload is invalid JSON."
+        raise HomeScreenValidationError(msg) from exc
 
     if not isinstance(parsed_payload, list):
-        raise HomeScreenValidationError("Home Screen settings payload must be a list.")
+        msg = "Home Screen settings payload must be a list."
+        raise HomeScreenValidationError(msg)
 
     allowed_media_types = set(get_home_configurable_media_types(user))
     replacement_rows: list[HomeScreenRow] = []
@@ -1357,27 +1366,28 @@ def save_home_screen_configuration(user, raw_payload: str) -> None:
 
     for section in parsed_payload:
         if not isinstance(section, dict):
-            raise HomeScreenValidationError("Invalid Home Screen section payload.")
+            msg = "Invalid Home Screen section payload."
+            raise HomeScreenValidationError(msg)
         media_type = str(section.get("media_type") or "").strip()
         if media_type not in allowed_media_types:
-            raise HomeScreenValidationError(f"Unsupported media type '{media_type}'.")
+            msg = f"Unsupported media type '{media_type}'."
+            raise HomeScreenValidationError(msg)
         media_type_order.append(media_type)
         rows = section.get("rows")
         if not isinstance(rows, list):
-            raise HomeScreenValidationError(
-                f"Rows payload for {media_type} must be a list."
-            )
+            msg = f"Rows payload for {media_type} must be a list."
+            raise HomeScreenValidationError(msg)
 
         for index, row_payload in enumerate(rows):
             if not isinstance(row_payload, dict):
-                raise HomeScreenValidationError(
-                    f"Row {index + 1} for {media_type} is invalid."
-                )
+                msg = f"Row {index + 1} for {media_type} is invalid."
+                raise HomeScreenValidationError(msg)
             model_row = _row_payload_to_model(user, media_type, row_payload, index)
             if model_row.row_type == HomeScreenRowTypeChoices.RECENTLY_UNRATED:
                 if media_type in seen_recent_rows:
+                    msg = f"Only one '{RECENTLY_UNRATED_LABEL}' row is allowed for {media_type}."
                     raise HomeScreenValidationError(
-                        f"Only one '{RECENTLY_UNRATED_LABEL}' row is allowed for {media_type}.",
+                        msg,
                     )
                 seen_recent_rows.add(media_type)
             replacement_rows.append(model_row)
@@ -1410,7 +1420,7 @@ def search_home_screen_lists(user, query: str, media_type: str) -> list[dict]:
 
 def _item_matches_home_media_type(item: Item, media_type: str) -> bool:
     library_media_type = getattr(item, "library_media_type", "") or ""
-    return library_media_type == media_type or item.media_type == media_type
+    return media_type in (library_media_type, item.media_type)
 
 
 def _annotate_home_card_images(media_items):
@@ -1731,7 +1741,7 @@ def _media_lookup_for_items(
             grouped_entries[media_entry.item_id].append(media_entry)
 
         candidate_entries = []
-        for item_id, entries in grouped_entries.items():
+        for entries in grouped_entries.values():
             if actual_media_type == MediaTypes.PODCAST.value:
                 entries = sorted(
                     entries, key=lambda entry: entry.created_at, reverse=True
@@ -2084,7 +2094,7 @@ def sort_home_entries(
                 else (
                     None
                     if getattr(entry.item, "trakt_popularity_rank", None) is None
-                    else -float(getattr(entry.item, "trakt_popularity_rank"))
+                    else -float(entry.item.trakt_popularity_rank)
                 )
             ),
             direction,

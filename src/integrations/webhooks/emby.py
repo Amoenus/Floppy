@@ -118,7 +118,7 @@ class EmbyWebhookProcessor(BaseWebhookProcessor):
             return MediaTypes.MOVIE.value
         return None
 
-    def _update_live_playback_state(  # noqa: C901
+    def _update_live_playback_state(
         self,
         payload,
         user,

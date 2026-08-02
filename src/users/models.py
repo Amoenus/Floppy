@@ -1395,7 +1395,7 @@ class User(AbstractUser):
         if score_decimal is None:
             return None
         if self.rating_scale_max == 5:
-            score_decimal = score_decimal / Decimal("2")
+            score_decimal = score_decimal / Decimal(2)
         return score_decimal.quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
 
     def scale_score_for_storage(self, score):
@@ -1404,12 +1404,12 @@ class User(AbstractUser):
         if score_decimal is None:
             return None
         if self.rating_scale_max == 5:
-            score_decimal = score_decimal * Decimal("2")
+            score_decimal = score_decimal * Decimal(2)
         score_decimal = score_decimal.quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
         if score_decimal < 0:
-            return Decimal("0")
+            return Decimal(0)
         if score_decimal > 10:
-            return Decimal("10")
+            return Decimal(10)
         return score_decimal
 
     def format_score_for_display(self, score):

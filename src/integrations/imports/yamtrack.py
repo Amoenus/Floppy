@@ -529,14 +529,14 @@ class YamtrackImporter:
         episode_number,
     ):
         """Get or update the Item referenced by a CSV row."""
-        item_lookup = dict(
-            media_id=row["media_id"],
-            source=row["source"],
-            media_type=media_type,
-            library_media_type=library_media_type,
-            season_number=season_number,
-            episode_number=episode_number,
-        )
+        item_lookup = {
+            "media_id": row["media_id"],
+            "source": row["source"],
+            "media_type": media_type,
+            "library_media_type": library_media_type,
+            "season_number": season_number,
+            "episode_number": episode_number,
+        }
         try:
             item, _ = helpers.retry_on_lock(
                 lambda: app.models.Item.objects.update_or_create(

@@ -525,7 +525,7 @@ class TraktImporter(TraktMetadataResolverMixin):
             except MediaImportError:
                 # Fatal, importer-level problems (auth, etc.) must still abort.
                 raise
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 # A single malformed/unexpected entry should not abort the whole
                 # import; record it as a warning and continue with the rest.
                 logger.exception("Skipping Trakt history entry")

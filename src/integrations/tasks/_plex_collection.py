@@ -194,7 +194,7 @@ def update_collection_metadata_from_plex_webhook(
         )
         try:
             # Use the aggregated metadata function to get episode-level data
-            aggregated_metadata, episode_list = _aggregate_tv_show_collection_metadata(
+            _aggregated_metadata, episode_list = _aggregate_tv_show_collection_metadata(
                 plex_token,
                 plex_uri,
                 rating_key,
@@ -224,7 +224,7 @@ def update_collection_metadata_from_plex_webhook(
 
                 # Find or create the episode Item
                 try:
-                    episode_item, episode_item_created = Item.objects.get_or_create(
+                    episode_item, _episode_item_created = Item.objects.get_or_create(
                         media_id=item.media_id,
                         source=item.source,
                         media_type=MediaTypes.EPISODE.value,
@@ -1119,7 +1119,6 @@ def update_collection_metadata_from_plex(library, user_id):
                         break
 
     # Process each section incrementally: process cached items first, then scan in batches
-    import time
 
     start_time = time.time()
 
@@ -1261,9 +1260,9 @@ def update_collection_metadata_from_plex(library, user_id):
             )
 
             # Build set of items we're looking for (for early stopping)
-            items_to_find = set(
+            items_to_find = {
                 (item.source, item.media_id) for item in items_needing_scan
-            )
+            }
             items_found_set = set()
 
             # Build mapping of items by external ID for quick lookup
@@ -1427,7 +1426,7 @@ def update_collection_metadata_from_plex(library, user_id):
 
                 # Log progress after each batch
                 elapsed = time.time() - section_start_time
-                items_remaining = len(items_to_find) - len(items_found_set)
+                len(items_to_find) - len(items_found_set)
                 match_rate = (
                     (batch_matched / batch_processed * 100)
                     if batch_processed > 0

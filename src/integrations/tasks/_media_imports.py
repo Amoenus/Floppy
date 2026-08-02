@@ -301,7 +301,8 @@ def sync_plex_watchlist(user_id, mode="watchlist"):  # noqa: ARG001
     user = get_user_model().objects.get(id=user_id)
     account = getattr(user, "plex_account", None)
     if not account:
-        raise helpers.MediaImportError("Connect Plex before syncing the watchlist.")
+        msg = "Connect Plex before syncing the watchlist."
+        raise helpers.MediaImportError(msg)
 
     try:
         sync_counts, warnings = PlexWatchlistSyncService(user, account).sync()
@@ -338,7 +339,8 @@ def push_jellyfin_watched(user_id):
     user = get_user_model().objects.get(id=user_id)
     account = getattr(user, "jellyfin_account", None)
     if not account:
-        raise helpers.MediaImportError("Connect Jellyfin before syncing.")
+        msg = "Connect Jellyfin before syncing."
+        raise helpers.MediaImportError(msg)
 
     try:
         push_counts, warnings = JellyfinPushSyncService(user, account).sync()

@@ -1,6 +1,5 @@
 """Last.fm API client for fetching user scrobbles."""
 
-import hashlib
 import logging
 import random
 import time
@@ -19,19 +18,13 @@ USER_AGENT = "Floppy/1.0 (https://github.com/dannyvfilms/Floppy)"
 class LastFMAPIError(Exception):
     """Base exception for Last.fm API errors."""
 
-    pass
-
 
 class LastFMRateLimitError(LastFMAPIError):
     """Raised when rate limit is exceeded (error code 29)."""
 
-    pass
-
 
 class LastFMClientError(LastFMAPIError):
     """Raised for client errors (invalid user, etc.)."""
-
-    pass
 
 
 @dataclass
@@ -50,7 +43,8 @@ def _make_api_request(method: str, params: dict[str, Any]) -> dict[str, Any]:
     """Make a request to Last.fm API with rate limit handling."""
     api_key = getattr(settings, "LASTFM_API_KEY", None)
     if not api_key:
-        raise LastFMAPIError("LASTFM_API_KEY not configured in settings")
+        msg = "LASTFM_API_KEY not configured in settings"
+        raise LastFMAPIError(msg)
 
     # Add required parameters
     params["method"] = method
@@ -107,27 +101,32 @@ def _make_api_request(method: str, params: dict[str, Any]) -> dict[str, Any]:
                         time.sleep(delay)
                         retry_delay = delay
                         continue
-                    raise LastFMRateLimitError(f"Rate limit exceeded: {error_message}")
+                    msg = f"Rate limit exceeded: {error_message}"
+                    raise LastFMRateLimitError(msg)
 
                 # Handle invalid user (code 6)
                 if error_code == 6:
-                    raise LastFMClientError(f"User not found: {error_message}")
+                    msg = f"User not found: {error_message}"
+                    raise LastFMClientError(msg)
 
                 # Other errors
-                raise LastFMAPIError(f"API error {error_code}: {error_message}")
+                msg = f"API error {error_code}: {error_message}"
+                raise LastFMAPIError(msg)
 
             return data
 
         except requests.exceptions.RequestException as e:
-            logger.error("Last.fm API request failed: %s", e)
+            logger.exception("Last.fm API request failed: %s", e)
             if attempt < max_retries - 1:
                 delay = retry_delay * (2**attempt) + random.uniform(0, 1)
                 time.sleep(delay)
                 retry_delay = delay
                 continue
-            raise LastFMAPIError(f"Request failed: {e}") from e
+            msg = f"Request failed: {e}"
+            raise LastFMAPIError(msg) from e
 
-    raise LastFMAPIError("Max retries exceeded")
+    msg = "Max retries exceeded"
+    raise LastFMAPIError(msg)
 
 
 def get_recent_tracks(
@@ -266,7 +265,7 @@ def get_recent_tracks_window(
             # Re-raise rate limit errors immediately
             raise
         except Exception as e:
-            logger.error(
+            logger.exception(
                 "Error fetching page %d for user %s: %s",
                 page,
                 username,

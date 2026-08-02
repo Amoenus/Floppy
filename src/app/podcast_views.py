@@ -125,9 +125,8 @@ def podcast_episodes_api(request, show_id):
 
     episode_podcast_map = {}
     for podcast in user_podcasts:
-        if podcast.episode_id:
-            if podcast.episode_id not in episode_podcast_map:
-                episode_podcast_map[podcast.episode_id] = podcast
+        if podcast.episode_id and podcast.episode_id not in episode_podcast_map:
+            episode_podcast_map[podcast.episode_id] = podcast
 
     episode_items_data = []
     episode_items_map = {}
@@ -177,10 +176,7 @@ def podcast_episodes_api(request, show_id):
             if episode_obj.duration:
                 hours = episode_obj.duration // 3600
                 minutes = (episode_obj.duration % 3600) // 60
-                if hours > 0:
-                    duration_str = f"{hours}h {minutes}m"
-                else:
-                    duration_str = f"{minutes}m"
+                duration_str = f"{hours}h {minutes}m" if hours > 0 else f"{minutes}m"
 
             user_podcast = episode_podcast_map.get(episode_obj.id)
 
@@ -314,10 +310,7 @@ def podcast_episodes_api(request, show_id):
         if episode_obj.duration:
             hours = episode_obj.duration // 3600
             minutes = (episode_obj.duration % 3600) // 60
-            if hours > 0:
-                duration_str = f"{hours}h {minutes}m"
-            else:
-                duration_str = f"{minutes}m"
+            duration_str = f"{hours}h {minutes}m" if hours > 0 else f"{minutes}m"
 
         user_podcast = episode_podcast_map.get(episode_obj.id)
         status = user_podcast.status if user_podcast else None
@@ -548,10 +541,7 @@ def podcast_save(request):
         if episode_obj.duration:
             hours = episode_obj.duration // 3600
             minutes = (episode_obj.duration % 3600) // 60
-            if hours > 0:
-                duration_str = f"{hours}h {minutes}m"
-            else:
-                duration_str = f"{minutes}m"
+            duration_str = f"{hours}h {minutes}m" if hours > 0 else f"{minutes}m"
 
         all_history = []
         if user_podcast:

@@ -867,7 +867,7 @@ def track_modal(
             from app.models import Podcast
 
             show = episode.show
-            instance_id = request.GET.get("instance_id")
+            request.GET.get("instance_id")
 
             # Get all Podcast entries for this episode to aggregate history
             # Each Podcast entry has its own history, so we need to combine them
@@ -932,8 +932,6 @@ def track_modal(
             # Create a wrapper object that aggregates history from all podcast entries
             # This allows the template to show all history records like music does
             if all_podcasts:
-                from django.utils import timezone
-
                 # Aggregate all history records from all podcast entries
                 # Only include history records with end_date (completed plays)
                 all_history = []
@@ -954,9 +952,7 @@ def track_modal(
                 # Sort by end_date descending (most recent first) for display
                 # The template filter will re-sort if needed
                 all_history.sort(
-                    key=lambda x: (
-                        x.end_date if x.end_date else datetime.min.replace(tzinfo=UTC)
-                    ),
+                    key=lambda x: x.end_date or datetime.min.replace(tzinfo=UTC),
                     reverse=True,
                 )
 
@@ -1021,8 +1017,7 @@ def track_modal(
                                         self._history,
                                         key=lambda x: (
                                             x.end_date
-                                            if x.end_date
-                                            else datetime.min.replace(tzinfo=UTC)
+                                            or datetime.min.replace(tzinfo=UTC)
                                         ),
                                     )
                                 elif order == "-end_date":
@@ -1030,8 +1025,7 @@ def track_modal(
                                         self._history,
                                         key=lambda x: (
                                             x.end_date
-                                            if x.end_date
-                                            else datetime.min.replace(tzinfo=UTC)
+                                            or datetime.min.replace(tzinfo=UTC)
                                         ),
                                         reverse=True,
                                     )

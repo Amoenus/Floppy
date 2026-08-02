@@ -546,7 +546,7 @@ def _bgg_hot_candidates(
     )
 
     ids = [str(entry.get("id")) for entry in entries[:limit] if entry.get("id")]
-    thumbnails = bgg._fetch_thumbnails(ids) if ids else {}  # noqa: SLF001
+    thumbnails = bgg._fetch_thumbnails(ids) if ids else {}
 
     candidates: list[CandidateItem] = []
     for index, entry in enumerate(entries, start=1):

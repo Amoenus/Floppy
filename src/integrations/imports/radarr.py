@@ -174,12 +174,11 @@ class RadarrImporter:
             return item
 
         if imdb_id:
-            existing = Item.objects.filter(
+            return Item.objects.filter(
                 media_id=str(imdb_id),
                 source=Sources.TMDB.value,
                 media_type=MediaTypes.MOVIE.value,
             ).first()
-            return existing
 
         return None
 

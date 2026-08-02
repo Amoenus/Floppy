@@ -51,7 +51,8 @@ class Command(BaseCommand):
         if media_type == ALL_MEDIA_KEY:
             return list(DISCOVER_MEDIA_TYPES)
         if media_type not in DISCOVER_MEDIA_TYPES:
-            raise CommandError(f"Unsupported media_type '{media_type}'")
+            msg = f"Unsupported media_type '{media_type}'"
+            raise CommandError(msg)
         return [media_type]
 
     def _resolve_row_keys(

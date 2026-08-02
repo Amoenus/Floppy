@@ -390,8 +390,7 @@ class SonarrImporter:
                 episode_item.save(update_fields=update_fields)
             return episode_item
 
-        episode_item = retry_on_lock(_get_or_create_episode_item)
-        return episode_item
+        return retry_on_lock(_get_or_create_episode_item)
 
     def _episode_has_file(self, row):
         """Return True when Sonarr reports a local file for the episode."""

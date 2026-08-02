@@ -95,7 +95,7 @@ def _populate_igdb_ratings_for_items(items):
             updated_count += 1
         except Exception as exc:
             error_count += 1
-            logger.error(
+            logger.exception(
                 "Error backfilling IGDB ratings for %s: %s",
                 item.title,
                 exception_summary(exc),

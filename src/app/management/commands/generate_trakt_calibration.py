@@ -331,10 +331,7 @@ def _find_item(title: str):
             return item
 
     # Strategy 2: "The " article swap
-    if title.lower().startswith("the "):
-        alt = title[4:]
-    else:
-        alt = "The " + title
+    alt = title[4:] if title.lower().startswith("the ") else "The " + title
 
     item = _best_candidate(base.filter(title__iexact=alt))
     if item:

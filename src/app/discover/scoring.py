@@ -31,7 +31,7 @@ def normalize_numeric_map(values: dict[str, float]) -> dict[str, float]:
         return {}
     max_value = max(float(value) for value in values.values())
     if max_value <= 0:
-        return {key: 0.0 for key in values}
+        return dict.fromkeys(values, 0.0)
     return {key: float(value) / max_value for key, value in values.items()}
 
 

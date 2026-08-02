@@ -402,7 +402,7 @@ class MangaForm(MediaForm):
 
     def __init__(self, *args, **kwargs):
         """Initialize the form."""
-        max_progress = kwargs.pop("max_progress", None)
+        kwargs.pop("max_progress", None)
         super().__init__(*args, **kwargs)
 
         # Adjust progress field for percentage mode
@@ -504,7 +504,7 @@ class BookForm(MediaForm):
 
     def __init__(self, *args, **kwargs):
         """Initialize the form."""
-        max_progress = kwargs.pop("max_progress", None)
+        kwargs.pop("max_progress", None)
         super().__init__(*args, **kwargs)
 
         # Adjust progress field for percentage mode
@@ -530,7 +530,7 @@ class ComicForm(MediaForm):
 
     def __init__(self, *args, **kwargs):
         """Initialize the form."""
-        max_progress = kwargs.pop("max_progress", None)
+        kwargs.pop("max_progress", None)
         super().__init__(*args, **kwargs)
 
         # Adjust progress field for percentage mode
