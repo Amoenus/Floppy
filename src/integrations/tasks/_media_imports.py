@@ -53,7 +53,14 @@ from integrations.tasks._plex_collection import update_collection_metadata_from_
 logger = logging.getLogger(__name__)
 
 
-def import_media(importer_func, identifier, user_id, mode, oauth_username=None):
+def import_media(
+    importer_func,
+    identifier,
+    user_id,
+    mode,
+    oauth_username=None,
+    **extra_kwargs,
+):
     """Handle the import process for different media services."""
     user = get_user_model().objects.get(id=user_id)
 
@@ -63,6 +70,7 @@ def import_media(importer_func, identifier, user_id, mode, oauth_username=None):
                 identifier,
                 user,
                 mode,
+                **extra_kwargs,
             )
         else:
             imported_counts, warnings = importer_func(
@@ -70,6 +78,7 @@ def import_media(importer_func, identifier, user_id, mode, oauth_username=None):
                 user,
                 mode,
                 username=oauth_username,
+                **extra_kwargs,
             )
 
     events.tasks.reload_calendar.delay()
@@ -151,9 +160,15 @@ def import_mdblist(user_id, mode, username=None):
 
 
 @shared_task(name="Import from SIMKL")
-def import_simkl(token, user_id, mode, username=None):
+def import_simkl(token, user_id, mode, username=None, anime_destination="anime"):
     """Celery task for importing media data from SIMKL."""
-    return import_media(simkl.importer, token, user_id, mode)
+    return import_media(
+        simkl.importer,
+        token,
+        user_id,
+        mode,
+        anime_destination=anime_destination,
+    )
 
 
 @shared_task(name="Import from MyAnimeList")

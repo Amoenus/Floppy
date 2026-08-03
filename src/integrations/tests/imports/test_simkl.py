@@ -123,6 +123,150 @@ class ImportSimkl(TestCase):
         self.assertEqual(anime_obj.score, 7)
         self.assertEqual(anime_obj.notes, "Great series!")
 
+    @patch("integrations.imports.simkl.SimklImporter._get_user_list")
+    @patch("app.providers.tmdb.tv_with_seasons")
+    def test_anime_destination_tv_movies_routes_show_to_tv(
+        self,
+        mock_tv_with_seasons,
+        mock_user_list,
+    ):
+        """anime_destination='tv_movies' should import a show-shaped anime entry as TV."""
+        mock_tv_with_seasons.return_value = {
+            "title": "Cowboy Bebop",
+            "image": "https://image.tmdb.org/t/p/w500/test.jpg",
+            "season/1": {
+                "image": "https://image.tmdb.org/t/p/w500/season1.jpg",
+                "max_progress": 1,
+                "episodes": [{"episode_number": 1, "still_path": "/ep1.jpg"}],
+            },
+        }
+        mock_user_list.return_value = {
+            "shows": [],
+            "movies": [],
+            "anime": [
+                {
+                    "last_watched_at": "2023-01-02T00:00:00Z",
+                    "show": {
+                        "title": "Cowboy Bebop",
+                        "ids": {"mal": 1, "tmdb": 30991},
+                    },
+                    "status": "watching",
+                    "user_rating": 8,
+                    "watched_episodes_count": 1,
+                    "seasons": [
+                        {
+                            "number": 1,
+                            "episodes": [
+                                {"number": 1, "watched_at": "2023-01-02T00:00:00Z"},
+                            ],
+                        },
+                    ],
+                    "memo": {},
+                },
+            ],
+        }
+
+        importer = simkl.SimklImporter(
+            helpers.encrypt("token"),
+            self.user,
+            "new",
+            anime_destination="tv_movies",
+        )
+        imported_counts, warnings = importer.import_data()
+
+        self.assertEqual(warnings, "")
+        self.assertEqual(imported_counts[MediaTypes.TV.value], 1)
+        self.assertEqual(imported_counts[MediaTypes.SEASON.value], 1)
+        self.assertEqual(imported_counts[MediaTypes.EPISODE.value], 1)
+        self.assertFalse(Anime.objects.exists())
+
+        tv_item = Item.objects.get(media_type=MediaTypes.TV.value)
+        self.assertEqual(tv_item.title, "Cowboy Bebop")
+        self.assertEqual(tv_item.media_id, "30991")
+        self.assertEqual(tv_item.source, Sources.TMDB.value)
+
+    @patch("integrations.imports.simkl.SimklImporter._get_user_list")
+    @patch("app.providers.tmdb.movie")
+    def test_anime_destination_tv_movies_routes_movie_to_movie(
+        self,
+        mock_movie,
+        mock_user_list,
+    ):
+        """anime_destination='tv_movies' should import a movie-shaped anime entry as Movie."""
+        mock_movie.return_value = {
+            "title": "Perfect Blue",
+            "image": "https://image.tmdb.org/t/p/w500/test.jpg",
+        }
+        mock_user_list.return_value = {
+            "shows": [],
+            "movies": [],
+            "anime": [
+                {
+                    "last_watched_at": "2023-02-01T00:00:00Z",
+                    "movie": {"title": "Perfect Blue", "ids": {"mal": 437, "tmdb": 10494}},
+                    "status": "completed",
+                    "user_rating": 9,
+                    "memo": {},
+                },
+            ],
+        }
+
+        importer = simkl.SimklImporter(
+            helpers.encrypt("token"),
+            self.user,
+            "new",
+            anime_destination="tv_movies",
+        )
+        imported_counts, warnings = importer.import_data()
+
+        self.assertEqual(warnings, "")
+        self.assertEqual(imported_counts[MediaTypes.MOVIE.value], 1)
+        self.assertFalse(Anime.objects.exists())
+
+        movie_item = Item.objects.get(media_type=MediaTypes.MOVIE.value)
+        self.assertEqual(movie_item.title, "Perfect Blue")
+        movie_obj = Movie.objects.get(item=movie_item)
+        self.assertEqual(movie_obj.progress, 1)
+
+    @patch("integrations.imports.simkl.SimklImporter._get_user_list")
+    @patch("app.providers.mal.anime")
+    def test_anime_destination_tv_movies_falls_back_without_tmdb_id(
+        self,
+        mock_mal_anime,
+        mock_user_list,
+    ):
+        """Anime entries without a TMDB id should fall back to the Anime bucket."""
+        mock_mal_anime.return_value = {
+            "title": "Cowboy Bebop",
+            "image": "https://image.tmdb.org/t/p/w500/test.jpg",
+        }
+        mock_user_list.return_value = {
+            "shows": [],
+            "movies": [],
+            "anime": [
+                {
+                    "added_to_watchlist_at": "2023-01-01T00:00:00Z",
+                    "show": {"title": "Example Anime", "ids": {"mal": 1}},
+                    "status": "plantowatch",
+                    "user_rating": 7,
+                    "watched_episodes_count": 0,
+                    "last_watched_at": None,
+                    "memo": {},
+                },
+            ],
+        }
+
+        importer = simkl.SimklImporter(
+            helpers.encrypt("token"),
+            self.user,
+            "new",
+            anime_destination="tv_movies",
+        )
+        imported_counts, warnings = importer.import_data()
+
+        self.assertEqual(imported_counts[MediaTypes.ANIME.value], 1)
+        self.assertIn("no TMDB ID found, imported to Anime instead", warnings)
+
     def test_get_status(self):
         """Test mapping SIMKL status to internal status."""
         self.assertEqual(self.importer._get_status("completed"), Status.COMPLETED.value)

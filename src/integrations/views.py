@@ -770,6 +770,7 @@ def simkl_oauth(request):
         "mode": request.POST["mode"],
         "frequency": request.POST["frequency"],
         "time": request.POST["time"],
+        "anime_destination": request.POST.get("anime_destination", "anime"),
         "redirect_uri": redirect_uri,
     }
     state_token = secrets.token_urlsafe(32)
@@ -791,9 +792,15 @@ def import_simkl_private(request):
     frequency = request.session[state_token]["frequency"]
     mode = request.session[state_token]["mode"]
     import_time = request.session[state_token]["time"]
+    anime_destination = request.session[state_token].get("anime_destination", "anime")
 
     if frequency == "once":
-        tasks.import_simkl.delay(token=enc_token, user_id=request.user.id, mode=mode)
+        tasks.import_simkl.delay(
+            token=enc_token,
+            user_id=request.user.id,
+            mode=mode,
+            anime_destination=anime_destination,
+        )
         messages.info(request, "The task to import media from Simkl has been queued.")
     else:
         helpers.create_import_schedule(
@@ -804,6 +811,7 @@ def import_simkl_private(request):
             import_time,
             "SIMKL",
             token=enc_token,
+            extra_kwargs={"anime_destination": anime_destination},
         )
 
     return redirect("import_data")

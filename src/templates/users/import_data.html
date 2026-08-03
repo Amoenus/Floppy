@@ -1917,6 +1917,76 @@
             <input type="hidden" name="frequency" x-model="importFrequency">
             <input type="hidden" name="time" x-model="importTime">
             <input type="hidden" name="mode" x-model="importMode">
+            {% if user.tv_enabled and user.anime_enabled %}
+              <div class="mb-3">
+                <label class="block text-sm text-gray-400 mb-2">Import Anime To</label>
+                <div class="relative"
+                     x-data="{
+                       open: false,
+                       selectedValue: 'anime',
+                       selectedLabel: 'Anime',
+                       menuStyle: '',
+                       setMenuPosition() {
+                         this.$nextTick(() => {
+                           const trigger = this.$refs.trigger;
+                           const panel = this.$refs.panel;
+                           if (!trigger || !panel) {
+                             return;
+                           }
+
+                           const triggerRect = trigger.getBoundingClientRect();
+                           this.menuStyle = `left: ${triggerRect.left}px; top: ${triggerRect.bottom + 8}px; width: ${triggerRect.width}px;`;
+                         });
+                       },
+                       toggleOpen() {
+                         if (this.open) {
+                           this.open = false;
+                           return;
+                         }
+
+                         this.open = true;
+                         this.setMenuPosition();
+                       },
+                     }"
+                     @click.outside="if (!$refs.panel || !$refs.panel.contains($event.target)) { open = false }"
+                     @resize.window="if (open) setMenuPosition()"
+                     @scroll.window="if (open) setMenuPosition()">
+                  <button type="button"
+                          x-ref="trigger"
+                          @click="toggleOpen()"
+                          class="flex items-center justify-between w-full px-3 py-2 bg-[#2a2f35] border border-gray-600 rounded-md text-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent cursor-pointer">
+                    <span x-text="selectedLabel"></span>
+                    {% include "app/icons/chevron-down.svg" with classes="w-4 h-4 text-gray-400" %}
+                  </button>
+                  <template x-teleport="body">
+                    <div x-cloak
+                         x-ref="panel"
+                         x-show="open"
+                         x-transition:enter="transition ease-out duration-100"
+                         x-transition:enter-start="transform opacity-0 scale-95"
+                         x-transition:enter-end="transform opacity-100 scale-100"
+                         x-transition:leave="transition ease-in duration-75"
+                         x-transition:leave-start="transform opacity-100 scale-100"
+                         x-transition:leave-end="transform opacity-0 scale-95"
+                         class="fixed py-1 bg-[#272c31] rounded-md shadow-lg overflow-hidden z-50 border border-gray-600"
+                         style="display: none;"
+                         :style="menuStyle">
+                      <button type="button"
+                              @click="selectedValue = 'anime'; selectedLabel = 'Anime'; open = false"
+                              class="block w-full px-3 py-2 text-left text-sm transition-colors text-gray-300 hover:bg-[#39404b] hover:text-white">
+                        Anime
+                      </button>
+                      <button type="button"
+                              @click="selectedValue = 'tv_movies'; selectedLabel = 'TV Shows & Movies'; open = false"
+                              class="block w-full px-3 py-2 text-left text-sm transition-colors text-gray-300 hover:bg-[#39404b] hover:text-white">
+                        TV Shows & Movies
+                      </button>
+                    </div>
+                  </template>
+                  <input type="hidden" name="anime_destination" x-bind:value="selectedValue">
+                </div>
+              </div>
+            {% endif %}
             <button type="submit"
                     class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     :class="standardImportsDisabled() ? 'bg-gray-600 text-gray-400 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-700'"
