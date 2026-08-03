@@ -1,7 +1,7 @@
 {% load app_tags %}
 {% with tag_names=media.item.item_tags.all|user_tag_names:user %}
   {% if tag_names %}
-    <span class="block max-w-md truncate" title="{{ tag_names|join:', ' }}">
+    <span class="block max-w-xs truncate" title="{{ tag_names|join:', ' }}">
       {{ tag_names|join:", " }}
     </span>
   {% else %}
