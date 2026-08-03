@@ -563,7 +563,7 @@ class TvForm(MediaForm):
 
     end_date = forms.DateTimeField(
         required=False,
-        widget=forms.DateTimeInput(attrs={"type": "datetime-local"})
+        widget=forms.DateTimeInput(attrs={"type": "datetime-local", "step": "1"})
         if settings.TRACK_TIME
         else forms.DateInput(attrs={"type": "date"}),
     )
@@ -581,7 +581,7 @@ class SeasonForm(MediaForm):
     season_number = forms.IntegerField(widget=forms.HiddenInput(), required=False)
     end_date = forms.DateTimeField(
         required=False,
-        widget=forms.DateTimeInput(attrs={"type": "datetime-local"})
+        widget=forms.DateTimeInput(attrs={"type": "datetime-local", "step": "1"})
         if settings.TRACK_TIME
         else forms.DateInput(attrs={"type": "date"}),
     )
@@ -715,11 +715,11 @@ class BulkEpisodeTrackForm(forms.Form):
     if settings.TRACK_TIME:
         start_date = forms.DateTimeField(
             required=False,
-            widget=forms.DateTimeInput(attrs={"type": "datetime-local"}),
+            widget=forms.DateTimeInput(attrs={"type": "datetime-local", "step": "1"}),
         )
         end_date = forms.DateTimeField(
             required=False,
-            widget=forms.DateTimeInput(attrs={"type": "datetime-local"}),
+            widget=forms.DateTimeInput(attrs={"type": "datetime-local", "step": "1"}),
         )
     else:
         start_date = forms.DateField(
@@ -1142,7 +1142,9 @@ class CollectionEntryForm(forms.ModelForm):
         )
         super().__init__(*args, **kwargs)
         if settings.TRACK_TIME:
-            collected_widget = forms.DateTimeInput(attrs={"type": "datetime-local"})
+            collected_widget = forms.DateTimeInput(
+                attrs={"type": "datetime-local", "step": "1"},
+            )
         else:
             collected_widget = forms.DateInput(attrs={"type": "date"})
 

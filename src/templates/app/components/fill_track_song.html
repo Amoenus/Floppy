@@ -218,9 +218,10 @@
           <div class="flex items-stretch border border-gray-600 rounded-md bg-[#343a40] focus-within:ring-2 focus-within:ring-[#4a9eff]" x-data="{
               inputDateTime: '',
               inputType: '{% if TRACK_TIME %}datetime-local{% else %}date{% endif %}'
-          }" x-effect="if (trackOpen) { const d = new Date(); inputDateTime = inputType === 'datetime-local' ? new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16) : d.toISOString().slice(0, 10) }">
+          }" x-effect="if (trackOpen) { const d = new Date(); inputDateTime = inputType === 'datetime-local' ? new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 19) : d.toISOString().slice(0, 10) }">
             <input class="flex-1 p-3 bg-transparent border-0 outline-none text-white appearance-none"
                    x-bind:type="inputType"
+                   x-bind:step="inputType === 'datetime-local' ? '1' : null"
                    name="end_date"
                    onfocus="this.showPicker?.()"
                    x-model="inputDateTime">
@@ -235,7 +236,7 @@
               {% if music and music.item and music.item.media_type == 'podcast' %}
                 {% if track.published %}
                   <button type="button"
-                          @click="inputDateTime = inputType === 'datetime-local' ? '{{ track.published|date:'Y-m-d' }}T{% now "H:i" %}' : '{{ track.published|date:'Y-m-d' }}'"
+                          @click="inputDateTime = inputType === 'datetime-local' ? '{{ track.published|date:'Y-m-d' }}T{% now "H:i:s" %}' : '{{ track.published|date:'Y-m-d' }}'"
                           class="flex items-center text-sm text-indigo-400 hover:text-indigo-300 hover:bg-[#313840] transition-colors px-2 cursor-pointer rounded-r-md">
                     {% include "app/icons/calendar.svg" with classes="w-4 h-4 mr-1" %}
                     Published date
@@ -244,7 +245,7 @@
               {% else %}
                 {% if album.release_date %}
                   <button type="button"
-                          @click="inputDateTime = inputType === 'datetime-local' ? '{{ album.release_date|date:'Y-m-d' }}T{% now "H:i" %}' : '{{ album.release_date|date:'Y-m-d' }}'"
+                          @click="inputDateTime = inputType === 'datetime-local' ? '{{ album.release_date|date:'Y-m-d' }}T{% now "H:i:s" %}' : '{{ album.release_date|date:'Y-m-d' }}'"
                           class="flex items-center text-sm text-indigo-400 hover:text-indigo-300 hover:bg-[#313840] transition-colors px-2 cursor-pointer rounded-r-md">
                     {% include "app/icons/calendar.svg" with classes="w-4 h-4 mr-1" %}
                     Release date
