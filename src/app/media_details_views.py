@@ -1822,7 +1822,7 @@ def media_details(
     item_id_for_polling = None
 
     if (
-        render_secondary_only
+        (render_secondary_only or media_type == MediaTypes.COMIC_ISSUE.value)
         and not public_view
         and media_type != MediaTypes.PODCAST.value
     ):
