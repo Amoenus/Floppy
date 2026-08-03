@@ -24,15 +24,15 @@
         {% with status_value=entry.status %}
           <div class="w-4 h-4 {{ status_value|status_color }}">
             {% if status_value == "Completed" %}
-              {% include "app/icons/states/completed.svg" %}
+              {% include "app/icons/states/completed.svg" with classes="w-full h-full" %}
             {% elif status_value == "In progress" %}
-              {% include "app/icons/states/in-progress.svg" %}
+              {% include "app/icons/states/in-progress.svg" with classes="w-full h-full" %}
             {% elif status_value == "Paused" %}
-              {% include "app/icons/states/paused.svg" %}
+              {% include "app/icons/states/paused.svg" with classes="w-full h-full" %}
             {% elif status_value == "Planning" %}
-              {% include "app/icons/states/planning.svg" %}
+              {% include "app/icons/states/planning.svg" with classes="w-full h-full" %}
             {% elif status_value == "Dropped" %}
-              {% include "app/icons/states/dropped.svg" %}
+              {% include "app/icons/states/dropped.svg" with classes="w-full h-full" %}
             {% endif %}
           </div>
         {% endwith %}

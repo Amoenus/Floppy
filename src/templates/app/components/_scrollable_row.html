@@ -116,7 +116,7 @@
               :aria-expanded="open.toString()"
               aria-label="Toggle section">
         <div class="w-4 h-4 transition-transform duration-200" :class="{ 'rotate-180': open }">
-          {% include "app/icons/chevron-down.svg" %}
+          {% include "app/icons/chevron-down.svg" with classes="w-full h-full" %}
         </div>
       </button>
       {% endif %}

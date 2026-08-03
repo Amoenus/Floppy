@@ -63,15 +63,15 @@
                         {% with status_value=media.aggregated_status %}
                           <div class="w-4 h-4 {{ status_value|status_color }}">
                             {% if status_value == Status.COMPLETED.value %}
-                              {% include "app/icons/states/completed.svg" %}
+                              {% include "app/icons/states/completed.svg" with classes="w-full h-full" %}
                             {% elif status_value == Status.IN_PROGRESS.value %}
-                              {% include "app/icons/states/in-progress.svg" %}
+                              {% include "app/icons/states/in-progress.svg" with classes="w-full h-full" %}
                             {% elif status_value == Status.PAUSED.value %}
-                              {% include "app/icons/states/paused.svg" %}
+                              {% include "app/icons/states/paused.svg" with classes="w-full h-full" %}
                             {% elif status_value == Status.PLANNING.value %}
-                              {% include "app/icons/states/planning.svg" %}
+                              {% include "app/icons/states/planning.svg" with classes="w-full h-full" %}
                             {% elif status_value == Status.DROPPED.value %}
-                              {% include "app/icons/states/dropped.svg" %}
+                              {% include "app/icons/states/dropped.svg" with classes="w-full h-full" %}
                             {% endif %}
                           </div>
                         {% endwith %}
@@ -79,15 +79,15 @@
                         {% with status_value=media.status %}
                           <div class="w-4 h-4 {{ status_value|status_color }}">
                             {% if status_value == Status.COMPLETED.value %}
-                              {% include "app/icons/states/completed.svg" %}
+                              {% include "app/icons/states/completed.svg" with classes="w-full h-full" %}
                             {% elif status_value == Status.IN_PROGRESS.value %}
-                              {% include "app/icons/states/in-progress.svg" %}
+                              {% include "app/icons/states/in-progress.svg" with classes="w-full h-full" %}
                             {% elif status_value == Status.PAUSED.value %}
-                              {% include "app/icons/states/paused.svg" %}
+                              {% include "app/icons/states/paused.svg" with classes="w-full h-full" %}
                             {% elif status_value == Status.PLANNING.value %}
-                              {% include "app/icons/states/planning.svg" %}
+                              {% include "app/icons/states/planning.svg" with classes="w-full h-full" %}
                             {% elif status_value == Status.DROPPED.value %}
-                              {% include "app/icons/states/dropped.svg" %}
+                              {% include "app/icons/states/dropped.svg" with classes="w-full h-full" %}
                             {% endif %}
                           </div>
                         {% endwith %}
