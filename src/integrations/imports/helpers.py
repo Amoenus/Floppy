@@ -3,6 +3,7 @@ import datetime
 import hashlib
 import json
 import logging
+import time
 from collections import defaultdict
 
 from cryptography.fernet import Fernet, InvalidToken
@@ -227,6 +228,32 @@ def _ordered_media_types(bulk_media_list):
     return ordered_types
 
 
+def _fetch_season_metadata_with_retry(season, max_retries=3, base_delay=0.5):
+    """Fetch season metadata, retrying transient network failures.
+
+    A single dropped connection is common when a bulk import fires off
+    metadata requests for many shows back-to-back; without a retry here
+    that one blip permanently strands the season at Completed with zero
+    episodes (see issue #471). Provider errors that aren't transient (e.g.
+    a 404 for a season TMDB doesn't have) are raised immediately since
+    retrying them cannot succeed.
+    """
+    attempt = 0
+    while True:
+        try:
+            return providers.services.get_media_metadata(
+                MediaTypes.SEASON.value,
+                season.item.media_id,
+                season.item.source,
+                [season.item.season_number],
+            )
+        except RequestException:
+            attempt += 1
+            if attempt >= max_retries:
+                raise
+            time.sleep(base_delay * attempt)
+
+
 def _backfill_completed_season_episodes(seasons):
     """Create the missing Episode rows for seasons bulk-created as Completed.
 
@@ -236,6 +263,9 @@ def _backfill_completed_season_episodes(seasons):
     Completed with no per-episode history (e.g. a rating-only import) would
     otherwise end up with zero Episode rows, making it invisible to
     exports/statistics that key off episode data.
+
+    Returns warning messages for seasons that could not be backfilled, so
+    the importer can surface them to the user instead of only logging.
     """
     completed_seasons = [
         season
@@ -243,7 +273,7 @@ def _backfill_completed_season_episodes(seasons):
         if season.pk is not None and season.status == Status.COMPLETED.value
     ]
     if not completed_seasons:
-        return
+        return []
 
     existing_season_ids = set(
         Episode.objects.filter(
@@ -253,17 +283,13 @@ def _backfill_completed_season_episodes(seasons):
         .distinct(),
     )
 
+    warnings = []
     episodes_to_create = []
     for season in completed_seasons:
         if season.pk in existing_season_ids:
             continue
         try:
-            season_metadata = providers.services.get_media_metadata(
-                MediaTypes.SEASON.value,
-                season.item.media_id,
-                season.item.source,
-                [season.item.season_number],
-            )
+            season_metadata = _fetch_season_metadata_with_retry(season)
             episodes_to_create.extend(season.get_remaining_eps(season_metadata))
         except (
             providers.services.ProviderAPIError,
@@ -278,9 +304,17 @@ def _backfill_completed_season_episodes(seasons):
                 season.item.season_number,
                 error,
             )
+            warnings.append(
+                f"{season.item.title} S{season.item.season_number}: imported as "
+                f"Completed but episode data could not be fetched ({error}). "
+                "Re-import in overwrite mode once the issue clears to fill in "
+                "the missing episodes.",
+            )
 
     if episodes_to_create:
         bulk_create_with_history(episodes_to_create, Episode, batch_size=500)
+
+    return warnings
 
 
 def _has_unique_user_item_constraint(model):
@@ -325,7 +359,11 @@ def _deduplicate_unique_user_item_rows(model, bulk_media):
 
 
 def bulk_create_media(bulk_media_list, user):
-    """Bulk create all media objects."""
+    """Bulk create all media objects.
+
+    Returns warning messages for any seasons whose Completed-status
+    episode backfill failed, for callers that want to surface them.
+    """
     for media_type in _ordered_media_types(bulk_media_list):
         bulk_media = bulk_media_list[media_type]
         if not bulk_media:
@@ -362,9 +400,10 @@ def bulk_create_media(bulk_media_list, user):
     # episodes" check below sees the importer's own episodes too.
     bulk_seasons = bulk_media_list.get(MediaTypes.SEASON.value)
     if bulk_seasons:
-        retry_on_lock(
+        return retry_on_lock(
             lambda: _backfill_completed_season_episodes(bulk_seasons),
         )
+    return []
 
 
 def create_import_schedule(

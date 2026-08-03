@@ -185,7 +185,7 @@ class MDBListImporter(TraktMetadataResolverMixin):
         self.process_collection()
 
         helpers.cleanup_existing_media(self.to_delete, self.user)
-        helpers.bulk_create_media(self.bulk_media, self.user)
+        self.warnings.extend(helpers.bulk_create_media(self.bulk_media, self.user))
 
         if self.completed_seasons:
             bulk_update_with_history(
