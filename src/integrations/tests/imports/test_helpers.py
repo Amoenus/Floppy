@@ -1,6 +1,7 @@
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+import requests
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django_celery_beat.models import CrontabSchedule, PeriodicTask
@@ -154,6 +155,72 @@ class HelpersTest(TestCase):
             1,
         )
         self.assertEqual(Episode.objects.get().related_season_id, season.id)
+
+    def _make_completed_season(self, media_id="42"):
+        """Create a bulk-created Completed season with zero episodes."""
+        tv_item = Item.objects.create(
+            media_id=media_id,
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Test Show",
+            image="tv.jpg",
+        )
+        season_item = Item.objects.create(
+            media_id=media_id,
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Test Show",
+            image="season.jpg",
+            season_number=1,
+        )
+        tv = TV.objects.create(
+            item=tv_item,
+            user=self.user,
+            status=Status.COMPLETED.value,
+        )
+        return Season.objects.create(
+            item=season_item,
+            user=self.user,
+            related_tv=tv,
+            status=Status.COMPLETED.value,
+        )
+
+    def test_backfill_retries_transient_network_error(self):
+        """A single dropped connection should not strand a season at zero episodes."""
+        season = self._make_completed_season()
+        season_metadata = {
+            "episodes": [{"episode_number": 1, "still_path": None}],
+            "max_progress": 1,
+        }
+
+        with (
+            patch(
+                "app.providers.services.get_media_metadata",
+                side_effect=[requests.ConnectionError("boom"), season_metadata],
+            ),
+            patch("integrations.imports.helpers.time.sleep"),
+        ):
+            warnings = helpers._backfill_completed_season_episodes([season])
+
+        self.assertEqual(warnings, [])
+        self.assertEqual(Episode.objects.filter(related_season=season).count(), 1)
+
+    def test_backfill_surfaces_warning_after_exhausted_retries(self):
+        """A persistently failing fetch should be reported, not silently dropped."""
+        season = self._make_completed_season()
+
+        with (
+            patch(
+                "app.providers.services.get_media_metadata",
+                side_effect=requests.ConnectionError("still down"),
+            ),
+            patch("integrations.imports.helpers.time.sleep"),
+        ):
+            warnings = helpers._backfill_completed_season_episodes([season])
+
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("Test Show", warnings[0])
+        self.assertEqual(Episode.objects.filter(related_season=season).count(), 0)
 
     @patch("django.contrib.messages.error")
     def test_create_import_schedule(self, mock_messages):

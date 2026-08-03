@@ -196,7 +196,7 @@ class YamtrackImporter:
                 raise MediaImportUnexpectedError(error_msg) from error
 
         helpers.cleanup_existing_media(self.to_delete, self.user)
-        helpers.bulk_create_media(self.bulk_media, self.user)
+        self.warnings.extend(helpers.bulk_create_media(self.bulk_media, self.user))
         self._apply_status_overrides()
 
         for custom_list in self.smart_lists:
