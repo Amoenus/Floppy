@@ -987,11 +987,15 @@ def search(media_type, query, page, source=None, limit=None, offset=None, user=N
 
     source = _resolve_search_source(media_type, source)
 
-    # Attempt direct ID lookup on page 1 only
+    # Attempt direct ID lookup on page 1 only. The result is merged with the
+    # normal text-search results below rather than returned immediately, so a
+    # numeric title (e.g. "1883") isn't hidden behind an unrelated provider ID
+    # lookup (e.g. TMDB tv/1883 is "Dog the Bounty Hunter", not the show
+    # "1883"). The ID match still comes first so pasting a known ID keeps
+    # jumping straight to that item.
+    id_result = None
     if page == 1:
         id_result = search_by_id(media_type, query, source)
-        if id_result is not None:
-            return id_result
 
         if media_type == MediaTypes.BOOK.value and source != Sources.OPENLIBRARY.value:
             isbn_result = _resolve_hardcover_isbn_search(query, page)
@@ -1050,7 +1054,44 @@ def search(media_type, query, page, source=None, limit=None, offset=None, user=N
 
     if response is None:
         # Return empty results for non-pocketcasts podcast sources.
-        return helpers.format_search_response(page, settings.PER_PAGE, 0, [])
+        response = helpers.format_search_response(page, settings.PER_PAGE, 0, [])
+
+    if id_result is not None:
+        response = _merge_id_result(response, id_result, page=page)
+
+    return response
+
+
+def _merge_id_result(response, id_result, *, page):
+    """Prepend a direct ID-lookup match to a text-search response.
+
+    Skips the merge if the item is already present in the text-search
+    results (same media_id and source), and only ever runs for page 1 since
+    ``id_result`` is only computed there.
+    """
+    if page != 1:
+        return response
+
+    id_items = id_result.get("results") or []
+    if not id_items:
+        return response
+
+    existing = {
+        (item.get("media_id"), item.get("source"))
+        for item in response.get("results", [])
+    }
+    new_items = [
+        item
+        for item in id_items
+        if (item.get("media_id"), item.get("source")) not in existing
+    ]
+    if not new_items:
+        return response
+
+    response = dict(response)
+    response["results"] = [*new_items, *response.get("results", [])]
+    response["total_results"] = response.get("total_results", 0) + len(new_items)
+    response["total_pages"] = response["total_results"] // settings.PER_PAGE + 1
     return response
 
 
