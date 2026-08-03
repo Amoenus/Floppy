@@ -57,9 +57,9 @@ class TestPlexHybridImport(TestCase):
     @patch("integrations.imports.plex.plex_api.fetch_metadata")
     @patch("integrations.imports.plex.plex_api.list_users")
     @patch("integrations.webhooks.anime_mappings.fetch_mapping_data", return_value={})
-    @patch("integrations.imports.plex.app.providers.tvdb.enabled", return_value=False)
-    @patch("integrations.imports.plex.services.search")
-    @patch("integrations.imports.plex.services.get_media_metadata")
+    @patch("integrations.imports.media_server.app.providers.tvdb.enabled", return_value=False)
+    @patch("integrations.imports.media_server.services.search")
+    @patch("integrations.imports.media_server.services.get_media_metadata")
     @patch("integrations.imports.plex.plex_api.fetch_history")
     @patch("integrations.imports.plex.plex_api.list_resources")
     @patch("integrations.imports.plex.plex_api.list_sections")
@@ -121,7 +121,7 @@ class TestPlexHybridImport(TestCase):
         )
         self.assertEqual(TV.objects.filter(user=self.user).count(), 0)
 
-    @patch("integrations.imports.plex.services.search")
+    @patch("integrations.imports.media_server.services.search")
     @patch("integrations.imports.plex.plex_api.fetch_history")
     @patch("integrations.imports.plex.plex_api.list_resources")
     @patch("integrations.imports.plex.plex_api.list_sections")
@@ -170,8 +170,8 @@ class TestPlexHybridImport(TestCase):
 
     @patch("integrations.imports.plex.plex_api.fetch_metadata")
     @patch("integrations.imports.plex.plex_api.list_users")
-    @patch("integrations.imports.plex.services.search")
-    @patch("integrations.imports.plex.services.get_media_metadata")
+    @patch("integrations.imports.media_server.services.search")
+    @patch("integrations.imports.media_server.services.get_media_metadata")
     @patch("integrations.imports.plex.plex_api.fetch_history")
     @patch("integrations.imports.plex.plex_api.list_resources")
     @patch("integrations.imports.plex.plex_api.list_sections")
@@ -339,7 +339,7 @@ class TestPlexHybridImport(TestCase):
         self.assertEqual(episode.item.title, "Yellowstone")
 
     @patch("app.providers.tvdb.tv_with_seasons")
-    @patch("integrations.imports.plex.app.providers.tvdb.enabled", return_value=True)
+    @patch("integrations.imports.media_server.app.providers.tvdb.enabled", return_value=True)
     def test_new_tv_show_genesis_uses_tvdb_when_preferred(
         self,
         mock_tvdb_enabled,
@@ -492,7 +492,7 @@ class TestPlexHybridImport(TestCase):
 
     @patch("integrations.imports.plex.plex_api.fetch_section_all_items")
     @patch("integrations.imports.plex.PlexWebhookProcessor._find_tv_media_id")
-    @patch("integrations.imports.plex.services.get_media_metadata")
+    @patch("integrations.imports.media_server.services.get_media_metadata")
     @patch("integrations.imports.plex.plex_api.fetch_metadata")
     @patch("integrations.imports.plex.plex_api.list_users")
     @patch("integrations.imports.plex.plex_api.fetch_history")
@@ -630,8 +630,8 @@ class TestPlexImportScenarios(TestCase):
         mock_error.response = mock_response
         return services.ProviderAPIError(Sources.TMDB.value, mock_error)
 
-    @mock.patch("integrations.imports.plex.services.search")
-    @mock.patch("integrations.imports.plex.services.get_media_metadata")
+    @mock.patch("integrations.imports.media_server.services.search")
+    @mock.patch("integrations.imports.media_server.services.get_media_metadata")
     def test_the_studio_fallback(self, mock_get_metadata, mock_search):
         """Test fallback for 'The Studio (2025)' bad IDs."""
         bad_id = "5772141"
@@ -675,8 +675,8 @@ class TestPlexImportScenarios(TestCase):
             "tv_with_seasons", correct_id, Sources.TMDB.value, season_numbers=[1]
         )
 
-    @mock.patch("integrations.imports.plex.services.search")
-    @mock.patch("integrations.imports.plex.services.get_media_metadata")
+    @mock.patch("integrations.imports.media_server.services.search")
+    @mock.patch("integrations.imports.media_server.services.get_media_metadata")
     def test_foundation_fallback(self, mock_get_metadata, mock_search):
         """Test fallback for 'Foundation (2021)'."""
         bad_id = "6215884"
@@ -696,8 +696,8 @@ class TestPlexImportScenarios(TestCase):
         self.assertEqual(result["id"], correct_id)
         mock_search.assert_called_with(MediaTypes.TV.value, title, page=1)
 
-    @mock.patch("integrations.imports.plex.services.search")
-    @mock.patch("integrations.imports.plex.services.get_media_metadata")
+    @mock.patch("integrations.imports.media_server.services.search")
+    @mock.patch("integrations.imports.media_server.services.get_media_metadata")
     def test_invincible_fallback(self, mock_get_metadata, mock_search):
         """Test fallback for 'Invincible'."""
         bad_id = "5678354"
@@ -716,8 +716,8 @@ class TestPlexImportScenarios(TestCase):
 
         self.assertEqual(result["id"], correct_id)
 
-    @mock.patch("integrations.imports.plex.services.search")
-    @mock.patch("integrations.imports.plex.services.get_media_metadata")
+    @mock.patch("integrations.imports.media_server.services.search")
+    @mock.patch("integrations.imports.media_server.services.get_media_metadata")
     def test_yellowstone_fallback(self, mock_get_metadata, mock_search):
         """Test fallback for 'Yellowstone (2018)'."""
         bad_id = "5605563"
@@ -736,8 +736,8 @@ class TestPlexImportScenarios(TestCase):
         result = self.importer._get_tv_metadata(bad_id, {5}, title)
         self.assertEqual(result["id"], correct_id)
 
-    @mock.patch("integrations.imports.plex.services.search")
-    @mock.patch("integrations.imports.plex.services.get_media_metadata")
+    @mock.patch("integrations.imports.media_server.services.search")
+    @mock.patch("integrations.imports.media_server.services.get_media_metadata")
     def test_franklin_fallback_ambiguity(self, mock_get_metadata, mock_search):
         """Test fallback for 'Franklin (2024)' - verify correct ID usage."""
         bad_id = "4902608"
@@ -756,7 +756,7 @@ class TestPlexImportScenarios(TestCase):
 
         self.assertEqual(result["id"], returned_id)
 
-    @mock.patch("integrations.imports.plex.services.get_media_metadata")
+    @mock.patch("integrations.imports.media_server.services.get_media_metadata")
     def test_sesame_street_missing_seasons(self, mock_get_metadata):
         """Test Sesame Street valid ID but missing seasons."""
         tmdb_id = "47480"
@@ -870,8 +870,8 @@ class TestPlexAnimeImportRouting(TestCase):
         return item
 
     @patch("integrations.webhooks.anime_mappings.fetch_mapping_data", return_value={})
-    @patch("integrations.imports.plex.app.providers.tvdb.enabled", return_value=False)
-    @patch("integrations.imports.plex.app.providers.mal.anime")
+    @patch("integrations.imports.media_server.app.providers.tvdb.enabled", return_value=False)
+    @patch("integrations.imports.media_server.app.providers.mal.anime")
     def test_mixed_tv_and_anime_imports_do_not_share_tv_rows(
         self,
         mock_mal,
@@ -948,8 +948,8 @@ class TestPlexAnimeImportRouting(TestCase):
         )
 
     @patch("integrations.webhooks.anime_mappings.fetch_mapping_data", return_value={})
-    @patch("integrations.imports.plex.app.providers.tvdb.enabled", return_value=False)
-    @patch("integrations.imports.plex.app.providers.mal.anime")
+    @patch("integrations.imports.media_server.app.providers.tvdb.enabled", return_value=False)
+    @patch("integrations.imports.media_server.app.providers.mal.anime")
     def test_anime_mapping_advances_to_highest_imported_episode(
         self,
         mock_mal,
@@ -993,11 +993,11 @@ class TestPlexAnimeImportRouting(TestCase):
 
     @patch("integrations.webhooks.anime_mappings.fetch_mapping_data", return_value={})
     @patch(
-        "integrations.imports.plex.app.providers.tvdb.series_has_anime_genre",
+        "integrations.imports.media_server.app.providers.tvdb.series_has_anime_genre",
         return_value=True,
     )
-    @patch("integrations.imports.plex.app.providers.tvdb.tv")
-    @patch("integrations.imports.plex.app.providers.tvdb.enabled", return_value=True)
+    @patch("integrations.imports.media_server.app.providers.tvdb.tv")
+    @patch("integrations.imports.media_server.app.providers.tvdb.enabled", return_value=True)
     def test_unmapped_anime_special_is_skipped_without_tv_progress(
         self,
         _mock_tvdb_enabled,
@@ -1038,7 +1038,7 @@ class TestPlexAnimeImportRouting(TestCase):
         self.assertIn("no MAL episode mapping found", "\n".join(importer.warnings))
 
     @patch("integrations.webhooks.anime_mappings.fetch_mapping_data", return_value={})
-    @patch("integrations.imports.plex.app.providers.tvdb.enabled", return_value=False)
+    @patch("integrations.imports.media_server.app.providers.tvdb.enabled", return_value=False)
     def test_normal_tv_import_creates_all_history_episodes(
         self,
         _mock_tvdb_enabled,
@@ -1073,7 +1073,7 @@ class TestPlexAnimeImportRouting(TestCase):
         self.assertFalse(Anime.objects.filter(user=self.user).exists())
 
     @patch("integrations.webhooks.anime_mappings.fetch_mapping_data", return_value={})
-    @patch("integrations.imports.plex.app.providers.tvdb.enabled", return_value=False)
+    @patch("integrations.imports.media_server.app.providers.tvdb.enabled", return_value=False)
     @patch("integrations.imports.plex.plex_api.fetch_section_all_items")
     def test_library_ratings_do_not_mark_unwatched_movies_completed(
         self,
@@ -1112,8 +1112,8 @@ class TestPlexAnimeImportRouting(TestCase):
         )
 
     @patch("integrations.webhooks.anime_mappings.fetch_mapping_data", return_value={})
-    @patch("integrations.imports.plex.app.providers.tvdb.enabled", return_value=False)
-    @patch("integrations.imports.plex.app.providers.tmdb.find")
+    @patch("integrations.imports.media_server.app.providers.tvdb.enabled", return_value=False)
+    @patch("integrations.imports.media_server.app.providers.tmdb.find")
     def test_tvdb_numbering_remapped_to_tmdb(
         self,
         mock_find,
@@ -1154,7 +1154,7 @@ class TestPlexAnimeImportRouting(TestCase):
         )
 
     @patch("integrations.webhooks.anime_mappings.fetch_mapping_data", return_value={})
-    @patch("integrations.imports.plex.app.providers.tvdb.enabled", return_value=False)
+    @patch("integrations.imports.media_server.app.providers.tvdb.enabled", return_value=False)
     def test_cumulative_numbering_remap_for_split_seasons(
         self,
         _mock_tvdb_enabled,
@@ -1194,8 +1194,8 @@ class TestPlexAnimeImportRouting(TestCase):
         )
 
     @patch("integrations.webhooks.anime_mappings.fetch_mapping_data", return_value={})
-    @patch("integrations.imports.plex.app.providers.tvdb.enabled", return_value=False)
-    @patch("integrations.imports.plex.app.providers.mal.anime")
+    @patch("integrations.imports.media_server.app.providers.tvdb.enabled", return_value=False)
+    @patch("integrations.imports.media_server.app.providers.mal.anime")
     def test_anime_routing_not_blocked_by_stale_global_items(
         self,
         mock_mal,
@@ -1244,8 +1244,8 @@ class TestPlexAnimeImportRouting(TestCase):
         self.assertEqual(len(importer.bulk_media[MediaTypes.EPISODE.value]), 0)
 
     @patch("integrations.webhooks.anime_mappings.fetch_mapping_data", return_value={})
-    @patch("integrations.imports.plex.app.providers.tvdb.enabled", return_value=False)
-    @patch("integrations.imports.plex.app.providers.mal.anime")
+    @patch("integrations.imports.media_server.app.providers.tvdb.enabled", return_value=False)
+    @patch("integrations.imports.media_server.app.providers.mal.anime")
     def test_user_tracked_tv_show_stays_tv(
         self,
         mock_mal,
@@ -1297,8 +1297,8 @@ class TestPlexAnimeImportRouting(TestCase):
         self.assertEqual(len(importer.bulk_media[MediaTypes.EPISODE.value]), 1)
 
     @patch("integrations.webhooks.anime_mappings.fetch_mapping_data", return_value={})
-    @patch("integrations.imports.plex.app.providers.tvdb.enabled", return_value=False)
-    @patch("integrations.imports.plex.app.providers.mal.anime")
+    @patch("integrations.imports.media_server.app.providers.tvdb.enabled", return_value=False)
+    @patch("integrations.imports.media_server.app.providers.mal.anime")
     def test_anime_section_hint_routes_to_anime(
         self,
         mock_mal,
@@ -1350,7 +1350,7 @@ class TestPlexAnimeImportRouting(TestCase):
         self.assertEqual(len(importer.bulk_media[MediaTypes.EPISODE.value]), 0)
 
     @patch("integrations.webhooks.anime_mappings.fetch_mapping_data", return_value={})
-    @patch("integrations.imports.plex.app.providers.tvdb.enabled", return_value=False)
+    @patch("integrations.imports.media_server.app.providers.tvdb.enabled", return_value=False)
     def test_unmappable_anime_marked_anime_library_type(
         self,
         _mock_tvdb_enabled,
@@ -1665,11 +1665,11 @@ class TestOverwriteMetadataFailureSafety(TestCase):
                 return_value=([episode_history_entry], 1),
             ),
             patch(
-                "integrations.imports.plex.services.get_media_metadata",
+                "integrations.imports.media_server.services.get_media_metadata",
                 side_effect=metadata_side_effect,
             ),
             patch(
-                "integrations.imports.plex.services.search",
+                "integrations.imports.media_server.services.search",
                 return_value={"results": []},
             ),
         ]
@@ -1727,11 +1727,11 @@ class TestOverwriteMetadataFailureSafety(TestCase):
                 return_value=([episode_history_entry], 1),
             ),
             patch(
-                "integrations.imports.plex.services.get_media_metadata",
+                "integrations.imports.media_server.services.get_media_metadata",
                 side_effect=metadata_side_effect,
             ),
             patch(
-                "integrations.imports.plex.services.search",
+                "integrations.imports.media_server.services.search",
                 return_value={"results": []},
             ),
         ]
@@ -1813,7 +1813,7 @@ class TestPlexIdentityAndScorePreservation(TestCase):
         )
 
     @patch("integrations.webhooks.anime_mappings.fetch_mapping_data", return_value={})
-    @patch("integrations.imports.plex.app.providers.tvdb.enabled", return_value=False)
+    @patch("integrations.imports.media_server.app.providers.tvdb.enabled", return_value=False)
     def test_overwrite_import_preserves_yamtrack_scores(
         self,
         _mock_tvdb_enabled,
@@ -1921,7 +1921,7 @@ class TestPlexIdentityAndScorePreservation(TestCase):
         season_obj = importer.bulk_media[MediaTypes.SEASON.value][0]
         self.assertEqual(season_obj.score, 7.0)
 
-    @patch("integrations.imports.plex.services.search")
+    @patch("integrations.imports.media_server.services.search")
     @patch("integrations.webhooks.base.app.providers.tmdb.search")
     @patch("integrations.imports.plex.plex_api.fetch_metadata")
     def test_title_fallback_uses_grandparent_show_ids(

@@ -624,6 +624,21 @@ class JellyfinAccount(models.Model):
         default=False,
         help_text="Push watched state to Jellyfin right after a webhook event",
     )
+    libraries = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Cached Jellyfin libraries available for import",
+    )
+    libraries_refreshed_at = models.DateTimeField(null=True, blank=True)
+    playback_reporting_available = models.BooleanField(
+        null=True,
+        blank=True,
+        help_text=(
+            "Whether the Playback Reporting plugin answered on the last "
+            "import; null means not probed yet"
+        ),
+    )
+    playback_reporting_checked_at = models.DateTimeField(null=True, blank=True)
     connection_broken = models.BooleanField(default=False)
     last_error_message = models.TextField(blank=True, default="")
     last_sync_at = models.DateTimeField(null=True, blank=True)

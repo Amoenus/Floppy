@@ -93,24 +93,49 @@ class JellyfinClient:
                 return user
         return None
 
-    def iter_library_items(self):
-        """Yield Movie/Episode/Series items with provider ids and play state."""
+    def get_views(self) -> list[dict]:
+        """Return the user's top-level libraries (Movies, Shows, Music, ...)."""
+        if not self.user_id:
+            msg = "Jellyfin user id is not set"
+            raise JellyfinClientError(msg)
+        payload = self._request("GET", f"/Users/{self.user_id}/Views").json()
+        return payload.get("Items") or []
+
+    def iter_library_items(
+        self,
+        item_types: str = "Movie,Episode,Series",
+        fields: str = "ProviderIds",
+        parent_id: str | None = None,
+        filters: str | None = None,
+    ):
+        """Yield library items with provider ids and play state.
+
+        Defaults match what the push sync needs; the importer widens
+        ``fields`` to include UserData and scopes to a single library
+        with ``parent_id``.
+        """
         if not self.user_id:
             msg = "Jellyfin user id is not set"
             raise JellyfinClientError(msg)
 
         start_index = 0
         while True:
+            params = {
+                "Recursive": "true",
+                "IncludeItemTypes": item_types,
+                "Fields": fields,
+                "StartIndex": start_index,
+                "Limit": LIBRARY_PAGE_SIZE,
+            }
+            if parent_id:
+                params["ParentId"] = parent_id
+            if filters:
+                params["Filters"] = filters
+
             payload = self._request(
                 "GET",
                 f"/Users/{self.user_id}/Items",
-                params={
-                    "Recursive": "true",
-                    "IncludeItemTypes": "Movie,Episode,Series",
-                    "Fields": "ProviderIds",
-                    "StartIndex": start_index,
-                    "Limit": LIBRARY_PAGE_SIZE,
-                },
+                params=params,
             ).json()
 
             items = payload.get("Items") or []
@@ -120,6 +145,42 @@ class JellyfinClient:
             total = payload.get("TotalRecordCount", start_index)
             if not items or start_index >= total:
                 break
+
+    def fetch_playback_activity(self) -> list[dict] | None:
+        """Return per-play rows from the Playback Reporting plugin.
+
+        The plugin is optional, so any failure means "not installed" rather
+        than a broken server: callers fall back to per-item LastPlayedDate.
+        Returns None when unavailable, else a list of row dicts.
+        """
+        if not self.user_id:
+            msg = "Jellyfin user id is not set"
+            raise JellyfinClientError(msg)
+
+        query = (
+            "SELECT ItemId, ItemType, DateCreated, PlayDuration "  # noqa: S608
+            "FROM PlaybackActivity "
+            f"WHERE UserId = '{self.user_id}'"
+        )
+        try:
+            payload = self._request(
+                "POST",
+                "/user_usage_stats/submit_custom_query",
+                json={"CustomQueryString": query, "ReplaceUserId": False},
+            ).json()
+        except (JellyfinClientError, ValueError):
+            logger.info(
+                "Jellyfin Playback Reporting plugin unavailable; "
+                "falling back to per-item last-played dates",
+            )
+            return None
+
+        # The plugin spells the key "colums" (sic) in most releases.
+        columns = payload.get("colums") or payload.get("columns") or []
+        results = payload.get("results") or []
+        if not columns:
+            return None
+        return [dict(zip(columns, row, strict=False)) for row in results]
 
     def mark_played(self, item_id: str) -> None:
         """Mark a Jellyfin item as played for the connected user."""
