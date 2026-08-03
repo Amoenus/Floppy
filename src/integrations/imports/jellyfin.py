@@ -463,12 +463,6 @@ class JellyfinImporter(MediaServerBulkImporter):
         for record in self._favorite_records:
             media_type = record["media_type"]
             tmdb_id = record["tmdb_id"]
-            # A favorite that also has watch history is already tracked by
-            # the main bulk stage; Planning must not overwrite that.
-            if tmdb_id in self.media_instances[media_type]:
-                continue
-            if not self._should_process_media(media_type, tmdb_id):
-                continue
 
             if media_type == MediaTypes.MOVIE.value:
                 metadata = self._get_movie_metadata(tmdb_id, record["title"])
@@ -479,14 +473,29 @@ class JellyfinImporter(MediaServerBulkImporter):
             if not metadata:
                 continue
 
-            item = self._get_or_create_item(media_type, tmdb_id, metadata)
+            # Resolve the id the same way the bulk stage does before any
+            # dedupe check: TMDB can answer with a different canonical id
+            # (redirects, title-search fallback), and media_instances is
+            # keyed by that resolved id, not the one we asked for.
+            actual_tmdb_id = str(metadata.get("media_id", tmdb_id))
+
+            # A favorite that also has watch history is already tracked by
+            # the main bulk stage; Planning must not overwrite that.
+            if actual_tmdb_id in self.media_instances[media_type]:
+                continue
+            if not self._should_process_media(media_type, actual_tmdb_id):
+                continue
+            if self.existing_media[media_type][Sources.TMDB.value].get(actual_tmdb_id):
+                continue
+
+            item = self._get_or_create_item(media_type, actual_tmdb_id, metadata)
             media = model_by_type[media_type](
                 item=item,
                 user=self.user,
                 status=Status.PLANNING.value,
             )
             self.bulk_media[media_type].append(media)
-            self.media_instances[media_type][tmdb_id] = media
+            self.media_instances[media_type][actual_tmdb_id] = media
             self.summary_counts["created"] += 1
 
     # -- music ----------------------------------------------------------

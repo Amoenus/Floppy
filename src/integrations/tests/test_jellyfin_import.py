@@ -328,6 +328,35 @@ class TestJellyfinRatingsAndFavorites(JellyfinImportTestCase):
         self.assertEqual(movie.status, Status.COMPLETED.value)
 
     @patch("integrations.imports.media_server.services.get_media_metadata")
+    def test_favorite_resolving_to_watched_item_does_not_duplicate(self, mock_metadata):
+        """A favorite whose id resolves to an already-imported item must not
+        create a second row.
+
+        TMDB can answer with a different canonical media_id than the one
+        requested (redirects, title-search fallback), and media_instances is
+        keyed by that resolved id — so the dedupe check has to run on the
+        resolved id, not the raw one.
+        """
+        mock_metadata.return_value = MOVIE_METADATA
+
+        self._run(
+            [
+                _movie("jf-1", 603, played=True,
+                       last_played="2026-01-15T20:30:00Z"),
+                # Different Jellyfin id and different raw TMDB id, but TMDB
+                # resolves it to the same canonical 603.
+                _movie("jf-2", 999, played=False, favorite=True,
+                       name="Matrix (dupe)"),
+            ],
+        )
+
+        self.assertEqual(Movie.objects.filter(user=self.user).count(), 1)
+        self.assertEqual(
+            Movie.objects.get(user=self.user).status,
+            Status.COMPLETED.value,
+        )
+
+    @patch("integrations.imports.media_server.services.get_media_metadata")
     def test_favorite_already_tracked_is_skipped(self, mock_metadata):
         mock_metadata.return_value = MOVIE_METADATA
         item = Item.objects.create(
