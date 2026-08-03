@@ -13,7 +13,7 @@ from django.conf import settings
 from django.db.models import Count, F, Q
 from django.urls import reverse
 
-from app.models import Item, MediaManager, MediaTypes, Status
+from app.models import CollectionEntry, Item, MediaManager, MediaTypes, Status
 from app.providers import services
 from integrations.imports import helpers as import_helpers
 from integrations.models import TraktAccount
@@ -475,7 +475,7 @@ def _extract_list_search_results(media_type, data):
 class _ListTableRowAdapter:
     """Expose list items through the shared media-table row contract."""
 
-    def __init__(self, list_item):
+    def __init__(self, list_item, collection_platforms_by_item_id=None):
         self._list_item = list_item
         self._source_media = getattr(list_item, "media", None)
         self.item = list_item
@@ -483,7 +483,9 @@ class _ListTableRowAdapter:
         self.track_media_id = self.id
         self.created_at = getattr(list_item, "list_date_added", None)
         self.repeats = getattr(self._source_media, "repeats", 1) or 1
-        self.display_platform = _extract_display_platform(list_item)
+        self.display_platform = _extract_display_platform(
+            list_item, collection_platforms_by_item_id
+        )
 
     def __getattr__(self, attr):
         if self._source_media is not None and hasattr(self._source_media, attr):
@@ -491,12 +493,29 @@ class _ListTableRowAdapter:
         return getattr(self._list_item, attr)
 
 
-def _adapt_list_items_for_table(items_page):
+def _adapt_list_items_for_table(items_page, collection_platforms_by_item_id=None):
     """Replace page rows with adapters that satisfy shared media-table cells."""
     items_page.object_list = [
-        _ListTableRowAdapter(item) for item in items_page.object_list
+        _ListTableRowAdapter(item, collection_platforms_by_item_id)
+        for item in items_page.object_list
     ]
     return items_page
+
+
+def _build_collection_platforms_by_item_id(user, item_ids):
+    """Return {item_id: {platform, ...}} from the user's game collection entries."""
+    platforms_by_item_id = {}
+    if not user or not getattr(user, "is_authenticated", False) or not item_ids:
+        return platforms_by_item_id
+    for item_id, resolution in CollectionEntry.objects.filter(
+        user=user,
+        item_id__in=item_ids,
+        item__media_type=MediaTypes.GAME.value,
+    ).values_list("item_id", "resolution"):
+        platform_value = str(resolution or "").strip()
+        if platform_value:
+            platforms_by_item_id.setdefault(item_id, set()).add(platform_value)
+    return platforms_by_item_id
 
 
 def _resolve_list_table_media_type(selected_media_types, filtered_media_types):
@@ -650,20 +669,27 @@ def _status_value(media):
     return _STATUS_SORT_ORDER.get(status, len(_STATUS_SORT_ORDER))
 
 
-def _extract_display_platform(item):
-    """Best-effort single platform label (only games populate Item.platforms)."""
+def _extract_display_platform(item, collection_platforms_by_item_id=None):
+    """Resolve a single display platform: collection data > sole IGDB platform."""
+    if not item:
+        return ""
+    if collection_platforms_by_item_id:
+        collected = collection_platforms_by_item_id.get(item.id, set())
+        if collected:
+            return sorted(collected, key=lambda value: value.lower())[0]
     platforms = getattr(item, "platforms", None)
     if not platforms:
         return ""
     if isinstance(platforms, str):
         return platforms.strip()
     if isinstance(platforms, list):
-        return next((str(p).strip() for p in platforms if str(p).strip()), "")
+        normalized = [str(p).strip() for p in platforms if str(p).strip()]
+        return normalized[0] if len(normalized) == 1 else ""
     return ""
 
 
-def _platform_sort_value(item):
-    platform = _extract_display_platform(item)
+def _platform_sort_value(item, collection_platforms_by_item_id=None):
+    platform = _extract_display_platform(item, collection_platforms_by_item_id)
     return platform.lower() if platform else "￿"
 
 

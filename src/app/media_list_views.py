@@ -293,7 +293,7 @@ def _extract_item_platforms_with_collection(item, collection_platforms_by_item_i
 def _resolve_display_platform(
     item, collection_platforms_by_item_id, active_platform_filter
 ):
-    """Resolve a single display platform: collection data > active filter > first IGDB platform."""
+    """Resolve a single display platform: collection data > active filter > sole IGDB platform."""
     if not item:
         return ""
     if collection_platforms_by_item_id:
@@ -306,7 +306,9 @@ def _resolve_display_platform(
         for platform in item_platforms:
             if _normalize_filter_value(platform) == normalized_filter:
                 return platform
-    return item_platforms[0] if item_platforms else ""
+    if len(item_platforms) == 1:
+        return item_platforms[0]
+    return ""
 
 
 def build_filter_data_from_items(

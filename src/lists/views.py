@@ -29,6 +29,7 @@ from lists.models import CustomList, CustomListItem
 from lists.views_helpers import (
     _adapt_list_items_for_table,
     _attach_media_with_aggregation,
+    _build_collection_platforms_by_item_id,
     _build_list_url_template,
     _build_media_type_breakdown,
     _date_sort_value,
@@ -319,11 +320,14 @@ def list_detail(request, list_reference):
             "reverse": params["direction"] == "desc",
         },
         "platform": {
-            "key": lambda item: _platform_sort_value(item),
+            "key": lambda item: _platform_sort_value(
+                item, collection_platforms_by_item_id
+            ),
             "reverse": params["direction"] == "desc",
         },
     }
 
+    collection_platforms_by_item_id = {}
     sort_config = media_sort_config.get(params["sort_by"])
     if sort_config:
         all_items = list(
@@ -335,6 +339,11 @@ def list_detail(request, list_reference):
             ),
         )
         _attach_media_with_aggregation(all_items, media_user)
+
+        if params["sort_by"] == "platform":
+            collection_platforms_by_item_id = _build_collection_platforms_by_item_id(
+                media_user, [item.id for item in all_items]
+            )
 
         all_items = sorted(
             all_items,
@@ -361,7 +370,11 @@ def list_detail(request, list_reference):
     prefill_display_release_years(items_page)
 
     if layout == "table":
-        _adapt_list_items_for_table(items_page)
+        if not collection_platforms_by_item_id:
+            collection_platforms_by_item_id = _build_collection_platforms_by_item_id(
+                media_user, [item.id for item in items_page.object_list]
+            )
+        _adapt_list_items_for_table(items_page, collection_platforms_by_item_id)
 
     # Get recommendation count for owners/collaborators
     recommendation_count = 0

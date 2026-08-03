@@ -30,6 +30,7 @@ from lists.models import CustomListItem
 from lists.views_helpers import (
     _adapt_list_items_for_table,
     _attach_media_with_aggregation,
+    _build_collection_platforms_by_item_id,
     _build_list_url_template,
     _build_media_type_breakdown,
     _date_sort_value,
@@ -247,11 +248,14 @@ def _smart_list_detail_response(
             "reverse": direction == "desc",
         },
         ListDetailSortChoices.PLATFORM: {
-            "key": lambda item: _platform_sort_value(item),
+            "key": lambda item: _platform_sort_value(
+                item, collection_platforms_by_item_id
+            ),
             "reverse": direction == "desc",
         },
     }
 
+    collection_platforms_by_item_id = {}
     sort_config = media_sort_config.get(sort_by)
     if sort_config:
         all_items = list(
@@ -262,6 +266,10 @@ def _smart_list_detail_response(
             )
         )
         _attach_media_with_aggregation(all_items, media_user)
+        if sort_by == ListDetailSortChoices.PLATFORM:
+            collection_platforms_by_item_id = _build_collection_platforms_by_item_id(
+                media_user, [item.id for item in all_items]
+            )
         all_items = sorted(
             all_items,
             key=sort_config["key"],
@@ -282,7 +290,11 @@ def _smart_list_detail_response(
     prefill_display_release_years(items_page)
 
     if layout == "table":
-        _adapt_list_items_for_table(items_page)
+        if not collection_platforms_by_item_id:
+            collection_platforms_by_item_id = _build_collection_platforms_by_item_id(
+                media_user, [item.id for item in items_page.object_list]
+            )
+        _adapt_list_items_for_table(items_page, collection_platforms_by_item_id)
 
     status_choices = [
         ("all", "All"),

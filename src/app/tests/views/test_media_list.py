@@ -2330,11 +2330,11 @@ class MediaListViewTests(TestCase):
             image="http://example.com/game.jpg",
             platforms=["Xbox Series X|S", "PlayStation 5"],
         )
-        fallback_item = Item.objects.create(
-            media_id="game-platform-sort-fallback",
+        ambiguous_item = Item.objects.create(
+            media_id="game-platform-sort-ambiguous",
             source=Sources.IGDB.value,
             media_type=MediaTypes.GAME.value,
-            title="Fallback Platform",
+            title="Ambiguous Platform",
             image="http://example.com/game.jpg",
             platforms=["Nintendo Switch", "PlayStation 5"],
         )
@@ -2342,7 +2342,7 @@ class MediaListViewTests(TestCase):
             item=collection_item, user=self.user, status=Status.PLANNING.value
         )
         Game.objects.create(
-            item=fallback_item, user=self.user, status=Status.PLANNING.value
+            item=ambiguous_item, user=self.user, status=Status.PLANNING.value
         )
         CollectionEntry.objects.create(
             user=self.user,
@@ -2357,12 +2357,15 @@ class MediaListViewTests(TestCase):
 
         self.assertEqual(response.context["current_sort"], "platform")
         self.assertEqual(response.context["current_direction"], "asc")
+        # The collection-resolved platform sorts first; the multi-platform
+        # game with no collection entry has no unambiguous platform to show,
+        # so it sorts last instead of guessing an arbitrary IGDB platform.
         self.assertEqual(
             [
                 media.item.title
                 for media in response.context["media_list"].object_list[:2]
             ],
-            ["Fallback Platform", "Collection Platform"],
+            ["Collection Platform", "Ambiguous Platform"],
         )
         self.assertContains(response, "Nintendo Switch")
         self.assertContains(response, "PlayStation 5")
