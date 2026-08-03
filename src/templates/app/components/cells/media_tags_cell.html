@@ -3,7 +3,7 @@
   {% if tag_names %}
     <div class="flex flex-wrap gap-1">
       {% for tag_name in tag_names %}
-        <span class="inline-flex h-5 items-center rounded-full border border-indigo-400/18 bg-indigo-500/[0.07] px-2 text-xs font-medium text-indigo-100">{{ tag_name }}</span>
+        <span class="inline-flex h-5 items-center whitespace-nowrap rounded-full border border-indigo-400/18 bg-indigo-500/[0.07] px-2 text-xs font-medium text-indigo-100">{{ tag_name }}</span>
       {% endfor %}
     </div>
   {% else %}
