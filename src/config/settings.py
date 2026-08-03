@@ -236,6 +236,9 @@ PERF_LOG_QUERY_COUNT_THRESHOLD = config(
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    # Keep rendered HTML out of the browser's heuristic cache so template fixes
+    # actually reach iOS Safari and the installed PWA (#442)
+    "app.middleware.NoStoreHtmlMiddleware",
     "app.middleware.RequestPerformanceLoggingMiddleware",
     "app.middleware.DatabaseRetryMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",

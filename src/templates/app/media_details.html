@@ -123,7 +123,7 @@
                 <button @click="open = !open"
                         class="flex w-full items-center justify-center space-x-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-md transition-colors duration-200 cursor-pointer md:w-auto md:justify-start">
                   <span class="text-sm font-medium">{{ media.season_header_title|default:media.title }}</span>
-                  <div class="w-4 h-4" :class="{ 'rotate-180': open }">{% include "app/icons/chevron-down.svg" %}</div>
+                  <div class="w-4 h-4" :class="{ 'rotate-180': open }">{% include "app/icons/chevron-down.svg" with classes="w-full h-full" %}</div>
                 </button>
                 <div x-show="open"
                      x-transition:enter="transition ease-out duration-200"

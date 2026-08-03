@@ -1,10 +1,11 @@
 from django.contrib.auth import get_user_model
 from django.contrib.auth.middleware import AuthenticationMiddleware
 from django.contrib.sessions.middleware import SessionMiddleware
+from django.http import HttpResponse
 from django.test import Client, RequestFactory, TestCase, override_settings
 from django.urls import reverse
 
-from app.middleware import AutoLoginMiddleware
+from app.middleware import AutoLoginMiddleware, NoStoreHtmlMiddleware
 
 UserModel = get_user_model()
 
@@ -137,3 +138,59 @@ class SessionDurabilityTest(TestCase):
         cache.clear()
 
         self.assertEqual(self.client.get("/").status_code, 200)
+
+
+class NoStoreHtmlMiddlewareTest(TestCase):
+    """HTML must not be heuristically cacheable by iOS Safari (#442)."""
+
+    def setUp(self):
+        """Create a logged-in client and a bare request factory."""
+        self.factory = RequestFactory()
+        self.user = UserModel.objects.create_user(
+            username="no_store_user",
+            password="no_store_password",
+        )
+        self.client = Client()
+        self.client.force_login(self.user)
+
+    def _apply(self, response, path="/"):
+        middleware = NoStoreHtmlMiddleware(lambda _request: response)
+        return middleware(self.factory.get(path))
+
+    def test_html_response_is_marked_no_store(self):
+        """A rendered page tells the browser never to reuse the markup."""
+        response = self._apply(HttpResponse("<html></html>"))
+
+        self.assertEqual(response["Cache-Control"], "no-store, must-revalidate")
+
+    def test_static_assets_keep_their_cache_headers(self):
+        """Cache-busted static files stay cacheable."""
+        response = self._apply(
+            HttpResponse("<html></html>"),
+            path="/static/css/main.css",
+        )
+
+        self.assertFalse(response.has_header("Cache-Control"))
+
+    def test_non_html_responses_are_untouched(self):
+        """JSON API responses are left alone."""
+        response = self._apply(HttpResponse("{}", content_type="application/json"))
+
+        self.assertFalse(response.has_header("Cache-Control"))
+
+    def test_existing_cache_control_is_preserved(self):
+        """A view that set its own policy wins."""
+        existing = HttpResponse("<html></html>")
+        existing.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+
+        self.assertEqual(
+            self._apply(existing)["Cache-Control"],
+            "no-cache, no-store, must-revalidate",
+        )
+
+    def test_rendered_page_is_no_store_end_to_end(self):
+        """The header survives the real middleware stack."""
+        response = self.client.get(reverse("home"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Cache-Control"], "no-store, must-revalidate")
