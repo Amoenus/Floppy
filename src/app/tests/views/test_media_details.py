@@ -631,6 +631,102 @@ class MediaDetailsViewTests(TestCase):
         )
 
     @patch("app.providers.services.get_media_metadata")
+    def test_comic_issue_details_renders_collection_section(self, mock_get_metadata):
+        """The comic issue detail page should expose collection add/summary UI."""
+        mock_get_metadata.return_value = {
+            "media_id": "114214",
+            "title": "Tracked Issue",
+            "media_type": MediaTypes.COMIC_ISSUE.value,
+            "source": Sources.COMICVINE.value,
+            "image": "http://example.com/issue.jpg",
+            "max_progress": 1,
+            "details": {
+                "volume_id": "500",
+                "volume_name": "Test Volume",
+                "issue_number": "1",
+            },
+        }
+
+        issue_item = Item.objects.create(
+            media_id="114214",
+            source=Sources.COMICVINE.value,
+            media_type=MediaTypes.COMIC_ISSUE.value,
+            title="Tracked Issue",
+            image="http://example.com/issue.jpg",
+        )
+        CollectionEntry.objects.create(
+            user=self.user,
+            item=issue_item,
+            media_type="physical",
+            purchase_price=4.99,
+        )
+
+        response = self.client.get(
+            reverse(
+                "media_details",
+                kwargs={
+                    "source": Sources.COMICVINE.value,
+                    "media_type": MediaTypes.COMIC_ISSUE.value,
+                    "media_id": "114214",
+                    "title": "tracked-issue",
+                },
+            ),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "app/comic_issue_details.html")
+        self.assertTrue(response.context["has_collection_data"])
+        self.assertIsNotNone(response.context["collection_entry"])
+        self.assertContains(response, "COLLECTION")
+        self.assertContains(
+            response,
+            reverse(
+                "collection_modal",
+                args=[
+                    Sources.COMICVINE.value,
+                    MediaTypes.COMIC_ISSUE.value,
+                    "114214",
+                ],
+            ),
+        )
+        self.assertNotContains(response, "No collection data available")
+
+    @patch("app.providers.services.get_media_metadata")
+    def test_comic_issue_details_renders_collection_empty_state(
+        self, mock_get_metadata
+    ):
+        """An untracked-for-collection comic issue shows the empty state, not stats fields."""
+        mock_get_metadata.return_value = {
+            "media_id": "114215",
+            "title": "Untracked Issue",
+            "media_type": MediaTypes.COMIC_ISSUE.value,
+            "source": Sources.COMICVINE.value,
+            "image": "http://example.com/issue2.jpg",
+            "max_progress": 1,
+            "details": {
+                "volume_id": "500",
+                "volume_name": "Test Volume",
+                "issue_number": "2",
+            },
+        }
+
+        response = self.client.get(
+            reverse(
+                "media_details",
+                kwargs={
+                    "source": Sources.COMICVINE.value,
+                    "media_type": MediaTypes.COMIC_ISSUE.value,
+                    "media_id": "114215",
+                    "title": "untracked-issue",
+                },
+            ),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.context["has_collection_data"])
+        self.assertContains(response, "No collection data available")
+
+    @patch("app.providers.services.get_media_metadata")
     def test_media_details_related_sections_use_mobile_card_grid_preferences(
         self, mock_get_metadata
     ):

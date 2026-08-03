@@ -260,6 +260,43 @@
         </div>
       </div>
     {% endif %}
+
+    {# Collection #}
+    {% if not public_view|default:False %}
+      <div class="flex items-center justify-between mb-2 mt-6">
+        <h3 class="text-sm font-semibold text-gray-400 tracking-wide">COLLECTION</h3>
+        <div x-data="{ collectionOpen: false }">
+          <button class="p-1.5 text-white rounded-md bg-indigo-600 hover:bg-indigo-700 transition-colors cursor-pointer"
+                  hx-get="{% media_view_url 'collection_modal' media %}"
+                  hx-vals='{"return_url": "{{ detail_return_url|urlencode }}"}'
+                  hx-target="#{% component_id 'collection' media %}"
+                  @click="collectionOpen = true"
+                  title="Add collection data">{% include "app/icons/plus.svg" with classes="w-3.5 h-3.5" %}</button>
+
+          <div x-show="collectionOpen"
+               @keydown.escape.window="collectionOpen = false"
+               class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div class="w-152 modal-max-height overflow-y-auto px-4 md:px-0 relative z-60"
+                 @click.outside="collectionOpen = false">
+              <div id="{% component_id 'collection' media %}"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      {% if collection_entries %}
+        <div>
+          {% for owned_entry in collection_entries %}
+            {% include "app/components/collection_entry_summary.html" with collection_entry=owned_entry media_type=media_type user=user source_style_game_meta=True flat_list=True is_last=forloop.last entry_quality_label="" %}
+          {% endfor %}
+        </div>
+      {% elif collection_entry %}
+        <div>
+          {% include "app/components/collection_entry_summary.html" with collection_entry=collection_entry media_type=media_type user=user source_style_game_meta=True flat_list=True is_last=True entry_quality_label="" %}
+        </div>
+      {% else %}
+        <p class="text-gray-400 text-sm">No collection data available</p>
+      {% endif %}
+    {% endif %}
   </div>
 </div>
 
