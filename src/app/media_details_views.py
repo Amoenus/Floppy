@@ -941,7 +941,12 @@ def media_details(
     if metadata_resolution.is_grouped_anime_route(media_type, source=source):
         detail_item_lookup["library_media_type"] = MediaTypes.ANIME.value
 
-    media_metadata = services.get_media_metadata(media_type, media_id, source)
+    media_metadata = services.get_media_metadata(
+        media_type,
+        media_id,
+        source,
+        language=metadata_resolution.metadata_language_default(request.user),
+    )
     if isinstance(media_metadata, dict):
         media_metadata.update(Item.title_fields_from_metadata(media_metadata))
 
@@ -993,7 +998,12 @@ def media_details(
     )
     if render_secondary_only and should_refresh_tmdb_titles:
         cache.delete(tmdb_detail_cache_key)
-        media_metadata = services.get_media_metadata(media_type, media_id, source)
+        media_metadata = services.get_media_metadata(
+            media_type,
+            media_id,
+            source,
+            language=metadata_resolution.metadata_language_default(request.user),
+        )
         if isinstance(media_metadata, dict):
             media_metadata.update(Item.title_fields_from_metadata(media_metadata))
 
@@ -1006,7 +1016,12 @@ def media_details(
     )
     if render_secondary_only and should_refresh_tmdb_tv_credits:
         cache.delete(tmdb_detail_cache_key)
-        media_metadata = services.get_media_metadata(media_type, media_id, source)
+        media_metadata = services.get_media_metadata(
+            media_type,
+            media_id,
+            source,
+            language=metadata_resolution.metadata_language_default(request.user),
+        )
         if isinstance(media_metadata, dict):
             media_metadata.update(Item.title_fields_from_metadata(media_metadata))
 
@@ -1438,6 +1453,9 @@ def media_details(
                     media_id,
                     source,
                     [0],
+                    language=metadata_resolution.metadata_language_default(
+                        request.user
+                    ),
                 )
                 if isinstance(specials_metadata, dict) and specials_metadata.get(
                     "season/0"
@@ -1473,6 +1491,9 @@ def media_details(
                         media_id,
                         source,
                         season_numbers,
+                        language=metadata_resolution.metadata_language_default(
+                            request.user
+                        ),
                     )
                 except services.ProviderAPIError:
                     grouped_season_metadata = None
@@ -1907,6 +1928,9 @@ def media_details(
                     media_type,
                     tmdb_media_id,
                     Sources.TMDB.value,
+                    language=metadata_resolution.metadata_language_default(
+                        request.user
+                    ),
                 )
                 watch_provider_payload = tmdb_metadata.get("providers")
 

@@ -743,6 +743,13 @@ def preferences(request):
     except Exception as exc:  # pragma: no cover - defensive provider fallback
         logger.warning("Could not load TMDB watch provider regions: %s", exc)
         watch_provider_regions = [("UNSET", "Not set")]
+    try:
+        metadata_language_choices = tmdb.metadata_languages()
+    except Exception as exc:  # pragma: no cover - defensive provider fallback
+        logger.warning("Could not load TMDB metadata languages: %s", exc)
+        metadata_language_choices = [
+            ("", f"Server Default ({settings.TMDB_LANG})"),
+        ]
     tv_metadata_source_choices = [
         (choice.value, choice.label)
         for choice in metadata_resolution.available_metadata_sources(
@@ -982,6 +989,17 @@ def preferences(request):
             request.user.watch_provider_region = "UNSET"
             fields_to_update.append("watch_provider_region")
 
+        metadata_language = request.POST.get("metadata_language", "")
+        if metadata_language in {
+            choice[0] for choice in metadata_language_choices
+        }:
+            if request.user.metadata_language != metadata_language:
+                request.user.metadata_language = metadata_language
+                fields_to_update.append("metadata_language")
+        elif request.user.metadata_language != "":
+            request.user.metadata_language = ""
+            fields_to_update.append("metadata_language")
+
         if (
             tv_metadata_source_default
             in {choice[0] for choice in tv_metadata_source_choices}
@@ -1054,6 +1072,7 @@ def preferences(request):
         "auto_pause_rules_json": json.dumps(request.user.auto_pause_rules or []),
         "library_labels_json": json.dumps(library_labels),
         "watch_provider_choices": watch_provider_regions,
+        "metadata_language_choices": metadata_language_choices,
         "tv_metadata_source_choices": tv_metadata_source_choices,
         "anime_metadata_source_choices": anime_metadata_source_choices,
         "anime_library_mode_choices": AnimeLibraryModeChoices.choices,

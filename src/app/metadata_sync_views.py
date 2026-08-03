@@ -325,6 +325,7 @@ def _resolve_current_display_metadata_payload(
         media_type,
         media_id,
         source,
+        language=metadata_resolution.metadata_language_default(user),
     )
     current_provider = metadata_resolution.get_preferred_provider(
         user,
@@ -352,6 +353,7 @@ def _resolve_current_display_metadata_payload(
         ),
         provider_media_id,
         current_provider,
+        language=metadata_resolution.metadata_language_default(user),
     )
 
 

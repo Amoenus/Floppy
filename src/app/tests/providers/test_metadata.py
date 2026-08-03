@@ -1350,7 +1350,7 @@ class Metadata(TestCase):
             str(cm.exception),
         )
 
-        mock_tv_with_seasons.assert_called_with("1396", ["1"])
+        mock_tv_with_seasons.assert_called_with("1396", ["1"], None)
 
     @patch("app.providers.tmdb.tv_with_seasons")
     @patch("app.providers.tmdb.get_tvdb_episode_image_map")

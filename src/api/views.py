@@ -18,6 +18,7 @@ from rest_framework.response import Response
 from app.forms import ManualItemForm, get_form_class
 from app.models import BasicMedia, Item, MediaTypes, Sources
 from app.providers import services, tmdb
+from app.services import metadata_resolution
 from app.statistics import (
     get_activity_data,
     get_media_type_distribution,
@@ -951,6 +952,7 @@ class MediaTypeListView(drf_views.APIView):
                 media_id,
                 source,
                 [season_number],
+                language=metadata_resolution.metadata_language_default(request.user),
             )
         except Exception as e:
             return Response(
@@ -1097,7 +1099,12 @@ class MediaDetailView(drf_views.APIView):
             )
 
         try:
-            media_metadata = services.get_media_metadata(media_type, media_id, source)
+            media_metadata = services.get_media_metadata(
+                media_type,
+                media_id,
+                source,
+                language=metadata_resolution.metadata_language_default(request.user),
+            )
         except Exception as e:
             return Response(
                 {
@@ -1246,7 +1253,12 @@ class MediaDetailView(drf_views.APIView):
         media.refresh_from_db()
 
         try:
-            media_metadata = services.get_media_metadata(media_type, media_id, source)
+            media_metadata = services.get_media_metadata(
+                media_type,
+                media_id,
+                source,
+                language=metadata_resolution.metadata_language_default(request.user),
+            )
         except Exception as e:
             return Response(
                 {
@@ -1737,7 +1749,7 @@ class MediaRecommendationsView(drf_views.APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     @extend_schema(parameters=[MEDIA_TYPE_PARAM])
-    def get(self, _, media_type, source, media_id):
+    def get(self, request, media_type, source, media_id):
         """Retrieve recommendations for a specific media."""
         if not check_valid_type(media_type):
             return Response(
@@ -1754,7 +1766,12 @@ class MediaRecommendationsView(drf_views.APIView):
             )
 
         try:
-            media_metadata = services.get_media_metadata(media_type, media_id, source)
+            media_metadata = services.get_media_metadata(
+                media_type,
+                media_id,
+                source,
+                language=metadata_resolution.metadata_language_default(request.user),
+            )
         except Exception as e:
             return Response(
                 {
@@ -1812,7 +1829,12 @@ class MediaSeasonsView(drf_views.APIView):
             )
 
         try:
-            media_metadata = services.get_media_metadata(media_type, media_id, source)
+            media_metadata = services.get_media_metadata(
+                media_type,
+                media_id,
+                source,
+                language=metadata_resolution.metadata_language_default(request.user),
+            )
         except Exception as e:
             return Response(
                 {
@@ -1997,6 +2019,7 @@ class MediaSyncView(drf_views.APIView):
                 media_type,
                 media_id,
                 source,
+                language=metadata_resolution.metadata_language_default(request.user),
             )
 
             # FORK: bucket-aware resolution + localized title fields, mirroring
@@ -2139,6 +2162,7 @@ class MediaSeasonDetailView(drf_views.APIView):
                 media_id,
                 source,
                 [season_number],
+                language=metadata_resolution.metadata_language_default(request.user),
             )
         except Exception as e:
             return Response(
@@ -2302,6 +2326,7 @@ class MediaSeasonDetailView(drf_views.APIView):
                 media_id,
                 source,
                 [season_number],
+                language=metadata_resolution.metadata_language_default(request.user),
             )
         except Exception as e:
             return Response(
@@ -2442,6 +2467,7 @@ class MediaSeasonEpisodesView(drf_views.APIView):
                 media_id,
                 source,
                 [season_number],
+                language=metadata_resolution.metadata_language_default(request.user),
             )
         except Exception as e:
             return Response(
@@ -3054,6 +3080,7 @@ class MediaSeasonSyncView(drf_views.APIView):
                 media_id,
                 source,
                 [season_number],
+                language=metadata_resolution.metadata_language_default(request.user),
             )
 
             # FORK: bucket-aware resolution + localized title fields, mirroring
@@ -3257,6 +3284,7 @@ class MediaEpisodeDetailView(drf_views.APIView):
                 media_id,
                 source,
                 [season_number],
+                language=metadata_resolution.metadata_language_default(request.user),
             )
         except Exception as e:
             return Response(
@@ -3425,6 +3453,7 @@ class MediaEpisodeDetailView(drf_views.APIView):
                 media_id,
                 source,
                 [season_number],
+                language=metadata_resolution.metadata_language_default(request.user),
             )
         except Exception as e:
             return Response(
@@ -4189,6 +4218,9 @@ class SearchProviderView(drf_views.APIView):
                     limit=limit,
                     offset=offset,
                     user=request.user,
+                    language=metadata_resolution.metadata_language_default(
+                        request.user
+                    ),
                 )
                 if (
                     not isinstance(last_response, dict)

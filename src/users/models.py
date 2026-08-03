@@ -704,6 +704,15 @@ class User(AbstractUser):
         default="UNSET",
         help_text="Region to show watch providers for",
     )
+    metadata_language = models.CharField(
+        max_length=10,
+        default="",
+        blank=True,
+        help_text=(
+            "Preferred language for TV/movie metadata and cover art. "
+            "Falls back to the server default when unset."
+        ),
+    )
     tv_metadata_source_default = models.CharField(
         max_length=20,
         default=MetadataSourceDefaultChoices.TMDB,

@@ -39,9 +39,9 @@ ISO_639_1_TO_TVDB = {
 }
 
 
-def _preferred_language_code() -> str:
-    """Return the TVDB (3-letter) language code for settings.TMDB_LANG."""
-    primary = str(settings.TMDB_LANG or "en").strip().lower().split("-")[0]
+def _preferred_language_code(language: str | None = None) -> str:
+    """Return the TVDB (3-letter) language code for the given (or default) language."""
+    primary = str(language or settings.TMDB_LANG or "en").strip().lower().split("-")[0]
     return ISO_639_1_TO_TVDB.get(primary, "eng")
 
 
@@ -128,9 +128,9 @@ def _normalize_language_code(value) -> str:
     return code
 
 
-def _is_preferred_translation_code(code: str) -> bool:
+def _is_preferred_translation_code(code: str, language: str | None = None) -> bool:
     """Return whether a language code matches the preferred UI locale."""
-    preferred = _preferred_language_code()
+    preferred = _preferred_language_code(language)
     normalized = _normalize_language_code(code)
     return normalized in {preferred, preferred[:2]} or (
         preferred == "eng" and normalized in PREFERRED_TRANSLATION_CODES
@@ -192,7 +192,9 @@ def _translation_entry_value(entry: Any, key: str) -> str | None:
     return None
 
 
-def _pick_preferred_translation(entries, key: str) -> str | None:
+def _pick_preferred_translation(
+    entries, key: str, language: str | None = None
+) -> str | None:
     """Return the preferred translated value from an entry list."""
     fallback = None
     for entry in _coerce_list(entries):
@@ -201,6 +203,7 @@ def _pick_preferred_translation(entries, key: str) -> str | None:
             continue
         if isinstance(entry, dict) and _is_preferred_translation_code(
             _translation_language(entry),
+            language,
         ):
             return value
         if fallback is None:
@@ -304,12 +307,12 @@ def _get_name(row: dict | None) -> str:
     )
 
 
-def _find_translation(row: dict | None, *keys: str):
+def _find_translation(row: dict | None, *keys: str, language: str | None = None):
     """Return translated text from nested translation payloads."""
     row = row or {}
     translations = row.get("translations") or {}
     if isinstance(translations, dict):
-        preferred = _preferred_language_code()
+        preferred = _preferred_language_code(language)
         lang_keys = dict.fromkeys((preferred, preferred[:2], "eng", "en", "eng-US"))
         for lang_key in lang_keys:
             lang_payload = translations.get(lang_key)
@@ -323,7 +326,7 @@ def _find_translation(row: dict | None, *keys: str):
         # Some TVDB payloads store translations in arrays keyed by name/overview.
         for key in keys:
             nested = translations.get(key)
-            value = _pick_preferred_translation(nested, key)
+            value = _pick_preferred_translation(nested, key, language)
             if value:
                 return value
     return None
@@ -334,6 +337,8 @@ def _get_translation(entity_type: str, entity_id: Any, *, language: str | None =
     if not entity_id:
         return {}
 
+    # `language` here is already a resolved TVDB 3-letter code (see
+    # _with_preferred_translation) - only resolve from ISO-639-1 when absent.
     language = language or _preferred_language_code()
 
     cache_key = _cache_key("translation", entity_type, entity_id, language)
@@ -353,14 +358,16 @@ def _get_translation(entity_type: str, entity_id: Any, *, language: str | None =
     return payload
 
 
-def _with_preferred_translation(row: dict | None, entity_type: str):
+def _with_preferred_translation(
+    row: dict | None, entity_type: str, language: str | None = None
+):
     """Attach the preferred translation payload to a TVDB entity."""
     row = row or {}
     entity_id = row.get("id")
     if not entity_id:
         return row
 
-    language = _preferred_language_code()
+    language = _preferred_language_code(language)
     translation = _get_translation(entity_type, entity_id, language=language)
     if not isinstance(translation, dict) or not translation:
         return row
@@ -380,10 +387,10 @@ def _with_preferred_translation(row: dict | None, entity_type: str):
     return updated
 
 
-def _get_title_fields(row: dict | None):
+def _get_title_fields(row: dict | None, language: str | None = None):
     """Return normalized title fields for TVDB entities."""
     row = row or {}
-    localized_title = _find_translation(row, "name") or _get_name(row)
+    localized_title = _find_translation(row, "name", language=language) or _get_name(row)
     original_title = (
         _normalize_text_value(row.get("originalName"))
         or _normalize_text_value(row.get("original_name"))
@@ -397,21 +404,48 @@ def _get_title_fields(row: dict | None):
     }
 
 
-def _get_image(row: dict | None):
-    """Return the best image URL for a TVDB entity."""
+def _artwork_image(artwork: dict) -> str | None:
+    """Return the image URL from a single TVDB artwork entry."""
+    for key in ("image", "thumbnail", "url"):
+        value = artwork.get(key)
+        if value:
+            return value
+    return None
+
+
+def _get_image(row: dict | None, language: str | None = None):
+    """Return the best image URL for a TVDB entity, preferring artwork in language."""
     row = row or {}
     for key in ("image", "image_url", "thumbnail", "poster", "poster_url"):
         value = row.get(key)
         if value:
             return value
-    artworks = row.get("artworks") or []
+
+    artworks = [a for a in (row.get("artworks") or []) if isinstance(a, dict)]
+    if not artworks:
+        return settings.IMG_NONE
+
+    preferred = _preferred_language_code(language)
     for artwork in artworks:
-        if not isinstance(artwork, dict):
-            continue
-        for key in ("image", "thumbnail", "url"):
-            value = artwork.get(key)
+        if _normalize_language_code(artwork.get("language")) in {
+            preferred,
+            preferred[:2],
+        }:
+            value = _artwork_image(artwork)
             if value:
                 return value
+
+    for artwork in artworks:
+        if not artwork.get("language"):
+            value = _artwork_image(artwork)
+            if value:
+                return value
+
+    for artwork in artworks:
+        value = _artwork_image(artwork)
+        if value:
+            return value
+
     return settings.IMG_NONE
 
 
@@ -503,11 +537,11 @@ def _get_external_links(row: dict | None):
     return {name: url for name, url in links.items() if url}
 
 
-def _get_synopsis(row: dict | None):
+def _get_synopsis(row: dict | None, language: str | None = None):
     """Return overview text for a TVDB entity."""
     row = row or {}
     return (
-        _find_translation(row, "overview")
+        _find_translation(row, "overview", language=language)
         or _normalize_text_value(row.get("overview"))
         or _normalize_text_value(row.get("overviewText"))
         or "No synopsis available."
@@ -640,7 +674,9 @@ def _pick_series_seasons(series_data: dict | None):
     return filtered
 
 
-def _season_related_entry(series_data: dict, season_data: dict, *, media_type: str):
+def _season_related_entry(
+    series_data: dict, season_data: dict, *, media_type: str, language: str | None = None
+):
     """Return a related-season card entry."""
     season_no = _season_number(season_data)
     episode_rows = _coerce_list(season_data.get("episodes"))
@@ -660,9 +696,9 @@ def _season_related_entry(series_data: dict, season_data: dict, *, media_type: s
     return {
         "source": Sources.TVDB.value,
         "media_type": MediaTypes.SEASON.value,
-        "image": _get_image(season_data) or _get_image(series_data),
+        "image": _get_image(season_data, language) or _get_image(series_data, language),
         "media_id": str(series_data.get("id")),
-        **_get_title_fields(series_data),
+        **_get_title_fields(series_data, language),
         "season_number": season_no,
         "season_title": _get_name(season_data)
         or ("Specials" if season_no == 0 else f"Season {season_no}"),
@@ -718,7 +754,7 @@ def _normalize_characters(series_data: dict | None):
     return cast_rows, crew_rows
 
 
-def _build_series_metadata(series_data: dict, *, media_type: str):
+def _build_series_metadata(series_data: dict, *, media_type: str, language: str | None = None):
     """Return normalized series metadata."""
     seasons = _pick_series_seasons(series_data)
     cast_rows, crew_rows = _normalize_characters(series_data)
@@ -748,10 +784,10 @@ def _build_series_metadata(series_data: dict, *, media_type: str):
         "source": Sources.TVDB.value,
         "source_url": f"https://www.thetvdb.com/dereferrer/series/{series_data.get('id')}",
         "media_type": media_type,
-        **_get_title_fields(series_data),
+        **_get_title_fields(series_data, language),
         "max_progress": details["episodes"],
-        "image": _get_image(series_data),
-        "synopsis": _get_synopsis(series_data),
+        "image": _get_image(series_data, language),
+        "synopsis": _get_synopsis(series_data, language),
         "genres": _get_genres(series_data),
         "score": _get_score(series_data),
         "score_count": _get_score_count(series_data),
@@ -761,7 +797,9 @@ def _build_series_metadata(series_data: dict, *, media_type: str):
         "studios_full": [],
         "related": {
             "seasons": [
-                _season_related_entry(series_data, season, media_type=media_type)
+                _season_related_entry(
+                    series_data, season, media_type=media_type, language=language
+                )
                 for season in seasons
             ],
             "recommendations": [],
@@ -775,13 +813,13 @@ def _build_series_metadata(series_data: dict, *, media_type: str):
     }
 
 
-def _normalize_episode_rows(season_data: dict | None):
+def _normalize_episode_rows(season_data: dict | None, language: str | None = None):
     """Return normalized episode rows for a season."""
     normalized = []
     for episode in _coerce_list((season_data or {}).get("episodes")):
         if not isinstance(episode, dict):
             continue
-        episode = _with_preferred_translation(episode, "episodes")  # noqa: PLW2901  # deliberate in-loop normalisation
+        episode = _with_preferred_translation(episode, "episodes", language)  # noqa: PLW2901  # deliberate in-loop normalisation
         air_date = (
             _parse_date(episode.get("aired"))
             or _parse_date(episode.get("firstAired"))
@@ -792,9 +830,10 @@ def _normalize_episode_rows(season_data: dict | None):
                 "episode_number": episode.get("number") or episode.get("episodeNumber"),
                 "air_date": air_date,
                 "still_path": None,
-                "image": _get_image(episode),
-                "name": _find_translation(episode, "name") or _get_name(episode),
-                "overview": _get_synopsis(episode),
+                "image": _get_image(episode, language),
+                "name": _find_translation(episode, "name", language=language)
+                or _get_name(episode),
+                "overview": _get_synopsis(episode, language),
                 "runtime": episode.get("runtime") or episode.get("airsAfterSeason"),
                 "score": _get_score(episode),
                 "score_count": _get_score_count(episode),
@@ -812,10 +851,10 @@ def _normalize_episode_rows(season_data: dict | None):
 
 
 def _normalize_season_metadata(
-    series_data: dict, season_data: dict, *, media_type: str
+    series_data: dict, season_data: dict, *, media_type: str, language: str | None = None
 ):
     """Return normalized season metadata."""
-    episodes = _normalize_episode_rows(season_data)
+    episodes = _normalize_episode_rows(season_data, language)
     runtimes = [
         episode["runtime"]
         for episode in episodes
@@ -830,9 +869,9 @@ def _normalize_season_metadata(
         "season_title": _get_name(season_data)
         or ("Specials" if season_no == 0 else f"Season {season_no}"),
         "max_progress": episodes[-1]["episode_number"] if episodes else 0,
-        "image": _get_image(season_data) or _get_image(series_data),
+        "image": _get_image(season_data, language) or _get_image(series_data, language),
         "season_number": season_no,
-        "synopsis": _get_synopsis(season_data),
+        "synopsis": _get_synopsis(season_data, language),
         "score": _get_score(season_data),
         "score_count": _get_score_count(season_data),
         "details": {
@@ -849,7 +888,7 @@ def _normalize_season_metadata(
         "episodes": episodes,
         "providers": {},
         "media_id": str(series_data.get("id")),
-        **_get_title_fields(series_data),
+        **_get_title_fields(series_data, language),
         "tvdb_id": str(series_data.get("id")),
         "external_links": _get_external_links(series_data),
         "genres": _get_genres(series_data),
@@ -859,8 +898,10 @@ def _normalize_season_metadata(
     }
 
 
-def _season_cache_key(media_id, season_number, media_type):
-    return _cache_key(media_type, media_id, season_number)
+def _season_cache_key(media_id, season_number, media_type, language=None):
+    return _cache_key(
+        media_type, media_id, season_number, _preferred_language_code(language)
+    )
 
 
 def search_remote_id(remote_id: str):
@@ -873,9 +914,11 @@ def search_remote_id(remote_id: str):
     return data
 
 
-def search(media_type, query, page):
+def search(media_type, query, page, language=None):
     """Search TVDB for TV or grouped anime titles."""
-    cache_key = _cache_key("search", media_type, query, page)
+    cache_key = _cache_key(
+        "search", media_type, query, page, _preferred_language_code(language)
+    )
     data = cache.get(cache_key)
     if data is not None:
         return data
@@ -888,7 +931,7 @@ def search(media_type, query, page):
                     "query": query,
                     "type": "series",
                     "page": max(page - 1, 0),
-                    "lang": _preferred_language_code(),
+                    "lang": _preferred_language_code(language),
                 },
             ),
         ),
@@ -898,7 +941,7 @@ def search(media_type, query, page):
     for row in results:
         if not isinstance(row, dict):
             continue
-        title_fields = _get_title_fields(row)
+        title_fields = _get_title_fields(row, language)
         result = {
             "media_id": str(row.get("tvdb_id") or row.get("id")),
             "source": Sources.TVDB.value,
@@ -906,7 +949,7 @@ def search(media_type, query, page):
             "identity_media_type": MediaTypes.TV.value,
             "library_media_type": media_type,
             **title_fields,
-            "image": _get_image(row),
+            "image": _get_image(row, language),
             "year": row.get("year")
             or tmdb.get_year({"first_air_date": row.get("firstAired")}),
         }
@@ -920,24 +963,31 @@ def search(media_type, query, page):
     return data
 
 
-def tv(media_id, *, routed_media_type=MediaTypes.TV.value):
+def tv(media_id, *, routed_media_type=MediaTypes.TV.value, language=None):
     """Return normalized TVDB series metadata."""
-    cache_key = _cache_key(routed_media_type, media_id)
+    cache_key = _cache_key(
+        routed_media_type, media_id, _preferred_language_code(language)
+    )
     data = cache.get(cache_key)
     if data is None:
         response = _with_preferred_translation(
             _unwrap_data(_request(f"series/{media_id}/extended")) or {},
             "series",
+            language,
         )
-        data = _build_series_metadata(response, media_type=routed_media_type)
+        data = _build_series_metadata(
+            response, media_type=routed_media_type, language=language
+        )
         cache.set(cache_key, data)
     return data
 
 
-def tv_with_seasons(media_id, season_numbers, *, routed_media_type=MediaTypes.TV.value):
+def tv_with_seasons(
+    media_id, season_numbers, *, routed_media_type=MediaTypes.TV.value, language=None
+):
     """Return a TVDB series payload enriched with selected seasons."""
     if not season_numbers:
-        return tv(media_id, routed_media_type=routed_media_type)
+        return tv(media_id, routed_media_type=routed_media_type, language=language)
     normalized_numbers = []
     for season_number in season_numbers:
         try:
@@ -945,13 +995,14 @@ def tv_with_seasons(media_id, season_numbers, *, routed_media_type=MediaTypes.TV
         except (TypeError, ValueError):
             continue
 
-    series_metadata = tv(media_id, routed_media_type=routed_media_type)
+    series_metadata = tv(media_id, routed_media_type=routed_media_type, language=language)
     if not normalized_numbers:
         return series_metadata
 
     series_data = _with_preferred_translation(
         _unwrap_data(_request(f"series/{media_id}/extended")) or {},
         "series",
+        language,
     )
     seasons_by_number = {
         _season_number(season): season
@@ -961,7 +1012,9 @@ def tv_with_seasons(media_id, season_numbers, *, routed_media_type=MediaTypes.TV
 
     season_payloads = {}
     for season_number in normalized_numbers:
-        cache_key = _season_cache_key(media_id, season_number, routed_media_type)
+        cache_key = _season_cache_key(
+            media_id, season_number, routed_media_type, language
+        )
         season_metadata = cache.get(cache_key)
         if season_metadata is None:
             season_row = seasons_by_number.get(season_number)
@@ -973,11 +1026,13 @@ def tv_with_seasons(media_id, season_numbers, *, routed_media_type=MediaTypes.TV
             season_data = _with_preferred_translation(
                 _unwrap_data(_request(f"seasons/{season_id}/extended")) or {},
                 "seasons",
+                language,
             )
             season_metadata = _normalize_season_metadata(
                 series_data,
                 season_data,
                 media_type=routed_media_type,
+                language=language,
             )
             cache.set(cache_key, season_metadata)
         season_payloads[f"season/{season_number}"] = season_metadata
@@ -986,15 +1041,21 @@ def tv_with_seasons(media_id, season_numbers, *, routed_media_type=MediaTypes.TV
 
 
 def episode(
-    media_id, season_number, episode_number, *, routed_media_type=MediaTypes.TV.value
+    media_id,
+    season_number,
+    episode_number,
+    *,
+    routed_media_type=MediaTypes.TV.value,
+    language=None,
 ):
     """Return normalized episode metadata from a TVDB season payload."""
     season_payload = tv_with_seasons(
         media_id,
         [season_number],
         routed_media_type=routed_media_type,
+        language=language,
     ).get(f"season/{season_number}", {})
-    series_payload = tv(media_id, routed_media_type=routed_media_type)
+    series_payload = tv(media_id, routed_media_type=routed_media_type, language=language)
     matched_episode = None
     for episode_row in season_payload.get("episodes", []):
         if str(episode_row.get("episode_number")) == str(episode_number):

@@ -343,6 +343,7 @@ def _render_standard_track_modal(
             source,
             [season_number],
             episode_number=episode_number,
+            language=metadata_resolution.metadata_language_default(request.user),
         )
         base_metadata = metadata
         title = metadata["title"]
@@ -474,6 +475,7 @@ def _render_standard_track_modal(
                 media_id,
                 source,
                 [season_number],
+                language=metadata_resolution.metadata_language_default(request.user),
             )
         metadata_resolution_result = metadata_resolution.resolve_detail_metadata(
             request.user,
