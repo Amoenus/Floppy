@@ -157,6 +157,17 @@ def _should_refresh_plex_sections(account: PlexAccount) -> bool:
     return timezone.now() >= expiry
 
 
+def _should_refresh_jellyfin_libraries(account) -> bool:
+    """Return True if the cached Jellyfin library list is stale."""
+    if not account.libraries_refreshed_at:
+        return True
+
+    expiry = account.libraries_refreshed_at + timezone.timedelta(
+        hours=settings.PLEX_SECTIONS_TTL_HOURS,
+    )
+    return timezone.now() >= expiry
+
+
 def _get_stored_plex_account(user):
     """Return the user's stored Plex account when it has a token."""
     plex_account = getattr(user, "plex_account", None)
@@ -175,6 +186,7 @@ def _get_import_data_user(user):
         "koito_account",
         "radarr_account",
         "sonarr_account",
+        "jellyfin_account",
     ).get(pk=user.pk)
 
 
@@ -1136,6 +1148,9 @@ def import_data(request):
     plex_account = _get_stored_plex_account(user)
     plex_sections = plex_account.sections or [] if plex_account else []
 
+    jellyfin_account = getattr(user, "jellyfin_account", None)
+    jellyfin_libraries = jellyfin_account.libraries or [] if jellyfin_account else []
+
     # Get Audiobookshelf account
     audiobookshelf_account = getattr(user, "audiobookshelf_account", None)
 
@@ -1207,6 +1222,8 @@ def import_data(request):
         "plex_account": plex_account,
         "plex_sections": plex_sections,
         "plex_sections_json": json.dumps(plex_sections),
+        "jellyfin_account": jellyfin_account,
+        "jellyfin_libraries_json": json.dumps(jellyfin_libraries),
         "audiobookshelf_account": audiobookshelf_account,
         "storyteller_account": storyteller_account,
         "storyteller_pending": storyteller_pending,
@@ -1332,6 +1349,73 @@ def import_data_plex_sections(request):
             "error": error or "",
         },
     )
+
+
+def _build_jellyfin_client(account):
+    """Build a JellyfinClient from a stored account, decrypting the API key."""
+    from integrations.imports.helpers import decrypt_or_raise
+    from integrations.jellyfin_client import JellyfinClient
+
+    return JellyfinClient(
+        account.base_url,
+        decrypt_or_raise(account.api_key),
+        account.jellyfin_user_id or None,
+    )
+
+
+@require_GET
+def import_data_jellyfin_status(request):
+    """Verify the stored Jellyfin account without blocking the page render."""
+    account = getattr(request.user, "jellyfin_account", None)
+    if not account:
+        return JsonResponse({"state": "disconnected", "error": ""})
+
+    from integrations.jellyfin_client import JellyfinAuthError
+
+    try:
+        _build_jellyfin_client(account).healthcheck()
+    except JellyfinAuthError:
+        return JsonResponse(
+            {
+                "state": "error",
+                "error": "Jellyfin API key is invalid or revoked. Please reconnect.",
+            },
+        )
+    except Exception as exc:  # pragma: no cover - defensive
+        return JsonResponse({"state": "error", "error": str(exc)})
+
+    return JsonResponse({"state": "connected", "error": ""})
+
+
+@require_GET
+def import_data_jellyfin_libraries(request):
+    """Refresh the cached Jellyfin library list for the import page."""
+    account = getattr(request.user, "jellyfin_account", None)
+    if not account:
+        return JsonResponse({"libraries": [], "error": ""})
+
+    cached = account.libraries or []
+    if not _should_refresh_jellyfin_libraries(account):
+        return JsonResponse({"libraries": cached, "error": ""})
+
+    try:
+        views = _build_jellyfin_client(account).get_views()
+    except Exception as exc:  # pragma: no cover - defensive
+        return JsonResponse({"libraries": cached, "error": str(exc)})
+
+    libraries = [
+        {
+            "id": view.get("Id"),
+            "title": view.get("Name"),
+            "type": view.get("CollectionType") or "",
+        }
+        for view in views
+        if view.get("Id")
+    ]
+    account.libraries = libraries
+    account.libraries_refreshed_at = timezone.now()
+    account.save(update_fields=["libraries", "libraries_refreshed_at", "updated_at"])
+    return JsonResponse({"libraries": libraries, "error": ""})
 
 
 @require_GET

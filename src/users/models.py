@@ -1545,6 +1545,10 @@ class User(AbstractUser):
             ],
             "mdblist": ["Import from MDBList", "Import MDBList Lists"],
             "plex": ["Import from Plex", "Sync Plex Watchlist"],
+            "jellyfin": [
+                "Import from Jellyfin",
+                "Import from Jellyfin (Recurring)",
+            ],
             "radarr": ["Import from Radarr", "Import from Radarr (Recurring)"],
             "sonarr": ["Import from Sonarr", "Import from Sonarr (Recurring)"],
             "audiobookshelf": [

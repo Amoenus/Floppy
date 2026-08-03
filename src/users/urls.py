@@ -60,6 +60,16 @@ urlpatterns = [
         views.import_data_plex_sections,
         name="import_data_plex_sections",
     ),
+    path(
+        "settings/import/jellyfin-status",
+        views.import_data_jellyfin_status,
+        name="import_data_jellyfin_status",
+    ),
+    path(
+        "settings/import/jellyfin-libraries",
+        views.import_data_jellyfin_libraries,
+        name="import_data_jellyfin_libraries",
+    ),
     path("settings/export", views.export_data, name="export_data"),
     path("settings/advanced", views.advanced, name="advanced"),
     path("settings/about", views.about, name="about"),

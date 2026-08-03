@@ -1249,9 +1249,14 @@ def jellyfin_connect(request):
     base_url = request.POST.get("base_url", "").strip()
     api_key = request.POST.get("api_key", "").strip()
     username = request.POST.get("username", "").strip()
+    # The Import Data page hosts its own connect form; send the user back
+    # to whichever page started the flow.
+    redirect_target = (
+        "import_data" if request.POST.get("next") == "import_data" else "integrations"
+    )
     if not base_url or not api_key:
         messages.error(request, "Jellyfin base URL and API key are required.")
-        return redirect("integrations")
+        return redirect(redirect_target)
 
     client = JellyfinClient(base_url, api_key)
     try:
@@ -1261,7 +1266,7 @@ def jellyfin_connect(request):
             current_user = client.find_user_by_name(username)
     except (JellyfinAuthError, JellyfinClientError) as exc:
         messages.error(request, f"Failed to connect to Jellyfin: {exc}")
-        return redirect("integrations")
+        return redirect(redirect_target)
 
     if not current_user or not current_user.get("Id"):
         messages.error(
@@ -1270,7 +1275,7 @@ def jellyfin_connect(request):
             "Dashboard API keys are not tied to a user, so enter the exact "
             "Jellyfin username in the username field and try again.",
         )
-        return redirect("integrations")
+        return redirect(redirect_target)
 
     JellyfinAccount.objects.update_or_create(
         user=request.user,
@@ -1284,7 +1289,41 @@ def jellyfin_connect(request):
         },
     )
     messages.success(request, "Connected Jellyfin.")
-    return redirect("integrations")
+    return redirect(redirect_target)
+
+
+@require_POST
+def import_jellyfin(request):
+    """Queue a Jellyfin library import for the current user."""
+    account = getattr(request.user, "jellyfin_account", None)
+    if not account:
+        messages.error(request, "Connect Jellyfin before importing.")
+        return redirect("import_data")
+
+    library = request.POST.get("library") or "all"
+    mode = request.POST.get("mode", "new")
+    frequency = request.POST.get("frequency", "once")
+    import_time = request.POST.get("time", "00:00")
+
+    if frequency != "once":
+        helpers.create_import_schedule(
+            username=account.jellyfin_username or request.user.username,
+            request=request,
+            mode=mode,
+            frequency=frequency,
+            import_time=import_time,
+            source="Jellyfin",
+            extra_kwargs={"library": library},
+        )
+        return redirect("import_data")
+
+    tasks.import_jellyfin.delay(
+        library=library,
+        user_id=request.user.id,
+        mode=mode,
+    )
+    messages.info(request, "The task to import media from Jellyfin has been queued.")
+    return redirect("import_data")
 
 
 @require_POST

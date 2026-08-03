@@ -113,6 +113,10 @@ SOURCES_CONFIG = {
         "name": "StoryGraph",
         "logo": static("img/storygraph-logo.svg"),
     },
+    "jellyfin": {
+        "name": "Jellyfin",
+        "logo": static("img/jellyfin-logo.svg"),
+    },
     "radarr": {
         "name": "Radarr",
         "logo": static("img/plex-logo.svg"),

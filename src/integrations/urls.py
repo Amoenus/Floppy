@@ -60,6 +60,7 @@ urlpatterns = [
     path("import/sonarr/connect", views.sonarr_connect, name="sonarr_connect"),
     path("import/sonarr/disconnect", views.sonarr_disconnect, name="sonarr_disconnect"),
     path("import/sonarr", views.import_sonarr, name="import_sonarr"),
+    path("import/jellyfin", views.import_jellyfin, name="import_jellyfin"),
     path("jellyfin/connect", views.jellyfin_connect, name="jellyfin_connect"),
     path("jellyfin/disconnect", views.jellyfin_disconnect, name="jellyfin_disconnect"),
     path("jellyfin/settings", views.jellyfin_settings, name="jellyfin_settings"),

@@ -19,6 +19,11 @@
          plexLibrariesLoading: {% if plex_account %}true{% else %}false{% endif %},
          plexLiveError: '',
          plexWatchlistSyncEnabled: {% if plex_account and plex_account.watchlist_sync_enabled %}true{% else %}false{% endif %},
+         hasStoredJellyfinAccount: {% if jellyfin_account %}true{% else %}false{% endif %},
+         jellyfinLibraries: JSON.parse('{{ jellyfin_libraries_json|escapejs }}'),
+         jellyfinConnectionState: {% if jellyfin_account %}'checking'{% else %}'disconnected'{% endif %},
+         jellyfinLibrariesLoading: {% if jellyfin_account %}true{% else %}false{% endif %},
+         jellyfinLiveError: '',
          activeModal: null,
          openModal(slug) {
            this.activeModal = slug;
@@ -94,6 +99,97 @@
              label += ' (' + String(section.type).charAt(0).toUpperCase() + String(section.type).slice(1) + ')';
            }
            return label;
+         },
+         jellyfinLibraryLabel(library) {
+           let label = library.title || 'Library';
+           if (library.type) {
+             label += ' (' + String(library.type).charAt(0).toUpperCase() + String(library.type).slice(1) + ')';
+           }
+           return label;
+         },
+         jellyfinStatusBadgeClasses() {
+           if (this.jellyfinConnectionState === 'connected') {
+             return 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30';
+           }
+           if (this.jellyfinConnectionState === 'error') {
+             return 'bg-amber-500/10 text-amber-200 border-amber-400/30';
+           }
+           if (this.jellyfinConnectionState === 'checking') {
+             return 'bg-slate-500/10 text-slate-200 border-slate-400/30';
+           }
+           return 'bg-gray-500/20 text-gray-300 border-gray-600/50';
+         },
+         jellyfinStatusLabel() {
+           if (this.jellyfinConnectionState === 'connected') {
+             return 'Connected';
+           }
+           if (this.jellyfinConnectionState === 'error') {
+             return 'Needs attention';
+           }
+           if (this.jellyfinConnectionState === 'checking') {
+             return 'Checking...';
+           }
+           return 'Disconnected';
+         },
+         async initJellyfinStatus() {
+           if (!this.hasStoredJellyfinAccount) {
+             return;
+           }
+
+           window.requestAnimationFrame(() => {
+             this.checkJellyfinConnection();
+             this.refreshJellyfinLibraries();
+           });
+         },
+         async checkJellyfinConnection() {
+           try {
+             const response = await fetch('{% url "import_data_jellyfin_status" %}', {
+               headers: {
+                 'X-Requested-With': 'XMLHttpRequest'
+               }
+             });
+             const data = await response.json();
+             if (!response.ok) {
+               throw new Error(data.error || 'Could not verify Jellyfin connection.');
+             }
+
+             this.jellyfinConnectionState = data.state || 'error';
+             this.jellyfinLiveError = data.error || '';
+           } catch (error) {
+             this.jellyfinConnectionState = 'error';
+             this.jellyfinLiveError = error.message || 'Could not verify Jellyfin connection.';
+           }
+         },
+         async refreshJellyfinLibraries() {
+           if (!this.hasStoredJellyfinAccount) {
+             return;
+           }
+
+           this.jellyfinLibrariesLoading = true;
+           try {
+             const response = await fetch('{% url "import_data_jellyfin_libraries" %}', {
+               headers: {
+                 'X-Requested-With': 'XMLHttpRequest'
+               }
+             });
+             const data = await response.json();
+             if (!response.ok) {
+               throw new Error(data.error || 'Could not load Jellyfin libraries.');
+             }
+
+             if (Array.isArray(data.libraries)) {
+               this.jellyfinLibraries = data.libraries;
+             }
+             if (data.error && this.jellyfinConnectionState !== 'error') {
+               this.jellyfinLiveError = data.error;
+             }
+           } catch (error) {
+             if (!this.jellyfinLiveError) {
+               this.jellyfinLiveError = error.message || 'Could not load Jellyfin libraries.';
+             }
+           } finally {
+             this.jellyfinLibrariesLoading = false;
+           }
          },
          async initPlexStatus() {
            if (!this.hasStoredPlexAccount) {
@@ -175,7 +271,7 @@
            }
          }
        }"
-       x-init="initPlexStatus()">
+       x-init="initPlexStatus(); initJellyfinStatus()">
 
     {# Import settings #}
     <form hx-post="{% url 'save_import_settings' %}"
@@ -318,6 +414,18 @@
             {% if plex_account %}<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" title="Connected">{% include "app/icons/checkmark.svg" with classes="w-3 h-3" %}</span>{% endif %}
           </div>
           <p class="text-xs text-gray-400 line-clamp-2">Import watch and listen history from Plex.</p>
+        </button>
+
+        <button type="button"
+                @click="openModal('jellyfin')"
+                x-show="sourceSupports(['screen', 'music'])"
+                x-transition.opacity.duration.150ms
+                class="bg-[#39404b] hover:bg-[#454d59] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
+          <div class="flex items-center justify-between">
+            {% source_display "jellyfin" %}
+            {% if jellyfin_account %}<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" title="Connected">{% include "app/icons/checkmark.svg" with classes="w-3 h-3" %}</span>{% endif %}
+          </div>
+          <p class="text-xs text-gray-400 line-clamp-2">Import watched state, ratings and music from Jellyfin.</p>
         </button>
 
         <button type="button"
@@ -733,6 +841,123 @@
             </form>
           {% endif %}
         </div>
+          </div>
+        </div>
+
+        {# Jellyfin #}
+        <div x-show="activeModal === 'jellyfin'"
+             x-cloak
+             @keydown.escape.window="closeModal()"
+             x-transition.opacity.duration.150ms
+             class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div class="modal-max-height overflow-y-auto w-full"
+               style="width: min(96vw, 32rem);"
+               @click.outside="closeModal()">
+            <button type="button"
+                    @click="closeModal()"
+                    class="block w-fit ml-auto mb-2 text-gray-400 hover:text-white cursor-pointer p-1 rounded-md hover:bg-gray-700/70 bg-[#2a2f35]">
+              {% include "app/icons/x.svg" with classes="w-4 h-4" %}
+            </button>
+            <div class="bg-[#39404b] p-4 rounded-lg space-y-3">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center">{% source_display "jellyfin" %}</div>
+                {% if jellyfin_account %}
+                  <div class="flex items-center gap-2">
+                    <span class="px-2 py-1 text-xs rounded border"
+                          :class="jellyfinStatusBadgeClasses()"
+                          x-text="jellyfinStatusLabel()"></span>
+                    <form method="post" action="{% url 'jellyfin_disconnect' %}">
+                      {% csrf_token %}
+                      <button type="submit"
+                              class="px-2 py-1 text-xs rounded bg-slate-500/10 text-slate-200 border border-slate-400/30 hover:bg-slate-500/20 transition-colors cursor-pointer">
+                        Disconnect
+                      </button>
+                    </form>
+                  </div>
+                {% else %}
+                  <span class="px-2 py-1 text-xs rounded bg-gray-500/20 text-gray-300 border border-gray-600/50">Disconnected</span>
+                {% endif %}
+              </div>
+
+              {% if jellyfin_account %}
+                <p class="text-sm text-gray-400">
+                  Import watched movies and episodes, your Jellyfin ratings, unplayed
+                  favorites as Planning, and played music.
+                </p>
+
+                {% if jellyfin_account.playback_reporting_available is False %}
+                  <div class="text-xs text-amber-200 bg-amber-500/10 border border-amber-400/30 rounded p-2">
+                    Jellyfin's Playback Reporting plugin was not detected, so items are
+                    dated from their last-played date rather than their real first-watch
+                    date. Install the plugin for accurate watch dates.
+                  </div>
+                {% endif %}
+
+                <div x-cloak
+                     x-show="jellyfinLiveError"
+                     class="text-xs text-amber-200 bg-amber-500/10 border border-amber-400/30 rounded p-2"
+                     x-text="jellyfinLiveError"></div>
+
+                <form method="post" action="{% url 'import_jellyfin' %}" class="space-y-3">
+                  {% csrf_token %}
+                  <input type="hidden" name="frequency" x-model="importFrequency">
+                  <input type="hidden" name="time" x-model="importTime">
+                  <input type="hidden" name="mode" x-model="importMode">
+                  <input type="hidden" name="next" value="import_data">
+
+                  <div>
+                    <label class="block text-sm text-gray-300 mb-2">Library</label>
+                    <div class="relative">
+                      <select name="library"
+                              class="w-full py-2 px-3 bg-[#2a2f35] rounded-md text-white text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50 appearance-none disabled:opacity-50"
+                              :disabled="jellyfinConnectionState === 'error'">
+                        <option value="all">All libraries</option>
+                        <template x-for="library in jellyfinLibraries" :key="library.id">
+                          <option :value="library.id" x-text="jellyfinLibraryLabel(library)"></option>
+                        </template>
+                      </select>
+                      {% include "app/icons/chevron-down.svg" with classes="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" %}
+                    </div>
+                    <p x-cloak x-show="!jellyfinLibraries.length && jellyfinLibrariesLoading" class="text-xs text-amber-200 mt-1">
+                      Checking Jellyfin libraries...
+                    </p>
+                    <p x-cloak
+                       x-show="!jellyfinLibraries.length && !jellyfinLibrariesLoading"
+                       class="text-xs text-gray-400 mt-1">
+                      No libraries detected yet. All libraries will be imported.
+                    </p>
+                  </div>
+
+                  <button type="submit"
+                          class="w-full px-4 py-2 rounded-md transition-colors text-sm border cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700"
+                          :disabled="jellyfinConnectionState === 'error'">
+                    Import
+                  </button>
+                </form>
+              {% else %}
+                <p class="text-sm text-gray-400">
+                  Connect your Jellyfin server to import watched state, ratings,
+                  favorites and music.
+                </p>
+                <form method="post" action="{% url 'jellyfin_connect' %}" class="space-y-3">
+                  {% csrf_token %}
+                  <input type="hidden" name="next" value="import_data">
+                  <input type="url" name="base_url" required
+                         placeholder="https://jellyfin.example.com"
+                         class="w-full py-2 px-3 bg-[#2a2f35] rounded-md text-white text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                  <input type="password" name="api_key" required
+                         placeholder="API key"
+                         class="w-full py-2 px-3 bg-[#2a2f35] rounded-md text-white text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                  <input type="text" name="username"
+                         placeholder="Jellyfin username (only needed for Dashboard API keys)"
+                         class="w-full py-2 px-3 bg-[#2a2f35] rounded-md text-white text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                  <button type="submit"
+                          class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
+                    Connect Jellyfin
+                  </button>
+                </form>
+              {% endif %}
+            </div>
           </div>
         </div>
 

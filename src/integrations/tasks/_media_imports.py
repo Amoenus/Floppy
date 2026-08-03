@@ -18,6 +18,7 @@ from integrations.imports import (
     helpers,
     hltb,
     imdb,
+    jellyfin,
     kitsu,
     mal,
     mdblist,
@@ -99,6 +100,17 @@ def _run_arr_import(service_name, importer_func, user_id, mode):
         return import_media(importer_func, None, user_id, mode)
     except helpers.MediaImportError as exc:
         logger.warning("%s import failed for user %s: %s", service_name, user_id, exc)
+        return f"{service_name} import failed: {exc}"
+
+
+def _run_media_server_import(service_name, importer_func, library, user_id, mode):
+    """Run a media-server import without surfacing connection failures as tracebacks."""
+    try:
+        return import_media(importer_func, library, user_id, mode)
+    except helpers.MediaImportError as exc:
+        logger.warning(
+            "%s import failed for user %s: %s", service_name, user_id, exc
+        )
         return f"{service_name} import failed: {exc}"
 
 
@@ -267,6 +279,20 @@ def import_storygraph(file, user_id, mode):
 def import_plex(library, user_id, mode, username=None):
     """Celery task for importing media data from Plex."""
     return import_media(plex.importer, library, user_id, mode)
+
+
+@shared_task(name="Import from Jellyfin")
+def import_jellyfin(library, user_id, mode, username=None):
+    """Celery task for importing watched state from Jellyfin."""
+    return _run_media_server_import("Jellyfin", jellyfin.importer, library, user_id, mode)
+
+
+@shared_task(name="Import from Jellyfin (Recurring)")
+def import_jellyfin_recurring(user_id, library="all"):
+    """Recurring import task for Jellyfin."""
+    return _run_media_server_import(
+        "Jellyfin", jellyfin.importer, library, user_id, "new"
+    )
 
 
 @shared_task(name="Import from Radarr")
