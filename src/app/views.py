@@ -746,6 +746,7 @@ def progress_edit(request, media_type, instance_id):
     )
 
 
+@login_not_required
 @never_cache
 @require_GET
 def episode_details(
