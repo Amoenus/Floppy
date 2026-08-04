@@ -81,11 +81,11 @@
                     {% endif %}
 
                     {% if user_media.start_date %}
-                      <div class="text-xs text-gray-400">Started: {{ user_media.start_date|user_date_format:user }}</div>
+                      <div class="text-xs text-gray-400">Started: {{ user_media.start_date|datetime_format:user }}</div>
                     {% endif %}
 
                     {% if user_media.end_date %}
-                      <div class="text-xs text-gray-400">Finished: {{ user_media.end_date|user_date_format:user }}</div>
+                      <div class="text-xs text-gray-400">Finished: {{ user_media.end_date|datetime_format:user }}</div>
                     {% endif %}
 
                     {% if user_media.notes %}

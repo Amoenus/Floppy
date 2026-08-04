@@ -10,10 +10,10 @@
       {% if first.dropped and watched == 0 %}
         Dropped
       {% else %}
-        {% if first.start_date %}Started: {{ first.start_date|user_date_format:user }} •{% endif %}
+        {% if first.start_date %}Started: {{ first.start_date|datetime_format:user }} •{% endif %}
         Ended:
         {% if first.end_date %}
-          {{ first.end_date|user_date_format:user }}
+          {{ first.end_date|datetime_format:user }}
         {% else %}
           No date provided
         {% endif %}

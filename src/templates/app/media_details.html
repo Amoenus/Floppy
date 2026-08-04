@@ -74,11 +74,11 @@
                       <span class="mx-2 text-gray-600">•</span>
                       <span class="text-sm font-medium text-gray-400">
                         {% if current_instance.start_date and current_instance.end_date %}
-                          {{ current_instance.start_date|user_date_format:user }} - {{ current_instance.end_date|user_date_format:user }}
+                          {{ current_instance.start_date|datetime_format:user }} - {{ current_instance.end_date|datetime_format:user }}
                         {% elif current_instance.start_date %}
-                          {{ current_instance.start_date|user_date_format:user }}
+                          {{ current_instance.start_date|datetime_format:user }}
                         {% else %}
-                          {{ current_instance.end_date|user_date_format:user }}
+                          {{ current_instance.end_date|datetime_format:user }}
                         {% endif %}
                       </span>
                     {% endif %}
@@ -95,11 +95,11 @@
                       <span class="mx-2 text-gray-600">•</span>
                       <span class="text-sm font-medium text-gray-400">
                         {% if current_instance.start_date and current_instance.end_date %}
-                          {{ current_instance.start_date|user_date_format:user }} - {{ current_instance.end_date|user_date_format:user }}
+                          {{ current_instance.start_date|datetime_format:user }} - {{ current_instance.end_date|datetime_format:user }}
                         {% elif current_instance.start_date %}
-                          {{ current_instance.start_date|user_date_format:user }}
+                          {{ current_instance.start_date|datetime_format:user }}
                         {% else %}
-                          {{ current_instance.end_date|user_date_format:user }}
+                          {{ current_instance.end_date|datetime_format:user }}
                         {% endif %}
                       </span>
                     {% endif %}

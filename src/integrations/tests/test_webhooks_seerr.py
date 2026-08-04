@@ -7,10 +7,11 @@ from app.models import TV, Item, Movie, Status
 from users.models import User
 
 
-class JellyseerrWebhookTests(TestCase):
+class SeerrWebhookTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username="john", password="pw")
         self.user.token = "x" * 32
+        # kept: unrenamed model fields (see plan)
         self.user.jellyseerr_enabled = True
         self.user.jellyseerr_trigger_statuses = (
             "PENDING,PROCESSING,AVAILABLE,PARTIALLY_AVAILABLE"
@@ -20,6 +21,7 @@ class JellyseerrWebhookTests(TestCase):
         self.user.save()
 
     def _url(self, token=None):
+        # kept: unrenamed URL name (see plan)
         return reverse("jellyseerr_webhook", kwargs={"token": token or self.user.token})
 
     def test_invalid_token_returns_401(self):
