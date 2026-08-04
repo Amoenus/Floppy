@@ -1610,12 +1610,14 @@ def update_plex_webhook_libraries(request):
     return redirect(redirect_target)
 
 
+# kept: URL name, matches urls.py route (see plan)
 @login_required
 @require_POST
 def update_jellyseerr_settings(request):
-    """Update Jellyseerr integration settings for the current user."""
+    """Update Seerr integration settings for the current user."""
     user = request.user
 
+    # kept: reads/writes the unrenamed jellyseerr_* model fields
     raw_enabled = request.POST.get("jellyseerr_enabled")
     if raw_enabled is None:
         enabled = False
@@ -1638,7 +1640,7 @@ def update_jellyseerr_settings(request):
         default_status = Status.PLANNING.value
 
     # Normalize trigger statuses: "pending, processing" -> "PENDING,PROCESSING"
-    valid_jellyseerr_statuses = {
+    valid_seerr_statuses = {
         "UNKNOWN",
         "PENDING",
         "PROCESSING",
@@ -1648,14 +1650,14 @@ def update_jellyseerr_settings(request):
 
     if raw_trigger:
         tokens = [t.strip().upper() for t in raw_trigger.split(",") if t.strip()]
-        unknown = [t for t in tokens if t not in valid_jellyseerr_statuses]
+        unknown = [t for t in tokens if t not in valid_seerr_statuses]
         if unknown:
             messages.error(
                 request,
-                "Jellyseerr trigger statuses contain invalid values: "
+                "Seerr trigger statuses contain invalid values: "
                 + ", ".join(unknown)
                 + ". Valid: "
-                + ", ".join(sorted(valid_jellyseerr_statuses)),
+                + ", ".join(sorted(valid_seerr_statuses)),
             )
             return redirect(request.META.get("HTTP_REFERER", "/settings/integrations"))
         trigger_statuses = ",".join(tokens)
@@ -1684,7 +1686,7 @@ def update_jellyseerr_settings(request):
         ],
     )
 
-    messages.success(request, "Jellyseerr settings saved.")
+    messages.success(request, "Seerr settings saved.")
     return redirect(request.META.get("HTTP_REFERER", "/settings/integrations"))
 
 

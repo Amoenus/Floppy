@@ -96,6 +96,7 @@ urlpatterns = [
         views.update_jellyfin_webhook_events,
         name="update_jellyfin_webhook_events",
     ),
+    # kept: URL path/name unchanged, matches views.py route (see plan)
     path(
         "settings/integrations/jellyseerr/",
         views.update_jellyseerr_settings,

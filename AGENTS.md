@@ -264,7 +264,7 @@ Current app areas to preserve while merging:
 - Progress, history, and statistics: time-left sorting, time-watched views, history filters, cached range stats, Top Played, media-hours cards, reading/music/podcast stats, comparison tooling, and dropped-show fixes.
 - Lists and sharing: public/private lists, smart lists, public profiles, recommendations, list tags, drag-and-drop ordering, release-date sorting, completion indicators, RSS/JSON feeds, and backup export/import.
 - Media coverage and collection: music, podcasts, books, comics, manga, games, board games, collection/owned-media flows, person/author pages, localized titles, runtime chips, and grouped-anime handling.
-- Integrations, imports, and webhooks: Trakt, Plex, Jellyfin, Jellyseerr, Pocket Casts, Last.fm, Audiobookshelf, TVDB, Steam, Plex-only GUID handling, TMDB episode edge cases, SQLite lock handling during import, and auto-pause for stale in-progress items.
+- Integrations, imports, and webhooks: Trakt, Plex, Jellyfin, Seerr, Pocket Casts, Last.fm, Audiobookshelf, TVDB, Steam, Plex-only GUID handling, TMDB episode edge cases, SQLite lock handling during import, and auto-pause for stale in-progress items.
 - UI, mobile, and performance: mobile layouts, compact grids, filter controls, media card/timeline styling, statistics layout refinements, quick season updates, runtime/history caching, startup guards, and iOS/SQLite resiliency.
 - Preferences and settings: sort-direction toggles/indicators, ratings-list sort fixes, aggregate-duplicates behavior, subtitle/date-time/rating-scale preferences, and visibility/sidebar/search settings.
 - Deployment and install: Docker build improvements, Redis-unavailability guard in AppConfig.ready(), and README/install updates.

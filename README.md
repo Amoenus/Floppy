@@ -84,7 +84,7 @@ Floppy combines the jobs people often split between a watchlist, a media diary, 
 - **Discover**: personalized recommendation rows that improve with use: genre, studio, cast, and tag affinity built from your library; not-interested and hide feedback that sticks; background refresh so rows stay current, individually refreshable from the UI, not a static recommendations page.
 - **History and statistics**: history is a filterable feed with month navigation, media-type and genre filters, inline duplicate-play cleanup, and a delete flow; statistics offer explicit refresh, compare mode, custom date ranges, top-talent breakdowns, and per-type splits covering TV, film, music, podcasts, and reading with pages read, top authors, reading streaks, and listening time.
 - **Lists: public, social, and smart**: public and private lists, custom slugs, public profile pages; RSS and JSON feeds per list; smart-list rules for collection status, release state, platform, origin, author, and tags; recommendations with approval flow; list completion percentages and media-type breakdowns in the index; Trakt list and watchlist import; sort by rating, progress, release date, last watched, or custom manual order.
-- **Integration coverage**: Plex full library import, watchlist sync, and ratings sync; Pocket Casts account sync; Last.fm history import and live poll; Audiobookshelf account import; Radarr and Sonarr scheduled library sync; Jellyseerr webhook auto-add, each with dedicated settings and status display.
+- **Integration coverage**: Plex full library import, watchlist sync, and ratings sync; Pocket Casts account sync; Last.fm history import and live poll; Audiobookshelf account import; Radarr and Sonarr scheduled library sync; Seerr webhook auto-add, each with dedicated settings and status display.
 
 ### Beyond the basics
 
@@ -104,7 +104,7 @@ Floppy combines the jobs people often split between a watchlist, a media diary, 
 - **Better search and add flows**: music-native search that creates artist and album entries from search results; improved anime and localized-title search results.
 - **Deeper filters**: rated and unrated, collected and not collected, caught-up and not-caught-up, no-status, language, country, platform, origin, format, author, tag inclusion, and tag exclusion; smart-list rules use the same expanded vocabulary, making them meaningfully programmable.
 - **More reliable under load**: WAL mode and timeout configuration for SQLite; retry logic for lock and I/O failures; prioritized background task queues for a smoother experience with large libraries.
-- **Integration settings and import UX**: import history and status visible per integration in settings; watchlist-only and collection-update-only import modes; Jellyseerr allowed usernames and defaults persisted as preferences; per-user Plex webhook library selection.
+- **Integration settings and import UX**: import history and status visible per integration in settings; watchlist-only and collection-update-only import modes; Seerr allowed usernames and defaults persisted as preferences; per-user Plex webhook library selection.
 
 ### Also included
 

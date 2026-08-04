@@ -332,6 +332,7 @@ class HomeScreenRowTypeChoices(models.TextChoices):
     RECENTLY_UNRATED = "recently_unrated", "Recently Played - Not Rated"
 
 
+# kept: unrenamed model field/class names and help_text below (avoids a migration; see plan)
 class JellyseerrDefaultAddedStatusChoices(models.TextChoices):
     """Choices for status applied to media added via Jellyseerr webhook."""
 

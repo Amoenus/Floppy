@@ -102,11 +102,11 @@
           Stremio
         </button>
         <button type="button"
-                @click="activeIntegration = 'jellyseerr'"
-                :aria-pressed="activeIntegration === 'jellyseerr'"
+                @click="activeIntegration = 'seerr'"
+                :aria-pressed="activeIntegration === 'seerr'"
                 class="px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer"
-                :class="activeIntegration === 'jellyseerr' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[#2a2f35] text-gray-300 border-gray-600 hover:border-indigo-500 hover:text-white'">
-          Jellyseerr
+                :class="activeIntegration === 'seerr' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[#2a2f35] text-gray-300 border-gray-600 hover:border-indigo-500 hover:text-white'">
+          Seerr
         </button>
       </div>
     </div>
@@ -727,18 +727,19 @@
       </div>
     </div>
 
-    {# Jellyseerr #}
+    {# Seerr #}
     <div class="bg-[#39404b] p-5 rounded-lg mb-6"
-         x-show="activeIntegration === 'all' || activeIntegration === 'jellyseerr'"
+         x-show="activeIntegration === 'all' || activeIntegration === 'seerr'"
          x-transition.opacity.duration.150ms>
       <div class="flex items-center mb-3">
         {% include "app/icons/server.svg" with classes="w-5 h-5 text-indigo-400 mr-2" %}
-        <h3 class="text-base font-medium">Jellyseerr Integration</h3>
+        <h3 class="text-base font-medium">Seerr Integration</h3>
       </div>
-      <p class="text-gray-400 mb-4 text-sm">Use a Jellyseerr webhook to automatically add requested/approved media into Floppy.</p>
+      <p class="text-gray-400 mb-4 text-sm">Use a Seerr webhook to automatically add requested/approved media into Floppy.</p>
 
       <div class="bg-[#262a2f] p-4 rounded-md mb-4">
-        <h4 class="text-sm font-medium mb-3">Jellyseerr Settings</h4>
+        <h4 class="text-sm font-medium mb-3">Seerr Settings</h4>
+        {# kept: jellyseerr_* form fields map to unrenamed User model fields #}
         <form method="post" action="{% url 'update_jellyseerr_settings' %}" class="space-y-3">
           {% csrf_token %}
 
@@ -747,14 +748,14 @@
               Auto-add requested media
             </label>
             <p class="text-gray-400 text-sm mb-2">
-              Controls whether Jellyseerr webhooks are allowed to add items to your Floppy list.
+              Controls whether Seerr webhooks are allowed to add items to your Floppy list.
             </p>
 
             <div class="relative"
                 x-data="{
                   open: false,
                   selectedValue: '{{ request.user.jellyseerr_enabled|yesno:'enabled,disabled' }}',
-                  selectedLabel: '{{ request.user.jellyseerr_enabled|yesno:"Enabled - Allow Jellyseerr to automatically add media,Disabled - Do not allow Jellyseerr to add media" }}'
+                  selectedLabel: '{{ request.user.jellyseerr_enabled|yesno:"Enabled - Allow Seerr to automatically add media,Disabled - Do not allow Seerr to add media" }}'
                 }">
               <button type="button"
                       @click="open = !open"
@@ -784,14 +785,14 @@
                   x-transition:leave-end="transform opacity-0 scale-95"
                   class="absolute left-0 right-0 mt-2 py-1 bg-[#272c31] rounded-md shadow-lg overflow-hidden z-10 border border-gray-600">
                 <button type="button"
-                        @click="selectedValue = 'enabled'; selectedLabel = 'Enabled - Allow Jellyseerr to automatically add media'; open = false"
+                        @click="selectedValue = 'enabled'; selectedLabel = 'Enabled - Allow Seerr to automatically add media'; open = false"
                         class="block w-full px-3 py-2 text-left text-sm transition-colors text-gray-300 hover:bg-[#39404b] hover:text-white">
-                  Enabled - Allow Jellyseerr to automatically add media
+                  Enabled - Allow Seerr to automatically add media
                 </button>
                 <button type="button"
-                        @click="selectedValue = 'disabled'; selectedLabel = 'Disabled - Do not allow Jellyseerr to add media'; open = false"
+                        @click="selectedValue = 'disabled'; selectedLabel = 'Disabled - Do not allow Seerr to add media'; open = false"
                         class="block w-full px-3 py-2 text-left text-sm transition-colors text-gray-300 hover:bg-[#39404b] hover:text-white">
-                  Disabled - Do not allow Jellyseerr to add media
+                  Disabled - Do not allow Seerr to add media
                 </button>
               </div>
 
@@ -821,7 +822,7 @@
 
           <div>
             <label for="jellyseerr_allowed_usernames" class="block text-gray-200 text-sm font-medium mb-1">
-              Allowed Jellyseerr usernames (comma-separated)
+              Allowed Seerr usernames (comma-separated)
             </label>
             <p class="text-gray-400 text-sm mb-2">
               Leave blank to allow any requester. If set, only those usernames can trigger adds.
@@ -895,39 +896,40 @@
       <div class="bg-[#262a2f] p-4 rounded-md">
         <h4 class="text-sm font-medium mb-3">Setup Instructions</h4>
         <ol class="list-decimal list-inside space-y-2 text-sm text-gray-300">
-          <li>In Jellyseerr, go to <strong>Settings > Notifications > Webhook</strong>.</li>
+          <li>In Seerr, go to <strong>Settings > Notifications > Webhook</strong>.</li>
           <li>Create a webhook with method <strong>POST</strong> and content type <strong>application/json</strong>.</li>
           <li>
             Set the webhook URL to:
             {# djlint:off #}
+            {# kept: URL name unchanged to avoid breaking configured webhook URLs #}
             <div class="mt-2 inline-flex items-center gap-2 w-[calc(100%-30px)]">
               <input readonly
-                     id="jellyseerr-webhook-url"
+                     id="seerr-webhook-url"
                      class="w-full bg-[#262a2f] rounded-md text-gray-400 text-sm border-0 focus:ring-0 outline-none font-mono"
                      type="text"
                      value="{% url 'jellyseerr_webhook' request.user.token as jellyseerr_webhook_path %}{% absolute_app_url jellyseerr_webhook_path %}">
               <span class="flex items-center cursor-pointer group"
                     title="Copy"
-                    data-copy-target="#jellyseerr-webhook-url">
+                    data-copy-target="#seerr-webhook-url">
                 {% include "app/icons/copy.svg" with classes="w-5 h-5 text-gray-400 group-hover:text-indigo-400 transition-colors" %}
               </span>
             </div>
             {# djlint:on #}
           </li>
           <li>
-            Paste this <strong>JSON Payload</strong> template into Jellyseerr:
+            Paste this <strong>JSON Payload</strong> template into Seerr:
             <div class="bg-[#39404b] p-4 rounded-lg mt-2">
               <div class="flex items-center justify-end mb-2">
                 <span class="flex items-center cursor-pointer group"
                       title="Copy"
                       role="button"
                       aria-label="Copy JSON template"
-                      data-copy-target="#jellyseerr-json-template">
+                      data-copy-target="#seerr-json-template">
                   {% include "app/icons/copy.svg" with classes="w-5 h-5 text-gray-400 group-hover:text-indigo-400 transition-colors" %}
                 </span>
               </div>
               <textarea readonly
-                        id="jellyseerr-json-template"
+                        id="seerr-json-template"
                         class="w-full bg-[#262a2f] rounded-md text-gray-300 text-sm border-0 focus:ring-0 outline-none font-mono p-3 resize-none overflow-auto max-h-72"
                         rows="7">{% verbatim %}
 {
@@ -938,9 +940,9 @@
 }
 {% endverbatim %}</textarea>
               <p class="text-gray-400 text-sm mt-3">
-                Important: Jellyseerr's default payload will not work with Floppy. You must use the template above.
+                Important: Seerr's default payload will not work with Floppy. You must use the template above.
                 If you see logs like <code class="px-1 rounded bg-black/30">unsupported media_type='{media_type}'</code>,
-                Jellyseerr is sending the literal template (it was pasted/escaped incorrectly).
+                Seerr is sending the literal template (it was pasted/escaped incorrectly).
               </p>
             </div>
           </li>
@@ -953,13 +955,13 @@
           <h4 class="text-sm font-medium mb-3">Global Webhook (multi-user households)</h4>
           <p class="text-gray-400 mb-3 text-sm">
             Seerr only supports one webhook per instance. If multiple Floppy users share the same
-            Jellyseerr/Overseerr instance, point Seerr at this single global URL instead of a per-user one.
+            Seerr/Overseerr instance, point Seerr at this single global URL instead of a per-user one.
             Floppy matches each incoming request's requester username against every user's
-            <strong>Allowed Jellyseerr usernames</strong> above, so each user must still enable
+            <strong>Allowed Seerr usernames</strong> above, so each user must still enable
             "Auto-add requested media" and list their own Seerr username there.
           </p>
           <ol class="list-decimal list-inside space-y-2 text-sm text-gray-300">
-            <li>In Jellyseerr, go to <strong>Settings > Notifications > Webhook</strong>.</li>
+            <li>In Seerr, go to <strong>Settings > Notifications > Webhook</strong>.</li>
             <li>Create a webhook with method <strong>POST</strong> and content type <strong>application/json</strong>.</li>
             <li>
               Set the webhook URL to:
@@ -979,7 +981,7 @@
               {# djlint:on #}
             </li>
             <li>
-              Paste this <strong>JSON Payload</strong> template into Jellyseerr, replacing
+              Paste this <strong>JSON Payload</strong> template into Seerr, replacing
               <code class="px-1 rounded bg-black/30">REPLACE_WITH_SHARED_SECRET</code> with the value your
               administrator configured in <code class="px-1 rounded bg-black/30">SEERR_GLOBAL_WEBHOOK_SECRET</code>:
               <div class="bg-[#39404b] p-4 rounded-lg mt-2">

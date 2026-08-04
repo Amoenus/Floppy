@@ -13,7 +13,7 @@ WEBHOOK_PROCESSORS = {
     "plex": "integrations.webhooks.plex.PlexWebhookProcessor",
     "jellyfin": "integrations.webhooks.jellyfin.JellyfinWebhookProcessor",
     "emby": "integrations.webhooks.emby.EmbyWebhookProcessor",
-    "jellyseerr": "integrations.webhooks.jellyseerr.JellyseerrWebhookProcessor",
+    "seerr": "integrations.webhooks.seerr.SeerrWebhookProcessor",
     "kodi": "integrations.webhooks.kodi.KodiWebhookProcessor",
     "stremio": "integrations.webhooks.stremio.StremioWebhookProcessor",
 }

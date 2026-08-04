@@ -62,8 +62,9 @@ class WebhookViewEnqueueTests(TestCase):
         mock_delay.assert_called_once_with("emby", payload, self.user.id)
 
     @patch("integrations.tasks.process_webhook.delay")
-    def test_jellyseerr_enqueues_task(self, mock_delay):
-        """A valid Jellyseerr payload is enqueued with the parsed payload."""
+    def test_seerr_enqueues_task(self, mock_delay):
+        """A valid Seerr payload is enqueued with the parsed payload."""
+        # kept: unrenamed URL name (see plan)
         url = reverse("jellyseerr_webhook", kwargs={"token": "hook-token"})
         payload = {"notification_type": "MEDIA_APPROVED"}
         response = self.client.post(
@@ -72,7 +73,7 @@ class WebhookViewEnqueueTests(TestCase):
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 200)
-        mock_delay.assert_called_once_with("jellyseerr", payload, self.user.id)
+        mock_delay.assert_called_once_with("seerr", payload, self.user.id)
 
     @patch("integrations.tasks.process_webhook.delay")
     def test_invalid_token_does_not_enqueue(self, mock_delay):
