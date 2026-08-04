@@ -1370,3 +1370,41 @@ class HomeScreenViewTests(TestCase):
             next(result for result in results if result["id"] == smart.id)["is_smart"]
         )
         self.assertEqual(len(returned_ids), 2)
+
+
+class HomeScreenRandomSortTests(TestCase):
+    """Tests for the Random sort option."""
+
+    def test_get_allowed_sort_choices_includes_random(self):
+        for row_type in HomeScreenRowTypeChoices.values:
+            choices = home_screen.get_allowed_sort_choices(
+                MediaTypes.GAME.value, row_type
+            )
+            self.assertIn(
+                HomeSortChoices.RANDOM.value,
+                {choice["value"] for choice in choices},
+            )
+
+    def test_sort_home_entries_random_returns_same_entries(self):
+        items = [
+            Item.objects.create(
+                title=f"Random Game {i}",
+                media_id=f"home-random-game-{i}",
+                media_type=MediaTypes.GAME.value,
+                source=Sources.IGDB.value,
+                image="https://example.com/game.jpg",
+            )
+            for i in range(5)
+        ]
+        entries = [home_screen.HomeRowEntry(item=item) for item in items]
+
+        result = home_screen.sort_home_entries(
+            entries, HomeSortChoices.RANDOM.value, DirectionChoices.DESC
+        )
+
+        self.assertCountEqual(result, entries)
+
+    def test_resolve_home_row_direction_random_does_not_raise(self):
+        direction = home_screen.resolve_home_row_direction(HomeSortChoices.RANDOM.value)
+
+        self.assertIn(direction, DirectionChoices.values)

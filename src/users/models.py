@@ -59,6 +59,7 @@ class HomeSortChoices(models.TextChoices):
     COMPLETION = "completion", "Completion"
     EPISODES_LEFT = "episodes_left", "Episodes Left"
     TITLE = "title", "Title"
+    RANDOM = "random", "Random"
 
 
 class MediaSortChoices(models.TextChoices):
