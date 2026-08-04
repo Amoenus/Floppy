@@ -292,6 +292,26 @@
                             @click="trackOpen = true">
                       {% include "app/icons/edit.svg" with classes="w-4 h-4" %}
                     </button>
+                  {% elif media|safe_attr:"home_music_card" and media.album %}
+                    <button class="p-2.5 bg-indigo-600 text-white rounded-full hover:bg-indigo-500 hover:scale-110 hover:shadow-[0_0_15px_rgba(99,102,241,0.5)] transition-all duration-200 cursor-pointer"
+                            title="Edit tracking"
+                            hx-get="{% url 'album_track_modal' media.album.id %}"
+                            hx-vals='{"return_url": "{{ request.get_full_path|urlencode }}"}'
+                            hx-target="#album-track-modal-{{ media.album.id }}"
+                            hx-trigger="click once"
+                            @click="trackOpen = true">
+                      {% include "app/icons/edit.svg" with classes="w-4 h-4" %}
+                    </button>
+                  {% elif media|safe_attr:"home_music_card" and media.artist %}
+                    <button class="p-2.5 bg-indigo-600 text-white rounded-full hover:bg-indigo-500 hover:scale-110 hover:shadow-[0_0_15px_rgba(99,102,241,0.5)] transition-all duration-200 cursor-pointer"
+                            title="Edit tracking"
+                            hx-get="{% url 'artist_track_modal' media.artist.id %}"
+                            hx-vals='{"return_url": "{{ request.get_full_path|urlencode }}"}'
+                            hx-target="#artist-track-modal-{{ media.artist.id }}"
+                            hx-trigger="click once"
+                            @click="trackOpen = true">
+                      {% include "app/icons/edit.svg" with classes="w-4 h-4" %}
+                    </button>
                   {% else %}
                     <button class="p-2.5 bg-indigo-600 text-white rounded-full hover:bg-indigo-500 hover:scale-110 hover:shadow-[0_0_15px_rgba(99,102,241,0.5)] transition-all duration-200 cursor-pointer"
                             title="Add to tracker"
@@ -679,6 +699,10 @@
                @click.outside="trackOpen = false">
             {% if use_podcast_show|default:False and podcast_show %}
               <div id="podcast-show-track-modal-{{ podcast_show.id }}-{{ media.id }}"></div>
+            {% elif media|safe_attr:"home_music_card" and media.album %}
+              <div id="album-track-modal-{{ media.album.id }}"></div>
+            {% elif media|safe_attr:"home_music_card" and media.artist %}
+              <div id="artist-track-modal-{{ media.artist.id }}"></div>
             {% else %}
               <div id="{% component_id 'track' item media.id %}"></div>
             {% endif %}

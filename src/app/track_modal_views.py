@@ -1,6 +1,7 @@
 from datetime import UTC, date
 from uuid import uuid4
 
+from django.apps import apps
 from django.conf import settings
 from django.shortcuts import render
 from django.urls import reverse
@@ -247,11 +248,16 @@ def _render_standard_track_modal(
     """Build and render the standard media track modal context."""
     instance_id = request.GET.get("instance_id") or request.POST.get("instance_id")
     if instance_id:
-        media = BasicMedia.objects.get_media(
-            request.user,
-            media_type,
-            instance_id,
-        )
+        model = apps.get_model(app_label="app", model_name=media_type)
+        try:
+            media = BasicMedia.objects.get_media(
+                request.user,
+                media_type,
+                instance_id,
+            )
+        except model.DoesNotExist:
+            media = None
+            instance_id = None
     elif request.GET.get("is_create"):
         media = None
     else:
