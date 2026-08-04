@@ -79,7 +79,7 @@ class SeasonModel(TestCase):
         self.assertEqual(self.season.progress, 2)
 
     def test_completed_episode_count(self):
-        """Test completed episode count ignores duplicates and incomplete plays."""
+        """Test completed episode count ignores duplicates and non-completed plays."""
         item_ep2 = Item.objects.get(
             media_id="1668",
             source=Sources.TMDB.value,
@@ -93,6 +93,7 @@ class SeasonModel(TestCase):
             end_date=datetime(2023, 6, 3, 0, 0, tzinfo=UTC),
         )
 
+        # Completed with no end_date still counts (issue #498).
         item_ep3 = Item.objects.create(
             media_id="1668",
             source=Sources.TMDB.value,
@@ -108,7 +109,24 @@ class SeasonModel(TestCase):
             end_date=None,
         )
 
-        self.assertEqual(self.season.completed_episode_count, 2)
+        # Not-yet-watched status doesn't count, even with an end_date set.
+        item_ep4 = Item.objects.create(
+            media_id="1668",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="The One After",
+            image="http://example.com/image.jpg",
+            season_number=1,
+            episode_number=4,
+        )
+        Episode.objects.create(
+            item=item_ep4,
+            related_season=self.season,
+            end_date=datetime(2023, 6, 4, 0, 0, tzinfo=UTC),
+            status=Status.PLANNING.value,
+        )
+
+        self.assertEqual(self.season.completed_episode_count, 3)
         self.assertEqual(self.season.progress, 3)
 
     def test_progress_first_watch_with_gap(self):

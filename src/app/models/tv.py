@@ -660,7 +660,7 @@ class Season(Media):
 
         for ep in episodes:
             ep_num = ep.item.episode_number
-            if ep.end_date is not None:
+            if ep.status == Status.COMPLETED.value:
                 episode_counts[ep_num] = episode_counts.get(ep_num, 0) + 1
                 completed_episode_numbers.add(ep_num)
             if (
