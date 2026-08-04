@@ -207,6 +207,19 @@
         {% endif %}
       </div>
 
+      {% if media.genres %}
+        {% url 'medialist' media_type=parent_media_type|default:media_type as genre_list_url %}
+        <h2 class="text-xl font-bold mb-4 mt-6">Genres</h2>
+        <div class="bg-[#2a2f35] p-4 rounded-lg text-center md:text-start">
+          <div class="flex flex-wrap gap-2 justify-center md:justify-start">
+            {% for genre in media.genres %}
+              <a href="{{ genre_list_url }}?genre={{ genre|urlencode }}"
+                 class="inline-flex h-6 items-center rounded-full border border-violet-400/18 bg-violet-500/[0.07] px-2.5 text-xs font-medium text-violet-100 hover:bg-violet-500/[0.15] transition-colors duration-200">{{ genre }}</a>
+            {% endfor %}
+          </div>
+        </div>
+      {% endif %}
+
       {% if studios_linked %}
         <h2 class="text-xl font-bold mb-4 mt-6">Studios</h2>
         <div class="bg-[#2a2f35] p-4 rounded-lg text-center md:text-start">

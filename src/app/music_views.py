@@ -899,6 +899,7 @@ def _render_music_album_details(request, artist, album):
         request.user,
         fallback_genres=album.genres,
         fallback_implied_genres=album.implied_genres,
+        genre_list_media_type=MediaTypes.MUSIC.value,
     )
 
     context = {

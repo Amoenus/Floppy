@@ -2040,6 +2040,7 @@ def media_details(
             media_metadata,
             detail_item,
             request.user,
+            genre_list_media_type=media_type,
         ),
         "detail_tag_preview_genres_json": json.dumps(
             _resolve_detail_tag_genres(media_metadata, detail_item)

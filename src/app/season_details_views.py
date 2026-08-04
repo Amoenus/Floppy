@@ -856,6 +856,7 @@ def season_details(
             season_metadata,
             season_item,
             request.user,
+            genre_list_media_type=parent_media_type,
         ),
         "detail_tag_preview_genres_json": json.dumps(
             _resolve_detail_tag_genres(season_metadata, season_item)

@@ -8,7 +8,12 @@
         {% if detail_tag_section.entries %}
           <div class="flex flex-wrap gap-2">
             {% for detail_tag in detail_tag_section.entries %}
-              <span class="inline-flex h-8 items-center rounded-full border px-3 text-sm font-medium shadow-sm {{ detail_tag.chip_classes }}">{{ detail_tag.label }}</span>
+              {% if detail_tag.url %}
+                <a href="{{ detail_tag.url }}"
+                   class="inline-flex h-8 items-center rounded-full border px-3 text-sm font-medium shadow-sm transition-colors duration-200 hover:brightness-110 {{ detail_tag.chip_classes }}">{{ detail_tag.label }}</a>
+              {% else %}
+                <span class="inline-flex h-8 items-center rounded-full border px-3 text-sm font-medium shadow-sm {{ detail_tag.chip_classes }}">{{ detail_tag.label }}</span>
+              {% endif %}
             {% endfor %}
           </div>
         {% elif detail_tag_section.empty_label %}
