@@ -139,7 +139,7 @@ def _fetch_episode_data(
     """Query and return episode records for history, applying all active filters."""
     if not (
         not media_type_filter
-        or media_type_filter == MediaTypes.TV.value
+        or MediaTypes.TV.value in media_type_filter
         or filters.get("tv")
         or filters.get("season")
         or season_number_filter is not None
@@ -271,7 +271,7 @@ def _fetch_episode_data(
         target_media_id
         and target_source
         and (
-            media_type_filter == MediaTypes.TV.value
+            MediaTypes.TV.value in media_type_filter
             or filters.get("tv")
             or filters.get("season")
             or season_number_filter is not None
@@ -320,7 +320,7 @@ def _fetch_movie_data(
     if (
         target_media_id
         and target_source
-        and media_type_filter == MediaTypes.MOVIE.value
+        and MediaTypes.MOVIE.value in media_type_filter
     ):
         movies_qs = movies_qs.filter(
             item__media_id=target_media_id,
@@ -363,8 +363,8 @@ def _build_reading_entries(
     filter, or — for the reading types only — an author/person filter.
     """
     has_person_filter = bool(person_source_filter and person_id_filter)
-    has_reading_media_type_filter = media_type_filter in reading_media_types
-    has_anime_filter = media_type_filter == MediaTypes.ANIME.value
+    has_reading_media_type_filter = bool(media_type_filter & reading_media_types)
+    has_anime_filter = MediaTypes.ANIME.value in media_type_filter
     if not (
         process_all
         or has_person_filter
@@ -394,7 +394,7 @@ def _build_reading_entries(
     }
     entries = []
     for reading_media_type, model in reading_model_map.items():
-        if media_type_filter and media_type_filter != reading_media_type:
+        if media_type_filter and reading_media_type not in media_type_filter:
             continue
         if (
             reading_media_type == MediaTypes.ANIME.value
@@ -413,7 +413,7 @@ def _build_reading_entries(
         targets_this_media = (
             target_media_id
             and target_source
-            and media_type_filter == reading_media_type
+            and reading_media_type in media_type_filter
         )
         if targets_this_media:
             queryset = queryset.filter(
@@ -961,7 +961,9 @@ def build_history_days(
         game_logging_style,
     )
 
-    media_type_filter = filters.get("media_type")
+    media_type_filter = {
+        t.strip() for t in (filters.get("media_type") or "").split(",") if t.strip()
+    }
     target_media_id = filters.get("media_id")
     target_source = filters.get("source")
     season_number_filter = filters.get("season_number")
@@ -1046,11 +1048,11 @@ def build_history_days(
         .order_by("-end_date", "-created_at")
     )
     if target_media_id and target_source:
-        if media_type_filter == MediaTypes.GAME.value:
+        if MediaTypes.GAME.value in media_type_filter:
             games = games.filter(
                 item__media_id=target_media_id, item__source=target_source
             )
-        if media_type_filter == MediaTypes.BOARDGAME.value:
+        if MediaTypes.BOARDGAME.value in media_type_filter:
             boardgames = boardgames.filter(
                 item__media_id=target_media_id, item__source=target_source
             )
@@ -1094,7 +1096,7 @@ def build_history_days(
     if (
         target_media_id
         and target_source
-        and media_type_filter == MediaTypes.MUSIC.value
+        and MediaTypes.MUSIC.value in media_type_filter
     ):
         music_entries = music_entries.filter(
             item__media_id=target_media_id,
@@ -1141,7 +1143,7 @@ def build_history_days(
     if (
         target_media_id
         and target_source
-        and media_type_filter == MediaTypes.PODCAST.value
+        and MediaTypes.PODCAST.value in media_type_filter
         and not podcast_show_filter
     ):
         podcast_history_records = [
@@ -1274,7 +1276,7 @@ def build_history_days(
         process_all
         or has_tv_filter
         or has_person_filter
-        or media_type_filter == MediaTypes.TV.value
+        or MediaTypes.TV.value in media_type_filter
     ):
         episode_keys = [
             (
@@ -1322,7 +1324,11 @@ def build_history_days(
                 entries.append(entry)
                 entry_counts["episodes"] += 1
 
-    if process_all or has_person_filter or media_type_filter == MediaTypes.MOVIE.value:
+    if (
+        process_all
+        or has_person_filter
+        or MediaTypes.MOVIE.value in media_type_filter
+    ):
         for movie in movies:
             if genre_filters and not matches_genre(movie, MediaTypes.MOVIE.value):
                 continue
@@ -1363,7 +1369,11 @@ def build_history_days(
         elif mt == MediaTypes.ANIME.value:
             entry_counts["anime"] += 1
 
-    if process_all or has_music_filter or media_type_filter == MediaTypes.MUSIC.value:
+    if (
+        process_all
+        or has_music_filter
+        or MediaTypes.MUSIC.value in media_type_filter
+    ):
         music_entry_list, music_history_records_scanned, music_album_day_groups = (
             _build_music_entries(
                 user, music_entries, genre_filters, start_date, end_date
@@ -1385,7 +1395,7 @@ def build_history_days(
     if (
         process_all
         or has_podcast_filter
-        or media_type_filter == MediaTypes.PODCAST.value
+        or MediaTypes.PODCAST.value in media_type_filter
     ):
         podcast_entry_list = _build_podcast_entries(
             user, podcast_history_records, podcasts_lookup
@@ -1401,8 +1411,10 @@ def build_history_days(
             (time.perf_counter() - podcast_start) * 1000,
         )
 
-    process_games = process_all or media_type_filter == MediaTypes.GAME.value
-    process_boardgames = process_all or media_type_filter == MediaTypes.BOARDGAME.value
+    process_games = process_all or MediaTypes.GAME.value in media_type_filter
+    process_boardgames = (
+        process_all or MediaTypes.BOARDGAME.value in media_type_filter
+    )
     if process_games or process_boardgames:
         for entry in _build_game_entries(
             games,

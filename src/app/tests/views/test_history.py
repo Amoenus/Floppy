@@ -336,6 +336,38 @@ class HistoryMonthViewTests(TestCase):
         self.assertNotContains(response, "Month View Episode")
         self.assertContains(response, "media_type=movie", html=False)
 
+    def test_media_type_month_view_multi_select(self):
+        response = self.client.get(
+            reverse("history"),
+            {
+                "media_type": f"{MediaTypes.MOVIE.value},{MediaTypes.TV.value}",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context["use_month_view"])
+        self.assertContains(response, "Month View Movie")
+        self.assertContains(response, "Month View Episode")
+
+    def test_media_type_multi_select_bypasses_month_cache(self):
+        now = timezone.now()
+        start_date = (now - timedelta(days=1)).date().isoformat()
+        end_date = (now + timedelta(days=1)).date().isoformat()
+
+        response = self.client.get(
+            reverse("history"),
+            {
+                "media_type": f"{MediaTypes.MOVIE.value},{MediaTypes.TV.value}",
+                "start-date": start_date,
+                "end-date": end_date,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.context["use_month_view"])
+        self.assertContains(response, "Month View Movie")
+        self.assertContains(response, "Month View Episode")
+
     def _create_movie_history(self, item, older_played_at, newer_played_at):
         Movie.objects.create(
             item=item,
