@@ -1903,12 +1903,25 @@ def media_details(
                 on_deferred=_mark_detail_persistence_deferred,
             )
             if tmdb_media_id:
-                tmdb_metadata = services.get_media_metadata(
-                    media_type,
-                    tmdb_media_id,
-                    Sources.TMDB.value,
-                )
-                watch_provider_payload = tmdb_metadata.get("providers")
+                try:
+                    tmdb_metadata = services.get_media_metadata(
+                        media_type,
+                        tmdb_media_id,
+                        Sources.TMDB.value,
+                    )
+                except services.ProviderAPIError:
+                    # Watch providers are TMDB-only enrichment. A dead TMDB
+                    # mapping must not take down a page the tracking provider
+                    # can render on its own.
+                    logger.warning(
+                        "Skipping watch providers for %s media_id=%s: mapped TMDB "
+                        "ID %s could not be fetched",
+                        source,
+                        media_id,
+                        tmdb_media_id,
+                    )
+                else:
+                    watch_provider_payload = tmdb_metadata.get("providers")
 
         watch_providers = (
             tmdb.filter_providers(

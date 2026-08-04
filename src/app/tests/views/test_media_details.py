@@ -32,6 +32,7 @@ from app.models import (
     Game,
     Item,
     ItemPersonCredit,
+    ItemProviderLink,
     ItemStudioCredit,
     ItemTag,
     Manga,
@@ -52,7 +53,7 @@ from app.models import (
     Tag,
     Track,
 )
-from app.providers import tmdb
+from app.providers import services, tmdb
 from app.services import game_lengths as game_length_services
 from app.services.metadata_resolution import MetadataResolutionResult
 from integrations.models import PlexAccount
@@ -1955,6 +1956,82 @@ class MediaDetailsViewTests(TestCase):
         self.assertEqual(item.title, "Sword Art Online")
         self.assertEqual(item.original_title, "ソードアート・オンライン")
         self.assertEqual(item.localized_title, "Sword Art Online")
+
+    @override_settings(TVDB_API_KEY="test-tvdb-key")
+    @patch("app.providers.services.get_media_metadata")
+    def test_media_details_renders_tvdb_show_when_mapped_tmdb_id_is_gone(
+        self,
+        mock_get_metadata,
+    ):
+        """A TVDB title must still render when its TMDB mapping 404s."""
+        item = Item.objects.create(
+            media_id="467589",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Ask Hank Anything",
+            image="https://example.com/cover.jpg",
+        )
+        # TVDB advertises a TMDB remote ID that TMDB has since deleted.
+        ItemProviderLink.objects.create(
+            item=item,
+            provider=Sources.TMDB.value,
+            provider_media_id="281366",
+            provider_media_type=MediaTypes.TV.value,
+        )
+        tvdb_metadata = {
+            "media_id": "467589",
+            "title": "Ask Hank Anything",
+            "media_type": MediaTypes.TV.value,
+            "source": Sources.TVDB.value,
+            "image": "https://example.com/cover.jpg",
+            "details": {},
+            "related": {},
+            "cast": [],
+            "crew": [],
+            "studios_full": [],
+        }
+
+        def metadata_side_effect(
+            media_type,
+            media_id,
+            source,
+            season_numbers=None,
+            episode_number=None,
+        ):
+            del media_type, media_id, season_numbers, episode_number
+            if source == Sources.TMDB.value:
+                tmdb_response = requests.Response()
+                tmdb_response.status_code = requests.codes.not_found
+                raise services.ProviderAPIError(
+                    Sources.TMDB.value,
+                    requests.exceptions.HTTPError(response=tmdb_response),
+                )
+            return {
+                **tvdb_metadata,
+                "details": dict(tvdb_metadata["details"]),
+                "related": dict(tvdb_metadata["related"]),
+                "cast": list(tvdb_metadata["cast"]),
+                "crew": list(tvdb_metadata["crew"]),
+                "studios_full": list(tvdb_metadata["studios_full"]),
+            }
+
+        mock_get_metadata.side_effect = metadata_side_effect
+
+        response = self.client.get(
+            reverse(
+                "media_details",
+                kwargs={
+                    "source": Sources.TVDB.value,
+                    "media_type": MediaTypes.TV.value,
+                    "media_id": "467589",
+                    "title": "ask-hank-anything",
+                },
+            ),
+            {"fragment": "secondary"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.context["watch_providers"])
 
     @patch("app.providers.services.get_media_metadata")
     def test_media_details_persists_movie_recommendation_metadata(
