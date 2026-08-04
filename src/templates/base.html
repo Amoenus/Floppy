@@ -524,6 +524,31 @@
     </script>
 
     <script>
+      // Bind once: flashes the progress +/- button that was actually pressed,
+      // since the htmx swap replaces the whole control (both buttons + value).
+      if (!window.__progressFlashBound) {
+        window.__progressFlashBound = true;
+        document.body.addEventListener('htmx:beforeRequest', (evt) => {
+          const btn = evt.detail.elt;
+          if (!btn.classList || !btn.classList.contains('progress-adjust-btn')) return;
+          const isIncrease = (btn.getAttribute('hx-vals') || '').includes('increase');
+          evt.detail.target.dataset.lastOperation = isIncrease ? 'increase' : 'decrease';
+        });
+        document.body.addEventListener('htmx:afterSettle', (evt) => {
+          const target = evt.detail.target;
+          if (!target.classList || !target.classList.contains('media-card-progress')) return;
+          const op = target.dataset.lastOperation;
+          if (!op) return;
+          const selector = op === 'increase' ? '[hx-vals*="increase"]' : '[hx-vals*="decrease"]';
+          const btn = target.querySelector(selector);
+          if (!btn) return;
+          btn.classList.add('progress-btn-flash');
+          setTimeout(() => btn.classList.remove('progress-btn-flash'), 600);
+        });
+      }
+    </script>
+
+    <script>
       if ("serviceWorker" in navigator) {
         window.addEventListener("load", () => {
           navigator.serviceWorker

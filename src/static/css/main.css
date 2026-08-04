@@ -488,6 +488,12 @@
   .col-span-2 {
     grid-column: span 2 / span 2;
   }
+  .col-start-1 {
+    grid-column-start: 1;
+  }
+  .row-start-1 {
+    grid-row-start: 1;
+  }
   .clear-both {
     clear: both;
   }
@@ -2621,6 +2627,9 @@
   .px-2 {
     padding-inline: calc(var(--spacing) * 2);
   }
+  .px-2\.5 {
+    padding-inline: calc(var(--spacing) * 2.5);
+  }
   .px-3 {
     padding-inline: calc(var(--spacing) * 3);
   }
@@ -2821,9 +2830,6 @@
   }
   .text-\[9px\] {
     font-size: 9px;
-  }
-  .text-\[10px\] {
-    font-size: 10px;
   }
   .text-\[11px\] {
     font-size: 11px;
@@ -3288,6 +3294,10 @@
   .duration-300 {
     --tw-duration: 300ms;
     transition-duration: 300ms;
+  }
+  .duration-500 {
+    --tw-duration: 500ms;
+    transition-duration: 500ms;
   }
   .duration-1000 {
     --tw-duration: 1000ms;
@@ -3975,6 +3985,16 @@
         background-color: color-mix(in srgb, oklch(60.6% 0.25 292.717) 8%, transparent);
         @supports (color: color-mix(in lab, red, red)) {
           background-color: color-mix(in oklab, var(--color-violet-500) 8%, transparent);
+        }
+      }
+    }
+  }
+  .hover\:bg-violet-500\/\[0\.15\] {
+    &:hover {
+      @media (hover: hover) {
+        background-color: color-mix(in srgb, oklch(60.6% 0.25 292.717) 15%, transparent);
+        @supports (color: color-mix(in lab, red, red)) {
+          background-color: color-mix(in oklab, var(--color-violet-500) 15%, transparent);
         }
       }
     }
@@ -5323,6 +5343,13 @@
 }
 .htmx-request .htmx-indicator, .htmx-request.htmx-indicator {
   display: block;
+}
+.progress-adjust-btn.htmx-request .progress-btn-icon {
+  visibility: hidden;
+}
+.progress-adjust-btn.progress-btn-flash {
+  transition: none;
+  background-color: rgba(129, 140, 248, 0.55);
 }
 .lazyload, .lazyloading {
   object-fit: none;

@@ -17,6 +17,15 @@
   display: block;
 }
 
+.progress-adjust-btn.htmx-request .progress-btn-icon {
+  visibility: hidden;
+}
+
+.progress-adjust-btn.progress-btn-flash {
+  transition: none;
+  background-color: rgba(129, 140, 248, 0.55);
+}
+
 .lazyload,
 .lazyloading {
   object-fit: none;
