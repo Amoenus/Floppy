@@ -175,6 +175,9 @@ def _render_music_tracker_modal(
     from app import views as view_barrel
 
     return_url = request.GET.get("return_url") or request.POST.get("return_url", "")
+    home_row_id = (
+        request.GET.get("home_row_id") or request.POST.get("home_row_id") or ""
+    )
     track_form_id = f"track-form-{uuid4().hex}"
     field_groups = view_barrel._track_modal_field_groups(
         form,
@@ -218,7 +221,10 @@ def _render_music_tracker_modal(
             "metadata_fields": [],
             "general_hidden_fields": field_groups["hidden_fields"],
             "general_fields": field_groups["general_fields"],
-            "general_submit_formaction": f"{save_url}?next={return_url}",
+            "general_submit_formaction": (
+                f"{save_url}?next={return_url}"
+                + (f"&home_row_id={home_row_id}" if home_row_id else "")
+            ),
             "general_delete_formaction": f"{delete_url}?next={return_url}",
             "general_existing_instance": tracker,
             "image_field": None,
@@ -1376,8 +1382,12 @@ def artist_save(request):
         request,
         fallback_media_type=MediaTypes.MUSIC.value,
     )
+    home_row_id = request.GET.get("home_row_id") or request.POST.get(
+        "home_row_id", ""
+    )
 
     tracker = ArtistTracker.objects.filter(user=request.user, artist=artist).first()
+    old_status = getattr(tracker, "status", None)
 
     form = ArtistTrackerForm(request.POST, instance=tracker, user=request.user)
     if form.is_valid():
@@ -1386,6 +1396,20 @@ def artist_save(request):
         tracker.artist = artist
         tracker.save()
         messages.success(request, f"Saved {artist.name}")
+
+        if request.headers.get("HX-Request"):
+            htmx_trigger = {
+                "closeModal": {},
+                "showToast": {
+                    "message": f"Saved {artist.name}.",
+                    "type": "success",
+                },
+            }
+            if home_row_id and old_status != tracker.status:
+                htmx_trigger["refreshHomeRow"] = {"rowId": int(home_row_id)}
+            response = HttpResponse(status=204)
+            response["HX-Trigger"] = json.dumps(htmx_trigger)
+            return response
     else:
         messages.error(request, f"Error saving {artist.name}: {form.errors}")
 

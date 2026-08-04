@@ -286,7 +286,7 @@
                     <button class="p-2.5 bg-indigo-600 text-white rounded-full hover:bg-indigo-500 hover:scale-110 hover:shadow-[0_0_15px_rgba(99,102,241,0.5)] transition-all duration-200 cursor-pointer"
                             title="Edit tracking"
                             hx-get="{% url 'podcast_show_track_modal' podcast_show.id %}"
-                            hx-vals='{"return_url": "{{ request.get_full_path|urlencode }}"}'
+                            hx-vals='{"return_url": "{{ request.get_full_path|urlencode }}"{% if home_row_id %}, "home_row_id": "{{ home_row_id }}"{% endif %}}'
                             hx-target="#podcast-show-track-modal-{{ podcast_show.id }}-{{ media.id }}"
                             hx-trigger="click once"
                             @click="trackOpen = true">
@@ -296,7 +296,7 @@
                     <button class="p-2.5 bg-indigo-600 text-white rounded-full hover:bg-indigo-500 hover:scale-110 hover:shadow-[0_0_15px_rgba(99,102,241,0.5)] transition-all duration-200 cursor-pointer"
                             title="Edit tracking"
                             hx-get="{% url 'album_track_modal' media.album.id %}"
-                            hx-vals='{"return_url": "{{ request.get_full_path|urlencode }}"}'
+                            hx-vals='{"return_url": "{{ request.get_full_path|urlencode }}"{% if home_row_id %}, "home_row_id": "{{ home_row_id }}"{% endif %}}'
                             hx-target="#album-track-modal-{{ media.album.id }}"
                             hx-trigger="click once"
                             @click="trackOpen = true">
@@ -306,7 +306,7 @@
                     <button class="p-2.5 bg-indigo-600 text-white rounded-full hover:bg-indigo-500 hover:scale-110 hover:shadow-[0_0_15px_rgba(99,102,241,0.5)] transition-all duration-200 cursor-pointer"
                             title="Edit tracking"
                             hx-get="{% url 'artist_track_modal' media.artist.id %}"
-                            hx-vals='{"return_url": "{{ request.get_full_path|urlencode }}"}'
+                            hx-vals='{"return_url": "{{ request.get_full_path|urlencode }}"{% if home_row_id %}, "home_row_id": "{{ home_row_id }}"{% endif %}}'
                             hx-target="#artist-track-modal-{{ media.artist.id }}"
                             hx-trigger="click once"
                             @click="trackOpen = true">

@@ -1,3 +1,4 @@
+import json
 import logging
 from datetime import UTC
 
@@ -349,7 +350,7 @@ def podcast_episodes_api(request, show_id):
 def podcast_show_save(request):
     """Save a podcast show tracker - mirrors artist_save."""
     from app.forms import PodcastShowTrackerForm
-    from app.models import PodcastShow, PodcastShowTracker
+    from app.models import Podcast, PodcastShow, PodcastShowTracker
 
     show_id = request.POST.get("show_id")
     show = get_object_or_404(PodcastShow, id=show_id)
@@ -357,8 +358,12 @@ def podcast_show_save(request):
         request,
         fallback_media_type=MediaTypes.PODCAST.value,
     )
+    home_row_id = request.GET.get("home_row_id") or request.POST.get(
+        "home_row_id", ""
+    )
 
     tracker = PodcastShowTracker.objects.filter(user=request.user, show=show).first()
+    old_status = getattr(tracker, "status", None)
 
     form = PodcastShowTrackerForm(request.POST, instance=tracker, user=request.user)
     if form.is_valid():
@@ -367,6 +372,32 @@ def podcast_show_save(request):
         tracker.show = show
         tracker.save()
         messages.success(request, f"Saved {show.title}")
+
+        if old_status != tracker.status:
+            # Home/medialist read episode-level Podcast.status, not the
+            # show tracker, so keep existing listens in sync with it.
+            updated = Podcast.objects.filter(user=request.user, show=show).update(
+                status=tracker.status,
+            )
+            if updated:
+                from app import cache_utils
+
+                cache_utils.clear_media_list_cache_for_user(request.user.id)
+                cache_utils.clear_home_row_cache_for_user(request.user.id)
+
+        if request.headers.get("HX-Request"):
+            htmx_trigger = {
+                "closeModal": {},
+                "showToast": {
+                    "message": f"Saved {show.title}.",
+                    "type": "success",
+                },
+            }
+            if home_row_id and old_status != tracker.status:
+                htmx_trigger["refreshHomeRow"] = {"rowId": int(home_row_id)}
+            response = HttpResponse(status=204)
+            response["HX-Trigger"] = json.dumps(htmx_trigger)
+            return response
     else:
         messages.error(request, f"Error saving {show.title}: {form.errors}")
 

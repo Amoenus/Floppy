@@ -739,6 +739,9 @@ def _render_podcast_show_track_modal(
             or request.POST.get("return_url", "")
             or request.POST.get("next", "")
         )
+    home_row_id = (
+        request.GET.get("home_row_id") or request.POST.get("home_row_id") or ""
+    )
 
     if form_override is not None:
         form = form_override
@@ -795,6 +798,7 @@ def _render_podcast_show_track_modal(
             "general_fields": field_groups["general_fields"],
             "general_submit_formaction": (
                 f"{reverse('podcast_show_save')}?next={return_url}"
+                + (f"&home_row_id={home_row_id}" if home_row_id else "")
             ),
             "general_delete_formaction": (
                 f"{reverse('podcast_show_delete')}?next={return_url}"

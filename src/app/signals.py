@@ -16,7 +16,9 @@ from app import history_cache, statistics_cache
 from app.discover import tab_cache as discover_tab_cache
 from app.models import (
     TV,
+    AlbumTracker,
     Anime,
+    ArtistTracker,
     BoardGame,
     Book,
     CollectionEntry,
@@ -38,6 +40,7 @@ from app.models import (
     Movie,
     Music,
     Podcast,
+    PodcastShowTracker,
     Season,
     Sources,
 )
@@ -207,6 +210,31 @@ def sync_smart_lists_on_collection_change(sender, instance, **kwargs):
 @receiver([post_save, post_delete], sender=CollectionEntry)
 def clear_media_list_cache_on_collection_change(sender, instance, **kwargs):
     """Invalidate media-list caches when collection metadata changes."""
+    if kwargs.get("raw"):
+        return
+    user_id = getattr(instance, "user_id", None)
+    if not user_id:
+        return
+    if (
+        media_cache_change_signals_suppressed()
+        or media_change_side_effects_suppressed()
+    ):
+        return
+
+    from app.cache_utils import (
+        clear_home_row_cache_for_user,
+        clear_media_list_cache_for_user,
+    )
+
+    clear_media_list_cache_for_user(user_id)
+    clear_home_row_cache_for_user(user_id)
+
+
+@receiver([post_save, post_delete], sender=ArtistTracker)
+@receiver([post_save, post_delete], sender=AlbumTracker)
+@receiver([post_save, post_delete], sender=PodcastShowTracker)
+def clear_home_row_cache_on_music_podcast_tracker_change(sender, instance, **kwargs):
+    """Invalidate Home/media-list caches when a music/podcast tracker's status changes."""
     if kwargs.get("raw"):
         return
     user_id = getattr(instance, "user_id", None)
