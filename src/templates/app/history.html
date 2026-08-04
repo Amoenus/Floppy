@@ -280,7 +280,9 @@
                   {% endif %}
                 </p>
               {% else %}
-                <p class="text-sm text-gray-400">{{ day.total_runtime_display }}</p>
+                <p class="text-sm text-gray-400">
+                  {{ day.entries|length }} item{{ day.entries|length|pluralize }} &middot; {{ day.total_runtime_display }}
+                </p>
               {% endif %}
             </div>
           </div>
