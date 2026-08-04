@@ -22,6 +22,7 @@ from simple_history.utils import bulk_update_with_history
 import app
 from app.models import MediaTypes, Sources, Status
 from app.providers import services, tmdb
+from integrations import import_progress
 from integrations.imports import helpers
 from integrations.imports.helpers import MediaImportError
 from integrations.imports.trakt import TraktMetadataResolverMixin
@@ -232,6 +233,11 @@ class MDBListImporter(TraktMetadataResolverMixin):
                     continue
                 grouped[key].extend(group)
                 page_size += len(group)
+            import_progress.report(
+                sum(len(group) for group in grouped.values()),
+                total=None,
+                label=f"MDBList: gathering {item_type}…",
+            )
             pagination = response.get("pagination") or {}
             cursor = pagination.get("next_cursor")
             if not cursor or not page_size:
@@ -287,8 +293,15 @@ class MDBListImporter(TraktMetadataResolverMixin):
         recorded as a COMPLETED show without per-episode fan-out.
         """
         data = self._get_grouped_sync_data("/sync/watched", "watched entries")
+        total = sum(
+            len(data.get(group, []))
+            for group in ("movies", "shows", "seasons", "episodes")
+        )
+        current = 0
 
         for entry in data.get("movies", []):
+            current += 1
+            import_progress.report(current, total, "MDBList: watched history")
             try:
                 self.process_watched_movie(entry)
             except MediaImportError:
@@ -297,6 +310,8 @@ class MDBListImporter(TraktMetadataResolverMixin):
                 self._entry_error_warning(entry, "watched movie")
 
         for entry in data.get("shows", []):
+            current += 1
+            import_progress.report(current, total, "MDBList: watched history")
             try:
                 self.process_watched_show(entry)
             except MediaImportError:
@@ -305,6 +320,8 @@ class MDBListImporter(TraktMetadataResolverMixin):
                 self._entry_error_warning(entry, "watched show")
 
         for entry in data.get("seasons", []):
+            current += 1
+            import_progress.report(current, total, "MDBList: watched history")
             try:
                 self.process_watched_season(entry)
             except MediaImportError:
@@ -313,6 +330,8 @@ class MDBListImporter(TraktMetadataResolverMixin):
                 self._entry_error_warning(entry, "watched season")
 
         for entry in data.get("episodes", []):
+            current += 1
+            import_progress.report(current, total, "MDBList: watched history")
             try:
                 episode_data = entry.get("episode") or {}
                 show_data = episode_data.get("show") or entry.get("show") or {}
@@ -611,6 +630,11 @@ class MDBListImporter(TraktMetadataResolverMixin):
             response = request(self.api_key, "/watchlist/items", params=params)
             page = normalize_items_response(response)
             entries.extend(page)
+            import_progress.report(
+                len(entries),
+                total=None,
+                label="MDBList: gathering watchlist…",
+            )
             pagination = (
                 response.get("pagination") if isinstance(response, dict) else None
             ) or {}
@@ -626,7 +650,10 @@ class MDBListImporter(TraktMetadataResolverMixin):
 
     def process_watchlist(self):
         """Import the MDBList watchlist as PLANNING entries."""
-        for entry in self._get_watchlist_entries():
+        entries = self._get_watchlist_entries()
+        total = len(entries)
+        for i, entry in enumerate(entries, start=1):
+            import_progress.report(i, total, "MDBList: watchlist")
             try:
                 self._process_watchlist_entry(entry)
             except MediaImportError:
@@ -681,6 +708,11 @@ class MDBListImporter(TraktMetadataResolverMixin):
     def process_ratings(self):
         """Import ratings for movies, shows, seasons and episodes."""
         data = self._get_grouped_sync_data("/sync/ratings", "ratings")
+        total = sum(
+            len(data.get(group, []))
+            for group in ("movies", "shows", "seasons", "episodes")
+        )
+        current = 0
 
         for group, handler in (
             ("movies", self._process_movie_rating),
@@ -689,6 +721,8 @@ class MDBListImporter(TraktMetadataResolverMixin):
             ("episodes", self._process_episode_rating),
         ):
             for entry in data.get(group, []):
+                current += 1
+                import_progress.report(current, total, "MDBList: ratings")
                 try:
                     if entry.get("rating") is None:
                         continue
@@ -904,12 +938,17 @@ class MDBListImporter(TraktMetadataResolverMixin):
             )
             return
 
+        total = len(data.get("movies", [])) + len(data.get("shows", []))
+        current = 0
+
         for group, media_type in (
             ("movies", MediaTypes.MOVIE.value),
             ("shows", MediaTypes.TV.value),
         ):
             data_key = "movie" if media_type == MediaTypes.MOVIE.value else "show"
             for entry in data.get(group, []):
+                current += 1
+                import_progress.report(current, total, "MDBList: collection")
                 try:
                     media_data = entry.get(data_key) or {}
                     tmdb_id = self._resolve_entry_tmdb_id(media_data, media_type)

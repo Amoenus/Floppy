@@ -1,6 +1,6 @@
 import logging
 
-from celery import shared_task
+from celery import current_task, shared_task
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.utils import timezone
@@ -8,6 +8,7 @@ from django.utils import timezone
 import events
 from app import history_cache
 from app.mixins import disable_fetch_releases
+from integrations import import_progress
 from integrations.imports import (
     anilist,
     audiobookshelf,
@@ -63,8 +64,9 @@ def import_media(
 ):
     """Handle the import process for different media services."""
     user = get_user_model().objects.get(id=user_id)
+    task_id = current_task.request.id if current_task and current_task.request else None
 
-    with disable_fetch_releases():
+    with disable_fetch_releases(), import_progress.tracking(task_id):
         if oauth_username is None:
             imported_counts, warnings = importer_func(
                 identifier,

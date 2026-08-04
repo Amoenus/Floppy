@@ -24,6 +24,7 @@ from app.models import (
     Status,
 )
 from app.providers import services
+from integrations import import_progress
 from integrations import models as integration_models
 from integrations.imports import helpers
 from integrations.imports.helpers import (
@@ -352,7 +353,11 @@ class PocketCastsImporter:
 
         # First pass: iterate every subscribed podcast and sync the full episode catalog,
         # then process only episodes with listening activity into per-user Podcast rows.
-        for podcast_uuid, podcast_meta in self.podcast_metadata.items():
+        shows_total = len(self.podcast_metadata)
+        for i, (podcast_uuid, podcast_meta) in enumerate(
+            self.podcast_metadata.items(), start=1
+        ):
+            import_progress.report(i, shows_total, "Pocket Casts: shows")
             show_title = podcast_meta.get("title") or podcast_uuid
             show = self._ensure_show(podcast_uuid, podcast_meta)
             full_metadata = self._fetch_show_full_metadata(podcast_uuid)

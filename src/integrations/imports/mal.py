@@ -11,6 +11,7 @@ from django.utils.dateparse import parse_datetime
 import app
 import app.providers.mal
 from app.models import MediaTypes, Sources, Status
+from integrations import import_progress
 from integrations.imports import helpers
 from integrations.imports.helpers import MediaImportError, MediaImportUnexpectedError
 from integrations.webhooks import anime_mappings
@@ -104,7 +105,9 @@ class MyAnimeListImporter:
                 return
             raise
 
-        for content in response["data"]:
+        total = len(response["data"])
+        for i, content in enumerate(response["data"], start=1):
+            import_progress.report(i, total, f"MyAnimeList ({media_type})")
             try:
                 self._process_entry(content, media_type)
             except Exception as error:

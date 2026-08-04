@@ -13,6 +13,7 @@ from django_celery_beat.models import PeriodicTask
 from django_celery_results.models import TaskResult
 
 from app.models import Item, MediaTypes, Sources, Status
+from integrations import import_progress
 from users import helpers
 
 EXCLUDED_SEARCH_TYPES = [MediaTypes.SEASON.value, MediaTypes.EPISODE.value]
@@ -1641,6 +1642,11 @@ class User(AbstractUser):
 
             source = result_task_to_source[task.task_name]
             processed_task = helpers.process_task_result(task)
+
+            progress = None
+            if task.status == states.STARTED:
+                progress = import_progress.get_progress(task.task_id)
+
             results.append(
                 {
                     "task": processed_task,
@@ -1649,6 +1655,14 @@ class User(AbstractUser):
                     "status": task.status,
                     "summary": processed_task.summary,
                     "errors": processed_task.errors,
+                    "progress_current": progress.get("current") if progress else None,
+                    "progress_total": progress.get("total") if progress else None,
+                    "progress_label": progress.get("label") if progress else None,
+                    "progress_percent": (
+                        round(progress["current"] / progress["total"] * 100, 1)
+                        if progress and progress.get("total")
+                        else None
+                    ),
                 },
             )
 

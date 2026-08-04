@@ -12,6 +12,7 @@ from csv import DictReader
 from django.utils.dateparse import parse_datetime
 
 from app.models import CollectionEntry, MediaTypes, Sources
+from integrations import import_progress
 from integrations.imports.helpers import MediaImportError, retry_on_lock
 from integrations.imports.trakt import TraktMetadataResolverMixin
 
@@ -162,10 +163,12 @@ class TraktCollectionCsvImporter(TraktMetadataResolverMixin):
             msg = "Invalid file format. Please upload a CSV file."
             raise MediaImportError(msg) from e
 
-        reader = DictReader(decoded_file)
+        rows = list(DictReader(decoded_file))
+        total = len(rows)
         imported_counts = {"movie": 0, "episode": 0}
 
-        for row in reader:
+        for i, row in enumerate(rows, start=1):
+            import_progress.report(i, total, "Trakt collection CSV")
             row_type = (row.get("type") or "").strip().lower()
             try:
                 if row_type == "movie":

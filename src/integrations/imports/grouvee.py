@@ -9,6 +9,7 @@ import app
 import app.providers
 from app.models import MediaTypes, Sources, Status
 from app.providers.services import ProviderAPIError
+from integrations import import_progress
 from integrations.imports import helpers
 from integrations.imports.helpers import MediaImportError, MediaImportUnexpectedError
 
@@ -66,8 +67,10 @@ class GrouveeImporter:
 
         entries = data.get("collection", [])
         unmatched_titles = []
+        total = len(entries)
 
-        for entry in entries:
+        for i, entry in enumerate(entries, start=1):
+            import_progress.report(i, total, "Grouvee")
             try:
                 self._process_entry(entry, unmatched_titles)
             except Exception as error:

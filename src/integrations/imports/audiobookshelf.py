@@ -27,6 +27,7 @@ from app.models import (
     Status,
 )
 from app.providers import services
+from integrations import import_progress
 from integrations.imports.helpers import MediaImportError, decrypt_or_raise
 from integrations.models import AudiobookshelfAccount
 
@@ -468,7 +469,9 @@ class AudiobookshelfImporter:
     ):
         max_seen = last_sync_ms
         changed_processed = 0
-        for library_item_id, entry in changed_entries:
+        total = len(changed_entries)
+        for i, (library_item_id, entry) in enumerate(changed_entries, start=1):
+            import_progress.report(i, total, "Audiobookshelf: books")
             max_seen = max(max_seen, int(entry.get("lastUpdate") or 0))
 
             item_metadata = self._fetch_library_item(library_item_id)
@@ -504,7 +507,9 @@ class AudiobookshelfImporter:
         imported_counts,
     ):
         repaired_count = 0
-        for library_item_id, entry in repair_candidates:
+        total = len(repair_candidates)
+        for i, (library_item_id, entry) in enumerate(repair_candidates, start=1):
+            import_progress.report(i, total, "Audiobookshelf: repairing books")
             item_metadata = self._fetch_library_item(library_item_id)
             if item_metadata is None:
                 continue
@@ -561,15 +566,21 @@ class AudiobookshelfImporter:
             max_seen = max(max_seen, int(entry.get("lastUpdate") or 0))
             entries_by_show[library_item_id].append(entry)
 
+        total = len(changed_entries)
+        current = 0
         for library_item_id, entries in entries_by_show.items():
             item_metadata = self._fetch_library_item(library_item_id, expanded=True)
             if item_metadata is None:
+                current += len(entries)
+                import_progress.report(current, total, "Audiobookshelf: podcasts")
                 continue
 
             show = self._ensure_podcast_show(library_item_id, item_metadata)
             episodes_by_id = self._index_podcast_episodes(item_metadata)
 
             for entry in entries:
+                current += 1
+                import_progress.report(current, total, "Audiobookshelf: podcasts")
                 episode_id = str(entry.get("episodeId") or "")
                 episode_metadata = episodes_by_id.get(episode_id)
                 if episode_metadata is None:

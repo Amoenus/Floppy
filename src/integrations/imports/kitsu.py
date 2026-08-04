@@ -9,6 +9,7 @@ from django.utils.dateparse import parse_datetime
 
 import app
 from app.models import MediaTypes, Sources, Status
+from integrations import import_progress
 from integrations.imports import helpers
 from integrations.imports.helpers import MediaImportError, MediaImportUnexpectedError
 
@@ -121,7 +122,9 @@ class KitsuImporter:
             if item["type"] == "mappings"
         }
 
-        for entry in response["entries"]:
+        total = len(response["entries"])
+        for i, entry in enumerate(response["entries"], start=1):
+            import_progress.report(i, total, f"Kitsu ({media_type})")
             try:
                 self._process_entry(entry, media_type, media_lookup, mapping_lookup)
             except MediaImportError as error:

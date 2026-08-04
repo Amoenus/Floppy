@@ -13,6 +13,7 @@ import app
 from app import helpers as app_helpers
 from app.models import MediaTypes, Sources, Status
 from app.providers import services
+from integrations import import_progress
 from integrations.imports import helpers
 from integrations.imports.helpers import MediaImportError, MediaImportUnexpectedError
 
@@ -459,6 +460,11 @@ class TraktImporter(TraktMetadataResolverMixin):
 
             all_data.extend(page_data)
             page += 1
+            import_progress.report(
+                len(all_data),
+                total=None,
+                label=f"Trakt: gathering {item_type}…",
+            )
             logger.info(
                 "Retrieved page %s of %s for user %s (%s items)",
                 page - 1,
@@ -503,7 +509,9 @@ class TraktImporter(TraktMetadataResolverMixin):
                 )
 
         # Process in chronological order (oldest first)
-        for entry in reversed(full_history):
+        total = len(full_history)
+        for i, entry in enumerate(reversed(full_history), start=1):
+            import_progress.report(i, total, "Trakt: watch history")
             watched_at = entry["watched_at"]
             try:
                 if entry["type"] == "movie":
@@ -772,7 +780,9 @@ class TraktImporter(TraktMetadataResolverMixin):
         watchlist_endpoint = f"{self.user_base_url}/watchlist"
         watchlist_data = self._get_paginated_data(watchlist_endpoint, "watchlist items")
 
-        for entry in watchlist_data:
+        total = len(watchlist_data)
+        for i, entry in enumerate(watchlist_data, start=1):
+            import_progress.report(i, total, "Trakt: watchlist")
             try:
                 self._process_generic_entry(
                     entry,
@@ -792,7 +802,9 @@ class TraktImporter(TraktMetadataResolverMixin):
         ratings_endpoint = f"{self.user_base_url}/ratings"
         ratings_data = self._get_paginated_data(ratings_endpoint, "ratings")
 
-        for entry in ratings_data:
+        total = len(ratings_data)
+        for i, entry in enumerate(ratings_data, start=1):
+            import_progress.report(i, total, "Trakt: ratings")
             try:
                 self._process_generic_entry(
                     entry,
@@ -815,7 +827,9 @@ class TraktImporter(TraktMetadataResolverMixin):
         comments_endpoint = f"{self.user_base_url}/comments"
         full_comments = self._get_paginated_data(comments_endpoint, "comments")
 
-        for entry in full_comments:
+        total = len(full_comments)
+        for i, entry in enumerate(full_comments, start=1):
+            import_progress.report(i, total, "Trakt: comments")
             try:
                 self._process_generic_entry(
                     entry,
@@ -839,7 +853,9 @@ class TraktImporter(TraktMetadataResolverMixin):
 
         movies_endpoint = f"{self.user_base_url}/collection/movies"
         collected_movies = self._get_paginated_data(movies_endpoint, "collected movies")
-        for entry in collected_movies:
+        movies_total = len(collected_movies)
+        for i, entry in enumerate(collected_movies, start=1):
+            import_progress.report(i, movies_total, "Trakt: collection (movies)")
             try:
                 self._process_collected_movie(entry, trakt_collection)
             except Exception as e:
@@ -852,7 +868,9 @@ class TraktImporter(TraktMetadataResolverMixin):
 
         shows_endpoint = f"{self.user_base_url}/collection/shows"
         collected_shows = self._get_paginated_data(shows_endpoint, "collected shows")
-        for entry in collected_shows:
+        shows_total = len(collected_shows)
+        for i, entry in enumerate(collected_shows, start=1):
+            import_progress.report(i, shows_total, "Trakt: collection (shows)")
             try:
                 self._process_collected_show(entry, trakt_collection)
             except Exception as e:

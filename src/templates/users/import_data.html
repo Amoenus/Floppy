@@ -2566,7 +2566,7 @@
     <div id="import-activity-panel"
          class="space-y-6"
          hx-get="{% url 'import_data_activity' %}"
-         hx-trigger="load"
+         hx-trigger="load, every 5s"
          hx-swap="innerHTML">
       <div class="bg-[#2a2f35] rounded-lg p-6">
         <div class="flex items-center mb-4">

@@ -11,6 +11,7 @@ import app
 from app import helpers as app_helpers
 from app.models import MediaTypes, Sources, Status
 from app.providers import services
+from integrations import import_progress
 from integrations.imports import helpers
 from integrations.imports.helpers import MediaImportError, MediaImportUnexpectedError
 
@@ -171,6 +172,13 @@ class SimklImporter:
 
     def _process_media_lists(self, data):
         """Process all media types from Simkl."""
+        self._progress_total = (
+            len(data.get("shows", []))
+            + len(data.get("movies", []))
+            + len(data.get("anime", []))
+        )
+        self._progress_current = 0
+
         if "shows" in data:
             self._process_tv_list(data["shows"])
         if "movies" in data:
@@ -187,6 +195,8 @@ class SimklImporter:
         existing_tv_ids = set()
 
         for tv in tv_list:
+            self._progress_current += 1
+            import_progress.report(self._progress_current, self._progress_total, "SIMKL")
             try:
                 title = tv["show"]["title"]
                 logger.debug("Processing %s", title)
@@ -445,6 +455,8 @@ class SimklImporter:
         existing_movie_ids = set()
 
         for movie in movie_list:
+            self._progress_current += 1
+            import_progress.report(self._progress_current, self._progress_total, "SIMKL")
             try:
                 title = movie["movie"]["title"]
                 logger.debug("Processing %s", title)
@@ -521,6 +533,8 @@ class SimklImporter:
         existing_anime_ids = set()
 
         for anime in anime_list:
+            self._progress_current += 1
+            import_progress.report(self._progress_current, self._progress_total, "SIMKL")
             try:
                 self._process_single_anime_entry(anime, existing_anime_ids)
             except Exception as error:
@@ -611,6 +625,8 @@ class SimklImporter:
         existing_movie_ids = set()
 
         for anime in anime_list:
+            self._progress_current += 1
+            import_progress.report(self._progress_current, self._progress_total, "SIMKL")
             try:
                 movie_shape = anime.get("movie")
                 show_shape = anime.get("show")

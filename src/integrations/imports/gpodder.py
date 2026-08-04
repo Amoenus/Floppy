@@ -22,7 +22,7 @@ from app.models import (
     Sources,
     Status,
 )
-from integrations import gpodder_api, podcast_rss
+from integrations import gpodder_api, import_progress, podcast_rss
 from integrations import models as integration_models
 from integrations.imports.helpers import MediaImportError, decrypt_or_raise
 
@@ -111,7 +111,9 @@ class GPodderImporter:
             actions,
             key=lambda action: self._parse_action_timestamp(action) or timezone.now(),
         )
-        for action in sorted_actions:
+        total = len(sorted_actions)
+        for i, action in enumerate(sorted_actions, start=1):
+            import_progress.report(i, total, "GPodder")
             if action.get("action") != "play":
                 continue
             if not self._has_listening_activity(action):

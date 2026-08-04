@@ -25,6 +25,7 @@ from app.models import (
 )
 from app.providers import services
 from app.templatetags import app_tags
+from integrations import import_progress
 from integrations.imports import helpers
 from integrations.imports.helpers import MediaImportError, MediaImportUnexpectedError
 from lists.models import CustomList, CustomListItem
@@ -179,9 +180,11 @@ class YamtrackImporter:
             msg = "Invalid file format. Please upload a CSV file."
             raise MediaImportError(msg) from e
 
-        reader = DictReader(decoded_file)
+        rows = list(DictReader(decoded_file))
+        total = len(rows)
 
-        for row in reader:
+        for i, row in enumerate(rows, start=1):
+            import_progress.report(i, total, "Yamtrack")
             try:
                 self._process_row(row)
             except services.ProviderAPIError as error:

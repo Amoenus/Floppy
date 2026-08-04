@@ -9,6 +9,7 @@ from django.utils import timezone
 
 from app.models import CollectionEntry, Item, MediaTypes, Sources
 from app.providers import services
+from integrations import import_progress
 from integrations.imports.helpers import (
     MediaImportError,
     decrypt_or_raise,
@@ -109,7 +110,9 @@ class SonarrImporter:
             )
             raise
 
-        for row in series_rows:
+        total = len(series_rows)
+        for i, row in enumerate(series_rows, start=1):
+            import_progress.report(i, total, "Sonarr")
             stats = row.get("statistics") or {}
             episode_file_count = int(stats.get("episodeFileCount") or 0)
             if episode_file_count <= 0:

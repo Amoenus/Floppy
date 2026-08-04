@@ -25,7 +25,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 import contextlib
 
-from integrations import episode_remap
+from integrations import episode_remap, import_progress
 from integrations import plex as plex_api
 from integrations.imports import helpers
 from integrations.imports.helpers import MediaImportError, MediaImportUnexpectedError
@@ -412,7 +412,10 @@ class PlexHistoryImporter:
         self._current_section_uri = uri_used
         skipped_users_before = self._skipped_user_count
 
-        for entry in entries:
+        section_label = section.get("title") or section.get("id") or "Plex"
+        total = len(entries)
+        for i, entry in enumerate(entries, start=1):
+            import_progress.report(i, total, f"Plex: {section_label}")
             try:
                 self._process_entry(entry, uri_used, section_type)
             except MediaImportError as exc:
@@ -480,6 +483,11 @@ class PlexHistoryImporter:
 
                     entries.extend(page)
                     start += len(page)
+                    import_progress.report(
+                        len(entries),
+                        total=None,
+                        label="Plex: gathering history…",
+                    )
                     if len(page) < page_size or start >= total:
                         break
                 uri_used = uri

@@ -26,6 +26,7 @@ from django.utils.dateparse import parse_datetime
 import app
 from app.models import MediaTypes, Sources, Status
 from app.providers import services
+from integrations import import_progress
 from integrations.imports import helpers
 from integrations.imports.helpers import MediaImportError, MediaImportUnexpectedError
 from integrations.models import StremioAccount
@@ -200,7 +201,12 @@ class StremioImporter:
             [entry["_id"] for entry in series],
         )
 
+        total = len(movies) + len(series)
+        current = 0
+
         for entry in movies:
+            current += 1
+            import_progress.report(current, total, "Stremio")
             try:
                 self._process_movie(entry)
             except Exception as error:
@@ -208,6 +214,8 @@ class StremioImporter:
                 raise MediaImportUnexpectedError(msg) from error
 
         for entry in series:
+            current += 1
+            import_progress.report(current, total, "Stremio")
             try:
                 self._process_series(entry, cinemeta_videos.get(entry["_id"]))
             except Exception as error:
