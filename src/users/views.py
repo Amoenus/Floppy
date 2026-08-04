@@ -58,6 +58,7 @@ from users.models import (
     PlannedHomeDisplayChoices,
     RatingScaleChoices,
     SessionDurationChoices,
+    ThemeChoices,
     TimeFormatChoices,
     TitleDisplayPreferenceChoices,
     TopTalentSortChoices,
@@ -768,6 +769,7 @@ def preferences(request):
         # Process form submission for user preferences
         selected_media_types = request.POST.getlist("media_types_checkboxes")
         date_format = request.POST.get("date_format")
+        theme = request.POST.get("theme")
         time_format = request.POST.get("time_format")
         activity_history_view = request.POST.get("activity_history_view")
         game_logging_style = request.POST.get("game_logging_style")
@@ -823,6 +825,14 @@ def preferences(request):
         ):
             request.user.date_format = date_format
             fields_to_update.append("date_format")
+
+        if (
+            theme
+            and theme in ThemeChoices.values
+            and request.user.theme != theme
+        ):
+            request.user.theme = theme
+            fields_to_update.append("theme")
 
         if (
             time_format

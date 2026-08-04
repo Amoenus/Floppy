@@ -223,7 +223,7 @@ class TrackModalViewTests(TestCase):
         self.assertContains(response, "Collection")
         self.assertContains(
             response,
-            '<p class="text-sm tracking-wide text-gray-400">Collected</p>',
+            '<p class="text-sm tracking-wide text-[var(--color-text-muted)]">Collected</p>',
             html=True,
         )
 

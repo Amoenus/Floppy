@@ -4,7 +4,7 @@
        data-src="{{ media.artist.image }}"
        src="{{ IMG_NONE }}">
 {% else %}
-  <div class="min-w-10 w-10 h-10 bg-[#3e454d] rounded-md flex items-center justify-center parent-hover-tap:hidden">
+  <div class="min-w-10 w-10 h-10 bg-[var(--color-surface-alt)] rounded-md flex items-center justify-center parent-hover-tap:hidden">
     {% include "app/icons/person.svg" with classes="w-5 h-5 text-gray-600" %}
   </div>
 {% endif %}

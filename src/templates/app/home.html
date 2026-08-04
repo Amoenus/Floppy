@@ -76,22 +76,22 @@
         <section class="space-y-4 animate-pulse" aria-hidden="true">
           <div class="h-6 w-40 bg-gray-700 rounded"></div>
           <div class="flex gap-4 overflow-hidden">
-            <div class="home-row-card w-44 h-64 shrink-0 bg-[#2a2f35] rounded-lg"></div>
-            <div class="home-row-card w-44 h-64 shrink-0 bg-[#2a2f35] rounded-lg"></div>
-            <div class="home-row-card w-44 h-64 shrink-0 bg-[#2a2f35] rounded-lg"></div>
-            <div class="home-row-card w-44 h-64 shrink-0 bg-[#2a2f35] rounded-lg"></div>
+            <div class="home-row-card w-44 h-64 shrink-0 bg-[var(--color-surface)] rounded-lg"></div>
+            <div class="home-row-card w-44 h-64 shrink-0 bg-[var(--color-surface)] rounded-lg"></div>
+            <div class="home-row-card w-44 h-64 shrink-0 bg-[var(--color-surface)] rounded-lg"></div>
+            <div class="home-row-card w-44 h-64 shrink-0 bg-[var(--color-surface)] rounded-lg"></div>
           </div>
         </section>
       </div>
     {% endif %}
     {% include "app/components/home_artwork_poller.html" with poll_row_ids=artwork_poll_row_ids initial=True %}
     {% if not home_groups %}
-      <div class="flex flex-col items-center justify-center py-16 sm:py-32 px-3 sm:px-4 bg-[#2a2f35] rounded-lg">
-        <div class="bg-[#39404b] rounded-full p-4 w-16 h-16 mx-auto mb-4 flex items-center justify-center">
-          {% include "app/icons/pulse.svg" with classes="w-8 h-8 text-gray-400" %}
+      <div class="flex flex-col items-center justify-center py-16 sm:py-32 px-3 sm:px-4 bg-[var(--color-surface)] rounded-lg">
+        <div class="bg-[var(--color-surface-strong)] rounded-full p-4 w-16 h-16 mx-auto mb-4 flex items-center justify-center">
+          {% include "app/icons/pulse.svg" with classes="w-8 h-8 text-[var(--color-text-muted)]" %}
         </div>
         <h3 class="text-xl font-semibold mb-2">Nothing is configured for Home yet</h3>
-        <p class="text-gray-400 text-center max-w-md mb-4">
+        <p class="text-[var(--color-text-muted)] text-center max-w-md mb-4">
           Add or enable rows from the Home Screen settings page to populate this view.
         </p>
         <div class="pt-4">

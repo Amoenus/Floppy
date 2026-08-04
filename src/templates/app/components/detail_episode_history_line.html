@@ -3,7 +3,7 @@
 
 <p id="episode-history-{{ episode.item.id }}"
    {% if history_oob %}hx-swap-oob="true"{% endif %}
-   class="text-xs text-gray-400 mt-2 px-4"
+   class="text-xs text-[var(--color-text-muted)] mt-2 px-4"
    {% if not episode.history and not episode.collection_entry %}style="display: none;"{% endif %}>
   {% if episode.history %}
     {% with first=episode.history.0 watched=episode.history|watched_count %}

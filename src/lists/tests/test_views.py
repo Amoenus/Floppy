@@ -740,7 +740,7 @@ class ListDetailViewTests(TestCase):
 
         content = response.content.decode()
         self.assertIn(
-            'class="inline-flex items-center text-gray-400 transition-colors hover:text-indigo-300"',
+            'class="inline-flex items-center text-[var(--color-text-muted)] transition-colors hover:text-indigo-300"',
             content,
         )
         self.assertLess(content.index("3 items"), content.index(self.user.username))
@@ -1145,7 +1145,7 @@ class ListDetailViewTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "lists/components/list_table.html")
-        self.assertContains(response, 'class="w-full bg-[#2a2f35] media-table"')
+        self.assertContains(response, 'class="w-full bg-[var(--color-surface)] media-table"')
 
     @patch.object(get_user_model(), "update_preference")
     @patch.object(CustomList, "user_can_view")

@@ -4,7 +4,7 @@
 {# History card component - used for both 2:3 and 1:1 aspect ratio cards #}
 {# Args: entry, card_class (search-result-card or search-result-card-square), history_mode, user #}
 
-<div class="media-card bg-[#2a2f35] rounded-lg overflow-hidden shadow-lg relative {{ card_class }}{% if user.media_card_subtitle_display == 'always' %} media-card-subtitle-always{% endif %}"
+<div class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative {{ card_class }}{% if user.media_card_subtitle_display == 'always' %} media-card-subtitle-always{% endif %}"
      data-media-type="{{ entry.media_type }}"
      x-data="{ trackOpen: false, historyOpen: false, listsOpen: false }">
   <div class="media-card-visual relative">
@@ -99,7 +99,7 @@
     <div class="media-card-title-row flex items-center gap-2 min-w-0">
       <a href="{% if entry.media_type == MediaTypes.MUSIC.value and entry.album %}{{ entry.album|music_album_url }}{% elif entry.media_type == MediaTypes.PODCAST.value and entry.show and entry.show.podcast_uuid %}{% url 'media_details' source='pocketcasts' media_type='podcast' media_id=entry.show.podcast_uuid title=entry.show.slug|default:entry.show.title|slug %}{% else %}{{ entry.item|media_url }}{% endif %}"
          hx-boost="true"
-         class="media-card-title text-sm font-semibold text-white hover:text-indigo-400 transition duration-300 line-clamp-1 min-w-0"
+         class="media-card-title text-sm font-semibold text-[var(--color-text)] hover:text-indigo-400 transition duration-300 line-clamp-1 min-w-0"
          title="{{ preferred_entry_title|default:entry.display_title|default:entry.title }}">
         {{ preferred_entry_title|default:entry.display_title|default:entry.title }}
       </a>
@@ -155,7 +155,7 @@
                   @focus="openTooltip()"
                   @blur="closeTooltip()"
                   @click.prevent.stop="toggleTooltip()"
-                  class="text-gray-500 hover:text-gray-400 transition-colors cursor-pointer inline-flex items-center"
+                  class="text-gray-500 hover:text-[var(--color-text-muted)] transition-colors cursor-pointer inline-flex items-center"
                   type="button"
                   aria-label="Show alternative title">
             {% include "app/icons/info.svg" with classes="w-3.5 h-3.5" %}
@@ -170,7 +170,7 @@
                  x-transition:leave="transition ease-in duration-150"
                  x-transition:leave-start="opacity-100 scale-100"
                  x-transition:leave-end="opacity-0 scale-95"
-                 class="fixed z-50 pointer-events-none rounded-lg p-3 text-xs text-white"
+                 class="fixed z-50 pointer-events-none rounded-lg p-3 text-xs text-[var(--color-text)]"
                  style="display: none; background: rgba(0, 0, 0, 0.85); box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);"
                  :style="tooltipStyle"
                  role="tooltip">
@@ -188,7 +188,7 @@
     </div>
       {% endwith %}
     {% endwith %}
-    <p class="media-card-year text-xs text-gray-400 mt-1">
+    <p class="media-card-year text-xs text-[var(--color-text-muted)] mt-1">
       {# History-specific info: episode label, play count, or timestamp #}
       {% if history_mode == "release" %}
         <span class="text-indigo-400 font-medium">Released</span>

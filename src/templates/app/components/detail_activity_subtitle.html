@@ -1,7 +1,7 @@
 {% load user_tags %}
 
 {% if activity_subtitle %}
-  <div class="mb-3 text-center text-sm font-medium text-gray-400 md:text-start">
+  <div class="mb-3 text-center text-sm font-medium text-[var(--color-text-muted)] md:text-start">
     <div class="{% if activity_subtitle.duration_text %}flex items-center justify-center gap-0.5 whitespace-nowrap text-[13px] tracking-[-0.01em] sm:hidden{% else %}flex flex-wrap items-center justify-center gap-y-1 sm:hidden{% endif %}">
       {% if activity_subtitle.duration_text %}
         <span class="inline-flex items-center">

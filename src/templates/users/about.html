@@ -8,19 +8,19 @@
 {% endblock title %}
 
 {% block settings_content %}
-  <div class="bg-[#2a2f35] rounded-lg p-6">
+  <div class="bg-[var(--color-surface)] rounded-lg p-6">
     <h2 class="text-2xl font-bold mb-6">About Floppy</h2>
 
     <div class="space-y-6">
       <div class="space-y-2">
-        <div class="flex items-center gap-2 text-lg font-medium text-gray-200">
+        <div class="flex items-center gap-2 text-lg font-medium text-[var(--color-text-secondary)]">
           {% include "app/icons/info.svg" with classes="w-5 h-5 text-indigo-400" %}
           <h3>Description</h3>
         </div>
-        <p class="text-gray-300 pl-7">
+        <p class="text-[var(--color-text-secondary)] pl-7">
           Floppy is an open-source media tracker that helps you organize and track your media.
         </p>
-        <p class="text-gray-400 text-sm pl-7">
+        <p class="text-[var(--color-text-muted)] text-sm pl-7">
           Floppy began as a fork of
           <a href="https://github.com/FuzzyGrim/Yamtrack"
              target="_blank"
@@ -31,7 +31,7 @@
       </div>
 
       <div class="space-y-4">
-        <div class="flex items-center gap-2 text-lg font-medium text-gray-200">
+        <div class="flex items-center gap-2 text-lg font-medium text-[var(--color-text-secondary)]">
           {% include "app/icons/external-link.svg" with classes="w-5 h-5 text-indigo-400" %}
           <h3>Links</h3>
         </div>
@@ -66,11 +66,11 @@
       </div>
 
       <div class="space-y-2">
-        <div class="flex items-center gap-2 text-lg font-medium text-gray-200">
+        <div class="flex items-center gap-2 text-lg font-medium text-[var(--color-text-secondary)]">
           {% include "app/icons/page.svg" with classes="w-5 h-5 text-indigo-400" %}
           <h3>License</h3>
         </div>
-        <p class="text-gray-300 pl-7">
+        <p class="text-[var(--color-text-secondary)] pl-7">
           Floppy is licensed under the
 
           <a href="https://github.com/dannyvfilms/Floppy/blob/release/LICENSE"
@@ -81,11 +81,11 @@
       </div>
 
       <div class="space-y-2">
-        <div class="flex items-center gap-2 text-lg font-medium text-gray-200">
+        <div class="flex items-center gap-2 text-lg font-medium text-[var(--color-text-secondary)]">
           {% include "app/icons/page.svg" with classes="w-5 h-5 text-indigo-400" %}
           <h3>Attribution</h3>
         </div>
-        <p class="text-gray-300 pl-7">
+        <p class="text-[var(--color-text-secondary)] pl-7">
           Movie and TV streaming providers from
           <a href="https://www.justwatch.com/"
              target="_blank"
@@ -98,7 +98,7 @@
       </div>
 
       <div class="mt-8 pt-4 border-t border-gray-700">
-        <p class="text-gray-400 text-sm">
+        <p class="text-[var(--color-text-muted)] text-sm">
           Version: <span class="font-mono">{{ version }}</span>
           {% if commit %}<span class="text-gray-500 px-1">|</span><span class="font-mono">Commit: {{ commit }}</span>{% endif %}
         </p>

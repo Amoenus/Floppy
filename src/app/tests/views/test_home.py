@@ -182,7 +182,7 @@ class HomeViewTests(TestCase):
         response = self.client.get(reverse("home"))
         self.assertNotContains(
             response,
-            '<h2 class="text-3xl font-semibold text-gray-100">',
+            '<h2 class="text-3xl font-semibold text-[var(--color-text)]">',
             html=False,
         )
 
@@ -194,7 +194,7 @@ class HomeViewTests(TestCase):
         response = self.client.get(reverse("home"))
         self.assertContains(
             response,
-            '<h2 class="text-3xl font-semibold text-gray-100">',
+            '<h2 class="text-3xl font-semibold text-[var(--color-text)]">',
             html=False,
         )
         anime_group = self._get_group(response, MediaTypes.ANIME.value)

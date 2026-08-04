@@ -4,6 +4,97 @@
   --breakpoint-xs: 30rem;
 }
 
+:root {
+  --color-surface: #2a2f35;
+  --color-surface-strong: #39404b;
+  --color-surface-hover: #454d5a;
+  --color-panel: #272c31;
+  --color-accent: #4a9eff;
+  --color-surface-alt: #3e454d;
+  --color-surface-muted: #343a40;
+  --color-surface-dim: #262a2f;
+  --color-border: #2c3136;
+  --color-hover-dim: #23272b;
+  --color-page-bg: #212529;
+  --color-surface-border: #454d59;
+  --color-sidebar: #1a1d20;
+  --color-text: #f3f4f6;
+  --color-text-secondary: #d1d5db;
+  --color-text-muted: #9ca3af;
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not(.dark) {
+    --color-surface: #ffffff;
+    --color-surface-strong: #f1f3f5;
+    --color-surface-hover: #e9ecef;
+    --color-panel: #f8f9fa;
+    --color-accent: #2f80ed;
+    --color-surface-alt: #f8f9fa;
+    --color-surface-muted: #e9ecef;
+    --color-surface-dim: #dee2e6;
+    --color-border: #dee2e6;
+    --color-hover-dim: #f1f3f5;
+    --color-page-bg: #f8f9fa;
+    --color-surface-border: #ced4da;
+    --color-sidebar: #f1f3f5;
+    --color-text: #1f2937;
+    --color-text-secondary: #374151;
+    --color-text-muted: #4b5563;
+    color-scheme: light;
+  }
+}
+
+html.light {
+  --color-surface: #ffffff;
+  --color-surface-strong: #f1f3f5;
+  --color-surface-hover: #e9ecef;
+  --color-panel: #f8f9fa;
+  --color-accent: #2f80ed;
+  --color-surface-alt: #f8f9fa;
+  --color-surface-muted: #e9ecef;
+  --color-surface-dim: #dee2e6;
+  --color-border: #dee2e6;
+  --color-hover-dim: #f1f3f5;
+  --color-page-bg: #f8f9fa;
+  --color-surface-border: #ced4da;
+  --color-sidebar: #f1f3f5;
+  --color-text: #1f2937;
+  --color-text-secondary: #374151;
+  --color-text-muted: #4b5563;
+  color-scheme: light;
+}
+
+html.dark {
+  color-scheme: dark;
+}
+
+/* Theme toggle icon swap: mirrors the dark/light/system resolution used for
+   the --color-* tokens above, so the button's icon matches the active theme
+   without needing JS to compute it. */
+.theme-toggle-icon-sun {
+  display: none;
+}
+
+html.light .theme-toggle-icon-sun {
+  display: block;
+}
+
+html.light .theme-toggle-icon-moon {
+  display: none;
+}
+
+@media (prefers-color-scheme: light) {
+  html:not(.dark):not(.light) .theme-toggle-icon-sun {
+    display: block;
+  }
+
+  html:not(.dark):not(.light) .theme-toggle-icon-moon {
+    display: none;
+  }
+}
+
 [x-cloak] {
   display: none !important;
 }
@@ -669,7 +760,7 @@
 
   /* When quick season buttons are enabled, restore card styling */
   [data-quick-season-mobile="true"] .media-card {
-    background-color: var(--color-gray-800, #2a2f35) !important;
+    background-color: var(--color-surface) !important;
     box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05) !important;
   }
 
@@ -988,7 +1079,7 @@
 
 /* Dropdown */
 .select2-container--tailwindcss-4.select2-container--open .select2-dropdown {
-  @apply w-full mt-1 overflow-auto rounded-md text-base bg-[#39404b] border-gray-600 border focus-within:border-indigo-500 focus-within:ring focus-within:ring-indigo-200/50;
+  @apply w-full mt-1 overflow-auto rounded-md text-base bg-[var(--color-surface-strong)] border-gray-600 border focus-within:border-indigo-500 focus-within:ring focus-within:ring-indigo-200/50;
 }
 
 .select2-container--tailwindcss-4 .select2-results__message {
@@ -997,12 +1088,12 @@
 
 /* Hover state */
 .select2-container--tailwindcss-4 .select2-results__option--highlighted {
-  @apply text-white bg-[#454d5a];
+  @apply text-white bg-[var(--color-surface-hover)];
 }
 
 /* Multiple selection */
 .select2-container--tailwindcss-4 .select2-selection--multiple {
-  @apply rounded-md text-base sm:text-sm/6 bg-[#39404b] p-1.5 cursor-default text-white border border-white/10;
+  @apply rounded-md text-base sm:text-sm/6 bg-[var(--color-surface-strong)] p-1.5 cursor-default text-white border border-white/10;
 }
 
 /* Multiple selection list */
@@ -1012,7 +1103,7 @@
 
 /* Multiple selection choices */
 .select2-container--tailwindcss-4 .select2-selection--multiple .select2-selection__choice {
-  @apply flex flex-row-reverse items-center gap-1 bg-[#454d5a] text-gray-200 pl-2 pr-1 py-1 rounded-md text-sm border border-indigo-500/20;
+  @apply flex flex-row-reverse items-center gap-1 bg-[var(--color-surface-hover)] text-gray-200 pl-2 pr-1 py-1 rounded-md text-sm border border-indigo-500/20;
 }
 
 /* Remove button */
@@ -1031,15 +1122,15 @@
 
 /* Focus styles for keyboard navigation */
 .select2-container--tailwindcss-4.select2-container--focus .select2-selection--multiple {
-  @apply outline-none ring-2 ring-[#4a9eff] appearance-none;
+  @apply outline-none ring-2 ring-[var(--color-accent)] appearance-none;
 }
 
 #chartjs-tooltip {
   opacity: 0;
   position: absolute;
-  background: #1f2937;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #f3f4f6;
+  background: var(--color-panel);
+  border: 1px solid var(--color-surface-border);
+  color: var(--color-text);
   border-radius: 6px;
   padding: 10px 12px;
   font-size: 13px;
@@ -1053,9 +1144,9 @@
 #chartjs-pie-tooltip {
   opacity: 0;
   position: absolute;
-  background: #1f2937;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #f3f4f6;
+  background: var(--color-panel);
+  border: 1px solid var(--color-surface-border);
+  color: var(--color-text);
   border-radius: 6px;
   padding: 8px 12px;
   font-size: 12px;

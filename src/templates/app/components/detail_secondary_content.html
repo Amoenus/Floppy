@@ -18,7 +18,7 @@
         <div class="space-y-4 mb-6">
           <div x-data="{ showRepeats: false }">
             <button @click="showRepeats = !showRepeats"
-                    class="group flex items-center justify-center w-full px-3 py-2 text-sm text-white bg-gray-600 hover:bg-gray-700 transition-all duration-200 rounded-lg tracking-wide cursor-pointer">
+                    class="group flex items-center justify-center w-full px-3 py-2 text-sm text-[var(--color-text)] bg-gray-600 hover:bg-gray-700 transition-all duration-200 rounded-lg tracking-wide cursor-pointer">
               <div class="lucide lucide-chevron-down w-4 h-4 mr-2 transition-transform"
                    :class="{ 'rotate-180': showRepeats }">{% include "app/icons/chevron-down.svg" with classes="w-full h-full" %}</div>
               {% if media_type == MediaTypes.GAME.value or media_type == MediaTypes.BOARDGAME.value %}Show Sessions{% else %}Show Repeats{% endif %} ({{ user_medias|length|add:"-1" }})
@@ -26,24 +26,24 @@
 
             <div x-show="showRepeats" class="space-y-2 mt-4">
               {% for user_media in user_medias|slice:"1:" %}
-                <div class="bg-[#2a2f35] p-4 rounded-lg">
+                <div class="bg-[var(--color-surface)] p-4 rounded-lg">
                   <div class="flex items-center justify-between mb-2">
                     <div class="flex items-center">
                       {% if user_media.score %}
                         {% include "app/icons/star.svg" with classes="w-4 h-4 mr-2 text-yellow-400 fill-yellow-400" %}
                       {% else %}
-                        {% include "app/icons/star.svg" with classes="w-4 h-4 mr-2 text-gray-400 fill-gray-400" %}
+                        {% include "app/icons/star.svg" with classes="w-4 h-4 mr-2 text-[var(--color-text-muted)] fill-gray-400" %}
                       {% endif %}
                       {% if user_media.score %}
-                        <span class="text-sm font-medium text-gray-300">{{ user_media.score|score_display:user }}</span>
+                        <span class="text-sm font-medium text-[var(--color-text-secondary)]">{{ user_media.score|score_display:user }}</span>
                       {% else %}
-                        <span class="text-sm font-medium text-gray-400">Not rated</span>
+                        <span class="text-sm font-medium text-[var(--color-text-muted)]">Not rated</span>
                       {% endif %}
                     </div>
 
                     {% if not public_view|default:False %}
                     <div x-data="{ trackOpen: false }">
-                      <button class="p-1 text-gray-400 hover:text-white transition-colors cursor-pointer"
+                      <button class="p-1 text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
                               hx-get="{% media_view_url 'track_modal' media %}?instance_id={{ user_media.id }}&return_url={{ detail_return_url|urlencode }}"
                               hx-target="#{% component_id 'track' media user_media.id %}"
                               hx-trigger="click"
@@ -65,10 +65,10 @@
                   </div>
 
                   <div class="space-y-2">
-                    <div class="text-xs text-gray-400">Status: {{ user_media.status|media_status_readable }}</div>
+                    <div class="text-xs text-[var(--color-text-muted)]">Status: {{ user_media.status|media_status_readable }}</div>
 
                     {% if media.media_type != MediaTypes.MOVIE.value %}
-                      <div class="text-xs text-gray-400">
+                      <div class="text-xs text-[var(--color-text-muted)]">
                         {% if media_type == MediaTypes.SEASON.value %}
                           Progress: {{ user_media.completed_episode_count }}{% if media.max_progress %} / {{ media.max_progress }}{% endif %}
                         {% else %}
@@ -81,11 +81,11 @@
                     {% endif %}
 
                     {% if user_media.start_date %}
-                      <div class="text-xs text-gray-400">Started: {{ user_media.start_date|datetime_format:user }}</div>
+                      <div class="text-xs text-[var(--color-text-muted)]">Started: {{ user_media.start_date|datetime_format:user }}</div>
                     {% endif %}
 
                     {% if user_media.end_date %}
-                      <div class="text-xs text-gray-400">Finished: {{ user_media.end_date|datetime_format:user }}</div>
+                      <div class="text-xs text-[var(--color-text-muted)]">Finished: {{ user_media.end_date|datetime_format:user }}</div>
                     {% endif %}
 
                     {% if user_media.notes %}
@@ -100,7 +100,7 @@
                                  data-markdown-preview
                                  data-markdown-source="{{ user_notes_id }}"
                                  :class="isExpanded ? 'max-h-60 overflow-y-auto' : 'max-h-20 overflow-hidden'"
-                                 class="text-xs text-gray-200 rounded-md border border-gray-700 bg-[#2a2f35] p-2"></div>
+                                 class="text-xs text-[var(--color-text-secondary)] rounded-md border border-gray-700 bg-[var(--color-surface)] p-2"></div>
                             <button x-show="isClamped"
                                     @click="isExpanded = !isExpanded"
                                     class="text-indigo-400 hover:text-indigo-300 text-xs mt-1 focus:outline-none transition-colors cursor-pointer">
@@ -133,8 +133,8 @@
       {# Media Details #}
       <h2 class="text-xl font-bold mb-4">Details</h2>
       {% if watch_provider_region != "UNSET" and watch_providers is not None %}
-        <div class="bg-[#2a2f35] p-4 rounded-lg my-4">
-          <h3 class="text-sm font-semibold text-gray-400 mb-2">STREAMING</h3>
+        <div class="bg-[var(--color-surface)] p-4 rounded-lg my-4">
+          <h3 class="text-sm font-semibold text-[var(--color-text-muted)] mb-2">STREAMING</h3>
           <div class="flex flex-wrap items-center gap-2 place-content-evenly">
             {% if watch_providers %}
               {% for provider in watch_providers %}
@@ -150,7 +150,7 @@
         </div>
       {% endif %}
 
-      <div class="bg-[#2a2f35] p-4 rounded-lg text-center md:text-start">
+      <div class="bg-[var(--color-surface)] p-4 rounded-lg text-center md:text-start">
         {% if media.details.items %}
           {% for key, value in media.details.items %}
             {% if not authors_linked or key not in author_detail_keys %}
@@ -158,32 +158,32 @@
                 {% if key != "themes" and key != "last_air_date" and key != "episodes" and key != "runtime" and key != "seasons" %}
                 <div class="mb-4">
                   {% if key == "first_air_date" %}
-                    <h3 class="text-sm font-semibold text-gray-400 tracking-wide">AIR DATES</h3>
-                    <p class="text-sm text-gray-200">
+                    <h3 class="text-sm font-semibold text-[var(--color-text-muted)] tracking-wide">AIR DATES</h3>
+                    <p class="text-sm text-[var(--color-text-secondary)]">
                       {{ value|user_date_format:user|default_if_none:"Unknown" }}{% if media.details.last_air_date %} – {{ media.details.last_air_date|user_date_format:user }}{% endif %}
                     </p>
                   {% elif key == "total_runtime" %}
-                    <h3 class="text-sm font-semibold text-gray-400 tracking-wide">RUNTIME{% if media.details.seasons %} ({{ media.details.seasons }} SEASON{{ media.details.seasons|pluralize }}){% endif %}</h3>
-                    <p class="text-sm text-gray-200">
+                    <h3 class="text-sm font-semibold text-[var(--color-text-muted)] tracking-wide">RUNTIME{% if media.details.seasons %} ({{ media.details.seasons }} SEASON{{ media.details.seasons|pluralize }}){% endif %}</h3>
+                    <p class="text-sm text-[var(--color-text-secondary)]">
                       {{ value|default_if_none:"Unknown" }}{% if media.details.episodes %}<span class="text-gray-500 mx-1">·</span>{{ media.details.episodes }} episode{{ media.details.episodes|pluralize }}{% endif %}
                     </p>
                   {% else %}
-                    <h3 class="text-sm font-semibold text-gray-400 tracking-wide">{{ key|no_underscore|upper }}</h3>
+                    <h3 class="text-sm font-semibold text-[var(--color-text-muted)] tracking-wide">{{ key|no_underscore|upper }}</h3>
                     {% if value|is_list %}
-                      {% for item in value %}<p class="text-sm text-gray-200">{{ item|iso_date_format:request.user }}</p>{% endfor %}
+                      {% for item in value %}<p class="text-sm text-[var(--color-text-secondary)]">{{ item|iso_date_format:request.user }}</p>{% endfor %}
                     {% else %}
                       {% if key == 'format' and media_type == MediaTypes.ANIME.value %}
-                        <p class="text-sm text-gray-200">Anime</p>
+                        <p class="text-sm text-[var(--color-text-secondary)]">Anime</p>
                       {% else %}
-                        <p class="text-sm text-gray-200">{{ value|default_if_none:"Unknown" }}</p>
+                        <p class="text-sm text-[var(--color-text-secondary)]">{{ value|default_if_none:"Unknown" }}</p>
                       {% endif %}
                     {% endif %}
                   {% endif %}
                 </div>
                 {% elif key == "runtime" and not media.details.total_runtime %}
                 <div class="mb-4">
-                  <h3 class="text-sm font-semibold text-gray-400 tracking-wide">RUNTIME</h3>
-                  <p class="text-sm text-gray-200">
+                  <h3 class="text-sm font-semibold text-[var(--color-text-muted)] tracking-wide">RUNTIME</h3>
+                  <p class="text-sm text-[var(--color-text-secondary)]">
                     {{ value|default_if_none:"Unknown" }}{% if media.details.episodes %}<span class="text-gray-500 mx-1">·</span>{{ media.details.episodes }} episode{{ media.details.episodes|pluralize }}{% endif %}
                   </p>
                 </div>
@@ -193,24 +193,24 @@
           {% endfor %}
           {% if authors_linked %}
             <div class="mb-4">
-              <h3 class="text-sm font-semibold text-gray-400">AUTHOR{{ authors_linked|length|pluralize }}</h3>
+              <h3 class="text-sm font-semibold text-[var(--color-text-muted)]">AUTHOR{{ authors_linked|length|pluralize }}</h3>
               <div class="flex flex-col gap-1">
                 {% for author in authors_linked %}
                   <a href="{% url 'person_detail' source=author.source person_id=author.person_id name=author.name|slug %}"
-                     class="text-gray-200 hover:text-indigo-500 transition-colors duration-200">{{ author.name }}</a>
+                     class="text-[var(--color-text-secondary)] hover:text-indigo-500 transition-colors duration-200">{{ author.name }}</a>
                 {% endfor %}
               </div>
             </div>
           {% endif %}
         {% else %}
-          <div class="text-gray-200">No details available</div>
+          <div class="text-[var(--color-text-secondary)]">No details available</div>
         {% endif %}
       </div>
 
       {% if media.genres %}
         {% url 'medialist' media_type=parent_media_type|default:media_type as genre_list_url %}
         <h2 class="text-xl font-bold mb-4 mt-6">Genres</h2>
-        <div class="bg-[#2a2f35] p-4 rounded-lg text-center md:text-start">
+        <div class="bg-[var(--color-surface)] p-4 rounded-lg text-center md:text-start">
           <div class="flex flex-wrap gap-2 justify-center md:justify-start">
             {% for genre in media.genres %}
               <a href="{{ genre_list_url }}?genre={{ genre|urlencode }}"
@@ -222,11 +222,11 @@
 
       {% if studios_linked %}
         <h2 class="text-xl font-bold mb-4 mt-6">Studios</h2>
-        <div class="bg-[#2a2f35] p-4 rounded-lg text-center md:text-start">
+        <div class="bg-[var(--color-surface)] p-4 rounded-lg text-center md:text-start">
           <div class="flex flex-col gap-1">
             {% for studio in studios_linked|slice:":12" %}
               <a href="{{ studio|studio_url }}"
-                 class="text-sm text-gray-200 hover:text-indigo-500 transition-colors duration-200">
+                 class="text-sm text-[var(--color-text-secondary)] hover:text-indigo-500 transition-colors duration-200">
                 {{ studio.name|default:"Unknown Studio" }}
               </a>
             {% endfor %}
@@ -257,19 +257,19 @@
             </div>
           </div>
         </div>
-        <div class="bg-[#2a2f35] p-4 rounded-lg text-center md:text-start">
+        <div class="bg-[var(--color-surface)] p-4 rounded-lg text-center md:text-start">
           {# Collection statistics for TV shows/Anime or Seasons #}
           {% if collection_stats %}
             {% if media_type == MediaTypes.SEASON.value %}
               {# For seasons, only show episode stats #}
               <div class="{% if has_collection_data %}mb-4{% endif %}">
-                <h3 class="text-sm font-semibold text-gray-400">COLLECTED EPISODES</h3>
-                <p class="text-sm text-gray-200">
+                <h3 class="text-sm font-semibold text-[var(--color-text-muted)]">COLLECTED EPISODES</h3>
+                <p class="text-sm text-[var(--color-text-secondary)]">
                   {{ collection_stats.collected_episodes }}/{{ collection_stats.total_episodes }}
                   {% if collection_stats.total_episodes > 0 %}
                     {% widthratio collection_stats.collected_episodes collection_stats.total_episodes 100 as episode_percentage %}
-                    <span class="text-gray-200 mx-1">•</span>
-                    <span class="text-gray-200">{{ episode_percentage }}%</span>
+                    <span class="text-[var(--color-text-secondary)] mx-1">•</span>
+                    <span class="text-[var(--color-text-secondary)]">{{ episode_percentage }}%</span>
                   {% endif %}
                 </p>
               </div>
@@ -277,25 +277,25 @@
             {% else %}
               {# For TV shows/Anime, show season and episode stats #}
               <div class="mb-4">
-                <h3 class="text-sm font-semibold text-gray-400">COLLECTED SEASONS</h3>
-                <p class="text-sm text-gray-200">
+                <h3 class="text-sm font-semibold text-[var(--color-text-muted)]">COLLECTED SEASONS</h3>
+                <p class="text-sm text-[var(--color-text-secondary)]">
                   {{ collection_stats.collected_seasons }}/{{ collection_stats.total_seasons }}
                   {% if collection_stats.total_seasons > 0 %}
                     {% widthratio collection_stats.collected_seasons collection_stats.total_seasons 100 as season_percentage %}
-                    <span class="text-gray-200 mx-1">•</span>
-                    <span class="text-gray-200">{{ season_percentage }}%</span>
+                    <span class="text-[var(--color-text-secondary)] mx-1">•</span>
+                    <span class="text-[var(--color-text-secondary)]">{{ season_percentage }}%</span>
                   {% endif %}
                 </p>
               </div>
               
               <div class="{% if has_collection_data %}mb-4{% endif %}">
-                <h3 class="text-sm font-semibold text-gray-400">COLLECTED EPISODES</h3>
-                <p class="text-sm text-gray-200">
+                <h3 class="text-sm font-semibold text-[var(--color-text-muted)]">COLLECTED EPISODES</h3>
+                <p class="text-sm text-[var(--color-text-secondary)]">
                   {{ collection_stats.collected_episodes }}/{{ collection_stats.total_episodes }}
                   {% if collection_stats.total_episodes > 0 %}
                     {% widthratio collection_stats.collected_episodes collection_stats.total_episodes 100 as episode_percentage %}
-                    <span class="text-gray-200 mx-1">•</span>
-                    <span class="text-gray-200">{{ episode_percentage }}%</span>
+                    <span class="text-[var(--color-text-secondary)] mx-1">•</span>
+                    <span class="text-[var(--color-text-secondary)]">{{ episode_percentage }}%</span>
                   {% endif %}
                 </p>
               </div>
@@ -313,12 +313,12 @@
           {% elif collection_entry %}
             <div>
               {% if media_type == MediaTypes.SEASON.value %}
-                <p class="text-xs uppercase tracking-wide text-gray-400">Aggregated Episode Metadata</p>
+                <p class="text-xs uppercase tracking-wide text-[var(--color-text-muted)]">Aggregated Episode Metadata</p>
               {% endif %}
               {% include "app/components/collection_entry_summary.html" with collection_entry=collection_entry media_type=media_type user=user source_style_game_meta=True flat_list=True is_last=True entry_quality_label="" %}
             </div>
           {% elif not collection_stats %}
-            <p class="text-gray-400 text-sm">No collection data available</p>
+            <p class="text-[var(--color-text-muted)] text-sm">No collection data available</p>
           {% endif %}
         </div>
       {% endif %}
@@ -396,7 +396,7 @@
               {% if media_type != MediaTypes.PODCAST.value %}
                 <div class="flex items-center gap-1">
                   <button @click="setLayout('grid')"
-                          :class="epLayout === 'grid' ? 'bg-indigo-600 text-white' : 'bg-[#2a2f35] text-gray-400 hover:text-white'"
+                          :class="epLayout === 'grid' ? 'bg-indigo-600 text-white' : 'bg-[var(--color-surface)] text-gray-400 hover:text-white'"
                           class="p-1.5 rounded transition-colors cursor-pointer"
                           title="Card view">
                     <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -404,7 +404,7 @@
                     </svg>
                   </button>
                   <button @click="setLayout('list')"
-                          :class="epLayout === 'list' ? 'bg-indigo-600 text-white' : 'bg-[#2a2f35] text-gray-400 hover:text-white'"
+                          :class="epLayout === 'list' ? 'bg-indigo-600 text-white' : 'bg-[var(--color-surface)] text-gray-400 hover:text-white'"
                           class="p-1.5 rounded transition-colors cursor-pointer"
                           title="List view">
                     <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -436,7 +436,7 @@
                        hx-select="#episodes-batch > *"
                        hx-target="closest [data-episode-load-more]"
                        hx-swap="outerHTML"
-                       class="inline-flex items-center rounded-xl border border-white/10 bg-[#2a2f35] px-4 py-3 text-sm font-medium text-gray-100 shadow-sm transition-colors duration-200 hover:bg-[#343a40]">
+                       class="inline-flex items-center rounded-xl border border-white/10 bg-[var(--color-surface)] px-4 py-3 text-sm font-medium text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)]">
                       Show {{ episode_load_more.label }}
                     </a>
                   </div>
@@ -448,7 +448,7 @@
         {% elif media_type == MediaTypes.ANIME.value and identity_provider == Sources.MAL.value %}
           <div class="w-full">
             <h2 class="text-xl font-bold mb-4">Episodes</h2>
-            <div class="rounded-lg border border-[#2f3640] bg-[#252a30] p-4 text-sm text-gray-300 space-y-2">
+            <div class="rounded-lg border border-[var(--color-surface-muted)] bg-[var(--color-surface-dim)] p-4 text-sm text-[var(--color-text-secondary)] space-y-2">
               <p>Episode cards are not available from MyAnimeList metadata. MAL only returns the total episode count for this title.</p>
               {% if grouped_preview_target and display_provider != identity_provider %}
                 <p>
@@ -473,7 +473,7 @@
         <div class="w-full md:w-3/4">
           <div class="w-full">
             <h2 class="text-xl font-bold mb-4">Episodes</h2>
-            <div class="rounded-lg border border-[#2f3640] bg-[#252a30] p-4 text-sm text-gray-300 space-y-2">
+            <div class="rounded-lg border border-[var(--color-surface-muted)] bg-[var(--color-surface-dim)] p-4 text-sm text-[var(--color-text-secondary)] space-y-2">
               <p>Episode cards are not available from MyAnimeList metadata. MAL only returns the total episode count for this title.</p>
               {% if grouped_preview_target and display_provider != identity_provider %}
                 <p>

@@ -10,18 +10,18 @@
 {% block settings_content %}
 
   <div class="space-y-6">
-    <div class="bg-[#2a2f35] rounded-lg p-6">
+    <div class="bg-[var(--color-surface)] rounded-lg p-6">
       <div class="flex items-center mb-5">
         {% include "app/icons/vertical-sliders.svg" with classes="w-6 h-6 text-indigo-400 mr-3" %}
         <h2 class="text-xl font-semibold">Advanced</h2>
       </div>
 
-      <div class="bg-[#39404b] p-5 rounded-lg mb-6">
+      <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg mb-6">
         <div class="flex items-center mb-3">
           {% include "app/icons/trashcan.svg" with classes="w-5 h-5 text-indigo-400 mr-2" %}
           <h3 class="text-base font-medium">Clear Search Cache</h3>
         </div>
-        <p class="text-gray-400 mb-4 text-sm">
+        <p class="text-[var(--color-text-muted)] mb-4 text-sm">
           Floppy stores your search results in a cache to speed up performance and reduce API calls.
           <br>
           Normally, these cached results expire automatically after 24 hours.
@@ -41,7 +41,7 @@
         </div>
       </div>
 
-      <div class="bg-[#39404b] p-5 rounded-lg">
+      <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg">
         <div class="flex items-center justify-between mb-3">
           <div class="flex items-center">
             {% include "app/icons/vertical-sliders.svg" with classes="w-5 h-5 text-indigo-400 mr-2" %}
@@ -50,10 +50,10 @@
           {% if tmdb_proxy_configured %}
             <span class="px-2 py-1 text-xs rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">Configured</span>
           {% else %}
-            <span class="px-2 py-1 text-xs rounded bg-gray-500/20 text-gray-300 border border-gray-600/50">Not configured</span>
+            <span class="px-2 py-1 text-xs rounded bg-gray-500/20 text-[var(--color-text-secondary)] border border-gray-600/50">Not configured</span>
           {% endif %}
         </div>
-        <p class="text-gray-400 mb-4 text-sm">
+        <p class="text-[var(--color-text-muted)] mb-4 text-sm">
           If TMDB is blocked from this server, route TMDB requests through a proxy (HTTP or SOCKS5).
           <br>
           Leave blank and save to remove it.
@@ -62,7 +62,7 @@
           {% csrf_token %}
           <input type="text"
                  name="tmdb_proxy_url"
-                 class="w-full py-2 px-3 bg-[#2a2f35] rounded-md text-white text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+                 class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
                  placeholder="socks5://user:pass@host:port">
           <button type="submit"
                   class="px-4 py-2 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer">

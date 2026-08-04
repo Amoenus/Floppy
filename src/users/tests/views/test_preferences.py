@@ -24,6 +24,20 @@ class PreferencesViewTests(TestCase):
         self.assertEqual(self.user.date_format, "m_d_yyyy")
         self.assertEqual(self.user.time_format, "hh_mm")
 
+    def test_preferences_post_persists_theme(self):
+        """POSTing a new theme should persist to the DB."""
+        response = self.client.post(reverse("preferences"), {"theme": "light"})
+        self.assertRedirects(response, reverse("preferences"))
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.theme, "light")
+
+    def test_preferences_post_rejects_invalid_theme(self):
+        """POSTing an invalid theme value should be ignored, not persisted."""
+        response = self.client.post(reverse("preferences"), {"theme": "solarized"})
+        self.assertRedirects(response, reverse("preferences"))
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.theme, "system")
+
     def test_preferences_save_button_is_inside_form(self):
         """Regression test for #345.
 

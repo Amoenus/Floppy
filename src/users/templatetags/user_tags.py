@@ -158,6 +158,17 @@ def date_format_display(format_value):
 
 
 @register.filter
+def theme_display(theme_value):
+    """Display the human-readable name for theme values."""
+    theme_display_map = {
+        "system": "System default",
+        "dark": "Dark",
+        "light": "Light",
+    }
+    return theme_display_map.get(theme_value, theme_value)
+
+
+@register.filter
 def time_format_display(format_value):
     """Display the human-readable name for time format values."""
     format_display_map = {

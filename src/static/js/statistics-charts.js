@@ -5,6 +5,16 @@ function initStatisticsCharts() {
   }
   Chart.register(ChartDataLabels);
 
+  // Resolved once per chart-init pass so custom HTML tooltips (built via
+  // inline styles, not Tailwind classes) follow the current light/dark theme.
+  function chartThemeColor(varName, fallback) {
+    var value = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+    return value || fallback;
+  }
+  var CHART_TOOLTIP_BG = chartThemeColor("--color-panel", "#1f2937");
+  var CHART_TOOLTIP_BORDER = chartThemeColor("--color-surface-border", "rgba(255,255,255,0.1)");
+  var CHART_TOOLTIP_TEXT = chartThemeColor("--color-text", "#f3f4f6");
+
   // Destroy charts from a previous visit (their canvases were detached by a
   // boosted body swap) before creating new instances.
   (window.__floppyStatsCharts || []).forEach(function (chart) {
@@ -62,7 +72,7 @@ function initStatisticsCharts() {
         return n.toFixed(1);
       }
 
-      let html = '<div style="font-weight:600;margin-bottom:6px;color:#fff">' + formattedTitle + "</div>";
+      let html = '<div style="font-weight:600;margin-bottom:6px;color:' + CHART_TOOLTIP_TEXT + '">' + formattedTitle + "</div>";
       chart.data.datasets.forEach((dataset) => {
         const raw = Number(dataset.data[dataIndex]) || 0;
         if (raw > 0) {
@@ -631,7 +641,7 @@ function initStatisticsCharts() {
         const bandLabel = tooltipModel.title[0] || "";
         const bandGames = topGamesByBand[bandLabel] || [];
 
-        let html = '<div style="font-weight:600;margin-bottom:6px;color:#fff">Avg/day: ' + bandLabel + "</div>";
+        let html = '<div style="font-weight:600;margin-bottom:6px;color:' + CHART_TOOLTIP_TEXT + '">Avg/day: ' + bandLabel + "</div>";
         bandGames.forEach(function (game, idx) {
           html +=
             '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:4px">' +
@@ -881,8 +891,8 @@ function initStatisticsCharts() {
           tooltipEl.id = "combinedPlaysTooltip";
           tooltipEl.style.cssText =
             "position:absolute;z-index:100;pointer-events:none;opacity:0;transition:opacity 0.2s ease;" +
-            "background:#1f2937;border:1px solid rgba(255,255,255,0.1);border-radius:6px;" +
-            "padding:10px 12px;font-size:13px;color:#f3f4f6;min-width:160px;" +
+            "background:" + CHART_TOOLTIP_BG + ";border:1px solid " + CHART_TOOLTIP_BORDER + ";border-radius:6px;" +
+            "padding:10px 12px;font-size:13px;color:" + CHART_TOOLTIP_TEXT + ";min-width:160px;" +
             "box-shadow:0 4px 12px rgba(0,0,0,0.4);";
           document.body.appendChild(tooltipEl);
         }
@@ -924,7 +934,7 @@ function initStatisticsCharts() {
             return (Number(hrs) || 0).toFixed(1) + "h";
           }
 
-          let html = '<div style="font-weight:600;margin-bottom:6px;color:#fff">' + title + "</div>";
+          let html = '<div style="font-weight:600;margin-bottom:6px;color:' + CHART_TOOLTIP_TEXT + '">' + title + "</div>";
           rows.forEach(function (row) {
             html +=
               '<div style="display:flex;align-items:center;gap:6px;margin-top:4px">' +
@@ -1088,8 +1098,8 @@ function initStatisticsCharts() {
         el.id = "timeWorldsTooltip";
         el.style.cssText =
           "position:fixed;z-index:9999;pointer-events:none;opacity:0;transition:opacity 0.1s;" +
-          "background:#1f2937;border:1px solid rgba(255,255,255,0.1);border-radius:6px;" +
-          "padding:8px 10px;font-size:12px;color:#f3f4f6;white-space:nowrap;box-shadow:0 4px 12px rgba(0,0,0,0.4);";
+          "background:" + CHART_TOOLTIP_BG + ";border:1px solid " + CHART_TOOLTIP_BORDER + ";border-radius:6px;" +
+          "padding:8px 10px;font-size:12px;color:" + CHART_TOOLTIP_TEXT + ";white-space:nowrap;box-shadow:0 4px 12px rgba(0,0,0,0.4);";
         document.body.appendChild(el);
       }
       return el;
@@ -1113,7 +1123,7 @@ function initStatisticsCharts() {
         const color = dp.dataset.backgroundColor[dp.dataIndex];
 
         tooltipEl.innerHTML =
-          '<div style="font-weight:600;margin-bottom:4px;color:#fff">' + label + "</div>" +
+          '<div style="font-weight:600;margin-bottom:4px;color:' + CHART_TOOLTIP_TEXT + '">' + label + "</div>" +
           '<div style="display:flex;align-items:center;gap:6px">' +
             '<span style="width:10px;height:10px;border-radius:2px;background:' + color + ';flex-shrink:0"></span>' +
             '<span>' + fmtHours(hrs, Infinity) + " (" + pct + "%)</span>" +
@@ -1206,7 +1216,7 @@ function initStatisticsCharts() {
 
         if (timeWorldsCenterEl) {
           timeWorldsCenterEl.innerHTML =
-            '<span style="font-size:1rem;font-weight:700;color:#fff;line-height:1.2;text-align:center">' +
+            '<span style="font-size:1rem;font-weight:700;color:' + CHART_TOOLTIP_TEXT + ';line-height:1.2;text-align:center">' +
             fmtHours(totalHours) + "</span>" +
             '<span style="font-size:0.65rem;color:#9ca3af;line-height:1.2">total</span>';
         }
@@ -1254,7 +1264,7 @@ function initStatisticsCharts() {
 
       if (timeWorldsCenterEl) {
         timeWorldsCenterEl.innerHTML =
-          '<span style="font-size:1rem;font-weight:700;color:#fff;line-height:1.2;text-align:center">' +
+          '<span style="font-size:1rem;font-weight:700;color:' + CHART_TOOLTIP_TEXT + ';line-height:1.2;text-align:center">' +
           fmtHours(totalHours) + "</span>" +
           '<span style="font-size:0.65rem;color:#9ca3af;line-height:1.2">total</span>';
       }
@@ -1290,8 +1300,8 @@ function initStatisticsCharts() {
         el.id = "statusCompositionTooltip";
         el.style.cssText =
           "position:fixed;z-index:9999;pointer-events:none;opacity:0;transition:opacity 0.1s;" +
-          "background:#1f2937;border:1px solid rgba(255,255,255,0.1);border-radius:6px;" +
-          "padding:8px 10px;font-size:12px;color:#f3f4f6;white-space:nowrap;box-shadow:0 4px 12px rgba(0,0,0,0.4);";
+          "background:" + CHART_TOOLTIP_BG + ";border:1px solid " + CHART_TOOLTIP_BORDER + ";border-radius:6px;" +
+          "padding:8px 10px;font-size:12px;color:" + CHART_TOOLTIP_TEXT + ";white-space:nowrap;box-shadow:0 4px 12px rgba(0,0,0,0.4);";
         document.body.appendChild(el);
       }
       return el;
@@ -1312,7 +1322,7 @@ function initStatisticsCharts() {
         const pct = total > 0 ? Math.round((count / total) * 100) : 0;
         const color = dp.dataset.backgroundColor[dp.dataIndex];
         tooltipEl.innerHTML =
-          '<div style="font-weight:600;margin-bottom:4px;color:#fff">' + label + "</div>" +
+          '<div style="font-weight:600;margin-bottom:4px;color:' + CHART_TOOLTIP_TEXT + '">' + label + "</div>" +
           '<div style="display:flex;align-items:center;gap:6px">' +
             '<span style="width:10px;height:10px;border-radius:2px;background:' + color + ';flex-shrink:0"></span>' +
             "<span>" + count.toLocaleString() + " (" + pct + "%)</span>" +
@@ -1336,7 +1346,7 @@ function initStatisticsCharts() {
 
       if (centerEl) {
         centerEl.innerHTML =
-          '<span style="font-size:1.1rem;font-weight:700;color:#fff;line-height:1.2">' +
+          '<span style="font-size:1.1rem;font-weight:700;color:' + CHART_TOOLTIP_TEXT + ';line-height:1.2">' +
           total.toLocaleString() + "</span>" +
           '<span style="font-size:0.65rem;color:#9ca3af;line-height:1.2">total items</span>';
       }
@@ -1385,7 +1395,7 @@ function initStatisticsCharts() {
             '<div style="flex:1;height:5px;border-radius:3px;background:rgba(255,255,255,0.07);overflow:hidden;min-width:40px">' +
               '<div style="height:100%;border-radius:3px;background:' + color + ';width:' + pct + '%"></div>' +
             "</div>" +
-            '<span style="flex-shrink:0;width:34px;text-align:center;color:#fff;font-weight:700">' + pct + "%</span>" +
+            '<span style="flex-shrink:0;width:34px;text-align:center;color:' + CHART_TOOLTIP_TEXT + ';font-weight:700">' + pct + "%</span>" +
             '<span style="flex-shrink:0;min-width:60px;text-align:center;color:#6b7280;font-variant-numeric:tabular-nums">' + count.toLocaleString() + "</span>";
           legendEl.appendChild(row);
         });
@@ -1574,8 +1584,8 @@ function initStatisticsCharts() {
             tooltipEl.id = "ratingDistributionTooltip";
             tooltipEl.style.cssText =
               "position:absolute;z-index:100;pointer-events:none;opacity:0;transition:opacity 0.2s ease;" +
-              "background:#1f2937;border:1px solid rgba(255,255,255,0.1);border-radius:6px;" +
-              "padding:8px 10px;font-size:12px;color:#f3f4f6;box-shadow:0 4px 12px rgba(0,0,0,0.4);";
+              "background:" + CHART_TOOLTIP_BG + ";border:1px solid " + CHART_TOOLTIP_BORDER + ";border-radius:6px;" +
+              "padding:8px 10px;font-size:12px;color:" + CHART_TOOLTIP_TEXT + ";box-shadow:0 4px 12px rgba(0,0,0,0.4);";
             document.body.appendChild(tooltipEl);
           }
           const tooltipModel = context.tooltip;
@@ -1587,7 +1597,7 @@ function initStatisticsCharts() {
             const dataIndex = tooltipModel.dataPoints[0].dataIndex;
             const value = built.data[dataIndex] || 0;
             tooltipEl.innerHTML =
-              '<div style="font-weight:600;color:#fff">Rating ' + built.labels[dataIndex] + "</div>" +
+              '<div style="font-weight:600;color:' + CHART_TOOLTIP_TEXT + '">Rating ' + built.labels[dataIndex] + "</div>" +
               '<div style="margin-top:4px">' + value.toLocaleString() + (value === 1 ? " item" : " items") + "</div>";
           }
           const position = context.chart.canvas.getBoundingClientRect();
@@ -1799,7 +1809,7 @@ function initStatisticsCharts() {
 
       if (centerEl) {
         centerEl.innerHTML =
-          '<span style="font-size:1rem;font-weight:700;color:#fff;line-height:1.2">' +
+          '<span style="font-size:1rem;font-weight:700;color:' + CHART_TOOLTIP_TEXT + ';line-height:1.2">' +
           clamped.toFixed(1).replace(/\.0$/, "") + "%</span>" +
           '<span style="font-size:0.6rem;color:#9ca3af;line-height:1.2">of titles</span>';
       }

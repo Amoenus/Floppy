@@ -4,7 +4,7 @@
   {% if detail_tag_sections %}
     {% for detail_tag_section in detail_tag_sections %}
       <div class="{% if not forloop.first %}mt-3 border-t border-white/10 pt-3{% endif %}">
-        <div class="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">{{ detail_tag_section.title }}</div>
+        <div class="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--color-text-muted)]">{{ detail_tag_section.title }}</div>
         {% if detail_tag_section.entries %}
           <div class="flex flex-wrap gap-2">
             {% for detail_tag in detail_tag_section.entries %}

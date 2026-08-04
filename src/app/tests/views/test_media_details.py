@@ -472,7 +472,7 @@ class MediaDetailsViewTests(TestCase):
             'class="flex w-full items-center gap-2 sm:w-auto sm:flex-wrap"', content
         )
         self.assertIn(
-            'class="inline-flex h-11 w-full items-center justify-center rounded-xl border border-white/10 bg-[#2a2f35] text-gray-100 shadow-sm transition-colors duration-200 hover:bg-[#343a40] cursor-pointer sm:size-11 sm:w-11"',
+            'class="inline-flex h-11 w-full items-center justify-center rounded-xl border border-white/10 bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer sm:size-11 sm:w-11"',
             content,
         )
         self.assertIn("Add to tracker", content)
@@ -5822,11 +5822,11 @@ class MediaDetailsViewTests(TestCase):
         )
         self.assertIn('class="relative w-full md:w-auto"', content)
         self.assertIn(
-            '<h2 class="text-sm font-medium text-gray-400 md:hidden">Season 1</h2>',
+            '<h2 class="text-sm font-medium text-[var(--color-text-muted)] md:hidden">Season 1</h2>',
             content,
         )
         self.assertIn(
-            'class="hidden flex-wrap items-center justify-start gap-y-1 text-center text-sm font-medium text-gray-400 md:flex md:text-start"',
+            'class="hidden flex-wrap items-center justify-start gap-y-1 text-center text-sm font-medium text-[var(--color-text-muted)] md:flex md:text-start"',
             content,
         )
 
@@ -5919,7 +5919,7 @@ class MediaDetailsViewTests(TestCase):
         )
         self.assertIn('aria-label="Show alternative title"', content)
         self.assertIn(
-            '<h2 class="text-sm font-medium text-gray-400">Season 3</h2>', content
+            '<h2 class="text-sm font-medium text-[var(--color-text-muted)]">Season 3</h2>', content
         )
         self.assertIn("<p>Alicization</p>", content)
 
@@ -6022,16 +6022,16 @@ class MediaDetailsViewTests(TestCase):
             content,
         )
         self.assertIn(
-            '<h2 class="text-sm font-medium text-gray-400 md:hidden">Season 1</h2>',
+            '<h2 class="text-sm font-medium text-[var(--color-text-muted)] md:hidden">Season 1</h2>',
             content,
         )
         self.assertIn(
-            'class="mt-3 flex flex-wrap items-center justify-center gap-y-1 text-center text-sm font-medium text-gray-400 md:hidden"',
+            'class="mt-3 flex flex-wrap items-center justify-center gap-y-1 text-center text-sm font-medium text-[var(--color-text-muted)] md:hidden"',
             content,
         )
         self.assertRegex(
             content,
-            r'class="hidden flex-wrap items-center justify-start gap-y-1 text-center text-sm font-medium text-gray-400 md:flex md:text-start">\s*<h2 class="text-sm font-medium text-gray-400">Season 1</h2>\s*<span class="mx-2 text-gray-600">•</span>\s*<span id="season-progress-desktop-\d+" class="text-sm font-medium text-gray-400">\s*Progress: 2/8\s*</span>\s*<span class="mx-2 text-gray-600">•</span>\s*<span class="text-sm font-medium text-gray-400">\s*2026-03-01 - 2026-03-12\s*</span>',
+            r'class="hidden flex-wrap items-center justify-start gap-y-1 text-center text-sm font-medium text-\[var\(--color-text-muted\)\] md:flex md:text-start">\s*<h2 class="text-sm font-medium text-\[var\(--color-text-muted\)\]">Season 1</h2>\s*<span class="mx-2 text-gray-600">•</span>\s*<span id="season-progress-desktop-\d+" class="text-sm font-medium text-\[var\(--color-text-muted\)\]">\s*Progress: 2/8\s*</span>\s*<span class="mx-2 text-gray-600">•</span>\s*<span class="text-sm font-medium text-\[var\(--color-text-muted\)\]">\s*2026-03-01 - 2026-03-12\s*</span>',
         )
         self.assertNotIn("Your History", content)
 
@@ -7023,7 +7023,7 @@ class MediaDetailsViewTests(TestCase):
         )
         html = response.content.decode()
         self.assertEqual(
-            html.count('text-sm font-semibold text-gray-400">AUTHOR</h3>'),
+            html.count('text-sm font-semibold text-[var(--color-text-muted)]">AUTHOR</h3>'),
             1,
         )
 
