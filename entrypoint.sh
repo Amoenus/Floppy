@@ -2,6 +2,30 @@
 
 set -e
 
+# Fail fast with a clear message if the SQLite file is already corrupt,
+# instead of burning through the migrate retry loop below to arrive at an
+# opaque "file is not a database" traceback (issue #508). Corruption here
+# often means the db directory sits on a network filesystem that doesn't
+# support SQLite's WAL locking - see README's SQLite persistence note.
+if [ -z "$DB_HOST" ] && [ -f /floppy/db/db.sqlite3 ]; then
+    python -c "
+import sqlite3
+import sys
+
+try:
+    conn = sqlite3.connect('/floppy/db/db.sqlite3')
+    conn.execute('PRAGMA quick_check').fetchone()
+except sqlite3.DatabaseError as e:
+    print(f'[entrypoint] Database integrity check failed: {e}', file=sys.stderr)
+    print(
+        '[entrypoint] The SQLite file may be corrupt (see README: SQLite '
+        'network filesystem caveat)',
+        file=sys.stderr,
+    )
+    sys.exit(1)
+" || exit 1
+fi
+
 # Bounded, retrying migrate: a blocked migration must fail loudly and retry
 # instead of wedging the container as "unhealthy" forever (issue #341).
 # lock_timeout is libpq-only (ignored on SQLite) and fires only while waiting

@@ -377,20 +377,34 @@ else:
         try:
             cursor = connection.cursor()
             cursor.execute(f"PRAGMA journal_mode={SQLITE_JOURNAL_MODE}")
+            actual_journal_mode = cursor.fetchone()[0]
             cursor.execute(f"PRAGMA synchronous={SQLITE_SYNCHRONOUS}")
             cursor.execute(
                 f"PRAGMA busy_timeout={int(SQLITE_BUSY_TIMEOUT_SECONDS * 1000)}",
             )
-        except Exception as error:
+            if actual_journal_mode.lower() != SQLITE_JOURNAL_MODE.lower():
+                # A connection stuck on a different journal mode than its
+                # siblings (e.g. WAL requested but filesystem doesn't support
+                # it - common on network mounts) is a known SQLite corruption
+                # trigger, so this must be loud rather than a routine warning.
+                import logging
+
+                logging.getLogger(__name__).error(
+                    "SQLite journal_mode mismatch: requested %s but got %s. "
+                    "Mixed journal modes across connections to the same "
+                    "database file can cause corruption - this often means "
+                    "the database directory is on a network filesystem "
+                    "(NFS/SMB/CIFS) that doesn't support WAL locking.",
+                    SQLITE_JOURNAL_MODE,
+                    actual_journal_mode,
+                )
+        except Exception:
             # Log but don't raise - allow connection to proceed even if PRAGMA fails
             # This prevents disk I/O errors during connection setup from blocking all requests
             import logging
 
             logger = logging.getLogger(__name__)
-            logger.warning(
-                "Failed to configure SQLite connection PRAGMA settings: %s",
-                error,
-            )
+            logger.exception("Failed to configure SQLite connection PRAGMA settings")
         finally:
             if cursor:
                 # Closing a cursor is best-effort; a failure here is not useful.

@@ -327,6 +327,7 @@ GUNICORN_THREADS=4
 ### Persistence checklist
 
 - SQLite stores the app database at `/floppy/db/db.sqlite3`; persist `/floppy/db`. (Pre-rename `/yamtrack/db` mounts still resolve, so existing setups keep working.)
+- **Do not put `/floppy/db` on a network filesystem** (NFS, SMB/CIFS, or a NAS "share" mounted into Docker). Floppy's SQLite database uses WAL mode, which [SQLite's own documentation](https://sqlite.org/wal.html) warns is unsafe over network filesystems because they don't reliably support the locking it depends on - this can corrupt the database under normal concurrent use. Use local/block storage for `/floppy/db`, or set `DB_HOST` to use PostgreSQL if only network storage is available.
 - PostgreSQL stores its database files at `/var/lib/postgresql/data`; persist that path on the Postgres container.
 - Redis stores sessions and background-task state; resetting Redis can log users out, but it should not delete accounts if the database is persisted.
 - Do not assume `DATABASE_URL` enables PostgreSQL. Floppy uses Postgres only when `DB_HOST` is set.
