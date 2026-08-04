@@ -1158,7 +1158,10 @@ def component_id(component_type, media, instance_id=None):
     if instance_id:
         component_id += f"-{instance_id}"
 
-    return component_id
+    # media_id can contain ":" (e.g. podcast "itunes:12345"), which is invalid
+    # inside a CSS id selector (htmx resolves hx-target="#..." via
+    # querySelectorAll and throws on it).
+    return component_id.replace(":", "-")
 
 
 @register.simple_tag

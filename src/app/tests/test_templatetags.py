@@ -759,6 +759,17 @@ class AppTagsTests(TestCase):
         )
         self.assertEqual(app_tags.component_id("card", candidate_like), "card-tv-1668")
 
+        # Podcast media_ids contain ":" (e.g. "itunes:12345"), which is invalid
+        # inside a CSS id selector used by hx-target="#...". It must be
+        # sanitized so htmx doesn't throw a querySelectorAll SyntaxError (#502).
+        podcast_like = SimpleNamespace(
+            media_type=MediaTypes.PODCAST.value,
+            media_id="itunes:1247343210",
+        )
+        podcast_id = app_tags.component_id("track", podcast_like, 4)
+        self.assertNotIn(":", podcast_id)
+        self.assertEqual(podcast_id, "track-podcast-itunes-1247343210-4")
+
     def test_media_view_url(self):
         """Test the media_view_url tag."""
         # Test with object for TV
