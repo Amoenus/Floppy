@@ -176,7 +176,7 @@ class AppConfig(AppConfig):
             # Delay startup work until Django is fully initialized.
             tasks.populate_runtime_data_continuous.apply_async(
                 countdown=60,
-                priority=getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 1),
+                priority=getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 9),
             )
             logger.info("Scheduled runtime population task to run on startup")
         except Exception as error:
@@ -188,7 +188,7 @@ class AppConfig(AppConfig):
             tasks = import_module("app.tasks")
             tasks.warm_discover_startup_tabs.apply_async(
                 countdown=90,
-                priority=getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 1),
+                priority=getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 9),
             )
             logger.info("Scheduled Discover startup warmup")
         except Exception as error:
@@ -200,7 +200,7 @@ class AppConfig(AppConfig):
             tasks = import_module("app.tasks")
             tasks.warm_history_day_cache_coverage.apply_async(
                 countdown=300,
-                priority=getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 1),
+                priority=getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 9),
             )
             logger.info("Scheduled history day coverage warmup")
         except Exception as error:
@@ -217,7 +217,7 @@ class AppConfig(AppConfig):
             tasks_imdb = import_module("app.tasks_imdb")
             tasks_imdb.schedule_imdb_game_person_profile_backfill_if_needed.apply_async(
                 countdown=STARTUP_SWEEP_COUNTDOWNS["imdb_person"],
-                priority=getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 1),
+                priority=getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 9),
             )
             logger.info("Scheduled IMDB person profile backfill check on startup")
         except Exception as error:
@@ -246,7 +246,7 @@ class AppConfig(AppConfig):
             tasks.reconcile_genre_backfill.apply_async(
                 kwargs={"strategy_version": version},
                 countdown=STARTUP_SWEEP_COUNTDOWNS["genre"],
-                priority=getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 1),
+                priority=getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 9),
             )
 
             logger.info(
@@ -281,7 +281,7 @@ class AppConfig(AppConfig):
                 reconcile_igdb_rating_backfill.apply_async(
                     kwargs={"strategy_version": IGDB_RATINGS_BACKFILL_VERSION},
                     countdown=STARTUP_SWEEP_COUNTDOWNS["igdb_ratings"],
-                    priority=getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 1),
+                    priority=getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 9),
                 )
             except Exception:
                 cache.delete(version_key)
@@ -324,7 +324,7 @@ class AppConfig(AppConfig):
             reconcile_provider_backfill.apply_async(
                 kwargs={"strategy_version": version},
                 countdown=STARTUP_SWEEP_COUNTDOWNS["provider"],
-                priority=getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 1),
+                priority=getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 9),
             )
 
             logger.info(
@@ -371,7 +371,7 @@ class AppConfig(AppConfig):
             tasks.reconcile_trakt_popularity.apply_async(
                 kwargs={"score_version": TRAKT_POPULARITY_SCORE_VERSION},
                 countdown=STARTUP_SWEEP_COUNTDOWNS["trakt_popularity"],
-                priority=getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 1),
+                priority=getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 9),
             )
 
             # Set keys only after successful queue so a failed apply_async

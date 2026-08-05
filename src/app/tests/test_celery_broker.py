@@ -1,6 +1,7 @@
 import fnmatch
 from unittest.mock import patch
 
+from django.conf import settings
 from django.test import SimpleTestCase, override_settings
 
 from app import celery_broker
@@ -49,6 +50,41 @@ class _FakeRedisClient:
 
     def pipeline(self):
         return _FakeRedisPipeline(self)
+
+
+class CeleryTaskPriorityTests(SimpleTestCase):
+    """Guard the Redis priority direction.
+
+    Kombu's Redis transport publishes priority N to the key "<queue>:N" (0 uses
+    the bare "<queue>") and the worker BRPOPs those keys in ascending order, so a
+    *lower* number is a *higher* priority -- the opposite of AMQP. Getting this
+    backwards silently strands interactive work at the tail of the queue.
+    """
+
+    def test_priority_constants_are_ordered_for_redis(self):
+        self.assertLess(
+            settings.CELERY_TASK_PRIORITY_INTERACTIVE,
+            settings.CELERY_TASK_PRIORITY_FOLLOWUP,
+        )
+        self.assertLess(
+            settings.CELERY_TASK_PRIORITY_FOLLOWUP,
+            settings.CELERY_TASK_DEFAULT_PRIORITY,
+        )
+        self.assertLess(
+            settings.CELERY_TASK_DEFAULT_PRIORITY,
+            settings.CELERY_TASK_PRIORITY_BACKGROUND,
+        )
+
+    def test_priority_constants_are_within_configured_steps(self):
+        steps = settings.CELERY_BROKER_TRANSPORT_OPTIONS["priority_steps"]
+        for name in (
+            "CELERY_TASK_PRIORITY_INTERACTIVE",
+            "CELERY_TASK_PRIORITY_FOLLOWUP",
+            "CELERY_TASK_DEFAULT_PRIORITY",
+            "CELERY_TASK_PRIORITY_BACKGROUND",
+        ):
+            with self.subTest(setting=name):
+                self.assertIn(getattr(settings, name), steps)
 
 
 class CeleryBrokerRepairTests(SimpleTestCase):

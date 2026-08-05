@@ -128,7 +128,7 @@ def reload_calendar(user_id=None, item_ids=None, user=None, items_to_process=Non
                 backfill_item_metadata_task.apply_async(
                     kwargs={"batch_size": batch_size},
                     priority=getattr(
-                        settings, "CELERY_TASK_PRIORITY_BACKGROUND", 1
+                        settings, "CELERY_TASK_PRIORITY_BACKGROUND", 9
                     ),
                 )
         except Exception:

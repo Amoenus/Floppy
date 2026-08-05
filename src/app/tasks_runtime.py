@@ -28,7 +28,7 @@ from app.tasks_backfill_state import (
 
 logger = logging.getLogger(__name__)
 
-BACKGROUND_TASK_PRIORITY = getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 1)
+BACKGROUND_TASK_PRIORITY = getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 9)
 
 RUNTIME_BACKFILL_SOURCES = ("tmdb", "mal", "simkl")
 RUNTIME_BACKFILL_QUEUE_TTL = 60 * 60  # 1 hour

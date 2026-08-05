@@ -1253,10 +1253,15 @@ CELERY_TASK_SOFT_TIME_LIMIT = config(
 )
 if not CELERY_TASK_SOFT_TIME_LIMIT:
     CELERY_TASK_SOFT_TIME_LIMIT = None
+# Redis priorities are inverted relative to AMQP: kombu publishes priority N to
+# the key "<queue>:N" (priority 0 uses the bare "<queue>"), and the worker BRPOPs
+# those keys in ascending order, so it drains "celery" first and "celery:9" last.
+# Lower number == higher priority. Keep these ordered accordingly; assigning 9 to
+# interactive work strands it behind every background batch.
+CELERY_TASK_PRIORITY_INTERACTIVE = 0
+CELERY_TASK_PRIORITY_FOLLOWUP = 3
 CELERY_TASK_DEFAULT_PRIORITY = 5
-CELERY_TASK_PRIORITY_INTERACTIVE = 9
-CELERY_TASK_PRIORITY_FOLLOWUP = 7
-CELERY_TASK_PRIORITY_BACKGROUND = 1
+CELERY_TASK_PRIORITY_BACKGROUND = 9
 
 CELERY_RESULT_EXTENDED = True
 CELERY_RESULT_BACKEND = REDIS_URL

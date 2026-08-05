@@ -26,7 +26,7 @@ from app.tasks_backfill_state import (
 
 logger = logging.getLogger(__name__)
 
-BACKGROUND_TASK_PRIORITY = getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 1)
+BACKGROUND_TASK_PRIORITY = getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 9)
 
 WATCH_PROVIDERS_BACKFILL_VERSION = 1
 PROVIDER_MEDIA_TYPES = (
