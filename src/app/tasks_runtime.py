@@ -12,6 +12,7 @@ from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 
+from app import backfill_queue, cache_safety
 from app.log_safety import exception_summary
 from app.models import Item, MediaTypes, MetadataBackfillField, MetadataBackfillState
 from app.providers import services
@@ -163,16 +164,16 @@ def enqueue_runtime_backfill_items(item_ids, countdown=10):
     normalized = _filter_backfill_item_ids(normalized, MetadataBackfillField.RUNTIME)
     if not normalized:
         return 0
-    try:
-        queue = cache.get(RUNTIME_BACKFILL_ITEMS_QUEUE_KEY) or []
-        queue = list(set(queue).union(normalized))
-        cache.set(
-            RUNTIME_BACKFILL_ITEMS_QUEUE_KEY, queue, timeout=RUNTIME_BACKFILL_QUEUE_TTL
-        )
-        if cache.add(RUNTIME_BACKFILL_ITEMS_SCHEDULED_KEY, True, timeout=30):
-            populate_runtime_backfill_queue.apply_async(countdown=countdown)
-    except Exception as exc:  # pragma: no cover - cache unavailable
-        logger.debug("Runtime backfill queue unavailable: %s", exception_summary(exc))
+    queued = backfill_queue.enqueue(
+        RUNTIME_BACKFILL_ITEMS_QUEUE_KEY,
+        RUNTIME_BACKFILL_ITEMS_SCHEDULED_KEY,
+        normalized,
+        ttl=RUNTIME_BACKFILL_QUEUE_TTL,
+        drain_task=populate_runtime_backfill_queue,
+        countdown=countdown,
+    )
+    if not queued:
+        logger.debug("Runtime backfill queue unavailable, dispatching directly")
         populate_runtime_data_for_items.apply_async(
             args=[normalized], countdown=countdown
         )
@@ -184,41 +185,48 @@ def enqueue_episode_runtime_backfill(season_keys, countdown=10):
     normalized = _filter_episode_runtime_season_keys(season_keys)
     if not normalized:
         return 0
-    tokens = []
-    try:
-        for media_id, source, season_number in normalized:
-            token = _encode_season_key(media_id, source, season_number)
-            if not token:
-                continue
-            lock_key = f"{RUNTIME_BACKFILL_EPISODES_LOCK_PREFIX}{token}"
-            if cache.add(lock_key, True, timeout=RUNTIME_BACKFILL_EPISODES_LOCK_TTL):
-                tokens.append(token)
-        if not tokens:
-            return 0
-        queue = cache.get(RUNTIME_BACKFILL_EPISODES_QUEUE_KEY) or []
-        queue = list(set(queue).union(tokens))
-        cache.set(
-            RUNTIME_BACKFILL_EPISODES_QUEUE_KEY,
-            queue,
-            timeout=RUNTIME_BACKFILL_QUEUE_TTL,
-        )
-        if cache.add(RUNTIME_BACKFILL_EPISODES_SCHEDULED_KEY, True, timeout=30):
-            # Deferred to avoid circular import: tasks_episode.py re-exports from app.tasks.
-            from app.tasks_episode import (
-                populate_episode_runtime_queue,
-            )
+    # Deferred to avoid circular import: tasks_episode.py re-exports from app.tasks.
+    from app.tasks_episode import (
+        populate_episode_runtime_data,
+        populate_episode_runtime_queue,
+    )
 
-            populate_episode_runtime_queue.apply_async(countdown=countdown)
-    except Exception as exc:  # pragma: no cover - cache unavailable
-        logger.debug(
-            "Episode runtime backfill queue unavailable: %s", exception_summary(exc)
-        )
-        from app.tasks_episode import populate_episode_runtime_data
-
+    def dispatch_directly():
+        logger.debug("Episode runtime backfill queue unavailable, dispatching directly")
         populate_episode_runtime_data.apply_async(
             kwargs={"season_keys": normalized}, countdown=countdown
         )
         return len(normalized)
+
+    tokens = []
+    for media_id, source, season_number in normalized:
+        token = _encode_season_key(media_id, source, season_number)
+        if not token:
+            continue
+        claimed = cache_safety.cache_add(
+            f"{RUNTIME_BACKFILL_EPISODES_LOCK_PREFIX}{token}",
+            timeout=RUNTIME_BACKFILL_EPISODES_LOCK_TTL,
+        )
+        if claimed is None:
+            # The per-season dedupe lock can't be consulted, so the queue write
+            # below won't work either. Dispatch rather than silently drop the
+            # seasons, and accept that a duplicate pass may run.
+            return dispatch_directly()
+        if claimed:
+            tokens.append(token)
+    if not tokens:
+        return 0
+
+    queued = backfill_queue.enqueue(
+        RUNTIME_BACKFILL_EPISODES_QUEUE_KEY,
+        RUNTIME_BACKFILL_EPISODES_SCHEDULED_KEY,
+        tokens,
+        ttl=RUNTIME_BACKFILL_QUEUE_TTL,
+        drain_task=populate_episode_runtime_queue,
+        countdown=countdown,
+    )
+    if not queued:
+        return dispatch_directly()
     return len(tokens)
 
 
@@ -413,24 +421,19 @@ def populate_runtime_data_for_items(item_ids: list[int], delay_seconds: float = 
 @shared_task(name="app.tasks.populate_runtime_backfill_queue")
 def populate_runtime_backfill_queue(batch_size: int = 50, delay_seconds: float = 0.0):
     """Drain the runtime backfill queue and process items in small batches."""
-    queue = cache.get(RUNTIME_BACKFILL_ITEMS_QUEUE_KEY) or []
-    if not queue:
-        cache.delete(RUNTIME_BACKFILL_ITEMS_SCHEDULED_KEY)
+    batch, more_remaining = backfill_queue.take(
+        RUNTIME_BACKFILL_ITEMS_QUEUE_KEY,
+        RUNTIME_BACKFILL_ITEMS_SCHEDULED_KEY,
+        batch_size,
+    )
+    if not batch:
         return {"processed": 0, "message": "No queued runtime items"}
 
-    cache.delete(RUNTIME_BACKFILL_ITEMS_SCHEDULED_KEY)
-    batch = queue[:batch_size]
-    remaining = queue[batch_size:]
-    if remaining:
-        cache.set(
-            RUNTIME_BACKFILL_ITEMS_QUEUE_KEY,
-            remaining,
-            timeout=RUNTIME_BACKFILL_QUEUE_TTL,
+    if more_remaining:
+        backfill_queue.reschedule(
+            RUNTIME_BACKFILL_ITEMS_SCHEDULED_KEY,
+            populate_runtime_backfill_queue,
         )
-        if cache.add(RUNTIME_BACKFILL_ITEMS_SCHEDULED_KEY, True, timeout=30):
-            populate_runtime_backfill_queue.apply_async(countdown=10)
-    else:
-        cache.delete(RUNTIME_BACKFILL_ITEMS_QUEUE_KEY)
 
     return populate_runtime_data_for_items(batch, delay_seconds=delay_seconds)
 

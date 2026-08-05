@@ -81,6 +81,7 @@ from integrations.plex_watchlist import (
     WATCHLIST_TASK_NAME,
 )
 from integrations.pocketcasts_api import PocketCastsAuthError
+from integrations.webhook_dedupe import should_process_webhook
 
 logger = logging.getLogger(__name__)
 ARR_SYNC_INTERVAL_HOURS = 2
@@ -2484,7 +2485,10 @@ def jellyfin_webhook(request, token):
         return HttpResponse("Missing payload", status=400)
 
     payload = json.loads(data)
-    tasks.process_webhook.delay("jellyfin", payload, user.id)
+    # Jellyfin emits play/pause/progress/stop for one viewing; each task can fan
+    # out to several TMDB lookups on a single-concurrency worker (#521).
+    if should_process_webhook("jellyfin", user.id, payload):
+        tasks.process_webhook.delay("jellyfin", payload, user.id)
     return HttpResponse(status=200)
 
 
@@ -2525,7 +2529,8 @@ def plex_webhook(request, token):
         "Received Plex webhook request - Event: %s, User: %s", event_type, user.username
     )
 
-    tasks.process_webhook.delay("plex", payload, user.id)
+    if should_process_webhook("plex", user.id, payload):
+        tasks.process_webhook.delay("plex", payload, user.id)
     return HttpResponse(status=200)
 
 
@@ -2552,7 +2557,8 @@ def emby_webhook(request, token):
         return HttpResponse("Missing payload", status=400)
 
     payload = json.loads(data)
-    tasks.process_webhook.delay("emby", payload, user.id)
+    if should_process_webhook("emby", user.id, payload):
+        tasks.process_webhook.delay("emby", payload, user.id)
     return HttpResponse(status=200)
 
 
@@ -2671,7 +2677,8 @@ def kodi_webhook(request, token):
         logger.warning("Invalid JSON payload in Kodi webhook request")
         return HttpResponse("Invalid JSON", status=400)
 
-    tasks.process_webhook.delay("kodi", payload, user.id)
+    if should_process_webhook("kodi", user.id, payload):
+        tasks.process_webhook.delay("kodi", payload, user.id)
     return HttpResponse(status=200)
 
 
@@ -2719,8 +2726,6 @@ def stremio_addon_manifest(request, token):
 @require_GET
 def stremio_addon_subtitles(request, token, media_type, media_id):
     """Record a playback-start scrobble from a Stremio subtitles request."""
-    from django.core.cache import cache
-
     try:
         user = users.models.User.objects.get(token=token)
     except ObjectDoesNotExist:
@@ -2728,15 +2733,18 @@ def stremio_addon_subtitles(request, token, media_type, media_id):
         return _stremio_addon_response({"error": "Invalid token"}, status=401)
 
     media_id = unquote(media_id)
+    payload = {"id": media_id, "type": media_type}
 
     # Stremio re-requests subtitles on seeks and quality changes; only the
-    # first request per item in the window records a scrobble.
-    throttle_key = f"stremio_scrobble_{user.id}_{media_id}"
-    if cache.add(throttle_key, "1", timeout=STREMIO_SCROBBLE_THROTTLE_SECONDS):
-        tasks.process_webhook.delay(
-            "stremio",
-            {"id": media_id, "type": media_type},
-            user.id,
-        )
+    # first request per item in the window records a scrobble. Its window is
+    # much longer than the other providers' because a seek can happen at any
+    # point during playback, not just around the start.
+    if should_process_webhook(
+        "stremio",
+        user.id,
+        payload,
+        ttl=STREMIO_SCROBBLE_THROTTLE_SECONDS,
+    ):
+        tasks.process_webhook.delay("stremio", payload, user.id)
 
     return _stremio_addon_response({"subtitles": []})

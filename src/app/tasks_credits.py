@@ -6,8 +6,8 @@ Extracted from tasks.py. Re-exported from app.tasks for backward compatibility.
 import logging
 
 from celery import shared_task
-from django.core.cache import cache
 
+from app import backfill_queue
 from app import credits as credit_helpers
 from app.log_safety import exception_summary
 from app.models import CREDITS_BACKFILL_VERSION, Item, MediaTypes, MetadataBackfillField
@@ -183,16 +183,16 @@ def enqueue_credits_backfill_items(item_ids, countdown=10):
     normalized = _missing_credits_item_ids(normalized)
     if not normalized:
         return 0
-    try:
-        queue = cache.get(CREDITS_BACKFILL_ITEMS_QUEUE_KEY) or []
-        queue = list(set(queue).union(normalized))
-        cache.set(
-            CREDITS_BACKFILL_ITEMS_QUEUE_KEY, queue, timeout=CREDITS_BACKFILL_QUEUE_TTL
-        )
-        if cache.add(CREDITS_BACKFILL_ITEMS_SCHEDULED_KEY, True, timeout=30):
-            populate_credits_backfill_queue.apply_async(countdown=countdown)
-    except Exception as exc:  # pragma: no cover - cache unavailable
-        logger.debug("Credits backfill queue unavailable: %s", exception_summary(exc))
+    queued = backfill_queue.enqueue(
+        CREDITS_BACKFILL_ITEMS_QUEUE_KEY,
+        CREDITS_BACKFILL_ITEMS_SCHEDULED_KEY,
+        normalized,
+        ttl=CREDITS_BACKFILL_QUEUE_TTL,
+        drain_task=populate_credits_backfill_queue,
+        countdown=countdown,
+    )
+    if not queued:
+        logger.debug("Credits backfill queue unavailable, dispatching directly")
         populate_credits_data_for_items.apply_async(
             args=[normalized], countdown=countdown
         )
@@ -245,23 +245,18 @@ def populate_credits_data_for_items(item_ids: list[int], delay_seconds: float = 
 @shared_task(name="app.tasks.populate_credits_backfill_queue")
 def populate_credits_backfill_queue(batch_size: int = 50, delay_seconds: float = 0.0):
     """Drain the credits backfill queue and process items in small batches."""
-    queue = cache.get(CREDITS_BACKFILL_ITEMS_QUEUE_KEY) or []
-    if not queue:
-        cache.delete(CREDITS_BACKFILL_ITEMS_SCHEDULED_KEY)
+    batch, more_remaining = backfill_queue.take(
+        CREDITS_BACKFILL_ITEMS_QUEUE_KEY,
+        CREDITS_BACKFILL_ITEMS_SCHEDULED_KEY,
+        batch_size,
+    )
+    if not batch:
         return {"processed": 0, "message": "No queued credits items"}
 
-    cache.delete(CREDITS_BACKFILL_ITEMS_SCHEDULED_KEY)
-    batch = queue[:batch_size]
-    remaining = queue[batch_size:]
-    if remaining:
-        cache.set(
-            CREDITS_BACKFILL_ITEMS_QUEUE_KEY,
-            remaining,
-            timeout=CREDITS_BACKFILL_QUEUE_TTL,
+    if more_remaining:
+        backfill_queue.reschedule(
+            CREDITS_BACKFILL_ITEMS_SCHEDULED_KEY,
+            populate_credits_backfill_queue,
         )
-        if cache.add(CREDITS_BACKFILL_ITEMS_SCHEDULED_KEY, True, timeout=30):
-            populate_credits_backfill_queue.apply_async(countdown=10)
-    else:
-        cache.delete(CREDITS_BACKFILL_ITEMS_QUEUE_KEY)
 
     return populate_credits_data_for_items(batch, delay_seconds=delay_seconds)

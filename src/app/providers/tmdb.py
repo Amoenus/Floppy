@@ -21,6 +21,17 @@ TMDB_GENDER_MALE = 2
 TMDB_GENDER_NON_BINARY = 3
 base_url = "https://api.themoviedb.org/3"
 TVDB_OVERRIDE_CACHE_TIMEOUT = 60 * 60 * 24 * 30
+# The /changes result for a given day doesn't change once fetched, and the
+# calendar reload is the only caller.
+TMDB_CHANGES_CACHE_TIMEOUT = 60 * 60 * 6
+# Search results are keyed on arbitrary user- and webhook-supplied strings, so
+# these keys grow without bound. They're also the cheapest thing to refetch and
+# the least valuable to keep, which makes the default 24 hours the wrong trade at
+# the point Redis is under pressure (issue #521).
+SEARCH_CACHE_TIMEOUT = 60 * 60
+# Season blobs are the largest single thing Floppy caches (full episode lists),
+# so they expire sooner than the show payload they hang off.
+SEASON_CACHE_TIMEOUT = 60 * 60 * 12
 TMDB_APPEND_TO_RESPONSE_MAX_REMOTE_CALLS = 20
 TV_DETAIL_APPEND_RESPONSES = (
     "recommendations,external_ids,aggregate_credits,alternative_titles,watch/providers"
@@ -371,7 +382,7 @@ def search(media_type, query, page):
             results,
         )
 
-        cache.set(cache_key, data)
+        cache.set(cache_key, data, SEARCH_CACHE_TIMEOUT)
 
     return data
 
@@ -523,13 +534,23 @@ def movie(media_id):
 
 
 def get_cached_seasons(media_id, season_numbers):
-    """Check cache for seasons and return cached data and list of uncached seasons."""
+    """Check cache for seasons and return cached data and list of uncached seasons.
+
+    One get_many rather than a get per season: a 40-season show meant 40 round
+    trips, and when Redis is slow it meant 40 socket timeouts back to back rather
+    than one (issue #521).
+    """
     season_numbers = _normalize_season_numbers(season_numbers)
+    keys = {
+        _season_cache_key(media_id, season_number): season_number
+        for season_number in season_numbers
+    }
+    found = cache.get_many(list(keys)) or {}
+
     cached_data = {}
     uncached_seasons = []
-
-    for season_number in season_numbers:
-        season_data = cache.get(_season_cache_key(media_id, season_number))
+    for key, season_number in keys.items():
+        season_data = found.get(key)
         if season_data:
             cached_data[f"season/{season_number}"] = season_data
         else:
@@ -692,6 +713,7 @@ def cache_fallback_season_metadata(media_id, season_number, tv_data, season_data
     cache.set(
         _season_cache_key(media_id, season_number),
         cached_season_data,
+        SEASON_CACHE_TIMEOUT,
     )
 
     tv_cache_key = f"{Sources.TMDB.value}_{MediaTypes.TV.value}_{media_id}"
@@ -914,6 +936,7 @@ def fetch_and_cache_seasons(media_id, season_numbers, tv_data):
             cache.set(
                 _season_cache_key(media_id, season_number),
                 season_data,
+                SEASON_CACHE_TIMEOUT,
             )
             result_data[season_key] = season_data
 
@@ -928,6 +951,7 @@ def fetch_and_cache_seasons(media_id, season_numbers, tv_data):
             cache.set(
                 _season_cache_key(media_id, 0),
                 specials_season,
+                SEASON_CACHE_TIMEOUT,
             )
             cache.set(
                 f"{Sources.TMDB.value}_{MediaTypes.TV.value}_{media_id}",
@@ -1149,11 +1173,27 @@ def get_format(media_type):
     return "Movie"
 
 
-def get_changed_ids(media_type):
-    """Return changed TMDB ids for the given media type over the last days."""
-    url = f"{base_url}/{media_type}/changes"
+def get_changed_ids(media_type, max_pages=None):
+    """Return changed TMDB ids for the given media type over the last days.
+
+    Capped and cached. The loop was previously unbounded, and TMDB's /changes
+    endpoint reports every title changed globally in the window - total_pages can
+    run into the hundreds - so one nightly calendar reload could make hundreds of
+    sequential API calls through a 3/s rate limiter (issue #521). The first pages
+    are the ones that matter: results are ordered by recency, and anything missed
+    is picked up by the next night's window.
+    """
     end_date = timezone.localdate()
     start_date = end_date - timedelta(days=3)
+    cache_key = f"{Sources.TMDB.value}_changes_{media_type}_{end_date.isoformat()}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    if max_pages is None:
+        max_pages = settings.TMDB_CHANGES_MAX_PAGES
+
+    url = f"{base_url}/{media_type}/changes"
     changed_ids = set()
     page = 1
 
@@ -1180,8 +1220,17 @@ def get_changed_ids(media_type):
         total_pages = response.get("total_pages", 1)
         if page >= total_pages:
             break
+        if page >= max_pages:
+            logger.info(
+                "tmdb_changes_truncated media_type=%s pages=%s of %s",
+                media_type,
+                page,
+                total_pages,
+            )
+            break
         page += 1
 
+    cache.set(cache_key, changed_ids, timeout=TMDB_CHANGES_CACHE_TIMEOUT)
     return changed_ids
 
 

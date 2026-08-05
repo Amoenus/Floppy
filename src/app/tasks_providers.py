@@ -9,8 +9,8 @@ import logging
 
 from celery import shared_task
 from django.conf import settings
-from django.core.cache import cache
 
+from app import backfill_queue, reconcile_state
 from app.interactive_requests import interactive_request_active
 from app.log_safety import exception_summary
 from app.models import Item, MediaTypes, MetadataBackfillField, Sources
@@ -40,10 +40,15 @@ WATCH_PROVIDERS_BACKFILL_ITEMS_SCHEDULED_KEY = (
     "watch_providers_backfill_items_scheduled"
 )
 
-_WATCH_PROVIDERS_BATCH_SIZE_DEFAULT = 1500
+_WATCH_PROVIDERS_BATCH_SIZE_DEFAULT = settings.WATCH_PROVIDERS_RECONCILE_BATCH_SIZE
+RECONCILE_KEY = "watch_providers"
+# How much of the library one reconcile pass may enqueue. At 50 items per chunk
+# this caps in-flight work at a size the drain can clear before the next pass,
+# instead of pushing the whole candidate set into Redis at once.
+RECONCILE_MAX_CHUNKS_PER_RUN = settings.RECONCILE_MAX_CHUNKS_PER_RUN
 
 
-def _provider_items_queryset():
+def _provider_items_queryset(*, for_reconcile: bool = False):
     from app.models import MetadataBackfillState
 
     queryset = Item.objects.filter(
@@ -52,7 +57,9 @@ def _provider_items_queryset():
         watch_providers={},
     )
     queryset = _apply_backfill_state_filters(
-        queryset, MetadataBackfillField.WATCH_PROVIDERS
+        queryset,
+        MetadataBackfillField.WATCH_PROVIDERS,
+        for_reconcile=for_reconcile,
     )
     completed_ids = MetadataBackfillState.objects.filter(
         field=MetadataBackfillField.WATCH_PROVIDERS,
@@ -129,22 +136,16 @@ def enqueue_provider_backfill_items(item_ids, countdown=10):
     )
     if not normalized:
         return 0
-    try:
-        queue = cache.get(WATCH_PROVIDERS_BACKFILL_ITEMS_QUEUE_KEY) or []
-        queue = list(set(queue).union(normalized))
-        cache.set(
-            WATCH_PROVIDERS_BACKFILL_ITEMS_QUEUE_KEY,
-            queue,
-            timeout=WATCH_PROVIDERS_BACKFILL_QUEUE_TTL,
-        )
-        if cache.add(
-            WATCH_PROVIDERS_BACKFILL_ITEMS_SCHEDULED_KEY, True, timeout=30
-        ):
-            populate_provider_backfill_queue.apply_async(countdown=countdown)
-    except Exception as exc:  # pragma: no cover - cache unavailable
-        logger.debug(
-            "Watch provider backfill queue unavailable: %s", exception_summary(exc)
-        )
+    queued = backfill_queue.enqueue(
+        WATCH_PROVIDERS_BACKFILL_ITEMS_QUEUE_KEY,
+        WATCH_PROVIDERS_BACKFILL_ITEMS_SCHEDULED_KEY,
+        normalized,
+        ttl=WATCH_PROVIDERS_BACKFILL_QUEUE_TTL,
+        drain_task=populate_provider_backfill_queue,
+        countdown=countdown,
+    )
+    if not queued:
+        logger.debug("Watch provider backfill queue unavailable, dispatching directly")
         populate_provider_data_for_items.apply_async(
             args=[normalized], countdown=countdown
         )
@@ -177,26 +178,19 @@ def populate_provider_data_for_items(item_ids: list[int]):
 @shared_task(name="app.tasks.populate_provider_backfill_queue")
 def populate_provider_backfill_queue(batch_size: int = 50):
     """Drain the watch-provider backfill queue and process items in small batches."""
-    queue = cache.get(WATCH_PROVIDERS_BACKFILL_ITEMS_QUEUE_KEY) or []
-    if not queue:
-        cache.delete(WATCH_PROVIDERS_BACKFILL_ITEMS_SCHEDULED_KEY)
+    batch, more_remaining = backfill_queue.take(
+        WATCH_PROVIDERS_BACKFILL_ITEMS_QUEUE_KEY,
+        WATCH_PROVIDERS_BACKFILL_ITEMS_SCHEDULED_KEY,
+        batch_size,
+    )
+    if not batch:
         return {"processed": 0, "message": "No queued watch-provider items"}
 
-    cache.delete(WATCH_PROVIDERS_BACKFILL_ITEMS_SCHEDULED_KEY)
-    batch = queue[:batch_size]
-    remaining = queue[batch_size:]
-    if remaining:
-        cache.set(
-            WATCH_PROVIDERS_BACKFILL_ITEMS_QUEUE_KEY,
-            remaining,
-            timeout=WATCH_PROVIDERS_BACKFILL_QUEUE_TTL,
+    if more_remaining:
+        backfill_queue.reschedule(
+            WATCH_PROVIDERS_BACKFILL_ITEMS_SCHEDULED_KEY,
+            populate_provider_backfill_queue,
         )
-        if cache.add(
-            WATCH_PROVIDERS_BACKFILL_ITEMS_SCHEDULED_KEY, True, timeout=30
-        ):
-            populate_provider_backfill_queue.apply_async(countdown=10)
-    else:
-        cache.delete(WATCH_PROVIDERS_BACKFILL_ITEMS_QUEUE_KEY)
 
     return populate_provider_data_for_items(batch)
 
@@ -205,41 +199,67 @@ def populate_provider_backfill_queue(batch_size: int = 50):
 def reconcile_provider_backfill(
     strategy_version: int | None = None,
     batch_size: int = _WATCH_PROVIDERS_BATCH_SIZE_DEFAULT,
+    max_chunks: int | None = None,
 ):
-    """Queue all current watch-provider backfill candidates without waiting for the beat sweep."""
+    """Queue a bounded slice of watch-provider backfill candidates.
+
+    Bounded, and resuming from a stored cursor, rather than draining the whole
+    candidate set in one pass. The old version looped until the queryset was
+    empty and enqueued everything it found, so on a large library each run put
+    every outstanding item back into the queue while the drain removed only 50
+    every ten seconds - the queue never shrank and the same growing value was
+    rewritten continuously (issue #521).
+    """
     batch_size = max(int(batch_size), 1)
-    last_item_id = 0
+    max_chunks = RECONCILE_MAX_CHUNKS_PER_RUN if max_chunks is None else max_chunks
+    resolved_version = int(strategy_version or WATCH_PROVIDERS_BACKFILL_VERSION)
+    state = reconcile_state.get_state(RECONCILE_KEY, resolved_version)
+
+    cursor = state.last_cursor_item_id
     selected = 0
     enqueued = 0
 
-    while True:
+    for chunk_index in range(max_chunks):
         batch_ids = list(
-            _provider_items_queryset()
-            .filter(id__gt=last_item_id)
+            _provider_items_queryset(for_reconcile=True)
+            .filter(id__gt=cursor)
             .order_by("id")
             .values_list("id", flat=True)[:batch_size],
         )
         if not batch_ids:
+            # Reached the end of the table. Starting from the top and finding
+            # nothing means the strategy is genuinely reconciled; otherwise wrap
+            # so the next pass rechecks the rows before the cursor, and only the
+            # pass after that can conclude completion.
+            complete = cursor == state.last_cursor_item_id == 0
+            cursor = 0
+            if complete:
+                reconcile_state.mark_complete(RECONCILE_KEY, resolved_version)
+                return {"selected": selected, "enqueued": enqueued, "complete": True}
             break
 
-        last_item_id = batch_ids[-1]
+        cursor = batch_ids[-1]
         selected += len(batch_ids)
-        enqueued += enqueue_provider_backfill_items(batch_ids, countdown=10)
-
-    if strategy_version is not None:
-        cache.set(
-            f"watch_providers_backfill_reconciled_v{strategy_version}",
-            "done",
-            timeout=None,
+        enqueued += enqueue_provider_backfill_items(
+            batch_ids,
+            countdown=10 + chunk_index * 15,
         )
 
+    reconcile_state.mark_progress(
+        RECONCILE_KEY,
+        resolved_version,
+        cursor=cursor,
+        enqueued=enqueued,
+    )
+
     logger.info(
-        "reconcile_provider_backfill selected=%d enqueued=%d version=%s",
+        "reconcile_provider_backfill selected=%d enqueued=%d cursor=%d version=%s",
         selected,
         enqueued,
-        strategy_version,
+        cursor,
+        resolved_version,
     )
-    return {"selected": selected, "enqueued": enqueued}
+    return {"selected": selected, "enqueued": enqueued, "cursor": cursor}
 
 
 @shared_task(name="Ensure watch provider backfill reconcile")
@@ -247,42 +267,28 @@ def ensure_provider_backfill_reconcile(
     strategy_version: int | None = None,
     batch_size: int = _WATCH_PROVIDERS_BATCH_SIZE_DEFAULT,
 ):
-    """Retry the watch-provider backfill reconcile until it has completed."""
+    """Run a watch-provider reconcile pass unless one isn't needed."""
     if interactive_request_active():
         logger.info(
             "ensure_provider_backfill_reconcile skipped reason=interactive_request_active"
         )
         return {"skipped": True, "reason": "interactive_request_active"}
 
-    resolved_strategy_version = int(
-        strategy_version or WATCH_PROVIDERS_BACKFILL_VERSION
-    )
-    version_key = f"watch_providers_backfill_reconciled_v{resolved_strategy_version}"
-    status = cache.get(version_key)
-    reconcile_complete = is_provider_backfill_reconcile_complete()
+    resolved_version = int(strategy_version or WATCH_PROVIDERS_BACKFILL_VERSION)
+    # Answered from the state row alone - no Item query, no cache read - so a
+    # finished or backing-off reconcile costs one indexed row lookup rather than
+    # a NOT IN subquery over the whole library.
+    state = reconcile_state.should_run(RECONCILE_KEY, resolved_version)
+    if state is None:
+        return {"skipped": True, "reason": "not_due"}
 
-    if reconcile_complete:
-        cache.set(version_key, "done", timeout=None)
-        logger.debug(
-            "ensure_provider_backfill_reconcile skipped version=%s status=done",
-            resolved_strategy_version,
+    if not reconcile_state.acquire(RECONCILE_KEY, state):
+        return {"skipped": True, "reason": "already_running"}
+
+    try:
+        return reconcile_provider_backfill(
+            strategy_version=resolved_version,
+            batch_size=batch_size,
         )
-        return {"skipped": True, "reason": "done"}
-
-    if status == "pending":
-        logger.debug(
-            "ensure_provider_backfill_reconcile skipped version=%s status=pending",
-            resolved_strategy_version,
-        )
-        return {"skipped": True, "reason": "pending"}
-
-    if status == "done":
-        logger.info(
-            "ensure_provider_backfill_reconcile rerunning version=%s stale_cache_done=1",
-            resolved_strategy_version,
-        )
-
-    return reconcile_provider_backfill(
-        strategy_version=resolved_strategy_version,
-        batch_size=batch_size,
-    )
+    finally:
+        reconcile_state.release(RECONCILE_KEY)

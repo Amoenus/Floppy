@@ -2,6 +2,7 @@ import logging
 from contextlib import contextmanager, suppress
 from types import SimpleNamespace
 
+import requests
 from celery import shared_task
 from django.contrib.auth import get_user_model
 from django.utils.module_loading import import_string
@@ -34,7 +35,17 @@ def _webhook_history_user(user):
             del HistoricalRecords.context.request
 
 
-@shared_task(name="Process media server webhook")
+@shared_task(
+    name="Process media server webhook",
+    # A provider blip or a brief Redis stall used to discard the scrobble
+    # outright, since the task re-raised with no retry configured (#521). Only
+    # network errors are retried: a malformed payload will fail identically every
+    # time, and retrying it would just burn the worker.
+    autoretry_for=(requests.exceptions.RequestException,),
+    max_retries=3,
+    retry_backoff=True,
+    retry_jitter=True,
+)
 def process_webhook(provider, payload, user_id):
     """Process a validated media server webhook payload in the background.
 

@@ -10,6 +10,7 @@ import logging
 from celery import shared_task
 from django.core.cache import cache
 
+from app import backfill_queue
 from app.log_safety import exception_summary
 from app.models import TRAKT_POPULARITY_BACKFILL_VERSION, MetadataBackfillField
 from app.services import trakt_popularity as trakt_popularity_service
@@ -39,23 +40,17 @@ def enqueue_trakt_popularity_backfill_items(item_ids, countdown=10, *, force=Fal
     )
     if not normalized:
         return 0
-    try:
-        queue = cache.get(TRAKT_POPULARITY_BACKFILL_ITEMS_QUEUE_KEY) or []
-        queue = list(set(queue).union(normalized))
-        cache.set(
-            TRAKT_POPULARITY_BACKFILL_ITEMS_QUEUE_KEY,
-            queue,
-            timeout=TRAKT_POPULARITY_BACKFILL_QUEUE_TTL,
-        )
-        if cache.add(TRAKT_POPULARITY_BACKFILL_ITEMS_SCHEDULED_KEY, force, timeout=30):
-            populate_trakt_popularity_backfill_queue.apply_async(
-                kwargs={"force": force},
-                countdown=countdown,
-            )
-    except Exception as exc:  # pragma: no cover - cache unavailable
-        logger.debug(
-            "Trakt popularity backfill queue unavailable: %s", exception_summary(exc)
-        )
+    queued = backfill_queue.enqueue(
+        TRAKT_POPULARITY_BACKFILL_ITEMS_QUEUE_KEY,
+        TRAKT_POPULARITY_BACKFILL_ITEMS_SCHEDULED_KEY,
+        normalized,
+        ttl=TRAKT_POPULARITY_BACKFILL_QUEUE_TTL,
+        drain_task=populate_trakt_popularity_backfill_queue,
+        countdown=countdown,
+        drain_kwargs={"force": force},
+    )
+    if not queued:
+        logger.debug("Trakt popularity backfill queue unavailable, dispatching directly")
         populate_trakt_popularity_data_for_items.apply_async(
             args=[normalized],
             kwargs={"force": force},
@@ -156,27 +151,21 @@ def populate_trakt_popularity_backfill_queue(
     force: bool = False,
 ):
     """Drain the Trakt popularity queue and process items in small batches."""
-    queue = cache.get(TRAKT_POPULARITY_BACKFILL_ITEMS_QUEUE_KEY) or []
-    if not queue:
-        cache.delete(TRAKT_POPULARITY_BACKFILL_ITEMS_SCHEDULED_KEY)
+    batch, more_remaining = backfill_queue.take(
+        TRAKT_POPULARITY_BACKFILL_ITEMS_QUEUE_KEY,
+        TRAKT_POPULARITY_BACKFILL_ITEMS_SCHEDULED_KEY,
+        batch_size,
+    )
+    if not batch:
         return {"processed": 0, "message": "No queued Trakt popularity items"}
 
-    cache.delete(TRAKT_POPULARITY_BACKFILL_ITEMS_SCHEDULED_KEY)
-    batch = queue[:batch_size]
-    remaining = queue[batch_size:]
-    if remaining:
-        cache.set(
-            TRAKT_POPULARITY_BACKFILL_ITEMS_QUEUE_KEY,
-            remaining,
-            timeout=TRAKT_POPULARITY_BACKFILL_QUEUE_TTL,
+    if more_remaining:
+        backfill_queue.reschedule(
+            TRAKT_POPULARITY_BACKFILL_ITEMS_SCHEDULED_KEY,
+            populate_trakt_popularity_backfill_queue,
+            drain_kwargs={"force": force},
         )
-        if cache.add(TRAKT_POPULARITY_BACKFILL_ITEMS_SCHEDULED_KEY, force, timeout=30):
-            populate_trakt_popularity_backfill_queue.apply_async(
-                kwargs={"force": force},
-                countdown=10,
-            )
     else:
-        cache.delete(TRAKT_POPULARITY_BACKFILL_ITEMS_QUEUE_KEY)
         logger.info("trakt_popularity_backfill_complete: queue fully drained")
 
     return populate_trakt_popularity_data_for_items(

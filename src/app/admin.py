@@ -100,6 +100,7 @@ SpecialModels = [
     "ItemPersonCredit",
     "ItemStudioCredit",
     "MetadataBackfillState",
+    "BackfillReconcileState",
     "ItemProviderLink",
     "MetadataProviderPreference",
     "CollectionEntry",
@@ -127,6 +128,7 @@ from app.models import (  # noqa: E402
     AlbumTracker,
     Artist,
     ArtistTracker,
+    BackfillReconcileState,
     MetadataBackfillState,
     Track,
 )
@@ -175,6 +177,25 @@ class MetadataBackfillStateAdmin(admin.ModelAdmin):
 
 
 admin.site.register(MetadataBackfillState, MetadataBackfillStateAdmin)
+
+
+class BackfillReconcileStateAdmin(admin.ModelAdmin):
+    """Admin for whole-library reconcile sweep progress."""
+
+    list_display = [
+        "key",
+        "strategy_version",
+        "completed_at",
+        "last_run_at",
+        "next_run_after",
+        "consecutive_no_op_runs",
+        "last_cursor_item_id",
+    ]
+    list_filter = ["key"]
+    search_fields = ["key"]
+
+
+admin.site.register(BackfillReconcileState, BackfillReconcileStateAdmin)
 
 
 class ItemProviderLinkAdmin(admin.ModelAdmin):

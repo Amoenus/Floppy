@@ -342,3 +342,41 @@ Default TTL is `CACHE_TIMEOUT` unless specified.
 ## Redis memory notes
 - Approx key count per user per logging_style: `~#days` day payloads + 1 index + locks. For long histories (10k+ days), key volume can be large even with 6h TTLs.
 - Redis eviction policy matters in a 768 MB footprint (allkeys-lru vs volatile-lru changes whether hot caches survive long enough for paging).
+
+### Bounded since #521
+Redis previously had no ceiling at all: no `maxmemory` in any shipped compose file, so it
+defaulted to `maxmemory 0` / `noeviction` and grew until the host OOMed.
+
+- `app/redis_tuning.py` applies `maxmemory` (~15% of detected host memory, clamped to
+  96 MiB–512 MiB) and `maxmemory-policy volatile-lru` at startup, but **only when the
+  operator has not set `maxmemory` themselves**. Override or disable with
+  `FLOPPY_REDIS_MAXMEMORY` (`0` = never touch Redis). `manage.py tune_redis --dry-run`
+  shows what it would do.
+- The policy is `volatile-lru`, not `allkeys-lru`, because this Redis is also the Celery
+  broker: Kombu's queue keys carry no TTL, so `volatile-lru` cannot evict them.
+  **Consequence: any `cache.set(..., timeout=None)` writes a key eviction can never
+  reclaim.** Prefer an explicit TTL for anything large.
+- The largest values are `tmdb_tv_*` and `tmdb_season_*`. Seasons now expire at
+  `SEASON_CACHE_TIMEOUT` (12h) rather than the 24h default, and `search_*` at
+  `SEARCH_CACHE_TIMEOUT` (1h) since those keys are unbounded in count (arbitrary query
+  strings) and the cheapest to refetch.
+- Backfill work queues are Redis **sets** (`app/backfill_queue.py`), not pickled lists.
+  The old read-modify-write of a whole ID list per batch was O(N²) bytes per reconcile
+  sweep and, with `--appendonly yes`, O(N²) disk writes too.
+
+## Cache failures are not errors
+`CACHES["default"]["OPTIONS"]["IGNORE_EXCEPTIONS"]` is on, so a Redis fault reads as a
+cache miss instead of propagating. That is right for the ~460 read-through call sites and
+wrong for the ~20 that use `cache.add` as a lock, because `None` is falsy and reads as
+"someone else holds it". Those go through `app/cache_safety.py`, which exposes the three
+states and requires the caller to say which failure direction is safe:
+
+- `ON_ERROR_SKIP` — best-effort maintenance. Skipping a cache warm during an outage costs
+  nothing; adding load to a struggling host costs plenty.
+- `ON_ERROR_PROCEED` — work the user is waiting on (imports, webhook scrobbles). Silently
+  refusing is data loss; these paths have their own downstream duplicate protection.
+
+`DJANGO_REDIS_LOG_IGNORED_EXCEPTIONS` keeps the swallowed failures visible in the logs.
+Redis is deliberately **not** in the `/health/` liveness subset any more — the app serves
+from Postgres through an outage, so reporting unhealthy would get a working container
+restarted.

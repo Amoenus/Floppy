@@ -9,7 +9,7 @@ from django.core.cache import cache
 from django.db.models import Q
 from django.utils import timezone
 
-from app import history_cache, metadata_utils
+from app import cache_safety, history_cache, metadata_utils
 from app.interactive_requests import interactive_request_active
 from app.log_safety import exception_summary
 from app.models import (
@@ -352,10 +352,13 @@ def _schedule_discover_refresh_for_movie_items(items: list[Item]) -> None:
 
     for user_id in user_ids:
         refresh_key = f"discover_movie_metadata_refresh:{user_id}"
-        if not cache.add(
+        # Skipping when the cache is unavailable is the right call, not just the
+        # convenient one: this warms a Redis-backed cache, so there is nothing to
+        # warm into while Redis is unwell.
+        if not cache_safety.acquire_lock(
             refresh_key,
-            True,
             timeout=DISCOVER_METADATA_REFRESH_DEBOUNCE_SECONDS,
+            on_error=cache_safety.ON_ERROR_SKIP,
         ):
             continue
         for media_type in target_media_types:

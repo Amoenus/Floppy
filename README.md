@@ -52,7 +52,7 @@ services:
     image: redis:8-alpine
     container_name: floppy-redis
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
+    command: ["redis-server", "--appendonly", "yes", "--save", "", "--maxmemory", "256mb", "--maxmemory-policy", "volatile-lru"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -212,6 +212,7 @@ services:
     image: redis:8-alpine
     container_name: floppy-redis
     restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--save", "", "--maxmemory", "256mb", "--maxmemory-policy", "volatile-lru"]
     volumes:
       - redis_data:/data
 
@@ -235,7 +236,7 @@ docker run -d \
   --restart unless-stopped \
   -v floppy-redis-data:/data \
   redis:8-alpine \
-  redis-server --appendonly yes
+  redis-server --appendonly yes --save "" --maxmemory 256mb --maxmemory-policy volatile-lru
 
 docker run -d \
   --name floppy \
@@ -296,7 +297,9 @@ The only universally required variable is `SECRET`. For Docker installs you shou
 - `TRAKT_API` / `TRAKT_API_SECRET` - Trakt private-profile OAuth imports
 - `URLS` - your public URL if using a reverse proxy, for example `https://floppy.mydomain.com`
 - `ADMIN_ENABLED` - set to `True` to enable the Django admin interface at `/admin/` (see the [Admin Guide](https://github.com/dannyvfilms/Floppy/wiki/6.-Admin-and-Operations#admin-guide))
-- `WEB_CONCURRENCY` / `GUNICORN_THREADS` - web server concurrency (defaults: 2 worker processes x 4 threads). Total concurrent requests = workers x threads; keep at least 2 workers so one slow request never blocks the whole UI
+- `WEB_CONCURRENCY` / `GUNICORN_THREADS` - web server concurrency. Both default to whatever suits the detected host (2 workers x 4 threads on a machine with room to spare, less on a small one); set them to override. Total concurrent requests = workers x threads
+- `FLOPPY_RESOURCE_TIER` - `standard`, `constrained`, or `minimal`. Floppy normally detects this from the host's memory, swap and CPU and scales its process count, batch sizes and background task cadence to match, so you should not need to set it. Use it to force a tier if detection guesses wrong - for example `standard` on a host whose cgroup understates the memory actually available
+- `FLOPPY_REDIS_MAXMEMORY` - Redis memory ceiling Floppy applies at startup when Redis has none of its own, as bytes or a size like `256mb`. Set it to `0` to leave your Redis configuration completely untouched. Floppy never overrides a `maxmemory` you set yourself
 - `DEBUG` - leave unset or `False` in production; enabling it slows every request (debug toolbar, no template caching) and is only meant for troubleshooting
 - `REGISTRATION` - set to `True` to allow new signups (needed for your first account), then set to `False` afterward
 - `DEMO_ACCOUNT_ENABLED` - defaults to `True`, provisioning the built-in `demo` / `demodemo` account after migrations. The examples above set it to `False`; only turn it on if you want a shared demo login
@@ -323,6 +326,42 @@ DEBUG=False
 WEB_CONCURRENCY=2
 GUNICORN_THREADS=4
 ```
+
+### Running on a small host
+
+Floppy sizes itself to the machine it finds. On startup it reads the container's cgroup
+memory and CPU limits plus `/proc/meminfo`, picks a resource tier, and scales its process
+count, batch sizes, and background task cadence accordingly. The chosen tier is logged on
+the first line of the container's output:
+
+```
+[entrypoint] resources tier=minimal mem=1.9GiB swap=0 cpus=2 -> gunicorn 1x2, celery queues "celery,interactive,discover"
+```
+
+- **standard** (3 GB+): two gunicorn workers and three Celery workers, as before.
+- **constrained** (under 3 GB): one gunicorn worker, and the Discover worker folds into the
+  default one. The interactive worker stays separate so webhook scrobbles are never stuck
+  behind a backfill.
+- **minimal** (under 1.5 GB): one gunicorn worker and a single Celery worker serving every
+  queue.
+
+**Swap matters more than the raw memory figure.** Each Celery worker holds its own full
+copy of the application, so a host with no swap gets bumped one tier stricter — a memory
+spike with nowhere to page is what turns a slow container into a hung one. If you have
+disabled swap to spare an SSD, 2 GB of RAM lands on `minimal`, which is supported.
+
+Two things worth knowing:
+
+- If you set no `mem_limit` on the Floppy container, it sees the whole host's memory. That
+  is usually what you want on a dedicated VM. On a shared host, set `mem_limit` so Floppy
+  sizes itself to its share rather than to the machine.
+- Floppy gives Redis a memory ceiling and an LRU eviction policy at startup if Redis has
+  none of its own, so an unbounded cache can't exhaust the host. It never overrides a
+  `maxmemory` you configured yourself. Run `docker exec floppy python manage.py tune_redis
+  --dry-run` to see what it would do.
+
+Override any of it with `FLOPPY_RESOURCE_TIER`, `WEB_CONCURRENCY`, `GUNICORN_THREADS`, or
+`FLOPPY_REDIS_MAXMEMORY`.
 
 ### Persistence checklist
 
