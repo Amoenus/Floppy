@@ -87,7 +87,13 @@ class ImportTrakt(TestCase):
                 return {
                     "title": "Season 1",
                     "image": "season_image.jpg",
-                    "episodes": [{"episode_number": 1, "still_path": "/still.jpg"}],
+                    "episodes": [
+                        {
+                            "episode_number": 1,
+                            "still_path": "/still.jpg",
+                            "title": "Pilot Episode Title",
+                        },
+                    ],
                     "max_progress": 1,
                 }
             return None
@@ -100,6 +106,10 @@ class ImportTrakt(TestCase):
         self.assertEqual(len(trakt_importer.bulk_media[MediaTypes.TV.value]), 1)
         self.assertEqual(len(trakt_importer.bulk_media[MediaTypes.SEASON.value]), 1)
         self.assertEqual(len(trakt_importer.bulk_media[MediaTypes.EPISODE.value]), 1)
+
+        # Episode item should carry the episode's own title, not the show title.
+        episode_item = trakt_importer.bulk_media[MediaTypes.EPISODE.value][0].item
+        self.assertEqual(episode_item.title, "Pilot Episode Title")
 
         # Process a replay of the same episode at a different time.
         trakt_importer.process_watched_episode(

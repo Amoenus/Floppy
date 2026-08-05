@@ -651,6 +651,14 @@ class TraktImporter(TraktMetadataResolverMixin):
             return
 
         episode_image = self._get_episode_image(episode_number, season_metadata)
+        matched_episode = next(
+            (
+                ep
+                for ep in season_metadata["episodes"]
+                if ep["episode_number"] == episode_number
+            ),
+            None,
+        )
 
         # Create or get TV show
         tv_item = self._get_or_create_item(MediaTypes.TV.value, tmdb_id, tv_metadata)
@@ -717,9 +725,10 @@ class TraktImporter(TraktMetadataResolverMixin):
 
         # Create Episode item and object
         episode_metadata = {
-            "title": tv_metadata["title"],
-            "original_title": tv_metadata.get("original_title"),
-            "localized_title": tv_metadata.get("localized_title"),
+            **app.models.Item.title_fields_from_episode_metadata(
+                matched_episode,
+                fallback_title=tv_metadata["title"],
+            ),
             "image": episode_image,
         }
         episode_item = self._get_or_create_item(
