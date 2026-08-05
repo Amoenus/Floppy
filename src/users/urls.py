@@ -62,6 +62,7 @@ urlpatterns = [
     ),
     path("settings/export", views.export_data, name="export_data"),
     path("settings/advanced", views.advanced, name="advanced"),
+    path("settings/advanced/logs", views.export_logs, name="export_logs"),
     path("settings/about", views.about, name="about"),
     path(
         "delete_import_schedule",

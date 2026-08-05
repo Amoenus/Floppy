@@ -1365,8 +1365,41 @@ def export_data(request):
 @require_GET
 def advanced(request):
     """Render the advanced settings page."""
-    context = {"tmdb_proxy_configured": bool(request.user.tmdb_proxy_url)}
+    bug_report_body = (
+        f"**Floppy version:** {settings.VERSION}\n\n"
+        "**Describe the issue:**\n\n\n"
+        "**Steps to reproduce:**\n\n\n"
+        "**Logs:** attach the file downloaded from Settings > Advanced > "
+        "Download Sanitized Logs"
+    )
+    context = {
+        "tmdb_proxy_configured": bool(request.user.tmdb_proxy_url),
+        "bug_report_title": "[BUG] ",
+        "bug_report_body": bug_report_body,
+    }
     return render(request, "users/advanced.html", context)
+
+
+@require_GET
+def export_logs(request):
+    """Return recent application logs, with secrets redacted, as a text file."""
+    from pathlib import Path
+
+    from app.log_safety import redact_secrets
+
+    log_path = Path(settings.LOG_FILE)
+    raw_logs = (
+        log_path.read_text(encoding="utf-8", errors="replace")
+        if log_path.exists()
+        else ""
+    )
+
+    sanitized_logs = redact_secrets(raw_logs)
+
+    filename = f"floppy-logs-{timezone.localtime():%Y%m%d-%H%M%S}.txt"
+    response = HttpResponse(sanitized_logs, content_type="text/plain")
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
 
 
 @require_GET
