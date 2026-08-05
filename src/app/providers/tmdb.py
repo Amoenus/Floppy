@@ -1920,6 +1920,19 @@ def filter_providers(all_providers, region):
     return providers
 
 
+def item_watch_provider_names(item, region):
+    """Return sorted flatrate/free watch-provider names for an item's region.
+
+    Returns None when no region is configured, so callers can distinguish
+    "region not set" (hide the filter) from "no providers for this region".
+    """
+    if not region or region == "UNSET":
+        return None
+
+    providers = filter_providers(item.watch_providers, region) or []
+    return sorted({p["provider_name"] for p in providers if p.get("provider_name")})
+
+
 def process_episodes(season_metadata, episodes_in_db):
     """Process the episodes for the selected season."""
     episodes_metadata = []

@@ -7,7 +7,7 @@ from django.core.cache import cache
 from django.test import TestCase, override_settings
 
 from app.apps import AppConfig as FloppyAppConfig
-from app.tasks import GENRE_BACKFILL_VERSION
+from app.tasks import GENRE_BACKFILL_VERSION, WATCH_PROVIDERS_BACKFILL_VERSION
 
 
 class AppStartupTests(TestCase):
@@ -30,6 +30,8 @@ class AppStartupTests(TestCase):
             patch.object(config, "_schedule_imdb_game_person_profile_backfill"),
             patch.object(config, "_schedule_genre_backfill_reconcile") as mock_schedule,
             patch.object(config, "_schedule_trakt_popularity_reconcile"),
+            patch.object(config, "_schedule_igdb_rating_backfill_reconcile"),
+            patch.object(config, "_schedule_provider_backfill_reconcile"),
         ):
             config.ready()
 
@@ -215,6 +217,61 @@ class AppStartupTests(TestCase):
 
         mock_apply_async.assert_not_called()
         mock_is_complete.assert_not_called()
+
+    @patch("app.tasks.reconcile_provider_backfill.apply_async")
+    def test_schedule_provider_backfill_reconcile_marks_pending_until_worker_runs(
+        self,
+        mock_apply_async,
+    ):
+        version_key = (
+            f"watch_providers_backfill_reconciled_v{WATCH_PROVIDERS_BACKFILL_VERSION}"
+        )
+        cache.delete(version_key)
+        config = FloppyAppConfig("app", import_module("app"))
+
+        config._schedule_provider_backfill_reconcile()
+        config._schedule_provider_backfill_reconcile()
+
+        mock_apply_async.assert_called_once_with(
+            kwargs={"strategy_version": WATCH_PROVIDERS_BACKFILL_VERSION},
+            countdown=30,
+            priority=settings.CELERY_TASK_PRIORITY_BACKGROUND,
+        )
+        self.assertEqual(cache.get(version_key), "pending")
+
+        cache.set(version_key, "done", timeout=None)
+        config._schedule_provider_backfill_reconcile()
+
+        mock_apply_async.assert_called_once()
+
+    @patch("app.tasks.is_provider_backfill_reconcile_complete")
+    @patch("app.tasks.reconcile_provider_backfill.apply_async")
+    def test_schedule_provider_backfill_reconcile_skips_done_cache_without_db_check(
+        self,
+        mock_apply_async,
+        mock_is_complete,
+    ):
+        version_key = (
+            f"watch_providers_backfill_reconciled_v{WATCH_PROVIDERS_BACKFILL_VERSION}"
+        )
+        cache.set(version_key, "done", timeout=None)
+        config = FloppyAppConfig("app", import_module("app"))
+
+        config._schedule_provider_backfill_reconcile()
+
+        mock_apply_async.assert_not_called()
+        mock_is_complete.assert_not_called()
+
+    def test_settings_include_provider_backfill_reconcile_fallback_schedule(self):
+        schedule = settings.CELERY_BEAT_SCHEDULE["ensure_provider_backfill_reconcile"]
+
+        self.assertEqual(schedule["task"], "Ensure watch provider backfill reconcile")
+        self.assertEqual(schedule["schedule"], 60 * 5)
+        self.assertEqual(schedule["kwargs"]["batch_size"], 1500)
+        self.assertEqual(
+            schedule["options"]["priority"],
+            settings.CELERY_TASK_PRIORITY_BACKGROUND,
+        )
 
     def test_settings_include_genre_backfill_reconcile_fallback_schedule(self):
         schedule = settings.CELERY_BEAT_SCHEDULE["ensure_genre_backfill_reconcile"]

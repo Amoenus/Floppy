@@ -1923,6 +1923,19 @@ def media_details(
                 else:
                     watch_provider_payload = tmdb_metadata.get("providers")
 
+        if (
+            detail_item
+            and isinstance(watch_provider_payload, dict)
+            and watch_provider_payload
+            and detail_item.watch_providers != watch_provider_payload
+        ):
+            detail_item.watch_providers = watch_provider_payload
+            _best_effort_detail_followup(
+                lambda: detail_item.save(update_fields=["watch_providers"]),
+                operation_name="watch provider cache refresh",
+                fallback=None,
+            )
+
         watch_providers = (
             tmdb.filter_providers(
                 watch_provider_payload,

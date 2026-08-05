@@ -104,6 +104,7 @@ class AppConfig(AppConfig):
             self._schedule_genre_backfill_reconcile()
             self._schedule_trakt_popularity_reconcile()
             self._schedule_igdb_rating_backfill_reconcile()
+            self._schedule_provider_backfill_reconcile()
 
     def _add_startup_cache_key(self, cache_key: str) -> bool:
         """Return whether a once-per-day startup task can be scheduled."""
@@ -258,6 +259,49 @@ class AppConfig(AppConfig):
         except Exception as error:
             logger.warning(
                 "Failed to schedule IGDB ratings backfill reconcile: %s", error
+            )
+
+    def _schedule_provider_backfill_reconcile(self):
+        """Schedule a one-time watch-provider backfill reconcile.
+
+        Items tracked before watch-provider data was persisted have no
+        streaming-service info until their detail page happens to be visited
+        or the periodic beat sweep reaches them; this kicks a reconcile pass
+        off immediately so the new filter isn't empty until then.
+        """
+        try:
+            from app.tasks_providers import (
+                WATCH_PROVIDERS_BACKFILL_VERSION,
+                reconcile_provider_backfill,
+            )
+
+            version_key = (
+                f"watch_providers_backfill_reconciled_v{WATCH_PROVIDERS_BACKFILL_VERSION}"
+            )
+            status = cache.get(version_key)
+
+            if status in {"done", "pending"}:
+                return
+
+            cache.set(version_key, "pending", timeout=300)
+
+            try:
+                reconcile_provider_backfill.apply_async(
+                    kwargs={"strategy_version": WATCH_PROVIDERS_BACKFILL_VERSION},
+                    countdown=30,
+                    priority=getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 1),
+                )
+            except Exception:
+                cache.delete(version_key)
+                raise
+
+            logger.info(
+                "Scheduled watch provider backfill reconcile (version=%s)",
+                WATCH_PROVIDERS_BACKFILL_VERSION,
+            )
+        except Exception as error:
+            logger.warning(
+                "Failed to schedule watch provider backfill reconcile: %s", error
             )
 
     def _schedule_trakt_popularity_reconcile(self):

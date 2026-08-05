@@ -2643,6 +2643,67 @@ class MediaListViewTests(TestCase):
         self.assertEqual(manga_response.context["media_list"].paginator.count, 1)
         self.assertContains(manga_response, "Author Filter Manga")
 
+    def test_movie_provider_filter_shows_and_filters_when_region_configured(self):
+        netflix_movie = Item.objects.create(
+            media_id="provider-filter-1",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Provider Filter Movie One",
+            image="http://example.com/pf1.jpg",
+            watch_providers={
+                "US": {"flatrate": [{"provider_id": 8, "provider_name": "Netflix"}]},
+            },
+        )
+        other_movie = Item.objects.create(
+            media_id="provider-filter-2",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Provider Filter Movie Two",
+            image="http://example.com/pf2.jpg",
+            watch_providers={
+                "US": {"flatrate": [{"provider_id": 384, "provider_name": "HBO Max"}]},
+            },
+        )
+        Movie.objects.create(
+            item=netflix_movie,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+            progress=0,
+        )
+        Movie.objects.create(
+            item=other_movie,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+            progress=0,
+        )
+        self.user.watch_provider_region = "US"
+        self.user.save(update_fields=["watch_provider_region"])
+
+        url = reverse("medialist", args=[MediaTypes.MOVIE.value])
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context["filter_data"]["show_providers"])
+        self.assertTrue(
+            any(
+                option["value"] == "Netflix"
+                for option in response.context["filter_data"]["providers"]
+            ),
+        )
+
+        filtered_response = self.client.get(f"{url}?provider=Netflix")
+        self.assertEqual(filtered_response.status_code, 200)
+        self.assertEqual(filtered_response.context["current_provider"], "Netflix")
+        self.assertContains(filtered_response, "Provider Filter Movie One")
+        self.assertNotContains(filtered_response, "Provider Filter Movie Two")
+
+    def test_movie_provider_filter_hidden_without_region_configured(self):
+        url = reverse("medialist", args=[MediaTypes.MOVIE.value])
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.context["filter_data"]["show_providers"])
+
     def test_movie_filter_data_hides_author_filter(self):
         response = self.client.get(reverse("medialist", args=[MediaTypes.MOVIE.value]))
         self.assertEqual(response.status_code, 200)

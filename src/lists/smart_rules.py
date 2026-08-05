@@ -10,6 +10,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from app.models import CollectionEntry, Item, ItemTag, MediaTypes, Sources, Status
+from app.providers import tmdb
 
 SMART_FILTER_KEYS = (
     "status",
@@ -35,6 +36,7 @@ SMART_FILTER_KEYS = (
     "origin",
     "format",
     "author",
+    "provider",
     "tag",
     "tag_mode",
 )
@@ -65,6 +67,7 @@ SMART_FILTER_DEFAULTS = {
     "origin": "",
     "format": "",
     "author": "",
+    "provider": "",
     "tag": [],
     "tag_mode": "or",
 }
@@ -91,6 +94,11 @@ LANGUAGE_MEDIA_TYPES = {
 }
 COUNTRY_MEDIA_TYPES = LANGUAGE_MEDIA_TYPES
 PLATFORM_MEDIA_TYPES = {MediaTypes.GAME.value}
+PROVIDER_MEDIA_TYPES = {
+    MediaTypes.TV.value,
+    MediaTypes.MOVIE.value,
+    MediaTypes.ANIME.value,
+}
 ORIGIN_MEDIA_TYPES = {MediaTypes.MUSIC.value}
 FORMAT_MEDIA_TYPES = {
     MediaTypes.BOOK.value,
@@ -179,6 +187,11 @@ def _extract_platforms(item: Item) -> list[str]:
         return [str(value).strip() for value in platforms if str(value).strip()]
     platform_value = str(platforms).strip()
     return [platform_value] if platform_value else []
+
+
+def _extract_item_providers(item: Item, region) -> list[str] | None:
+    """Return watch-provider names for an item, or None if region is unset."""
+    return tmdb.item_watch_provider_names(item, region)
 
 
 def _extract_authors(item: Item) -> list[str]:
@@ -378,6 +391,7 @@ def normalize_rule_payload(payload, owner):
         "origin": str(_payload_get(payload, "origin", "") or "").strip(),
         "format": str(_payload_get(payload, "format", "") or "").strip(),
         "author": str(_payload_get(payload, "author", "") or "").strip(),
+        "provider": str(_payload_get(payload, "provider", "") or "").strip(),
         "tag": deduped_tags,
         "tag_mode": tag_mode,
     }
@@ -459,7 +473,7 @@ def _target_media_types(owner, rules_media_types: list[str]) -> list[str]:
     return available
 
 
-def _matches_item_filters(item: Item, rules: dict, today) -> bool:
+def _matches_item_filters(item: Item, rules: dict, today, region=None) -> bool:
     genre_filter = _normalize_filter_value(rules.get("genre"))
     implied_genre_filter = _normalize_filter_value(rules.get("implied_genre"))
     year_filter = _normalize_filter_value(rules.get("year"))
@@ -565,6 +579,15 @@ def _matches_item_filters(item: Item, rules: dict, today) -> bool:
         ):
             return False
 
+    provider_filter = _normalize_filter_value(rules.get("provider"))
+    if provider_filter:
+        providers = _extract_item_providers(item, region)
+        if not providers or not any(
+            _normalize_filter_value(provider) == provider_filter
+            for provider in providers
+        ):
+            return False
+
     return True
 
 
@@ -599,6 +622,7 @@ def _rules_require_item_scan(normalized_rules: dict) -> bool:
         "origin",
         "format",
         "author",
+        "provider",
     ):
         if _normalize_filter_value(normalized_rules.get(key)):
             return True
@@ -785,6 +809,7 @@ def collect_matching_item_ids(
     )
     today = timezone.localdate()
     item_scan_required = _rules_require_item_scan(normalized_rules)
+    region = getattr(owner, "watch_provider_region", None)
 
     collected_item_ids: set[int] = set()
     collected_episode_pairs: set[tuple[str, str]] = set()
@@ -850,7 +875,7 @@ def collect_matching_item_ids(
             if not item:
                 continue
 
-            if not _matches_item_filters(item, normalized_rules, today):
+            if not _matches_item_filters(item, normalized_rules, today, region):
                 continue
 
             if collection_filter != "all" and not _matches_collection_filter(
@@ -881,7 +906,7 @@ def collect_matching_item_ids(
             )
             if collection_only_ids:
                 for item in Item.objects.filter(id__in=collection_only_ids).iterator():
-                    if not _matches_item_filters(item, normalized_rules, today):
+                    if not _matches_item_filters(item, normalized_rules, today, region):
                         continue
                     if _tag_filter_excludes(item.id):
                         continue
@@ -1081,6 +1106,8 @@ def build_rule_filter_data(
                 ),
             )
 
+    region = getattr(owner, "watch_provider_region", None)
+
     items = Item.objects.filter(id__in=item_ids).only(
         "genres",
         "implied_genres",
@@ -1092,6 +1119,7 @@ def build_rule_filter_data(
         "format",
         "media_type",
         "authors",
+        "watch_providers",
     )
 
     format_labels = {
@@ -1111,6 +1139,7 @@ def build_rule_filter_data(
     origins_set = set()
     formats_set = set()
     authors_set = set()
+    providers_set = set()
     has_unknown_year = False
 
     for item in items:
@@ -1145,6 +1174,9 @@ def build_rule_filter_data(
         if format_value:
             formats_set.add(format_value)
         authors_set.update(_extract_authors(item))
+
+        if region and region != "UNSET":
+            providers_set.update(_extract_item_providers(item, region) or [])
 
     source_labels = dict(Sources.choices)
     filter_data = {
@@ -1215,6 +1247,12 @@ def build_rule_filter_data(
         "show_authors": any(
             media_type in AUTHOR_MEDIA_TYPES for media_type in target_media_types
         ),
+        "providers": [
+            {"value": value, "label": value}
+            for value in sorted(providers_set, key=lambda value: value.lower())
+        ],
+        "show_providers": bool(region and region != "UNSET")
+        and any(media_type in PROVIDER_MEDIA_TYPES for media_type in target_media_types),
     }
 
     if has_unknown_year:

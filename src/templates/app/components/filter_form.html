@@ -19,6 +19,7 @@
   <input type="hidden" name="origin" x-model="origin">
   <input type="hidden" name="format" x-model="format">
   <input type="hidden" name="author" x-model="author">
+  <input type="hidden" name="provider" x-model="provider">
   <template x-for="t in selectedTags" :key="`tag-${t}`">
     <input type="hidden" name="tag" :value="t">
   </template>

@@ -36,6 +36,7 @@ from app.models import (
     Tag,
     prefill_episode_runtime_index,
 )
+from app.providers import tmdb
 from app.release_years import prefill_display_release_years
 from app.search_views import _mark_grouped_anime_route
 from app.templatetags import app_tags
@@ -242,6 +243,20 @@ def _extract_item_platforms(item):
     return [str(platforms).strip()] if str(platforms).strip() else []
 
 
+PROVIDER_MEDIA_TYPES = (
+    MediaTypes.TV.value,
+    MediaTypes.MOVIE.value,
+    MediaTypes.ANIME.value,
+)
+
+
+def _extract_item_providers(item, region):
+    """Extract watch-provider names for an item, or None if region is unset."""
+    if not item:
+        return None
+    return tmdb.item_watch_provider_names(item, region)
+
+
 def _extract_item_authors(item):
     """Extract authors from database fields only."""
     if not item:
@@ -316,6 +331,7 @@ def build_filter_data_from_items(
     *,
     collection_formats_by_item_id=None,
     collection_platforms_by_item_id=None,
+    region=None,
 ):
     """Build filter menu option lists from a sequence of media/Item objects.
 
@@ -334,6 +350,8 @@ def build_filter_data_from_items(
     platforms_set = set()
     formats_set = set()
     authors_set = set()
+    providers_set = set()
+    has_region = bool(region and region != "UNSET")
     has_unknown_year = False
     for media in media_items:
         item = getattr(media, "item", media)
@@ -371,6 +389,8 @@ def build_filter_data_from_items(
         item_formats = _extract_item_formats(item, collection_formats_by_item_id)
         if item_formats:
             formats_set.update(item_formats)
+        if has_region:
+            providers_set.update(_extract_item_providers(item, region) or [])
 
     genres = sorted(genres_set, key=lambda value: value.lower())
     implied_genres = sorted(implied_genres_set, key=lambda value: value.lower())
@@ -415,6 +435,10 @@ def build_filter_data_from_items(
         {"value": value, "label": value}
         for value in sorted(authors_set, key=lambda val: val.lower())
     ]
+    providers = [
+        {"value": value, "label": value}
+        for value in sorted(providers_set, key=lambda val: val.lower())
+    ]
     return {
         "genres": genres,
         "implied_genres": implied_genres,
@@ -426,12 +450,14 @@ def build_filter_data_from_items(
         "origins": [],
         "formats": formats,
         "authors": authors,
+        "providers": providers,
         "show_languages": False,
         "show_countries": False,
         "show_platforms": False,
         "show_origins": False,
         "show_formats": False,
         "show_authors": False,
+        "show_providers": False,
     }
 
 
@@ -665,6 +691,12 @@ def media_list(request, media_type):
     origin_filter = (request.GET.get("origin") or "").strip()
     format_filter = (request.GET.get("format") or "").strip()
     author_filter = (request.GET.get("author") or "").strip()
+    provider_filter = (request.GET.get("provider") or "").strip()
+    watch_provider_region = (
+        getattr(request.user, "watch_provider_region", None)
+        if request.user.is_authenticated
+        else None
+    )
     tag_values = tuple(
         dict.fromkeys(
             value.strip() for value in request.GET.getlist("tag") if value.strip()
@@ -852,6 +884,22 @@ def media_list(request, media_type):
                 continue
             item_formats = _extract_item_formats(item, collection_formats_by_item_id)
             if target in item_formats:
+                filtered_items.append(media)
+        return filtered_items
+
+    def apply_provider_filter(media_items, filter_value, region):
+        if not filter_value:
+            return media_items
+        target = _normalize_filter_value(filter_value)
+        filtered_items = []
+        for media in media_items:
+            item = getattr(media, "item", None)
+            if not item:
+                continue
+            providers = _extract_item_providers(item, region)
+            if providers and any(
+                _normalize_filter_value(provider) == target for provider in providers
+            ):
                 filtered_items.append(media)
         return filtered_items
 
@@ -1122,6 +1170,7 @@ def media_list(request, media_type):
         "tag_included_ids": tag_included_ids,
         "tag_excluded_ids": tag_excluded_ids,
     }
+    provider_media_types = PROVIDER_MEDIA_TYPES
 
     anime_library_mode = getattr(
         request.user,
@@ -1360,6 +1409,8 @@ def media_list(request, media_type):
             _tag_cache_key,
             tag_mode,
             cache_variant,
+            provider_filter=provider_filter,
+            watch_provider_region=watch_provider_region,
         )
         if _use_media_list_cache
         else None
@@ -1384,6 +1435,8 @@ def media_list(request, media_type):
             _tag_cache_key,
             tag_mode,
             cache_variant,
+            provider_filter=provider_filter,
+            watch_provider_region=watch_provider_region,
         )
         if (_use_media_list_cache or _time_left_active)
         else None
@@ -1423,6 +1476,8 @@ def media_list(request, media_type):
             origin_filter,
             _tag_cache_key,
             tag_mode,
+            provider_filter=provider_filter,
+            watch_provider_region=watch_provider_region,
         )
         _time_left_cached_order = cache.get(_time_left_cache_key)
         if _time_left_cached_order is not None and filter_data is not None:
@@ -1592,6 +1647,7 @@ def media_list(request, media_type):
                 filter_data_source_items,
                 collection_formats_by_item_id=collection_formats_by_item_id,
                 collection_platforms_by_item_id=collection_platforms_by_item_id,
+                region=watch_provider_region,
             )
             filter_data["show_languages"] = media_type in (
                 MediaTypes.TV.value,
@@ -1609,6 +1665,9 @@ def media_list(request, media_type):
             filter_data["show_origins"] = media_type == MediaTypes.MUSIC.value
             filter_data["show_formats"] = media_type in author_media_types
             filter_data["show_authors"] = media_type in author_media_types
+            filter_data["show_providers"] = media_type in provider_media_types and bool(
+                watch_provider_region and watch_provider_region != "UNSET"
+            )
             filter_data["show_progress"] = media_type in progress_media_types
             user_tags = list(
                 Tag.objects.filter(user=request.user)
@@ -1634,6 +1693,10 @@ def media_list(request, media_type):
         if media_type in author_media_types:
             media_list = apply_author_filter(media_list, author_filter)
             media_list = apply_format_filter(media_list, format_filter)
+        if media_type in provider_media_types:
+            media_list = apply_provider_filter(
+                media_list, provider_filter, watch_provider_region
+            )
         if sort_filter == "author" and media_type in author_media_types:
             media_list = sort_media_items_by_author(media_list, direction)
         if sort_filter == "runtime" and media_type in runtime_media_types:
@@ -1821,6 +1884,7 @@ def media_list(request, media_type):
             filter_data_source_items,
             collection_formats_by_item_id=collection_formats_by_item_id,
             collection_platforms_by_item_id=collection_platforms_by_item_id,
+            region=watch_provider_region,
         )
         filter_data["show_languages"] = media_type in (
             MediaTypes.TV.value,
@@ -1838,6 +1902,9 @@ def media_list(request, media_type):
         filter_data["show_origins"] = media_type == MediaTypes.MUSIC.value
         filter_data["show_formats"] = media_type in author_media_types
         filter_data["show_authors"] = media_type in author_media_types
+        filter_data["show_providers"] = media_type in provider_media_types and bool(
+            watch_provider_region and watch_provider_region != "UNSET"
+        )
         filter_data["show_progress"] = media_type in progress_media_types
         filter_data["tags"] = list(
             Tag.objects.filter(user=request.user)
@@ -1974,6 +2041,7 @@ def media_list(request, media_type):
         "current_origin": origin_filter,
         "current_format": format_filter,
         "current_author": author_filter,
+        "current_provider": provider_filter,
         "current_tag": list(tag_values),
         "current_tag_mode": tag_mode,
         "sort_choices": sorted_media_sort_choices,

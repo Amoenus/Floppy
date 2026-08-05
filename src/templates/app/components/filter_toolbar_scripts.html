@@ -64,6 +64,7 @@
       originSearch: '',
       formatSearch: '',
       authorSearch: '',
+      providerSearch: '',
       tagSearch: '',
       departmentSearch: '',
       genres: data.genres || [],
@@ -76,6 +77,7 @@
       origins: data.origins || [],
       formats: data.formats || [],
       authors: data.authors || [],
+      providers: data.providers || [],
       tags: data.tags || [],
       departments: data.departments || [],
       resetSearch() {
@@ -89,6 +91,7 @@
         this.originSearch = '';
         this.formatSearch = '';
         this.authorSearch = '';
+        this.providerSearch = '';
         this.tagSearch = '';
         this.departmentSearch = '';
       },
@@ -161,6 +164,13 @@
           return this.authors;
         }
         return this.authors.filter(option => option.label.toLowerCase().includes(term));
+      },
+      filteredProviders() {
+        const term = this.providerSearch.toLowerCase();
+        if (!term) {
+          return this.providers;
+        }
+        return this.providers.filter(option => option.label.toLowerCase().includes(term));
       },
       filteredTags() {
         const term = this.tagSearch.toLowerCase();

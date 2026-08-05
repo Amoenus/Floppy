@@ -1246,6 +1246,14 @@ CELERY_BEAT_SCHEDULE = {
         },
         "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     },
+    "ensure_provider_backfill_reconcile": {
+        "task": "Ensure watch provider backfill reconcile",
+        "schedule": 60 * 5,  # every 5 minutes until fully reconciled
+        "kwargs": {
+            "batch_size": 1500,
+        },
+        "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
+    },
     "warm_discover_api_cache": {
         "task": "Warm Discover API Cache",
         "schedule": 60 * 60,  # every 1 hour

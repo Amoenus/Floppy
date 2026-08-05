@@ -11,7 +11,7 @@
 
     <!-- Filter Menu -->
     <div class="relative filter-control" x-data="mediaFilterMenu()" @click.outside="open = false; view = 'root'">
-      <button class="flex items-center px-2 py-2 rounded-md text-gray-200 hover:text-white transition-colors cursor-pointer"
+      <button class="flex items-center px-2 py-2 rounded-md text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
               @click="open = !open; if (open) { view = 'root'; }"
               type="button">
         <span class="block min-w-0 truncate max-w-[10rem] sm:max-w-[14rem]" x-text="filterLabel()"></span>
@@ -23,7 +23,7 @@
         </svg>
       </button>
 
-      <div class="absolute z-40 mt-2 w-60 bg-[#39404b] rounded-md shadow-lg overflow-hidden border border-gray-700"
+      <div class="absolute z-40 mt-2 w-60 bg-[var(--color-surface-strong)] rounded-md shadow-lg overflow-hidden border border-gray-700"
            x-cloak
            x-show="open"
            x-transition:enter="transition ease-out duration-100"
@@ -37,7 +37,7 @@
                   hx-target="{{ filter_hx_target }}"
                   hx-include="#filter-form"
                   hx-indicator="#loading-indicator"
-                  class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
+                  class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                   @click="clearFilters(); open = false"
                   type="button">
             <span>All</span>
@@ -46,11 +46,11 @@
 
           {% if media_type == 'music' or media_type == 'comic' %}
             <div class="border-t border-gray-700 my-1"></div>
-            <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
+            <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="view = 'mediaType'"
                     type="button">
               <span class="flex-shrink-0 mr-3">Media Type</span>
-              <span class="ml-auto text-xs text-gray-400 block min-w-0 truncate max-w-[8rem]">
+              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]">
                 {% if media_type == 'music' %}
                   {{ current_subview|default:'artists'|title }}
                 {% else %}
@@ -62,29 +62,29 @@
           {% endif %}
 
           <div class="border-t border-gray-700 my-1"></div>
-          <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
+          <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                   @click="view = 'rating'"
                   type="button">
             <span class="flex-shrink-0 mr-3">Rating</span>
-            <span class="ml-auto text-xs text-gray-400 block min-w-0 truncate max-w-[8rem]"
+            <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
                   x-text="ratingLabels[rating] || 'Any'"></span>
             <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
           </button>
-          <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
+          <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                   @click="view = 'collection'"
                   type="button">
             <span class="flex-shrink-0 mr-3">Collection</span>
-            <span class="ml-auto text-xs text-gray-400 block min-w-0 truncate max-w-[8rem]"
+            <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
                   x-text="collectionLabels[collection] || 'Any'"></span>
             <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
           </button>
 
           {% if filter_data.show_progress %}
-            <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
+            <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="view = 'progress'"
                     type="button">
               <span class="flex-shrink-0 mr-3">Progress</span>
-              <span class="ml-auto text-xs text-gray-400 block min-w-0 truncate max-w-[8rem]"
+              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
                     x-text="progressLabels[progress] || 'Any'"></span>
               <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
             </button>
@@ -92,130 +92,140 @@
 
           {% if filter_data.genres %}
             <div class="border-t border-gray-700 my-1"></div>
-            <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
+            <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="view = 'genre'; resetSearch()"
                     type="button">
               <span class="flex-shrink-0 mr-3">Genre</span>
-              <span class="ml-auto text-xs text-gray-400 block min-w-0 truncate max-w-[8rem]" x-text="genre || 'Any'"></span>
+              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="genre || 'Any'"></span>
               <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
             </button>
           {% endif %}
           {% if filter_data.implied_genres %}
-            <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
+            <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="view = 'impliedGenre'; resetSearch()"
                     type="button">
               <span class="flex-shrink-0 mr-3">Implied Genre</span>
-              <span class="ml-auto text-xs text-gray-400 block min-w-0 truncate max-w-[8rem]" x-text="impliedGenre || 'Any'"></span>
+              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="impliedGenre || 'Any'"></span>
               <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
             </button>
           {% endif %}
 
           {% if filter_data.years %}
-            <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
+            <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="view = 'year'; resetSearch()"
                     type="button">
               <span class="flex-shrink-0 mr-3">Year</span>
-              <span class="ml-auto text-xs text-gray-400 block min-w-0 truncate max-w-[8rem]" x-text="year ? (year === 'unknown' ? 'Unknown' : year) : 'Any'"></span>
+              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="year ? (year === 'unknown' ? 'Unknown' : year) : 'Any'"></span>
               <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
             </button>
           {% endif %}
-          <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
+          <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                   @click="view = 'release'"
                   type="button">
             <span class="flex-shrink-0 mr-3">Released</span>
-            <span class="ml-auto text-xs text-gray-400 block min-w-0 truncate max-w-[8rem]"
+            <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
                   x-text="releaseLabels[release] || 'Any'"></span>
             <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
           </button>
 
           {% if filter_data.sources %}
-            <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
+            <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="view = 'source'; resetSearch()"
                     type="button">
               <span class="flex-shrink-0 mr-3">Source</span>
-              <span class="ml-auto text-xs text-gray-400 block min-w-0 truncate max-w-[8rem]" x-text="sourceFilter ? sourceFilter.toUpperCase() : 'Any'"></span>
+              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="sourceFilter ? sourceFilter.toUpperCase() : 'Any'"></span>
               <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
             </button>
           {% endif %}
 
           {% if filter_data.show_languages %}
-            <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
+            <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="view = 'language'; resetSearch()"
                     type="button">
               <span class="flex-shrink-0 mr-3">Language</span>
-              <span class="ml-auto text-xs text-gray-400 block min-w-0 truncate max-w-[8rem]" x-text="language ? (language.length <= 3 ? language.toUpperCase() : language) : 'Any'"></span>
+              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="language ? (language.length <= 3 ? language.toUpperCase() : language) : 'Any'"></span>
               <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
             </button>
           {% endif %}
 
           {% if filter_data.show_countries %}
-            <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
+            <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="view = 'country'; resetSearch()"
                     type="button">
               <span class="flex-shrink-0 mr-3">Country</span>
-              <span class="ml-auto text-xs text-gray-400 block min-w-0 truncate max-w-[8rem]" x-text="country ? (country.length <= 3 ? country.toUpperCase() : country) : 'Any'"></span>
+              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="country ? (country.length <= 3 ? country.toUpperCase() : country) : 'Any'"></span>
               <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
             </button>
           {% endif %}
 
           {% if filter_data.show_platforms %}
-            <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
+            <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="view = 'platform'; resetSearch()"
                     type="button">
               <span class="flex-shrink-0 mr-3">Platform</span>
-              <span class="ml-auto text-xs text-gray-400 block min-w-0 truncate max-w-[8rem]" x-text="platform ? platform : 'Any'"></span>
+              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="platform ? platform : 'Any'"></span>
               <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
             </button>
           {% endif %}
 
           {% if filter_data.show_origins %}
-            <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
+            <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="view = 'origin'; resetSearch()"
                     type="button">
               <span class="flex-shrink-0 mr-3">Origin</span>
-              <span class="ml-auto text-xs text-gray-400 block min-w-0 truncate max-w-[8rem]" x-text="origin ? (origin.length <= 3 ? origin.toUpperCase() : origin) : 'Any'"></span>
+              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="origin ? (origin.length <= 3 ? origin.toUpperCase() : origin) : 'Any'"></span>
               <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
             </button>
           {% endif %}
 
           {% if filter_data.show_formats %}
-            <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
+            <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="view = 'format'; resetSearch()"
                     type="button">
               <span class="flex-shrink-0 mr-3">Format</span>
-              <span class="ml-auto text-xs text-gray-400 block min-w-0 truncate max-w-[8rem]" x-text="format ? (format === 'ebook' ? 'eBook' : format.charAt(0).toUpperCase() + format.slice(1)) : 'Any'"></span>
+              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="format ? (format === 'ebook' ? 'eBook' : format.charAt(0).toUpperCase() + format.slice(1)) : 'Any'"></span>
               <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
             </button>
           {% endif %}
 
           {% if filter_data.show_authors and filter_data.authors %}
-            <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
+            <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="view = 'author'; resetSearch()"
                     type="button">
               <span class="flex-shrink-0 mr-3">Author</span>
-              <span class="ml-auto text-xs text-gray-400 block min-w-0 truncate max-w-[8rem]" x-text="author || 'Any'"></span>
+              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="author || 'Any'"></span>
+              <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
+            </button>
+          {% endif %}
+
+          {% if filter_data.show_providers %}
+            <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                    @click="view = 'provider'; resetSearch()"
+                    type="button">
+              <span class="flex-shrink-0 mr-3">Streaming Service</span>
+              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="provider || 'Any'"></span>
               <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
             </button>
           {% endif %}
 
           {% if filter_data.departments %}
             <div class="border-t border-gray-700 my-1"></div>
-            <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
+            <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="view = 'department'; resetSearch()"
                     type="button">
               <span class="flex-shrink-0 mr-3">Department</span>
-              <span class="ml-auto text-xs text-gray-400 block min-w-0 truncate max-w-[8rem]" x-text="department || 'Any'"></span>
+              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="department || 'Any'"></span>
               <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
             </button>
           {% endif %}
 
           {% if filter_data.tags %}
             <div class="border-t border-gray-700 my-1"></div>
-            <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
+            <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="view = 'tag'; resetSearch()"
                     type="button">
               <span class="flex-shrink-0 mr-3">Tag</span>
-              <span class="ml-auto text-xs text-gray-400 block min-w-0 truncate max-w-[8rem]" x-text="selectedTags.length ? selectedTags.join(', ') : 'Any'"></span>
+              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="selectedTags.length ? selectedTags.join(', ') : 'Any'"></span>
               <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
             </button>
           {% endif %}
@@ -223,30 +233,30 @@
 
         <div x-show="view === 'mediaType'" x-cloak>
           <div class="flex items-center gap-2 px-4 py-2 border-b border-gray-700">
-            <button class="p-1 rounded hover:bg-[#454d5a] transition-colors cursor-pointer"
+            <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
                     @click="view = 'root'"
                     type="button">
               {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
             </button>
-            <div class="text-xs uppercase tracking-wide text-gray-300">Media Type</div>
+            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Media Type</div>
           </div>
           {% if media_type == 'music' %}
             <a href="{% url 'medialist' media_type %}?subview=artists"
-               class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white">
+               class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]">
               <span>Artists</span>
               {% if current_subview == 'artists' or not current_subview %}
                 <span class="ml-auto">{% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}</span>
               {% endif %}
             </a>
             <a href="{% url 'medialist' media_type %}?subview=albums"
-               class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white">
+               class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]">
               <span>Albums</span>
               {% if current_subview == 'albums' %}
                 <span class="ml-auto">{% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}</span>
               {% endif %}
             </a>
             <a href="{% url 'medialist' media_type %}?subview=tracks"
-               class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white">
+               class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]">
               <span>Tracks</span>
               {% if current_subview == 'tracks' %}
                 <span class="ml-auto">{% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}</span>
@@ -254,14 +264,14 @@
             </a>
           {% elif media_type == 'comic' %}
             <a href="{% url 'medialist' media_type %}?subview=comics"
-               class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white">
+               class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]">
               <span>Comics</span>
               {% if current_subview == 'comics' or not current_subview %}
                 <span class="ml-auto">{% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}</span>
               {% endif %}
             </a>
             <a href="{% url 'medialist' media_type %}?subview=issues"
-               class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white">
+               class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]">
               <span>Issues</span>
               {% if current_subview == 'issues' %}
                 <span class="ml-auto">{% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}</span>
@@ -272,25 +282,25 @@
 
         <div x-show="view === 'genre'" x-cloak class="p-2">
           <div class="flex items-center gap-2 px-2 py-1">
-            <button class="p-1 rounded hover:bg-[#454d5a] transition-colors cursor-pointer"
+            <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
                     @click="view = 'root'"
                     type="button">
               {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
             </button>
-            <div class="text-xs uppercase tracking-wide text-gray-300">Genre</div>
+            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Genre</div>
           </div>
           <div class="px-2 py-2">
             <input type="text"
                    x-model="genreSearch"
                    placeholder="Filter Genre"
-                   class="w-full px-3 py-2 rounded-md bg-[#2a2f35] text-sm text-gray-200 placeholder-gray-500 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-gray-500 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
           </div>
           <div class="max-h-64 overflow-y-auto">
             <button hx-get="{{ filter_hx_endpoint }}"
                     hx-target="{{ filter_hx_target }}"
                     hx-include="#filter-form"
                     hx-indicator="#loading-indicator"
-                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
+                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="genre = ''; open = false; view = 'root'"
                     type="button">
               <span>All Genres</span>
@@ -303,7 +313,7 @@
                       hx-target="{{ filter_hx_target }}"
                       hx-include="#filter-form"
                       hx-indicator="#loading-indicator"
-                      class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
+                      class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                       @click="genre = option; open = false; view = 'root'"
                       type="button">
                 <span class="block min-w-0 truncate max-w-[11rem]" x-text="option"></span>
@@ -317,25 +327,25 @@
 
         <div x-show="view === 'impliedGenre'" x-cloak class="p-2">
           <div class="flex items-center gap-2 px-2 py-1">
-            <button class="p-1 rounded hover:bg-[#454d5a] transition-colors cursor-pointer"
+            <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
                     @click="view = 'root'"
                     type="button">
               {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
             </button>
-            <div class="text-xs uppercase tracking-wide text-gray-300">Implied Genre</div>
+            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Implied Genre</div>
           </div>
           <div class="px-2 py-2">
             <input type="text"
                    x-model="impliedGenreSearch"
                    placeholder="Filter Implied Genre"
-                   class="w-full px-3 py-2 rounded-md bg-[#2a2f35] text-sm text-gray-200 placeholder-gray-500 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-gray-500 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
           </div>
           <div class="max-h-64 overflow-y-auto">
             <button hx-get="{{ filter_hx_endpoint }}"
                     hx-target="{{ filter_hx_target }}"
                     hx-include="#filter-form"
                     hx-indicator="#loading-indicator"
-                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
+                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="impliedGenre = ''; open = false; view = 'root'"
                     type="button">
               <span>All Implied Genres</span>
@@ -348,7 +358,7 @@
                       hx-target="{{ filter_hx_target }}"
                       hx-include="#filter-form"
                       hx-indicator="#loading-indicator"
-                      class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
+                      class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                       @click="impliedGenre = option; open = false; view = 'root'"
                       type="button">
                 <span class="block min-w-0 truncate max-w-[11rem]" x-text="option"></span>
@@ -362,19 +372,19 @@
 
         <div x-show="view === 'rating'" x-cloak class="p-2">
           <div class="flex items-center gap-2 px-2 py-1">
-            <button class="p-1 rounded hover:bg-[#454d5a] transition-colors cursor-pointer"
+            <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
                     @click="view = 'root'"
                     type="button">
               {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
             </button>
-            <div class="text-xs uppercase tracking-wide text-gray-300">Rating</div>
+            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Rating</div>
           </div>
           <div class="max-h-64 overflow-y-auto">
             <button hx-get="{{ filter_hx_endpoint }}"
                     hx-target="{{ filter_hx_target }}"
                     hx-include="#filter-form"
                     hx-indicator="#loading-indicator"
-                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
+                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="rating = 'all'; open = false; view = 'root'"
                     type="button">
               <span>Any Rating</span>
@@ -386,7 +396,7 @@
                     hx-target="{{ filter_hx_target }}"
                     hx-include="#filter-form"
                     hx-indicator="#loading-indicator"
-                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
+                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="rating = 'rated'; open = false; view = 'root'"
                     type="button">
               <span>Rated</span>
@@ -398,7 +408,7 @@
                     hx-target="{{ filter_hx_target }}"
                     hx-include="#filter-form"
                     hx-indicator="#loading-indicator"
-                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
+                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="rating = 'not_rated'; open = false; view = 'root'"
                     type="button">
               <span>Not Rated</span>
@@ -411,19 +421,19 @@
 
         <div x-show="view === 'collection'" x-cloak class="p-2">
           <div class="flex items-center gap-2 px-2 py-1">
-            <button class="p-1 rounded hover:bg-[#454d5a] transition-colors cursor-pointer"
+            <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
                     @click="view = 'root'"
                     type="button">
               {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
             </button>
-            <div class="text-xs uppercase tracking-wide text-gray-300">Collection</div>
+            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Collection</div>
           </div>
           <div class="max-h-64 overflow-y-auto">
             <button hx-get="{{ filter_hx_endpoint }}"
                     hx-target="{{ filter_hx_target }}"
                     hx-include="#filter-form"
                     hx-indicator="#loading-indicator"
-                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
+                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="collection = 'all'; open = false; view = 'root'"
                     type="button">
               <span>Any Collection</span>
@@ -435,7 +445,7 @@
                     hx-target="{{ filter_hx_target }}"
                     hx-include="#filter-form"
                     hx-indicator="#loading-indicator"
-                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
+                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="collection = 'collected'; open = false; view = 'root'"
                     type="button">
               <span>Collected</span>
@@ -447,7 +457,7 @@
                     hx-target="{{ filter_hx_target }}"
                     hx-include="#filter-form"
                     hx-indicator="#loading-indicator"
-                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
+                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="collection = 'not_collected'; open = false; view = 'root'"
                     type="button">
               <span>Not Collected</span>
@@ -461,19 +471,19 @@
         {% if filter_data.show_progress %}
           <div x-show="view === 'progress'" x-cloak class="p-2">
             <div class="flex items-center gap-2 px-2 py-1">
-              <button class="p-1 rounded hover:bg-[#454d5a] transition-colors cursor-pointer"
+              <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
                       @click="view = 'root'"
                       type="button">
                 {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
               </button>
-              <div class="text-xs uppercase tracking-wide text-gray-300">Progress</div>
+              <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Progress</div>
             </div>
             <div class="max-h-64 overflow-y-auto">
               <button hx-get="{{ filter_hx_endpoint }}"
                       hx-target="{{ filter_hx_target }}"
                       hx-include="#filter-form"
                       hx-indicator="#loading-indicator"
-                      class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
+                      class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                       @click="progress = 'all'; open = false; view = 'root'"
                       type="button">
                 <span>Any Progress</span>
@@ -485,7 +495,7 @@
                       hx-target="{{ filter_hx_target }}"
                       hx-include="#filter-form"
                       hx-indicator="#loading-indicator"
-                      class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
+                      class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                       @click="progress = 'not_caught_up'; open = false; view = 'root'"
                       type="button">
                 <span>Not Caught Up</span>
@@ -497,7 +507,7 @@
                       hx-target="{{ filter_hx_target }}"
                       hx-include="#filter-form"
                       hx-indicator="#loading-indicator"
-                      class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
+                      class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                       @click="progress = 'caught_up'; open = false; view = 'root'"
                       type="button">
                 <span>Caught Up</span>
@@ -511,25 +521,25 @@
 
         <div x-show="view === 'year'" x-cloak class="p-2">
           <div class="flex items-center gap-2 px-2 py-1">
-            <button class="p-1 rounded hover:bg-[#454d5a] transition-colors cursor-pointer"
+            <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
                     @click="view = 'root'"
                     type="button">
               {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
             </button>
-            <div class="text-xs uppercase tracking-wide text-gray-300">Year</div>
+            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Year</div>
           </div>
           <div class="px-2 py-2">
             <input type="text"
                    x-model="yearSearch"
                    placeholder="Filter Year"
-                   class="w-full px-3 py-2 rounded-md bg-[#2a2f35] text-sm text-gray-200 placeholder-gray-500 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-gray-500 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
           </div>
           <div class="max-h-64 overflow-y-auto">
             <button hx-get="{{ filter_hx_endpoint }}"
                     hx-target="{{ filter_hx_target }}"
                     hx-include="#filter-form"
                     hx-indicator="#loading-indicator"
-                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
+                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="year = ''; open = false; view = 'root'"
                     type="button">
               <span>All Years</span>
@@ -542,7 +552,7 @@
                       hx-target="{{ filter_hx_target }}"
                       hx-include="#filter-form"
                       hx-indicator="#loading-indicator"
-                      class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
+                      class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                       @click="year = option.value; open = false; view = 'root'"
                       type="button">
                 <span class="block min-w-0 truncate max-w-[11rem]" x-text="option.label"></span>
@@ -556,19 +566,19 @@
 
         <div x-show="view === 'release'" x-cloak class="p-2">
           <div class="flex items-center gap-2 px-2 py-1">
-            <button class="p-1 rounded hover:bg-[#454d5a] transition-colors cursor-pointer"
+            <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
                     @click="view = 'root'"
                     type="button">
               {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
             </button>
-            <div class="text-xs uppercase tracking-wide text-gray-300">Released</div>
+            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Released</div>
           </div>
           <div class="max-h-64 overflow-y-auto">
             <button hx-get="{{ filter_hx_endpoint }}"
                     hx-target="{{ filter_hx_target }}"
                     hx-include="#filter-form"
                     hx-indicator="#loading-indicator"
-                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
+                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="release = 'all'; open = false; view = 'root'"
                     type="button">
               <span>Any Release State</span>
@@ -580,7 +590,7 @@
                     hx-target="{{ filter_hx_target }}"
                     hx-include="#filter-form"
                     hx-indicator="#loading-indicator"
-                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
+                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="release = 'released'; open = false; view = 'root'"
                     type="button">
               <span>Released</span>
@@ -592,7 +602,7 @@
                     hx-target="{{ filter_hx_target }}"
                     hx-include="#filter-form"
                     hx-indicator="#loading-indicator"
-                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
+                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="release = 'not_released'; open = false; view = 'root'"
                     type="button">
               <span>Not Released</span>
@@ -605,25 +615,25 @@
 
         <div x-show="view === 'source'" x-cloak class="p-2">
           <div class="flex items-center gap-2 px-2 py-1">
-            <button class="p-1 rounded hover:bg-[#454d5a] transition-colors cursor-pointer"
+            <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
                     @click="view = 'root'"
                     type="button">
               {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
             </button>
-            <div class="text-xs uppercase tracking-wide text-gray-300">Source</div>
+            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Source</div>
           </div>
           <div class="px-2 py-2">
             <input type="text"
                    x-model="sourceSearch"
                    placeholder="Filter Source"
-                   class="w-full px-3 py-2 rounded-md bg-[#2a2f35] text-sm text-gray-200 placeholder-gray-500 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-gray-500 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
           </div>
           <div class="max-h-64 overflow-y-auto">
             <button hx-get="{{ filter_hx_endpoint }}"
                     hx-target="{{ filter_hx_target }}"
                     hx-include="#filter-form"
                     hx-indicator="#loading-indicator"
-                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
+                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="sourceFilter = ''; open = false; view = 'root'"
                     type="button">
               <span>All Sources</span>
@@ -636,7 +646,7 @@
                       hx-target="{{ filter_hx_target }}"
                       hx-include="#filter-form"
                       hx-indicator="#loading-indicator"
-                      class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
+                      class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                       @click="sourceFilter = option.value; open = false; view = 'root'"
                       type="button">
                 <span class="block min-w-0 truncate max-w-[11rem]" x-text="option.label"></span>
@@ -650,25 +660,25 @@
 
         <div x-show="view === 'language'" x-cloak class="p-2">
           <div class="flex items-center gap-2 px-2 py-1">
-            <button class="p-1 rounded hover:bg-[#454d5a] transition-colors cursor-pointer"
+            <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
                     @click="view = 'root'"
                     type="button">
               {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
             </button>
-            <div class="text-xs uppercase tracking-wide text-gray-300">Language</div>
+            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Language</div>
           </div>
           <div class="px-2 py-2">
             <input type="text"
                    x-model="languageSearch"
                    placeholder="Filter Language"
-                   class="w-full px-3 py-2 rounded-md bg-[#2a2f35] text-sm text-gray-200 placeholder-gray-500 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-gray-500 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
           </div>
           <div class="max-h-64 overflow-y-auto">
             <button hx-get="{{ filter_hx_endpoint }}"
                     hx-target="{{ filter_hx_target }}"
                     hx-include="#filter-form"
                     hx-indicator="#loading-indicator"
-                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
+                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="language = ''; open = false; view = 'root'"
                     type="button">
               <span>All Languages</span>
@@ -681,7 +691,7 @@
                       hx-target="{{ filter_hx_target }}"
                       hx-include="#filter-form"
                       hx-indicator="#loading-indicator"
-                      class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
+                      class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                       @click="language = option.value; open = false; view = 'root'"
                       type="button">
                 <span class="block min-w-0 truncate max-w-[11rem]" x-text="option.label"></span>
@@ -695,25 +705,25 @@
 
         <div x-show="view === 'country'" x-cloak class="p-2">
           <div class="flex items-center gap-2 px-2 py-1">
-            <button class="p-1 rounded hover:bg-[#454d5a] transition-colors cursor-pointer"
+            <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
                     @click="view = 'root'"
                     type="button">
               {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
             </button>
-            <div class="text-xs uppercase tracking-wide text-gray-300">Country</div>
+            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Country</div>
           </div>
           <div class="px-2 py-2">
             <input type="text"
                    x-model="countrySearch"
                    placeholder="Filter Country"
-                   class="w-full px-3 py-2 rounded-md bg-[#2a2f35] text-sm text-gray-200 placeholder-gray-500 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-gray-500 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
           </div>
           <div class="max-h-64 overflow-y-auto">
             <button hx-get="{{ filter_hx_endpoint }}"
                     hx-target="{{ filter_hx_target }}"
                     hx-include="#filter-form"
                     hx-indicator="#loading-indicator"
-                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
+                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="country = ''; open = false; view = 'root'"
                     type="button">
               <span>All Countries</span>
@@ -726,7 +736,7 @@
                       hx-target="{{ filter_hx_target }}"
                       hx-include="#filter-form"
                       hx-indicator="#loading-indicator"
-                      class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
+                      class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                       @click="country = option.value; open = false; view = 'root'"
                       type="button">
                 <span class="block min-w-0 truncate max-w-[11rem]" x-text="option.label"></span>
@@ -740,25 +750,25 @@
 
         <div x-show="view === 'platform'" x-cloak class="p-2">
           <div class="flex items-center gap-2 px-2 py-1">
-            <button class="p-1 rounded hover:bg-[#454d5a] transition-colors cursor-pointer"
+            <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
                     @click="view = 'root'"
                     type="button">
               {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
             </button>
-            <div class="text-xs uppercase tracking-wide text-gray-300">Platform</div>
+            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Platform</div>
           </div>
           <div class="px-2 py-2">
             <input type="text"
                    x-model="platformSearch"
                    placeholder="Filter Platform"
-                   class="w-full px-3 py-2 rounded-md bg-[#2a2f35] text-sm text-gray-200 placeholder-gray-500 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-gray-500 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
           </div>
           <div class="max-h-64 overflow-y-auto">
             <button hx-get="{{ filter_hx_endpoint }}"
                     hx-target="{{ filter_hx_target }}"
                     hx-include="#filter-form"
                     hx-indicator="#loading-indicator"
-                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
+                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="platform = ''; open = false; view = 'root'"
                     type="button">
               <span>Any Platform</span>
@@ -771,7 +781,7 @@
                       hx-target="{{ filter_hx_target }}"
                       hx-include="#filter-form"
                       hx-indicator="#loading-indicator"
-                      class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
+                      class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                       @click="platform = option.value; open = false; view = 'root'"
                       type="button">
                 <span class="block min-w-0 truncate max-w-[11rem]" x-text="option.label"></span>
@@ -785,25 +795,25 @@
 
         <div x-show="view === 'origin'" x-cloak class="p-2">
           <div class="flex items-center gap-2 px-2 py-1">
-            <button class="p-1 rounded hover:bg-[#454d5a] transition-colors cursor-pointer"
+            <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
                     @click="view = 'root'"
                     type="button">
               {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
             </button>
-            <div class="text-xs uppercase tracking-wide text-gray-300">Origin</div>
+            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Origin</div>
           </div>
           <div class="px-2 py-2">
             <input type="text"
                    x-model="originSearch"
                    placeholder="Filter Origin"
-                   class="w-full px-3 py-2 rounded-md bg-[#2a2f35] text-sm text-gray-200 placeholder-gray-500 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-gray-500 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
           </div>
           <div class="max-h-64 overflow-y-auto">
             <button hx-get="{{ filter_hx_endpoint }}"
                     hx-target="{{ filter_hx_target }}"
                     hx-include="#filter-form"
                     hx-indicator="#loading-indicator"
-                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
+                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="origin = ''; open = false; view = 'root'"
                     type="button">
               <span>Any Origin</span>
@@ -816,7 +826,7 @@
                       hx-target="{{ filter_hx_target }}"
                       hx-include="#filter-form"
                       hx-indicator="#loading-indicator"
-                      class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
+                      class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                       @click="origin = option.value; open = false; view = 'root'"
                       type="button">
                 <span class="block min-w-0 truncate max-w-[11rem]" x-text="option.label"></span>
@@ -830,25 +840,25 @@
 
         <div x-show="view === 'format'" x-cloak class="p-2">
           <div class="flex items-center gap-2 px-2 py-1">
-            <button class="p-1 rounded hover:bg-[#454d5a] transition-colors cursor-pointer"
+            <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
                     @click="view = 'root'"
                     type="button">
               {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
             </button>
-            <div class="text-xs uppercase tracking-wide text-gray-300">Format</div>
+            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Format</div>
           </div>
           <div class="px-2 py-2">
             <input type="text"
                    x-model="formatSearch"
                    placeholder="Filter Format"
-                   class="w-full px-3 py-2 rounded-md bg-[#2a2f35] text-sm text-gray-200 placeholder-gray-500 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-gray-500 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
           </div>
           <div class="max-h-64 overflow-y-auto">
             <button hx-get="{{ filter_hx_endpoint }}"
                     hx-target="{{ filter_hx_target }}"
                     hx-include="#filter-form"
                     hx-indicator="#loading-indicator"
-                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
+                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="format = ''; open = false; view = 'root'"
                     type="button">
               <span>Any Format</span>
@@ -861,7 +871,7 @@
                       hx-target="{{ filter_hx_target }}"
                       hx-include="#filter-form"
                       hx-indicator="#loading-indicator"
-                      class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
+                      class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                       @click="format = option.value; open = false; view = 'root'"
                       type="button">
                 <span class="block min-w-0 truncate max-w-[11rem]" x-text="option.label"></span>
@@ -875,25 +885,25 @@
 
         <div x-show="view === 'author'" x-cloak class="p-2">
           <div class="flex items-center gap-2 px-2 py-1">
-            <button class="p-1 rounded hover:bg-[#454d5a] transition-colors cursor-pointer"
+            <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
                     @click="view = 'root'"
                     type="button">
               {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
             </button>
-            <div class="text-xs uppercase tracking-wide text-gray-300">Author</div>
+            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Author</div>
           </div>
           <div class="px-2 py-2">
             <input type="text"
                    x-model="authorSearch"
                    placeholder="Filter Author"
-                   class="w-full px-3 py-2 rounded-md bg-[#2a2f35] text-sm text-gray-200 placeholder-gray-500 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-gray-500 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
           </div>
           <div class="max-h-64 overflow-y-auto">
             <button hx-get="{{ filter_hx_endpoint }}"
                     hx-target="{{ filter_hx_target }}"
                     hx-include="#filter-form"
                     hx-indicator="#loading-indicator"
-                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
+                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="author = ''; open = false; view = 'root'"
                     type="button">
               <span>All Authors</span>
@@ -906,7 +916,7 @@
                       hx-target="{{ filter_hx_target }}"
                       hx-include="#filter-form"
                       hx-indicator="#loading-indicator"
-                      class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
+                      class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                       @click="author = option.value; open = false; view = 'root'"
                       type="button">
                 <span class="block min-w-0 truncate max-w-[11rem]" x-text="option.label"></span>
@@ -918,27 +928,72 @@
           </div>
         </div>
 
-        <div x-show="view === 'department'" x-cloak class="p-2">
+        <div x-show="view === 'provider'" x-cloak class="p-2">
           <div class="flex items-center gap-2 px-2 py-1">
-            <button class="p-1 rounded hover:bg-[#454d5a] transition-colors cursor-pointer"
+            <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
                     @click="view = 'root'"
                     type="button">
               {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
             </button>
-            <div class="text-xs uppercase tracking-wide text-gray-300">Department</div>
+            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Streaming Service</div>
           </div>
           <div class="px-2 py-2">
             <input type="text"
-                   x-model="departmentSearch"
-                   placeholder="Filter Department"
-                   class="w-full px-3 py-2 rounded-md bg-[#2a2f35] text-sm text-gray-200 placeholder-gray-500 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                   x-model="providerSearch"
+                   placeholder="Filter Streaming Service"
+                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-gray-500 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
           </div>
           <div class="max-h-64 overflow-y-auto">
             <button hx-get="{{ filter_hx_endpoint }}"
                     hx-target="{{ filter_hx_target }}"
                     hx-include="#filter-form"
                     hx-indicator="#loading-indicator"
-                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
+                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                    @click="provider = ''; open = false; view = 'root'"
+                    type="button">
+              <span>Any Streaming Service</span>
+              <span class="ml-auto" x-show="provider === ''">
+                {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+              </span>
+            </button>
+            <template x-for="option in filteredProviders()" :key="option.value">
+              <button hx-get="{{ filter_hx_endpoint }}"
+                      hx-target="{{ filter_hx_target }}"
+                      hx-include="#filter-form"
+                      hx-indicator="#loading-indicator"
+                      class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                      @click="provider = option.value; open = false; view = 'root'"
+                      type="button">
+                <span class="block min-w-0 truncate max-w-[11rem]" x-text="option.label"></span>
+                <span class="ml-auto" x-show="provider === option.value">
+                  {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+                </span>
+              </button>
+            </template>
+          </div>
+        </div>
+
+        <div x-show="view === 'department'" x-cloak class="p-2">
+          <div class="flex items-center gap-2 px-2 py-1">
+            <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
+                    @click="view = 'root'"
+                    type="button">
+              {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
+            </button>
+            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Department</div>
+          </div>
+          <div class="px-2 py-2">
+            <input type="text"
+                   x-model="departmentSearch"
+                   placeholder="Filter Department"
+                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-gray-500 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          </div>
+          <div class="max-h-64 overflow-y-auto">
+            <button hx-get="{{ filter_hx_endpoint }}"
+                    hx-target="{{ filter_hx_target }}"
+                    hx-include="#filter-form"
+                    hx-indicator="#loading-indicator"
+                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="department = ''; open = false; view = 'root'"
                     type="button">
               <span>All Departments</span>
@@ -951,7 +1006,7 @@
                       hx-target="{{ filter_hx_target }}"
                       hx-include="#filter-form"
                       hx-indicator="#loading-indicator"
-                      class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
+                      class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                       @click="department = option; open = false; view = 'root'"
                       type="button">
                 <span class="block min-w-0 truncate max-w-[11rem]" x-text="option"></span>
@@ -965,14 +1020,14 @@
 
         <div x-show="view === 'tag'" x-cloak class="p-2">
           <div class="flex items-center gap-2 px-2 py-1">
-            <button class="p-1 rounded hover:bg-[#454d5a] transition-colors cursor-pointer"
+            <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
                     @click="view = 'root'"
                     type="button">
               {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
             </button>
-            <div class="text-xs uppercase tracking-wide text-gray-300">Tag</div>
+            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Tag</div>
             <button type="button"
-                    class="ml-auto px-2 py-0.5 rounded text-xs font-medium uppercase bg-[#2a2f35] border border-gray-600 text-indigo-300 hover:text-white hover:border-indigo-500 transition-colors cursor-pointer"
+                    class="ml-auto px-2 py-0.5 rounded text-xs font-medium uppercase bg-[var(--color-surface)] border border-gray-600 text-indigo-300 hover:text-[var(--color-text)] hover:border-indigo-500 transition-colors cursor-pointer"
                     @click.stop="cycleTagMode()"
                     hx-get="{{ filter_hx_endpoint }}"
                     hx-target="{{ filter_hx_target }}"
@@ -984,14 +1039,14 @@
             <input type="text"
                    x-model="tagSearch"
                    placeholder="Filter Tags"
-                   class="w-full px-3 py-2 rounded-md bg-[#2a2f35] text-sm text-gray-200 placeholder-gray-500 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-gray-500 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
           </div>
           <div class="max-h-64 overflow-y-auto">
             <button hx-get="{{ filter_hx_endpoint }}"
                     hx-target="{{ filter_hx_target }}"
                     hx-include="#filter-form"
                     hx-indicator="#loading-indicator"
-                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
+                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="selectedTags = []"
                     type="button">
               <span>Clear Tags</span>
@@ -1004,7 +1059,7 @@
                       hx-target="{{ filter_hx_target }}"
                       hx-include="#filter-form"
                       hx-indicator="#loading-indicator"
-                      class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
+                      class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                       @click="toggleTag(option)"
                       type="button">
                 <span class="block min-w-0 truncate max-w-[11rem]" x-text="option"></span>
@@ -1021,7 +1076,7 @@
     <!-- Filter by Status -->
     {% if status_choices %}
       <div class="relative filter-control" x-data="{ open: false }">
-        <button class="flex items-center px-2 py-2 rounded-md text-gray-200 hover:text-white transition-colors cursor-pointer"
+        <button class="flex items-center px-2 py-2 rounded-md text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
                 @click="open = !open"
                 type="button">
           <span x-text="statuses.length === 0 ? 'Status' : (statuses.length === 1 ? (statusLabels[statuses[0]] || statuses[0]) : statuses.length + ' Statuses')"></span>
@@ -1033,7 +1088,7 @@
           </svg>
         </button>
 
-        <div class="absolute z-40 mt-2 py-1 w-48 bg-[#39404b] rounded-md shadow-lg overflow-hidden border border-gray-700"
+        <div class="absolute z-40 mt-2 py-1 w-48 bg-[var(--color-surface-strong)] rounded-md shadow-lg overflow-hidden border border-gray-700"
              x-cloak
              x-show="open"
              @click.outside="open = false"
@@ -1048,7 +1103,7 @@
                   hx-include="#filter-form"
                   hx-indicator="#loading-indicator"
                   class="block w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
-                  :class="statuses.length === 0 ? 'bg-indigo-600 text-white font-medium' : 'text-gray-300 hover:bg-[#454d5a] hover:text-white'"
+                  :class="statuses.length === 0 ? 'bg-indigo-600 text-white font-medium' : 'text-gray-300 hover:bg-[var(--color-surface-hover)] hover:text-white'"
                   @click="statuses = []"
                   type="button">All</button>
           {% for value, label in status_choices %}
@@ -1058,12 +1113,12 @@
                       hx-include="#filter-form"
                       hx-indicator="#loading-indicator"
                       class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
-                      :class="isStatusSelected('{{ value }}') ? 'bg-indigo-600 text-white font-medium' : 'text-gray-300 hover:bg-[#454d5a] hover:text-white'"
+                      :class="isStatusSelected('{{ value }}') ? 'bg-indigo-600 text-white font-medium' : 'text-gray-300 hover:bg-[var(--color-surface-hover)] hover:text-white'"
                       @click="toggleStatus('{{ value }}')"
                       type="button">
                 <span>{{ label }}</span>
                 <span class="ml-auto" x-show="isStatusSelected('{{ value }}')">
-                  {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-white" %}
+                  {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-[var(--color-text)]" %}
                 </span>
               </button>
             {% endif %}
@@ -1074,7 +1129,7 @@
 
     <!-- Sort by -->
     <div class="relative filter-control" x-data="{ open: false }">
-      <button class="flex items-center px-2 py-2 rounded-md text-gray-200 hover:text-white transition-colors cursor-pointer"
+      <button class="flex items-center px-2 py-2 rounded-md text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
               @click="open = !open"
               type="button">
         <span x-text="sortLabels[sort] || sort"></span>
@@ -1094,7 +1149,7 @@
         </svg>
       </button>
 
-      <div class="absolute z-40 mt-2 py-1 w-48 bg-[#39404b] rounded-md shadow-lg overflow-hidden border border-gray-700"
+      <div class="absolute z-40 mt-2 py-1 w-48 bg-[var(--color-surface-strong)] rounded-md shadow-lg overflow-hidden border border-gray-700"
            x-cloak
            x-show="open"
            @click.outside="open = false"
@@ -1108,7 +1163,7 @@
           {% if value != 'critic_rating' or supports_critic_rating_sort %}
             {% if value != 'author' or filter_data.show_authors %}
               <button class="block w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
-                      :class="sort === '{{ value }}' ? 'bg-indigo-600 text-white font-medium' : 'text-gray-300 hover:bg-[#454d5a] hover:text-white'"
+                      :class="sort === '{{ value }}' ? 'bg-indigo-600 text-white font-medium' : 'text-gray-300 hover:bg-[var(--color-surface-hover)] hover:text-white'"
                       @click="toggleSort('{{ value }}'); open = false; document.getElementById('filter-form').elements.sort.value = sort; document.getElementById('filter-form').elements.direction.value = direction; window.location.href = '{{ filter_hx_endpoint }}?' + new URLSearchParams(new FormData(document.getElementById('filter-form'))).toString()"
                       type="button">{{ label }}</button>
             {% endif %}
@@ -1118,7 +1173,7 @@
     </div>
 
     {% if show_layout_toggle %}
-      <div id="result-count" data-result-count class="result-count-badge result-count-desktop px-4 py-2 bg-[#2a2f35] rounded-md text-gray-200 text-sm font-semibold">
+      <div id="result-count" data-result-count class="result-count-badge result-count-desktop px-4 py-2 bg-[var(--color-surface)] rounded-md text-[var(--color-text-secondary)] text-sm font-semibold">
         {% if media_list.paginator %}
           {{ media_list.paginator.count }}
         {% else %}
@@ -1134,14 +1189,14 @@
         <div class="flex rounded-md overflow-hidden border border-gray-700 layout-toggle">
           <a :href="layoutHref('grid')"
              class="p-2 cursor-pointer"
-             :class="layout === 'grid' ? 'bg-indigo-600 text-white' : 'bg-[#39404b] hover:bg-[#454d5a]'"
+             :class="layout === 'grid' ? 'bg-indigo-600 text-white' : 'bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)]'"
              title="Grid View"
              @click="layout = 'grid'">
             {% include "app/icons/four-square.svg" with classes="w-5 h-5" %}
           </a>
           <a :href="layoutHref('table')"
              class="p-2 cursor-pointer"
-             :class="layout === 'table' ? 'bg-indigo-600 text-white' : 'bg-[#39404b] hover:bg-[#454d5a]'"
+             :class="layout === 'table' ? 'bg-indigo-600 text-white' : 'bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)]'"
              title="Table View"
              @click="layout = 'table'">{% include "app/icons/table.svg" with classes="w-5 h-5" %}</a>
         </div>

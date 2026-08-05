@@ -9,7 +9,7 @@
 {% block content %}
   <div class="flex items-center gap-3 mb-6">
     <h1 class="text-3xl font-bold">{{ media_type|media_type_readable_plural }}</h1>
-    <div data-result-count class="result-count-badge result-count-mobile px-4 py-2 bg-[#2a2f35] rounded-md text-gray-200 text-sm font-semibold">
+    <div data-result-count class="result-count-badge result-count-mobile px-4 py-2 bg-[var(--color-surface)] rounded-md text-[var(--color-text-secondary)] text-sm font-semibold">
       {% if media_list.paginator %}
         {{ media_list.paginator.count }}
       {% else %}
@@ -44,6 +44,7 @@
     origin: '{{ current_origin|default:'' }}',
     format: '{{ current_format|default:'' }}',
     author: '{{ current_author|default:'' }}',
+    provider: '{{ current_provider|default:'' }}',
     selectedTags: [
       {% for value in current_tag %}
         '{{ value|escapejs }}'{% if not forloop.last %},{% endif %}
@@ -58,6 +59,7 @@
     showOrigins: {{ filter_data.show_origins|yesno:'true,false' }},
     showFormats: {{ filter_data.show_formats|yesno:'true,false' }},
     showAuthors: {{ filter_data.show_authors|yesno:'true,false' }},
+    showProviders: {{ filter_data.show_providers|yesno:'true,false' }},
     showProgress: {{ filter_data.show_progress|yesno:'true,false' }},
     statusLabels: {
     {% for value, label in status_choices %}
@@ -182,6 +184,9 @@
       if (this.showAuthors && this.author) {
         labels.push(this.author);
       }
+      if (this.showProviders && this.provider) {
+        labels.push(this.provider);
+      }
       if (this.selectedTags.length) {
         const prefix = this.tagMode === 'not' ? '-' : '+';
         labels.push(prefix + this.selectedTags.join(this.tagMode === 'and' ? ' & ' : ', '));
@@ -210,6 +215,7 @@
       this.origin = '';
       this.format = '';
       this.author = '';
+      this.provider = '';
       this.selectedTags = [];
       this.tagMode = 'or';
     }
@@ -221,13 +227,13 @@
 
     {% if not media_list %}
       <div id="empty_list"
-           class="flex flex-col items-center justify-center py-16 bg-[#2a2f35] rounded-lg">
+           class="flex flex-col items-center justify-center py-16 bg-[var(--color-surface)] rounded-lg">
         <div class="text-center max-w-md mx-auto p-6">
-          <div class="bg-[#39404b] rounded-full p-4 w-16 h-16 mx-auto mb-4 flex items-center justify-center">
-            {% include "app/icons/edit.svg" with classes="w-8 h-8 text-gray-400" %}
+          <div class="bg-[var(--color-surface-strong)] rounded-full p-4 w-16 h-16 mx-auto mb-4 flex items-center justify-center">
+            {% include "app/icons/edit.svg" with classes="w-8 h-8 text-[var(--color-text-muted)]" %}
           </div>
           <h3 class="text-xl font-semibold mb-2">No {{ media_type|media_type_readable_plural }} Tracked Yet</h3>
-          <p class="text-gray-400 mb-6">
+          <p class="text-[var(--color-text-muted)] mb-6">
             Start tracking your {{ media_type_plural }} to keep a record of what you've {{ media_type|media_past_verb }}.
           </p>
           <a href="{{ media_type|browse_url }}"
@@ -245,8 +251,8 @@
         <div class="media-grid">{% include "app/components/media_grid_items.html" %}</div>
       {% endif %}
     {% else %}
-      <div class="bg-[#2a2f35] p-4 rounded-lg overflow-hidden max-w-[calc(100svw-4rem)] overflow-x-scroll">
-        <table class="w-full bg-[#2a2f35] media-table">
+      <div class="bg-[var(--color-surface)] p-4 rounded-lg overflow-hidden max-w-[calc(100svw-4rem)] overflow-x-scroll">
+        <table class="w-full bg-[var(--color-surface)] media-table">
           {% include "app/components/table_items.html" %}
         </table>
       </div>

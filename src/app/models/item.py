@@ -54,6 +54,11 @@ class Item(CalendarTriggerMixin, models.Model):
     release_datetime = models.DateTimeField(null=True, blank=True)
     genres = models.JSONField(default=list, blank=True)
     implied_genres = models.JSONField(default=list, blank=True)
+    watch_providers = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="TMDB watch-provider data by region, e.g. {region: {flatrate: [...]}}",
+    )
     # Metadata fields for filtering, sorting, and statistics
     country = models.CharField(
         max_length=255, blank=True, default="", help_text="Origin country"
@@ -378,6 +383,7 @@ class Item(CalendarTriggerMixin, models.Model):
             "manual_metadata",
             "provider_external_ids",
             "provider_game_lengths",
+            "watch_providers",
         ]
         for field_name in json_object_fields:
             value = getattr(self, field_name, None)
