@@ -174,13 +174,20 @@ def get_process_role():
     "background" (the default Celery worker and beat). Set explicitly via
     FLOPPY_PROCESS_ROLE in supervisord; unlabeled celery processes fall
     back to "background" so they can never starve interactive requests.
+
+    "combined" is the fourth role, used only on the "minimal" resource tier
+    where one Celery worker consumes every queue because three resident Django
+    imports don't fit (see config/runtime_profile.py). The cross-process
+    starvation the split exists to prevent can't occur there - a single worker
+    at concurrency 1 runs one task at a time either way - so ordering falls to
+    the broker's priority queue strategy instead of to separate buckets.
     """
     role = os.environ.get(
         "FLOPPY_PROCESS_ROLE",
         os.environ.get("YAMTRACK_PROCESS_ROLE", ""),
     )
     role = role.strip().lower()
-    if role in {"web", "interactive", "background"}:
+    if role in {"web", "interactive", "background", "combined"}:
         return role
     argv0 = Path(sys.argv[0]).name.lower() if sys.argv and sys.argv[0] else ""
     if "celery" in argv0:
@@ -200,6 +207,11 @@ bucket_key = f"{settings.REDIS_PREFIX}_api" if settings.REDIS_PREFIX else "api"
 if PROCESS_ROLE == "background":
     bucket_key = f"{bucket_key}_background"
     _GLOBAL_PER_SECOND = 3
+elif PROCESS_ROLE == "combined":
+    # One worker serving every queue: there is no other worker to starve, so it
+    # gets a single bucket sized between the two split budgets.
+    bucket_key = f"{bucket_key}_combined"
+    _GLOBAL_PER_SECOND = 4
 else:
     _GLOBAL_PER_SECOND = 5
 

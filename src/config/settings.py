@@ -25,6 +25,22 @@ from decouple import (
 from django.core.cache import CacheKeyWarning
 from django.db.backends.signals import connection_created
 
+from config.runtime_profile import (
+    PROFILE as RESOURCE_PROFILE,
+)
+from config.runtime_profile import (
+    by_tier,
+    gunicorn_threads,
+    web_concurrency,
+)
+
+# How much machine we're on. Every tier-scaled default below reads from this
+# single detection rather than repeating its own heuristic; see
+# config/runtime_profile.py for what is probed and why (issue #521).
+RESOURCE_TIER = RESOURCE_PROFILE.tier
+RUNTIME_GUNICORN_THREADS = gunicorn_threads()
+RUNTIME_WEB_CONCURRENCY = web_concurrency()
+
 BASE_URL = config("BASE_URL", default=None)
 if BASE_URL:
     FORCE_SCRIPT_NAME = BASE_URL
@@ -313,12 +329,18 @@ USING_SQLITE_DATABASE = not bool(DB_HOST)
 if DB_HOST:
     DB_POOL_ENABLED = config("DB_POOL_ENABLED", default=True, cast=bool)
     DB_POOL_MIN = config("DB_POOL_MIN", default=2, cast=int)
-    # Default should be >= GUNICORN_THREADS (src/config/gunicorn.py) so a
-    # worker's pool never runs out of slots for its own concurrent request
-    # threads; +1 for headroom (e.g. the /health/ probe hitting the pool at
-    # the same time). A too-small pool causes psycopg_pool.PoolTimeout once
-    # concurrent requests in a worker exceed the pool size (issue #341).
-    DB_POOL_MAX = config("DB_POOL_MAX", default=5, cast=int)
+    # Derived from the same thread count gunicorn uses rather than hardcoded,
+    # so the invariant holds automatically when the tier (or the user) changes
+    # GUNICORN_THREADS. It must be >= the thread count so a worker's pool never
+    # runs out of slots for its own concurrent request threads; +1 for headroom
+    # (e.g. the /health/ probe hitting the pool at the same time). A too-small
+    # pool causes psycopg_pool.PoolTimeout once concurrent requests in a worker
+    # exceed the pool size (issue #341).
+    DB_POOL_MAX = config(
+        "DB_POOL_MAX",
+        default=max(RUNTIME_GUNICORN_THREADS + 1, DB_POOL_MIN + 1),
+        cast=int,
+    )
     DB_POOL_TIMEOUT = config("DB_POOL_TIMEOUT", default=30, cast=int)
     db_options = {}
     if DB_POOL_ENABLED:
@@ -1105,13 +1127,48 @@ if REDIS_PREFIX:
     )
 
 CELERY_WORKER_HIJACK_ROOT_LOGGER = False
-CELERY_WORKER_CONCURRENCY = 1
-CELERY_WORKER_PREFETCH_MULTIPLIER = 1
-CELERY_WORKER_MAX_TASKS_PER_CHILD = 50
+CELERY_WORKER_CONCURRENCY = config("CELERY_WORKER_CONCURRENCY", default=1, cast=int)
+CELERY_WORKER_PREFETCH_MULTIPLIER = config(
+    "CELERY_WORKER_PREFETCH_MULTIPLIER",
+    default=1,
+    cast=int,
+)
+# Recycling a worker child is the only thing that returns leaked/fragmented
+# memory to the OS, so smaller hosts recycle sooner (issue #521).
+CELERY_WORKER_MAX_TASKS_PER_CHILD = config(
+    "CELERY_WORKER_MAX_TASKS_PER_CHILD",
+    default=by_tier(15, 25, 50),
+    cast=int,
+)
+# A hard RSS ceiling per child: Celery retires the child after the task that
+# crosses it finishes. Unset on standard hosts, where a large import legitimately
+# needs the headroom and there is memory to spare.
+CELERY_WORKER_MAX_MEMORY_PER_CHILD = config(
+    "CELERY_WORKER_MAX_MEMORY_PER_CHILD",
+    default=by_tier(180 * 1024, 250 * 1024, 0),
+    cast=int,
+)
+if not CELERY_WORKER_MAX_MEMORY_PER_CHILD:
+    CELERY_WORKER_MAX_MEMORY_PER_CHILD = None
 CELERY_BEAT_SYNC_EVERY = 10
 
 CELERY_TASK_TRACK_STARTED = True
-CELERY_TASK_TIME_LIMIT = 60 * 60 * 6  # 6 hours
+# A wedged task holds its worker for the whole limit, and with concurrency 1
+# that is the entire queue. Six hours is survivable on a host with spare
+# workers; on a constrained one it is an outage, so bound it much sooner and
+# give tasks a SoftTimeLimitExceeded they can clean up after.
+CELERY_TASK_TIME_LIMIT = config(
+    "CELERY_TASK_TIME_LIMIT",
+    default=by_tier(60 * 30, 60 * 30, 60 * 60 * 6),
+    cast=int,
+)
+CELERY_TASK_SOFT_TIME_LIMIT = config(
+    "CELERY_TASK_SOFT_TIME_LIMIT",
+    default=by_tier(60 * 15, 60 * 15, 0),
+    cast=int,
+)
+if not CELERY_TASK_SOFT_TIME_LIMIT:
+    CELERY_TASK_SOFT_TIME_LIMIT = None
 CELERY_TASK_DEFAULT_PRIORITY = 5
 CELERY_TASK_PRIORITY_INTERACTIVE = 9
 CELERY_TASK_PRIORITY_FOLLOWUP = 7

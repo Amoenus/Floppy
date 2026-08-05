@@ -55,6 +55,14 @@ ENV COMMIT_SHA=$COMMIT_SHA
 # via `docker exec` — nginx already listens on 8000 inside the container.
 ENV FLOPPY_URL=http://127.0.0.1:8000
 
+# supervisord expands %(ENV_...)s in supervisord.conf and refuses to start if a
+# referenced variable is unset, so these need image-level defaults even though
+# entrypoint.sh overwrites them from the detected resource tier (issue #521).
+ENV FLOPPY_CELERY_ROLE=background
+ENV FLOPPY_CELERY_QUEUES=celery
+ENV FLOPPY_START_INTERACTIVE_WORKER=true
+ENV FLOPPY_START_DISCOVER_WORKER=true
+
 COPY ./requirements.txt /requirements.txt
 COPY ./entrypoint.sh /entrypoint.sh
 COPY ./supervisord.conf /etc/supervisord.conf
