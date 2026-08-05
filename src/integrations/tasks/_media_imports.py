@@ -2,7 +2,6 @@ import logging
 
 from celery import current_task, shared_task
 from django.contrib.auth import get_user_model
-from django.core.cache import cache
 from django.utils import timezone
 
 import events
@@ -462,23 +461,37 @@ def import_pocketcasts_history(user_id):
 def import_gpodder(user_id, mode="new"):
     """Celery task for importing podcast history from GPodder-compatible servers."""
     lock_key = f"gpodder_import_lock_{user_id}"
-    if not cache.add(lock_key, "1", timeout=600):
+    # Fails open for the same reason as the Pocket Casts manual import above: a
+    # user waiting on this must not be told "already in progress" because the
+    # cache was briefly unreachable (#521).
+    if not cache_safety.acquire_lock(
+        lock_key,
+        timeout=600,
+        on_error=cache_safety.ON_ERROR_PROCEED,
+        value="1",
+    ):
         logger.info("GPodder import already running for user %s, skipping", user_id)
         return "Skipped: import already in progress"
     try:
         return import_media(gpodder.importer, None, user_id, mode)
     finally:
-        cache.delete(lock_key)
+        cache_safety.release_lock(lock_key)
 
 
 @shared_task(name="Import from GPodder (Recurring)")
 def import_gpodder_recurring(user_id):
     """Recurring import task for GPodder-compatible servers."""
     lock_key = f"gpodder_import_lock_{user_id}"
-    if not cache.add(lock_key, "1", timeout=600):
+    # Recurring, so skipping a run costs little; the manual path above stays open.
+    if not cache_safety.acquire_lock(
+        lock_key,
+        timeout=600,
+        on_error=cache_safety.ON_ERROR_SKIP,
+        value="1",
+    ):
         logger.info("GPodder import already running for user %s, skipping", user_id)
         return "Skipped: import already in progress"
     try:
         return import_media(gpodder.importer, None, user_id, "new")
     finally:
-        cache.delete(lock_key)
+        cache_safety.release_lock(lock_key)
