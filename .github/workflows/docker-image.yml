@@ -2,6 +2,12 @@ name: Docker Image
 
 on:
   workflow_dispatch:
+    inputs:
+      bootstrap_ghcr:
+        description: "Use GHCR_TOKEN once to create the renamed floppy package"
+        required: false
+        default: false
+        type: boolean
   push:
     branches:
       - "dev"
@@ -80,8 +86,11 @@ jobs:
         uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          # The one-time bootstrap is needed because floppy was created by a
+          # PAT-based push, while the existing yamtrack package is already
+          # associated with this repository. Normal builds stay on GITHUB_TOKEN.
+          username: ${{ inputs.bootstrap_ghcr == true && 'dannyvfilms' || github.actor }}
+          password: ${{ inputs.bootstrap_ghcr == true && secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Build and push Docker image
         id: build-and-push
