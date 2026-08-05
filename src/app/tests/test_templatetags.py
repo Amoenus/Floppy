@@ -1023,3 +1023,155 @@ class NextEpisodeUrlTests(TestCase):
                 kwargs={"media_id": "51553", "title": "witch-hat-atelier"},
             ),
         )
+
+    def _create_tv_with_season_stuck_planning(
+        self,
+        media_id="90210",
+        season_number=1,
+        watched_episodes=5,
+    ):
+        """Return a TV show whose tracked season has real progress but a
+        stale PLANNING status (as left behind by a failed metadata fetch
+        during Episode.save, e.g. a bulk import — see issue #517).
+        """
+        from app.models import TV, Episode, Season, Status
+        from app.providers.services import ProviderAPIError
+
+        tv_item = Item.objects.create(
+            media_id=media_id,
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Stuck Planning TV",
+            image="http://example.com/tv.jpg",
+        )
+        tv = TV.objects.create(
+            item=tv_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        season_item = Item.objects.create(
+            media_id=media_id,
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Stuck Planning TV",
+            image=f"http://example.com/tv-s{season_number}.jpg",
+            season_number=season_number,
+        )
+        season = Season.objects.create(
+            item=season_item,
+            user=self.user,
+            related_tv=tv,
+            status=Status.PLANNING.value,
+        )
+        for episode_number in range(1, watched_episodes + 1):
+            episode_item = Item.objects.create(
+                media_id=media_id,
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.EPISODE.value,
+                season_number=season_number,
+                episode_number=episode_number,
+                title=f"Episode {episode_number}",
+                image="",
+            )
+            # Episode.save() tries a provider metadata fetch to sync the
+            # season's status; force it to fail (as it does in production
+            # when the metadata call errors during a bulk import), leaving
+            # the season's raw status untouched at PLANNING despite this
+            # real watch progress.
+            with patch(
+                "app.models.tv.providers.services.get_media_metadata",
+                side_effect=ProviderAPIError("tmdb", Exception("boom")),
+            ):
+                Episode.objects.create(
+                    item=episode_item,
+                    related_season=season,
+                    end_date=timezone.now(),
+                )
+        season.refresh_from_db()
+        self.assertEqual(season.status, Status.PLANNING.value)
+        return tv_item, tv, season_item
+
+    def test_tv_show_uses_derived_status_for_only_season_stuck_planning(self):
+        """A single season with real progress but stale PLANNING status still
+        routes to its own next episode, not the untracked-season fallback.
+        """
+        tv_item, tv, season_item = self._create_tv_with_season_stuck_planning(
+            season_number=1,
+            watched_episodes=5,
+        )
+
+        url = app_tags.next_episode_url(tv_item, tv)
+
+        self.assertEqual(
+            url,
+            reverse(
+                "episode_details",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_id": season_item.media_id,
+                    "title": "stuck-planning-tv",
+                    "season_number": 1,
+                    "episode_number": 6,
+                },
+            ),
+        )
+
+    def test_tv_show_does_not_skip_to_next_season_when_current_stuck_planning(self):
+        """A completed earlier season shouldn't cause the button to skip past
+        a later, still-in-progress season whose status is stuck at PLANNING.
+        """
+        from app.models import Episode, Season, Status
+        from app.providers.services import ProviderAPIError
+
+        tv_item, tv = self._create_tv_with_completed_season(media_id="90211")
+        season_item = Item.objects.create(
+            media_id="90211",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Untracked Next Season TV",
+            image="http://example.com/tv-s2.jpg",
+            season_number=2,
+        )
+        season = Season.objects.create(
+            item=season_item,
+            user=self.user,
+            related_tv=tv,
+            status=Status.PLANNING.value,
+        )
+        for episode_number in (1, 2, 3):
+            episode_item = Item.objects.create(
+                media_id="90211",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.EPISODE.value,
+                season_number=2,
+                episode_number=episode_number,
+                title=f"Episode {episode_number}",
+                image="",
+            )
+            with patch(
+                "app.models.tv.providers.services.get_media_metadata",
+                side_effect=ProviderAPIError("tmdb", Exception("boom")),
+            ):
+                Episode.objects.create(
+                    item=episode_item,
+                    related_season=season,
+                    end_date=timezone.now(),
+                )
+        season.refresh_from_db()
+        self.assertEqual(season.status, Status.PLANNING.value)
+
+        url = app_tags.next_episode_url(tv_item, tv)
+
+        self.assertEqual(
+            url,
+            reverse(
+                "episode_details",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_id": "90211",
+                    "title": "untracked-next-season-tv",
+                    "season_number": 2,
+                    "episode_number": 4,
+                },
+            ),
+        )

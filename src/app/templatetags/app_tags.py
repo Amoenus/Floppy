@@ -1051,11 +1051,15 @@ def next_episode_url(item, media):
                 )
             return ""
         # Seasons are already prefetched for TV home cards — no extra query
+        # Use the derived status rather than the raw field: bulk imports can
+        # leave a season's stored status at PLANNING even with real watch
+        # progress logged (see Episode.save's metadata-fetch-failure path),
+        # which otherwise makes this button skip straight to the next season.
         in_progress = [
             s
             for s in seasons.all()
-            if getattr(s, "status", None) == Status.IN_PROGRESS.value
-            and getattr(getattr(s, "item", None), "season_number", 0) != 0
+            if getattr(getattr(s, "item", None), "season_number", 0) != 0
+            and s.derived_status_from_episode_progress() == Status.IN_PROGRESS.value
         ]
         if not in_progress:
             return _untracked_season_next_episode_url(item, seasons, actual_media_type)
