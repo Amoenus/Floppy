@@ -230,6 +230,15 @@ def _track_modal_release_runtime_minutes(media_type, *candidates):
     return ""
 
 
+def _track_modal_date_suggestion(label, iso_date, runtime_minutes=""):
+    """Normalize a single labeled date suggestion for the shared date/time picker."""
+    return {
+        "label": label,
+        "date": iso_date or "",
+        "runtime_minutes": runtime_minutes or "",
+    }
+
+
 def _render_standard_track_modal(
     request,
     source,
@@ -608,6 +617,11 @@ def _render_standard_track_modal(
         ),
         base_metadata,
     )
+    date_suggestion = _track_modal_date_suggestion(
+        "Air date" if media_type == MediaTypes.EPISODE.value else "Release Date",
+        release_date_shortcut,
+        release_date_runtime_minutes,
+    )
     context = {
         "user": request.user,
         "title": title,
@@ -667,8 +681,7 @@ def _render_standard_track_modal(
             if media and metadata_item and not can_edit_custom_metadata
             else None
         ),
-        "release_date_shortcut": release_date_shortcut,
-        "release_date_runtime_minutes": release_date_runtime_minutes,
+        "date_suggestion": date_suggestion,
         "manual_metadata_form": manual_metadata_form,
         "manual_metadata_formaction": (
             reverse("update_manual_item_metadata", args=[metadata_item.id])
@@ -806,8 +819,7 @@ def _render_podcast_show_track_modal(
             "general_existing_instance": tracker,
             "image_field": None,
             "image_save_item_id": None,
-            "release_date_shortcut": "",
-            "release_date_runtime_minutes": "",
+            "date_suggestion": _track_modal_date_suggestion("Release Date", ""),
             "track_form_id": track_form_id,
             "track_action_update": track_action_update,
             "initial_active_tab": initial_active_tab,

@@ -1,4 +1,5 @@
 {% load widget_tweaks %}
+{% load user_tags %}
 
 <form method="post"
       hx-post="{{ episode_plays_formaction|default:'' }}?next={{ return_url }}"
@@ -139,17 +140,7 @@
       <div>
         <label class="mb-1 block text-sm font-medium text-[var(--color-text-secondary)]"
                for="{{ episode_plays_form.start_date.id_for_label }}">Start date</label>
-        <div class="relative">
-          {{ episode_plays_form.start_date|add_class:"w-full p-2 bg-[var(--color-surface-strong)] rounded-md text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] pr-28"|attr:"x-ref:startDate" }}
-          <button type="button"
-                  x-show="selectedEpisodeAirDate('first')"
-                  x-cloak
-                  @click="applyEpisodeAirDate('first', 'startDate')"
-                  class="absolute right-2 top-1/2 -translate-y-1/2 flex items-center text-sm text-indigo-400 hover:text-indigo-300 transition-colors bg-[var(--color-surface)] px-2 py-1 rounded cursor-pointer">
-            {% include "app/icons/calendar.svg" with classes="w-4 h-4 mr-1" %}
-            {{ episode_plays_domain.dateShortcutLabel|default:"Air date" }}
-          </button>
-        </div>
+        {% include "app/components/date_time_picker.html" with field_name=episode_plays_form.start_date.html_name field_value=episode_plays_form.start_date.value|default_if_none:"" field_id=episode_plays_form.start_date.id_for_label field_label="Start date" track_time=TRACK_TIME suggestion_label=episode_plays_domain.dateShortcutLabel|default:"Air date" suggestion_date_expr="selectedEpisodeAirDate('first')" week_start=user.week_start_day use_12_hour=user|user_uses_12_hour_format only %}
         {% for error in episode_plays_form.start_date.errors %}
           <p class="mt-1 text-sm text-red-300">{{ error }}</p>
         {% endfor %}
@@ -158,17 +149,7 @@
       <div>
         <label class="mb-1 block text-sm font-medium text-[var(--color-text-secondary)]"
                for="{{ episode_plays_form.end_date.id_for_label }}">End date</label>
-        <div class="relative">
-          {{ episode_plays_form.end_date|add_class:"w-full p-2 bg-[var(--color-surface-strong)] rounded-md text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] pr-28"|attr:"x-ref:endDate" }}
-          <button type="button"
-                  x-show="selectedEpisodeAirDate('last')"
-                  x-cloak
-                  @click="applyEpisodeAirDate('last', 'endDate')"
-                  class="absolute right-2 top-1/2 -translate-y-1/2 flex items-center text-sm text-indigo-400 hover:text-indigo-300 transition-colors bg-[var(--color-surface)] px-2 py-1 rounded cursor-pointer">
-            {% include "app/icons/calendar.svg" with classes="w-4 h-4 mr-1" %}
-            {{ episode_plays_domain.dateShortcutLabel|default:"Air date" }}
-          </button>
-        </div>
+        {% include "app/components/date_time_picker.html" with field_name=episode_plays_form.end_date.html_name field_value=episode_plays_form.end_date.value|default_if_none:"" field_id=episode_plays_form.end_date.id_for_label field_label="End date" track_time=TRACK_TIME suggestion_label=episode_plays_domain.dateShortcutLabel|default:"Air date" suggestion_date_expr="selectedEpisodeAirDate('last')" week_start=user.week_start_day use_12_hour=user|user_uses_12_hour_format only %}
         {% for error in episode_plays_form.end_date.errors %}
           <p class="mt-1 text-sm text-red-300">{{ error }}</p>
         {% endfor %}

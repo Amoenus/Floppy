@@ -229,8 +229,10 @@ def _render_music_tracker_modal(
             "general_existing_instance": tracker,
             "image_field": None,
             "image_save_item_id": None,
-            "release_date_shortcut": release_date_shortcut,
-            "release_date_runtime_minutes": "",
+            "date_suggestion": view_barrel._track_modal_date_suggestion(
+                "Release Date",
+                release_date_shortcut,
+            ),
             "track_form_id": track_form_id,
             "initial_active_tab": initial_active_tab,
             "episode_plays_tab_available": episode_plays_tab_available,

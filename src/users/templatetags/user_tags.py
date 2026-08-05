@@ -182,6 +182,15 @@ def time_format_display(format_value):
 
 
 @register.filter
+def user_uses_12_hour_format(user):
+    """Return whether the user's time format preference is 12-hour."""
+    return getattr(user, "time_format", None) in (
+        TimeFormatChoices.H_MM_AMPM,
+        TimeFormatChoices.HH_MM_AMPM,
+    )
+
+
+@register.filter
 def user_date_format(date, user):
     """Format a date according to user's date format preference."""
     if not date or not user:

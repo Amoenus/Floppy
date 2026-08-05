@@ -1,17 +1,8 @@
-function trackModalCurrentTimeSegment(input) {
-  if (input?.value && input.value.includes("T")) {
-    return input.value.split("T")[1].slice(0, 5);
-  }
-
-  return new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000)
-    .toISOString()
-    .slice(11, 16);
-}
-
 function trackModalDispatchInputEvents(input) {
   input.dispatchEvent(new Event("input", { bubbles: true }));
   input.dispatchEvent(new Event("change", { bubbles: true }));
 }
+window.trackModalDispatchInputEvents = trackModalDispatchInputEvents;
 
 function trackModalParseProgressMinutes(value) {
   if (!value) {
@@ -91,6 +82,7 @@ function trackModalClearAutoFilledField(form, fieldName) {
     // Ignore Alpine lookup failures and still update the DOM field value.
   }
 }
+window.trackModalClearAutoFilledField = trackModalClearAutoFilledField;
 
 function trackModalFormatLocalDateTime(date) {
   const year = date.getFullYear();
@@ -117,59 +109,6 @@ function trackModalParseLocalDateTime(value) {
 
   return new Date(year, month - 1, day, hours, minutes, 0, 0);
 }
-
-window.applyTrackModalReleaseDate = function applyTrackModalReleaseDate(
-  button,
-  releaseDate,
-  fieldName,
-  runtimeMinutes,
-) {
-  if (!button || !releaseDate) {
-    return;
-  }
-
-  const container = button.closest(".relative");
-  const input =
-    container?.querySelector(`[name="${fieldName}"]`) ||
-    container?.querySelector("input");
-  if (!input) {
-    return;
-  }
-
-  input.value =
-    input.type === "datetime-local"
-      ? `${releaseDate}T${trackModalCurrentTimeSegment(input)}`
-      : releaseDate;
-
-  const form = button.closest("form");
-  trackModalClearAutoFilledField(form, fieldName);
-  trackModalDispatchInputEvents(input);
-
-  const parsedRuntimeMinutes = Number.parseInt(runtimeMinutes, 10);
-  const startDateInput = form?.querySelector('[name="start_date"]');
-  if (
-    fieldName !== "end_date" ||
-    !Number.isFinite(parsedRuntimeMinutes) ||
-    parsedRuntimeMinutes <= 0 ||
-    !startDateInput ||
-    startDateInput === input ||
-    input.type !== "datetime-local" ||
-    startDateInput.type !== "datetime-local"
-  ) {
-    return;
-  }
-
-  const endDateTime = trackModalParseLocalDateTime(input.value);
-  if (!endDateTime) {
-    return;
-  }
-
-  startDateInput.value = trackModalFormatLocalDateTime(
-    new Date(endDateTime.getTime() - parsedRuntimeMinutes * 60000),
-  );
-  trackModalClearAutoFilledField(form, "start_date");
-  trackModalDispatchInputEvents(startDateInput);
-};
 
 function trackModalResolveElement(target) {
   if (typeof target === "string") {
@@ -341,32 +280,6 @@ function trackModalCreateToast(detail) {
   window.setTimeout(() => toast.remove(), timeout);
   return toast;
 }
-
-window.clearTrackModalDate = function clearTrackModalDate(button, fieldName) {
-  const input = button
-    .closest(".relative")
-    ?.querySelector(`[name="${fieldName}"]`);
-  if (!input) {
-    return;
-  }
-  input.value = "";
-  const form = button.closest("form");
-  trackModalClearAutoFilledField(form, fieldName);
-  if (fieldName === "start_date" && form) {
-    if (window.Alpine) {
-      try {
-        Alpine.$data(form).manualStartDate = false;
-      } catch {
-        // Ignore Alpine lookup failures.
-      }
-    }
-    const sentinel = form.querySelector('[name="start_date_cleared"]');
-    if (sentinel) {
-      sentinel.value = "1";
-    }
-  }
-  trackModalDispatchInputEvents(input);
-};
 
 window.closeTrackModal = function closeTrackModal(target) {
   return trackModalSetOpen(target, false);
@@ -578,6 +491,7 @@ document.addEventListener("alpine:init", () => {
       ) {
         endDateField.value = this.getCurrentDateTime(endDateField);
         this.autoFilled.end_date = true;
+        trackModalDispatchInputEvents(endDateField);
       } else if (
         isNewForm &&
         statusField &&
@@ -587,6 +501,7 @@ document.addEventListener("alpine:init", () => {
       ) {
         endDateField.value = this.getCurrentDateTime(endDateField);
         this.autoFilled.end_date = true;
+        trackModalDispatchInputEvents(endDateField);
       }
       if (isNewForm && statusField && statusField.value === "In progress") {
         this.syncStartDateFromProgress();
@@ -601,10 +516,12 @@ document.addEventListener("alpine:init", () => {
           if (this.autoFilled.start_date && startDateField) {
             startDateField.value = "";
             this.autoFilled.start_date = false;
+            trackModalDispatchInputEvents(startDateField);
           }
           if (this.autoFilled.end_date && endDateField) {
             endDateField.value = "";
             this.autoFilled.end_date = false;
+            trackModalDispatchInputEvents(endDateField);
           }
 
           // For edit forms: don't auto-fill if returning to original status
@@ -628,6 +545,7 @@ document.addEventListener("alpine:init", () => {
           ) {
             endDateField.value = this.getCurrentDateTime(endDateField);
             this.autoFilled.end_date = true;
+            trackModalDispatchInputEvents(endDateField);
           } else if (
             status === "In progress" &&
             endDateField &&
@@ -636,6 +554,7 @@ document.addEventListener("alpine:init", () => {
           ) {
             endDateField.value = this.getCurrentDateTime(endDateField);
             this.autoFilled.end_date = true;
+            trackModalDispatchInputEvents(endDateField);
           }
 
           if (status === "Completed" || status === "In progress") {
@@ -647,16 +566,15 @@ document.addEventListener("alpine:init", () => {
 
     getCurrentDateTime(field) {
       const date = new Date();
+      const isDateTime =
+        field.type === "datetime-local" || field.dataset.trackTime === "true";
 
-      if (field.type === "datetime-local") {
+      if (isDateTime) {
         return new Date(date.getTime() - date.getTimezoneOffset() * 60000)
           .toISOString()
           .slice(0, 16);
-      } else if (field.type === "date") {
-        return date.toISOString().slice(0, 10);
       }
 
-      // Fallback to date format
       return date.toISOString().slice(0, 10);
     },
   }));

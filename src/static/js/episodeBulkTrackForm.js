@@ -80,33 +80,6 @@ document.addEventListener("alpine:init", () => {
       return this.selectedEpisode(side)?.air_date || "";
     },
 
-    timeSegment(input) {
-      if (input?.value && input.value.includes("T")) {
-        return input.value.split("T")[1].slice(0, 5);
-      }
-
-      const now = new Date();
-      return `${this.pad(now.getHours())}:${this.pad(now.getMinutes())}`;
-    },
-
-    applyEpisodeAirDate(side, fieldRefName) {
-      const airDate = this.selectedEpisodeAirDate(side);
-      const input = this.$refs[fieldRefName];
-      if (!airDate || !input) {
-        return;
-      }
-
-      const datePart = airDate.slice(0, 10);
-      if (input.type === "datetime-local") {
-        input.value = `${datePart}T${this.timeSegment(input)}`;
-      } else {
-        input.value = datePart;
-      }
-
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-      input.dispatchEvent(new Event("change", { bubbles: true }));
-    },
-
     syncEpisodeOptions(side) {
       const isFirst = side === "first";
       const select = isFirst ? this.$refs.firstEpisode : this.$refs.lastEpisode;

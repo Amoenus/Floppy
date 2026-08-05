@@ -1,4 +1,5 @@
 {% load widget_tweaks %}
+{% load user_tags %}
 
 <div class="bg-[var(--color-surface-dim)] rounded-xl shadow-2xl overflow-hidden"
      data-track-modal-root
@@ -112,40 +113,10 @@
                         {% include "app/icons/chevron-down.svg" with classes="w-3.5 h-3.5" %}
                       </button>
                     </div>
-                  {% elif field.name == "start_date" or field.name == "end_date" %}
-                    {% if release_date_shortcut %}
-                      <div class="flex-1 flex items-stretch border border-gray-600 rounded-md bg-[var(--color-surface-strong)] focus-within:ring-2 focus-within:ring-[var(--color-accent)]">
-                        <span class="sm:hidden text-xs text-[var(--color-text-muted)] pl-2 pr-1 flex items-center whitespace-nowrap">{% if field.name == "start_date" %}Start:{% else %}End:{% endif %}</span>
-                        {{ field|add_class:"flex-1 p-2 bg-transparent border-0 outline-none text-white text-sm min-w-0" }}
-                        <div class="w-px bg-gray-600 self-stretch my-1"></div>
-                        <button type="button"
-                                onclick="clearTrackModalDate(this, '{{ field.name }}')"
-                                aria-label="Clear date"
-                                class="hidden md:inline-flex items-center text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-muted)] transition-colors px-2 cursor-pointer">
-                          {% include "app/icons/x.svg" with classes="w-3.5 h-3.5" %}
-                        </button>
-                        <button type="button"
-                                onclick="applyTrackModalReleaseDate(this, '{{ release_date_shortcut }}', '{{ field.name }}'{% if field.name == 'end_date' and release_date_runtime_minutes %}, '{{ release_date_runtime_minutes }}'{% endif %})"
-                                aria-label="Release date"
-                                class="track-release-shortcut-button flex items-center text-sm text-indigo-400 hover:text-indigo-300 hover:bg-[var(--color-surface-muted)] transition-colors px-2 cursor-pointer rounded-r-md">
-                          {% include "app/icons/calendar.svg" with classes="w-4 h-4 mr-1" %}
-                          <span class="track-release-shortcut-mobile-label">Release</span>
-                          <span class="track-release-shortcut-desktop-label">Release Date</span>
-                        </button>
-                      </div>
-                    {% else %}
-                      <div class="flex-1 flex items-stretch border border-gray-600 rounded-md bg-[var(--color-surface-strong)] focus-within:ring-2 focus-within:ring-[var(--color-accent)]">
-                        <span class="sm:hidden text-xs text-[var(--color-text-muted)] pl-2 pr-1 flex items-center whitespace-nowrap">{% if field.name == "start_date" %}Start:{% else %}End:{% endif %}</span>
-                        {{ field|add_class:"flex-1 p-2 bg-transparent border-0 outline-none text-white text-sm min-w-0" }}
-                        <div class="w-px bg-gray-600 self-stretch my-1"></div>
-                        <button type="button"
-                                onclick="clearTrackModalDate(this, '{{ field.name }}')"
-                                aria-label="Clear date"
-                                class="hidden md:inline-flex items-center text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-muted)] transition-colors px-2 cursor-pointer rounded-r-md">
-                          {% include "app/icons/x.svg" with classes="w-3.5 h-3.5" %}
-                        </button>
-                      </div>
-                    {% endif %}
+                  {% elif field.name == "start_date" %}
+                    {% include "app/components/date_time_picker.html" with field_name=field.name field_value=field.value|default_if_none:"" field_id=field.id_for_label field_label=field.label mobile_label="Start:" track_time=TRACK_TIME suggestion_label=date_suggestion.label suggestion_date=date_suggestion.date suggestion_runtime_minutes=date_suggestion.runtime_minutes week_start=user.week_start_day use_12_hour=user|user_uses_12_hour_format only %}
+                  {% elif field.name == "end_date" %}
+                    {% include "app/components/date_time_picker.html" with field_name=field.name field_value=field.value|default_if_none:"" field_id=field.id_for_label field_label=field.label mobile_label="End:" track_time=TRACK_TIME suggestion_label=date_suggestion.label suggestion_date=date_suggestion.date suggestion_runtime_minutes=date_suggestion.runtime_minutes week_start=user.week_start_day use_12_hour=user|user_uses_12_hour_format only %}
                   {% else %}
                     {{ field|add_class:"w-full p-2 bg-[var(--color-surface-strong)] rounded-md text-white text-sm border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]" }}
                   {% endif %}
