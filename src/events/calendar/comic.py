@@ -9,7 +9,11 @@ logger = logging.getLogger(__name__)
 
 
 def process_comic(item, events_bulk):
-    """Process comic item and add events to the event list."""
+    """Process comic item and add events to the event list.
+
+    Returns True when the item was successfully checked (including when there is
+    nothing new to schedule), False when a provider call failed.
+    """
     logger.info("Fetching releases for %s", item)
     try:
         metadata = services.get_media_metadata(
@@ -22,13 +26,13 @@ def process_comic(item, events_bulk):
             "Failed to fetch metadata for %s",
             item,
         )
-        return
+        return False
 
     latest_event = Event.objects.filter(item=item).order_by("-datetime").first()
     last_issue_event_number = latest_event.content_number if latest_event else 0
     last_published_issue_number = metadata["max_issue_number"]
     if last_issue_event_number == last_published_issue_number:
-        return
+        return True
 
     try:
         issue_metadata = comicvine.issue(metadata["last_issue_id"])
@@ -37,14 +41,14 @@ def process_comic(item, events_bulk):
             "Failed to fetch issue metadata for %s",
             item,
         )
-        return
+        return False
 
     if issue_metadata["store_date"]:
         issue_datetime = date_parser(issue_metadata["store_date"])
     elif issue_metadata["cover_date"]:
         issue_datetime = date_parser(issue_metadata["cover_date"])
     else:
-        return
+        return True
 
     events_bulk.append(
         Event(
@@ -53,3 +57,5 @@ def process_comic(item, events_bulk):
             datetime=issue_datetime,
         ),
     )
+
+    return True

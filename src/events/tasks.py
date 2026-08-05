@@ -156,9 +156,7 @@ def reload_calendar(user_id=None, item_ids=None, user=None, items_to_process=Non
             if batch_size > 0:
                 backfill_item_metadata_task.apply_async(
                     kwargs={"batch_size": batch_size},
-                    priority=getattr(
-                        settings, "CELERY_TASK_PRIORITY_BACKGROUND", 9
-                    ),
+                    priority=getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 9),
                 )
         except Exception:
             logger.exception("Failed to queue metadata backfill during calendar reload")

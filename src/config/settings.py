@@ -1291,9 +1291,7 @@ CELERY_TASK_ROUTES = {
     "Warm History Day Cache Coverage": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Repair History Day Cache Coverage": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Refresh Discover Profiles": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
-    "Refresh Discover Profile For User": {
-        "priority": CELERY_TASK_PRIORITY_BACKGROUND
-    },
+    "Refresh Discover Profile For User": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     # Long-running scheduled tasks — low priority so beat-catch-up bursts don't
     # starve other celery-queue work.
     "Reload calendar": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
@@ -1389,6 +1387,17 @@ CALENDAR_RELOAD_BACKFILL_BATCH_SIZE = config(
 CALENDAR_RELOAD_CHUNK_SIZE = config(
     "CALENDAR_RELOAD_CHUNK_SIZE",
     default=by_tier(50, 100, 200),
+    cast=int,
+)
+# Provider responses are not cached, so every selected item costs a live network
+# call. Skip items whose calendar was checked within this window; the daily beat
+# reload still refreshes everything, while the extra import-triggered and manual
+# reloads in between stop re-walking unchanged items. Items that TMDB's change
+# feed reports as changed bypass this gate. Not tier-derived: how stale a release
+# date may be is a correctness question, not a sizing one. 0 disables it.
+CALENDAR_ITEM_STALE_AFTER_HOURS = config(
+    "CALENDAR_ITEM_STALE_AFTER_HOURS",
+    default=12,
     cast=int,
 )
 # Cap on TMDB /changes pagination. total_pages there can run into the hundreds,
