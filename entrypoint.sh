@@ -58,7 +58,7 @@ chown abc:abc /floppy
 
 # Bound each recursive chown: a stalled bind mount (e.g. network storage)
 # must degrade to a warning instead of hanging the boot silently (issue #341).
-for dir in db staticfiles /var/log/nginx /var/lib/nginx; do
+for dir in db logs staticfiles /var/log/nginx /var/lib/nginx; do
     timeout 600 chown -R abc:abc "$dir" || \
         echo "[entrypoint] WARNING: chown of ${dir} failed or timed out (stalled mount?); continuing" >&2
 done
