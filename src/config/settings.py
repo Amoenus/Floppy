@@ -1381,6 +1381,16 @@ CALENDAR_RELOAD_BACKFILL_BATCH_SIZE = config(
     default=by_tier(250, 500, 1000),
     cast=int,
 )
+# fetch_releases walks every tracked item, one provider call at a time. As a
+# single task that holds a worker for the whole walk -- 16.6 minutes on a
+# 1444-item library -- so process the work in bounded slices and re-queue the
+# remainder between them. Smaller hosts free the worker more often, at the cost
+# of more task round-trips; 0 disables chunking and restores the single pass.
+CALENDAR_RELOAD_CHUNK_SIZE = config(
+    "CALENDAR_RELOAD_CHUNK_SIZE",
+    default=by_tier(50, 100, 200),
+    cast=int,
+)
 # Cap on TMDB /changes pagination. total_pages there can run into the hundreds,
 # and the loop had no limit at all.
 TMDB_CHANGES_MAX_PAGES = config(
