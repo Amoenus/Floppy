@@ -8,6 +8,8 @@ from django.contrib.auth import get_user_model
 from django.utils.module_loading import import_string
 from simple_history.models import HistoricalRecords
 
+from app.providers.services import ProviderAPIError
+
 logger = logging.getLogger(__name__)
 
 WEBHOOK_PROCESSORS = {
@@ -37,12 +39,20 @@ def _webhook_history_user(user):
 
 @shared_task(
     name="Process media server webhook",
-    # A provider blip or a brief Redis stall used to discard the scrobble
-    # outright, since the task re-raised with no retry configured (#521). Only
-    # network errors are retried: a malformed payload will fail identically every
-    # time, and retrying it would just burn the worker.
-    autoretry_for=(requests.exceptions.RequestException,),
+    # A provider blip used to discard the scrobble outright, since the task
+    # re-raised with no retry configured (#521). Only provider/network errors are
+    # retried: a malformed payload will fail identically every time, and
+    # retrying it would just burn the worker.
+    #
+    # ProviderAPIError is the one that matters - services.api_request wraps every
+    # RequestException in it, so listing only RequestException here would never
+    # fire. RequestException stays listed for callers that reach the network
+    # without going through api_request.
+    autoretry_for=(ProviderAPIError, requests.exceptions.RequestException),
     max_retries=3,
+    # Celery's backoff starts at ~1s, so the first (most likely) retry lands
+    # inside the five-second end_date window that _handle_tv_episode uses to
+    # suppress duplicate episode writes.
     retry_backoff=True,
     retry_jitter=True,
 )
