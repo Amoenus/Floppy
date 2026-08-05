@@ -70,6 +70,33 @@
           </button>
         </form>
       </div>
+
+      <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg mt-6">
+        <div class="flex items-center mb-3">
+          {% include "app/icons/vertical-sliders.svg" with classes="w-5 h-5 text-indigo-400 mr-2" %}
+          <h3 class="text-base font-medium">Logs &amp; Bug Reports</h3>
+        </div>
+        <p class="text-[var(--color-text-muted)] mb-4 text-sm">
+          Download recent application logs with tokens, passwords, and API keys automatically
+          redacted &mdash; safe to attach to a bug report.
+          <br>
+          If this Floppy instance is shared with other users, the logs may still include their
+          activity, just not their secrets.
+        </p>
+        <div class="flex flex-wrap gap-3">
+          <a href="{% url 'export_logs' %}"
+             class="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm">
+            {% include "app/icons/vertical-sliders.svg" with classes="w-4 h-4 mr-2" %}
+            Download Sanitized Logs
+          </a>
+          <a href="https://github.com/dannyvfilms/Floppy/issues/new?title={{ bug_report_title|urlencode }}&body={{ bug_report_body|urlencode }}"
+             target="_blank"
+             rel="noopener noreferrer"
+             class="flex items-center px-4 py-2 bg-[var(--color-surface)] border border-gray-600 rounded-md hover:border-indigo-500 transition-colors text-sm">
+            File a Bug Report
+          </a>
+        </div>
+      </div>
     </div>
   </div>
 

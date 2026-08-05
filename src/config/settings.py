@@ -468,6 +468,13 @@ AUTH_PASSWORD_VALIDATORS = [
 
 # Logging
 # https://docs.djangoproject.com/en/stable/topics/logging/
+
+# Recent logs are also kept on disk (in addition to stdout) so the app can
+# offer a sanitized log download from Settings > Advanced (#510).
+LOG_DIR = config("LOG_DIR", default=str(BASE_DIR / "logs"))
+Path(LOG_DIR).mkdir(parents=True, exist_ok=True)
+LOG_FILE = str(Path(LOG_DIR) / "floppy.log")
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
@@ -496,8 +503,16 @@ LOGGING = {
             "formatter": "verbose",
             "level": "DEBUG" if DEBUG else "INFO",
         },
+        "file": {
+            "class": "logging.handlers.RotatingFileHandler",
+            "filename": LOG_FILE,
+            "maxBytes": 5 * 1024 * 1024,
+            "backupCount": 3,
+            "formatter": "verbose",
+            "level": "DEBUG" if DEBUG else "INFO",
+        },
     },
-    "root": {"handlers": ["console"], "level": "DEBUG" if DEBUG else "INFO"},
+    "root": {"handlers": ["console", "file"], "level": "DEBUG" if DEBUG else "INFO"},
 }
 
 # Internationalization
