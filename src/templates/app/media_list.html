@@ -22,37 +22,37 @@
 
   <div x-data="{
     mediaListUrl: '{% url 'medialist' media_type %}',
-    sort: '{{ current_sort }}',
-    direction: '{{ current_direction }}',
+    sort: '{{ current_sort|escapejs }}',
+    direction: '{{ current_direction|escapejs }}',
     statuses: [
       {% for value in current_status %}
-        '{{ value }}'{% if not forloop.last %},{% endif %}
+        '{{ value|escapejs }}'{% if not forloop.last %},{% endif %}
       {% endfor %}
     ],
-    rating: '{{ current_rating }}',
-    collection: '{{ current_collection }}',
-    progress: '{{ current_progress|default:'all' }}',
-    genre: '{{ current_genre|default:'' }}',
-    impliedGenre: '{{ current_implied_genre|default:'' }}',
-    year: '{{ current_year|default:'' }}',
-    release: '{{ current_release|default:'all' }}',
-    sourceFilter: '{{ current_source|default:'' }}',
+    rating: '{{ current_rating|escapejs }}',
+    collection: '{{ current_collection|escapejs }}',
+    progress: '{{ current_progress|default:'all'|escapejs }}',
+    genre: '{{ current_genre|default:''|escapejs }}',
+    impliedGenre: '{{ current_implied_genre|default:''|escapejs }}',
+    year: '{{ current_year|default:''|escapejs }}',
+    release: '{{ current_release|default:'all'|escapejs }}',
+    sourceFilter: '{{ current_source|default:''|escapejs }}',
     department: '',
-    language: '{{ current_language|default:'' }}',
-    country: '{{ current_country|default:'' }}',
-    platform: '{{ current_platform|default:'' }}',
-    origin: '{{ current_origin|default:'' }}',
-    format: '{{ current_format|default:'' }}',
-    author: '{{ current_author|default:'' }}',
-    provider: '{{ current_provider|default:'' }}',
+    language: '{{ current_language|default:''|escapejs }}',
+    country: '{{ current_country|default:''|escapejs }}',
+    platform: '{{ current_platform|default:''|escapejs }}',
+    origin: '{{ current_origin|default:''|escapejs }}',
+    format: '{{ current_format|default:''|escapejs }}',
+    author: '{{ current_author|default:''|escapejs }}',
+    provider: '{{ current_provider|default:''|escapejs }}',
     selectedTags: [
       {% for value in current_tag %}
         '{{ value|escapejs }}'{% if not forloop.last %},{% endif %}
       {% endfor %}
     ],
-    tagMode: '{{ current_tag_mode|default:'or' }}',
-    layout: '{{ current_layout }}',
-    search: '{{ request.GET.search|default:'' }}',
+    tagMode: '{{ current_tag_mode|default:'or'|escapejs }}',
+    layout: '{{ current_layout|escapejs }}',
+    search: '{{ request.GET.search|default:''|escapejs }}',
     showLanguages: {{ filter_data.show_languages|yesno:'true,false' }},
     showCountries: {{ filter_data.show_countries|yesno:'true,false' }},
     showPlatforms: {{ filter_data.show_platforms|yesno:'true,false' }},
