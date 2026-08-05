@@ -69,6 +69,10 @@ _LOW_CPU_COUNT = 2
 
 MINIMAL_MEMORY_THRESHOLD = int(1.5 * GIB)
 CONSTRAINED_MEMORY_THRESHOLD = 3 * GIB
+# Above this, a missing swap file isn't a risk worth reducing throughput for:
+# Floppy's resident footprint (~1.2 GB across its processes) is a small enough
+# share that a spike can't exhaust the machine.
+NO_SWAP_DERATE_CEILING = 6 * GIB
 
 
 def _read_text(path: Path) -> str | None:
@@ -287,9 +291,16 @@ def detect_profile() -> ResourceProfile:
         notes.append("memory_undetected")
 
     # No swap means a memory spike has nowhere to go, which is the difference
-    # between a slow host and a hung one (issue #521). Treat it as one tier
-    # less headroom than the raw numbers suggest.
-    if swap_bytes == 0 and memory_bytes is not None:
+    # between a slow host and a hung one (issue #521). Treat it as one tier less
+    # headroom than the raw numbers suggest - but only where Floppy's own
+    # footprint is a meaningful fraction of the machine. Running Docker without
+    # swap is a common and sensible policy, and a 16 GB host doesn't need
+    # de-rating just because it has none.
+    if (
+        swap_bytes == 0
+        and memory_bytes is not None
+        and memory_bytes < NO_SWAP_DERATE_CEILING
+    ):
         stricter = _stricter(tier)
         if stricter != tier:
             notes.append("no_swap")

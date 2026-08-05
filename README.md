@@ -345,10 +345,11 @@ the first line of the container's output:
 - **minimal** (under 1.5 GB): one gunicorn worker and a single Celery worker serving every
   queue.
 
-**Swap matters more than the raw memory figure.** Each Celery worker holds its own full
-copy of the application, so a host with no swap gets bumped one tier stricter — a memory
-spike with nowhere to page is what turns a slow container into a hung one. If you have
-disabled swap to spare an SSD, 2 GB of RAM lands on `minimal`, which is supported.
+**On a small host, swap matters as much as the memory figure.** Each Celery worker holds
+its own full copy of the application, so below about 6 GB a host with no swap gets bumped
+one tier stricter — a memory spike with nowhere to page is what turns a slow container
+into a hung one. If you have disabled swap to spare an SSD, 2 GB of RAM lands on
+`minimal`, which is supported. Above 6 GB, missing swap changes nothing.
 
 Two things worth knowing:
 

@@ -246,6 +246,18 @@ class TierDerivationTests(SimpleTestCase):
         self.assertEqual(profile.tier, TIER_STANDARD)
         self.assertNotIn("no_swap", profile.notes)
 
+    def test_a_large_swapless_host_is_not_de_rated(self):
+        """Running Docker without swap is common; 16 GB doesn't need de-rating."""
+        profile = self._profile(memory_gib=16, swap_gib=0, cpus=8)
+        self.assertEqual(profile.tier, TIER_STANDARD)
+        self.assertNotIn("no_swap", profile.notes)
+
+    def test_a_midsized_swapless_host_is_de_rated(self):
+        """Below the ceiling, no swap still means less headroom than it looks."""
+        profile = self._profile(memory_gib=4, swap_gib=0, cpus=8)
+        self.assertEqual(profile.tier, TIER_CONSTRAINED)
+        self.assertIn("no_swap", profile.notes)
+
     def test_explicit_override_wins_over_detection(self):
         """An operator's FLOPPY_RESOURCE_TIER is final."""
         profile = self._profile(
