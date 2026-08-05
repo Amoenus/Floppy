@@ -63,5 +63,21 @@ for dir in db staticfiles /var/log/nginx /var/lib/nginx; do
         echo "[entrypoint] WARNING: chown of ${dir} failed or timed out (stalled mount?); continuing" >&2
 done
 
+# Probe the host once, here, and export the sizing decision for supervisord to
+# expand into each program's command line. Doing it per-process would let the
+# six supervised processes disagree about the tier if the host's free memory
+# moved between their startups (issue #521). Values already set by the user are
+# echoed back untouched, so an explicit WEB_CONCURRENCY always wins.
+if resource_env=$(python -c 'from config.runtime_profile import emit_env; emit_env()'); then
+    eval "$resource_env"
+else
+    echo "[entrypoint] WARNING: resource detection failed; using built-in defaults" >&2
+fi
+export FLOPPY_RESOURCE_TIER="${FLOPPY_RESOURCE_TIER:-standard}"
+export FLOPPY_CELERY_QUEUES="${FLOPPY_CELERY_QUEUES:-celery}"
+export FLOPPY_CELERY_ROLE="${FLOPPY_CELERY_ROLE:-background}"
+export FLOPPY_START_INTERACTIVE_WORKER="${FLOPPY_START_INTERACTIVE_WORKER:-true}"
+export FLOPPY_START_DISCOVER_WORKER="${FLOPPY_START_DISCOVER_WORKER:-true}"
+
 echo "[entrypoint] Starting services" >&2
 exec /usr/local/bin/supervisord -c /etc/supervisord.conf

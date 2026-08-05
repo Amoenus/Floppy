@@ -35,8 +35,14 @@ services:
     container_name: floppy-redis
     image: redis:8-alpine
     restart: unless-stopped
-    # Persist to disk so a restart doesn't drop the cache wholesale (#386).
-    command: redis-server --appendonly yes
+    # Persist to disk so a restart doesn't drop the cache wholesale (#386), but
+    # with a memory ceiling: Redis defaults to unlimited growth plus
+    # noeviction, which on a small host ends as an OOM rather than an eviction
+    # (#521). volatile-lru only evicts keys with a TTL, so Floppy's cache is
+    # reclaimable while the Celery queues (which have none) are not. `--save ""`
+    # drops RDB snapshots, since the AOF already covers persistence.
+    # Floppy applies equivalent limits at runtime if this is left off.
+    command: redis-server --appendonly yes --save "" --maxmemory 256mb --maxmemory-policy volatile-lru
     volumes:
       - redis_data:/data
     networks:

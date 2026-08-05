@@ -2,11 +2,10 @@ import logging
 
 from celery import current_task, shared_task
 from django.contrib.auth import get_user_model
-from django.core.cache import cache
 from django.utils import timezone
 
 import events
-from app import history_cache
+from app import cache_safety, history_cache
 from app.mixins import disable_fetch_releases
 from integrations import import_progress
 from integrations.imports import (
@@ -417,7 +416,15 @@ def import_stremio_recurring(user_id):
 def import_pocketcasts(user_id, mode="new"):
     """Celery task for importing podcast history from Pocket Casts."""
     lock_key = f"pocketcasts_import_lock_{user_id}"
-    if not cache.add(lock_key, "1", timeout=600):
+    # The user is waiting on this, so an unreachable cache must not be read as
+    # "already running" - that would refuse a manual import with no explanation
+    # for as long as Redis was unwell (#521).
+    if not cache_safety.acquire_lock(
+        lock_key,
+        timeout=600,
+        on_error=cache_safety.ON_ERROR_PROCEED,
+        value="1",
+    ):
         logger.info(
             "Pocket Casts import already running for user %s, skipping", user_id
         )
@@ -425,14 +432,21 @@ def import_pocketcasts(user_id, mode="new"):
     try:
         return import_media(pocketcasts.importer, None, user_id, mode)
     finally:
-        cache.delete(lock_key)
+        cache_safety.release_lock(lock_key)
 
 
 @shared_task(name="Import from Pocket Casts (Recurring)")
 def import_pocketcasts_history(user_id):
     """Recurring import task for Pocket Casts (called every 2 hours via Celery beat)."""
     lock_key = f"pocketcasts_import_lock_{user_id}"
-    if not cache.add(lock_key, "1", timeout=600):
+    # Recurring, so skipping a run when the cache is unavailable is cheap - the
+    # next one is two hours away and the manual path above stays open.
+    if not cache_safety.acquire_lock(
+        lock_key,
+        timeout=600,
+        on_error=cache_safety.ON_ERROR_SKIP,
+        value="1",
+    ):
         logger.info(
             "Pocket Casts import already running for user %s, skipping", user_id
         )
@@ -440,30 +454,44 @@ def import_pocketcasts_history(user_id):
     try:
         return import_media(pocketcasts.importer, None, user_id, "new")
     finally:
-        cache.delete(lock_key)
+        cache_safety.release_lock(lock_key)
 
 
 @shared_task(name="Import from GPodder")
 def import_gpodder(user_id, mode="new"):
     """Celery task for importing podcast history from GPodder-compatible servers."""
     lock_key = f"gpodder_import_lock_{user_id}"
-    if not cache.add(lock_key, "1", timeout=600):
+    # Fails open for the same reason as the Pocket Casts manual import above: a
+    # user waiting on this must not be told "already in progress" because the
+    # cache was briefly unreachable (#521).
+    if not cache_safety.acquire_lock(
+        lock_key,
+        timeout=600,
+        on_error=cache_safety.ON_ERROR_PROCEED,
+        value="1",
+    ):
         logger.info("GPodder import already running for user %s, skipping", user_id)
         return "Skipped: import already in progress"
     try:
         return import_media(gpodder.importer, None, user_id, mode)
     finally:
-        cache.delete(lock_key)
+        cache_safety.release_lock(lock_key)
 
 
 @shared_task(name="Import from GPodder (Recurring)")
 def import_gpodder_recurring(user_id):
     """Recurring import task for GPodder-compatible servers."""
     lock_key = f"gpodder_import_lock_{user_id}"
-    if not cache.add(lock_key, "1", timeout=600):
+    # Recurring, so skipping a run costs little; the manual path above stays open.
+    if not cache_safety.acquire_lock(
+        lock_key,
+        timeout=600,
+        on_error=cache_safety.ON_ERROR_SKIP,
+        value="1",
+    ):
         logger.info("GPodder import already running for user %s, skipping", user_id)
         return "Skipped: import already in progress"
     try:
         return import_media(gpodder.importer, None, user_id, "new")
     finally:
-        cache.delete(lock_key)
+        cache_safety.release_lock(lock_key)

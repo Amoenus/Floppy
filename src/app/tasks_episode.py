@@ -12,6 +12,7 @@ from django.conf import settings
 from django.core.cache import cache
 from django.db.models import Q
 
+from app import backfill_queue
 from app.log_safety import exception_summary
 from app.models import MetadataBackfillField
 
@@ -25,27 +26,23 @@ def populate_episode_runtime_queue(batch_size: int = 20):
     from app.tasks import (
         RUNTIME_BACKFILL_EPISODES_QUEUE_KEY,
         RUNTIME_BACKFILL_EPISODES_SCHEDULED_KEY,
-        RUNTIME_BACKFILL_QUEUE_TTL,
     )
 
-    queue = cache.get(RUNTIME_BACKFILL_EPISODES_QUEUE_KEY) or []
-    if not queue:
-        cache.delete(RUNTIME_BACKFILL_EPISODES_SCHEDULED_KEY)
+    # Season keys are encoded tokens, not integers.
+    batch, more_remaining = backfill_queue.take(
+        RUNTIME_BACKFILL_EPISODES_QUEUE_KEY,
+        RUNTIME_BACKFILL_EPISODES_SCHEDULED_KEY,
+        batch_size,
+        coerce=str,
+    )
+    if not batch:
         return {"processed": 0, "message": "No queued episode runtime seasons"}
 
-    cache.delete(RUNTIME_BACKFILL_EPISODES_SCHEDULED_KEY)
-    batch = queue[:batch_size]
-    remaining = queue[batch_size:]
-    if remaining:
-        cache.set(
-            RUNTIME_BACKFILL_EPISODES_QUEUE_KEY,
-            remaining,
-            timeout=RUNTIME_BACKFILL_QUEUE_TTL,
+    if more_remaining:
+        backfill_queue.reschedule(
+            RUNTIME_BACKFILL_EPISODES_SCHEDULED_KEY,
+            populate_episode_runtime_queue,
         )
-        if cache.add(RUNTIME_BACKFILL_EPISODES_SCHEDULED_KEY, True, timeout=30):
-            populate_episode_runtime_queue.apply_async(countdown=10)
-    else:
-        cache.delete(RUNTIME_BACKFILL_EPISODES_QUEUE_KEY)
 
     return populate_episode_runtime_data(season_keys=batch)
 

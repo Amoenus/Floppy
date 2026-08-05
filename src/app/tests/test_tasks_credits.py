@@ -1,11 +1,10 @@
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.core.cache import cache
 from django.test import TestCase
 from django.utils import timezone
 
-from app import tasks
+from app import backfill_queue, tasks
 from app.models import (
     CREDITS_BACKFILL_VERSION,
     TV,
@@ -29,8 +28,10 @@ from app.models import (
 
 class CreditsBackfillTaskTests(TestCase):
     def setUp(self):
-        cache.delete(tasks.CREDITS_BACKFILL_ITEMS_QUEUE_KEY)
-        cache.delete(tasks.CREDITS_BACKFILL_ITEMS_SCHEDULED_KEY)
+        backfill_queue.clear(
+            tasks.CREDITS_BACKFILL_ITEMS_QUEUE_KEY,
+            tasks.CREDITS_BACKFILL_ITEMS_SCHEDULED_KEY,
+        )
 
     @patch("app.tasks.populate_credits_backfill_queue.apply_async")
     def test_enqueue_credits_backfill_filters_unsupported_or_complete_items(
@@ -107,8 +108,10 @@ class CreditsBackfillTaskTests(TestCase):
             last_success_at=timezone.now(),
             strategy_version=CREDITS_BACKFILL_VERSION,
         )
-        cache.delete(tasks.CREDITS_BACKFILL_ITEMS_QUEUE_KEY)
-        cache.delete(tasks.CREDITS_BACKFILL_ITEMS_SCHEDULED_KEY)
+        backfill_queue.clear(
+            tasks.CREDITS_BACKFILL_ITEMS_QUEUE_KEY,
+            tasks.CREDITS_BACKFILL_ITEMS_SCHEDULED_KEY,
+        )
         mock_apply_async.reset_mock()
 
         queued = tasks.enqueue_credits_backfill_items(
@@ -123,11 +126,11 @@ class CreditsBackfillTaskTests(TestCase):
         )
 
         self.assertEqual(queued, 2)
-        self.assertCountEqual(
-            cache.get(tasks.CREDITS_BACKFILL_ITEMS_QUEUE_KEY),
-            [missing_item.id, missing_episode_item.id],
+        self.assertEqual(
+            backfill_queue.members(tasks.CREDITS_BACKFILL_ITEMS_QUEUE_KEY),
+            {missing_item.id, missing_episode_item.id},
         )
-        mock_apply_async.assert_called_once_with(countdown=1)
+        mock_apply_async.assert_called_once_with(countdown=1, kwargs={})
 
     @patch("app.tasks.populate_credits_backfill_queue.apply_async")
     def test_enqueue_credits_backfill_requeues_episode_with_old_strategy_version(
@@ -160,17 +163,20 @@ class CreditsBackfillTaskTests(TestCase):
             strategy_version=max(CREDITS_BACKFILL_VERSION - 1, 1),
         )
 
-        cache.delete(tasks.CREDITS_BACKFILL_ITEMS_QUEUE_KEY)
-        cache.delete(tasks.CREDITS_BACKFILL_ITEMS_SCHEDULED_KEY)
+        backfill_queue.clear(
+            tasks.CREDITS_BACKFILL_ITEMS_QUEUE_KEY,
+            tasks.CREDITS_BACKFILL_ITEMS_SCHEDULED_KEY,
+        )
         mock_apply_async.reset_mock()
 
         queued = tasks.enqueue_credits_backfill_items([episode_item.id], countdown=1)
 
         self.assertEqual(queued, 1)
         self.assertEqual(
-            cache.get(tasks.CREDITS_BACKFILL_ITEMS_QUEUE_KEY), [episode_item.id]
+            backfill_queue.members(tasks.CREDITS_BACKFILL_ITEMS_QUEUE_KEY),
+            {episode_item.id},
         )
-        mock_apply_async.assert_called_once_with(countdown=1)
+        mock_apply_async.assert_called_once_with(countdown=1, kwargs={})
 
     @patch("app.tasks.enqueue_credits_backfill_items")
     @patch("app.credits.sync_item_credits_from_metadata")
@@ -471,11 +477,11 @@ class CreditsBackfillTaskTests(TestCase):
         )
 
         self.assertEqual(queued, 2)
-        self.assertCountEqual(
-            cache.get(tasks.CREDITS_BACKFILL_ITEMS_QUEUE_KEY),
-            [tv_item.id, season_item.id],
+        self.assertEqual(
+            backfill_queue.members(tasks.CREDITS_BACKFILL_ITEMS_QUEUE_KEY),
+            {tv_item.id, season_item.id},
         )
-        mock_apply_async.assert_called_once_with(countdown=1)
+        mock_apply_async.assert_called_once_with(countdown=1, kwargs={})
 
 
 class CreditsBackfillSignalTests(TestCase):

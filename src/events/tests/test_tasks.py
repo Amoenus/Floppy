@@ -1,5 +1,6 @@
 from unittest.mock import patch
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
@@ -57,23 +58,23 @@ class ReloadCalendarTaskTests(TestCase):
         mock_fetch.assert_called_once_with(user=None, items_to_process=[movie])
         mock_auto_pause.assert_not_called()
 
-    @patch("app.tasks.backfill_item_metadata_task")
+    @patch("app.tasks.backfill_item_metadata_task.apply_async")
     @patch("events.tasks.auto_pause.auto_pause_stale_items")
     @patch("events.tasks.fetch_releases")
-    def test_release_backfill_runs_on_global_refresh_when_release_dates_missing(
+    def test_release_backfill_is_queued_on_global_refresh_when_release_dates_missing(
         self,
         mock_fetch,
         mock_auto_pause,
-        mock_backfill_task,
+        mock_backfill_apply_async,
     ):
+        """The backfill is queued, not run inline (#521).
+
+        It used to run inline at a batch size of up to 5000, so one calendar
+        reload held a worker while fetching thousands of items' metadata - and
+        each fetch caches a full provider payload, which is also the fastest way
+        to fill Redis.
+        """
         mock_fetch.return_value = "ok"
-        mock_backfill_task.return_value = {
-            "success_count": 1,
-            "release_updated_count": 1,
-            "error_count": 0,
-            "remaining_metadata": 0,
-            "remaining_release": 0,
-        }
         Item.objects.create(
             media_id="262712",
             source=Sources.IGDB.value,
@@ -89,4 +90,8 @@ class ReloadCalendarTaskTests(TestCase):
         self.assertEqual(result, "ok")
         mock_fetch.assert_called_once_with(user=None, items_to_process=None)
         mock_auto_pause.assert_called_once_with()
-        mock_backfill_task.assert_called_once_with(batch_size=1000)
+        mock_backfill_apply_async.assert_called_once()
+        self.assertEqual(
+            mock_backfill_apply_async.call_args.kwargs["kwargs"]["batch_size"],
+            settings.CALENDAR_RELOAD_BACKFILL_BATCH_SIZE,
+        )

@@ -9,6 +9,19 @@ from django.core.cache import cache
 
 logger = logging.getLogger(__name__)
 
+# Five whole-library sweeps used to be enqueued at startup within 30 seconds of
+# each other, so a restart put the container's heaviest work on the queue exactly
+# when it was still warming up. Spacing them lets the web tier become responsive
+# first, and beat picks up anything skipped soon enough now that the reconcilers
+# gate on durable state (issue #521).
+STARTUP_SWEEP_COUNTDOWNS = {
+    "imdb_person": 60,
+    "genre": 180,
+    "trakt_popularity": 300,
+    "igdb_ratings": 420,
+    "provider": 540,
+}
+
 
 def _is_celery_worker_process() -> bool:
     """Return whether the current process is a Celery worker or beat.
@@ -59,6 +72,7 @@ class AppConfig(AppConfig):
             return
         if not settings.TESTING:
             self._repair_celery_redis_bindings()
+            self._tune_redis()
         is_celery_worker = _is_celery_worker_process()
         is_runserver_parent = _is_runserver_parent_process()
 
@@ -106,10 +120,10 @@ class AppConfig(AppConfig):
             self._schedule_igdb_rating_backfill_reconcile()
             self._schedule_provider_backfill_reconcile()
 
-    def _add_startup_cache_key(self, cache_key: str) -> bool:
-        """Return whether a once-per-day startup task can be scheduled."""
+    def _add_startup_cache_key(self, cache_key: str, timeout: int = 86400) -> bool:
+        """Return whether a once-per-period startup task can be scheduled."""
         try:
-            return bool(cache.add(cache_key, 1, timeout=86400))
+            return bool(cache.add(cache_key, 1, timeout=timeout))
         except Exception:
             logger.debug(
                 "Cache not available, skipping startup scheduling for %s",
@@ -136,6 +150,23 @@ class AppConfig(AppConfig):
                 )
         except Exception as error:
             logger.warning("Failed to normalize Kombu Redis bindings: %s", error)
+
+    def _tune_redis(self):
+        """Give Redis a memory ceiling if the operator hasn't set one.
+
+        Guarded by the same atomic startup key the scheduling helpers use, so
+        only one of the container's processes issues the CONFIG SET even though
+        every one of them runs ready(). Redis restarting resets its config, so
+        the key's TTL is short enough that the next process start re-applies it.
+        """
+        if not self._add_startup_cache_key("redis_tuning_applied", timeout=300):
+            return
+        try:
+            from app.redis_tuning import tune_redis
+
+            tune_redis()
+        except Exception as error:
+            logger.warning("Failed to tune Redis memory limits: %s", error)
 
     def _schedule_runtime_population(self):
         """Schedule runtime population task to run once on startup."""
@@ -185,7 +216,7 @@ class AppConfig(AppConfig):
         try:
             tasks_imdb = import_module("app.tasks_imdb")
             tasks_imdb.schedule_imdb_game_person_profile_backfill_if_needed.apply_async(
-                countdown=0,
+                countdown=STARTUP_SWEEP_COUNTDOWNS["imdb_person"],
                 priority=getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 1),
             )
             logger.info("Scheduled IMDB person profile backfill check on startup")
@@ -193,30 +224,34 @@ class AppConfig(AppConfig):
             logger.warning("Failed to schedule IMDB person profile backfill: %s", error)
 
     def _schedule_genre_backfill_reconcile(self):
-        """Schedule a one-time genre backfill reconcile."""
+        """Schedule a genre backfill reconcile unless one isn't needed."""
         try:
-            tasks = import_module("app.tasks")
-            version_key = f"genre_backfill_reconciled_v{tasks.GENRE_BACKFILL_VERSION}"
-            status = cache.get(version_key)
+            from app import reconcile_state
+            from app.tasks_genre import RECONCILE_KEY
 
-            if status in {"done", "pending"}:
+            tasks = import_module("app.tasks")
+            version = tasks.GENRE_BACKFILL_VERSION
+            # The durable marker, not a cache key: a Redis restart used to erase
+            # any memory of having finished and re-run the whole sweep (#521).
+            if reconcile_state.should_run(RECONCILE_KEY, version) is None:
+                return
+            # Atomic, so two gunicorn workers starting together can't both
+            # enqueue - the get-then-set this replaces had exactly that race.
+            if not self._add_startup_cache_key(
+                f"genre_reconcile_startup_v{version}",
+                timeout=3600,
+            ):
                 return
 
-            cache.set(version_key, "pending", timeout=300)
-
-            try:
-                tasks.reconcile_genre_backfill.apply_async(
-                    kwargs={"strategy_version": tasks.GENRE_BACKFILL_VERSION},
-                    countdown=0,
-                    priority=getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 1),
-                )
-            except Exception:
-                cache.delete(version_key)
-                raise
+            tasks.reconcile_genre_backfill.apply_async(
+                kwargs={"strategy_version": version},
+                countdown=STARTUP_SWEEP_COUNTDOWNS["genre"],
+                priority=getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 1),
+            )
 
             logger.info(
                 "Scheduled genre backfill reconcile (version=%s)",
-                tasks.GENRE_BACKFILL_VERSION,
+                version,
             )
         except Exception as error:
             logger.warning("Failed to schedule genre backfill reconcile: %s", error)
@@ -245,7 +280,7 @@ class AppConfig(AppConfig):
             try:
                 reconcile_igdb_rating_backfill.apply_async(
                     kwargs={"strategy_version": IGDB_RATINGS_BACKFILL_VERSION},
-                    countdown=30,
+                    countdown=STARTUP_SWEEP_COUNTDOWNS["igdb_ratings"],
                     priority=getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 1),
                 )
             except Exception:
@@ -270,34 +305,31 @@ class AppConfig(AppConfig):
         off immediately so the new filter isn't empty until then.
         """
         try:
+            from app import reconcile_state
             from app.tasks_providers import (
+                RECONCILE_KEY,
                 WATCH_PROVIDERS_BACKFILL_VERSION,
                 reconcile_provider_backfill,
             )
 
-            version_key = (
-                f"watch_providers_backfill_reconciled_v{WATCH_PROVIDERS_BACKFILL_VERSION}"
-            )
-            status = cache.get(version_key)
-
-            if status in {"done", "pending"}:
+            version = WATCH_PROVIDERS_BACKFILL_VERSION
+            if reconcile_state.should_run(RECONCILE_KEY, version) is None:
+                return
+            if not self._add_startup_cache_key(
+                f"provider_reconcile_startup_v{version}",
+                timeout=3600,
+            ):
                 return
 
-            cache.set(version_key, "pending", timeout=300)
-
-            try:
-                reconcile_provider_backfill.apply_async(
-                    kwargs={"strategy_version": WATCH_PROVIDERS_BACKFILL_VERSION},
-                    countdown=30,
-                    priority=getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 1),
-                )
-            except Exception:
-                cache.delete(version_key)
-                raise
+            reconcile_provider_backfill.apply_async(
+                kwargs={"strategy_version": version},
+                countdown=STARTUP_SWEEP_COUNTDOWNS["provider"],
+                priority=getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 1),
+            )
 
             logger.info(
                 "Scheduled watch provider backfill reconcile (version=%s)",
-                WATCH_PROVIDERS_BACKFILL_VERSION,
+                version,
             )
         except Exception as error:
             logger.warning(
@@ -338,7 +370,7 @@ class AppConfig(AppConfig):
             tasks = import_module("app.tasks")
             tasks.reconcile_trakt_popularity.apply_async(
                 kwargs={"score_version": TRAKT_POPULARITY_SCORE_VERSION},
-                countdown=0 if is_version_recompute else 30,
+                countdown=STARTUP_SWEEP_COUNTDOWNS["trakt_popularity"],
                 priority=getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 1),
             )
 

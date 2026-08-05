@@ -160,6 +160,47 @@ class MetadataBackfillState(models.Model):
         return f"{self.item} {self.field}"
 
 
+class BackfillReconcileState(models.Model):
+    """Track whether a whole-library reconcile sweep still has work to do.
+
+    The reconcilers previously stored this in the cache, which meant it did not
+    survive a Redis restart or eviction, and the "done" marker was consulted so
+    loosely that a sweep re-enqueued every candidate in the library every five
+    minutes forever - the dominant source of idle CPU and Redis churn in issue
+    #521. Keeping it in the database makes "this strategy version is finished" a
+    durable fact, so the beat entry can poll infrequently and back off.
+
+    One row per reconcile key (not per item - that is MetadataBackfillState).
+    """
+
+    key = models.CharField(max_length=100, unique=True)
+    strategy_version = models.PositiveIntegerField(default=0)
+    # Set once a sweep finds no remaining candidates. Cleared when the strategy
+    # version changes, which is how a new backfill strategy re-runs.
+    completed_at = models.DateTimeField(null=True, blank=True)
+    last_run_at = models.DateTimeField(null=True, blank=True)
+    # Doubles as the fallback mutex: a sweep that started recently is assumed to
+    # still be running when the cache lock can't be consulted.
+    next_run_after = models.DateTimeField(null=True, blank=True)
+    consecutive_no_op_runs = models.PositiveIntegerField(default=0)
+    # Keyset cursor, so each sweep resumes where the last stopped instead of
+    # rescanning the whole table.
+    last_cursor_item_id = models.BigIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Model and field configuration."""
+
+        indexes = [
+            models.Index(fields=["key", "strategy_version"]),
+        ]
+
+    def __str__(self):
+        """Return the reconcile key and its strategy version."""
+        return f"{self.key} v{self.strategy_version}"
+
+
 class PersonGender(models.TextChoices):
     """Normalized person genders used across providers."""
 

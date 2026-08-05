@@ -1110,6 +1110,9 @@ class Metadata(TestCase):
     @patch("app.providers.tmdb.services.api_request")
     def test_tv_changes(self, mock_api_request, mock_localdate):
         """Test fetching changed TV ids from TMDB."""
+        # get_changed_ids caches per media_type per day (#521), and every
+        # test here pins localdate to the same date.
+        tmdb.cache.clear()
         mock_localdate.return_value = date(2026, 4, 5)
         mock_api_request.return_value = {
             "results": [{"id": 1}, {"id": 2}],
@@ -1128,6 +1131,9 @@ class Metadata(TestCase):
     @patch("app.providers.tmdb.services.api_request")
     def test_tv_changes_across_pages(self, mock_api_request, mock_localdate):
         """Test TMDB TV changes pagination and deduplication."""
+        # get_changed_ids caches per media_type per day (#521), and every
+        # test here pins localdate to the same date.
+        tmdb.cache.clear()
         mock_localdate.return_value = date(2026, 4, 5)
         mock_api_request.side_effect = [
             {
@@ -1147,8 +1153,48 @@ class Metadata(TestCase):
 
     @patch("app.providers.tmdb.timezone.localdate")
     @patch("app.providers.tmdb.services.api_request")
+    def test_changes_pagination_is_capped(self, mock_api_request, mock_localdate):
+        """An unbounded loop over /changes could make hundreds of calls (#521).
+
+        TMDB's changes endpoint reports every title changed globally in the
+        window, so total_pages can run into the hundreds - all sequential, all
+        through a 3/s rate limiter.
+        """
+        tmdb.cache.clear()
+        mock_localdate.return_value = date(2026, 4, 5)
+        mock_api_request.return_value = {
+            "results": [{"id": 1}],
+            "total_pages": 500,
+        }
+
+        tmdb.get_changed_ids(MediaTypes.TV.value, max_pages=3)
+
+        self.assertEqual(mock_api_request.call_count, 3)
+
+    @patch("app.providers.tmdb.timezone.localdate")
+    @patch("app.providers.tmdb.services.api_request")
+    def test_changes_are_cached_per_day(self, mock_api_request, mock_localdate):
+        """The result for a given day doesn't change once fetched."""
+        tmdb.cache.clear()
+        mock_localdate.return_value = date(2026, 4, 5)
+        mock_api_request.return_value = {
+            "results": [{"id": 7}],
+            "total_pages": 1,
+        }
+
+        first = tmdb.get_changed_ids(MediaTypes.TV.value)
+        second = tmdb.get_changed_ids(MediaTypes.TV.value)
+
+        self.assertEqual(first, second)
+        self.assertEqual(mock_api_request.call_count, 1)
+
+    @patch("app.providers.tmdb.timezone.localdate")
+    @patch("app.providers.tmdb.services.api_request")
     def test_movie_changes(self, mock_api_request, mock_localdate):
         """Test fetching changed movie ids from TMDB."""
+        # get_changed_ids caches per media_type per day (#521), and every
+        # test here pins localdate to the same date.
+        tmdb.cache.clear()
         mock_localdate.return_value = date(2026, 4, 5)
         mock_api_request.return_value = {
             "results": [{"id": 10}, {"id": 20}],
@@ -1167,6 +1213,9 @@ class Metadata(TestCase):
     @patch("app.providers.tmdb.services.api_request")
     def test_movie_changes_across_pages(self, mock_api_request, mock_localdate):
         """Test TMDB movie changes pagination and deduplication."""
+        # get_changed_ids caches per media_type per day (#521), and every
+        # test here pins localdate to the same date.
+        tmdb.cache.clear()
         mock_localdate.return_value = date(2026, 4, 5)
         mock_api_request.side_effect = [
             {

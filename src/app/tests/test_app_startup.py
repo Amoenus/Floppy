@@ -1,3 +1,4 @@
+import itertools
 import os
 from importlib import import_module
 from unittest.mock import patch
@@ -5,9 +6,14 @@ from unittest.mock import patch
 from django.conf import settings
 from django.core.cache import cache
 from django.test import TestCase, override_settings
+from django.utils import timezone
 
+from app.apps import STARTUP_SWEEP_COUNTDOWNS
 from app.apps import AppConfig as FloppyAppConfig
+from app.models import BackfillReconcileState
 from app.tasks import GENRE_BACKFILL_VERSION, WATCH_PROVIDERS_BACKFILL_VERSION
+from app.tasks_genre import RECONCILE_KEY as GENRE_RECONCILE_KEY
+from app.tasks_providers import RECONCILE_KEY as PROVIDER_RECONCILE_KEY
 
 
 class AppStartupTests(TestCase):
@@ -140,7 +146,7 @@ class AppStartupTests(TestCase):
         config._schedule_imdb_game_person_profile_backfill()
 
         mock_apply_async.assert_called_once_with(
-            countdown=0,
+            countdown=STARTUP_SWEEP_COUNTDOWNS["imdb_person"],
             priority=settings.CELERY_TASK_PRIORITY_BACKGROUND,
         )
 
@@ -179,12 +185,11 @@ class AppStartupTests(TestCase):
         mock_apply_async.assert_not_called()
 
     @patch("app.tasks.reconcile_genre_backfill.apply_async")
-    def test_schedule_genre_backfill_reconcile_marks_pending_until_worker_runs(
+    def test_schedule_genre_backfill_reconcile_enqueues_once_per_startup(
         self,
         mock_apply_async,
     ):
-        version_key = f"genre_backfill_reconciled_v{GENRE_BACKFILL_VERSION}"
-        cache.delete(version_key)
+        """A second ready() in the same container must not enqueue again."""
         config = FloppyAppConfig("app", import_module("app"))
 
         config._schedule_genre_backfill_reconcile()
@@ -192,41 +197,33 @@ class AppStartupTests(TestCase):
 
         mock_apply_async.assert_called_once_with(
             kwargs={"strategy_version": GENRE_BACKFILL_VERSION},
-            countdown=0,
+            countdown=STARTUP_SWEEP_COUNTDOWNS["genre"],
             priority=settings.CELERY_TASK_PRIORITY_BACKGROUND,
         )
-        self.assertEqual(cache.get(version_key), "pending")
 
-        cache.set(version_key, "done", timeout=None)
-        config._schedule_genre_backfill_reconcile()
-
-        mock_apply_async.assert_called_once()
-
-    @patch("app.tasks.is_genre_backfill_reconcile_complete")
     @patch("app.tasks.reconcile_genre_backfill.apply_async")
-    def test_schedule_genre_backfill_reconcile_skips_done_cache_without_db_check(
+    def test_schedule_genre_backfill_reconcile_skips_when_already_complete(
         self,
         mock_apply_async,
-        mock_is_complete,
     ):
-        version_key = f"genre_backfill_reconciled_v{GENRE_BACKFILL_VERSION}"
-        cache.set(version_key, "done", timeout=None)
+        """Completion now lives in the database, so it survives a Redis restart."""
+        BackfillReconcileState.objects.create(
+            key=GENRE_RECONCILE_KEY,
+            strategy_version=GENRE_BACKFILL_VERSION,
+            completed_at=timezone.now(),
+        )
         config = FloppyAppConfig("app", import_module("app"))
 
         config._schedule_genre_backfill_reconcile()
 
         mock_apply_async.assert_not_called()
-        mock_is_complete.assert_not_called()
 
     @patch("app.tasks.reconcile_provider_backfill.apply_async")
-    def test_schedule_provider_backfill_reconcile_marks_pending_until_worker_runs(
+    def test_schedule_provider_backfill_reconcile_enqueues_once_per_startup(
         self,
         mock_apply_async,
     ):
-        version_key = (
-            f"watch_providers_backfill_reconciled_v{WATCH_PROVIDERS_BACKFILL_VERSION}"
-        )
-        cache.delete(version_key)
+        """A second ready() in the same container must not enqueue again."""
         config = FloppyAppConfig("app", import_module("app"))
 
         config._schedule_provider_backfill_reconcile()
@@ -234,40 +231,46 @@ class AppStartupTests(TestCase):
 
         mock_apply_async.assert_called_once_with(
             kwargs={"strategy_version": WATCH_PROVIDERS_BACKFILL_VERSION},
-            countdown=30,
+            countdown=STARTUP_SWEEP_COUNTDOWNS["provider"],
             priority=settings.CELERY_TASK_PRIORITY_BACKGROUND,
         )
-        self.assertEqual(cache.get(version_key), "pending")
 
-        cache.set(version_key, "done", timeout=None)
-        config._schedule_provider_backfill_reconcile()
-
-        mock_apply_async.assert_called_once()
-
-    @patch("app.tasks.is_provider_backfill_reconcile_complete")
     @patch("app.tasks.reconcile_provider_backfill.apply_async")
-    def test_schedule_provider_backfill_reconcile_skips_done_cache_without_db_check(
+    def test_schedule_provider_backfill_reconcile_skips_when_already_complete(
         self,
         mock_apply_async,
-        mock_is_complete,
     ):
-        version_key = (
-            f"watch_providers_backfill_reconciled_v{WATCH_PROVIDERS_BACKFILL_VERSION}"
+        """Completion now lives in the database, so it survives a Redis restart."""
+        BackfillReconcileState.objects.create(
+            key=PROVIDER_RECONCILE_KEY,
+            strategy_version=WATCH_PROVIDERS_BACKFILL_VERSION,
+            completed_at=timezone.now(),
         )
-        cache.set(version_key, "done", timeout=None)
         config = FloppyAppConfig("app", import_module("app"))
 
         config._schedule_provider_backfill_reconcile()
 
         mock_apply_async.assert_not_called()
-        mock_is_complete.assert_not_called()
+
+    def test_startup_sweeps_are_staggered(self):
+        """Five whole-library sweeps at once used to land on a warming container."""
+        countdowns = sorted(STARTUP_SWEEP_COUNTDOWNS.values())
+        self.assertEqual(len(set(countdowns)), len(countdowns))
+        self.assertGreaterEqual(min(countdowns), 60)
+        gaps = [b - a for a, b in itertools.pairwise(countdowns)]
+        self.assertTrue(all(gap >= 60 for gap in gaps))
 
     def test_settings_include_provider_backfill_reconcile_fallback_schedule(self):
         schedule = settings.CELERY_BEAT_SCHEDULE["ensure_provider_backfill_reconcile"]
 
         self.assertEqual(schedule["task"], "Ensure watch provider backfill reconcile")
-        self.assertEqual(schedule["schedule"], 60 * 5)
-        self.assertEqual(schedule["kwargs"]["batch_size"], 1500)
+        # Asserted against the tier-derived settings rather than literals, so
+        # this doesn't need re-editing for each resource tier.
+        self.assertEqual(schedule["schedule"], settings.RECONCILE_INTERVAL_SECONDS)
+        self.assertEqual(
+            schedule["kwargs"]["batch_size"],
+            settings.WATCH_PROVIDERS_RECONCILE_BATCH_SIZE,
+        )
         self.assertEqual(
             schedule["options"]["priority"],
             settings.CELERY_TASK_PRIORITY_BACKGROUND,
@@ -277,8 +280,11 @@ class AppStartupTests(TestCase):
         schedule = settings.CELERY_BEAT_SCHEDULE["ensure_genre_backfill_reconcile"]
 
         self.assertEqual(schedule["task"], "Ensure genre backfill reconcile")
-        self.assertEqual(schedule["schedule"], 60 * 5)
-        self.assertEqual(schedule["kwargs"]["batch_size"], 1500)
+        self.assertEqual(schedule["schedule"], settings.RECONCILE_INTERVAL_SECONDS)
+        self.assertEqual(
+            schedule["kwargs"]["batch_size"],
+            settings.GENRE_RECONCILE_BATCH_SIZE,
+        )
         self.assertEqual(
             schedule["options"]["priority"],
             settings.CELERY_TASK_PRIORITY_BACKGROUND,
@@ -323,7 +329,8 @@ class AppStartupTests(TestCase):
         schedule = settings.CELERY_BEAT_SCHEDULE["warm_history_day_cache_coverage"]
 
         self.assertEqual(schedule["task"], "Warm History Day Cache Coverage")
-        self.assertEqual(schedule["schedule"], 60 * 60 * 2)
+        # Stretched on smaller hosts; 2h is the standard-tier value.
+        self.assertGreaterEqual(schedule["schedule"], 60 * 60 * 2)
         self.assertEqual(
             schedule["options"]["priority"],
             settings.CELERY_TASK_PRIORITY_BACKGROUND,

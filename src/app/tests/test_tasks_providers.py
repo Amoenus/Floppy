@@ -1,16 +1,17 @@
 from unittest.mock import patch
 
-from django.core.cache import cache
 from django.test import TestCase
 
-from app import tasks_providers
+from app import backfill_queue, tasks_providers
 from app.models import Item, MediaTypes, MetadataBackfillState, Sources
 
 
 class ProviderBackfillTaskTests(TestCase):
     def setUp(self):
-        cache.delete(tasks_providers.WATCH_PROVIDERS_BACKFILL_ITEMS_QUEUE_KEY)
-        cache.delete(tasks_providers.WATCH_PROVIDERS_BACKFILL_ITEMS_SCHEDULED_KEY)
+        backfill_queue.clear(
+            tasks_providers.WATCH_PROVIDERS_BACKFILL_ITEMS_QUEUE_KEY,
+            tasks_providers.WATCH_PROVIDERS_BACKFILL_ITEMS_SCHEDULED_KEY,
+        )
 
     def test_provider_items_queryset_scopes_to_tmdb_movie_tv_anime_missing_data(self):
         needs_backfill = Item.objects.create(
@@ -116,5 +117,7 @@ class ProviderBackfillTaskTests(TestCase):
 
         self.assertEqual(queued, 1)
         mock_apply_async.assert_called_once()
-        queue = cache.get(tasks_providers.WATCH_PROVIDERS_BACKFILL_ITEMS_QUEUE_KEY)
-        self.assertEqual(queue, [item.id])
+        queue = backfill_queue.members(
+            tasks_providers.WATCH_PROVIDERS_BACKFILL_ITEMS_QUEUE_KEY,
+        )
+        self.assertEqual(queue, {item.id})
