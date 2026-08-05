@@ -10,6 +10,7 @@ that make it terminate.
 from datetime import timedelta
 from unittest.mock import patch
 
+from django.core.cache import cache
 from django.test import TestCase
 from django.utils import timezone
 
@@ -45,11 +46,18 @@ class ReconcileConvergenceTests(TestCase):
     """A reconcile eventually finishes and then stops doing work."""
 
     def setUp(self):
-        """Clear the queue between tests."""
+        """Start from a clean queue, cache and reconcile state.
+
+        The reconcile lock lives in the cache, which - unlike the database - is
+        not rolled back between tests, so a lock left by another test would make
+        these fail depending on run order.
+        """
+        cache.clear()
         backfill_queue.clear(
             tasks_providers.WATCH_PROVIDERS_BACKFILL_ITEMS_QUEUE_KEY,
             tasks_providers.WATCH_PROVIDERS_BACKFILL_ITEMS_SCHEDULED_KEY,
         )
+        BackfillReconcileState.objects.all().delete()
 
     def test_an_empty_library_is_marked_complete_immediately(self, _mock_drain):
         """Nothing to do must be recorded, not rediscovered every five minutes."""

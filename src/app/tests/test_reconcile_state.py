@@ -3,6 +3,7 @@
 from datetime import timedelta
 from unittest import mock
 
+from django.core.cache import cache
 from django.test import TestCase
 from django.utils import timezone
 
@@ -12,7 +13,16 @@ from app.models import BackfillReconcileState
 KEY = "test_reconcile"
 
 
-class ShouldRunTests(TestCase):
+class ReconcileStateTestCase(TestCase):
+    """Base case clearing the cache-held lock, which tests don't roll back."""
+
+    def setUp(self):
+        """Start from a clean cache and no reconcile rows."""
+        cache.clear()
+        BackfillReconcileState.objects.all().delete()
+
+
+class ShouldRunTests(ReconcileStateTestCase):
     """Deciding whether a sweep is due, without querying Item."""
 
     def test_first_call_creates_state_and_allows_the_sweep(self):
@@ -35,8 +45,6 @@ class ShouldRunTests(TestCase):
         """The whole point of moving this out of Redis."""
         reconcile_state.get_state(KEY, 1)
         reconcile_state.mark_complete(KEY, 1)
-
-        from django.core.cache import cache
 
         cache.clear()
 
@@ -72,7 +80,7 @@ class ShouldRunTests(TestCase):
         self.assertIsNotNone(reconcile_state.should_run(KEY, 1))
 
 
-class BackoffTests(TestCase):
+class BackoffTests(ReconcileStateTestCase):
     """Sweeps that keep finding nothing must slow down."""
 
     def test_repeated_empty_sweeps_back_off_exponentially(self):
@@ -130,7 +138,7 @@ class BackoffTests(TestCase):
         )
 
 
-class LockTests(TestCase):
+class LockTests(ReconcileStateTestCase):
     """Only one sweep at a time, even without a working cache."""
 
     def test_a_second_acquire_is_refused(self):
