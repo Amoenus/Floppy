@@ -1,10 +1,12 @@
 from unittest.mock import patch
 
+from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 from django.utils import timezone
 from django_celery_results.models import TaskResult
 
 from app import signals, tasks
+from integrations.tasks import scheduled_backup_export
 from app.models import (
     CREDITS_BACKFILL_VERSION,
     CreditRoleType,
@@ -39,6 +41,95 @@ class TaskResultOnPublishTests(TestCase):
         self.assertFalse(
             TaskResult.objects.filter(task_id=self.HEADERS["id"]).exists(),
         )
+
+
+class TaskResultOnCompletionTests(TestCase):
+    TASK_ID = "00000000-0000-0000-0000-000000000518"
+
+    def _create_pending_result(self):
+        return TaskResult.objects.create(
+            task_id=self.TASK_ID,
+            status="PENDING",
+            task_name="Scheduled backup export",
+            task_kwargs="{'user_id': 1,}",
+        )
+
+    def test_success_signal_marks_task_result_as_success(self):
+        self._create_pending_result()
+        sender = type("Sender", (), {"request": type("Request", (), {"id": self.TASK_ID})()})()
+
+        signals.update_task_result_on_success(
+            sender=sender,
+            result="Backup saved to /floppy/backups/example.csv",
+        )
+
+        task = TaskResult.objects.get(task_id=self.TASK_ID)
+        self.assertEqual(task.status, "SUCCESS")
+        self.assertEqual(
+            task.result,
+            '"Backup saved to /floppy/backups/example.csv"',
+        )
+        self.assertIsNotNone(task.date_done)
+
+    def test_success_signal_preserves_task_name_and_kwargs(self):
+        self._create_pending_result()
+        sender = type("Sender", (), {"request": type("Request", (), {"id": self.TASK_ID})()})()
+
+        signals.update_task_result_on_success(sender=sender, result="ok")
+
+        task = TaskResult.objects.get(task_id=self.TASK_ID)
+        self.assertEqual(task.task_name, "Scheduled backup export")
+        self.assertEqual(task.task_kwargs, "{'user_id': 1,}")
+
+    def test_failure_signal_marks_task_result_as_failure(self):
+        self._create_pending_result()
+
+        signals.update_task_result_on_failure(
+            task_id=self.TASK_ID,
+            exception=ValueError("boom"),
+            einfo="Traceback (most recent call last): ValueError: boom",
+        )
+
+        task = TaskResult.objects.get(task_id=self.TASK_ID)
+        self.assertEqual(task.status, "FAILURE")
+        self.assertIn("boom", task.result)
+        self.assertIn("boom", task.traceback)
+
+    def test_success_signal_no_op_without_task_id(self):
+        self._create_pending_result()
+        sender = type("Sender", (), {"request": type("Request", (), {"id": None})()})()
+
+        signals.update_task_result_on_success(sender=sender, result="ok")
+
+        task = TaskResult.objects.get(task_id=self.TASK_ID)
+        self.assertEqual(task.status, "PENDING")
+
+    def test_scheduled_backup_export_task_marks_result_success_end_to_end(self):
+        """Regression test for issue #518: scheduled export history stuck on Pending.
+
+        CELERY_TASK_ALWAYS_EAGER skips the broker, so before_task_publish (which
+        normally creates the PENDING row in production) never fires here - the
+        PENDING row is created manually to mirror what a real scheduled run does.
+        """
+        user = get_user_model().objects.create_user(
+            username="export-signal-user",
+            password="testpass123",  # noqa: S106
+        )
+        TaskResult.objects.create(
+            task_id=self.TASK_ID,
+            status="PENDING",
+            task_name="Scheduled backup export",
+        )
+
+        with patch("integrations.exports.write_backup", return_value="/tmp/backup.csv"):
+            scheduled_backup_export.apply_async(
+                kwargs={"user_id": user.id},
+                task_id=self.TASK_ID,
+            )
+
+        task = TaskResult.objects.get(task_id=self.TASK_ID)
+        self.assertEqual(task.status, "SUCCESS")
+        self.assertIn("Backup saved to /tmp/backup.csv", task.result)
 
 
 class ItemSignalTests(TestCase):

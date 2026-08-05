@@ -1,14 +1,16 @@
+import json
 import logging
 from contextlib import contextmanager
 from contextvars import ContextVar
 
 from celery import states
-from celery.signals import before_task_publish
+from celery.signals import before_task_publish, task_failure, task_success
 from django.apps import apps
 from django.conf import settings
 from django.db.models.signals import post_delete, post_save
 from django.db.utils import OperationalError
 from django.dispatch import receiver
+from django.utils import timezone
 from django_celery_results.models import TaskResult
 
 from app import credits as credit_helpers
@@ -134,6 +136,60 @@ def create_task_result_on_publish(
     except Exception as e:  # pragma: no cover
         # Catch any other unexpected errors
         logger.warning("Unexpected error storing task result: %s", e)
+
+
+@task_success.connect
+def update_task_result_on_success(sender=None, result=None, **kwargs):
+    """Mark the TaskResult row created on publish as SUCCESS.
+
+    CELERY_RESULT_BACKEND is Redis, so django_celery_results never runs its
+    own completion-tracking signal handlers against the DB - without this,
+    the PENDING row from create_task_result_on_publish is never updated.
+    """
+    if not apps.ready or sender is None:
+        return
+
+    task_id = getattr(sender.request, "id", None)
+    if not task_id:
+        return
+
+    try:
+        TaskResult.objects.filter(task_id=task_id).update(
+            status=states.SUCCESS,
+            result=json.dumps(result),
+            date_done=timezone.now(),
+        )
+    except OperationalError as e:
+        logger.warning("Failed to update task result due to database error: %s", e)
+    except Exception as e:  # pragma: no cover
+        logger.warning("Unexpected error updating task result: %s", e)
+
+
+@task_failure.connect
+def update_task_result_on_failure(
+    sender=None,
+    task_id=None,
+    exception=None,
+    einfo=None,
+    **kwargs,
+):
+    """Mark the TaskResult row created on publish as FAILURE."""
+    if not apps.ready or not task_id:
+        return
+
+    try:
+        TaskResult.objects.filter(task_id=task_id).update(
+            status=states.FAILURE,
+            result=json.dumps(
+                {"exc_type": type(exception).__name__, "exc_message": [str(exception)]},
+            ),
+            traceback=str(einfo) if einfo else None,
+            date_done=timezone.now(),
+        )
+    except OperationalError as e:
+        logger.warning("Failed to update task result due to database error: %s", e)
+    except Exception as e:  # pragma: no cover
+        logger.warning("Unexpected error updating task result: %s", e)
 
 
 def _sync_owner_smart_lists_for_items(owner, items):
