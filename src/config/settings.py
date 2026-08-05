@@ -1271,6 +1271,9 @@ CELERY_TASK_ROUTES = {
     "Warm History Day Cache Coverage": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Repair History Day Cache Coverage": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Refresh Discover Profiles": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
+    "Refresh Discover Profile For User": {
+        "priority": CELERY_TASK_PRIORITY_BACKGROUND
+    },
     # Long-running scheduled tasks — low priority so beat-catch-up bursts don't
     # starve other celery-queue work.
     "Reload calendar": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
