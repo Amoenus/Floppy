@@ -739,6 +739,68 @@ class StatisticsViewTests(TestCase):
         self.assertFalse(status_payload["is_refreshing"])
         self.assertFalse(status_payload["refresh_scheduled"])
 
+    def test_cache_status_cold_miss_self_heals_by_scheduling_refresh(self):
+        """A statistics range with no cache entry and no active lock should be re-scheduled.
+
+        This is the state right after a large bulk import (e.g. a Yamtrack import) before
+        Statistics has ever been viewed, and also what a lost/dropped refresh looks like
+        (worker restart, missing interactive-queue consumer). Without self-healing here the
+        page's "Refreshing statistics in background..." banner never clears.
+        """
+        cache.clear()
+        self.client.login(**self.credentials)
+
+        with patch(
+            "app.views.statistics_cache.schedule_statistics_refresh",
+            wraps=statistics_cache.schedule_statistics_refresh,
+        ) as mock_schedule_statistics_refresh:
+            status_response = self.client.get(
+                reverse("cache_status")
+                + "?cache_type=statistics&range_name=Last+12+Months",
+            )
+
+        self.assertEqual(status_response.status_code, 200)
+        status_payload = status_response.json()
+        self.assertFalse(status_payload["exists"])
+        self.assertTrue(status_payload["refresh_scheduled"])
+        mock_schedule_statistics_refresh.assert_called_once_with(
+            self.user.id,
+            "Last 12 Months",
+            allow_inline=False,
+        )
+
+        # Test settings run Celery eagerly, so the scheduled task has already run
+        # synchronously by the time schedule_statistics_refresh() returns, populating
+        # the cache and clearing its own lock in the same call.
+        cache_key = statistics_cache._cache_key(self.user.id, "Last 12 Months")
+        self.assertIsNotNone(cache.get(cache_key))
+
+    def test_cache_status_cold_miss_does_not_double_schedule_while_lock_active(self):
+        """A cold miss with an existing active lock should not trigger another schedule call."""
+        cache.clear()
+        self.client.login(**self.credentials)
+
+        refresh_lock_key = statistics_cache._refresh_lock_key(
+            self.user.id, "Last 12 Months"
+        )
+        cache.set(refresh_lock_key, {"started_at": timezone.now().isoformat()}, 300)
+
+        with patch(
+            "app.views.statistics_cache.schedule_statistics_refresh",
+            wraps=statistics_cache.schedule_statistics_refresh,
+        ) as mock_schedule_statistics_refresh:
+            status_response = self.client.get(
+                reverse("cache_status")
+                + "?cache_type=statistics&range_name=Last+12+Months",
+            )
+
+        self.assertEqual(status_response.status_code, 200)
+        status_payload = status_response.json()
+        self.assertFalse(status_payload["exists"])
+        self.assertFalse(status_payload["refresh_scheduled"])
+        self.assertTrue(status_payload["is_refreshing"])
+        mock_schedule_statistics_refresh.assert_not_called()
+
     def test_statistics_view_history_highlights_use_active_boundary_days_and_deserialized_dates(
         self,
     ):

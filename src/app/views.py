@@ -1784,6 +1784,22 @@ def cache_status(request):
                     "metadata_recently_built": metadata_recently_built,
                 }
             )
+        refresh_scheduled = False
+        if refresh_lock is None:
+            # True cold miss (no cache entry, no active lock). This is the normal
+            # state right after a bulk import, but it's also what a lost refresh
+            # looks like (task never dequeued, worker restarted mid-task, etc.).
+            # Re-schedule defensively; schedule_statistics_refresh() is debounced
+            # via its own lock/dedupe keys, so polling this repeatedly is safe.
+            refresh_scheduled = statistics_cache.schedule_statistics_refresh(
+                request.user.id,
+                range_name,
+                allow_inline=False,
+            )
+            refresh_lock = (
+                cache.get(refresh_lock_key) if refresh_scheduled else refresh_lock
+            )
+
         is_refreshing = refresh_lock is not None or metadata_refreshing
         return JsonResponse(
             {
@@ -1793,7 +1809,7 @@ def cache_status(request):
                 "is_refreshing": is_refreshing,
                 "recently_built": False,
                 "any_range_refreshing": any_range_refreshing,
-                "refresh_scheduled": False,
+                "refresh_scheduled": refresh_scheduled,
                 "metadata_refreshing": metadata_refreshing,
                 "metadata_built_at": metadata_built_at.isoformat()
                 if metadata_built_at
