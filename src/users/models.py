@@ -185,6 +185,14 @@ class DateFormatChoices(models.TextChoices):
     LONG_EU = "long_eu", "18 Jan, 2026"
 
 
+class ThemeChoices(models.TextChoices):
+    """Choices for UI theme preference."""
+
+    SYSTEM = "system", "System default"
+    DARK = "dark", "Dark"
+    LIGHT = "light", "Light"
+
+
 class TimeFormatChoices(models.TextChoices):
     """Choices for time format preferences."""
 
@@ -909,6 +917,12 @@ class User(AbstractUser):
         max_length=20,
         default=DateFormatChoices.SYSTEM_DEFAULT,
         choices=DateFormatChoices.choices,
+    )
+
+    theme = models.CharField(
+        max_length=10,
+        default=ThemeChoices.SYSTEM,
+        choices=ThemeChoices.choices,
     )
 
     time_format = models.CharField(
