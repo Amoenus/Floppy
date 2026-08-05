@@ -82,7 +82,19 @@ def import_media(
                 **extra_kwargs,
             )
 
-    events.tasks.reload_calendar.delay()
+    # Imports run inside disable_fetch_releases(), so per-item calendar triggers are
+    # suppressed and a catch-up reload is needed -- but only when something actually
+    # landed. Recurring importers poll on a 2-hour schedule and usually import
+    # nothing; firing an unscoped global reload each time was re-walking the whole
+    # library (and holding the single celery-queue worker) for no reason.
+    if any(imported_counts.values()):
+        events.tasks.reload_calendar.delay()
+    else:
+        logger.info(
+            "calendar_reload_skipped reason=no_items_imported importer=%s user_id=%s",
+            getattr(importer_func, "__name__", importer_func),
+            user_id,
+        )
 
     # Importers rely heavily on bulk_create_with_history, which bypasses model signals.
     # Force-clear history cache so month view index pages don't keep stale "empty month"
