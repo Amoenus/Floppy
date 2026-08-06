@@ -705,10 +705,15 @@ class TraktImporter(TraktMetadataResolverMixin):
 
         season_key = f"{tmdb_id}:{season_number}"
         if season_key not in self.media_instances[MediaTypes.SEASON.value]:
-            season_obj = app.models.Season.objects.filter(
-                user=self.user,
-                item=season_item,
-            ).first()
+            tv_marked_for_deletion = (
+                tmdb_id in self.to_delete[MediaTypes.TV.value][Sources.TMDB.value]
+            )
+            season_obj = None
+            if not tv_marked_for_deletion:
+                season_obj = app.models.Season.objects.filter(
+                    user=self.user,
+                    item=season_item,
+                ).first()
             if season_obj is None:
                 season_obj = app.models.Season(
                     item=season_item,
