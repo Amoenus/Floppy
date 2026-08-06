@@ -2145,6 +2145,73 @@ class SmartRulesUpdateViewTest(TestCase):
         self.assertEqual(response.status_code, 400)
 
 
+class ShareViewTest(TestCase):
+    """Tests for the Share View endpoint."""
+
+    def setUp(self):
+        self.client = Client()
+        self.user = get_user_model().objects.create_user(
+            username="owner",
+            password="12345",
+        )
+        self.client.login(username="owner", password="12345")
+
+    def test_share_view_creates_public_smart_list(self):
+        response = self.client.post(
+            reverse("list_share_view"),
+            {"media_type": MediaTypes.TV.value, "status": "In progress"},
+        )
+        self.assertEqual(response.status_code, 200)
+        custom_list = CustomList.objects.get()
+        self.assertTrue(custom_list.is_smart)
+        self.assertEqual(custom_list.visibility, "public")
+        self.assertEqual(custom_list.owner, self.user)
+        self.assertEqual(custom_list.smart_media_types, [MediaTypes.TV.value])
+        self.assertEqual(custom_list.smart_filters["status"], ["In progress"])
+        self.assertEqual(
+            response.json()["url"],
+            custom_list.get_absolute_url(),
+        )
+
+    def test_share_view_reuses_existing_matching_list(self):
+        first = self.client.post(
+            reverse("list_share_view"),
+            {"media_type": MediaTypes.TV.value, "status": "In progress"},
+        ).json()
+        second = self.client.post(
+            reverse("list_share_view"),
+            {"media_type": MediaTypes.TV.value, "status": "In progress"},
+        ).json()
+        self.assertEqual(first["url"], second["url"])
+        self.assertEqual(CustomList.objects.count(), 1)
+
+    def test_share_view_different_filters_create_different_lists(self):
+        self.client.post(
+            reverse("list_share_view"),
+            {"media_type": MediaTypes.TV.value, "status": "In progress"},
+        )
+        self.client.post(
+            reverse("list_share_view"),
+            {"media_type": MediaTypes.TV.value, "status": "Completed"},
+        )
+        self.assertEqual(CustomList.objects.count(), 2)
+
+    def test_share_view_rejects_invalid_media_type(self):
+        response = self.client.post(
+            reverse("list_share_view"),
+            {"media_type": "not-a-real-type"},
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_share_view_requires_login(self):
+        self.client.logout()
+        response = self.client.post(
+            reverse("list_share_view"),
+            {"media_type": MediaTypes.TV.value},
+        )
+        self.assertEqual(response.status_code, 302)
+
+
 class EditListViewTest(TestCase):
     """Test case for the edit list view."""
 
