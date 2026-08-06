@@ -7,6 +7,7 @@ small fragments. The read-heavy detail views live in views_list_detail.py and
 views_smart_list.py; the browse views live in views_list_browse.py.
 """
 
+import contextlib
 import json
 import logging
 
@@ -21,9 +22,10 @@ from django.views.decorators.http import require_GET, require_POST
 from app import helpers
 from app.columns import sanitize_column_prefs
 from app.discover import tab_cache as discover_tab_cache
-from app.models import Item, MediaTypes
+from app.models import Item, MediaTypes, Status
 from app.providers import services
 from app.services import metadata_resolution
+from app.templatetags.app_tags import media_type_readable_plural
 from lists import smart_rules
 from lists import tasks as list_tasks
 from lists.forms import CustomListForm
@@ -37,7 +39,7 @@ from lists.views_helpers import (
     _list_item_title_fields_from_metadata,
     _maybe_backfill_episode_title,
 )
-from users.models import ListDetailSortChoices
+from users.models import ListDetailSortChoices, MediaSortChoices
 
 logger = logging.getLogger(__name__)
 
@@ -132,6 +134,66 @@ def create(request):
         logger.error(form.errors.as_json())
         helpers.form_error_messages(form, request)
     return helpers.redirect_back(request)
+
+
+def _build_share_view_name(media_type, normalized_rules):
+    """Build a short, human-readable name for a Share View smart list."""
+    parts = [media_type_readable_plural(media_type)]
+
+    statuses = normalized_rules.get("status") or []
+    if statuses:
+        parts.append(", ".join(Status(value).label for value in statuses))
+
+    sort_value = normalized_rules.get("sort")
+    if sort_value:
+        with contextlib.suppress(ValueError):
+            parts.append(f"sorted by {MediaSortChoices(sort_value).label}")
+
+    return " — ".join(parts)
+
+
+@login_required
+@require_POST
+def share_view(request):
+    """Create (or reuse) a public smart list snapshotting the current view."""
+    media_type = request.POST.get("media_type", "")
+    if media_type not in MediaTypes.values:
+        return HttpResponseBadRequest("Invalid media type")
+
+    normalized = smart_rules.normalize_rule_payload(request.POST, request.user)
+    smart_media_types = [media_type]
+    smart_filters = {
+        key: normalized.get(key, smart_rules.SMART_FILTER_DEFAULTS[key])
+        for key in smart_rules.SMART_FILTER_KEYS
+    }
+
+    existing = CustomList.objects.filter(
+        owner=request.user,
+        is_smart=True,
+        visibility="public",
+        smart_media_types=smart_media_types,
+        smart_filters=smart_filters,
+    ).first()
+
+    if existing:
+        custom_list = existing
+    else:
+        custom_list = CustomList.objects.create(
+            name=_build_share_view_name(media_type, normalized),
+            owner=request.user,
+            visibility="public",
+            is_smart=True,
+            smart_media_types=smart_media_types,
+            smart_filters=smart_filters,
+        )
+        ListActivity.objects.create(
+            custom_list=custom_list,
+            user=request.user,
+            activity_type=ListActivityType.LIST_CREATED,
+        )
+        list_tasks.sync_smart_list_task.delay(custom_list.id)
+
+    return JsonResponse({"url": custom_list.get_absolute_url()})
 
 
 @login_required
