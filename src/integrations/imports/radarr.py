@@ -11,7 +11,11 @@ from django.utils import timezone
 from app.models import Item, MediaTypes, Sources
 from app.providers import services
 from integrations import import_progress
-from integrations.imports.helpers import MediaImportError, decrypt_or_raise
+from integrations.imports.helpers import (
+    MediaImportError,
+    decrypt_or_raise,
+    find_item_across_buckets,
+)
 from integrations.models import RadarrAccount
 from integrations.source_sync import upsert_collection_source_state
 
@@ -141,11 +145,11 @@ class RadarrImporter:
         imdb_id = row.get("imdbId")
 
         if tmdb_id:
-            existing = Item.objects.filter(
+            existing = find_item_across_buckets(
                 media_id=str(tmdb_id),
                 source=Sources.TMDB.value,
                 media_type=MediaTypes.MOVIE.value,
-            ).first()
+            )
             if existing:
                 return existing
 
@@ -181,11 +185,11 @@ class RadarrImporter:
             return item
 
         if imdb_id:
-            return Item.objects.filter(
+            return find_item_across_buckets(
                 media_id=str(imdb_id),
                 source=Sources.TMDB.value,
                 media_type=MediaTypes.MOVIE.value,
-            ).first()
+            )
 
         return None
 
