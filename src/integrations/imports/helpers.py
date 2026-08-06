@@ -103,8 +103,15 @@ def should_process_media(
     media_id,
     mode,
     deleted_media=None,
+    skip_existing=True,
 ):
-    """Determine if a media item should be processed based on mode."""
+    """Determine if a media item should be processed based on mode.
+
+    skip_existing=False lets callers with their own per-event dedupe (e.g.
+    Plex TV episode history, where a show already being tracked shouldn't
+    block newly watched episodes of it) route an existing item through the
+    overwrite/deleted-media handling below without a blanket "new mode" skip.
+    """
     if deleted_media and media_id in deleted_media[media_type][source]:
         logger.debug(
             "Skipping deleted %s: %s (user deleted this locally)",
@@ -115,7 +122,7 @@ def should_process_media(
 
     exists = media_id in existing_media[media_type][source]
 
-    if mode == "new" and exists:
+    if mode == "new" and exists and skip_existing:
         # In "new" mode, skip if media already exists
         logger.debug(
             "Skipping existing %s: %s (mode: new)",

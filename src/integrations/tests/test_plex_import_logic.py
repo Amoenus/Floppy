@@ -1963,3 +1963,152 @@ class TestPlexIdentityAndScorePreservation(TestCase):
         self.assertEqual(importer._episode_records[0]["tmdb_id"], "111110")
         mock_tmdb_search.assert_not_called()
         mock_services_search.assert_not_called()
+
+
+class TestPlexEpisodeResyncForExistingShow(TestCase):
+    """Regression test for issue #541.
+
+    A manual Plex resync ("new" mode) must not blanket-skip every episode
+    entry of a show that's already tracked (e.g. from an earlier Trakt
+    import) — it should still create newly watched episodes while skipping
+    exact-duplicate watch events already recorded.
+    """
+
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(username="resyncuser")
+        self.account = PlexAccount.objects.create(
+            user=self.user,
+            plex_token="token",
+            plex_username="resyncuser",
+            plex_account_id="222",
+        )
+
+        self.tv_item, _ = Item.objects.get_or_create(
+            media_id="701",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            defaults={"title": "Resync Show", "image": "https://example.com/t.jpg"},
+        )
+        self.tv_row = TV.objects.create(
+            item=self.tv_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        self.season_item, _ = Item.objects.get_or_create(
+            media_id="701",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=1,
+            defaults={"title": "Resync Show", "image": "https://example.com/t.jpg"},
+        )
+        self.season_row = Season.objects.create(
+            item=self.season_item,
+            user=self.user,
+            related_tv=self.tv_row,
+            status=Status.IN_PROGRESS.value,
+        )
+        # Episode 1 was already imported previously (e.g. via Trakt import).
+        self.existing_watched_at = timezone.now().replace(
+            second=0,
+            microsecond=0,
+            hour=10,
+            minute=0,
+        )
+        episode1_item, _ = Item.objects.get_or_create(
+            media_id="701",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=1,
+            episode_number=1,
+            defaults={"title": "Episode 1", "image": "https://example.com/t.jpg"},
+        )
+        Episode.objects.create(
+            item=episode1_item,
+            related_season=self.season_row,
+            end_date=self.existing_watched_at,
+        )
+
+    def _importer(self, mode="new"):
+        return PlexHistoryImporter(
+            user=self.user,
+            account=self.account,
+            mode=mode,
+            library="machine::1",
+        )
+
+    @patch("integrations.webhooks.anime_mappings.fetch_mapping_data", return_value={})
+    @patch("integrations.imports.plex.app.providers.tvdb.enabled", return_value=False)
+    def test_resync_creates_new_episode_without_blanket_skip(
+        self,
+        _mock_tvdb_enabled,
+        _mock_mapping_data,
+    ):
+        importer = self._importer()
+
+        duplicate_metadata = {
+            "type": "episode",
+            "title": "Episode 1",
+            "grandparentTitle": "Resync Show",
+            "parentIndex": 1,
+            "index": 1,
+            "viewedAt": int(self.existing_watched_at.timestamp()),
+            "ratingKey": "rk-dup",
+        }
+        new_watched_at = self.existing_watched_at + timezone.timedelta(hours=1)
+        new_metadata = {
+            "type": "episode",
+            "title": "Episode 2",
+            "grandparentTitle": "Resync Show",
+            "parentIndex": 1,
+            "index": 2,
+            "viewedAt": int(new_watched_at.timestamp()),
+            "ratingKey": "rk-new",
+        }
+        ids = {
+            "tmdb_id": "701",
+            "tvdb_id": None,
+            "imdb_id": None,
+            "anidb_id": None,
+            "plex_guid": None,
+        }
+
+        recorded_dup = importer._record_episode_entry(duplicate_metadata, ids)
+        recorded_new = importer._record_episode_entry(new_metadata, ids)
+
+        # Neither call is blanket-skipped just because the show already exists.
+        self.assertTrue(recorded_dup)
+        self.assertTrue(recorded_new)
+        self.assertEqual(importer.summary_counts["skipped_existing"], 0)
+        self.assertEqual(len(importer._episode_records), 2)
+
+        importer._tv_metadata_cache = {
+            "701": {
+                "media_id": "701",
+                "title": "Resync Show",
+                "original_title": "Resync Show",
+                "localized_title": "Resync Show",
+                "image": "https://example.com/t.jpg",
+                "season/1": {
+                    "image": "https://example.com/t-s1.jpg",
+                    "max_progress": 10,
+                    "episodes": [{"episode_number": 1}, {"episode_number": 2}],
+                },
+            },
+        }
+
+        importer._build_existing_dedupe_sets()
+        importer._build_bulk_media()
+
+        # The exact-duplicate watch event is still filtered out per-episode,
+        # while the genuinely new watch is queued for creation.
+        self.assertEqual(importer.summary_counts["created"], 1)
+        self.assertEqual(importer.summary_counts["skipped_existing"], 1)
+
+        helpers.bulk_create_media(importer.bulk_media, self.user)
+
+        episodes = Episode.objects.filter(related_season=self.season_row).order_by(
+            "item__episode_number",
+        )
+        self.assertEqual(episodes.count(), 2)
+        self.assertEqual(episodes.last().item.episode_number, 2)
