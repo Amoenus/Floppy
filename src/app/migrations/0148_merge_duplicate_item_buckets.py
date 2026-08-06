@@ -92,11 +92,96 @@ def _count(item, relations):
     return total
 
 
-def _repoint(item_model, loser, keeper):
+def _absorb_tv_rows(loser, keeper, models):
+    """Move the loser's TV rows onto the keeper without dropping history.
+
+    TV is unique on (user, item), so a plain repoint collides whenever the
+    same user tracks both duplicates - and TV cascades through Season into
+    Episode, so deleting on that collision destroys watch history. Hand the
+    loser's seasons to the surviving TV row first, then delete the row once
+    it owns nothing.
+    """
+    tv_model, season_model, episode_model = models
+    for loser_tv in tv_model._base_manager.filter(item=loser):
+        surviving_tv = (
+            tv_model._base_manager.filter(item=keeper, user_id=loser_tv.user_id)
+            .order_by("id")
+            .first()
+        )
+        if surviving_tv is None:
+            loser_tv.item = keeper
+            loser_tv.save(update_fields=["item_id"])
+            continue
+
+        for season in season_model._base_manager.filter(related_tv=loser_tv):
+            _rehome_season(season, surviving_tv, season_model, episode_model)
+        loser_tv.delete()
+
+
+def _absorb_season_rows(loser, keeper, models):
+    """Move the loser's Season rows onto the keeper without dropping history.
+
+    Season is unique on (related_tv, item) and cascades into Episode, so the
+    same reasoning as _absorb_tv_rows applies one level down.
+    """
+    _tv_model, season_model, episode_model = models
+    for loser_season in season_model._base_manager.filter(item=loser):
+        surviving_season = (
+            season_model._base_manager.filter(
+                item=keeper,
+                related_tv_id=loser_season.related_tv_id,
+            )
+            .order_by("id")
+            .first()
+        )
+        if surviving_season is None:
+            loser_season.item = keeper
+            loser_season.save(update_fields=["item_id"])
+            continue
+
+        episode_model._base_manager.filter(related_season=loser_season).update(
+            related_season=surviving_season,
+        )
+        loser_season.delete()
+
+
+def _rehome_season(season, surviving_tv, season_model, episode_model):
+    """Attach one season to another TV row, folding it in if one is there."""
+    rival = (
+        season_model._base_manager.filter(
+            related_tv=surviving_tv,
+            item_id=season.item_id,
+        )
+        .order_by("id")
+        .first()
+    )
+    if rival is None:
+        season.related_tv = surviving_tv
+        season.save(update_fields=["related_tv_id"])
+        return
+
+    episode_model._base_manager.filter(related_season=season).update(
+        related_season=rival,
+    )
+    season.delete()
+
+
+def _repoint(item_model, loser, keeper, models):
     """Move everything referencing loser onto keeper."""
     for relation in item_model._meta.related_objects:
         field = relation.field
         related_manager = relation.related_model._base_manager
+        related_name = relation.related_model._meta.model_name
+
+        # TV and Season cascade into Episode, so they cannot fall through to
+        # the delete-on-conflict branch below. Episode itself has no unique
+        # constraint, so its repoint always succeeds and needs no special case.
+        if field.name == "item" and related_name == "tv":
+            _absorb_tv_rows(loser, keeper, models)
+            continue
+        if field.name == "item" and related_name == "season":
+            _absorb_season_rows(loser, keeper, models)
+            continue
 
         if relation.many_to_many:
             # 0125 predates the m2m relations on Item and did not handle them.
@@ -124,6 +209,11 @@ def merge_duplicate_item_buckets(apps, schema_editor):
     """Fold every duplicated Item identity onto a single row."""
     del schema_editor
     Item = apps.get_model("app", "Item")
+    models = (
+        apps.get_model("app", "TV"),
+        apps.get_model("app", "Season"),
+        apps.get_model("app", "Episode"),
+    )
 
     tracking_relations = [
         relation
@@ -153,7 +243,7 @@ def merge_duplicate_item_buckets(apps, schema_editor):
         for loser in items:
             if loser.pk == keeper.pk:
                 continue
-            _repoint(Item, loser, keeper)
+            _repoint(Item, loser, keeper, models)
             loser.delete()
 
 

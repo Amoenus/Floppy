@@ -25,7 +25,12 @@ class _RealAppsRegistry:
 
     def get_model(self, app_label, model_name):
         del app_label
-        return {"Item": Item}[model_name]
+        return {
+            "Item": Item,
+            "TV": TV,
+            "Season": Season,
+            "Episode": Episode,
+        }[model_name]
 
 
 class MergeDuplicateItemBucketsMigration(TestCase):
@@ -142,3 +147,91 @@ class MergeDuplicateItemBucketsMigration(TestCase):
 
         lone.refresh_from_db()
         self.assertEqual(lone.library_media_type, MediaTypes.TV.value)
+
+
+class MergeDuplicateItemBucketsPreservesHistory(TestCase):
+    """Merging must never cascade-delete a user's watch history.
+
+    TV is unique on (user, item) and Season on (related_tv, item), and both
+    cascade into Episode. Repointing a duplicate's TV/Season row onto the
+    keeper therefore collides, and deleting the loser on that collision takes
+    the episode history down with it.
+    """
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="history-owner",
+            password="12345",
+        )
+        self.media_id = "129412"
+
+    def _item(self, media_type, bucket, season_number=None, episode_number=None):
+        return Item.objects.create(
+            media_id=self.media_id,
+            source=Sources.TMDB.value,
+            media_type=media_type,
+            library_media_type=bucket,
+            season_number=season_number,
+            episode_number=episode_number,
+            title="Game Changer",
+        )
+
+    def _tracked_show(self, show_bucket, season_bucket, episode_numbers):
+        """Build one fully tracked show: TV -> Season -> Episodes."""
+        tv_record = TV.objects.create(
+            item=self._item(MediaTypes.TV.value, show_bucket),
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        season = Season.objects.create(
+            item=self._item(MediaTypes.SEASON.value, season_bucket, season_number=1),
+            user=self.user,
+            related_tv=tv_record,
+            status=Status.IN_PROGRESS.value,
+        )
+        for episode_number in episode_numbers:
+            Episode.objects.create(
+                item=self._item(
+                    MediaTypes.EPISODE.value,
+                    MediaTypes.EPISODE.value,
+                    season_number=1,
+                    episode_number=episode_number,
+                ),
+                related_season=season,
+            )
+        return tv_record
+
+    def test_history_survives_merging_a_show_tracked_in_two_buckets(self):
+        """No episode history may be lost when both duplicates are tracked."""
+        self._tracked_show(MediaTypes.TV.value, MediaTypes.SEASON.value, [1, 2, 3])
+        self._tracked_show(MediaTypes.SEASON.value, MediaTypes.TV.value, [4, 5])
+
+        episodes_before = Episode.objects.filter(
+            item__media_id=self.media_id,
+        ).count()
+        self.assertEqual(episodes_before, 5)
+
+        migration.merge_duplicate_item_buckets(_RealAppsRegistry(), None)
+
+        self.assertEqual(
+            Episode.objects.filter(item__media_id=self.media_id).count(),
+            episodes_before,
+        )
+        # The duplicates still collapse: one show, one season.
+        self.assertEqual(
+            Item.objects.filter(
+                media_id=self.media_id,
+                media_type=MediaTypes.TV.value,
+            ).count(),
+            1,
+        )
+        self.assertEqual(
+            Item.objects.filter(
+                media_id=self.media_id,
+                media_type=MediaTypes.SEASON.value,
+            ).count(),
+            1,
+        )
+        # And the surviving season owns every episode.
+        surviving_season = Season.objects.get(item__media_id=self.media_id)
+        self.assertEqual(surviving_season.episodes.count(), 5)
