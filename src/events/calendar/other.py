@@ -13,7 +13,13 @@ logger = logging.getLogger(__name__)
 
 
 def process_other(item, events_bulk):
-    """Process other types of items and add events to the event list."""
+    """Process other types of items and add events to the event list.
+
+    Returns True when the item was successfully checked (including when there was
+    nothing to schedule), False when the provider call failed. Callers use this to
+    decide whether to record the check, so a failed fetch is retried rather than
+    being suppressed by the staleness window.
+    """
     logger.info("Fetching releases for %s", item)
     try:
         metadata = services.get_media_metadata(
@@ -26,7 +32,7 @@ def process_other(item, events_bulk):
             "Failed to fetch metadata for %s",
             item,
         )
-        return
+        return False
 
     date_key = config.get_date_key(item.media_type)
     content_number = metadata["max_progress"]
@@ -50,7 +56,7 @@ def process_other(item, events_bulk):
                     item,
                     selected_date_value,
                 )
-                return
+                return True
         else:
             content_datetime = datetime.min.replace(tzinfo=ZoneInfo("UTC"))
 
@@ -79,7 +85,7 @@ def process_other(item, events_bulk):
                 item,
                 selected_date_value,
             )
-            return
+            return True
 
         events_bulk.append(
             Event(
@@ -98,3 +104,5 @@ def process_other(item, events_bulk):
                 datetime=content_datetime,
             ),
         )
+
+    return True

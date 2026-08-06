@@ -207,6 +207,11 @@ class Item(CalendarTriggerMixin, models.Model):
     metadata_fetched_at = models.DateTimeField(
         null=True, blank=True, help_text="When metadata was last fetched"
     )
+    calendar_checked_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When calendar releases were last fetched for this item",
+    )
     manual_metadata = models.JSONField(
         blank=True,
         default=dict,

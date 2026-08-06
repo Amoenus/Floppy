@@ -1,5 +1,6 @@
 import logging
 
+from django.conf import settings
 from django.db.models import Exists, OuterRef, Q, Subquery
 from django.utils import timezone
 
@@ -86,7 +87,21 @@ def filter_items_to_fetch(items):
         & (Q(event__isnull=True) | Q(has_future_events=True))
     )
 
-    return annotated.filter(tv_q | movie_q | comic_q | other_q).distinct()
+    selected = annotated.filter(tv_q | movie_q | comic_q | other_q)
+
+    # Provider responses are not cached, so every selected item costs a live
+    # network call. Drop the ones checked recently enough that nothing can
+    # usefully have changed. Items the TV/movie selectors picked are exempt --
+    # those were chosen because TMDB's change feed reported a change, or because
+    # they have no events yet, so re-checking them is the point.
+    stale_after_hours = getattr(settings, "CALENDAR_ITEM_STALE_AFTER_HOURS", 0)
+    if stale_after_hours > 0:
+        fresh_cutoff = now - timezone.timedelta(hours=stale_after_hours)
+        selected = selected.exclude(
+            Q(calendar_checked_at__gte=fresh_cutoff) & ~(tv_q | movie_q),
+        )
+
+    return selected.distinct()
 
 
 def get_tv_items_to_include(tv_items):

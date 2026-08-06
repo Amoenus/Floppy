@@ -1423,6 +1423,33 @@ class TestPlexPostImportSideEffects(TestCase):
             countdown=60,
         )
 
+    @patch("integrations.tasks.update_collection_metadata_from_plex.apply_async")
+    @patch("app.statistics_cache.schedule_all_ranges_refresh")
+    @patch("integrations.tasks._media_imports.history_cache.invalidate_history_cache")
+    @patch("integrations.tasks._media_imports.events.tasks.reload_calendar.delay")
+    @patch("integrations.imports.plex.importer")
+    def test_import_that_creates_nothing_does_not_reload_the_calendar(
+        self,
+        mock_importer,
+        mock_reload_calendar,
+        mock_invalidate_history,
+        mock_schedule_stats,
+        mock_collection_refresh,
+    ):
+        """Recurring importers poll every 2 hours and usually import nothing.
+
+        Firing an unscoped global calendar reload each time re-walked the whole
+        library and monopolised the single celery-queue worker for no benefit.
+        """
+        mock_importer.return_value = ({"movie": 0, "tv": 0}, "")
+
+        tasks.import_media(mock_importer, "all", self.user.id, "new")
+
+        mock_reload_calendar.assert_not_called()
+        # The rest of the post-import refresh work still runs.
+        mock_invalidate_history.assert_called_once_with(self.user.id, force=True)
+        mock_schedule_stats.assert_called_once_with(self.user.id)
+
 
 class TestPlexMultiServerImport(TestCase):
     """Tests for multi-server / shared-library import resilience."""

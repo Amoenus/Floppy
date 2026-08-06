@@ -21,7 +21,7 @@ from app.task_cooperation import CooperativeRun
 logger = logging.getLogger(__name__)
 
 # Mirrors BACKGROUND_TASK_PRIORITY in tasks.py — both read from the same setting.
-BACKGROUND_TASK_PRIORITY = getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 1)
+BACKGROUND_TASK_PRIORITY = getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 9)
 
 
 @shared_task(name="Refresh Discover Rows")

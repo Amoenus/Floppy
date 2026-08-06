@@ -1253,10 +1253,15 @@ CELERY_TASK_SOFT_TIME_LIMIT = config(
 )
 if not CELERY_TASK_SOFT_TIME_LIMIT:
     CELERY_TASK_SOFT_TIME_LIMIT = None
+# Redis priorities are inverted relative to AMQP: kombu publishes priority N to
+# the key "<queue>:N" (priority 0 uses the bare "<queue>"), and the worker BRPOPs
+# those keys in ascending order, so it drains "celery" first and "celery:9" last.
+# Lower number == higher priority. Keep these ordered accordingly; assigning 9 to
+# interactive work strands it behind every background batch.
+CELERY_TASK_PRIORITY_INTERACTIVE = 0
+CELERY_TASK_PRIORITY_FOLLOWUP = 3
 CELERY_TASK_DEFAULT_PRIORITY = 5
-CELERY_TASK_PRIORITY_INTERACTIVE = 9
-CELERY_TASK_PRIORITY_FOLLOWUP = 7
-CELERY_TASK_PRIORITY_BACKGROUND = 1
+CELERY_TASK_PRIORITY_BACKGROUND = 9
 
 CELERY_RESULT_EXTENDED = True
 CELERY_RESULT_BACKEND = REDIS_URL
@@ -1286,9 +1291,7 @@ CELERY_TASK_ROUTES = {
     "Warm History Day Cache Coverage": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Repair History Day Cache Coverage": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Refresh Discover Profiles": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
-    "Refresh Discover Profile For User": {
-        "priority": CELERY_TASK_PRIORITY_BACKGROUND
-    },
+    "Refresh Discover Profile For User": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     # Long-running scheduled tasks — low priority so beat-catch-up bursts don't
     # starve other celery-queue work.
     "Reload calendar": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
@@ -1374,6 +1377,27 @@ METADATA_BACKFILL_SCALE = by_tier(0.25, 0.5, 1.0)
 CALENDAR_RELOAD_BACKFILL_BATCH_SIZE = config(
     "CALENDAR_RELOAD_BACKFILL_BATCH_SIZE",
     default=by_tier(250, 500, 1000),
+    cast=int,
+)
+# fetch_releases walks every tracked item, one provider call at a time. As a
+# single task that holds a worker for the whole walk -- 16.6 minutes on a
+# 1444-item library -- so process the work in bounded slices and re-queue the
+# remainder between them. Smaller hosts free the worker more often, at the cost
+# of more task round-trips; 0 disables chunking and restores the single pass.
+CALENDAR_RELOAD_CHUNK_SIZE = config(
+    "CALENDAR_RELOAD_CHUNK_SIZE",
+    default=by_tier(50, 100, 200),
+    cast=int,
+)
+# Provider responses are not cached, so every selected item costs a live network
+# call. Skip items whose calendar was checked within this window; the daily beat
+# reload still refreshes everything, while the extra import-triggered and manual
+# reloads in between stop re-walking unchanged items. Items that TMDB's change
+# feed reports as changed bypass this gate. Not tier-derived: how stale a release
+# date may be is a correctness question, not a sizing one. 0 disables it.
+CALENDAR_ITEM_STALE_AFTER_HOURS = config(
+    "CALENDAR_ITEM_STALE_AFTER_HOURS",
+    default=12,
     cast=int,
 )
 # Cap on TMDB /changes pagination. total_pages there can run into the hundreds,
