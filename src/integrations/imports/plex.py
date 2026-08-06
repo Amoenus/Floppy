@@ -989,7 +989,9 @@ class PlexHistoryImporter:
             )
         return media_id
 
-    def _should_process_media(self, media_type: str, media_id: str) -> bool:
+    def _should_process_media(
+        self, media_type: str, media_id: str, skip_existing: bool = True
+    ) -> bool:
         """Apply new/overwrite semantics for the resolved IDs."""
         return helpers.should_process_media(
             self.existing_media,
@@ -998,6 +1000,7 @@ class PlexHistoryImporter:
             Sources.TMDB.value,
             str(media_id),
             self.mode,
+            skip_existing=skip_existing,
         )
 
     def _record_movie_entry(self, metadata: dict, ids: dict) -> bool:
@@ -1142,7 +1145,12 @@ class PlexHistoryImporter:
             return False
 
         media_id = str(media_id)
-        if not self._should_process_media(MediaTypes.TV.value, media_id):
+        # skip_existing=False: an already-tracked show must not block newly
+        # watched episodes of it (issue #541); exact-duplicate watch events
+        # are still filtered per-episode by _should_skip_episode_record.
+        if not self._should_process_media(
+            MediaTypes.TV.value, media_id, skip_existing=False
+        ):
             self.summary_counts["skipped_existing"] += 1
             return True
 
