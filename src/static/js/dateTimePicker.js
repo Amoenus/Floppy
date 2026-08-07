@@ -158,7 +158,10 @@ document.addEventListener("alpine:init", () => {
         return null;
       }
 
-      const [datePart, timePart] = this.value.split("T");
+      // Django renders bound DateTimeField values with a space separator,
+      // while values selected in this picker use the HTML datetime-local
+      // format with a `T` separator.
+      const [datePart, timePart] = this.value.trim().split(/[T ]/, 2);
       const [y, m, d] = datePart.split("-").map(Number);
       if ([y, m, d].some(Number.isNaN)) {
         return null;
