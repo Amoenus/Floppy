@@ -13,7 +13,7 @@ from django.template.loader import render_to_string
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
 
-from app import cache_utils, fork_services_episode, helpers
+from app import cache_utils, fork_services_episode, helpers, history_cache
 from app.activity_builders import _build_detail_activity_state
 from app.discover import tab_cache as discover_tab_cache
 from app.forms import EpisodeForm, get_form_class
@@ -359,8 +359,30 @@ def media_delete(request):
             media_type,
             instance_id,
         )
+        start_date = getattr(media, "start_date", None)
+        end_date = getattr(media, "end_date", None)
+        created_at = getattr(media, "created_at", None)
         media.delete()
         logger.info("%s deleted successfully.", media)
+
+        if media_type in (MediaTypes.GAME.value, MediaTypes.BOARDGAME.value):
+            history_day_keys = history_cache.history_day_keys_for_range(
+                start_date or end_date,
+                end_date or start_date,
+            )
+        else:
+            activity_dt = end_date or start_date or created_at
+            history_day_key = history_cache.history_day_key(activity_dt)
+            history_day_keys = [history_day_key] if history_day_key else []
+
+        if history_day_keys:
+            history_cache.invalidate_history_days(
+                request.user.id,
+                day_keys=history_day_keys,
+                logging_styles=("sessions", "repeats"),
+                reason="media_delete",
+                force=True,
+            )
 
     except model.DoesNotExist:
         logger.warning("The %s was already deleted before.", media_type)

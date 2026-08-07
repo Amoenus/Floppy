@@ -4,10 +4,12 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.test import TestCase, override_settings, tag
 from django.urls import reverse
 from django.utils import timezone
 
+from app import history_cache
 from app.models import (
     TV,
     Album,
@@ -1518,4 +1520,44 @@ class DeleteMedia(TestCase):
         self.assertEqual(
             Episode.objects.filter(related_season__user=self.user).count(),
             0,
+        )
+
+    @patch("app.signals._handle_media_cache_change")
+    def test_unwatch_episode_removes_warm_history_cache_entry(
+        self,
+        _handle_media_cache_change,
+    ):
+        """Deleting a play must remove its cached history card before redirect."""
+        logging_style = "repeats"
+        history_cache.refresh_history_cache(
+            self.user.id,
+            logging_style=logging_style,
+        )
+        history_day_key = history_cache.history_day_key(self.episode.end_date)
+        cached_day = cache.get(
+            history_cache._day_cache_key(
+                self.user.id,
+                logging_style,
+                history_day_key,
+            ),
+        )
+        self.assertTrue(cached_day["entries"])
+
+        response = self.client.post(
+            reverse("media_delete"),
+            data={
+                "instance_id": self.episode.id,
+                "media_type": MediaTypes.EPISODE.value,
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        history_days, _ = history_cache.get_month_history(
+            self.user,
+            self.episode.end_date.year,
+            self.episode.end_date.month,
+            logging_style_override=logging_style,
+        )
+        self.assertFalse(
+            any(day["entries"] for day in history_days),
         )
