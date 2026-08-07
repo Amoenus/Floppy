@@ -8,6 +8,7 @@ from app.models import Item
 from app.services import auto_pause
 from events import notifications
 from events.calendar.main import fetch_releases
+from events.calendar.selectors import get_items_to_process
 
 logger = logging.getLogger(__name__)
 
@@ -84,12 +85,40 @@ def reload_calendar(user_id=None, item_ids=None, user=None, items_to_process=Non
                 len(missing_item_ids),
             )
 
+    is_global_refresh = resolved_user is None and normalized_item_ids is None
+    if is_global_refresh:
+        # Resolve the work list here rather than inside fetch_releases so the
+        # selection -- which queries TMDB's change feed -- runs once per reload
+        # instead of once per chunk.
+        resolved_items = list(get_items_to_process(None))
+
+    # Process a bounded slice now and re-queue the rest as its own task, so the
+    # worker is released between chunks instead of being held for the length of
+    # the whole walk.
+    chunk_size = getattr(settings, "CALENDAR_RELOAD_CHUNK_SIZE", 200)
+    deferred_item_ids = []
+    if (
+        chunk_size > 0
+        and resolved_items is not None
+        and len(resolved_items) > chunk_size
+    ):
+        deferred_item_ids = [item.id for item in resolved_items[chunk_size:]]
+        resolved_items = resolved_items[:chunk_size]
+
     result = fetch_releases(
         user=resolved_user,
         items_to_process=resolved_items,
     )
 
-    if resolved_user is None and normalized_item_ids is None:
+    if deferred_item_ids:
+        reload_calendar.delay(item_ids=deferred_item_ids)
+        logger.info(
+            "calendar_reload_chunked processed=%s deferred=%s",
+            len(resolved_items),
+            len(deferred_item_ids),
+        )
+
+    if is_global_refresh:
         auto_pause.auto_pause_stale_items()
 
         # Queue a metadata backfill for items that have never been fetched.
@@ -127,9 +156,7 @@ def reload_calendar(user_id=None, item_ids=None, user=None, items_to_process=Non
             if batch_size > 0:
                 backfill_item_metadata_task.apply_async(
                     kwargs={"batch_size": batch_size},
-                    priority=getattr(
-                        settings, "CELERY_TASK_PRIORITY_BACKGROUND", 1
-                    ),
+                    priority=getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 9),
                 )
         except Exception:
             logger.exception("Failed to queue metadata backfill during calendar reload")

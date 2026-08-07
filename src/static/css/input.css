@@ -1030,13 +1030,8 @@ html.light .theme-toggle-icon-moon {
     display: none;
   }
 
-  .media-filter-toolbar .layout-toggle {
-    margin-left: 0 !important;
-    justify-self: end;
-  }
-
-  .filter-toolbar .layout-toggle {
-    justify-self: end;
+  .media-settings-menu-desktop {
+    display: none !important;
   }
 
   .lists-filter-toolbar {
@@ -1124,6 +1119,10 @@ html.light .theme-toggle-icon-moon {
   .result-count-desktop {
     display: inline-flex;
     align-items: center;
+  }
+
+  .media-settings-menu-mobile {
+    display: none !important;
   }
 }
 

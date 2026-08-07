@@ -235,7 +235,7 @@ def schedule_history_refresh(
             kwargs=task_kwargs,
             countdown=countdown,
             priority=(
-                getattr(settings, "CELERY_TASK_PRIORITY_INTERACTIVE", 9)
+                getattr(settings, "CELERY_TASK_PRIORITY_INTERACTIVE", 0)
                 if priority is None
                 else priority
             ),
@@ -301,7 +301,7 @@ def schedule_history_day_cache_coverage(
             kwargs=task_kwargs,
             countdown=countdown,
             priority=(
-                getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 1)
+                getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 9)
                 if priority is None
                 else priority
             ),

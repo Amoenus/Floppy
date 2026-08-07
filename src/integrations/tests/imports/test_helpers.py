@@ -316,6 +316,48 @@ class HelpersTest(TestCase):
             self.assertFalse(result)
             self.assertEqual(to_delete, {})
 
+    def test_should_process_media_skip_existing_false_bypasses_new_mode_skip(self):
+        """skip_existing=False lets an existing item through in 'new' mode.
+
+        This is what Plex TV episode import relies on (issue #541): an
+        already-tracked show must not block newly watched episodes of it.
+        """
+        existing_media = {
+            MediaTypes.TV.value: {Sources.TMDB.value: {"12345": Mock()}},
+        }
+        to_delete = {}
+
+        result = helpers.should_process_media(
+            existing_media,
+            to_delete,
+            MediaTypes.TV.value,
+            Sources.TMDB.value,
+            "12345",
+            "new",
+            skip_existing=False,
+        )
+
+        self.assertTrue(result)
+        self.assertEqual(to_delete, {})
+
+    def test_should_process_media_skip_existing_default_still_skips(self):
+        """Default behavior (skip_existing=True) is unchanged for other callers."""
+        existing_media = {
+            MediaTypes.TV.value: {Sources.TMDB.value: {"12345": Mock()}},
+        }
+        to_delete = {}
+
+        result = helpers.should_process_media(
+            existing_media,
+            to_delete,
+            MediaTypes.TV.value,
+            Sources.TMDB.value,
+            "12345",
+            "new",
+        )
+
+        self.assertFalse(result)
+
     def test_create_import_schedule_every_2_days(self):
         """Test creating import schedule for every 2 days."""
         request = Mock()

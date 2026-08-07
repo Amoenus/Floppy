@@ -49,7 +49,11 @@ def _clear_tv_time_left_cache(media_id, source, user_ids=None):
 
 
 def process_tv(tv_item, events_bulk, tv_metadata=None):
-    """Process TV item and create events for all seasons and episodes."""
+    """Process TV item and create events for all seasons and episodes.
+
+    Returns True when the show was successfully checked (including when no season
+    needed processing), False when the provider call failed or processing errored.
+    """
     logger.info("Processing TV show: %s", tv_item)
 
     try:
@@ -57,7 +61,7 @@ def process_tv(tv_item, events_bulk, tv_metadata=None):
 
         if not seasons_to_process:
             logger.info("%s - No seasons need processing", tv_item)
-            return
+            return True
 
         process_tv_seasons(
             tv_item,
@@ -70,8 +74,12 @@ def process_tv(tv_item, events_bulk, tv_metadata=None):
             "Failed to fetch metadata for %s",
             tv_item,
         )
+        return False
     except Exception:
         logger.exception("Error processing %s", tv_item)
+        return False
+
+    return True
 
 
 def _tv_provider(source):

@@ -1,7 +1,7 @@
 from unittest.mock import MagicMock, patch
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from app.models import TV, Anime, Item, MediaTypes, Sources, Status
@@ -337,3 +337,54 @@ class CalendarSelectorTests(CalendarFixturesMixin, TestCase):
         )
 
         self.assertEqual(get_changed_tmdb_movie_ids(), set())
+
+
+class CalendarStalenessGateTests(CalendarFixturesMixin, TestCase):
+    """Test that recently checked items are skipped."""
+
+    @patch("events.calendar.selectors.tmdb.movie_changes", return_value=set())
+    @patch("events.calendar.selectors.tmdb.tv_changes", return_value=set())
+    @override_settings(CALENDAR_ITEM_STALE_AFTER_HOURS=12)
+    def test_recently_checked_item_is_excluded(self, _tv, _movie):
+        """An item checked inside the window costs a provider call for nothing."""
+        self.assertIn(self.book_item, get_items_to_process(self.user))
+
+        Item.objects.filter(id=self.book_item.id).update(
+            calendar_checked_at=timezone.now() - timezone.timedelta(hours=1),
+        )
+
+        self.assertNotIn(self.book_item, get_items_to_process(self.user))
+
+    @patch("events.calendar.selectors.tmdb.movie_changes", return_value=set())
+    @patch("events.calendar.selectors.tmdb.tv_changes", return_value=set())
+    @override_settings(CALENDAR_ITEM_STALE_AFTER_HOURS=12)
+    def test_item_checked_before_the_window_is_included(self, _tv, _movie):
+        """Once the window lapses the item is due for another check."""
+        Item.objects.filter(id=self.book_item.id).update(
+            calendar_checked_at=timezone.now() - timezone.timedelta(hours=13),
+        )
+
+        self.assertIn(self.book_item, get_items_to_process(self.user))
+
+    @patch("events.calendar.selectors.tmdb.movie_changes", return_value=set())
+    @patch("events.calendar.selectors.tmdb.tv_changes")
+    @override_settings(CALENDAR_ITEM_STALE_AFTER_HOURS=12)
+    def test_change_feed_hit_bypasses_the_window(self, mock_tv_changes, _movie):
+        """A show TMDB reports as changed must be refreshed even if just checked."""
+        mock_tv_changes.return_value = {self.tv_item.media_id}
+        Item.objects.filter(id=self.tv_item.id).update(
+            calendar_checked_at=timezone.now() - timezone.timedelta(minutes=5),
+        )
+
+        self.assertIn(self.tv_item, get_items_to_process(self.user))
+
+    @patch("events.calendar.selectors.tmdb.movie_changes", return_value=set())
+    @patch("events.calendar.selectors.tmdb.tv_changes", return_value=set())
+    @override_settings(CALENDAR_ITEM_STALE_AFTER_HOURS=0)
+    def test_zero_disables_the_gate(self, _tv, _movie):
+        """0 restores the previous always-refresh behaviour."""
+        Item.objects.filter(id=self.book_item.id).update(
+            calendar_checked_at=timezone.now(),
+        )
+
+        self.assertIn(self.book_item, get_items_to_process(self.user))

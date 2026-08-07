@@ -45,6 +45,28 @@ def retry_on_lock(func, max_retries=5, base_delay=0.1, backoff=2.0):
     return outcome.value
 
 
+def find_item_across_buckets(preferred_bucket=None, **identity):
+    """Return an existing Item for an identity, preferring one library bucket.
+
+    Every Item uniqueness constraint includes ``library_media_type``, and the
+    same media identity can legitimately live in more than one bucket (grouped
+    anime is stored on TV rows, and episodes auto-created for a tracked season
+    inherit the show's bucket rather than the default 'episode' one). A
+    ``get``/``get_or_create`` keyed only on the identity fields therefore raises
+    ``MultipleObjectsReturned`` as soon as two buckets exist. Reuse an existing
+    row instead of failing or creating a third, divergent one - preferring the
+    caller's bucket, then the oldest row so repeat runs stay stable.
+    """
+    candidates = list(app.models.Item.objects.filter(**identity).order_by("id"))
+    if not candidates:
+        return None
+    if preferred_bucket:
+        for item in candidates:
+            if item.library_media_type == preferred_bucket:
+                return item
+    return candidates[0]
+
+
 def get_existing_media(user):
     """Get all existing media for the user to check against during import."""
     excluded_types = [MediaTypes.SEASON.value, MediaTypes.EPISODE.value]
@@ -81,8 +103,15 @@ def should_process_media(
     media_id,
     mode,
     deleted_media=None,
+    skip_existing=True,
 ):
-    """Determine if a media item should be processed based on mode."""
+    """Determine if a media item should be processed based on mode.
+
+    skip_existing=False lets callers with their own per-event dedupe (e.g.
+    Plex TV episode history, where a show already being tracked shouldn't
+    block newly watched episodes of it) route an existing item through the
+    overwrite/deleted-media handling below without a blanket "new mode" skip.
+    """
     if deleted_media and media_id in deleted_media[media_type][source]:
         logger.debug(
             "Skipping deleted %s: %s (user deleted this locally)",
@@ -93,7 +122,7 @@ def should_process_media(
 
     exists = media_id in existing_media[media_type][source]
 
-    if mode == "new" and exists:
+    if mode == "new" and exists and skip_existing:
         # In "new" mode, skip if media already exists
         logger.debug(
             "Skipping existing %s: %s (mode: new)",

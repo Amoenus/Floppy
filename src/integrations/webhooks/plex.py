@@ -216,18 +216,27 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
                             "Live playback resolved show ID via TVDB/IMDB",
                         )
 
-                # Fallback: title search then raw tmdb_id
+                # Fallback: title search. The raw tmdb_id is stripped before
+                # calling _find_tv_media_id so its "direct TMDB ID" branch
+                # can't short-circuit the title search with a possibly
+                # episode-level ID — see the final fallback note below.
                 if media_id is None:
                     series_title = self._extract_series_title(payload)
-                    resolved_media_id, _, _ = self._find_tv_media_id(
-                        ids,
-                        series_title=series_title,
-                        allow_title_fallback=True,
-                    )
-                    if resolved_media_id:
-                        media_id = str(resolved_media_id)
-            if media_id is None:
-                media_id = ids.get("tmdb_id")
+                    if series_title:
+                        alt_ids = dict(ids)
+                        alt_ids["tmdb_id"] = None
+                        resolved_media_id, _, _ = self._find_tv_media_id(
+                            alt_ids,
+                            series_title=series_title,
+                            allow_title_fallback=True,
+                        )
+                        if resolved_media_id:
+                            media_id = str(resolved_media_id)
+            # Deliberately no further fallback to the raw ids["tmdb_id"] here:
+            # for TV episodes it may be episode-level (a separate TMDB ID
+            # namespace from the show), which would 404 the details page.
+            # Leaving media_id as None degrades gracefully — the card links to
+            # home instead of a URL that 500s. See issue #547.
 
         live_playback.apply_plex_event(
             user_id=user.id,

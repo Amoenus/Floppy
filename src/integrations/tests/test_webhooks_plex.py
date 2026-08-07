@@ -319,6 +319,79 @@ class PlexWebhookTests(TestCase):
         self.assertEqual(state["duration_seconds"], 2666)
         self.assertEqual(state["view_offset_seconds"], 1447)
 
+    @patch("app.providers.tmdb.search")
+    def test_play_event_episode_level_tmdb_id_resolves_via_title_search(
+        self,
+        mock_tmdb_search,
+    ):
+        """An episode-only TMDB GUID (no TVDB/IMDB) should resolve to the
+        show-level ID via title search rather than linking to the raw
+        episode-level ID (issue #547).
+        """
+        mock_tmdb_search.return_value = {
+            "results": [{"media_id": "60715", "title": "Bref"}],
+        }
+        payload = {
+            "event": "media.play",
+            "Account": {"title": "testuser"},
+            "Metadata": {
+                "type": "episode",
+                "grandparentTitle": "Bref",
+                "title": "Episode 82",
+                "index": 82,
+                "parentIndex": 1,
+                "ratingKey": "rk-episode-bref",
+                "duration": 300000,
+                "viewOffset": 10000,
+                "Guid": [
+                    {"id": "tmdb://1017335"},
+                ],
+            },
+        }
+
+        response = self._post_payload(payload)
+
+        self.assertEqual(response.status_code, 200)
+        state = live_playback.get_user_playback_state(self.user.id)
+        self.assertIsNotNone(state)
+        self.assertEqual(state["media_id"], "60715")
+        self.assertEqual(state["season_number"], 1)
+        self.assertEqual(state["episode_number"], 82)
+
+    @patch("app.providers.tmdb.search", return_value={"results": []})
+    def test_play_event_episode_level_tmdb_id_unresolved_does_not_500_link(
+        self,
+        _mock_tmdb_search,
+    ):
+        """When an episode-only TMDB GUID can't be resolved via title search
+        either, the raw episode-level ID must not be stored as media_id —
+        that would build a details URL that 404s/500s (issue #547).
+        """
+        payload = {
+            "event": "media.play",
+            "Account": {"title": "testuser"},
+            "Metadata": {
+                "type": "episode",
+                "grandparentTitle": "Some Unknown Show",
+                "title": "Episode 1",
+                "index": 1,
+                "parentIndex": 1,
+                "ratingKey": "rk-episode-unknown",
+                "duration": 300000,
+                "viewOffset": 10000,
+                "Guid": [
+                    {"id": "tmdb://1017335"},
+                ],
+            },
+        }
+
+        response = self._post_payload(payload)
+
+        self.assertEqual(response.status_code, 200)
+        state = live_playback.get_user_playback_state(self.user.id)
+        self.assertIsNotNone(state)
+        self.assertFalse(state.get("media_id"))
+
     def test_movie_short_stop_clears_in_progress_row_and_playback_state(self):
         """Play events don't create rows; stop with viewOffset < 60s also creates nothing."""
         play_payload = {

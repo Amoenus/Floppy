@@ -34,10 +34,17 @@ def anilist_date_parser(start_date):
 
 
 def process_anime_bulk(items, events_bulk):
-    """Process multiple anime items and add events to the event list."""
-    if not items:
-        return
+    """Process multiple anime items and add events to the event list.
 
+    Returns the items that were successfully checked. Items that AniList did not
+    cover fall through to process_other, and are only reported as checked when
+    that call succeeds, so a provider failure there is retried rather than being
+    suppressed by the staleness window.
+    """
+    if not items:
+        return []
+
+    checked = []
     anime_data = get_anime_schedule_bulk([item.media_id for item in items])
 
     for item in items:
@@ -59,13 +66,17 @@ def process_anime_bulk(items, events_bulk):
                         datetime=episode_datetime,
                     ),
                 )
+            checked.append(item)
         else:
             logger.info(
                 "Anime: %s (%s), not proccesed by AniList",
                 item.title,
                 item.media_id,
             )
-            process_other(item, events_bulk)
+            if process_other(item, events_bulk):
+                checked.append(item)
+
+    return checked
 
 
 def get_anime_schedule_bulk(media_ids):

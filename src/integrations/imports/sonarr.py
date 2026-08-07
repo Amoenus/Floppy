@@ -13,6 +13,7 @@ from integrations import import_progress
 from integrations.imports.helpers import (
     MediaImportError,
     decrypt_or_raise,
+    find_item_across_buckets,
     retry_on_lock,
 )
 from integrations.models import SonarrAccount
@@ -151,18 +152,18 @@ class SonarrImporter:
         tvdb_id = row.get("tvdbId")
 
         if tmdb_id:
-            return Item.objects.filter(
+            return find_item_across_buckets(
                 media_id=str(tmdb_id),
                 source=Sources.TMDB.value,
                 media_type=MediaTypes.TV.value,
-            ).first()
+            )
 
         if tvdb_id:
-            return Item.objects.filter(
+            return find_item_across_buckets(
                 media_id=str(tvdb_id),
                 source=Sources.TVDB.value,
                 media_type=MediaTypes.TV.value,
-            ).first()
+            )
 
         return None
 
@@ -171,11 +172,11 @@ class SonarrImporter:
         tmdb_id = row.get("tmdbId")
 
         if tmdb_id:
-            existing = Item.objects.filter(
+            existing = find_item_across_buckets(
                 media_id=str(tmdb_id),
                 source=Sources.TMDB.value,
                 media_type=MediaTypes.TV.value,
-            ).first()
+            )
             if existing:
                 return existing
 
@@ -216,11 +217,11 @@ class SonarrImporter:
             return item
 
         if tvdb_id:
-            return Item.objects.filter(
+            return find_item_across_buckets(
                 media_id=str(tvdb_id),
                 source=Sources.TVDB.value,
                 media_type=MediaTypes.TV.value,
-            ).first()
+            )
 
         return None
 
@@ -270,6 +271,18 @@ class SonarrImporter:
         )
         return True
 
+    def _child_bucket(self, show_item, default_bucket):
+        """Return the library bucket a show's season/episode rows belong in.
+
+        Mirrors Season.get_episode_item: children follow the show's grouping
+        bucket (grouped anime lives on TV rows) and otherwise fall back to
+        their own media type, never inheriting a container's 'tv' bucket.
+        """
+        show_bucket = show_item.library_media_type
+        if show_bucket and show_bucket != MediaTypes.TV.value:
+            return show_bucket
+        return default_bucket
+
     def _ensure_season_items(self, show_item, row, episode_rows):
         """Ensure season items exist so collection stats can map episodes correctly."""
         season_numbers = {
@@ -282,6 +295,8 @@ class SonarrImporter:
             for episode in episode_rows
             if episode.get("seasonNumber") is not None
         )
+
+        season_bucket = self._child_bucket(show_item, MediaTypes.SEASON.value)
 
         for season_number in season_numbers:
             season_title = (
@@ -296,21 +311,32 @@ class SonarrImporter:
                 season_title=season_title,
                 seeded_at=seeded_at,
             ):
-                season_item, _created = Item.objects.get_or_create(
+                season_item = find_item_across_buckets(
+                    preferred_bucket=season_bucket,
                     media_id=show_item.media_id,
                     source=show_item.source,
                     media_type=MediaTypes.SEASON.value,
                     season_number=season_number,
-                    defaults={
-                        "title": season_title,
-                        "original_title": season_title,
-                        "localized_title": season_title,
-                        "image": show_item.image or settings.IMG_NONE,
-                        "release_datetime": show_item.release_datetime,
-                        "genres": show_item.genres or [],
-                        "metadata_fetched_at": seeded_at,
-                    },
+                    episode_number=None,
                 )
+                if season_item is None:
+                    season_item, _created = Item.objects.get_or_create(
+                        media_id=show_item.media_id,
+                        source=show_item.source,
+                        media_type=MediaTypes.SEASON.value,
+                        library_media_type=season_bucket,
+                        season_number=season_number,
+                        episode_number=None,
+                        defaults={
+                            "title": season_title,
+                            "original_title": season_title,
+                            "localized_title": season_title,
+                            "image": show_item.image or settings.IMG_NONE,
+                            "release_datetime": show_item.release_datetime,
+                            "genres": show_item.genres or [],
+                            "metadata_fetched_at": seeded_at,
+                        },
+                    )
                 update_fields = []
                 if season_item.metadata_fetched_at is None:
                     season_item.metadata_fetched_at = seeded_at
@@ -345,24 +371,35 @@ class SonarrImporter:
         episode_title = row.get("title") or f"Episode {episode_number}"
         release_datetime = self._parse_episode_release_datetime(row)
         seeded_at = timezone.now()
+        episode_bucket = self._child_bucket(show_item, MediaTypes.EPISODE.value)
 
         def _get_or_create_episode_item():
-            episode_item, _created = Item.objects.get_or_create(
+            episode_item = find_item_across_buckets(
+                preferred_bucket=episode_bucket,
                 media_id=show_item.media_id,
                 source=show_item.source,
                 media_type=MediaTypes.EPISODE.value,
                 season_number=season_number,
                 episode_number=episode_number,
-                defaults={
-                    "title": episode_title,
-                    "original_title": episode_title,
-                    "localized_title": episode_title,
-                    "image": show_item.image or settings.IMG_NONE,
-                    "release_datetime": release_datetime,
-                    "genres": show_item.genres or [],
-                    "metadata_fetched_at": seeded_at,
-                },
             )
+            if episode_item is None:
+                episode_item, _created = Item.objects.get_or_create(
+                    media_id=show_item.media_id,
+                    source=show_item.source,
+                    media_type=MediaTypes.EPISODE.value,
+                    library_media_type=episode_bucket,
+                    season_number=season_number,
+                    episode_number=episode_number,
+                    defaults={
+                        "title": episode_title,
+                        "original_title": episode_title,
+                        "localized_title": episode_title,
+                        "image": show_item.image or settings.IMG_NONE,
+                        "release_datetime": release_datetime,
+                        "genres": show_item.genres or [],
+                        "metadata_fetched_at": seeded_at,
+                    },
+                )
             update_fields = []
             if episode_item.metadata_fetched_at is None:
                 episode_item.metadata_fetched_at = seeded_at

@@ -1185,21 +1185,7 @@
         {% url 'medialist_columns' media_type as media_list_columns_url %}
         {% include "app/components/table_column_menu.html" with table_column_update_url=media_list_columns_url table_refresh_url=filter_hx_endpoint table_refresh_target=".media-table" table_refresh_include_selector="#filter-form" table_loading_indicator="#loading-indicator" table_type=table_type|default:'media' %}
 
-        <!-- Layout Toggle -->
-        <div class="flex rounded-md overflow-hidden border border-gray-700 layout-toggle">
-          <a :href="layoutHref('grid')"
-             class="p-2 cursor-pointer"
-             :class="layout === 'grid' ? 'bg-indigo-600 text-white' : 'bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)]'"
-             title="Grid View"
-             @click="layout = 'grid'">
-            {% include "app/icons/four-square.svg" with classes="w-5 h-5" %}
-          </a>
-          <a :href="layoutHref('table')"
-             class="p-2 cursor-pointer"
-             :class="layout === 'table' ? 'bg-indigo-600 text-white' : 'bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)]'"
-             title="Table View"
-             @click="layout = 'table'">{% include "app/icons/table.svg" with classes="w-5 h-5" %}</a>
-        </div>
+        {% include "app/components/media_settings_menu.html" with menu_class="media-settings-menu-desktop" %}
       </div>
     {% endif %}
   </div>

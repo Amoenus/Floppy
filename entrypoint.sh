@@ -56,6 +56,12 @@ usermod -o -u "$PUID" abc
 
 chown abc:abc /floppy
 
+# "logs" holds the rotating file handler every process configures at import time
+# (settings.LOG_FILE). settings.py creates the directory, so whichever process
+# imports settings first as root leaves it root-owned and every abc-owned
+# process then dies with "Unable to configure handler 'file'" -- taking gunicorn
+# with it, so the container serves 502s while reporting healthy.
+#
 # Bound each recursive chown: a stalled bind mount (e.g. network storage)
 # must degrade to a warning instead of hanging the boot silently (issue #341).
 for dir in db logs staticfiles /var/log/nginx /var/lib/nginx; do
