@@ -2743,12 +2743,16 @@ class MediaListViewTests(TestCase):
         response = self.client.get(reverse("medialist", args=[MediaTypes.MOVIE.value]))
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, ":href=\"layoutHref('grid')\"")
-        self.assertContains(response, ":href=\"layoutHref('table')\"")
+        self.assertContains(
+            response,
+            ":href=\"layoutHref(layout === 'grid' ? 'table' : 'grid')\"",
+        )
         self.assertContains(
             response,
             "layoutHref(nextLayout) { return buildMediaListHref(this.mediaListUrl, document.getElementById('filter-form'), { layout: nextLayout }); }",
         )
+        self.assertContains(response, '@click="open = false"')
+        self.assertNotContains(response, "layout = layout === 'grid' ? 'table' : 'grid'")
 
     def test_comic_media_list_can_switch_to_issue_subview(self):
         """Comic media list should reuse the music-style subview switch for issues."""

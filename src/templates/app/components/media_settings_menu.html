@@ -16,7 +16,7 @@
        x-transition:leave-end="transform opacity-0 scale-95">
     <a :href="layoutHref(layout === 'grid' ? 'table' : 'grid')"
        class="flex items-center gap-2 w-full px-3 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
-       @click="layout = layout === 'grid' ? 'table' : 'grid'; open = false">
+       @click="open = false">
       <span x-show="layout === 'grid'">{% include "app/icons/table.svg" with classes="w-4 h-4" %}</span>
       <span x-show="layout !== 'grid'">{% include "app/icons/four-square.svg" with classes="w-4 h-4" %}</span>
       <span x-text="layout === 'grid' ? 'Table View' : 'Grid View'"></span>
