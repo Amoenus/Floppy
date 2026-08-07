@@ -62,3 +62,27 @@ class PreferencesViewTests(TestCase):
             "Save button must be inside the preferences <form> or clicking "
             "it silently does nothing",
         )
+
+    def test_tracking_dropdown_labels_are_valid_alpine_expressions(self):
+        """Choice labels must not contain template whitespace in x-data."""
+        self.user.quick_season_update_mobile = "next_episode"
+        self.user.save(update_fields=["quick_season_update_mobile"])
+
+        response = self.client.get(reverse("preferences"))
+        soup = BeautifulSoup(response.content, "html.parser")
+
+        quick_input = soup.find("input", {"name": "quick_season_update_mobile"})
+        quick_control = quick_input.find_parent("div", class_="relative")
+        self.assertIn(
+            "selectedValue: 'next_episode', selectedLabel: 'Next Episode button only'",
+            quick_control["x-data"],
+        )
+        self.assertNotIn("selectedLabel: '\n", quick_control["x-data"])
+
+        session_input = soup.find("input", {"name": "session_duration"})
+        session_control = session_input.find_parent("div", class_="relative")
+        self.assertIn(
+            "selectedLabel: '2 weeks'",
+            session_control["x-data"],
+        )
+        self.assertNotIn("selectedLabel: '\n", session_control["x-data"])

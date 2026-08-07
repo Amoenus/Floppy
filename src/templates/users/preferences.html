@@ -766,18 +766,7 @@
             <label class="text-[var(--color-text-secondary)] text-sm font-medium">Home Screen Card Buttons</label>
             <span class="text-[var(--color-text-muted)] text-xs">Quick season update buttons and/or the next episode pill on home screen cards.</span>
           </div>
-          {% with qsu=user.quick_season_update_mobile %}
-            <div class="relative" x-data="{ open: false, selectedValue: '{{ qsu|default:'none' }}', selectedLabel: '
-              {% if qsu == 'season_update' %}
-                Quick Season Update buttons only
-              {% elif qsu == 'next_episode' %}
-                Next Episode button only
-              {% elif qsu == 'both' %}
-                Both
-              {% else %}
-                None
-              {% endif %}
-              ' }">
+            <div class="relative" x-data="{ open: false, selectedValue: '{{ user.quick_season_update_mobile|default:'none' }}', selectedLabel: '{{ user.get_quick_season_update_mobile_display }}' }">
               <button type="button"
                       @click="open = !open"
                       @click.outside="open = false"
@@ -829,7 +818,6 @@
                      name="quick_season_update_mobile"
                      x-bind:value="selectedValue">
             </div>
-          {% endwith %}
         </div>
 
         <!-- Game Logging Style -->
@@ -938,11 +926,7 @@
             <label class="text-[var(--color-text-secondary)] text-sm font-medium">Session Duration</label>
             <span class="text-[var(--color-text-muted)] text-xs">How long you stay logged in before needing to sign in again.</span>
           </div>
-          <div class="relative" x-data="{ open: false, selectedValue: '{{ user.session_duration }}', selectedLabel: '
-            {% for choice in session_duration_choices %}
-              {% if choice.0 == user.session_duration %}{{ choice.1 }}{% endif %}
-            {% endfor %}
-            ', options: [
+          <div class="relative" x-data="{ open: false, selectedValue: '{{ user.session_duration }}', selectedLabel: '{{ user.get_session_duration_display }}', options: [
             {% for choice in session_duration_choices %}
               { value: '{{ choice.0 }}', label: '{{ choice.1 }}' }
               {% if not forloop.last %},{% endif %}
