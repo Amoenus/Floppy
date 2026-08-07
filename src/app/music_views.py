@@ -317,7 +317,7 @@ def _build_artist_relations(user, artist):
     missing_relation_image_count = sum(
         1
         for related_artist in related_artists
-        if not related_artist.image or related_artist.image == settings.IMG_NONE
+        if not related_artist.image
     )
 
     return band_members, member_of_bands, missing_relation_image_count
@@ -330,7 +330,7 @@ def _queue_artist_relation_image_prefetch(artist, band_members, member_of_bands)
     missing_ids = [
         relation["artist"].id
         for relation in band_members + member_of_bands
-        if not relation["artist"].image or relation["artist"].image == settings.IMG_NONE
+        if not relation["artist"].image
     ]
     if not missing_ids:
         return

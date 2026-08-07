@@ -1014,10 +1014,20 @@ class MediaDetailsViewTests(TestCase):
         )
         self.assertContains(response, "Refreshing photos")
 
+        poll_response = self.client.get(
+            reverse("prefetch_artist_relation_images", args=[band.id]),
+        )
+        self.assertEqual(poll_response.status_code, 200)
+        self.assertNotContains(
+            poll_response,
+            reverse("prefetch_artist_relation_images", args=[band.id]),
+        )
+        self.assertNotContains(poll_response, "Refreshing photos")
+
     @patch("app.services.music.needs_discography_sync", return_value=False)
     @patch("app.services.music_scrobble.dedupe_artist_albums")
     @patch("app.providers.musicbrainz.get_artist")
-    def test_music_artist_details_no_poll_when_relation_images_present(
+    def test_music_artist_details_no_poll_when_relation_images_present_or_known_missing(
         self,
         mock_get_artist,
         _mock_dedupe_artist_albums,
@@ -1037,6 +1047,17 @@ class MediaDetailsViewTests(TestCase):
             band=band,
             member=member,
             role="drums",
+            is_current=True,
+        )
+        known_missing_member = Artist.objects.create(
+            name="Unknown Member",
+            musicbrainz_id="member-mbid-3",
+            image=settings.IMG_NONE,
+        )
+        ArtistMember.objects.create(
+            band=band,
+            member=known_missing_member,
+            role="keys",
             is_current=True,
         )
         mock_get_artist.return_value = {
