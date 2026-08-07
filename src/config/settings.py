@@ -14,9 +14,7 @@ from urllib.parse import urljoin, urlparse
 from celery.schedules import crontab
 from debug_toolbar.settings import PANELS_DEFAULTS
 from decouple import (
-    Config,
     Csv,
-    RepositorySecret,
     Undefined,
     UndefinedValueError,
     config,
@@ -49,6 +47,7 @@ REDIS_PREFIX = config("REDIS_PREFIX", default=None)
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+DOCKER_SECRETS_DIR = Path("/run/secrets")
 
 
 def secret(key, default=undefined, **kwargs):
@@ -68,35 +67,24 @@ def secret(key, default=undefined, **kwargs):
         return default
 
     path = Path(file)
+    if not path.is_absolute():
+        path = DOCKER_SECRETS_DIR / path
+
     try:
-        if path.is_absolute():
-            secret_value = Config(RepositorySecret(path.parent))(
-                path.stem,
-                default,
-                **kwargs,
-            )
-        else:
-            secret_value = Config(RepositorySecret())(file, default, **kwargs)
-    except (
-        FileNotFoundError,
-        IsADirectoryError,
-        UndefinedValueError,
-    ) as err:
+        secret_value = path.read_text(encoding="utf-8").strip()
+    except (FileNotFoundError, IsADirectoryError, OSError, UnicodeDecodeError) as err:
         msg = f"File from {key} not found. Please check the path and filename."
         raise UndefinedValueError(msg) from err
-    else:
-        if isinstance(secret_value, str):
-            return secret_value.strip()
-        return secret_value
+
+    return secret_value
 
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/stable/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-try:
-    SECRET_KEY = config("SECRET")
-except UndefinedValueError:
+SECRET_KEY = config("SECRET", default=None)
+if not SECRET_KEY:
     SECRET_KEY = secret("SECRET_FILE")
 
 # secret() returns the `undefined` sentinel (truthy) when the env var is absent;
