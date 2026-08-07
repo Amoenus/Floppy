@@ -1550,7 +1550,7 @@ def media_details(
             # ready before the user hovers.
             from app.providers import trakt as _trakt
 
-            if _trakt.is_configured() and source in {
+            if not public_view and _trakt.is_configured() and source in {
                 Sources.TMDB.value,
                 Sources.TVDB.value,
             }:

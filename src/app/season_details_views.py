@@ -457,7 +457,8 @@ def season_details(
         from app.providers import trakt as _trakt_provider
 
         if (
-            source in {Sources.TMDB.value, Sources.TVDB.value}
+            not public_view
+            and source in {Sources.TMDB.value, Sources.TVDB.value}
             and _trakt_provider.is_configured()
             and Item.objects.filter(
                 media_id=media_id,

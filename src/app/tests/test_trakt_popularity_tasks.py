@@ -2,6 +2,7 @@ from datetime import timedelta
 from io import StringIO
 from unittest.mock import patch
 
+import requests
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.test import TestCase
@@ -217,3 +218,37 @@ class TraktPopularityTaskTests(TestCase):
             field=MetadataBackfillField.TRAKT_POPULARITY,
         )
         self.assertEqual(state.fail_count, 1)
+
+    @patch(
+        "app.services.trakt_popularity.lookup_item_summary",
+        side_effect=requests.exceptions.HTTPError("403 Client Error: Forbidden"),
+    )
+    def test_episode_ratings_task_ignores_trakt_show_lookup_errors(
+        self,
+        _mock_lookup_item_summary,
+    ):
+        Item.objects.create(
+            media_id="401",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Lookup Failure Show",
+            image="https://example.com/show.jpg",
+        )
+        Item.objects.create(
+            media_id="401",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="Lookup Failure Episode",
+            image="https://example.com/episode.jpg",
+            season_number=1,
+            episode_number=1,
+        )
+
+        result = tasks.populate_trakt_episode_ratings_for_season(
+            "401",
+            Sources.TMDB.value,
+            1,
+        )
+
+        self.assertEqual(result["updated"], 0)
+        self.assertIn("API error", result["message"])

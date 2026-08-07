@@ -222,9 +222,19 @@ def populate_trakt_episode_ratings_for_season(
             "message": "No show/season Item found for Trakt ID resolution",
         }
 
-    show_lookup = trakt_pop.lookup_item_summary(
-        anchor, route_media_type=MediaTypes.TV.value
-    )
+    try:
+        show_lookup = trakt_pop.lookup_item_summary(
+            anchor, route_media_type=MediaTypes.TV.value
+        )
+    except Exception as exc:
+        logger.warning(
+            "trakt_episode_ratings_lookup_error media_id=%s season=%s error=%s",
+            media_id,
+            season_number,
+            exception_summary(exc),
+        )
+        return {"updated": 0, "message": f"API error: {exception_summary(exc)}"}
+
     if not show_lookup:
         return {"updated": 0, "message": "Could not resolve Trakt show ID"}
 
