@@ -581,6 +581,71 @@ class Metadata(TestCase):
         self.assertEqual(result["season/0"]["max_progress"], 1)
         mock_build_specials_season.assert_called_once()
 
+    @patch("app.providers.tmdb.services.api_request")
+    def test_tv_with_seasons_handles_missing_season_watch_providers(
+        self,
+        mock_api_request,
+    ):
+        """A season without TMDB provider data should still be cached."""
+        tmdb.cache.clear()
+        mock_api_request.return_value = {
+            "id": 330881,
+            "name": "Monster",
+            "original_name": "Monster",
+            "poster_path": None,
+            "overview": "A test show.",
+            "genres": [],
+            "vote_average": 8.0,
+            "vote_count": 10,
+            "production_companies": [],
+            "production_countries": [],
+            "spoken_languages": [],
+            "recommendations": {"results": []},
+            "external_ids": {"tvdb_id": "12345"},
+            "watch/providers": {"results": {}},
+            "aggregate_credits": {"cast": [], "crew": []},
+            "alternative_titles": {"results": []},
+            "episode_run_time": [24],
+            "first_air_date": "2004-04-07",
+            "last_air_date": "2005-09-28",
+            "status": "Ended",
+            "number_of_seasons": 2,
+            "number_of_episodes": 74,
+            "seasons": [
+                {
+                    "season_number": 2,
+                    "name": "Season 2",
+                    "air_date": "2005-01-01",
+                    "episode_count": 1,
+                    "poster_path": None,
+                },
+            ],
+            "season/2": {
+                "name": "Season 2",
+                "overview": "Season overview",
+                "season_number": 2,
+                "poster_path": None,
+                "air_date": "2005-01-01",
+                "vote_average": 8.0,
+                "episodes": [
+                    {
+                        "episode_number": 1,
+                        "name": "Episode 1",
+                        "overview": "Episode overview",
+                        "still_path": None,
+                        "runtime": 24,
+                        "vote_count": 10,
+                        "air_date": "2005-01-01",
+                    },
+                ],
+            },
+        }
+
+        result = tmdb.tv_with_seasons("330881", [2])
+
+        self.assertEqual(result["season/2"]["season_number"], 2)
+        self.assertEqual(result["season/2"]["providers"], {})
+
     @patch("app.providers.tvdb._request")
     def test_tvdb_episode_map_normalizes_precise_airstamps(
         self,
