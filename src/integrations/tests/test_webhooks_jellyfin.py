@@ -1,4 +1,5 @@
 import json
+from datetime import UTC, datetime
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -117,6 +118,42 @@ class JellyfinWebhookTests(TestCase):
         )
         self.assertEqual(movie.status, Status.COMPLETED.value)
         self.assertEqual(movie.progress, 1)
+
+    @patch("app.providers.tmdb.movie")
+    @patch("app.models.Movie.process_status")
+    def test_movie_mark_played_uses_jellyfin_last_played_date(
+        self,
+        _mock_process_status,
+        mock_movie,
+    ):
+        """Completed Jellyfin plays retain Jellyfin's actual completion time."""
+        mock_movie.return_value = {
+            "title": "The Matrix",
+            "image": "",
+            "max_progress": 1,
+            "provider_external_ids": {},
+        }
+        payload = {
+            "Event": "Stop",
+            "Item": {
+                "Name": "The Matrix",
+                "ProductionYear": 1999,
+                "Type": "Movie",
+                "ProviderIds": {"Tmdb": "603"},
+                "UserData": {
+                    "Played": True,
+                    "LastPlayedDate": "2026-08-06T15:30:00.0000000Z",
+                },
+            },
+        }
+
+        JellyfinWebhookProcessor().process_payload(payload, self.user)
+
+        movie = Movie.objects.get(item__media_id="603", user=self.user)
+        self.assertEqual(
+            movie.end_date,
+            datetime(2026, 8, 6, 15, 30, tzinfo=UTC),
+        )
 
     @tag("network")
     @patch("app.providers.mal.anime")

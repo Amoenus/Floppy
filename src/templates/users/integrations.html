@@ -164,7 +164,8 @@
       "Tvdb": "{{Provider_tvdb}}"
     },
     "UserData": {
-      "Played": {{#if_equals PlayedToCompletion 'True'}}true{{else}}false{{/if_equals}}
+      "Played": {{#if_equals PlayedToCompletion 'True'}}true{{else}}false{{/if_equals}},
+      "LastPlayedDate": "{{LastPlayedDate}}"
     }{{#if_equals ItemType 'Episode'}},
     "SeriesName": "{{SeriesName}}",
     "ParentIndexNumber": {{SeasonNumber}},
