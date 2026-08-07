@@ -335,8 +335,8 @@ class SizingTests(SimpleTestCase):
             self.assertEqual(web_concurrency(profile), 1)
             self.assertEqual(gunicorn_threads(profile), 2)
 
-    def test_standard_host_keeps_the_previous_defaults(self):
-        """Existing installs must see no change in sizing."""
+    def test_standard_host_uses_one_threaded_web_worker(self):
+        """Threads retain I/O concurrency without another Django process."""
         profile = ResourceProfile(
             tier=TIER_STANDARD,
             memory_bytes=16 * GIB,
@@ -346,7 +346,7 @@ class SizingTests(SimpleTestCase):
             overridden=True,
         )
         with mock.patch.dict(runtime_profile.os.environ, {}, clear=True):
-            self.assertEqual(web_concurrency(profile), 2)
+            self.assertEqual(web_concurrency(profile), 1)
             self.assertEqual(gunicorn_threads(profile), 4)
 
     def test_explicit_env_overrides_tier_sizing(self):
@@ -370,9 +370,10 @@ class SizingTests(SimpleTestCase):
     def test_queue_plan_collapses_gradually(self):
         """Interactive isolation is the last thing given up, not the first."""
         standard = celery_queue_plan(self._profile(TIER_STANDARD))
-        self.assertEqual(standard["queues"], "celery")
+        self.assertEqual(standard["queues"], "celery,discover")
         self.assertEqual(standard["start_interactive"], "true")
-        self.assertEqual(standard["start_discover"], "true")
+        self.assertEqual(standard["start_discover"], "false")
+        self.assertEqual(standard["role"], "background")
 
         constrained = celery_queue_plan(self._profile(TIER_CONSTRAINED))
         self.assertEqual(constrained["queues"], "celery,discover")

@@ -19,7 +19,8 @@ services:
       # Keep DEBUG off in production: the debug toolbar slows every request
       # and disables Django's cached template loader.
       - DEBUG=False
-      # Web concurrency is sized from the host automatically. Set
+      # Web concurrency is sized from the host automatically for a lean
+      # one-worker default. Set
       # WEB_CONCURRENCY/GUNICORN_THREADS only when you intentionally want to
       # override the detected resource tier.
     volumes:

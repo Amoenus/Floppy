@@ -352,9 +352,9 @@ def web_concurrency(profile: ResourceProfile | None = None) -> int:
         except ValueError:
             pass
     if resolved.tier == TIER_STANDARD:
-        # Two workers keeps one slow request from blocking the whole UI; more
-        # than that just multiplies the resident Django import.
-        return max(1, min(resolved.cpus, 2))
+        # gthread handles concurrent I/O in one preloaded worker. A second
+        # worker mostly duplicates the resident Django import at idle.
+        return 1
     return 1
 
 
@@ -377,9 +377,9 @@ def celery_queue_plan(profile: ResourceProfile | None = None) -> dict[str, str]:
     ``app/providers/services.py``. Each worker is a whole Django import, so on
     small hosts that isolation has to be traded away, but gradually:
 
-    * standard: all three, unchanged.
-    * constrained: two - the interactive worker stays isolated, which is the
-      half of the split that protects user-visible latency.
+    * standard and constrained: two - the Discover queue joins the background
+      worker while the interactive worker stays isolated. This avoids a third
+      resident Django import without allowing bulk work to block the UI.
     * minimal: one, consuming every queue. In-queue priority ordering takes
       over from cross-process isolation.
     """
@@ -391,7 +391,7 @@ def celery_queue_plan(profile: ResourceProfile | None = None) -> dict[str, str]:
             "start_interactive": "false",
             "start_discover": "false",
         }
-    if resolved.tier == TIER_CONSTRAINED:
+    if resolved.tier in (TIER_CONSTRAINED, TIER_STANDARD):
         return {
             "queues": "celery,discover",
             "role": "background",

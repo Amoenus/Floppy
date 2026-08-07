@@ -334,10 +334,11 @@ the first line of the container's output:
 [entrypoint] resources tier=minimal mem=1.9GiB swap=0 cpus=2 -> gunicorn 1x2, celery queues "celery,interactive,discover"
 ```
 
-- **standard** (3 GB+): two gunicorn workers and three Celery workers, as before.
-- **constrained** (under 3 GB): one gunicorn worker, and the Discover worker folds into the
-  default one. The interactive worker stays separate so webhook scrobbles are never stuck
-  behind a backfill.
+- **standard** (3 GB+): one threaded gunicorn worker and two Celery workers. Discover and
+  beat run with the background worker; the interactive worker stays separate so webhook
+  scrobbles are never stuck behind a backfill.
+- **constrained** (under 3 GB): the same lean process layout as standard, with smaller
+  worker-recycling and cache budgets.
 - **minimal** (under 1.5 GB): one gunicorn worker and a single Celery worker serving every
   queue.
 
@@ -359,6 +360,23 @@ Two things worth knowing:
 
 Override any of it with `FLOPPY_RESOURCE_TIER`, `WEB_CONCURRENCY`, `GUNICORN_THREADS`, or
 `FLOPPY_REDIS_MAXMEMORY`.
+
+### Measuring container memory
+
+Use `scripts/benchmark_memory.sh` to compare two already-built Floppy images without
+touching an existing deployment. It starts each image in its own disposable Compose project
+with SQLite, samples the healthy warmed container three times, and writes CSV/JSON reports
+under a temporary directory:
+
+```bash
+scripts/benchmark_memory.sh \
+  --baseline-image floppy:baseline \
+  --candidate-image floppy:memory-test
+```
+
+The report distinguishes cgroup usage from summed process PSS/RSS and Redis usage, so shared
+preloaded pages and the separate Redis container are visible instead of being counted as a
+single opaque number. Build the candidate image locally before running the comparison.
 
 If an existing deployment has `WEB_CONCURRENCY` or `GUNICORN_THREADS` set from an
 older fixed-size configuration, remove those overrides before upgrading on a

@@ -8,10 +8,10 @@ preload_app = True
 # process count low and rely on threads for I/O-bound concurrency.
 worker_class = "gthread"
 
-# Sized from the host rather than fixed, because each worker holds a full
-# resident Django import and the previous 2x4 default overcommitted a 2 GB
-# box into an unrecoverable hang (issue #521).  WEB_CONCURRENCY and
-# GUNICORN_THREADS still win when set - see config/runtime_profile.py.
+# Sized from the host rather than fixed. One threaded, preloaded worker keeps
+# normal-host idle memory down; each extra worker duplicates private Django
+# state despite copy-on-write. WEB_CONCURRENCY and GUNICORN_THREADS still win
+# when set - see config/runtime_profile.py.
 workers = web_concurrency()
 threads = gunicorn_threads()
 
