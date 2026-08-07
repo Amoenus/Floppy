@@ -985,6 +985,55 @@ def tv_with_seasons(media_id, season_numbers, *, routed_media_type=MediaTypes.TV
     return series_metadata | season_payloads
 
 
+def episode_by_id(episode_id):
+    """Return the series and numbering for a TVDB episode ID."""
+    if episode_id in (None, ""):
+        return None
+
+    cache_key = _cache_key("episode_by_id", episode_id)
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    episode_data = _unwrap_data(_request(f"episodes/{episode_id}/extended")) or {}
+    data = {
+        "episode_id": episode_data.get("id") or str(episode_id),
+        "series_id": episode_data.get("seriesId") or episode_data.get("series_id"),
+        "season_number": episode_data.get("seasonNumber")
+        or episode_data.get("season_number"),
+        "episode_number": episode_data.get("number")
+        or episode_data.get("episodeNumber")
+        or episode_data.get("episode_number"),
+    }
+
+    if not data["series_id"]:
+        logger.debug("TVDB episode metadata has no series ID for %s", episode_id)
+        return None
+
+    cache.set(cache_key, data)
+    return data
+
+
+def series_tmdb_id(series_id):
+    """Return the TMDB series ID from a TVDB series extended record."""
+    if series_id in (None, ""):
+        return None
+
+    cache_key = _cache_key("series_tmdb_id", series_id)
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    series_data = _unwrap_data(_request(f"series/{series_id}/extended")) or {}
+    tmdb_id = _get_remote_ids_map(series_data).get("tmdb_id")
+    if not tmdb_id:
+        logger.debug("TVDB series metadata has no TMDB ID for %s", series_id)
+        return None
+
+    cache.set(cache_key, tmdb_id)
+    return tmdb_id
+
+
 def episode(
     media_id, season_number, episode_number, *, routed_media_type=MediaTypes.TV.value
 ):

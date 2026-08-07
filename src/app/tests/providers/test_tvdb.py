@@ -396,6 +396,59 @@ class TVDBProviderTests(TestCase):
         self.assertEqual(result["episode_title"], "Pilot")
         self.assertEqual(result["image"], "https://example.com/pilot.jpg")
 
+    @patch("app.providers.tvdb.cache")
+    @patch("app.providers.tvdb._request")
+    def test_episode_by_id_returns_series_and_numbering(
+        self,
+        mock_request,
+        mock_cache,
+    ):
+        """Episode-level TVDB IDs should resolve to their series metadata."""
+        mock_cache.get.return_value = None
+        mock_request.return_value = {
+            "data": {
+                "id": 11821802,
+                "seriesId": 407407,
+                "seasonNumber": 1,
+                "number": 3,
+            },
+        }
+
+        result = tvdb.episode_by_id("11821802")
+
+        self.assertEqual(
+            result,
+            {
+                "episode_id": 11821802,
+                "series_id": 407407,
+                "season_number": 1,
+                "episode_number": 3,
+            },
+        )
+        mock_request.assert_called_once_with("episodes/11821802/extended")
+
+    @patch("app.providers.tvdb.cache")
+    @patch("app.providers.tvdb._request")
+    def test_series_tmdb_id_returns_remote_tmdb_id(
+        self,
+        mock_request,
+        mock_cache,
+    ):
+        """TVDB series metadata should expose its TMDB remote ID."""
+        mock_cache.get.return_value = None
+        mock_request.return_value = {
+            "data": {
+                "remoteIds": [
+                    {"sourceName": "TheMovieDB.com", "id": "124428"},
+                ],
+            },
+        }
+
+        result = tvdb.series_tmdb_id("407407")
+
+        self.assertEqual(result, "124428")
+        mock_request.assert_called_once_with("series/407407/extended")
+
     @patch("app.providers.tvdb._request")
     def test_get_episode_airstamp_map_caches_precise_episode_times(self, mock_request):
         """Default-order episode maps should cache normalized airstamps."""

@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.test import Client, TestCase, tag
+from django.test import Client, TestCase, override_settings, tag
 from django.urls import reverse
 
 from app import live_playback
@@ -471,6 +471,65 @@ class JellyfinWebhookTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(Movie.objects.count(), 0)
+
+    @override_settings(TVDB_API_KEY="test-tvdb-key")
+    @patch("app.providers.tmdb.tv_with_seasons")
+    @patch("app.providers.tmdb.find")
+    @patch("app.providers.tvdb.series_tmdb_id")
+    @patch("app.providers.tvdb.episode_by_id")
+    @patch("integrations.webhooks.base.BaseWebhookProcessor._handle_tv_episode")
+    def test_tvdb_episode_id_resolves_to_series_tmdb_id(
+        self,
+        mock_handle_tv_episode,
+        mock_episode_by_id,
+        mock_series_tmdb_id,
+        mock_tmdb_find,
+        mock_tv_with_seasons,
+    ):
+        """Jellyfin episode TVDB IDs should resolve through their series."""
+        self.user.anime_enabled = False
+        self.user.save(update_fields=["anime_enabled"])
+        mock_tmdb_find.return_value = {
+            "tv_episode_results": [],
+            "tv_results": [],
+        }
+        mock_episode_by_id.return_value = {
+            "episode_id": "11821802",
+            "series_id": "407407",
+            "season_number": 1,
+            "episode_number": 3,
+        }
+        mock_series_tmdb_id.return_value = "124428"
+        mock_tv_with_seasons.return_value = {
+            "tvdb_id": "407407",
+            "title": "B&B Vol Liefde",
+            "season/1": {"episodes": []},
+        }
+        payload = {
+            "Event": "Stop",
+            "Item": {
+                "Type": "Episode",
+                "Name": "Episode 3",
+                "SeriesName": "B&B Vol Liefde",
+                "ParentIndexNumber": 1,
+                "IndexNumber": 3,
+                "ProviderIds": {"Tvdb": "11821802"},
+                "UserData": {"Played": True},
+            },
+        }
+
+        processor = JellyfinWebhookProcessor()
+        ids = processor._extract_external_ids(payload)
+        processor._process_media(payload, self.user, ids)
+
+        mock_handle_tv_episode.assert_called_once_with(
+            "124428",
+            1,
+            3,
+            payload,
+            self.user,
+        )
+        mock_series_tmdb_id.assert_called_once_with("407407")
 
     @tag("network")
     def test_mark_unplayed(self):

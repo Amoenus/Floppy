@@ -714,6 +714,35 @@ class BaseWebhookProcessor:
                     result = response["tv_results"][0]
                     return result.get("id"), None, None
 
+        # Jellyfin and other media servers can send a TVDB episode ID here.
+        # TMDB's find endpoint does not resolve every TVDB episode, but TVDB
+        # can map that ID to its series and the series' TMDB ID directly.
+        tvdb_episode_id = ids.get("tvdb_id")
+        if tvdb_episode_id and app.providers.tvdb.enabled():
+            try:
+                tvdb_episode = app.providers.tvdb.episode_by_id(tvdb_episode_id)
+                if tvdb_episode:
+                    media_id = app.providers.tvdb.series_tmdb_id(
+                        tvdb_episode.get("series_id"),
+                    )
+                    if media_id:
+                        logger.info(
+                            "Resolved TVDB episode %s to TMDB show %s",
+                            tvdb_episode_id,
+                            media_id,
+                        )
+                        return (
+                            media_id,
+                            tvdb_episode.get("season_number"),
+                            tvdb_episode.get("episode_number"),
+                        )
+            except Exception as exc:  # pragma: no cover - defensive network guard
+                logger.warning(
+                    "TVDB episode resolution failed for %s: %s",
+                    tvdb_episode_id,
+                    exception_summary(exc),
+                )
+
         # Direct TMDB ID fallback (may be episode-level; _process_tv handles that case)
         if ids["tmdb_id"]:
             try:
