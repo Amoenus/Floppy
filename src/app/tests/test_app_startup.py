@@ -6,14 +6,10 @@ from unittest.mock import patch
 from django.conf import settings
 from django.core.cache import cache
 from django.test import TestCase, override_settings
-from django.utils import timezone
 
 from app.apps import STARTUP_SWEEP_COUNTDOWNS
 from app.apps import AppConfig as FloppyAppConfig
-from app.models import BackfillReconcileState
 from app.tasks import GENRE_BACKFILL_VERSION, WATCH_PROVIDERS_BACKFILL_VERSION
-from app.tasks_genre import RECONCILE_KEY as GENRE_RECONCILE_KEY
-from app.tasks_providers import RECONCILE_KEY as PROVIDER_RECONCILE_KEY
 
 
 class AppStartupTests(TestCase):
@@ -184,12 +180,14 @@ class AppStartupTests(TestCase):
 
         mock_apply_async.assert_not_called()
 
-    @patch("app.tasks.reconcile_genre_backfill.apply_async")
+    @patch("app.reconcile_state.should_run")
+    @patch("app.tasks.ensure_genre_backfill_reconcile.apply_async")
     def test_schedule_genre_backfill_reconcile_enqueues_once_per_startup(
         self,
         mock_apply_async,
+        mock_should_run,
     ):
-        """A second ready() in the same container must not enqueue again."""
+        """A second ready() does not enqueue again or query durable state."""
         config = FloppyAppConfig("app", import_module("app"))
 
         config._schedule_genre_backfill_reconcile()
@@ -200,30 +198,16 @@ class AppStartupTests(TestCase):
             countdown=STARTUP_SWEEP_COUNTDOWNS["genre"],
             priority=settings.CELERY_TASK_PRIORITY_BACKGROUND,
         )
+        mock_should_run.assert_not_called()
 
-    @patch("app.tasks.reconcile_genre_backfill.apply_async")
-    def test_schedule_genre_backfill_reconcile_skips_when_already_complete(
-        self,
-        mock_apply_async,
-    ):
-        """Completion now lives in the database, so it survives a Redis restart."""
-        BackfillReconcileState.objects.create(
-            key=GENRE_RECONCILE_KEY,
-            strategy_version=GENRE_BACKFILL_VERSION,
-            completed_at=timezone.now(),
-        )
-        config = FloppyAppConfig("app", import_module("app"))
-
-        config._schedule_genre_backfill_reconcile()
-
-        mock_apply_async.assert_not_called()
-
-    @patch("app.tasks.reconcile_provider_backfill.apply_async")
+    @patch("app.reconcile_state.should_run")
+    @patch("app.tasks_providers.ensure_provider_backfill_reconcile.apply_async")
     def test_schedule_provider_backfill_reconcile_enqueues_once_per_startup(
         self,
         mock_apply_async,
+        mock_should_run,
     ):
-        """A second ready() in the same container must not enqueue again."""
+        """A second ready() does not enqueue again or query durable state."""
         config = FloppyAppConfig("app", import_module("app"))
 
         config._schedule_provider_backfill_reconcile()
@@ -234,23 +218,7 @@ class AppStartupTests(TestCase):
             countdown=STARTUP_SWEEP_COUNTDOWNS["provider"],
             priority=settings.CELERY_TASK_PRIORITY_BACKGROUND,
         )
-
-    @patch("app.tasks.reconcile_provider_backfill.apply_async")
-    def test_schedule_provider_backfill_reconcile_skips_when_already_complete(
-        self,
-        mock_apply_async,
-    ):
-        """Completion now lives in the database, so it survives a Redis restart."""
-        BackfillReconcileState.objects.create(
-            key=PROVIDER_RECONCILE_KEY,
-            strategy_version=WATCH_PROVIDERS_BACKFILL_VERSION,
-            completed_at=timezone.now(),
-        )
-        config = FloppyAppConfig("app", import_module("app"))
-
-        config._schedule_provider_backfill_reconcile()
-
-        mock_apply_async.assert_not_called()
+        mock_should_run.assert_not_called()
 
     def test_startup_sweeps_are_staggered(self):
         """Five whole-library sweeps at once used to land on a warming container."""

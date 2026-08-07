@@ -19,11 +19,9 @@ services:
       # Keep DEBUG off in production: the debug toolbar slows every request
       # and disables Django's cached template loader.
       - DEBUG=False
-      # Web server concurrency: WEB_CONCURRENCY gunicorn worker processes,
-      # each serving GUNICORN_THREADS requests concurrently. The defaults
-      # (2 workers x 4 threads) prevent one slow request from blocking the UI.
-      - WEB_CONCURRENCY=2
-      - GUNICORN_THREADS=4
+      # Web concurrency is sized from the host automatically. Set
+      # WEB_CONCURRENCY/GUNICORN_THREADS only when you intentionally want to
+      # override the detected resource tier.
     volumes:
       - ./db:/floppy/db
     ports:

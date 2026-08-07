@@ -245,7 +245,6 @@ docker run -d \
   -e ALLOWED_HOSTS=floppy.yourdomain.com,your.lan.ip.address \
   -e DEBUG=False \
   -e DEMO_ACCOUNT_ENABLED=False \
-  -e GUNICORN_THREADS=4 \
   -e IGDB_ID=your_igdb_client_id \
   -e IGDB_SECRET=your_igdb_client_secret \
   -e LASTFM_API_KEY=your_lastfm_api_key \
@@ -258,7 +257,6 @@ docker run -d \
   -e TMDB_API=your_tmdb_api_key \
   -e TVDB_API_KEY=your_tvdb_api_key \
   -e TZ=America/Chicago \
-  -e WEB_CONCURRENCY=2 \
   -v floppy-db:/floppy/db \
   -p 8000:8000 \
   ghcr.io/dannyvfilms/floppy:latest
@@ -297,7 +295,7 @@ The only universally required variable is `SECRET`. For Docker installs you shou
 - `TRAKT_API` / `TRAKT_API_SECRET` - Trakt private-profile OAuth imports
 - `URLS` - your public URL if using a reverse proxy, for example `https://floppy.mydomain.com`
 - `ADMIN_ENABLED` - set to `True` to enable the Django admin interface at `/admin/` (see the [Admin Guide](https://github.com/dannyvfilms/Floppy/wiki/6.-Admin-and-Operations#admin-guide))
-- `WEB_CONCURRENCY` / `GUNICORN_THREADS` - web server concurrency. Both default to whatever suits the detected host (2 workers x 4 threads on a machine with room to spare, less on a small one); set them to override. Total concurrent requests = workers x threads
+- `WEB_CONCURRENCY` / `GUNICORN_THREADS` - optional web server concurrency overrides. Leave both unset to use the detected host profile, especially on small or swapless hosts. Total concurrent requests = workers x threads
 - `FLOPPY_RESOURCE_TIER` - `standard`, `constrained`, or `minimal`. Floppy normally detects this from the host's memory, swap and CPU and scales its process count, batch sizes and background task cadence to match, so you should not need to set it. Use it to force a tier if detection guesses wrong - for example `standard` on a host whose cgroup understates the memory actually available
 - `FLOPPY_REDIS_MAXMEMORY` - Redis memory ceiling Floppy applies at startup when Redis has none of its own, as bytes or a size like `256mb`. Set it to `0` to leave your Redis configuration completely untouched. Floppy never overrides a `maxmemory` you set yourself
 - `DEBUG` - leave unset or `False` in production; enabling it slows every request (debug toolbar, no template caching) and is only meant for troubleshooting
@@ -323,8 +321,6 @@ COMICVINE_API=COMICVINE_API
 LASTFM_API_KEY=LASTFM_API_KEY
 SECRET=SECRET
 DEBUG=False
-WEB_CONCURRENCY=2
-GUNICORN_THREADS=4
 ```
 
 ### Running on a small host
@@ -363,6 +359,38 @@ Two things worth knowing:
 
 Override any of it with `FLOPPY_RESOURCE_TIER`, `WEB_CONCURRENCY`, `GUNICORN_THREADS`, or
 `FLOPPY_REDIS_MAXMEMORY`.
+
+If an existing deployment has `WEB_CONCURRENCY` or `GUNICORN_THREADS` set from an
+older fixed-size configuration, remove those overrides before upgrading on a
+small host so the automatic resource profile can take effect.
+
+### Non-Docker Gunicorn installs
+
+Source-based deployments must load Floppy's Gunicorn configuration so the
+host-derived worker settings and database/Redis fork-safety hooks are active:
+
+```bash
+cd /path/to/floppy/src
+gunicorn --config python:config.gunicorn config.wsgi:application
+```
+
+Do not start the service with bare `gunicorn config.wsgi:application`; that
+skips the shipped configuration and its process lifecycle hooks.
+
+### Upgrading container images
+
+The migration conflict involving `0147_item_calendar_checked_at` and
+`0148_merge_duplicate_item_buckets` is fixed in current images by the
+`0149_merge_20260806_1556` merge migration. Pull the updated image before
+restarting instead of generating a local merge migration:
+
+```bash
+docker compose pull floppy
+docker compose up -d --force-recreate floppy
+```
+
+Because `latest` is mutable, pin a versioned image tag when reproducible
+upgrades matter.
 
 ### Persistence checklist
 

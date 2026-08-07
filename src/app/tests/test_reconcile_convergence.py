@@ -82,6 +82,26 @@ class ReconcileConvergenceTests(TestCase):
         self.assertEqual(result["reason"], "not_due")
         mock_queryset.assert_not_called()
 
+    def test_a_backing_off_reconcile_short_circuits_without_touching_items(
+        self,
+        _mock_drain,
+    ):
+        state = reconcile_state.get_state(
+            RECONCILE_KEY,
+            WATCH_PROVIDERS_BACKFILL_VERSION,
+        )
+        BackfillReconcileState.objects.filter(pk=state.pk).update(
+            next_run_after=timezone.now() + timedelta(hours=1),
+        )
+
+        with patch(
+            "app.tasks_providers._provider_items_queryset",
+        ) as mock_queryset:
+            result = ensure_provider_backfill_reconcile()
+
+        self.assertEqual(result["reason"], "not_due")
+        mock_queryset.assert_not_called()
+
     def test_a_pass_is_bounded_and_resumes_from_its_cursor(self, _mock_drain):
         """One pass must not enqueue the whole library."""
         for media_id in range(1, 11):

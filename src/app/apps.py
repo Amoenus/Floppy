@@ -224,17 +224,10 @@ class AppConfig(AppConfig):
             logger.warning("Failed to schedule IMDB person profile backfill: %s", error)
 
     def _schedule_genre_backfill_reconcile(self):
-        """Schedule a genre backfill reconcile unless one isn't needed."""
+        """Queue the genre reconcile gate for a worker to evaluate."""
         try:
-            from app import reconcile_state
-            from app.tasks_genre import RECONCILE_KEY
-
             tasks = import_module("app.tasks")
             version = tasks.GENRE_BACKFILL_VERSION
-            # The durable marker, not a cache key: a Redis restart used to erase
-            # any memory of having finished and re-run the whole sweep (#521).
-            if reconcile_state.should_run(RECONCILE_KEY, version) is None:
-                return
             # Atomic, so two gunicorn workers starting together can't both
             # enqueue - the get-then-set this replaces had exactly that race.
             if not self._add_startup_cache_key(
@@ -243,7 +236,10 @@ class AppConfig(AppConfig):
             ):
                 return
 
-            tasks.reconcile_genre_backfill.apply_async(
+            # The worker-side ensure task owns the durable state gate. Keeping
+            # that DB query out of ready() avoids checking out a pool
+            # connection during process startup.
+            tasks.ensure_genre_backfill_reconcile.apply_async(
                 kwargs={"strategy_version": version},
                 countdown=STARTUP_SWEEP_COUNTDOWNS["genre"],
                 priority=getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 9),
@@ -297,7 +293,7 @@ class AppConfig(AppConfig):
             )
 
     def _schedule_provider_backfill_reconcile(self):
-        """Schedule a one-time watch-provider backfill reconcile.
+        """Queue the watch-provider reconcile gate for a worker to evaluate.
 
         Items tracked before watch-provider data was persisted have no
         streaming-service info until their detail page happens to be visited
@@ -305,23 +301,22 @@ class AppConfig(AppConfig):
         off immediately so the new filter isn't empty until then.
         """
         try:
-            from app import reconcile_state
             from app.tasks_providers import (
-                RECONCILE_KEY,
                 WATCH_PROVIDERS_BACKFILL_VERSION,
-                reconcile_provider_backfill,
+                ensure_provider_backfill_reconcile,
             )
 
             version = WATCH_PROVIDERS_BACKFILL_VERSION
-            if reconcile_state.should_run(RECONCILE_KEY, version) is None:
-                return
             if not self._add_startup_cache_key(
                 f"provider_reconcile_startup_v{version}",
                 timeout=3600,
             ):
                 return
 
-            reconcile_provider_backfill.apply_async(
+            # The worker-side ensure task owns the durable state gate. Keeping
+            # that DB query out of ready() avoids checking out a pool
+            # connection during process startup.
+            ensure_provider_backfill_reconcile.apply_async(
                 kwargs={"strategy_version": version},
                 countdown=STARTUP_SWEEP_COUNTDOWNS["provider"],
                 priority=getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 9),
