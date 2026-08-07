@@ -1734,7 +1734,9 @@ class PocketCastsImporter:
         should_fetch_artwork = (
             not show.image
             or show.image == ""
-            or show.image.startswith(POCKETCASTS_API_BASE_URL)
+            or show.image.startswith(
+                (POCKETCASTS_API_BASE_URL, POCKETCASTS_PODCAST_API_BASE_URL)
+            )
         )
 
         if should_fetch_artwork:
@@ -1757,7 +1759,13 @@ class PocketCastsImporter:
                     show.title,
                     alternative_artwork,
                 )
-            elif not show.image or show.image == "":
+            elif (
+                not show.image
+                or show.image == ""
+                or show.image.startswith(
+                    (POCKETCASTS_API_BASE_URL, POCKETCASTS_PODCAST_API_BASE_URL)
+                )
+            ):
                 show.image = pocketcasts_image_url
                 updated = True
 

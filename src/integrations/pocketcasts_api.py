@@ -12,6 +12,7 @@ from django.utils import timezone
 logger = logging.getLogger(__name__)
 
 POCKETCASTS_API_BASE_URL = "https://api.pocketcasts.com"
+POCKETCASTS_IMAGE_BASE_URL = "https://static.pocketcasts.com"
 
 # Heuristic minimum length for a bare string response to be treated as a token.
 MIN_TOKEN_VALUE_LENGTH = 50
@@ -310,6 +311,6 @@ def get_podcast_image_url(podcast_uuid: str, size: int = 130) -> str:
         size: Image size (130 appears to be standard, but other sizes may exist)
 
     Returns:
-        URL to the podcast artwork image
+        Public URL to the podcast artwork image
     """
-    return f"{POCKETCASTS_API_BASE_URL}/discover/images/{size}/{podcast_uuid}.jpg"
+    return f"{POCKETCASTS_IMAGE_BASE_URL}/discover/images/{size}/{podcast_uuid}.jpg"
