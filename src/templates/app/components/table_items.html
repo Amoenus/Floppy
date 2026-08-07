@@ -18,7 +18,7 @@
   <tr class="hover:bg-[var(--color-surface-strong)] transition-colors cursor-pointer hover-tap{% if forloop.last and media_list.has_next %} pagination-trigger{% endif %}"
       x-data="{ trackOpen: false }"
       {% if list_ordering_enabled %}data-item-id="{{ media.item.id }}"{% endif %}
-      {% if forloop.last and media_list.has_next %}hx-get="{% if table_pagination_url %}{{ table_pagination_url }}{% else %}{% url 'medialist' media_type %}{% endif %}?page={{ media_list.next_page_number }}" hx-trigger="revealed threshold:150px once" hx-swap="beforeend" hx-target="{{ table_target_selector|default:'#media-table-body' }}" hx-include="{{ table_include_selector|default:'#filter-form' }}" hx-indicator="#loading-indicator" data-page="{{ media_list.next_page_number }}"{% endif %}>
+      {% if forloop.last and media_list.has_next %}{% if table_pagination_url or media_type %}hx-get="{% if table_pagination_url %}{{ table_pagination_url }}{% else %}{% url 'medialist' media_type %}{% endif %}?page={{ media_list.next_page_number }}" hx-trigger="revealed threshold:150px once" hx-swap="beforeend" hx-target="{{ table_target_selector|default:'#media-table-body' }}" hx-include="{{ table_include_selector|default:'#filter-form' }}" hx-indicator="#loading-indicator" data-page="{{ media_list.next_page_number }}"{% endif %}{% endif %}>
     {% if list_ordering_enabled %}
       <td class="w-8 px-2 py-3" x-cloak x-show="isOrderEditing">
         <div class="drag-handle cursor-grab flex justify-center text-[var(--color-text-muted)] hover:text-[var(--color-text)]"

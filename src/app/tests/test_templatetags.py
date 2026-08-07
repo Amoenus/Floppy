@@ -148,6 +148,10 @@ class AppTagsTests(TestCase):
 
             self.assertEqual(app_tags.media_type_readable_plural(media_type), expected)
 
+    def test_media_status_readable_preserves_unknown_provider_status(self):
+        """Provider metadata statuses must not break tracking-status rendering."""
+        self.assertEqual(app_tags.media_status_readable("Released"), "Released")
+
     def test_default_source(self):
         """Test the default_source filter."""
         # Test all media types from the MediaTypes class

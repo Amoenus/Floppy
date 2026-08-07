@@ -316,7 +316,13 @@ def media_status_readable(media_status):
     """Return the readable media status."""
     if not media_status:
         return "No Status"
-    return Status(media_status).label
+    try:
+        return Status(media_status).label
+    except ValueError:
+        # Imported/provider data can contain a metadata status that is not a
+        # user tracking status (for example, "Released"). Keep list pages
+        # renderable and preserve the value when no local label exists.
+        return str(media_status)
 
 
 @register.filter

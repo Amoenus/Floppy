@@ -618,6 +618,37 @@ class ListDetailViewTests(TestCase):
 
     @patch.object(get_user_model(), "update_preference")
     @patch.object(CustomList, "user_can_view")
+    def test_list_detail_view_filter_by_no_status(
+        self,
+        mock_user_can_view,
+        mock_update_preference,
+    ):
+        """No Status includes untracked items and rows with a null status."""
+        mock_update_preference.side_effect = ["date_added", None, "grid"]
+        mock_user_can_view.return_value = True
+
+        Movie.objects.create(
+            item=self.movie_item,
+            status=Status.COMPLETED.value,
+            user=self.user,
+        )
+        TV.objects.create(item=self.tv_item, status=None, user=self.user)
+
+        response = self.client.get(
+            reverse("list_detail", args=[self.custom_list.id])
+            + "?status=no_status",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["current_statuses"], ("no_status",))
+        self.assertEqual(
+            {item.id for item in response.context["items"]},
+            {self.tv_item.id, self.anime_item.id},
+        )
+        self.assertIn(("no_status", "No Status"), response.context["status_choices"])
+
+    @patch.object(get_user_model(), "update_preference")
+    @patch.object(CustomList, "user_can_view")
     def test_list_detail_view_sort_by_status(
         self,
         mock_user_can_view,
@@ -1082,6 +1113,8 @@ class ListDetailViewTests(TestCase):
             "title": "Test Movie",
         }
 
+        self.movie_item.genres = ["Drama"]
+        self.movie_item.save(update_fields=["genres"])
         Movie.objects.create(
             item=self.movie_item,
             status=Status.COMPLETED.value,
@@ -1114,6 +1147,7 @@ class ListDetailViewTests(TestCase):
         self.assertContains(response, 'id="list-table-body"')
         self.assertContains(response, "min-w-10 w-10 h-10 object-cover rounded-md")
         self.assertContains(response, 'id="media-column-config-data"')
+        self.assertContains(response, "Drama")
 
     @patch.object(get_user_model(), "update_preference")
     @patch.object(CustomList, "user_can_view")
