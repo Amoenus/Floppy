@@ -17,6 +17,9 @@
 #   scripts/bench.sh sweep <label>    curl each surface N times ($BENCH_RUNS,
 #                                     default 7); median/p90 per endpoint to
 #                                     stdout and $BENCH_DIR/results_<label>.tsv.
+#   scripts/bench.sh history-api <label>
+#                                     Benchmark the authenticated history API
+#                                     cases. Requires BENCH_API_KEY.
 #   scripts/bench.sh flush            Flush redis db 3 (cold-cache state).
 #   scripts/bench.sh down             Stop bench processes.
 #
@@ -141,10 +144,68 @@ cmd_sweep() {
   echo "saved -> $out"
 }
 
+cmd_history_api() {
+  local label="${1:?usage: scripts/bench.sh history-api <label>}"
+  local api_key="${BENCH_API_KEY:?BENCH_API_KEY is required}"
+  mkdir -p "$BENCH_DIR"
+  local out="$BENCH_DIR/results_history_api_${label}.tsv"
+  local endpoints=(
+    "history_types|/api/v1/history/?limit=3&types=episodes,movies"
+    "history_media_type|/api/v1/history/?limit=3&media_type=episode,movie"
+    "history_all|/api/v1/history/?limit=3"
+  )
+  echo -e "case\tendpoint\tstatus\tmedian_s\tp90_s\tmin_s\tmax_s\tbytes\tn" >"$out"
+  local entry name path code t bytes stats mode
+  for mode in cold warm; do
+    for entry in "${endpoints[@]}"; do
+      name="${entry%%|*}"
+      path="${entry#*|}"
+      local times=()
+      local statuses=()
+      local sizes=()
+      if [ "$mode" = warm ]; then
+        redis-cli -n 3 flushdb >/dev/null
+        for _ in 1 2; do
+          curl -sS -o /dev/null \
+            -H "X-API-Key: $api_key" \
+            "$BASE$path" >/dev/null
+        done
+      fi
+      for _ in $(seq "$BENCH_RUNS"); do
+        if [ "$mode" = cold ]; then
+          redis-cli -n 3 flushdb >/dev/null
+        fi
+        read -r code t bytes < <(
+          curl -sS -o /dev/null \
+            -H "X-API-Key: $api_key" \
+            -w '%{http_code} %{time_total} %{size_download}' \
+            "$BASE$path"
+        ) || true
+        statuses+=("$code")
+        times+=("$t")
+        sizes+=("$bytes")
+      done
+      stats=$(printf '%s\n' "${times[@]}" | sort -g | awk -v n="$BENCH_RUNS" '
+      { a[NR]=$1 }
+      END {
+        mid = (n % 2) ? a[(n+1)/2] : (a[n/2] + a[n/2+1]) / 2
+        p90i = int(0.9 * n + 0.999); if (p90i < 1) p90i = 1; if (p90i > n) p90i = n
+        printf "%.3f\t%.3f\t%.3f\t%.3f", mid, a[p90i], a[1], a[n]
+      }')
+      code="${statuses[0]}"
+      bytes="${sizes[0]}"
+      echo -e "${mode}\t${name}\t${code}\t${stats}\t${bytes}\t${BENCH_RUNS}" >>"$out"
+      echo "$mode/$name status=$code $stats bytes=$bytes"
+    done
+  done
+  echo "saved -> $out"
+}
+
 case "${1:-}" in
   up) cmd_up ;;
   down) cmd_down ;;
   flush) cmd_flush ;;
   sweep) shift; cmd_sweep "$@" ;;
+  history-api) shift; cmd_history_api "$@" ;;
   *) awk 'NR > 1 && /^set -euo/ { exit } NR > 1' "$0"; exit 1 ;;
 esac

@@ -35,6 +35,7 @@ from app.history_cache_lifecycle import (  # noqa: F401
 )
 from app.history_cache_reader import (  # noqa: F401
     get_cached_history_page,
+    get_cached_history_window,
     get_history_days,
     get_month_history,
     refresh_history_cache,
@@ -79,6 +80,7 @@ from app.history_cache_utils import (  # noqa: F401
     _refresh_lock_key,
     _resolve_genres,
     _resolve_music_genres,
+    expand_history_media_types,
     history_day_key,
     history_day_keys_for_range,
 )
@@ -961,9 +963,7 @@ def build_history_days(
         game_logging_style,
     )
 
-    media_type_filter = {
-        t.strip() for t in (filters.get("media_type") or "").split(",") if t.strip()
-    }
+    media_type_filter = expand_history_media_types(filters.get("media_type")) or set()
     target_media_id = filters.get("media_id")
     target_source = filters.get("source")
     season_number_filter = filters.get("season_number")
@@ -989,20 +989,86 @@ def build_history_days(
     # section. The unfiltered global history page never does this.
     include_undated = bool(target_media_id and target_source)
 
+    # Decide which categories are needed before creating any querysets. This
+    # is important for API type filters: pagination is over days, so building
+    # every category before slicing defeats the filter's purpose.
+    has_music_filter = bool(filters.get("album") or filters.get("artist"))
+    has_tv_filter = bool(
+        filters.get("tv") or filters.get("season") or season_number_filter is not None
+    )
+    has_podcast_filter = bool(podcast_show_filter)
+    has_person_filter = bool(person_source_filter and person_id_filter)
+    process_all = not (
+        has_music_filter
+        or has_tv_filter
+        or has_podcast_filter
+        or has_person_filter
+        or media_type_filter
+    )
+    process_episodes = (
+        process_all
+        or has_tv_filter
+        or has_person_filter
+        or bool(
+            media_type_filter
+            & {
+                MediaTypes.TV.value,
+                MediaTypes.SEASON.value,
+                MediaTypes.EPISODE.value,
+            },
+        )
+    )
+    process_movies = (
+        process_all
+        or has_person_filter
+        or MediaTypes.MOVIE.value in media_type_filter
+    )
+    process_reading = (
+        process_all
+        or has_person_filter
+        or bool(
+            media_type_filter
+            & {
+                MediaTypes.BOOK.value,
+                MediaTypes.COMIC.value,
+                MediaTypes.MANGA.value,
+                MediaTypes.ANIME.value,
+            },
+        )
+    )
+    process_music = (
+        process_all
+        or has_music_filter
+        or MediaTypes.MUSIC.value in media_type_filter
+    )
+    process_podcasts = (
+        process_all
+        or has_podcast_filter
+        or MediaTypes.PODCAST.value in media_type_filter
+    )
+    process_games = process_all or MediaTypes.GAME.value in media_type_filter
+    process_boardgames = (
+        process_all or MediaTypes.BOARDGAME.value in media_type_filter
+    )
+
     # --- Fetch querysets ---
     episodes_start = time.perf_counter()
-    episodes = _fetch_episode_data(
-        user,
-        filters,
-        start_date,
-        end_date,
-        media_type_filter,
-        target_media_id,
-        target_source,
-        season_number_filter,
-        person_source_filter,
-        person_id_filter,
-        include_undated,
+    episodes = (
+        _fetch_episode_data(
+            user,
+            filters,
+            start_date,
+            end_date,
+            media_type_filter,
+            target_media_id,
+            target_source,
+            season_number_filter,
+            person_source_filter,
+            person_id_filter,
+            include_undated,
+        )
+        if process_episodes
+        else []
     )
     logger.info(
         "history_build_episodes user_id=%s count=%s elapsed_ms=%.2f",
@@ -1012,17 +1078,21 @@ def build_history_days(
     )
 
     movies_start = time.perf_counter()
-    movies, movie_play_map = _fetch_movie_data(
-        user,
-        filters,
-        start_date,
-        end_date,
-        media_type_filter,
-        target_media_id,
-        target_source,
-        person_source_filter,
-        person_id_filter,
-        include_undated,
+    movies, movie_play_map = (
+        _fetch_movie_data(
+            user,
+            filters,
+            start_date,
+            end_date,
+            media_type_filter,
+            target_media_id,
+            target_source,
+            person_source_filter,
+            person_id_filter,
+            include_undated,
+        )
+        if process_movies
+        else (Movie.objects.none(), {})
     )
     try:
         movies_count = movies.count()
@@ -1037,16 +1107,20 @@ def build_history_days(
     )
 
     games_start = time.perf_counter()
-    games = (
-        Game.objects.filter(user=user)
-        .select_related("item")
-        .order_by("-end_date", "-created_at")
-    )
-    boardgames = (
-        BoardGame.objects.filter(user=user)
-        .select_related("item")
-        .order_by("-end_date", "-created_at")
-    )
+    games = Game.objects.none()
+    boardgames = BoardGame.objects.none()
+    if process_games:
+        games = (
+            Game.objects.filter(user=user)
+            .select_related("item")
+            .order_by("-end_date", "-created_at")
+        )
+    if process_boardgames:
+        boardgames = (
+            BoardGame.objects.filter(user=user)
+            .select_related("item")
+            .order_by("-end_date", "-created_at")
+        )
     if target_media_id and target_source:
         if MediaTypes.GAME.value in media_type_filter:
             games = games.filter(
@@ -1084,11 +1158,13 @@ def build_history_days(
         boardgames_count = None
 
     music_start = time.perf_counter()
-    music_entries = (
-        Music.objects.filter(user=user, end_date__isnull=False)
-        .select_related("item", "album", "album__artist", "track")
-        .order_by("-end_date")
-    )
+    music_entries = Music.objects.none()
+    if process_music:
+        music_entries = (
+            Music.objects.filter(user=user, end_date__isnull=False)
+            .select_related("item", "album", "album__artist", "track")
+            .order_by("-end_date")
+        )
     if filters.get("album"):
         music_entries = music_entries.filter(album_id=filters["album"])
     if filters.get("artist"):
@@ -1108,38 +1184,45 @@ def build_history_days(
         music_entries_count = None
 
     podcast_start = time.perf_counter()
-    from django.apps import apps
+    podcast_history_records = []
+    podcasts_lookup = {}
+    if process_podcasts:
+        from django.apps import apps
 
-    HistoricalPodcast = apps.get_model("app", "HistoricalPodcast")
-    podcast_history_records = HistoricalPodcast.objects.filter(
-        models.Q(history_user=user) | models.Q(history_user__isnull=True),
-        end_date__isnull=False,
-    ).order_by("-end_date")
-    if start_date:
+        HistoricalPodcast = apps.get_model("app", "HistoricalPodcast")
+        podcast_history_records = HistoricalPodcast.objects.filter(
+            models.Q(history_user=user) | models.Q(history_user__isnull=True),
+            end_date__isnull=False,
+        ).order_by("-end_date")
+    if process_podcasts and start_date:
         podcast_history_records = podcast_history_records.filter(
             end_date__gte=start_date
         )
-    if end_date:
+    if process_podcasts and end_date:
         podcast_history_records = podcast_history_records.filter(end_date__lte=end_date)
-    if podcast_show_filter:
+    if process_podcasts and podcast_show_filter:
         podcast_history_records = podcast_history_records.filter(
             show_id=podcast_show_filter
         )
-    try:
-        podcast_history_count = podcast_history_records.count()
-    except Exception:
-        podcast_history_count = None
-    podcast_ids = list(set(podcast_history_records.values_list("id", flat=True)))
-    podcasts_lookup = (
-        {
+    if process_podcasts:
+        try:
+            podcast_history_count = podcast_history_records.count()
+        except Exception:
+            podcast_history_count = None
+    else:
+        podcast_history_count = 0
+    podcast_ids = (
+        list(set(podcast_history_records.values_list("id", flat=True)))
+        if process_podcasts
+        else []
+    )
+    if process_podcasts and podcast_ids:
+        podcasts_lookup = {
             p.id: p
             for p in Podcast.objects.filter(
                 id__in=podcast_ids, user=user
             ).select_related("item", "episode", "episode__show", "show")
         }
-        if podcast_ids
-        else {}
-    )
     if (
         target_media_id
         and target_source
@@ -1156,21 +1239,6 @@ def build_history_days(
                 and str(pod.item.source) == target_source
             )
         ]
-
-    # --- Filter flags ---
-    has_music_filter = bool(filters.get("album") or filters.get("artist"))
-    has_tv_filter = bool(
-        filters.get("tv") or filters.get("season") or season_number_filter is not None
-    )
-    has_podcast_filter = bool(podcast_show_filter)
-    has_person_filter = bool(person_source_filter and person_id_filter)
-    process_all = not (
-        has_music_filter
-        or has_tv_filter
-        or has_podcast_filter
-        or has_person_filter
-        or media_type_filter
-    )
 
     genre_filter = filters.get("genre")
     implied_genre_filter = filters.get("implied_genre")
@@ -1276,7 +1344,14 @@ def build_history_days(
         process_all
         or has_tv_filter
         or has_person_filter
-        or MediaTypes.TV.value in media_type_filter
+        or bool(
+            media_type_filter
+            & {
+                MediaTypes.TV.value,
+                MediaTypes.SEASON.value,
+                MediaTypes.EPISODE.value,
+            },
+        )
     ):
         episode_keys = [
             (
@@ -1343,21 +1418,26 @@ def build_history_days(
             entries.append(entry)
             entry_counts["movies"] += 1
 
-    for entry in _build_reading_entries(
-        user,
-        filters,
-        start_date,
-        end_date,
-        media_type_filter,
-        target_media_id,
-        target_source,
-        person_source_filter,
-        person_id_filter,
-        genre_filters,
-        reading_media_types,
-        process_all=process_all,
-        include_undated=include_undated,
-    ):
+    reading_entries = (
+        _build_reading_entries(
+            user,
+            filters,
+            start_date,
+            end_date,
+            media_type_filter,
+            target_media_id,
+            target_source,
+            person_source_filter,
+            person_id_filter,
+            genre_filters,
+            reading_media_types,
+            process_all=process_all,
+            include_undated=include_undated,
+        )
+        if process_reading
+        else []
+    )
+    for entry in reading_entries:
         entries.append(entry)
         mt = entry["media_type"]
         if mt == MediaTypes.BOOK.value:

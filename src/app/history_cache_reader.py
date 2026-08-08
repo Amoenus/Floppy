@@ -3,11 +3,13 @@
 import logging
 import time
 from collections.abc import Iterable
+from datetime import date
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.utils import formats, timezone
 
+from app import helpers
 from app.history_cache_day_builder import (
     _build_and_cache_history_day,
     build_history_day,
@@ -40,6 +42,8 @@ from app.history_cache_utils import (
     _day_key_from_value,
     _normalize_logging_style,
     _refresh_lock_key,
+    _typed_history_index_key,
+    expand_history_media_types,
 )
 
 logger = logging.getLogger(__name__)
@@ -211,6 +215,152 @@ def get_history_days(
         (time.perf_counter() - start) * 1000,
     )
     return history_days
+
+
+def _filter_cached_history_days_by_media_type(history_days, media_types):
+    """Filter cached day payloads and recalculate their aggregate totals."""
+    filtered_days = []
+    for day in history_days:
+        entries = [
+            entry
+            for entry in day.get("entries", [])
+            if entry.get("media_type") in media_types
+        ]
+        if not entries:
+            continue
+        filtered_day = dict(day)
+        filtered_day["entries"] = entries
+        total_minutes = sum(entry.get("runtime_minutes") or 0 for entry in entries)
+        filtered_day["total_minutes"] = total_minutes
+        filtered_day["total_runtime_display"] = helpers.minutes_to_hhmm(
+            total_minutes,
+        ) if total_minutes else "0min"
+        filtered_days.append(filtered_day)
+    return filtered_days
+
+
+def get_cached_history_window(
+    user,
+    limit,
+    offset,
+    filters=None,
+    logging_style_override=None,
+):
+    """Read one API page from indexed/day-cached history payloads."""
+    filters = filters or {}
+    unsupported_filters = set(filters) - {"media_type"}
+    if unsupported_filters:
+        raise ValueError(
+            "Cached history only supports media_type filters: "
+            + ", ".join(sorted(unsupported_filters)),
+        )
+
+    logging_style = _normalize_logging_style(logging_style_override, user)
+    requested_media_types = expand_history_media_types(filters.get("media_type"))
+    cache_entry = cache.get(_cache_key(user.id, logging_style))
+    if requested_media_types is not None:
+        typed_cache_key = _typed_history_index_key(
+            user.id,
+            logging_style,
+            requested_media_types,
+        )
+        typed_cache_entry = cache.get(typed_cache_key)
+        if (
+            typed_cache_entry
+            and typed_cache_entry.get("built_at")
+            and timezone.now() - typed_cache_entry["built_at"] <= HISTORY_STALE_AFTER
+        ):
+            index_days = typed_cache_entry.get("days", [])
+        else:
+            index_days = build_history_index(
+                user,
+                logging_style_override=logging_style,
+                media_types=requested_media_types,
+            )
+            cache_history_index(
+                user.id,
+                logging_style,
+                index_days,
+                media_types=requested_media_types,
+            )
+    elif cache_entry:
+        index_days = cache_entry.get("days", [])
+        built_at = cache_entry.get("built_at")
+        if (
+            built_at
+            and timezone.now() - built_at > HISTORY_STALE_AFTER
+            and _clean_refresh_lock(_refresh_lock_key(user.id, logging_style)) is None
+        ):
+            schedule_history_refresh(user.id, logging_style, warm_days=0)
+    else:
+        index_days = build_history_index(
+            user,
+            logging_style_override=logging_style,
+        )
+        cache_history_index(user.id, logging_style, index_days)
+
+    normalized_day_keys = [
+        day_key
+        for day_key in (_day_key_from_value(value) for value in index_days)
+        if day_key
+    ]
+    total_days = len(normalized_day_keys)
+    page_day_keys = normalized_day_keys[offset : offset + limit]
+    payload_keys = [
+        _day_cache_key(user.id, logging_style, day_key)
+        for day_key in page_day_keys
+    ]
+    payloads = cache.get_many(payload_keys) if payload_keys else {}
+    history_days = []
+    missing_day_keys = []
+    for day_key in page_day_keys:
+        payload = payloads.get(_day_cache_key(user.id, logging_style, day_key))
+        if payload is None:
+            missing_day_keys.append(day_key)
+            continue
+        day_payload = _deserialize_history_day(payload)
+        if requested_media_types is not None:
+            filtered_days = _filter_cached_history_days_by_media_type(
+                [day_payload],
+                requested_media_types,
+            )
+            if not filtered_days:
+                missing_day_keys.append(day_key)
+                continue
+            day_payload = filtered_days[0]
+        history_days.append(day_payload)
+
+    for day_key in missing_day_keys:
+        day_payload = build_history_day(
+            user,
+            day_key,
+            logging_style_override=logging_style,
+            media_types=requested_media_types,
+        )
+        if day_payload is None:
+            continue
+        history_days.append(day_payload)
+        if requested_media_types is None:
+            cache.set(
+                _day_cache_key(user.id, logging_style, day_key),
+                _serialize_history_day(day_payload),
+                timeout=HISTORY_DAY_CACHE_TIMEOUT,
+            )
+
+    history_days.sort(key=lambda day: day.get("date") or date.min, reverse=True)
+    logger.info(
+        "history_cached_window user_id=%s logging_style=%s filters=%s indexed=%s offset=%s limit=%s cached=%s missing=%s returned=%s",
+        user.id,
+        logging_style,
+        filters,
+        total_days,
+        offset,
+        limit,
+        len(payloads),
+        len(missing_day_keys),
+        len(history_days),
+    )
+    return history_days, total_days
 
 
 def get_cached_history_page(user, page_number: int = 1, logging_style_override=None):
