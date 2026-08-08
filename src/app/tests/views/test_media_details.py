@@ -3276,6 +3276,9 @@ class MediaDetailsViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Add rating")
         self.assertNotContains(response, "Click to edit")
+        self.assertNotContains(response, "FIRST PLAYED")
+        self.assertNotContains(response, "LAST PLAYED")
+        self.assertNotContains(response, "TOTAL HOURS")
         self.assertContains(
             response, "x-text=\"rating ? 'Edit rating' : 'Add rating'\"", html=False
         )
