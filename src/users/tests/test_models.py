@@ -608,7 +608,8 @@ class UserGetImportTasksTests(TestCase):
         mock_process_task_result,
     ):
         """Koito's one-off import and per-user poll schedule should appear in
-        import history and Active Periodic Imports."""
+        import history and Active Periodic Imports.
+        """
         mock_task = MagicMock()
         mock_task.summary = "Imported 10 Koito listen(s)."
         mock_task.errors = None

@@ -6,7 +6,6 @@ from django.utils import timezone
 from django_celery_results.models import TaskResult
 
 from app import signals, tasks
-from integrations.tasks import scheduled_backup_export
 from app.models import (
     CREDITS_BACKFILL_VERSION,
     CreditRoleType,
@@ -19,6 +18,7 @@ from app.models import (
     PersonGender,
     Sources,
 )
+from integrations.tasks import scheduled_backup_export
 
 
 class TaskResultOnPublishTests(TestCase):
@@ -113,7 +113,7 @@ class TaskResultOnCompletionTests(TestCase):
         """
         user = get_user_model().objects.create_user(
             username="export-signal-user",
-            password="testpass123",  # noqa: S106
+            password="testpass123",
         )
         TaskResult.objects.create(
             task_id=self.TASK_ID,
@@ -121,7 +121,7 @@ class TaskResultOnCompletionTests(TestCase):
             task_name="Scheduled backup export",
         )
 
-        with patch("integrations.exports.write_backup", return_value="/tmp/backup.csv"):
+        with patch("integrations.exports.write_backup", return_value="backup.csv"):
             scheduled_backup_export.apply_async(
                 kwargs={"user_id": user.id},
                 task_id=self.TASK_ID,
@@ -129,7 +129,7 @@ class TaskResultOnCompletionTests(TestCase):
 
         task = TaskResult.objects.get(task_id=self.TASK_ID)
         self.assertEqual(task.status, "SUCCESS")
-        self.assertIn("Backup saved to /tmp/backup.csv", task.result)
+        self.assertIn("Backup saved to backup.csv", task.result)
 
 
 class ItemSignalTests(TestCase):

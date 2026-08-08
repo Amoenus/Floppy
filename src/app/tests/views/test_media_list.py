@@ -671,7 +671,8 @@ class MediaListViewTests(TestCase):
     def test_music_media_list_queues_background_artist_image_backfill(self):
         """Missing artist images should be backfilled via a queued Celery task,
         not a synchronous write during the GET request (avoids DB lock 503s
-        when this races with a concurrent importer)."""
+        when this races with a concurrent importer).
+        """
         artist = Artist.objects.create(name="No Image Artist", image="")
         ArtistTracker.objects.create(
             user=self.user,
