@@ -261,6 +261,74 @@ class ProgressEditTV(TestCase):
             ).exists(),
         )
 
+    def test_progress_increase_uses_same_next_episode_target_as_next_ep(self):
+        """Quick update follows the later tracked season selected by Next ep."""
+        from app.templatetags import app_tags
+        from events.models import Event
+
+        later_item = Item.objects.create(
+            media_id="1668",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Friends",
+            image="http://example.com/image.jpg",
+            season_number=2,
+        )
+        later_season = Season.objects.create(
+            item=later_item,
+            user=self.user,
+            related_tv=self.tv,
+            status=Status.PLANNING.value,
+        )
+        for episode_number in (1, 2):
+            Event.objects.create(
+                item=later_item,
+                content_number=episode_number,
+                datetime=datetime.datetime.now(datetime.UTC),
+            )
+
+        watched_item = Item.objects.create(
+            media_id="1668",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="Friends",
+            image="http://example.com/image.jpg",
+            season_number=2,
+            episode_number=1,
+        )
+        Episode.objects.create(
+            item=watched_item,
+            related_season=later_season,
+            end_date=datetime.datetime(2023, 6, 1, 0, 0, tzinfo=datetime.UTC),
+        )
+
+        next_ep_url = app_tags.next_episode_url(self.item_tv, self.tv)
+        self.assertIn("/season/2/episode/2", next_ep_url)
+
+        self.client.post(
+            reverse(
+                "progress_edit",
+                kwargs={
+                    "media_type": MediaTypes.TV.value,
+                    "instance_id": self.tv.id,
+                },
+            ),
+            {"operation": "increase"},
+        )
+
+        self.assertTrue(
+            Episode.objects.filter(
+                related_season=later_season,
+                item__episode_number=2,
+            ).exists(),
+        )
+        self.assertFalse(
+            Episode.objects.filter(
+                related_season=self.season,
+                item__episode_number=2,
+            ).exists(),
+        )
+
     def test_progress_decrease(self):
         """Test the decrease of progress for a TV show."""
         self.client.post(

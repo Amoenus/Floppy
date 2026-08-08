@@ -11,6 +11,7 @@ from unidecode import unidecode
 
 from app import config, helpers
 from app.models import Item, MediaTypes, Sources, Status
+from app.providers import tmdb
 from app.services import metadata_resolution
 from users.models import TimeFormatChoices
 from users.templatetags.user_tags import user_date_format, user_time_format
@@ -967,6 +968,8 @@ def _untracked_season_next_episode_url(item, seasons, actual_media_type):
             content_number__isnull=False,
         )
         .exclude(item__season_number__in=tracked_season_numbers)
+        .exclude(datetime__year__lt=1900)
+        .filter(datetime__lte=timezone.now())
         .order_by("item__season_number", "content_number")
         .select_related("item")
         .first()
@@ -987,6 +990,46 @@ def _untracked_season_next_episode_url(item, seasons, actual_media_type):
             "season_number": event.item.season_number,
             "episode_number": event.content_number,
         },
+    )
+
+
+def _next_episode_number_for_season_item(item, media):
+    """Resolve a season-card target from locally known released episodes."""
+    if hasattr(media, "next_episode_number"):
+        return media.next_episode_number()
+
+    is_dict = isinstance(item, dict)
+    media_id = item["media_id"] if is_dict else getattr(item, "media_id", None)
+    source = item["source"] if is_dict else getattr(item, "source", None)
+    season_number = (
+        item["season_number"] if is_dict else getattr(item, "season_number", None)
+    )
+    if not media_id or not source or season_number is None:
+        return None
+
+    from events.models import Event
+
+    event_numbers = Event.objects.filter(
+        item__media_id=media_id,
+        item__source=source,
+        item__media_type=MediaTypes.SEASON.value,
+        item__season_number=season_number,
+        content_number__isnull=False,
+        datetime__lte=timezone.now(),
+    ).exclude(datetime__year__lt=1900).values_list("content_number", flat=True)
+    episode_numbers = sorted({int(number) for number in event_numbers})
+    if not episode_numbers:
+        max_progress = getattr(media, "max_progress", None)
+        try:
+            max_progress = int(max_progress)
+        except (TypeError, ValueError):
+            max_progress = None
+        if max_progress and max_progress > 0:
+            episode_numbers = range(1, max_progress + 1)
+
+    return tmdb.find_next_episode(
+        getattr(media, "progress", 0) or 0,
+        [{"episode_number": number} for number in episode_numbers],
     )
 
 
@@ -1023,8 +1066,9 @@ def next_episode_url(item, media):
         )
         is_anime = library_media_type == MediaTypes.ANIME.value
         url_name = "anime_episode_details" if is_anime else "episode_details"
-        progress = getattr(media, "progress", None) or 0
-        next_ep = int(progress) + 1
+        next_ep = _next_episode_number_for_season_item(item, media)
+        if next_ep is None:
+            return ""
         return reverse(
             url_name,
             kwargs={
@@ -1056,27 +1100,22 @@ def next_episode_url(item, media):
                     kwargs={"media_id": media_id, "title": slug_title},
                 )
             return ""
-        # Seasons are already prefetched for TV home cards — no extra query
-        # Use the derived status rather than the raw field: bulk imports can
-        # leave a season's stored status at PLANNING even with real watch
-        # progress logged (see Episode.save's metadata-fetch-failure path),
-        # which otherwise makes this button skip straight to the next season.
-        in_progress = [
-            s
-            for s in seasons.all()
-            if getattr(getattr(s, "item", None), "season_number", 0) != 0
-            and s.derived_status_from_episode_progress() == Status.IN_PROGRESS.value
-        ]
-        if not in_progress:
+
+        next_episode_target = (
+            media.next_episode_target()
+            if hasattr(media, "next_episode_target")
+            else None
+        )
+        if next_episode_target is None:
             return _untracked_season_next_episode_url(item, seasons, actual_media_type)
-        season = min(in_progress, key=lambda s: s.item.season_number)
+
+        season, next_ep = next_episode_target
         season_item = season.item
         slug_title = (
             slug(season_item.title) or slug(str(season_item.media_id)) or "item"
         )
         is_anime = actual_media_type == MediaTypes.ANIME.value
         url_name = "anime_episode_details" if is_anime else "episode_details"
-        next_ep = int(getattr(season, "progress", 0) or 0) + 1
         return reverse(
             url_name,
             kwargs={

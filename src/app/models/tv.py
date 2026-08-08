@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 # user's resolve_watch_date behavior) from an explicit value, including None
 # (blank date deliberately chosen on the completion form).
 _UNSET_END_DATE = object()
+MIN_VALID_RELEASE_YEAR = 1900
 
 
 def _runtime_minutes(value):
@@ -174,6 +175,10 @@ class TV(Media):
             key=lambda season: season.item.season_number,
         )
 
+        next_episode_target = self.next_episode_target()
+        if next_episode_target is not None:
+            return next_episode_target[0]
+
         for season in seasons:
             if season.status == Status.IN_PROGRESS.value:
                 return season
@@ -194,6 +199,40 @@ class TV(Media):
                     return season
 
         return None
+
+    def next_episode_target(self):
+        """Return the first tracked season and episode that can be watched next."""
+        seasons = sorted(
+            (season for season in self.seasons.all() if season.item.season_number != 0),
+            key=lambda season: season.item.season_number,
+        )
+        has_caught_up_season = False
+        planning_continuation = None
+
+        for season in seasons:
+            if season.status in {Status.DROPPED.value, Status.PAUSED.value}:
+                continue
+
+            next_episode_number = season.next_episode_number()
+            if next_episode_number is None:
+                has_caught_up_season = (
+                    season.status == Status.COMPLETED.value or season.progress > 0
+                )
+                continue
+
+            if season.progress > 0 or season.status == Status.IN_PROGRESS.value:
+                return season, next_episode_number
+
+            if (
+                has_caught_up_season
+                and season.status == Status.PLANNING.value
+                and planning_continuation is None
+            ):
+                planning_continuation = season, next_episode_number
+
+            has_caught_up_season = False
+
+        return planning_continuation
 
     def increase_progress(self):
         """Increase TV progress by advancing the active season."""
@@ -475,6 +514,52 @@ class Season(Media):
         """Return the title of the media and season number."""
         return f"{self.item.title} S{self.item.season_number}"
 
+    def available_episode_numbers(self):
+        """Return released episode numbers known by the local calendar."""
+        prefetched_events = getattr(self.item, "prefetched_events", None)
+        if prefetched_events is None:
+            event_rows = events.models.Event.objects.filter(
+                item=self.item,
+                content_number__isnull=False,
+            ).only("content_number", "datetime")
+        else:
+            event_rows = prefetched_events
+
+        now = timezone.now()
+        episode_numbers = set()
+        for event in event_rows:
+            episode_number = getattr(event, "content_number", None)
+            event_datetime = getattr(event, "datetime", None)
+            if episode_number is None or event_datetime is None:
+                continue
+            if event_datetime.year < MIN_VALID_RELEASE_YEAR or event_datetime > now:
+                continue
+            try:
+                episode_numbers.add(int(episode_number))
+            except (TypeError, ValueError):
+                continue
+
+        return sorted(episode_numbers)
+
+    def next_episode_number(self, episode_numbers=None):
+        """Return the next released episode, or none when the season is caught up."""
+        if episode_numbers is None:
+            episode_numbers = self.available_episode_numbers()
+
+        if not episode_numbers:
+            max_progress = getattr(self, "max_progress", None)
+            try:
+                max_progress = int(max_progress)
+            except (TypeError, ValueError):
+                max_progress = None
+            if max_progress and max_progress > 0:
+                episode_numbers = range(1, max_progress + 1)
+
+        return providers.tmdb.find_next_episode(
+            self.progress,
+            [{"episode_number": number} for number in episode_numbers],
+        )
+
     @tracker  # postpone field reset until after the save
     def save(self, *args, **kwargs):
         """Save the media instance."""
@@ -718,14 +803,7 @@ class Season(Media):
         )
         episodes = season_metadata["episodes"]
 
-        if self.progress == 0:
-            # start watching from the first episode
-            next_episode_number = episodes[0]["episode_number"]
-        else:
-            next_episode_number = providers.tmdb.find_next_episode(
-                self.progress,
-                episodes,
-            )
+        next_episode_number = providers.tmdb.find_next_episode(self.progress, episodes)
 
         now = timezone.now()
 

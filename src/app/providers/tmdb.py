@@ -2074,22 +2074,27 @@ def process_episodes(season_metadata, episodes_in_db):
 
 
 def find_next_episode(episode_number, episodes_metadata):
-    """Find the next episode number."""
-    # Find the current episode in the sorted list
-    current_episode_index = None
-    for index, episode in enumerate(episodes_metadata):
-        if episode["episode_number"] == episode_number:
-            current_episode_index = index
-            break
+    """Return the first known episode number after the current one."""
+    try:
+        current_episode_number = int(episode_number or 0)
+    except (TypeError, ValueError):
+        current_episode_number = 0
 
-    # If episode not found or it's the last episode, return None
-    if current_episode_index is None or current_episode_index + 1 >= len(
-        episodes_metadata,
-    ):
-        return None
-
-    # Return the next episode number
-    return episodes_metadata[current_episode_index + 1]["episode_number"]
+    episode_numbers = sorted(
+        {
+            int(episode["episode_number"])
+            for episode in episodes_metadata or []
+            if episode.get("episode_number") is not None
+        },
+    )
+    return next(
+        (
+            candidate
+            for candidate in episode_numbers
+            if candidate > current_episode_number
+        ),
+        None,
+    )
 
 
 EPISODE_ERROR_CACHE_KEY = "__error_status__"
