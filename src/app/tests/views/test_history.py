@@ -2,6 +2,7 @@ from datetime import timedelta
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -246,6 +247,96 @@ class DeleteHistoryRecordViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 404)
+
+    @patch("app.history_cache_reader.schedule_history_day_cache_coverage")
+    @patch("app.history_cache_lifecycle.schedule_history_refresh", return_value=True)
+    def test_delete_history_record_evicts_cached_day_before_refresh(
+        self,
+        mock_schedule_history_refresh,
+        _mock_schedule_history_day_cache_coverage,
+    ):
+        """A deleted play must not survive while its async cache refresh waits."""
+        cache.clear()
+        logging_style = "repeats"
+        earlier_time = self.movie.end_date - timedelta(days=400)
+        earlier_movie = Movie.objects.create(
+            item=self.item,
+            user=self.user,
+            status=Status.COMPLETED.value,
+            progress=1,
+            start_date=earlier_time,
+            end_date=earlier_time,
+        )
+        earlier_history = earlier_movie.history.first()
+        earlier_history.history_user = self.user
+        earlier_history.save(update_fields=["history_user"])
+
+        later_day_key = history_cache.history_day_key(self.movie.end_date)
+        earlier_day_key = history_cache.history_day_key(earlier_movie.end_date)
+        history_cache.refresh_history_cache(
+            self.user.id,
+            logging_style=logging_style,
+            day_keys=[later_day_key, earlier_day_key],
+        )
+        later_cache_key = history_cache._day_cache_key(
+            self.user.id,
+            logging_style,
+            later_day_key,
+        )
+        earlier_cache_key = history_cache._day_cache_key(
+            self.user.id,
+            logging_style,
+            earlier_day_key,
+        )
+        self.assertTrue(cache.get(later_cache_key)["entries"])
+        self.assertTrue(cache.get(earlier_cache_key)["entries"])
+        mock_schedule_history_refresh.reset_mock()
+
+        response = self.client.delete(
+            reverse(
+                "delete_history_record",
+                kwargs={
+                    "media_type": MediaTypes.MOVIE.value,
+                    "history_id": self.history_id,
+                },
+            ),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(cache.get(later_cache_key))
+        for logging_style in ("sessions", "repeats"):
+            mock_schedule_history_refresh.assert_any_call(
+                self.user.id,
+                logging_style,
+                warm_days=0,
+                day_keys=[later_day_key],
+            )
+
+        later_page = self.client.get(
+            reverse("history")
+            + f"?year={self.movie.end_date.year}&m={self.movie.end_date.month}",
+        )
+        self.assertEqual(later_page.status_code, 200)
+        self.assertFalse(
+            any(
+                entry["title"] == "Test Movie"
+                for day in later_page.context["history_days"]
+                for entry in day["entries"]
+            ),
+        )
+
+        earlier_page = self.client.get(
+            reverse("history")
+            + f"?year={earlier_movie.end_date.year}&m={earlier_movie.end_date.month}",
+        )
+        self.assertEqual(earlier_page.status_code, 200)
+        self.assertTrue(
+            any(
+                entry["title"] == "Test Movie"
+                for day in earlier_page.context["history_days"]
+                for entry in day["entries"]
+            ),
+        )
 
 
 class HistoryMonthViewTests(TestCase):

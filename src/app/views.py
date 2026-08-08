@@ -1443,13 +1443,14 @@ def delete_history_record(request, media_type, history_id):
             history_day_key = history_cache.history_day_key(activity_dt)
             history_day_keys = [history_day_key] if history_day_key else []
 
-        # Keep the previous day payload readable until the targeted refresh
-        # overwrites it so later navigation does not fall into a cold-miss path.
+        # Evict the affected payload immediately; the targeted refresh remains
+        # asynchronous, and a cache miss is rebuilt inline by the history reader.
         history_cache.invalidate_history_days(
             request.user.id,
             day_keys=history_day_keys,
             logging_styles=logging_styles,
             reason="history_delete",
+            force=True,
         )
         statistics_cache.invalidate_statistics_days(
             request.user.id,

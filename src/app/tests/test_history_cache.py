@@ -207,6 +207,37 @@ class HistoryMonthCacheTests(TestCase):
             day_keys=[self.today_key],
         )
 
+    @patch("app.history_cache_lifecycle.schedule_history_refresh", return_value=True)
+    def test_force_invalidate_history_days_evicts_payload_before_async_refresh(
+        self,
+        mock_schedule_history_refresh,
+    ):
+        history_cache.refresh_history_cache(
+            self.user.id, logging_style=self.logging_style
+        )
+        cache_key = history_cache._day_cache_key(
+            self.user.id,
+            self.logging_style,
+            self.today_key,
+        )
+        self.assertIsNotNone(cache.get(cache_key))
+
+        history_cache.invalidate_history_days(
+            self.user.id,
+            day_keys=[self.today_key],
+            logging_styles=(self.logging_style,),
+            reason="test_delete",
+            force=True,
+        )
+
+        self.assertIsNone(cache.get(cache_key))
+        mock_schedule_history_refresh.assert_called_once_with(
+            self.user.id,
+            self.logging_style,
+            warm_days=0,
+            day_keys=[self.today_key],
+        )
+
 
 class HistoryRefreshSchedulingTests(TestCase):
     def setUp(self):
