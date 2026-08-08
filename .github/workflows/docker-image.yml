@@ -10,13 +10,13 @@ on:
         type: boolean
   push:
     branches:
-      - "dev"
+      - "release"
       - "latest"
     tags:
       - "v*"
   pull_request:
     branches:
-      - "dev"
+      - "latest"
 
 # A push to latest must not be overtaken by an older build that started later
 # because runners were queued. Keep one publish per ref in flight and let the
@@ -70,13 +70,12 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
             ${{ env.REGISTRY }}/${{ env.LEGACY_IMAGE_NAME }}
           tags: |
-            type=ref,event=branch,enable=${{ github.ref != 'refs/heads/latest' }}
             type=ref,event=pr
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/latest' }}
-            type=raw,value=release,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=raw,value=release,enable=${{ github.ref == 'refs/heads/release' || startsWith(github.ref, 'refs/tags/v') }}
 
       # Determine if we should push the image
       - name: Set push flag

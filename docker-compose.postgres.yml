@@ -1,8 +1,8 @@
 services:
   floppy:
     container_name: floppy
-    # Image defaults to :latest tag (points to stable release branch)
-    # You can also explicitly use :latest, :release, or :dev
+    # Image defaults to :latest tag (latest commit on the latest branch)
+    # You can also explicitly use :latest, :release, or a version tag
     image: ghcr.io/dannyvfilms/floppy
     restart: unless-stopped
     depends_on:
