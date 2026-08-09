@@ -268,14 +268,16 @@
                     {% include "app/icons/list-add.svg" with classes="w-4 h-4" %}
                   </button>
                 {% elif item.media_type == MediaTypes.EPISODE.value %}
-                  {# track_modal's URL doesn't accept episode_number in the path
-                     (media_view_url strips it for this view name), so build the
-                     URL directly here and pass episode_number via hx-vals —
-                     mirrors detail_episode_hero_track_button.html, the working
-                     equivalent of this button on the episode's own page. Without
-                     hx-get this button had no way to load modal content: it set
-                     trackOpen but nothing ever populated the target, so it opened
-                     an empty overlay. #}
+                  {% comment %}
+                    track_modal's URL doesn't accept episode_number in the path
+                    (media_view_url strips it for this view name), so build the
+                    URL directly here and pass episode_number via hx-vals —
+                    mirrors detail_episode_hero_track_button.html, the working
+                    equivalent of this button on the episode's own page. Without
+                    hx-get this button had no way to load modal content: it set
+                    trackOpen but nothing ever populated the target, so it opened
+                    an empty overlay.
+                  {% endcomment %}
                   <button class="p-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full hover:scale-110 hover:shadow-[0_0_15px_rgba(99,102,241,0.5)] transition-all duration-200 cursor-pointer"
                           title="{% if media %}Watched{% else %}Mark watched{% endif %}"
                           hx-get="{% url 'track_modal' source=item.source media_type='episode' media_id=item.media_id season_number=item.season_number %}"
@@ -289,9 +291,12 @@
                       {% include "app/icons/eye-closed.svg" with classes="w-4 h-4" %}
                     {% endif %}
                   </button>
-                  {# Lists Button — episode cards need this too so items added to a
-                     custom list (e.g. a "watch together" list of specific episodes)
-                     can be managed from any grid, not just the episode's own page. #}
+                  {% comment %}
+                    Lists Button — episode cards need this too so items added to
+                    a custom list (e.g. a "watch together" list of specific
+                    episodes) can be managed from any grid, not just the
+                    episode's own page.
+                  {% endcomment %}
                   <button class="p-2.5 bg-emerald-600 text-white rounded-full hover:bg-emerald-500 hover:scale-110 hover:shadow-[0_0_15px_rgba(16,185,129,0.5)] transition-all duration-200 cursor-pointer"
                           title="Add to custom lists"
                           hx-get="{% media_view_url 'lists_modal' item %}"

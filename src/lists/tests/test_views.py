@@ -2071,6 +2071,15 @@ class ListDetailViewTests(TestCase):
         self.assertContains(response, 'title="Mark watched"')
         self.assertContains(response, 'title="Watched"')
 
+        # Regression: Django's {# #} comment syntax is single-line only —
+        # spreading one across multiple lines silently stops it being
+        # recognized as a comment at all, and the literal text (including
+        # this internal implementation note) renders straight into the
+        # page. Caught live: it showed up as visible text on an episode
+        # card. `{% comment %}...{% endcomment %}` is the multi-line form.
+        self.assertNotContains(response, "hero_track_button")
+        self.assertNotContains(response, "empty overlay")
+
     @patch("lists.views.services.get_media_metadata")
     @patch.object(get_user_model(), "update_preference")
     @patch.object(CustomList, "user_can_view")
