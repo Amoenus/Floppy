@@ -8,22 +8,18 @@ set -e
 # often means the db directory sits on a network filesystem that doesn't
 # support SQLite's WAL locking - see README's SQLite persistence note.
 if [ -z "$DB_HOST" ] && [ -f /floppy/db/db.sqlite3 ]; then
-    python -c "
-import sqlite3
-import sys
-
-try:
-    conn = sqlite3.connect('/floppy/db/db.sqlite3')
-    conn.execute('PRAGMA quick_check').fetchone()
-except sqlite3.DatabaseError as e:
-    print(f'[entrypoint] Database integrity check failed: {e}', file=sys.stderr)
-    print(
-        '[entrypoint] The SQLite file may be corrupt (see README: SQLite '
-        'network filesystem caveat)',
-        file=sys.stderr,
-    )
-    sys.exit(1)
-" || exit 1
+    if timeout 600 python -m config.sqlite_integrity /floppy/db/db.sqlite3; then
+        :
+    else
+        integrity_status=$?
+        # GNU timeout returns 124. BusyBox in the Floppy image returns 143.
+        case "$integrity_status" in
+            124|143)
+                echo "[entrypoint] Database integrity check exceeded 600 seconds. Migrations did not run. Check the database storage and try again." >&2
+                ;;
+        esac
+        exit "$integrity_status"
+    fi
 fi
 
 # Bounded, retrying migrate: a blocked migration must fail loudly and retry
