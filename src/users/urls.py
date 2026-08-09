@@ -81,6 +81,22 @@ urlpatterns = [
     ),
     path("regenerate_token", views.regenerate_token, name="regenerate_token"),
     path("clear_search_cache", views.clear_search_cache, name="clear_search_cache"),
+    path(
+        "clear_history_cache",
+        views.clear_history_cache,
+        name="clear_history_cache",
+    ),
+    path(
+        "clear_statistics_cache",
+        views.clear_statistics_cache,
+        name="clear_statistics_cache",
+    ),
+    path(
+        "clear_discover_cache",
+        views.clear_discover_cache,
+        name="clear_discover_cache",
+    ),
+    path("clear_all_caches", views.clear_all_caches, name="clear_all_caches"),
     path("update_tmdb_proxy", views.update_tmdb_proxy, name="update_tmdb_proxy"),
     path(
         "update_plex_usernames",
