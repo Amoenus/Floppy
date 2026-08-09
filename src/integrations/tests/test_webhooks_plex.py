@@ -1668,6 +1668,37 @@ class PlexWebhookTests(TestCase):
         self.assertEqual(movie.status, Status.COMPLETED.value)
         self.assertEqual(movie.progress, 1)
 
+    @patch("app.providers.tmdb.search")
+    def test_movie_plex_guid_does_not_match_unrelated_title(self, mock_tmdb_search):
+        """A plex:// movie GUID with no usable year filter must not blindly
+        link to the top search result if its title doesn't match Plex's
+        title — it should keep scanning for the actual title match instead
+        (issue #510, e.g. Home Alone -> Home Sweet Home Alone).
+        """
+        mock_tmdb_search.return_value = {
+            "results": [
+                {"media_id": "654974", "title": "Home Sweet Home Alone"},
+                {"media_id": "771", "title": "Home Alone"},
+            ],
+        }
+
+        payload = {
+            "event": "media.scrobble",
+            "Account": {"title": "testuser"},
+            "Metadata": {
+                "type": "movie",
+                "title": "Home Alone",
+                "guid": "plex://movie/66abff6b88824f5224a8b6db",
+            },
+        }
+
+        response = self._post_payload(payload)
+
+        self.assertEqual(response.status_code, 200)
+        movie = Movie.objects.get(item__media_id="771", user=self.user)
+        self.assertEqual(movie.status, Status.COMPLETED.value)
+        self.assertFalse(Item.objects.filter(media_id="654974").exists())
+
     def test_movie_rating_webhook_uses_plex_user_rating_scale(self):
         """Ratings from Plex userRating should stay on a 0-10 scale."""
         payload = {
@@ -2494,6 +2525,62 @@ class PlexWebhookTests(TestCase):
         )
 
         self.assertFalse(should_recover)
+
+    @patch("app.providers.tmdb.tv_with_seasons")
+    @patch("app.providers.tmdb.search")
+    def test_tv_episode_tmdb_only_guid_recovers_from_wrong_show_by_title(
+        self,
+        mock_tmdb_search,
+        mock_tv_with_seasons,
+    ):
+        """A TMDB-only Plex GUID (no TVDB/IMDB) whose raw episode-level TMDB ID
+        happens to collide with an unrelated show's TMDB ID must be caught by
+        the title-mismatch safety net and re-resolved via title search, even
+        without a TVDB/IMDB ID to cross-check against (issue #510).
+        """
+
+        def fake_tv_with_seasons(media_id, season_numbers):
+            seasons = {
+                f"season/{sn}": {
+                    "image": "",
+                    "episodes": [{"episode_number": 1, "runtime": 30}],
+                }
+                for sn in season_numbers
+            }
+            title = "The Jetsons" if str(media_id) == "85987" else "Friends"
+            return {
+                "tvdb_id": None,
+                "title": title,
+                "image": "",
+                "related": {"seasons": [{"season_number": sn} for sn in season_numbers]},
+                **seasons,
+            }
+
+        mock_tv_with_seasons.side_effect = fake_tv_with_seasons
+        mock_tmdb_search.return_value = {
+            "results": [{"media_id": "1668", "title": "Friends"}],
+        }
+
+        payload = {
+            "event": "media.scrobble",
+            "Account": {"title": "testuser"},
+            "Metadata": {
+                "type": "episode",
+                "grandparentTitle": "Friends",
+                "index": 1,
+                "parentIndex": 1,
+                "Guid": [
+                    {"id": "tmdb://85987"},
+                ],
+            },
+        }
+
+        response = self._post_payload(payload)
+
+        self.assertEqual(response.status_code, 200)
+        tv_item = Item.objects.get(media_type=MediaTypes.TV.value, media_id="1668")
+        self.assertEqual(tv_item.title, "Friends")
+        self.assertFalse(Item.objects.filter(media_id="85987").exists())
 
     @patch("app.providers.tmdb.tv_with_seasons")
     @patch("app.providers.tmdb.search")

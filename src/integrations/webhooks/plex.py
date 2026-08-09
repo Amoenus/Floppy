@@ -334,25 +334,27 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
         if original_date:
             year = str(original_date).split("-")[0]
             for result in results:
-                # Use first_air_date for TV, release_date for movies
-                date_key = (
-                    "first_air_date"
-                    if media_type == MediaTypes.TV.value
-                    else "release_date"
-                )
-                result_date = result.get("details", {}).get(date_key) or ""
-                if str(result_date).startswith(year):
+                result_year = result.get("year")
+                if result_year and str(result_year) == year:
                     tmdb_id = result.get("media_id")
                     break
 
         if not tmdb_id and results:
-            tmdb_id = results[0].get("media_id")
+            # No year match (or no year in payload): only accept a result whose
+            # title actually agrees with Plex's title. Guessing results[0] here
+            # is how unrelated titles get matched (see #510).
+            normalized_search_title = self._normalize_series_title(search_title)
+            for result in results:
+                candidate_title = self._normalize_series_title(result.get("title"))
+                if candidate_title and candidate_title == normalized_search_title:
+                    tmdb_id = result.get("media_id")
+                    break
 
         if tmdb_id:
             ids["tmdb_id"] = str(tmdb_id)
             logger.info("Resolved plex:// GUID via title search")
         else:
-            logger.debug("Title search returned no Plex GUID match")
+            logger.debug("Title search returned no confident Plex GUID match")
 
         return ids
 

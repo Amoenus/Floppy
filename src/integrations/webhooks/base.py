@@ -247,6 +247,8 @@ class BaseWebhookProcessor:
             alt_ids["tmdb_id"] = None
             fallback_media_id, alt_season, alt_episode = self._find_tv_media_id(
                 alt_ids,
+                series_title=series_title,
+                allow_title_fallback=True,
             )
             if fallback_media_id:
                 media_id = fallback_media_id
@@ -564,9 +566,6 @@ class BaseWebhookProcessor:
 
         raw_tmdb_id = self._extract_payload_tmdb_id(payload)
         if not raw_tmdb_id or str(media_id) != str(raw_tmdb_id):
-            return False
-
-        if not (ids.get("tvdb_id") or ids.get("imdb_id")):
             return False
 
         expected_tvdb_id = ids.get("tvdb_id")
