@@ -119,6 +119,40 @@ class TV(Media):
         )
 
     @cached_property
+    def completed_episode_count(self):
+        """Return the count of distinct watched episodes, excluding dropped seasons."""
+        return sum(
+            season.completed_episode_count
+            for season in self.seasons.all()
+            if season.item.season_number != 0 and season.status != Status.DROPPED.value
+        )
+
+    def _plays_sort_value(self):
+        """Return completed-episode count (not furthest position) for plays/time-watched UI."""
+        aggregated_progress = getattr(self, "aggregated_progress", None)
+        if aggregated_progress is not None:
+            return aggregated_progress
+        return self.completed_episode_count
+
+    @property
+    def progress_percentage(self):
+        """Return percent of the show actually watched (0-100), or None.
+
+        Unlike `progress` (furthest episode number touched, kept for #327's
+        skip-tolerant behavior), this reflects distinct completed episodes
+        against the show's total, for progress-bar style displays.
+        """
+        max_progress_value = getattr(self, "max_progress", None)
+        try:
+            max_progress_value = int(max_progress_value)
+        except (TypeError, ValueError):
+            return None
+        if max_progress_value <= 0:
+            return None
+        percentage = round(self.completed_episode_count / max_progress_value * 100)
+        return max(0, min(percentage, 100))
+
+    @cached_property
     def last_watched(self):
         """Return the latest watched episode in SxxExx format."""
         watched_episodes = [
@@ -686,6 +720,31 @@ class Season(Media):
         """Return the number of unique episodes with a completed play."""
         stats = self._get_episode_stats()
         return len(stats["completed_episode_numbers"])
+
+    def _plays_sort_value(self):
+        """Return completed-episode count (not furthest position) for plays/time-watched UI."""
+        aggregated_progress = getattr(self, "aggregated_progress", None)
+        if aggregated_progress is not None:
+            return aggregated_progress
+        return self.completed_episode_count
+
+    @property
+    def progress_percentage(self):
+        """Return percent of the season actually watched (0-100), or None.
+
+        Unlike `progress` (furthest episode number touched, kept for #327's
+        skip-tolerant behavior), this reflects distinct completed episodes
+        against the season's total, for progress-bar style displays.
+        """
+        max_progress_value = getattr(self, "max_progress", None)
+        try:
+            max_progress_value = int(max_progress_value)
+        except (TypeError, ValueError):
+            return None
+        if max_progress_value <= 0:
+            return None
+        percentage = round(self.completed_episode_count / max_progress_value * 100)
+        return max(0, min(percentage, 100))
 
     def derived_status_from_episode_progress(self, max_progress=None):
         """Return the effective season status from local episode history."""

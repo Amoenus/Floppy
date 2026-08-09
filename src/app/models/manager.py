@@ -1323,9 +1323,13 @@ class MediaManager(models.Manager):
             users.models.HomeSortChoices.COMPLETION: lambda x: (
                 x.max_progress is None,
                 -(
-                    x.progress / x.max_progress * 100
-                    if x.max_progress and x.max_progress > 0
-                    else 0
+                    getattr(x, "progress_percentage", None)
+                    if getattr(x, "progress_percentage", None) is not None
+                    else (
+                        x.progress / x.max_progress * 100
+                        if x.max_progress and x.max_progress > 0
+                        else 0
+                    )
                 ),
             ),
             users.models.HomeSortChoices.EPISODES_LEFT: lambda x: (

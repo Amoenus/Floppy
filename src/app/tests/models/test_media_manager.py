@@ -668,6 +668,82 @@ class MediaManagerTests(TestCase):
         sorted_list = manager._sort_in_progress_media(anime_list, sort_by="recent")
         self.assertEqual(sorted_list, [anime3, anime2, anime1])
 
+    def test_sort_in_progress_media_completion_uses_completed_count_for_tv(self):
+        """Regression for #527: completion sort should use watched count, not position."""
+        manager = MediaManager()
+
+        # Skip-ahead season: only episode 9 of 10 watched (furthest position is
+        # high, but only 1 episode actually watched).
+        skip_ahead_item = Item.objects.create(
+            media_id="8892",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Skip Ahead Show",
+            image="http://example.com/image.jpg",
+            season_number=1,
+        )
+        skip_ahead_season = Season.objects.create(
+            item=skip_ahead_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        ep9_item = Item.objects.create(
+            media_id="8892",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="Skip Ahead Show",
+            image="http://example.com/image.jpg",
+            season_number=1,
+            episode_number=9,
+        )
+        Episode.objects.create(
+            item=ep9_item,
+            related_season=skip_ahead_season,
+            end_date=datetime(2023, 6, 9, 0, 0, tzinfo=UTC),
+        )
+        skip_ahead_season.max_progress = 10
+
+        # In-order season: episodes 1-3 of 10 watched (lower furthest position,
+        # but more episodes actually watched).
+        in_order_item = Item.objects.create(
+            media_id="8893",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="In Order Show",
+            image="http://example.com/image.jpg",
+            season_number=1,
+        )
+        in_order_season = Season.objects.create(
+            item=in_order_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        for ep_num in (1, 2, 3):
+            item = Item.objects.create(
+                media_id="8893",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.EPISODE.value,
+                title="In Order Show",
+                image="http://example.com/image.jpg",
+                season_number=1,
+                episode_number=ep_num,
+            )
+            Episode.objects.create(
+                item=item,
+                related_season=in_order_season,
+                end_date=datetime(2023, 6, ep_num, 0, 0, tzinfo=UTC),
+            )
+        in_order_season.max_progress = 10
+
+        sorted_list = manager._sort_in_progress_media(
+            [skip_ahead_season, in_order_season],
+            "completion",
+        )
+
+        # By furthest position (9/10=90% vs 3/10=30%) skip_ahead would sort
+        # first; by actual watched count (1/10=10% vs 3/10=30%) it should not.
+        self.assertEqual(sorted_list, [in_order_season, skip_ahead_season])
+
     def test_annotate_max_progress(self):
         """Test the annotate_max_progress method."""
         manager = MediaManager()
