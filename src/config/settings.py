@@ -29,6 +29,7 @@ from config.runtime_profile import (
 from config.runtime_profile import (
     by_tier,
     gunicorn_threads,
+    is_celery_process,
     web_concurrency,
 )
 
@@ -314,19 +315,49 @@ Path(BASE_DIR / "db").mkdir(parents=True, exist_ok=True)
 DB_HOST = config("DB_HOST", default=None)
 USING_SQLITE_DATABASE = not bool(DB_HOST)
 
+# Historical flat default before per-tier sizing existed (issue #341). Kept as
+# a floor so a Celery worker or beat is never worse off than it was before the
+# resource-tiering feature existed (issue #548).
+_DB_POOL_MAX_FLOOR = 5
+
+
+def _db_pool_max_default(*, is_celery, gunicorn_threads, celery_concurrency, pool_min):
+    """Return DB_POOL_MAX's default, sized to *this process's* concurrency.
+
+    settings.py is imported identically by gunicorn, every Celery worker, and
+    beat. Deriving DB_POOL_MAX from RUNTIME_GUNICORN_THREADS unconditionally
+    meant a Celery process's pool was sized off a number that has nothing to
+    do with its own concurrency: on the minimal tier, gunicorn_threads() is 2,
+    so Celery/beat got pool max 3 - smaller than the pre-tiering flat default
+    of 5 - and psycopg_pool.PoolTimeout followed under concurrent task load
+    (issue #548).
+
+    Celery/beat: sized from their own CELERY_WORKER_CONCURRENCY, +1 headroom,
+    floored at the historical 5 so tiering can only raise a Celery process's
+    pool, never shrink it below its pre-tiering size.
+
+    Gunicorn: unchanged from the #341 fix - must stay >= GUNICORN_THREADS so a
+    worker's pool never runs out of slots for its own concurrent request
+    threads; +1 for headroom (e.g. the /health/ probe hitting the pool at the
+    same time). No floor here: shrinking gunicorn's pool on the minimal tier
+    is the tiering feature working as intended, not the bug.
+    """
+    if is_celery:
+        return max(celery_concurrency + 1, pool_min + 1, _DB_POOL_MAX_FLOOR)
+    return max(gunicorn_threads + 1, pool_min + 1)
+
+
 if DB_HOST:
     DB_POOL_ENABLED = config("DB_POOL_ENABLED", default=True, cast=bool)
     DB_POOL_MIN = config("DB_POOL_MIN", default=2, cast=int)
-    # Derived from the same thread count gunicorn uses rather than hardcoded,
-    # so the invariant holds automatically when the tier (or the user) changes
-    # GUNICORN_THREADS. It must be >= the thread count so a worker's pool never
-    # runs out of slots for its own concurrent request threads; +1 for headroom
-    # (e.g. the /health/ probe hitting the pool at the same time). A too-small
-    # pool causes psycopg_pool.PoolTimeout once concurrent requests in a worker
-    # exceed the pool size (issue #341).
     DB_POOL_MAX = config(
         "DB_POOL_MAX",
-        default=max(RUNTIME_GUNICORN_THREADS + 1, DB_POOL_MIN + 1),
+        default=_db_pool_max_default(
+            is_celery=is_celery_process(),
+            gunicorn_threads=RUNTIME_GUNICORN_THREADS,
+            celery_concurrency=config("CELERY_WORKER_CONCURRENCY", default=1, cast=int),
+            pool_min=DB_POOL_MIN,
+        ),
         cast=int,
     )
     DB_POOL_TIMEOUT = config("DB_POOL_TIMEOUT", default=30, cast=int)

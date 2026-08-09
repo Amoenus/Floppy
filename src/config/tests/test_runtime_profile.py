@@ -15,6 +15,7 @@ from config.runtime_profile import (
     celery_queue_plan,
     detect_profile,
     gunicorn_threads,
+    is_celery_process,
     web_concurrency,
 )
 
@@ -398,3 +399,34 @@ class SizingTests(SimpleTestCase):
                 if plan["start_discover"] == "true":
                     served.add("discover")
                 self.assertEqual(served, {"celery", "interactive", "discover"})
+
+
+class IsCeleryProcessTests(SimpleTestCase):
+    """Distinguishing Celery/beat processes from gunicorn (issue #548)."""
+
+    def test_roles_supervisord_sets_on_celery_programs_are_recognised(self):
+        """interactive/background/combined are supervisord.conf's Celery roles."""
+        for role in ("interactive", "background", "combined"):
+            with self.subTest(role=role):
+                env = {"FLOPPY_PROCESS_ROLE": role}
+                with mock.patch.dict(runtime_profile.os.environ, env, clear=True):
+                    self.assertTrue(is_celery_process())
+
+    def test_web_role_is_not_celery(self):
+        """Gunicorn's program sets no role, but an explicit "web" must also work."""
+        env = {"FLOPPY_PROCESS_ROLE": "web"}
+        with mock.patch.dict(runtime_profile.os.environ, env, clear=True):
+            self.assertFalse(is_celery_process())
+
+    def test_unset_role_falls_back_to_argv0(self):
+        """No role set at all: fall back to checking argv0 for "celery"."""
+        with (
+            mock.patch.dict(runtime_profile.os.environ, {}, clear=True),
+            mock.patch.object(runtime_profile.sys, "argv", ["/usr/bin/celery"]),
+        ):
+            self.assertTrue(is_celery_process())
+        with (
+            mock.patch.dict(runtime_profile.os.environ, {}, clear=True),
+            mock.patch.object(runtime_profile.sys, "argv", ["/usr/bin/gunicorn"]),
+        ):
+            self.assertFalse(is_celery_process())

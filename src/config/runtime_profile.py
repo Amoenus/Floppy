@@ -229,6 +229,29 @@ def _env(name: str) -> str | None:
     return None
 
 
+# supervisord.conf labels every Celery program's environment with one of these
+# via FLOPPY_PROCESS_ROLE; gunicorn's program sets none. This is the same
+# signal get_process_role() in app/providers/services.py reads for API
+# rate-limit partitioning, but settings.py can't import that module directly
+# (it imports django.conf.settings, which is still being constructed), so this
+# is a second, deliberately minimal reader of the same env var rather than a
+# new detection mechanism (issue #548).
+_CELERY_PROCESS_ROLES = frozenset({"interactive", "background", "combined"})
+
+
+def is_celery_process() -> bool:
+    """Return whether this process is a Celery worker or beat, not gunicorn."""
+    role = _env("PROCESS_ROLE")
+    if role in _CELERY_PROCESS_ROLES:
+        return True
+    if role:
+        return False
+    # Mirrors get_process_role()'s argv0 fallback in app/providers/services.py
+    # for the same "unlabeled celery process" edge case.
+    argv0 = Path(sys.argv[0]).name.lower() if sys.argv and sys.argv[0] else ""
+    return "celery" in argv0
+
+
 @dataclass(frozen=True)
 class ResourceProfile:
     """A single, immutable answer to "how big is this host?"."""
