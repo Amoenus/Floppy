@@ -42,6 +42,11 @@ class Item(CalendarTriggerMixin, models.Model):
     title = models.TextField()
     original_title = models.TextField(null=True, blank=True)
     localized_title = models.TextField(null=True, blank=True)
+    synopsis = models.TextField(
+        blank=True,
+        default="",
+        help_text="Cached provider synopsis, used as a fallback when live metadata is unavailable",
+    )
     image = models.URLField()  # if add default, custom media entry will show the value
     season_number = models.PositiveIntegerField(null=True, blank=True)
     episode_number = models.PositiveIntegerField(null=True, blank=True)

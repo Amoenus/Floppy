@@ -70,6 +70,24 @@ logger = logging.getLogger(__name__)
 RUNTIME_UNKNOWN_AIRED = 999998  # aired but runtime unknown
 
 
+def _stored_metadata_fallback(item):
+    """Build a minimal media_metadata dict from a stored Item when the provider is unreachable."""
+    return {
+        "media_id": item.media_id,
+        "source": item.source,
+        "media_type": item.media_type,
+        "title": item.title,
+        "original_title": item.original_title,
+        "localized_title": item.localized_title,
+        "image": item.image,
+        "synopsis": item.synopsis,
+        "genres": item.genres,
+        "cast": [],
+        "crew": [],
+        "studios_full": [],
+    }
+
+
 def _enrich_comic_issues(issues, user):
     """Attach user tracking history to each issue dict from the volume issues list."""
     if not issues:
@@ -941,7 +959,19 @@ def media_details(
     if metadata_resolution.is_grouped_anime_route(media_type, source=source):
         detail_item_lookup["library_media_type"] = MediaTypes.ANIME.value
 
-    media_metadata = services.get_media_metadata(media_type, media_id, source)
+    detail_item = Item.objects.filter(**detail_item_lookup).first()
+
+    try:
+        media_metadata = services.get_media_metadata(media_type, media_id, source)
+    except services.ProviderAPIError:
+        if detail_item is None:
+            raise
+        logger.warning(
+            "Falling back to stored metadata for media_id=%s due to provider API error",
+            media_id,
+        )
+        media_metadata = _stored_metadata_fallback(detail_item)
+
     if isinstance(media_metadata, dict):
         media_metadata.update(Item.title_fields_from_metadata(media_metadata))
 
@@ -949,8 +979,6 @@ def media_details(
         raw_issues = media_metadata.pop("issues", None)
         if raw_issues:
             media_metadata["episodes"] = _enrich_comic_issues(raw_issues, request.user)
-
-    detail_item = Item.objects.filter(**detail_item_lookup).first()
 
     if (
         render_secondary_only
@@ -1127,6 +1155,19 @@ def media_details(
         media_metadata["media_type"] = media_type
         media_metadata["media_id"] = media_id
 
+    if render_secondary_only and detail_item and isinstance(media_metadata, dict):
+        metadata_update_fields = metadata_utils.apply_item_metadata(
+            detail_item,
+            identity_media_metadata,
+        )
+        if metadata_update_fields:
+            detail_item.metadata_fetched_at = timezone.now()
+            metadata_update_fields.append("metadata_fetched_at")
+            _best_effort_detail_db_work(
+                lambda: detail_item.save(update_fields=metadata_update_fields),
+                operation_name="detail metadata sync",
+            )
+
     if (
         render_secondary_only
         and source == Sources.TMDB.value
@@ -1137,18 +1178,8 @@ def media_details(
             MediaTypes.SEASON.value,
         )
         and isinstance(media_metadata, dict)
-    ) and detail_item:
-        metadata_update_fields = metadata_utils.apply_item_metadata(
-            detail_item,
-            identity_media_metadata,
-        )
-        if metadata_update_fields:
-            detail_item.metadata_fetched_at = timezone.now()
-            metadata_update_fields.append("metadata_fetched_at")
-            _best_effort_detail_db_work(
-                lambda: detail_item.save(update_fields=metadata_update_fields),
-                operation_name="TMDB detail metadata sync",
-            )
+        and detail_item
+    ):
         missing_people = not detail_item.person_credits.exists()
         missing_studios = not detail_item.studio_credits.exists()
         if missing_people or missing_studios:
