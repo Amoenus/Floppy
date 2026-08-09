@@ -1984,6 +1984,93 @@ class ListDetailViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'title="Add to custom lists"')
 
+    @patch.object(get_user_model(), "update_preference")
+    @patch.object(CustomList, "user_can_view")
+    def test_list_detail_episode_watch_button_loads_real_modal_and_reflects_state(
+        self,
+        mock_user_can_view,
+        mock_update_preference,
+    ):
+        """Episode cards' watch-toggle button must actually load the track modal.
+
+        Previously this button only set trackOpen=true with no hx-get, so
+        clicking it opened a permanently empty modal overlay (verified live
+        in a browser) — Alpine had nothing to load into the target div. It
+        also always said "Mark watched" even when the episode was already
+        watched, unlike every other media type's tracking button which
+        reflects an already-in-progress/edit state.
+        """
+        mock_update_preference.side_effect = ["date_added", None]
+        mock_user_can_view.return_value = True
+
+        unwatched_item = Item.objects.create(
+            media_id="9001",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="The One Where It Starts",
+            season_number=1,
+            episode_number=1,
+            image=settings.IMG_NONE,
+        )
+        watched_item = Item.objects.create(
+            media_id="9001",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="The One With Two Parts",
+            season_number=1,
+            episode_number=2,
+            image=settings.IMG_NONE,
+        )
+        season_item = Item.objects.create(
+            media_id="9001",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=1,
+            image=settings.IMG_NONE,
+        )
+        tv_item = Item.objects.create(
+            media_id="9001",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            image=settings.IMG_NONE,
+        )
+        tv = TV.objects.create(item=tv_item, user=self.user, status=Status.IN_PROGRESS.value)
+        season = Season.objects.create(
+            item=season_item,
+            user=self.user,
+            related_tv=tv,
+            status=Status.IN_PROGRESS.value,
+        )
+        watched_episode = Episode.objects.create(
+            item=watched_item,
+            related_season=season,
+        )
+
+        episode_list = CustomList.objects.create(name="Episode List", owner=self.user)
+        CustomListItem.objects.create(custom_list=episode_list, item=unwatched_item)
+        CustomListItem.objects.create(custom_list=episode_list, item=watched_item)
+
+        response = self.client.get(reverse("list_detail", args=[episode_list.id]))
+
+        self.assertEqual(response.status_code, 200)
+        expected_url = reverse(
+            "track_modal",
+            kwargs={
+                "source": Sources.TMDB.value,
+                "media_type": MediaTypes.EPISODE.value,
+                "media_id": "9001",
+                "season_number": 1,
+            },
+        )
+        self.assertContains(response, f'hx-get="{expected_url}"')
+        self.assertContains(response, '"is_create": "1"')
+        self.assertContains(
+            response,
+            f'"instance_id": "{watched_episode.id}"',
+        )
+        self.assertContains(response, 'title="Mark watched"')
+        self.assertContains(response, 'title="Watched"')
+
     @patch("lists.views.services.get_media_metadata")
     @patch.object(get_user_model(), "update_preference")
     @patch.object(CustomList, "user_can_view")
