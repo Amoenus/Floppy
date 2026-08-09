@@ -1272,6 +1272,60 @@ class HomeScreenViewTests(TestCase):
             DirectionChoices.DESC,
         )
 
+    def test_home_screen_row_direction_toggle_htmx_swaps_row_in_place(self):
+        """An HTMX toggle request updates the row without a full-page redirect."""
+        self._set_enabled_media_types(MediaTypes.SEASON.value)
+
+        season_item = Item.objects.create(
+            media_id="1668",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Test TV Show",
+            image="http://example.com/image.jpg",
+            season_number=1,
+        )
+        season = Season.objects.create(
+            item=season_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        episode_item = Item.objects.create(
+            media_id="1668",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="Test TV Show",
+            image="http://example.com/image.jpg",
+            season_number=1,
+            episode_number=1,
+        )
+        Episode.objects.create(
+            item=episode_item,
+            related_season=season,
+            end_date=timezone.now(),
+        )
+
+        self.client.get(reverse("home_screen"))
+        row = HomeScreenRow.objects.get(
+            user=self.user,
+            media_type=MediaTypes.SEASON.value,
+            row_type=HomeScreenRowTypeChoices.LIBRARY_QUERY,
+            position=0,
+        )
+        self.assertEqual(row.direction, DirectionChoices.ASC)
+
+        response = self.client.post(
+            reverse("toggle_home_screen_row_direction", args=[row.id]),
+            HTTP_HX_REQUEST="true",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("HX-Redirect", response.headers)
+        self.assertContains(response, 'data-home-row-wrapper="true"')
+        self.assertContains(response, 'data-home-row-sort-toggle="true"')
+
+        row.refresh_from_db()
+        self.assertEqual(row.direction, DirectionChoices.DESC)
+
     def test_home_screen_post_rejects_unsupported_filter_for_media_type(self):
         self._set_enabled_media_types(MediaTypes.MOVIE.value)
         self.client.get(reverse("home_screen"))

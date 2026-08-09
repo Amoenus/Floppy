@@ -2466,6 +2466,7 @@ def _build_row_section(
         "url": home_row_destination_url(row, user),
         "summary": row_summary(row, user),
         "summary_inline": home_row_inline_summary(row, user),
+        "direction": row.direction,
         "items": section_entries,
         "total": len(entries),
         "loaded_count": loaded_count,

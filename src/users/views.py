@@ -39,6 +39,7 @@ from users.forms import (
 )
 from users.home_screen import (
     HomeScreenValidationError,
+    build_home_page_groups,
     save_home_screen_configuration,
     search_home_screen_lists,
     serialize_settings_sections,
@@ -692,16 +693,67 @@ def home_screen_list_search(request):
 @login_required
 @require_POST
 def toggle_home_screen_row_direction(request, row_id: int):
-    """Flip a Home screen row direction and return to Home."""
+    """Flip a Home screen row direction.
+
+    HTMX requests get the row re-rendered in place; plain form posts (no JS)
+    fall back to a full redirect back to Home.
+    """
+    is_htmx = bool(request.headers.get("HX-Request"))
+
     if request.user.is_demo:
-        messages.error(request, "This section is view-only for demo accounts.")
+        message = "This section is view-only for demo accounts."
+        if is_htmx:
+            return _htmx_toast_response(message, status=403)
+        messages.error(request, message)
         return redirect("home")
 
     try:
         toggle_home_row_direction(request.user, row_id)
     except HomeScreenValidationError as exc:
+        if is_htmx:
+            return _htmx_toast_response(str(exc), status=422)
         messages.error(request, str(exc))
-    return redirect("home")
+        return redirect("home")
+
+    if not is_htmx:
+        return redirect("home")
+
+    home_groups = build_home_page_groups(
+        request.user,
+        items_limit=14,
+        only_row_id=row_id,
+        refresh_row_cache=True,
+    )
+    row = next(
+        (
+            section_row
+            for group in home_groups
+            for section_row in group["rows"]
+            if section_row["row_id"] == row_id
+        ),
+        None,
+    )
+    if row is None:
+        return HttpResponse("")
+    return render(
+        request,
+        "app/components/_scrollable_row.html",
+        {
+            "row": row,
+            "user": request.user,
+            "MediaTypes": MediaTypes,
+            "IMG_NONE": settings.IMG_NONE,
+        },
+    )
+
+
+def _htmx_toast_response(message: str, *, status: int) -> HttpResponse:
+    """Return an empty HTMX response that only triggers an error toast."""
+    response = HttpResponse(status=status)
+    response["HX-Trigger"] = json.dumps(
+        {"showToast": {"message": message, "type": "error"}},
+    )
+    return response
 
 
 @login_required
