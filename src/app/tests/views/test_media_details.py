@@ -57,7 +57,7 @@ from app.providers import services, tmdb
 from app.services import game_lengths as game_length_services
 from app.services.metadata_resolution import MetadataResolutionResult
 from integrations.models import PlexAccount
-from users.models import DateFormatChoices, RatingScaleChoices
+from users.models import DateFormatChoices, RatingScaleChoices, TimeFormatChoices
 
 
 class MediaDetailsViewTests(TestCase):
@@ -1775,10 +1775,12 @@ class MediaDetailsViewTests(TestCase):
                         {
                             "label": "Drama",
                             "chip_classes": "border-violet-400/18 bg-violet-500/[0.07] text-violet-100",
+                            "url": "/medialist/movie?genre=Drama",
                         },
                         {
                             "label": "Mystery",
                             "chip_classes": "border-violet-400/18 bg-violet-500/[0.07] text-violet-100",
+                            "url": "/medialist/movie?genre=Mystery",
                         },
                     ],
                 },
@@ -1848,10 +1850,12 @@ class MediaDetailsViewTests(TestCase):
                         {
                             "label": "Drama",
                             "chip_classes": "border-violet-400/18 bg-violet-500/[0.07] text-violet-100",
+                            "url": "/medialist/movie?genre=Drama",
                         },
                         {
                             "label": "Mystery",
                             "chip_classes": "border-violet-400/18 bg-violet-500/[0.07] text-violet-100",
+                            "url": "/medialist/movie?genre=Mystery",
                         },
                     ],
                 },
@@ -5955,7 +5959,8 @@ class MediaDetailsViewTests(TestCase):
         mock_get_metadata,
     ):
         self.user.date_format = DateFormatChoices.ISO_8601
-        self.user.save(update_fields=["date_format"])
+        self.user.time_format = TimeFormatChoices.HH_MM
+        self.user.save(update_fields=["date_format", "time_format"])
         mock_process_episodes.return_value = []
         show_item = Item.objects.create(
             media_id="1668",
@@ -6055,7 +6060,7 @@ class MediaDetailsViewTests(TestCase):
         )
         self.assertRegex(
             content,
-            r'class="hidden flex-wrap items-center justify-start gap-y-1 text-center text-sm font-medium text-\[var\(--color-text-muted\)\] md:flex md:text-start">\s*<h2 class="text-sm font-medium text-\[var\(--color-text-muted\)\]">Season 1</h2>\s*<span class="mx-2 text-gray-600">•</span>\s*<span id="season-progress-desktop-\d+" class="text-sm font-medium text-\[var\(--color-text-muted\)\]">\s*Progress: 2/8\s*</span>\s*<span class="mx-2 text-gray-600">•</span>\s*<span class="text-sm font-medium text-\[var\(--color-text-muted\)\]">\s*2026-03-01 - 2026-03-12\s*</span>',
+            r'class="hidden flex-wrap items-center justify-start gap-y-1 text-center text-sm font-medium text-\[var\(--color-text-muted\)\] md:flex md:text-start">\s*<h2 class="text-sm font-medium text-\[var\(--color-text-muted\)\]">Season 1</h2>\s*<span class="mx-2 text-gray-600">•</span>\s*<span id="season-progress-desktop-\d+" class="text-sm font-medium text-\[var\(--color-text-muted\)\]">\s*Progress: 2/8\s*</span>\s*<span class="mx-2 text-gray-600">•</span>\s*<span class="text-sm font-medium text-\[var\(--color-text-muted\)\]">\s*2026-03-01 12:00 - 2026-03-12 12:00\s*</span>',
         )
         self.assertNotIn("Your History", content)
 

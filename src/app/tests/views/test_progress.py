@@ -31,7 +31,13 @@ TEST_SEASON_EPISODES = [
 ]
 
 
-def mock_get_media_metadata(media_type, _media_id, _source, _season_numbers=None):
+def mock_get_media_metadata(
+    media_type,
+    _media_id,
+    _source,
+    _season_numbers=None,
+    _episode_number=None,
+):
     """Return deterministic metadata for season progress tests."""
     if media_type == MediaTypes.SEASON.value:
         return {

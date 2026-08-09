@@ -42,6 +42,17 @@ class IntegrationTest(StaticLiveServerTestCase):
         )
         self.page.get_by_role("button", name="Sign in").click()
 
+    def set_date_input(self, locator, value):
+        """Set a hidden date-picker input and dispatch its change events."""
+        locator.evaluate(
+            """(input, value) => {
+                input.value = value;
+                input.dispatchEvent(new Event("input", { bubbles: true }));
+                input.dispatchEvent(new Event("change", { bubbles: true }));
+            }""",
+            value,
+        )
+
     @classmethod
     def tearDownClass(cls):
         """Tear down the test class."""
@@ -66,7 +77,9 @@ class IntegrationTest(StaticLiveServerTestCase):
 
         # Episode 1 air date is 2008-01-20
         fixed_date = date(2008, 1, 20)
-        self.page.locator('input[name="end_date"]:visible').first.fill(
+        modal = self.page.locator("[data-track-modal-root]:visible").first
+        self.set_date_input(
+            modal.locator('input[name="end_date"]'),
             f"{fixed_date.isoformat()}T12:00",
         )
         self.page.get_by_role("button", name="Add", exact=True).click()
@@ -77,7 +90,8 @@ class IntegrationTest(StaticLiveServerTestCase):
 
         today = timezone.localtime().strftime(datetime_format)
         self.page.get_by_title("Track Episode").first.click(force=True)
-        self.page.locator('input[name="end_date"]:visible').first.fill(f"{today}T12:00")
+        modal = self.page.locator("[data-track-modal-root]:visible").first
+        self.set_date_input(modal.locator('input[name="end_date"]'), f"{today}T12:00")
         self.page.get_by_role("button", name="Add", exact=True).click()
         expect(self.page.get_by_role("main")).to_contain_text(f"Ended: {today}")
 
@@ -90,13 +104,17 @@ class IntegrationTest(StaticLiveServerTestCase):
         self.page.get_by_title("Breaking Bad", exact=True).click()
         expect(self.page.get_by_role("main")).to_contain_text("Breaking Bad")
         self.page.locator("button").filter(has_text="Add to tracker").click()
-        expect(self.page.locator("#track-tv-1396")).to_contain_text("Score")
-        self.page.get_by_label("Status").select_option("Completed")
-        self.page.get_by_role("button", name="Add", exact=True).click()
-        self.page.get_by_role("link", name="TV Shows").click()
-        self.page.get_by_role("link", name="Table View").click()
-        expect(self.page.locator("tbody")).to_contain_text("Breaking Bad")
-        expect(self.page.locator("tbody")).to_contain_text("Completed")
+        track_form = self.page.locator("#track-tv-1396")
+        expect(track_form).to_contain_text("Score")
+        track_form.get_by_label("Status").select_option("Completed")
+        with self.page.expect_request(
+            lambda request: request.method == "POST" and "/media_save" in request.url,
+        ) as save_request:
+            track_form.get_by_role("button", name="Add", exact=True).click()
+        save_request.value.response()
+        self.page.goto(f"{self.live_server_url}/medialist/tv")
+        expect(self.page.get_by_role("main")).to_contain_text("Breaking Bad")
+        expect(self.page.get_by_role("main")).to_contain_text("Completed")
 
     def test_season_completed(self):
         """Test the completed status of a season."""
@@ -111,12 +129,15 @@ class IntegrationTest(StaticLiveServerTestCase):
         self.page.goto(f"{self.live_server_url}{season_href}")
         expect(self.page.get_by_role("main")).to_contain_text("Breaking Bad")
         self.page.get_by_role("button", name="Add to tracker").click()
-        expect(self.page.locator("#track-season-1396-1")).to_contain_text("Score")
-        self.page.get_by_role("button", name="Add", exact=True).click()
-        self.page.get_by_role("link", name="TV Seasons").click()
-        self.page.get_by_role("link", name="Table View").click()
-        expect(self.page.locator("tbody")).to_contain_text("Completed")
-        expect(self.page.locator("tbody")).to_contain_text("7")
+        track_form = self.page.locator("#track-season-1396-1")
+        expect(track_form).to_contain_text("Score")
+        with self.page.expect_request(
+            lambda request: request.method == "POST" and "/media_save" in request.url,
+        ) as save_request:
+            track_form.get_by_role("button", name="Add", exact=True).click()
+        save_request.value.response()
+        self.page.goto(f"{self.live_server_url}/medialist/season")
+        expect(self.page.get_by_role("main")).to_contain_text("Completed")
 
     def test_tv_manual(self):
         """Test the manual creation of a TV show."""
@@ -128,11 +149,9 @@ class IntegrationTest(StaticLiveServerTestCase):
         self.page.get_by_placeholder("Enter image URL").fill(
             "https://media.themoviedb.org/t/p/w300_and_h450_bestv2/2koX1xLkpTQM4IZebYvKysFW1Nh.jpg",
         )
-        self.page.get_by_role("combobox").select_option("In progress")
+        self.page.locator('select[name="status"]').select_option("In progress")
         self.page.get_by_role("button", name="Create Entry").click()
-        expect(self.page.locator(".scheme-dark")).to_contain_text(
-            "Friends added successfully.",
-        )
+        expect(self.page.get_by_text("Friends added successfully.", exact=True)).to_be_visible()
 
         # Create season
         self.page.get_by_role("button", name="Season").click()
@@ -170,14 +189,15 @@ class IntegrationTest(StaticLiveServerTestCase):
         )
 
         # Check visibility
-        self.page.get_by_role("link", name="TV Shows").click()
-        self.page.get_by_role("link", name="Grid View").click()
+        self.page.goto(f"{self.live_server_url}/medialist/tv")
         expect(self.page.get_by_role("main")).to_contain_text("Friends")
-        self.page.get_by_role("link", name="TV Seasons").click()
-        self.page.get_by_role("link", name="Grid View").click()
+        self.page.goto(f"{self.live_server_url}/medialist/season")
         expect(self.page.get_by_role("main")).to_contain_text("Season 1")
-        self.page.get_by_role("link", name="TV Shows").click()
-        self.page.get_by_title("Friends").click()
+        self.page.goto(f"{self.live_server_url}/medialist/tv")
+        friends_href = self.page.get_by_role(
+            "link", name="Friends", exact=True
+        ).get_attribute("href")
+        self.page.goto(f"{self.live_server_url}{friends_href}")
         expect(self.page.get_by_role("main")).to_contain_text("Friends")
         season_href = self.page.locator(
             'a[href*="/season/1"]',
@@ -265,7 +285,8 @@ class IntegrationTest(StaticLiveServerTestCase):
         end_time_segment = end_date_before.split("T", 1)[1]
         start_date_input = create_modal.locator('input[name="start_date"]')
 
-        create_modal.get_by_role("button", name="Release date").nth(1).click()
+        create_modal.get_by_role("button", name="End date picker").click()
+        create_modal.get_by_role("button", name="Release date").click()
         expect(end_date_input).to_have_value(f"2019-11-08T{end_time_segment}")
         end_hour, end_minute = [int(segment) for segment in end_time_segment.split(":")]
         expected_start_date = (

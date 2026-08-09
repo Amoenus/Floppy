@@ -258,6 +258,10 @@ class TestPlexHybridImport(TestCase):
             patch(
                 "integrations.webhooks.base.app.providers.tmdb.search"
             ) as mock_tmdb_search,
+            patch(
+                "integrations.imports.plex.app.providers.tvdb.enabled",
+                return_value=False,
+            ),
         ):
             # First find fails
             mock_find.return_value = {"tv_results": [], "tv_episode_results": []}

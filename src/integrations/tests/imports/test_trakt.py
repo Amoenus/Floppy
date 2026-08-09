@@ -19,6 +19,7 @@ from app.models import (
     Sources,
     Status,
 )
+from app.providers import services
 from integrations.imports import helpers
 from integrations.imports.helpers import MediaImportError
 from integrations.imports.trakt import TraktImporter, importer
@@ -385,12 +386,12 @@ class ImportTrakt(TestCase):
         self.assertIsNone(movie_obj.status)
         self.assertEqual(movie_obj.progress, 0)
 
-    @patch("app.providers.tmdb.services.api_request")
+    @patch("integrations.imports.trakt.services.get_media_metadata")
     @patch("integrations.imports.trakt.TraktImporter._make_api_request")
     def test_process_ratings_tmdb_401_raises_clean_import_error(
         self,
         mock_make_request,
-        mock_api_request,
+        mock_get_metadata,
     ):
         """A TMDB 401 aborts rating import with a clear error, not a raw crash."""
         rating_entry = {
@@ -403,7 +404,10 @@ class ImportTrakt(TestCase):
 
         response = Response()
         response.status_code = requests.codes.unauthorized
-        mock_api_request.side_effect = requests.exceptions.HTTPError(response=response)
+        mock_get_metadata.side_effect = services.ProviderAPIError(
+            Sources.TMDB.value,
+            requests.exceptions.HTTPError(response=response),
+        )
 
         trakt_importer = TraktImporter("testuser", self.user, "new")
         with self.assertRaises(MediaImportError):

@@ -582,7 +582,12 @@ class CreateMedia(TestCase):
         }
 
         def metadata_side_effect(
-            media_type, media_id, source, season_numbers=None, **_kwargs
+            media_type,
+            media_id,
+            source,
+            season_numbers=None,
+            _episode_number=None,
+            **_kwargs,
         ):
             self.assertEqual(media_id, "1668")
             self.assertEqual(source, Sources.TMDB.value)

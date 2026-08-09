@@ -25,8 +25,10 @@ document.addEventListener("alpine:init", () => {
       // Read the live DOM value rather than trusting the server-rendered config:
       // mediaForm's status-change auto-fill runs (and may mutate this field)
       // before this component initializes, since it lives in a parent x-init.
-      if (this.$refs.hiddenInput.value) {
-        this.value = this.$refs.hiddenInput.value;
+      const initialValue = this.$refs.hiddenInput.value || this.value;
+      if (initialValue) {
+        this.value = this.normalizeInitialValue(initialValue);
+        this.$refs.hiddenInput.value = this.value;
       }
       this.syncFromValue();
       this.mediaQuery = window.matchMedia("(max-width: 39.99rem)");
@@ -48,7 +50,7 @@ document.addEventListener("alpine:init", () => {
 
       this.$refs.hiddenInput.addEventListener("input", () => {
         if (this.$refs.hiddenInput.value !== this.value) {
-          this.value = this.$refs.hiddenInput.value;
+          this.value = this.normalizeInitialValue(this.$refs.hiddenInput.value);
           this.syncFromValue();
         }
       });
@@ -141,6 +143,19 @@ document.addEventListener("alpine:init", () => {
       return String(value).padStart(2, "0");
     },
 
+    normalizeInitialValue(value) {
+      const [datePart, timePart] = value.trim().split(/[T ]/, 2);
+      if (!timePart || !this.trackTime) {
+        return datePart;
+      }
+
+      const [hour, minute, second] = timePart.split(":");
+      const normalizedTime = `${hour}:${minute}`;
+      return second && Number(second) !== 0
+        ? `${datePart}T${normalizedTime}:${second}`
+        : `${datePart}T${normalizedTime}`;
+    },
+
     formatTimeLabel(hour24, minute, second) {
       if (!this.use12Hour) {
         return `${this.pad(hour24)}:${this.pad(minute)}:${this.pad(second)}`;
@@ -185,7 +200,8 @@ document.addEventListener("alpine:init", () => {
       if (!this.trackTime) {
         return datePart;
       }
-      return `${datePart}T${this.pad(h)}:${this.pad(min)}:${this.pad(s)}`;
+      const minuteValue = `${datePart}T${this.pad(h)}:${this.pad(min)}`;
+      return s ? `${minuteValue}:${this.pad(s)}` : minuteValue;
     },
 
     syncFromValue() {

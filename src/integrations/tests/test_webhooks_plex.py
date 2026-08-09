@@ -152,7 +152,13 @@ class PlexWebhookTests(TestCase):
         )
         self.tmdb_search_patcher.start()
 
-        def fake_get_media_metadata(media_type, media_id, source, season_numbers=None):
+        def fake_get_media_metadata(
+            media_type,
+            media_id,
+            source,
+            season_numbers=None,
+            episode_number=None,
+        ):
             if media_type == "tv_with_seasons":
                 return fake_tv_with_seasons(media_id, season_numbers or [])
             if media_type == MediaTypes.SEASON.value:
@@ -1504,11 +1510,12 @@ class PlexWebhookTests(TestCase):
             },
         }
 
-        response = self.client.post(
-            self.url,
-            data={"payload": json.dumps(payload)},
-            format="multipart",
-        )
+        with patch("app.providers.tvdb.enabled", return_value=False):
+            response = self.client.post(
+                self.url,
+                data={"payload": json.dumps(payload)},
+                format="multipart",
+            )
 
         self.assertEqual(response.status_code, 200)
 
@@ -1765,11 +1772,12 @@ class PlexWebhookTests(TestCase):
             "payload": json.dumps(payload),
         }
 
-        response = self.client.post(
-            self.url,
-            data=data,
-            format="multipart",
-        )
+        with patch("app.providers.tvdb.enabled", return_value=False):
+            response = self.client.post(
+                self.url,
+                data=data,
+                format="multipart",
+            )
 
         self.assertEqual(response.status_code, 200)
 
