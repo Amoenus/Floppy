@@ -437,6 +437,15 @@ class ExportCSVTest(TestCase):
             collected_at.isoformat(),
         )
 
+    def test_export_csv_excludes_watch_providers(self):
+        """watch_providers is dropped from the export (never re-imported, huge)."""
+        response = self.client.get(reverse("export_csv"))
+        self.assertEqual(response.status_code, 200)
+
+        content = b"".join(response.streaming_content).decode("utf-8")
+        header = csv.DictReader(StringIO(content)).fieldnames
+        self.assertNotIn("watch_providers", header)
+
     def test_export_csv_collection_respects_media_type_filter(self):
         """Collection rows follow the media_types filter, including children."""
         self._create_collection_entries()

@@ -83,7 +83,9 @@ def generate_rows(user, media_types=None, include_lists=True, include_collection
 
     # Get fields
     fields = {
-        "item": get_model_fields(Item),
+        # watch_providers scales with ~60 TMDB regions, is never read back on
+        # import, and is fully re-fetchable via the provider backfill task.
+        "item": get_model_fields(Item, exclude={"watch_providers"}),
         "track": get_track_fields(),
         "list": get_list_fields(),
         "collection": get_collection_fields(),
@@ -320,7 +322,9 @@ def generate_list_csv(custom_list):
     writer = csv.writer(pseudo_buffer, quoting=csv.QUOTE_ALL)
 
     fields = {
-        "item": get_model_fields(Item),
+        # watch_providers scales with ~60 TMDB regions, is never read back on
+        # import, and is fully re-fetchable via the provider backfill task.
+        "item": get_model_fields(Item, exclude={"watch_providers"}),
         "track": get_track_fields(),
         "list": get_list_fields(),
         "collection": get_collection_fields(),
@@ -406,12 +410,15 @@ def write_backup(user, media_types=None, include_lists=True, include_collection=
     return str(filepath)
 
 
-def get_model_fields(model):
+def get_model_fields(model, exclude=frozenset()):
     """Get a list of fields names from a model."""
     return [
         field.name
         for field in model._meta.get_fields()
-        if isinstance(field, Field) and not field.auto_created and not field.is_relation
+        if isinstance(field, Field)
+        and not field.auto_created
+        and not field.is_relation
+        and field.name not in exclude
     ]
 
 
@@ -694,7 +701,9 @@ def generate_sample_template():
     writer = csv.writer(output, quoting=csv.QUOTE_ALL)
 
     fields = {
-        "item": get_model_fields(Item),
+        # watch_providers scales with ~60 TMDB regions, is never read back on
+        # import, and is fully re-fetchable via the provider backfill task.
+        "item": get_model_fields(Item, exclude={"watch_providers"}),
         "track": get_track_fields(),
         "list": get_list_fields(),
         "collection": get_collection_fields(),
