@@ -1942,6 +1942,48 @@ class ListDetailViewTests(TestCase):
         self.assertContains(response, "http://example.com/season.jpg")
         self.assertContains(response, "media-card-subtitle-always")
 
+    @patch.object(get_user_model(), "update_preference")
+    @patch.object(CustomList, "user_can_view")
+    def test_list_detail_episode_cards_show_lists_button_on_hover(
+        self,
+        mock_user_can_view,
+        mock_update_preference,
+    ):
+        """Episode cards in a list grid must expose the "add to lists" action.
+
+        Previously the episode branch of media_card.html only rendered the
+        "mark watched" toggle, so an episode already in a custom list (e.g. a
+        "watch together" list of specific episodes) had no way to be removed
+        from the list overview screen — the Lists button only existed on the
+        episode's own detail page.
+        """
+        mock_update_preference.side_effect = ["date_added", None]
+        mock_user_can_view.return_value = True
+
+        episode_item = Item.objects.create(
+            media_id="1668",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="The One Where It Starts",
+            season_number=1,
+            episode_number=1,
+            image=settings.IMG_NONE,
+        )
+
+        episode_list = CustomList.objects.create(
+            name="Episode List",
+            owner=self.user,
+        )
+        CustomListItem.objects.create(
+            custom_list=episode_list,
+            item=episode_item,
+        )
+
+        response = self.client.get(reverse("list_detail", args=[episode_list.id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'title="Add to custom lists"')
+
     @patch("lists.views.services.get_media_metadata")
     @patch.object(get_user_model(), "update_preference")
     @patch.object(CustomList, "user_can_view")
