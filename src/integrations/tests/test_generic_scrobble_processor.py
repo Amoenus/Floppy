@@ -131,6 +131,53 @@ class GenericScrobbleProcessPayloadTests(TestCase):
         self.assertEqual(movie.status, Status.IN_PROGRESS.value)
         self.assertEqual(movie.progress, 0)
 
+    def test_movie_completion_prefers_pending_activity_row(self):
+        """Scrobble completion upgrades Planning before older completed history."""
+        item = Item.objects.create(
+            media_id="603",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="The Matrix",
+        )
+        prior_completed = Movie.objects.create(
+            item=item,
+            user=self.user,
+            status=Status.COMPLETED.value,
+        )
+        planning = Movie.objects.create(
+            item=item,
+            user=self.user,
+            status=Status.PLANNING.value,
+        )
+
+        with (
+            patch(
+                "app.providers.tmdb.movie",
+                return_value={"title": "The Matrix", "image": ""},
+            ),
+            patch("app.services.metadata_resolution.upsert_provider_links"),
+            patch(
+                "app.providers.services.get_media_metadata",
+                return_value={"max_progress": 1},
+            ),
+            patch("app.models.Item.fetch_releases"),
+        ):
+            self.processor.process_payload(
+                {
+                    "media_type": "movie",
+                    "ids": {"tmdb": "603"},
+                    "completed": True,
+                },
+                self.user,
+            )
+
+        planning.refresh_from_db()
+        prior_completed.refresh_from_db()
+        self.assertEqual(planning.status, Status.COMPLETED.value)
+        self.assertIsNotNone(planning.end_date)
+        self.assertEqual(prior_completed.status, Status.COMPLETED.value)
+        self.assertEqual(Movie.objects.filter(item=item, user=self.user).count(), 2)
+
     def test_episode_stop_marks_episode_played(self):
         """A completed episode stop event resolves the show via tvdb/imdb."""
         self.processor.process_payload(

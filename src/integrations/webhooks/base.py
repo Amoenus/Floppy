@@ -7,6 +7,7 @@ from django.utils import timezone
 import app
 from app.log_safety import exception_summary
 from app.models import MediaTypes, ProviderMetadataStatus, Sources, Status
+from app.services.completion import select_preferred_activity_entry
 from integrations import episode_remap
 from integrations.webhooks import anime_mappings
 
@@ -899,7 +900,7 @@ class BaseWebhookProcessor:
         )
 
         movie_instances = app.models.Movie.objects.filter(item=movie_item, user=user)
-        current_instance = movie_instances.first()
+        current_instance = select_preferred_activity_entry(movie_instances)
         movie_played = self._is_played(payload)
 
         progress = 1 if movie_played else 0
@@ -1665,7 +1666,7 @@ class BaseWebhookProcessor:
                 )
 
         anime_instances = app.models.Anime.objects.filter(item=anime_item, user=user)
-        current_instance = anime_instances.first()
+        current_instance = select_preferred_activity_entry(anime_instances)
 
         now = timezone.now().replace(second=0, microsecond=0)
         is_completed = episode_number == anime_metadata["max_progress"]

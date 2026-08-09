@@ -7,7 +7,7 @@ from django.core.validators import (
     MaxValueValidator,
     MinValueValidator,
 )
-from django.db import models
+from django.db import models, transaction
 from django.utils import timezone
 from model_utils import FieldTracker
 from model_utils.fields import MonitorField
@@ -90,6 +90,11 @@ class Media(models.Model):
 
     def save(self, *args, **kwargs):
         """Save the media instance."""
+        from app.services.completion import (
+            finalize_completed_entry,
+            prepare_completed_entry,
+        )
+
         if not getattr(self, "_history_user", None) and getattr(self, "user_id", None):
             self._history_user = self.user
 
@@ -99,7 +104,18 @@ class Media(models.Model):
         if self.tracker.has_changed("status"):
             self.process_status()
 
-        super().save(*args, **kwargs)
+        planning_entries, merged_fields = prepare_completed_entry(self)
+        if merged_fields and kwargs.get("update_fields") is not None:
+            kwargs["update_fields"] = tuple(
+                dict.fromkeys((*kwargs["update_fields"], *merged_fields)),
+            )
+
+        if planning_entries:
+            with transaction.atomic():
+                super().save(*args, **kwargs)
+                finalize_completed_entry(planning_entries)
+        else:
+            super().save(*args, **kwargs)
 
     def _get_local_max_progress(self):
         """Return locally-derived runtime minutes for music/podcast without provider calls."""

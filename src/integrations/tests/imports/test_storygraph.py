@@ -731,10 +731,10 @@ class ImportStoryGraphDeduplication(TestCase):
 
         self.assertEqual(counts.get("book", 0), 1)
         books = Book.objects.filter(user=self.user, item__title="Planned Book")
-        self.assertEqual(books.count(), 2)
+        self.assertEqual(books.count(), 1)
         self.assertEqual(
             books.filter(status=Status.PLANNING.value).count(),
-            1,
+            0,
         )
         completed = books.get(status=Status.COMPLETED.value)
         self.assertIsNone(completed.start_date)

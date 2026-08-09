@@ -860,7 +860,12 @@ class MediaTypeListView(drf_views.APIView):
 
     @extend_schema(parameters=[MEDIA_TYPE_COMPLETE_PARAM])
     def post(self, request, media_type):
-        """Track a new media item of a specific media type."""
+        """Create a new consumption for a media item.
+
+        This append-oriented endpoint keeps its historical default: omitted
+        status means Planning. Clients updating an existing play should first
+        read its consumption_id and use the exact history route instead.
+        """
         if not check_valid_type(media_type, complete=True):
             return Response(
                 {"detail": "Unsupported media type."},
@@ -1177,7 +1182,11 @@ class MediaDetailView(drf_views.APIView):
 
     @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def patch(self, request, media_type, source, media_id):
-        """Update a tracked media item."""
+        """Update the convenience/default tracked row for a media item.
+
+        Use the history endpoint when the caller needs to target one exact
+        consumption entry.
+        """
         user = request.user
 
         if not check_valid_type(media_type):
@@ -1506,7 +1515,7 @@ class MediaConsumptionEntryDetailView(drf_views.APIView):
 
     @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def patch(self, request, media_type, source, media_id, consumption_id):
-        """Update a specific consumption history entry for a specific media."""
+        """Update one exact consumption history entry for a media item."""
         if not check_valid_type(media_type):
             return Response(
                 {"detail": "Unsupported media type."},

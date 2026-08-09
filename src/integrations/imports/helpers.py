@@ -19,6 +19,7 @@ import app
 from app import providers
 from app.db_retry import run_retryable_db_operation
 from app.models import Episode, MediaTypes, Status
+from app.services.completion import normalize_completed_entry
 
 logger = logging.getLogger(__name__)
 
@@ -341,7 +342,13 @@ def _backfill_completed_season_episodes(seasons):
             )
 
     if episodes_to_create:
-        bulk_create_with_history(episodes_to_create, Episode, batch_size=500)
+        created_episodes = bulk_create_with_history(
+            episodes_to_create,
+            Episode,
+            batch_size=500,
+        )
+        for episode in created_episodes:
+            normalize_completed_entry(episode)
 
     return warnings
 
@@ -422,7 +429,9 @@ def bulk_create_media(bulk_media_list, user):
                 default_date=timezone.now(),
             )
 
-        retry_on_lock(create_media)
+        created_media = retry_on_lock(create_media)
+        for media in created_media:
+            normalize_completed_entry(media)
 
     # Run after every media type (including any episodes the importer supplied
     # directly) has been persisted, so the "does this season already have

@@ -12,6 +12,7 @@ from app.models import (
     Episode,
     Item,
     MediaTypes,
+    Movie,
     Season,
     Sources,
     Status,
@@ -33,6 +34,39 @@ class HelpersTest(TestCase):
         """Set up test data."""
         self.credentials = {"username": "test", "password": "12345"}
         self.user = get_user_model().objects.create_user(**self.credentials)
+
+    def test_bulk_completed_media_removes_stale_planning_row(self):
+        """Bulk persistence applies the same planning normalization as save()."""
+        item = Item.objects.create(
+            media_id="bulk-movie",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Bulk Movie",
+        )
+        Movie.objects.create(
+            item=item,
+            user=self.user,
+            status=Status.PLANNING.value,
+            score=7,
+            notes="import plan",
+        )
+        completed = Movie(
+            item=item,
+            user=self.user,
+            status=Status.COMPLETED.value,
+        )
+
+        helpers.bulk_create_media(
+            {MediaTypes.MOVIE.value: [completed]},
+            self.user,
+        )
+
+        rows = Movie.objects.filter(item=item, user=self.user)
+        self.assertEqual(rows.count(), 1)
+        row = rows.get()
+        self.assertEqual(row.status, Status.COMPLETED.value)
+        self.assertEqual(row.score, 7)
+        self.assertEqual(row.notes, "import plan")
 
     def test_update_season_references(self):
         """Test updating season references with actual TV instances."""

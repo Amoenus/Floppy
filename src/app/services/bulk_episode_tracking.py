@@ -32,6 +32,7 @@ from app.models import (
     Status,
 )
 from app.providers import services
+from app.services.completion import normalize_completed_entry
 from app.services.tracking_hydration import ensure_item_metadata
 from app.signals import (
     flush_media_change_side_effects,
@@ -943,7 +944,9 @@ def _apply_bulk_podcast_plays(
             )
 
         if episodes_to_create:
-            bulk_create_with_history(episodes_to_create, Podcast)
+            created_episodes = bulk_create_with_history(episodes_to_create, Podcast)
+            for episode in created_episodes:
+                normalize_completed_entry(episode)
             created_count = len(episodes_to_create)
 
     if created_count or replaced_episode_count:
@@ -1103,7 +1106,9 @@ def apply_bulk_episode_plays(
             )
 
         if episodes_to_create:
-            bulk_create_with_history(episodes_to_create, Episode)
+            created_episodes = bulk_create_with_history(episodes_to_create, Episode)
+            for episode in created_episodes:
+                normalize_completed_entry(episode)
             created_count = len(episodes_to_create)
 
     for season_tracker in touched_seasons.values():

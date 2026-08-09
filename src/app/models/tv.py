@@ -6,7 +6,7 @@ from django.core.validators import (
     MaxValueValidator,
     MinValueValidator,
 )
-from django.db import models
+from django.db import models, transaction
 from django.db.models import Max
 from django.utils import timezone
 from django.utils.functional import cached_property
@@ -1316,13 +1316,29 @@ class Episode(models.Model):
 
     def save(self, *args, **kwargs):
         """Save the episode instance."""
+        from app.services.completion import (
+            finalize_completed_entry,
+            prepare_completed_entry,
+        )
+
         if self.tracker.has_changed("status"):
             self.dropped = self.status == Status.DROPPED.value
         elif self.tracker.has_changed("dropped"):
             self.status = (
                 Status.DROPPED.value if self.dropped else Status.COMPLETED.value
             )
-        super().save(*args, **kwargs)
+        planning_entries, merged_fields = prepare_completed_entry(self)
+        if merged_fields and kwargs.get("update_fields") is not None:
+            kwargs["update_fields"] = tuple(
+                dict.fromkeys((*kwargs["update_fields"], *merged_fields)),
+            )
+
+        if planning_entries:
+            with transaction.atomic():
+                super().save(*args, **kwargs)
+                finalize_completed_entry(planning_entries)
+        else:
+            super().save(*args, **kwargs)
 
         season_number = self.item.season_number
         if season_number is None:

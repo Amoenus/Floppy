@@ -424,6 +424,19 @@ def _handle_media_cache_change(
             prioritized=prioritized,
         )
 
+    has_history_days = any(
+        day_key
+        for day_keys, _logging_styles in history_specs or []
+        for day_key in day_keys or []
+    )
+    if history_specs and not has_history_days:
+        # Planning activity is commonly undated. There is no day key to
+        # invalidate in that case, but it can still appear in a title's
+        # history and affect cached all-time/statistics payloads.
+        history_cache.invalidate_history_cache(user_id)
+        statistics_cache.invalidate_statistics_cache(user_id)
+        statistics_cache.invalidate_all_statistics_days(user_id, reason=reason)
+
     normalized_stat_days = [
         day_value for day_value in (statistics_day_values or []) if day_value
     ]
