@@ -2917,6 +2917,70 @@ class ListItemToggleTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.context["has_item"])  # Item was removed
 
+    def test_list_item_toggle_remove_failure_logs_and_toasts_error(self):
+        """An unexpected failure while removing must be logged and surfaced.
+
+        Regression coverage for the class of bug that produced the real
+        UniqueViolation crash: whatever throws here, the user must see an
+        error toast (not a dead redirect) and the failure must land in the
+        server logs with enough context to diagnose it, since the browser
+        gives no useful detail on a bare 500.
+        """
+        self.client.login(**self.credentials)
+        self.list.items.add(self.item)
+
+        with (
+            patch(
+                "lists.models.CustomListItem.delete",
+                side_effect=RuntimeError("boom"),
+            ),
+            self.assertLogs("lists.views_list_actions", level="ERROR") as logs,
+        ):
+            response = self.client.post(
+                reverse("list_item_toggle"),
+                {
+                    "item_id": self.item.id,
+                    "custom_list_id": self.list.id,
+                },
+            )
+
+        self.assertEqual(response.status_code, 500)
+        self.assertIn(str(self.item.id), "".join(logs.output))
+        self.assertIn(str(self.list.id), "".join(logs.output))
+
+        trigger = json.loads(response.headers["HX-Trigger"])
+        self.assertEqual(trigger["showToast"]["type"], "error")
+        self.assertIn("try again", trigger["showToast"]["message"])
+
+        # Nothing committed: the item is still in the list.
+        self.assertIn(self.item, self.list.items.all())
+
+    def test_list_item_toggle_add_failure_logs_and_toasts_error(self):
+        """Same guarantee on the add path, not just remove."""
+        self.client.login(**self.credentials)
+
+        with (
+            patch(
+                "lists.models.CustomListItem.objects.create",
+                side_effect=RuntimeError("boom"),
+            ),
+            self.assertLogs("lists.views_list_actions", level="ERROR"),
+        ):
+            response = self.client.post(
+                reverse("list_item_toggle"),
+                {
+                    "item_id": self.item.id,
+                    "custom_list_id": self.list.id,
+                },
+            )
+
+        self.assertEqual(response.status_code, 500)
+        trigger = json.loads(response.headers["HX-Trigger"])
+        self.assertEqual(trigger["showToast"]["type"], "error")
+
+        # Nothing committed: the item was never added.
+        self.assertNotIn(self.item, self.list.items.all())
+
 
 class ListRssFeedTests(TestCase):
     """Tests for the public list RSS feed."""
