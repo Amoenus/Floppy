@@ -2774,6 +2774,32 @@ class ListItemToggleTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertNotIn(self.item, self.list.items.all())
 
+    def test_list_item_toggle_response_refreshes_the_list_grid(self):
+        """Toggling list membership must refresh a visible list grid.
+
+        The button's hx-swap only replaces itself, so without this hook
+        removing an item while viewing that list's own page leaves the
+        item's card on screen even though it was removed from the DB —
+        looking exactly like the toggle silently did nothing.
+        window.refreshCustomListGrid is only defined on list_detail /
+        smart_list_detail pages, so the guard keeps this a no-op elsewhere
+        (e.g. toggling from a media details page).
+        """
+        self.client.login(**self.credentials)
+        response = self.client.post(
+            reverse("list_item_toggle"),
+            {
+                "item_id": self.item.id,
+                "custom_list_id": self.list.id,
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            "if(event.detail.successful && window.refreshCustomListGrid)"
+            "{window.refreshCustomListGrid();}",
+        )
+
     def test_list_item_collaborator_toggle(self):
         """Test adding an item to a list as collaborator."""
         self.client.login(**self.collaborator_credentials)
