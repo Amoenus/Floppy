@@ -19,6 +19,7 @@ from app.models import (
     Episode,
     Game,
     Item,
+    ItemTag,
     Manga,
     MediaTypes,
     Movie,
@@ -26,6 +27,7 @@ from app.models import (
     Season,
     Sources,
     Status,
+    Tag,
 )
 from integrations import exports
 from integrations.imports import (
@@ -318,6 +320,52 @@ class ImportYamtrackStatuslessRoundTrip(TestCase):
         movie = Movie.objects.get(user=self.importer_user)
         self.assertIsNone(movie.status)
         self.assertEqual(movie.score, 8)
+
+
+class ImportYamtrackTagsRoundTrip(TestCase):
+    """An item's tags survive an export/import cycle (issue #574)."""
+
+    def setUp(self):
+        """Export a tagged movie for a second user to import."""
+        self.exporter = get_user_model().objects.create_user(
+            username="tags-exporter",
+            password="12345",
+        )
+        self.importer_user = get_user_model().objects.create_user(
+            username="tags-importer",
+            password="12345",
+        )
+        item, _ = Item.objects.get_or_create(
+            media_id="1368337",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            season_number=None,
+            episode_number=None,
+            defaults={"title": "The Odyssey", "image": "https://image.url"},
+        )
+        Movie.objects.create(item=item, user=self.exporter, status=Status.COMPLETED.value)
+        tag = Tag.objects.create(user=self.exporter, name="ABCXYZ")
+        ItemTag.objects.create(tag=tag, item=item)
+        self.csv_content = "".join(exports.generate_rows(self.exporter))
+
+    def test_export_includes_tags(self):
+        """The CSV's item_tags column includes the tag name."""
+        self.assertIn("ABCXYZ", self.csv_content)
+
+    def test_import_restores_tags(self):
+        """Re-importing the CSV recreates the Tag/ItemTag rows for the new user."""
+        yamtrack.importer(
+            BytesIO(self.csv_content.encode("utf-8")),
+            self.importer_user,
+            "new",
+        )
+
+        movie = Movie.objects.get(user=self.importer_user)
+        tag_names = list(
+            ItemTag.objects.filter(item=movie.item, tag__user=self.importer_user)
+            .values_list("tag__name", flat=True)
+        )
+        self.assertEqual(tag_names, ["ABCXYZ"])
 
 
 class ImportSampleTemplate(TestCase):

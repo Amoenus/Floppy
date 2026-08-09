@@ -19,9 +19,11 @@ from app.models import (
     Artist,
     ArtistTracker,
     CollectionEntry,
+    ItemTag,
     MediaTypes,
     Sources,
     Status,
+    Tag,
 )
 from app.providers import services
 from app.templatetags import app_tags
@@ -549,7 +551,19 @@ class YamtrackImporter:
             )
         except IntegrityError as exc:
             item = _find_item_after_integrity_error(item_lookup, exc)
+        self._apply_item_tags(item, row.get("item_tags"))
         return item
+
+    def _apply_item_tags(self, item, raw_tags):
+        """Get-or-create Tag/ItemTag rows for this item from the CSV item_tags column."""
+        for raw_name in _parse_tags(raw_tags):
+            name = raw_name.strip()
+            if not name:
+                continue
+            tag = Tag.objects.filter(user=self.user, name__iexact=name).first()
+            if tag is None:
+                tag = Tag.objects.create(user=self.user, name=name)
+            ItemTag.objects.get_or_create(tag=tag, item=item)
 
     def _process_collection_row(self, row):
         """Process a collection (owned media) row from the CSV file."""
