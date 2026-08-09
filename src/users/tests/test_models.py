@@ -411,6 +411,46 @@ class UserGetImportTasksTests(TestCase):
         self.assertEqual(len(import_tasks["results"]), 1)
         self.assertEqual(import_tasks["results"][0]["source"], "grouvee")
 
+    @patch("users.helpers.process_task_result")
+    @patch("users.helpers.get_next_run_info")
+    def test_get_import_tasks_includes_stremio_results_and_schedule(
+        self,
+        mock_get_next_run_info,
+        mock_process_task_result,
+    ):
+        """Stremio recurring imports should appear in both activity panels."""
+        mock_task = MagicMock()
+        mock_task.summary = "Imported 3 items"
+        mock_task.errors = []
+        mock_process_task_result.return_value = mock_task
+        mock_get_next_run_info.return_value = {
+            "next_run": timezone.now() + timedelta(hours=2),
+            "frequency": "Every 2 hours",
+            "mode": "Only New Items",
+        }
+
+        TaskResult.objects.create(
+            task_id="stremio-task",
+            task_name="Import from Stremio (Recurring)",
+            task_kwargs=f'{{"user_id": {self.user.id}}}',
+            status="SUCCESS",
+            date_done=timezone.now(),
+            result="{}",
+        )
+        PeriodicTask.objects.create(
+            name="Import from Stremio for test (every 2 hours)",
+            task="Import from Stremio (Recurring)",
+            kwargs=f'{{"user_id": {self.user.id}}}',
+            crontab=self.crontab,
+            enabled=True,
+        )
+
+        import_tasks = self.user.get_import_tasks()
+
+        self.assertEqual(import_tasks["results"][0]["source"], "stremio")
+        self.assertEqual(import_tasks["schedules"][0]["source"], "stremio")
+        self.assertEqual(import_tasks["schedules"][0]["username"], "test")
+
     @patch("users.helpers.get_next_run_info")
     def test_get_import_tasks_schedules(self, mock_get_next_run_info):
         """Test get_import_tasks returns correct scheduled tasks."""

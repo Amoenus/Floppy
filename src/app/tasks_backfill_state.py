@@ -61,7 +61,11 @@ def _backfill_delay_seconds(fail_count: int) -> int:
 
 
 def _record_backfill_failure(
-    item: Item, field: str, error_message: str | None = None
+    item: Item,
+    field: str,
+    error_message: str | None = None,
+    *,
+    terminal: bool = False,
 ) -> bool:
     now = timezone.now()
     state, _ = MetadataBackfillState.objects.get_or_create(item=item, field=field)
@@ -69,7 +73,11 @@ def _record_backfill_failure(
     state.last_attempt_at = now
     if error_message:
         state.last_error = str(error_message)[:500]
-    if state.fail_count >= METADATA_BACKFILL_MAX_ATTEMPTS:
+    if terminal:
+        state.fail_count = METADATA_BACKFILL_MAX_ATTEMPTS
+        state.give_up = True
+        state.next_retry_at = None
+    elif state.fail_count >= METADATA_BACKFILL_MAX_ATTEMPTS:
         state.give_up = True
         state.next_retry_at = None
     else:

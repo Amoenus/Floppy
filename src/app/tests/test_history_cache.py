@@ -315,13 +315,14 @@ class HistoryRefreshSchedulingTests(TestCase):
             settings.CELERY_TASK_PRIORITY_BACKGROUND,
         )
 
-    @patch("app.tasks.repair_history_day_cache_coverage_task.apply_async")
     @patch("app.tasks.interactive_request_active", return_value=True)
     def test_repair_history_day_cache_coverage_task_defers_for_interactive_requests(
         self,
         _mock_interactive_request_active,
-        mock_apply_async,
     ):
+        repair_key = history_cache._coverage_repair_key(self.user.id, "repeats")
+        cache.set(repair_key, {"started_at": "now"}, timeout=300)
+
         result = tasks.repair_history_day_cache_coverage_task(
             self.user.id,
             "repeats",
@@ -332,15 +333,7 @@ class HistoryRefreshSchedulingTests(TestCase):
             result,
             {"skipped": True, "reason": "interactive_request_active"},
         )
-        mock_apply_async.assert_called_once_with(
-            kwargs={
-                "user_id": self.user.id,
-                "logging_style": "repeats",
-                "batch_size": 25,
-            },
-            countdown=tasks.HISTORY_COVERAGE_REPAIR_INTERACTIVE_RETRY_SECONDS,
-            priority=settings.CELERY_TASK_PRIORITY_BACKGROUND,
-        )
+        self.assertIsNone(cache.get(repair_key))
 
     @patch("app.tasks.repair_history_day_cache_coverage_task.apply_async")
     @patch(

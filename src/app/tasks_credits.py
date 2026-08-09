@@ -4,6 +4,7 @@ Extracted from tasks.py. Re-exported from app.tasks for backward compatibility.
 """
 
 import logging
+from http import HTTPStatus
 
 from celery import shared_task
 
@@ -11,6 +12,7 @@ from app import backfill_queue
 from app import credits as credit_helpers
 from app.log_safety import exception_summary
 from app.models import CREDITS_BACKFILL_VERSION, Item, MediaTypes, MetadataBackfillField
+from app.providers import services
 from app.task_cooperation import CooperativeRun
 from app.tasks_backfill_state import (
     _filter_backfill_item_ids,
@@ -19,7 +21,7 @@ from app.tasks_backfill_state import (
     _record_backfill_success,
     _schedule_metadata_statistics_refresh,
 )
-from app.tasks_metadata_cache import _fetch_item_metadata
+from app.tasks_metadata_cache import _clear_item_metadata_cache, _fetch_item_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +104,7 @@ def _populate_credits_for_items(items, delay_seconds):
                 )
                 continue
 
+            _clear_item_metadata_cache(item)
             metadata = _fetch_item_metadata(item)
 
             if not isinstance(metadata, dict):
@@ -148,6 +151,21 @@ def _populate_credits_for_items(items, delay_seconds):
                 import time
 
                 time.sleep(delay_seconds)
+        except services.ProviderAPIError as exc:
+            error_count += 1
+            terminal = exc.status_code == HTTPStatus.NOT_FOUND
+            logger.warning(
+                "Credits metadata fetch failed for %s status=%s terminal=%s",
+                item.title,
+                exc.status_code,
+                terminal,
+            )
+            _record_backfill_failure(
+                item,
+                MetadataBackfillField.CREDITS,
+                f"provider error: {exception_summary(exc)}",
+                terminal=terminal,
+            )
         except Exception as exc:
             error_count += 1
             logger.exception(

@@ -1581,6 +1581,10 @@ class User(AbstractUser):
                 "Import from Pocket Casts (Recurring)",
             ],
             "gpodder": ["Import from GPodder", "Import from GPodder (Recurring)"],
+            "stremio": [
+                "Import from Stremio",
+                "Import from Stremio (Recurring)",
+            ],
             "lastfm": ["Import from Last.fm History"],
             "hardcover": ["Import from Hardcover"],
             "storygraph": ["Import from StoryGraph"],
@@ -1594,6 +1598,7 @@ class User(AbstractUser):
             "storyteller": ["Import from Storyteller (Recurring)"],
             "pocketcasts": ["Import from Pocket Casts (Recurring)"],
             "gpodder": ["Import from GPodder (Recurring)"],
+            "stremio": ["Import from Stremio (Recurring)"],
             "lastfm": ["Poll Last.fm for all users"],
             "koito": ["Poll Koito for user"],
         }
