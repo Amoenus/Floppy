@@ -449,6 +449,24 @@ class AppTagsTests(TestCase):
             content,
         )
 
+    def test_genres_cell_falls_back_to_plain_text_for_blank_media_type(self):
+        """Genres cell shouldn't crash reversing 'medialist' for a blank media_type."""
+        item = Item(
+            media_id="blank-type-1",
+            source=Sources.TMDB.value,
+            media_type="",
+            title="Legacy Item",
+            genres=["Drama"],
+        )
+
+        content = render_to_string(
+            "app/components/cells/media_genres_cell.html",
+            {"media": SimpleNamespace(item=item)},
+        )
+
+        self.assertIn("Drama", content)
+        self.assertNotIn("<a href", content)
+
     def test_progress_changer_uses_episode_label_for_tv_and_season(self):
         """Quick progress controls should use episode labels for TV-derived progress."""
         tv_content = render_to_string(
