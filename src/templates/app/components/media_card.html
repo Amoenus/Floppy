@@ -294,11 +294,7 @@
                           hx-target="#{% component_id 'track' item media.id %}"
                           hx-trigger="click once"
                           @click="trackOpen = true">
-                    {% if media %}
-                      {% include "app/icons/eye.svg" with classes="w-4 h-4" %}
-                    {% else %}
-                      {% include "app/icons/eye-closed.svg" with classes="w-4 h-4" %}
-                    {% endif %}
+                    {% include "app/icons/edit.svg" with classes="w-4 h-4" %}
                   </button>
                   {% comment %}
                     Lists Button — episode cards need this too so items added to
