@@ -27,6 +27,17 @@ def _metadata_cache_keys_for_item(item: Item):
     keys = {
         f"{item.source}_{item.media_type}_{item.media_id}",
     }
+    if item.source == Sources.TVDB.value:
+        from app.providers import tvdb
+
+        keys.update(
+            tvdb.metadata_cache_keys(
+                item.media_id,
+                item.season_number
+                if item.media_type == MediaTypes.SEASON.value
+                else None,
+            ),
+        )
     if (
         item.source == Sources.TMDB.value
         and item.media_type == MediaTypes.SEASON.value

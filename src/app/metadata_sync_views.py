@@ -29,7 +29,7 @@ from app.models import (
     MetadataProviderPreference,
     Sources,
 )
-from app.providers import services, tmdb
+from app.providers import services, tmdb, tvdb
 from app.services import (
     anime_migration,
     bulk_episode_tracking,
@@ -1257,7 +1257,23 @@ def sync_metadata(request, source, media_type, media_id, season_number=None):
         media_type,
         source=source,
     )
-    if media_type == MediaTypes.SEASON.value and source == Sources.TMDB.value:
+    tvdb_cache_keys = None
+    if source == Sources.TVDB.value:
+        routed_media_type = (
+            MediaTypes.ANIME.value
+            if media_type == MediaTypes.ANIME.value
+            else MediaTypes.TV.value
+        )
+        if media_type == MediaTypes.SEASON.value:
+            cache_key = tvdb._season_cache_key(
+                media_id,
+                season_number,
+                routed_media_type,
+            )
+        else:
+            cache_key = tvdb._cache_key(routed_media_type, media_id)
+        tvdb_cache_keys = tvdb.metadata_cache_keys(media_id, season_number)
+    elif media_type == MediaTypes.SEASON.value and source == Sources.TMDB.value:
         cache_key = tmdb._season_cache_key(media_id, season_number)
     else:
         cache_key = f"{source}_{tracking_media_type}_{media_id}"
@@ -1273,7 +1289,11 @@ def sync_metadata(request, source, media_type, media_id, season_number=None):
         messages.error(request, msg)
         logger.error(msg)
     else:
-        deleted = cache.delete(cache_key)
+        deleted = (
+            cache.delete_many(tvdb_cache_keys)
+            if tvdb_cache_keys
+            else cache.delete(cache_key)
+        )
         logger.debug("%s - Old cache deleted: %s", cache_key, deleted)
 
         try:

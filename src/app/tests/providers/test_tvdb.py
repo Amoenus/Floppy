@@ -86,6 +86,71 @@ class TVDBProviderTests(TestCase):
         self.assertIn("details", result["related"]["seasons"][0])
 
     @patch("app.providers.tvdb._request")
+    def test_tv_with_seasons_reuses_cached_series_extended_payload(
+        self,
+        mock_request,
+    ):
+        """Series extended metadata should be fetched once across TVDB lookups."""
+        mock_request.side_effect = [
+            {
+                "data": {
+                    "id": 81189,
+                    "name": "Breaking Bad",
+                    "seasons": [
+                        {
+                            "id": 102,
+                            "number": 1,
+                            "name": "Season 1",
+                            "type": {"name": "Aired Order"},
+                        },
+                    ],
+                    "characters": [],
+                },
+            },
+            {"data": {}},
+            {
+                "data": {
+                    "id": 102,
+                    "number": 1,
+                    "name": "Season 1",
+                    "type": {"name": "Aired Order"},
+                    "episodes": [],
+                },
+            },
+            {"data": {}},
+        ]
+
+        tvdb.tv("81189")
+        tvdb.tv_with_seasons("81189", [1])
+        tvdb.tv_with_seasons("81189", [1])
+
+        requested_paths = [call.args[0] for call in mock_request.call_args_list]
+        self.assertEqual(requested_paths.count("series/81189/extended"), 1)
+        self.assertEqual(requested_paths.count("seasons/102/extended"), 1)
+
+    @patch("app.providers.tvdb._request")
+    def test_tv_uses_explicit_metadata_cache_timeout(self, mock_request):
+        """Normalized series metadata should use the long-lived TVDB TTL."""
+        mock_request.side_effect = [
+            {
+                "data": {
+                    "id": 81189,
+                    "name": "Breaking Bad",
+                    "seasons": [],
+                    "characters": [],
+                },
+            },
+            {"data": {}},
+        ]
+
+        tvdb.tv("81189")
+
+        self.assertGreaterEqual(
+            cache.ttl(tvdb._cache_key(MediaTypes.TV.value, "81189")),
+            tvdb.TVDB_METADATA_CACHE_TIMEOUT - 1,
+        )
+
+    @patch("app.providers.tvdb._request")
     def test_tv_prefers_english_translation_payload_for_titles_and_synopsis(
         self,
         mock_request,
