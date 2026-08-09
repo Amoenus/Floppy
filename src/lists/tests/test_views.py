@@ -2774,16 +2774,38 @@ class ListItemToggleTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertNotIn(self.item, self.list.items.all())
 
-    def test_list_item_toggle_response_refreshes_the_list_grid(self):
-        """Toggling list membership must refresh a visible list grid.
+    def test_list_detail_page_refreshes_its_grid_after_list_item_toggle(self):
+        """The list's own page must refresh its grid after a toggle.
 
-        The button's hx-swap only replaces itself, so without this hook
+        The toggle button's hx-swap replaces itself (hx-swap="outerHTML"),
+        so an hx-on::after-request on that same button doesn't reliably fire
+        — verified live: htmx doesn't rebind it once the element carrying it
+        has replaced itself with its own response. Without some refresh,
         removing an item while viewing that list's own page leaves the
         item's card on screen even though it was removed from the DB —
-        looking exactly like the toggle silently did nothing.
-        window.refreshCustomListGrid is only defined on list_detail /
-        smart_list_detail pages, so the guard keeps this a no-op elsewhere
-        (e.g. toggling from a media details page).
+        looking exactly like the toggle silently did nothing (reported:
+        removing Daredevil: Born Again from a Watchlist custom list via the
+        hover list-icon modal never made the card disappear).
+
+        The working fix listens for htmx:afterRequest at the document level
+        instead (the same pattern already used elsewhere in this app, e.g.
+        app/media_list.html), filtered to list_item_toggle's response.
+        """
+        self.client.login(**self.credentials)
+        response = self.client.get(reverse("list_detail", args=[self.list.id]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "addEventListener('htmx:afterRequest'")
+        self.assertContains(response, "endsWith('/list_item_toggle')")
+
+    def test_list_item_toggle_response_no_longer_relies_on_self_swap_hx_on(self):
+        """The toggle button must not re-introduce the non-firing hx-on hook.
+
+        hx-on::after-request on a button that swaps itself out via
+        hx-swap="outerHTML" was verified (via a live browser session) to
+        never actually invoke its handler, even though the attribute renders
+        correctly and the underlying htmx:afterRequest event does fire and
+        bubble to the document. Guards against silently regressing back to
+        that dead approach.
         """
         self.client.login(**self.credentials)
         response = self.client.post(
@@ -2794,11 +2816,7 @@ class ListItemToggleTests(TestCase):
             },
         )
         self.assertEqual(response.status_code, 200)
-        self.assertContains(
-            response,
-            "if(event.detail.successful && window.refreshCustomListGrid)"
-            "{window.refreshCustomListGrid();}",
-        )
+        self.assertNotContains(response, "hx-on::after-request")
 
     def test_list_item_collaborator_toggle(self):
         """Test adding an item to a list as collaborator."""
