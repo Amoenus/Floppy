@@ -29,9 +29,9 @@
   out-of-band swaps can target them.
 {% endcomment %}
 {% if row.poll_for_covers or force_artwork_anchor %}
-<div id="home-music-row-artwork-{{ row.row_id }}"{% if oob_swap %} hx-swap-oob="outerHTML"{% endif %}>
+<div id="home-music-row-artwork-{{ row.row_id }}" data-home-row-wrapper="true"{% if oob_swap %} hx-swap-oob="outerHTML"{% endif %}>
 {% else %}
-<div>
+<div data-home-row-wrapper="true">
 {% endif %}
   {% if not hide_heading %}
   <div class="mb-2 flex items-start justify-between gap-3">
@@ -48,32 +48,31 @@
             </span>
           {% endif %}
           {% if row.url %}</a>{% endif %}
-          <form method="post"
-                action="{% url 'toggle_home_screen_row_direction' row.row_id %}"
-                class="home-row-heading-sort-form inline ml-3.5">
-            {% csrf_token %}
-            <button type="submit"
-                    data-home-row-sort-toggle="true"
-                    aria-label="Toggle sort direction for {{ row.title }}"
-                    class="home-row-heading-sort-button inline-flex items-center text-sm font-medium leading-none text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text-secondary)] focus:outline-none focus:ring-2 focus:ring-indigo-500 rounded-sm">
-              <span class="home-row-heading-sort-label">{{ row.summary_inline }}</span>
-              {% if row.direction == 'asc' %}
-                <svg xmlns="http://www.w3.org/2000/svg"
-                     viewBox="0 0 20 20"
-                     class="home-row-heading-sort-icon w-4 h-4 ml-2"
-                     aria-hidden="true">
-                  <path d="M10 5 L16 15 H4 Z" fill="currentColor"></path>
-                </svg>
-              {% else %}
-                <svg xmlns="http://www.w3.org/2000/svg"
-                     viewBox="0 0 20 20"
-                     class="home-row-heading-sort-icon w-4 h-4 ml-2"
-                     aria-hidden="true">
-                  <path d="M10 15 L4 5 H16 Z" fill="currentColor"></path>
-                </svg>
-              {% endif %}
-            </button>
-          </form>
+          <button type="button"
+                  hx-post="{% url 'toggle_home_screen_row_direction' row.row_id %}"
+                  hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+                  hx-target="closest [data-home-row-wrapper]"
+                  hx-swap="outerHTML"
+                  data-home-row-sort-toggle="true"
+                  aria-label="Toggle sort direction for {{ row.title }}"
+                  class="home-row-heading-sort-form home-row-heading-sort-button inline-flex items-center ml-3.5 text-sm font-medium leading-none text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text-secondary)] focus:outline-none focus:ring-2 focus:ring-indigo-500 rounded-sm">
+            <span class="home-row-heading-sort-label">{{ row.summary_inline }}</span>
+            {% if row.direction == 'asc' %}
+              <svg xmlns="http://www.w3.org/2000/svg"
+                   viewBox="0 0 20 20"
+                   class="home-row-heading-sort-icon w-4 h-4 ml-2"
+                   aria-hidden="true">
+                <path d="M10 5 L16 15 H4 Z" fill="currentColor"></path>
+              </svg>
+            {% else %}
+              <svg xmlns="http://www.w3.org/2000/svg"
+                   viewBox="0 0 20 20"
+                   class="home-row-heading-sort-icon w-4 h-4 ml-2"
+                   aria-hidden="true">
+                <path d="M10 15 L4 5 H16 Z" fill="currentColor"></path>
+              </svg>
+            {% endif %}
+          </button>
         </h3>
       {% else %}
         <h3 class="text-lg font-semibold flex items-baseline gap-x-2">
