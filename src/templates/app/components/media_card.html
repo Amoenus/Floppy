@@ -278,12 +278,25 @@
                   </button>
                 {% elif item.media_type == MediaTypes.EPISODE.value %}
                   <button @click="trackOpen = true"
+                          title="Mark watched"
                           class="p-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full hover:scale-110 hover:shadow-[0_0_15px_rgba(99,102,241,0.5)] transition-all duration-200 cursor-pointer">
                     {% if media %}
                       {% include "app/icons/eye.svg" with classes="w-4 h-4" %}
                     {% else %}
                       {% include "app/icons/eye-closed.svg" with classes="w-4 h-4" %}
                     {% endif %}
+                  </button>
+                  {# Lists Button — episode cards need this too so items added to a
+                     custom list (e.g. a "watch together" list of specific episodes)
+                     can be managed from any grid, not just the episode's own page. #}
+                  <button class="p-2.5 bg-emerald-600 text-white rounded-full hover:bg-emerald-500 hover:scale-110 hover:shadow-[0_0_15px_rgba(16,185,129,0.5)] transition-all duration-200 cursor-pointer"
+                          title="Add to custom lists"
+                          hx-get="{% media_view_url 'lists_modal' item %}"
+                          hx-vals='{"return_url": "{{ request.get_full_path|urlencode }}"}'
+                          hx-target="#{% component_id 'lists' item %}"
+                          hx-trigger="click once"
+                          @click="listsOpen = true">
+                    {% include "app/icons/list-add.svg" with classes="w-4 h-4" %}
                   </button>
                 {% else %}
                   {# Track Button #}
