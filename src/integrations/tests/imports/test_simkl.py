@@ -386,6 +386,111 @@ class ImportSimkl(TestCase):
 
     @patch("integrations.imports.simkl.SimklImporter._get_user_list")
     @patch("app.providers.tmdb.tv_with_seasons")
+    def test_importer_reuses_season_and_episode_items_from_shows_bucket(
+        self,
+        mock_tv_with_seasons,
+        mock_user_list,
+    ):
+        """Season/episode items already tracked in the show's bucket should be reused."""
+        mock_tv_with_seasons.return_value = {
+            "title": "Cowboy Bebop",
+            "image": "https://image.tmdb.org/t/p/w500/test.jpg",
+            "season/1": {
+                "image": "https://image.tmdb.org/t/p/w500/season1.jpg",
+                "max_progress": 1,
+                "episodes": [{"episode_number": 1, "still_path": "/ep1.jpg"}],
+            },
+        }
+        mock_user_list.return_value = {
+            "shows": [
+                {
+                    "last_watched_at": "2023-01-02T00:00:00Z",
+                    "show": {"title": "Cowboy Bebop", "ids": {"tmdb": 30991}},
+                    "status": "watching",
+                    "user_rating": 8,
+                    "seasons": [
+                        {
+                            "number": 1,
+                            "episodes": [
+                                {"number": 1, "watched_at": "2023-01-02T00:00:00Z"},
+                            ],
+                        },
+                    ],
+                    "memo": {},
+                },
+            ],
+            "movies": [],
+            "anime": [],
+        }
+
+        # Simulate grouped anime already tracked by another importer: the show,
+        # season, and episode all live in the 'anime' bucket rather than the
+        # default 'tv'/'season'/'episode' ones this importer would otherwise use.
+        tracked_tv = Item.objects.create(
+            media_id="30991",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            library_media_type=MediaTypes.ANIME.value,
+            title="Cowboy Bebop",
+            image="https://image.tmdb.org/t/p/w500/test.jpg",
+        )
+        tracked_season = Item.objects.create(
+            media_id="30991",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            library_media_type=MediaTypes.ANIME.value,
+            season_number=1,
+            title="Cowboy Bebop Season 1",
+            image="https://image.tmdb.org/t/p/w500/season1.jpg",
+        )
+        tracked_episode = Item.objects.create(
+            media_id="30991",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            library_media_type=MediaTypes.ANIME.value,
+            season_number=1,
+            episode_number=1,
+            title="Asteroid Blues",
+            image="https://image.tmdb.org/t/p/w500/ep1.jpg",
+        )
+
+        imported_counts, warnings = self.importer.import_data()
+
+        self.assertEqual(warnings, "")
+        self.assertEqual(imported_counts[MediaTypes.TV.value], 1)
+        self.assertEqual(imported_counts[MediaTypes.SEASON.value], 1)
+        self.assertEqual(imported_counts[MediaTypes.EPISODE.value], 1)
+
+        # No duplicate rows forked in a different bucket.
+        self.assertEqual(
+            Item.objects.filter(
+                media_id="30991",
+                media_type=MediaTypes.TV.value,
+            ).count(),
+            1,
+        )
+        self.assertEqual(
+            Item.objects.filter(
+                media_id="30991",
+                media_type=MediaTypes.SEASON.value,
+            ).count(),
+            1,
+        )
+        self.assertEqual(
+            Item.objects.filter(
+                media_id="30991",
+                media_type=MediaTypes.EPISODE.value,
+            ).count(),
+            1,
+        )
+
+        tv_obj = TV.objects.get(item=tracked_tv)
+        self.assertEqual(tv_obj.status, Status.IN_PROGRESS.value)
+        Season.objects.get(item=tracked_season)
+        Episode.objects.get(item=tracked_episode)
+
+    @patch("integrations.imports.simkl.SimklImporter._get_user_list")
+    @patch("app.providers.tmdb.tv_with_seasons")
     def test_importer_skips_missing_tmdb_season_metadata_instead_of_crashing(
         self,
         mock_tv_with_seasons,

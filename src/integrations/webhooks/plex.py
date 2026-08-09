@@ -9,6 +9,7 @@ from app.log_safety import exception_summary, mapping_keys, presence_map, safe_u
 from app.models import MediaTypes, Sources
 from app.services import music_scrobble
 from integrations import plex as plex_api
+from integrations.imports.helpers import find_item_across_buckets
 
 from .base import BaseWebhookProcessor
 
@@ -630,15 +631,21 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
                 )
                 return
 
-            tv_item, _ = app.models.Item.objects.get_or_create(
+            tv_item = find_item_across_buckets(
                 media_id=tmdb_id,
                 source=Sources.TMDB.value,
                 media_type=MediaTypes.TV.value,
-                defaults={
-                    "title": tv_metadata["title"],
-                    "image": tv_metadata["image"],
-                },
             )
+            if tv_item is None:
+                tv_item, _ = app.models.Item.objects.get_or_create(
+                    media_id=tmdb_id,
+                    source=Sources.TMDB.value,
+                    media_type=MediaTypes.TV.value,
+                    defaults={
+                        "title": tv_metadata["title"],
+                        "image": tv_metadata["image"],
+                    },
+                )
 
             # Only remove rating from existing instances
             tv_instance = app.models.TV.objects.filter(

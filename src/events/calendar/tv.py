@@ -14,6 +14,7 @@ from app import cache_utils
 from app.models import TV, Item, MediaTypes, Season, Sources, Status
 from app.providers import services, tmdb, tvdb
 from events.models import Event
+from integrations.imports.helpers import find_item_across_buckets
 
 from .helpers import date_parser
 
@@ -168,25 +169,35 @@ def process_tv_seasons(tv_item, seasons_to_process, events_bulk):
         season_metadata = process_seasons_data[season_key]
 
         season_image = season_metadata.get("image") or tv_item.image
+        season_bucket = (
+            MediaTypes.ANIME.value
+            if tv_item.library_media_type == MediaTypes.ANIME.value
+            else MediaTypes.SEASON.value
+        )
 
-        season_item, season_created = Item.objects.get_or_create(
+        season_item = find_item_across_buckets(
+            preferred_bucket=season_bucket,
             media_id=tv_item.media_id,
             source=tv_item.source,
             media_type=MediaTypes.SEASON.value,
             season_number=season_number,
-            defaults={
-                **Item.title_fields_from_metadata(
-                    season_metadata,
-                    fallback_title=tv_item.title,
-                ),
-                "library_media_type": (
-                    MediaTypes.ANIME.value
-                    if tv_item.library_media_type == MediaTypes.ANIME.value
-                    else MediaTypes.SEASON.value
-                ),
-                "image": season_image,
-            },
         )
+        season_created = False
+        if season_item is None:
+            season_item, season_created = Item.objects.get_or_create(
+                media_id=tv_item.media_id,
+                source=tv_item.source,
+                media_type=MediaTypes.SEASON.value,
+                library_media_type=season_bucket,
+                season_number=season_number,
+                defaults={
+                    **Item.title_fields_from_metadata(
+                        season_metadata,
+                        fallback_title=tv_item.title,
+                    ),
+                    "image": season_image,
+                },
+            )
 
         if season_created:
             item_changes = True

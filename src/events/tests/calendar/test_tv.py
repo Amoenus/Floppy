@@ -15,6 +15,7 @@ from events.calendar.tv import (
     get_tvmaze_response,
     process_season_episodes,
     process_tv,
+    process_tv_seasons,
 )
 from events.models import Event
 from events.tests.calendar.utils import CalendarFixturesMixin
@@ -89,6 +90,55 @@ class CalendarTVTests(CalendarFixturesMixin, TestCase):
 
         expected_date = datetime.datetime.fromisoformat("2008-01-20T22:00:00+00:00")
         self.assertEqual(events_bulk[0].datetime, expected_date)
+
+    @patch("events.calendar.tv.get_tvmaze_episode_map")
+    @patch("events.calendar.tv.tmdb.tv_with_seasons")
+    def test_process_tv_seasons_reuses_season_item_from_shows_bucket(
+        self,
+        mock_tv_with_seasons,
+        mock_get_tvmaze_episode_map,
+    ):
+        """A season item already tracked in the show's grouped-anime bucket is reused."""
+        Item.objects.filter(pk=self.tv_item.pk).update(
+            library_media_type=MediaTypes.ANIME.value,
+        )
+        self.tv_item.refresh_from_db()
+        mock_get_tvmaze_episode_map.return_value = {}
+
+        tracked_season = Item.objects.create(
+            media_id="1396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            library_media_type=MediaTypes.ANIME.value,
+            season_number=2,
+            title="Breaking Bad Season 2",
+            image="http://example.com/season2.jpg",
+        )
+
+        mock_tv_with_seasons.return_value = {
+            "season/2": {
+                "image": "http://example.com/season2.jpg",
+                "season_number": 2,
+                "episodes": [
+                    {"episode_number": 1, "air_date": "2009-01-20"},
+                ],
+                "tvdb_id": "81189",
+            },
+        }
+
+        events_bulk = []
+        processed_season_items = process_tv_seasons(self.tv_item, [2], events_bulk)
+
+        self.assertEqual(len(processed_season_items), 1)
+        self.assertEqual(processed_season_items[0].pk, tracked_season.pk)
+        self.assertEqual(
+            Item.objects.filter(
+                media_id="1396",
+                media_type=MediaTypes.SEASON.value,
+                season_number=2,
+            ).count(),
+            1,
+        )
 
     @patch("events.calendar.tv.get_tvmaze_episode_map")
     @patch("events.calendar.tv.tmdb.tv_with_seasons")

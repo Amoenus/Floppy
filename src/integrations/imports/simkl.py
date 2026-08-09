@@ -347,6 +347,18 @@ class SimklImporter:
             for season_number in season_numbers
         )
 
+    def _child_bucket(self, show_item, default_bucket):
+        """Return the library bucket a show's season/episode rows belong in.
+
+        Mirrors Season.get_episode_item: children follow the show's grouping
+        bucket (grouped anime lives on TV rows) and otherwise fall back to
+        their own media type, never inheriting a container's 'tv' bucket.
+        """
+        show_bucket = show_item.library_media_type
+        if show_bucket and show_bucket != MediaTypes.TV.value:
+            return show_bucket
+        return default_bucket
+
     def _process_seasons_and_episodes(
         self,
         tv,
@@ -380,16 +392,26 @@ class SimklImporter:
             # Use season poster if available, otherwise fallback to TV show poster
             season_image = season_metadata.get("image") or metadata.get("image")
 
-            season_item, _ = app.models.Item.objects.get_or_create(
+            season_bucket = self._child_bucket(tv_instance.item, MediaTypes.SEASON.value)
+            season_item = helpers.find_item_across_buckets(
+                preferred_bucket=season_bucket,
                 media_id=tv_media_id,
                 source=tv_source,
                 media_type=MediaTypes.SEASON.value,
                 season_number=season_number,
-                defaults={
-                    **app.models.Item.title_fields_from_metadata(metadata),
-                    "image": season_image,
-                },
             )
+            if season_item is None:
+                season_item, _ = app.models.Item.objects.get_or_create(
+                    media_id=tv_media_id,
+                    source=tv_source,
+                    media_type=MediaTypes.SEASON.value,
+                    library_media_type=season_bucket,
+                    season_number=season_number,
+                    defaults={
+                        **app.models.Item.title_fields_from_metadata(metadata),
+                        "image": season_image,
+                    },
+                )
 
             if episodes[-1]["number"] == season_metadata["max_progress"]:
                 season_status = Status.COMPLETED.value
@@ -408,17 +430,28 @@ class SimklImporter:
             # Process episodes
             for episode in episodes:
                 ep_img = self._get_episode_image(episode, season_number, metadata)
-                episode_item, _ = app.models.Item.objects.get_or_create(
+                episode_bucket = self._child_bucket(tv_instance.item, MediaTypes.EPISODE.value)
+                episode_item = helpers.find_item_across_buckets(
+                    preferred_bucket=episode_bucket,
                     media_id=tv_media_id,
                     source=tv_source,
                     media_type=MediaTypes.EPISODE.value,
                     season_number=season_number,
                     episode_number=episode["number"],
-                    defaults={
-                        **app.models.Item.title_fields_from_metadata(metadata),
-                        "image": ep_img,
-                    },
                 )
+                if episode_item is None:
+                    episode_item, _ = app.models.Item.objects.get_or_create(
+                        media_id=tv_media_id,
+                        source=tv_source,
+                        media_type=MediaTypes.EPISODE.value,
+                        library_media_type=episode_bucket,
+                        season_number=season_number,
+                        episode_number=episode["number"],
+                        defaults={
+                            **app.models.Item.title_fields_from_metadata(metadata),
+                            "image": ep_img,
+                        },
+                    )
 
                 episode_instance = app.models.Episode(
                     item=episode_item,

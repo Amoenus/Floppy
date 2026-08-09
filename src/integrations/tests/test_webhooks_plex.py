@@ -1698,6 +1698,42 @@ class PlexWebhookTests(TestCase):
         movie = Movie.objects.get(item__media_id="603", user=self.user)
         self.assertEqual(movie.score, 5)
 
+    @patch("app.providers.tmdb.tv")
+    def test_remove_rating_reuses_tv_item_from_existing_bucket(self, mock_tv):
+        """Rating removal should find a TV item already tracked in another bucket.
+
+        Regression test for #544: a show already tracked in the 'anime' bucket
+        (grouped anime lives on TV rows) must not be treated as untracked just
+        because the identity fields alone don't match a bare get_or_create.
+        """
+        mock_tv.return_value = {
+            "title": "Breaking Bad",
+            "image": "http://example.com/bb.jpg",
+        }
+
+        tv_item = Item.objects.create(
+            media_id="1396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            library_media_type=MediaTypes.ANIME.value,
+            title="Breaking Bad",
+            image="http://example.com/bb.jpg",
+        )
+        tv_instance = TV.objects.create(item=tv_item, user=self.user, score=8)
+
+        processor = PlexWebhookProcessor()
+        processor._remove_rating({}, self.user, {"tmdb_id": "1396"}, MediaTypes.TV.value)
+
+        tv_instance.refresh_from_db()
+        self.assertIsNone(tv_instance.score)
+        self.assertEqual(
+            Item.objects.filter(
+                media_id="1396",
+                media_type=MediaTypes.TV.value,
+            ).count(),
+            1,
+        )
+
     def test_anime_movie_mark_played(self):
         """Test webhook handles movie mark played event."""
         payload = {

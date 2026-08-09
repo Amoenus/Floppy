@@ -493,6 +493,18 @@ class StremioImporter:
 
         return set()
 
+    def _child_bucket(self, show_item, default_bucket):
+        """Return the library bucket a show's season/episode rows belong in.
+
+        Mirrors Season.get_episode_item: children follow the show's grouping
+        bucket (grouped anime lives on TV rows) and otherwise fall back to
+        their own media type, never inheriting a container's 'tv' bucket.
+        """
+        show_bucket = show_item.library_media_type
+        if show_bucket and show_bucket != MediaTypes.TV.value:
+            return show_bucket
+        return default_bucket
+
     def _process_seasons_and_episodes(
         self,
         entry,
@@ -519,16 +531,26 @@ class StremioImporter:
                 continue
 
             season_image = season_metadata.get("image") or metadata.get("image")
-            season_item, _ = app.models.Item.objects.get_or_create(
+            season_bucket = self._child_bucket(tv_instance.item, MediaTypes.SEASON.value)
+            season_item = helpers.find_item_across_buckets(
+                preferred_bucket=season_bucket,
                 media_id=tmdb_id,
                 source=Sources.TMDB.value,
                 media_type=MediaTypes.SEASON.value,
                 season_number=season_number,
-                defaults={
-                    **app.models.Item.title_fields_from_metadata(metadata),
-                    "image": season_image,
-                },
             )
+            if season_item is None:
+                season_item, _ = app.models.Item.objects.get_or_create(
+                    media_id=tmdb_id,
+                    source=Sources.TMDB.value,
+                    media_type=MediaTypes.SEASON.value,
+                    library_media_type=season_bucket,
+                    season_number=season_number,
+                    defaults={
+                        **app.models.Item.title_fields_from_metadata(metadata),
+                        "image": season_image,
+                    },
+                )
 
             if max(episode_numbers) == season_metadata["max_progress"]:
                 season_status = Status.COMPLETED.value
@@ -544,21 +566,32 @@ class StremioImporter:
             season_instance._history_date = history_date
             self.bulk_media[MediaTypes.SEASON.value].append(season_instance)
 
+            episode_bucket = self._child_bucket(tv_instance.item, MediaTypes.EPISODE.value)
             for episode_number in episode_numbers:
-                episode_item, _ = app.models.Item.objects.get_or_create(
+                episode_item = helpers.find_item_across_buckets(
+                    preferred_bucket=episode_bucket,
                     media_id=tmdb_id,
                     source=Sources.TMDB.value,
                     media_type=MediaTypes.EPISODE.value,
                     season_number=season_number,
                     episode_number=episode_number,
-                    defaults={
-                        **app.models.Item.title_fields_from_metadata(metadata),
-                        "image": self._get_episode_image(
-                            episode_number,
-                            season_metadata,
-                        ),
-                    },
                 )
+                if episode_item is None:
+                    episode_item, _ = app.models.Item.objects.get_or_create(
+                        media_id=tmdb_id,
+                        source=Sources.TMDB.value,
+                        media_type=MediaTypes.EPISODE.value,
+                        library_media_type=episode_bucket,
+                        season_number=season_number,
+                        episode_number=episode_number,
+                        defaults={
+                            **app.models.Item.title_fields_from_metadata(metadata),
+                            "image": self._get_episode_image(
+                                episode_number,
+                                season_metadata,
+                            ),
+                        },
+                    )
 
                 # Stremio has no per-episode watch dates.
                 episode_instance = app.models.Episode(
