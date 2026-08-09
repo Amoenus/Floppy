@@ -330,6 +330,14 @@ class TraktImporter(TraktMetadataResolverMixin):
         self.dropped_tmdb_ids: set = set()
         self.dropped_tvs: list = []
 
+        # Track TV/Season rows newly created in this run, so completion/dropped
+        # status derived from Trakt history is only applied to rows Floppy is
+        # seeing for the first time (or on an explicit overwrite re-sync),
+        # never silently onto a show/season the user is already tracking
+        # locally with a status they set themselves.
+        self.tv_created_this_run: set = set()
+        self.season_created_this_run: set = set()
+
         logger.info(
             "Initialized Trakt importer for user %s with mode %s",
             username,
@@ -685,8 +693,10 @@ class TraktImporter(TraktMetadataResolverMixin):
                 if watched_at_dt is not None:
                     tv_obj._history_date = watched_at_dt
                 self.bulk_media[MediaTypes.TV.value].append(tv_obj)
+                self.tv_created_this_run.add(tv_key)
             elif (
-                tmdb_id in self.dropped_tmdb_ids
+                self.mode == "overwrite"
+                and tmdb_id in self.dropped_tmdb_ids
                 and tv_obj.status != Status.DROPPED.value
             ):
                 tv_obj.status = Status.DROPPED.value
@@ -724,6 +734,7 @@ class TraktImporter(TraktMetadataResolverMixin):
                 if watched_at_dt is not None:
                     season_obj._history_date = watched_at_dt
                 self.bulk_media[MediaTypes.SEASON.value].append(season_obj)
+                self.season_created_this_run.add(season_key)
             self.media_instances[MediaTypes.SEASON.value][season_key] = [season_obj]
         else:
             season_obj = self.media_instances[MediaTypes.SEASON.value][season_key][0]
@@ -757,15 +768,19 @@ class TraktImporter(TraktMetadataResolverMixin):
         self.bulk_media[MediaTypes.EPISODE.value].append(episode_obj)
         self.existing_episode_watch_keys.add(episode_watch_key)
 
-        # Update status if this is the last episode
-        self._update_completion_status(
-            season_obj,
-            tv_obj,
-            season_number,
-            episode_number,
-            season_metadata,
-            tv_metadata,
-        )
+        # Update status if this is the last episode, but only for rows Floppy
+        # just created (or an explicit overwrite re-sync) — never clobber the
+        # status of a show/season the user is already tracking locally.
+        if self.mode == "overwrite" or season_key in self.season_created_this_run:
+            self._update_completion_status(
+                season_obj,
+                tv_obj,
+                season_number,
+                episode_number,
+                season_metadata,
+                tv_metadata,
+                tv_key,
+            )
 
     def _update_completion_status(
         self,
@@ -775,6 +790,7 @@ class TraktImporter(TraktMetadataResolverMixin):
         episode_number,
         season_metadata,
         tv_metadata,
+        tv_key,
     ):
         """Update completion status for season and TV show if applicable."""
         if episode_number == season_metadata["max_progress"]:
@@ -783,7 +799,10 @@ class TraktImporter(TraktMetadataResolverMixin):
                 self.completed_seasons.append(season_obj)
 
             last_season = tv_metadata.get("last_episode_season")
-            if last_season and last_season == season_number:
+            tv_eligible = (
+                self.mode == "overwrite" or tv_key in self.tv_created_this_run
+            )
+            if last_season and last_season == season_number and tv_eligible:
                 tv_obj.status = Status.COMPLETED.value
                 if tv_obj.pk:
                     self.completed_tvs.append(tv_obj)
