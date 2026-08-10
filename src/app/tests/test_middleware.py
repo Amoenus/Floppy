@@ -1,11 +1,17 @@
+from django.conf import settings as django_settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.middleware import AuthenticationMiddleware
+from django.contrib.sessions.exceptions import SessionInterrupted
 from django.contrib.sessions.middleware import SessionMiddleware
 from django.http import HttpResponse
 from django.test import Client, RequestFactory, TestCase, override_settings
 from django.urls import reverse
 
-from app.middleware import AutoLoginMiddleware, NoStoreHtmlMiddleware
+from app.middleware import (
+    AutoLoginMiddleware,
+    NoStoreHtmlMiddleware,
+    SessionInterruptedMiddleware,
+)
 
 UserModel = get_user_model()
 
@@ -119,6 +125,45 @@ class HtmxAuthRedirectMiddlewareTest(TestCase):
         response = self.client.get(self.url, HTTP_HX_REQUEST="true")
 
         self.assertNotEqual(response.status_code, 204)
+
+
+class SessionInterruptedMiddlewareTest(TestCase):
+    """A session row deleted mid-request must redirect, not 400 (#622)."""
+
+    def setUp(self):
+        """Use a request factory to drive the middleware directly."""
+        self.factory = RequestFactory()
+
+    def test_session_interrupted_redirects_instead_of_500(self):
+        """A stale tab's session race is recovered instead of propagating."""
+
+        def get_response(_request):
+            raise SessionInterrupted("The request's session was deleted.")
+
+        middleware = SessionInterruptedMiddleware(get_response)
+        request = self.factory.post("/import/simkl-oauth")
+
+        response = middleware(request)
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(
+            reverse(django_settings.LOGIN_REDIRECT_URL),
+            response.headers["Location"],
+        )
+
+    def test_unaffected_requests_pass_through(self):
+        """Requests that don't hit the race are untouched."""
+
+        def get_response(_request):
+            return HttpResponse("ok")
+
+        middleware = SessionInterruptedMiddleware(get_response)
+        request = self.factory.get("/")
+
+        response = middleware(request)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, b"ok")
 
 
 class SessionDurabilityTest(TestCase):

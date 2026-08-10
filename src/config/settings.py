@@ -245,6 +245,7 @@ MIDDLEWARE = [
     "app.middleware.NoStoreHtmlMiddleware",
     "app.middleware.RequestPerformanceLoggingMiddleware",
     "app.middleware.DatabaseRetryMiddleware",
+    "app.middleware.SessionInterruptedMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
