@@ -2119,3 +2119,89 @@ class ImportTrakt(TestCase):
 
         mock_get_metadata.assert_not_called()
         self.assertEqual(TV.objects.filter(user=self.user).count(), 0)
+
+
+class ImportTraktPreferredProviderDedup(TestCase):
+    """A TVDB-preferring user's Trakt import must not create a duplicate Item (#620)."""
+
+    def setUp(self):
+        """Create a TVDB-preferring user with an existing TVDB-tracked show."""
+        self.user = get_user_model().objects.create_user(
+            username="tvdb-pref",
+            password="12345",
+        )
+        self.user.tv_metadata_source_default = Sources.TVDB.value
+        self.user.save()
+
+        self.existing_tv_item = Item.objects.create(
+            media_id="81189",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Breaking Bad",
+            image="",
+        )
+        TV.objects.create(
+            item=self.existing_tv_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+
+    @patch("integrations.imports.trakt.item_merge.find_tvdb_counterpart")
+    @patch("integrations.imports.trakt.tvdb.enabled", return_value=True)
+    @patch("integrations.imports.trakt.TraktImporter._get_metadata")
+    def test_reuses_existing_tvdb_item_instead_of_creating_tmdb_duplicate(
+        self,
+        mock_get_metadata,
+        _mock_tvdb_enabled,
+        mock_find_tvdb_counterpart,
+    ):
+        """Importing a show the user already tracks via TVDB reuses that Item."""
+        mock_get_metadata.return_value = {
+            "title": "Breaking Bad",
+            "image": "tv_image.jpg",
+            "last_episode_season": 1,
+            "max_progress": 1,
+        }
+        mock_find_tvdb_counterpart.return_value = self.existing_tv_item
+
+        movie_entry = {
+            "type": "show",
+            "show": {"title": "Breaking Bad", "ids": {"tmdb": 1396}},
+            "watched_at": "2023-01-01T00:00:00.000Z",
+        }
+        trakt_importer = TraktImporter("testuser", self.user, "new")
+        tv_item = trakt_importer._get_or_create_item(
+            MediaTypes.TV.value,
+            "1396",
+            movie_entry["show"],
+        )
+
+        self.assertEqual(tv_item.pk, self.existing_tv_item.pk)
+        self.assertFalse(
+            Item.objects.filter(source=Sources.TMDB.value, media_id="1396").exists(),
+        )
+        mock_find_tvdb_counterpart.assert_called_once_with(
+            "1396",
+            MediaTypes.TV.value,
+            season_number=None,
+            library_media_type=MediaTypes.TV.value,
+        )
+
+    @patch("integrations.imports.trakt.item_merge.find_tvdb_counterpart")
+    def test_skips_lookup_for_tmdb_preferring_user(
+        self,
+        mock_find_tvdb_counterpart,
+    ):
+        """A TMDB-preferring user's import never pays for the TVDB lookup."""
+        self.user.tv_metadata_source_default = Sources.TMDB.value
+        self.user.save()
+
+        trakt_importer = TraktImporter("testuser", self.user, "new")
+        item = trakt_importer._get_or_create_item(
+            MediaTypes.TV.value,
+            "1396",
+            {"title": "Breaking Bad", "image": "tv_image.jpg"},
+        )
+
+        mock_find_tvdb_counterpart.assert_not_called()
+        self.assertEqual(item.source, Sources.TMDB.value)

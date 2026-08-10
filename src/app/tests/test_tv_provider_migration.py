@@ -138,11 +138,81 @@ class TvProviderMigrationTests(TestCase):
         self.assertFalse(result.migrated)
 
     @patch("app.services.tv_provider_migration.tvdb.tv_with_seasons")
-    def test_pins_when_tvdb_identity_already_tracked_separately(
+    def test_merges_into_existing_tvdb_item_on_collision(
         self,
         mock_tv_with_seasons,
     ):
-        """Never create a duplicate show under an already-tracked TVDB identity."""
+        """A verified TVDB counterpart absorbs the TMDB duplicate instead of pinning."""
+        mock_tv_with_seasons.return_value = self._tvdb_payload()
+
+        existing_show = Item.objects.create(
+            media_id="81189",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Breaking Bad",
+            image="",
+        )
+
+        tmdb_item_pk = self.show_item.pk
+        result = migrate_tv_item_to_tvdb(self.show_item)
+
+        self.assertTrue(result.migrated)
+        self.assertFalse(Item.objects.filter(pk=tmdb_item_pk).exists())
+        self.assertTrue(
+            TV.objects.filter(item=existing_show, user=self.user).exists(),
+        )
+        # Season/episode Items with no TVDB counterpart are re-keyed in place.
+        self.season_item.refresh_from_db()
+        self.episode_item.refresh_from_db()
+        self.assertEqual(self.season_item.source, Sources.TVDB.value)
+        self.assertEqual(self.episode_item.source, Sources.TVDB.value)
+        self.assertTrue(Episode.objects.filter(item=self.episode_item).exists())
+
+    @patch("app.services.tv_provider_migration.tvdb.tv_with_seasons")
+    def test_merge_folds_colliding_season_onto_its_tvdb_counterpart(
+        self,
+        mock_tv_with_seasons,
+    ):
+        """A season that also already exists under TVDB gets merged, not re-keyed."""
+        mock_tv_with_seasons.return_value = self._tvdb_payload()
+
+        existing_show = Item.objects.create(
+            media_id="81189",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Breaking Bad",
+            image="",
+        )
+        existing_season = Item.objects.create(
+            media_id="81189",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=1,
+            title="Breaking Bad",
+            image="",
+        )
+
+        season_item_pk = self.season_item.pk
+        result = migrate_tv_item_to_tvdb(self.show_item)
+
+        self.assertTrue(result.migrated)
+        self.assertFalse(Item.objects.filter(pk=season_item_pk).exists())
+        self.assertTrue(
+            Season.objects.filter(
+                item=existing_season,
+                related_tv=TV.objects.get(item=existing_show),
+            ).exists(),
+        )
+        self.episode_item.refresh_from_db()
+        self.assertEqual(self.episode_item.source, Sources.TVDB.value)
+
+    @patch("app.services.tv_provider_migration.tvdb.tv_with_seasons")
+    def test_pins_when_collision_and_structure_incompatible(
+        self,
+        mock_tv_with_seasons,
+    ):
+        """A structurally-incompatible collision still pins instead of merging."""
+        mock_tv_with_seasons.return_value = self._tvdb_payload(episode_numbers=(2, 3))
         Item.objects.create(
             media_id="81189",
             source=Sources.TVDB.value,
@@ -154,6 +224,6 @@ class TvProviderMigrationTests(TestCase):
         result = migrate_tv_item_to_tvdb(self.show_item)
 
         self.assertFalse(result.migrated)
-        mock_tv_with_seasons.assert_not_called()
         self.show_item.refresh_from_db()
+        self.assertEqual(self.show_item.source, Sources.TMDB.value)
         self.assertIsNotNone(self.show_item.metadata_migration_pinned_at)

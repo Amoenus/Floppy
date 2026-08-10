@@ -1447,6 +1447,49 @@ def _item_matches_home_media_type(item: Item, media_type: str) -> bool:
     return media_type in (library_media_type, item.media_type)
 
 
+def _dedupe_cross_provider_items(items: list[Item], preferred_source: str) -> list[Item]:
+    """Collapse TV/season `Item`s that are a verified alias of another in the row.
+
+    Multi-provider imports can leave a TMDB and a TVDB `Item` both tracking
+    the same show/season until `app.services.tv_provider_migration` next
+    reconciles them (#620). This is a defense-in-depth guard for that
+    window: it hides the tile the user doesn't prefer using only the
+    already-cached `provider_external_ids["tvdb_id"]` mapping - never a
+    title match, and never a network call, so it can't misfire on
+    unrelated shows and can't slow down rendering.
+    """
+    tvdb_by_key = {
+        (item.media_id, item.media_type, item.season_number, item.library_media_type): item
+        for item in items
+        if item.source == Sources.TVDB.value
+        and item.media_type in (MediaTypes.TV.value, MediaTypes.SEASON.value)
+    }
+    if not tvdb_by_key:
+        return items
+
+    hidden_ids = set()
+    for item in items:
+        if (
+            item.source != Sources.TMDB.value
+            or item.media_type not in (MediaTypes.TV.value, MediaTypes.SEASON.value)
+        ):
+            continue
+        tvdb_id = (item.provider_external_ids or {}).get("tvdb_id")
+        if not tvdb_id:
+            continue
+        counterpart = tvdb_by_key.get(
+            (str(tvdb_id), item.media_type, item.season_number, item.library_media_type),
+        )
+        if counterpart is None:
+            continue
+        loser = item if preferred_source == Sources.TVDB.value else counterpart
+        hidden_ids.add(loser.id)
+
+    if not hidden_ids:
+        return items
+    return [item for item in items if item.id not in hidden_ids]
+
+
 def _annotate_home_card_images(media_items):
     """Annotate season cards with show-poster fallbacks when needed."""
     season_items = [
@@ -2230,6 +2273,10 @@ def _library_query_entries(user, row: HomeScreenRow) -> list[HomeRowEntry]:
         return []
 
     items = list(Item.objects.filter(id__in=item_ids))
+    items = _dedupe_cross_provider_items(
+        items,
+        getattr(user, "tv_metadata_source_default", Sources.TMDB.value),
+    )
     media_lookup = _media_lookup_for_items(
         user,
         items,
