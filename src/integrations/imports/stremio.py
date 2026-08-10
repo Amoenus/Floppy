@@ -40,6 +40,16 @@ CINEMETA_VIDEO_IDS_URL = (
 CINEMETA_BATCH_SIZE = 100
 BITFIELD_MIN_COMPONENTS = 3
 
+# Forward-only status ranking used to decide whether the recurring sync may
+# advance an already-tracked Movie/TV/Season's status (see #580: the sync
+# must pick up completion the webhook deferred to it, but must never
+# override a status it doesn't own, like a user-set Dropped/Paused).
+_STATUS_RANK = {
+    Status.PLANNING.value: 0,
+    Status.IN_PROGRESS.value: 1,
+    Status.COMPLETED.value: 2,
+}
+
 
 def _api_call(method, auth_key=None, **params):
     """Call a Stremio API method and unwrap the result envelope."""
@@ -316,6 +326,37 @@ class StremioImporter:
 
         return videos_by_id
 
+    def _movie_status(self, state):
+        """Compute the Stremio-derived status for a movie entry."""
+        watched = bool(state.get("timesWatched") or state.get("flaggedWatched"))
+        if watched:
+            status = Status.COMPLETED.value
+        elif state.get("timeOffset"):
+            status = Status.IN_PROGRESS.value
+        else:
+            status = Status.PLANNING.value
+        return status, watched
+
+    def _advance_status_in_place(self, instance, new_status, **field_updates):
+        """Advance an already-tracked instance's status forward-only.
+
+        Only updates when the existing status is one the recurring sync
+        legitimately owns (Planning/In progress - states the webhook or a
+        prior sync put it in) and the new status represents forward
+        progress. A user-finalized status (Completed/Dropped/Paused) is
+        left untouched, so a background sync can never override it.
+        """
+        old_rank = _STATUS_RANK.get(instance.status)
+        new_rank = _STATUS_RANK.get(new_status)
+        if old_rank is None or new_rank is None or new_rank <= old_rank:
+            return False
+
+        instance.status = new_status
+        for field, value in field_updates.items():
+            setattr(instance, field, value)
+        instance.save()
+        return True
+
     def _process_movie(self, entry):
         """Process a single Stremio movie entry."""
         imdb_id = entry["_id"]
@@ -329,25 +370,34 @@ class StremioImporter:
             )
             return
 
+        media_id = str(tmdb_data["media_id"])
+        status, watched = self._movie_status(state)
+        last_watched = self._parse_date(state.get("lastWatched"))
+
+        existing_movie = self.existing_media[MediaTypes.MOVIE.value][
+            Sources.TMDB.value
+        ].get(media_id)
+        if existing_movie is not None and self.mode == "new":
+            self._advance_status_in_place(
+                existing_movie,
+                status,
+                progress=1 if status == Status.COMPLETED.value else existing_movie.progress,
+                start_date=last_watched
+                if status != Status.PLANNING.value
+                else existing_movie.start_date,
+                end_date=last_watched if watched else existing_movie.end_date,
+            )
+            return
+
         if not helpers.should_process_media(
             self.existing_media,
             self.to_delete,
             MediaTypes.MOVIE.value,
             Sources.TMDB.value,
-            str(tmdb_data["media_id"]),
+            media_id,
             self.mode,
         ):
             return
-
-        watched = bool(state.get("timesWatched") or state.get("flaggedWatched"))
-        if watched:
-            status = Status.COMPLETED.value
-        elif state.get("timeOffset"):
-            status = Status.IN_PROGRESS.value
-        else:
-            status = Status.PLANNING.value
-
-        last_watched = self._parse_date(state.get("lastWatched"))
 
         movie_item, _ = app.models.Item.objects.get_or_create(
             media_id=tmdb_data["media_id"],
@@ -384,15 +434,7 @@ class StremioImporter:
             return
 
         tmdb_id = tmdb_data["media_id"]
-        if not helpers.should_process_media(
-            self.existing_media,
-            self.to_delete,
-            MediaTypes.TV.value,
-            Sources.TMDB.value,
-            str(tmdb_id),
-            self.mode,
-        ):
-            return
+        media_id = str(tmdb_id)
 
         watched_videos = self._watched_videos(entry, video_ids, name)
         watched_episodes = sorted(
@@ -418,6 +460,25 @@ class StremioImporter:
         else:
             tv_status = Status.PLANNING.value
 
+        existing_tv = self.existing_media[MediaTypes.TV.value][Sources.TMDB.value].get(
+            media_id,
+        )
+        tv_instance = None
+        if existing_tv is not None and self.mode == "new":
+            self._advance_status_in_place(existing_tv, tv_status)
+            if not watched_episodes:
+                return
+            tv_instance = existing_tv
+        elif not helpers.should_process_media(
+            self.existing_media,
+            self.to_delete,
+            MediaTypes.TV.value,
+            Sources.TMDB.value,
+            media_id,
+            self.mode,
+        ):
+            return
+
         season_numbers = sorted({season for season, _ in watched_episodes})
         try:
             metadata = app.providers.tmdb.tv_with_seasons(tmdb_id, season_numbers)
@@ -429,23 +490,24 @@ class StremioImporter:
                 return
             raise
 
-        tv_item, _ = app.models.Item.objects.get_or_create(
-            media_id=tmdb_id,
-            source=Sources.TMDB.value,
-            media_type=MediaTypes.TV.value,
-            defaults={
-                **app.models.Item.title_fields_from_metadata(metadata),
-                "image": metadata["image"],
-            },
-        )
+        if tv_instance is None:
+            tv_item, _ = app.models.Item.objects.get_or_create(
+                media_id=tmdb_id,
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.TV.value,
+                defaults={
+                    **app.models.Item.title_fields_from_metadata(metadata),
+                    "image": metadata["image"],
+                },
+            )
 
-        tv_instance = app.models.TV(
-            item=tv_item,
-            user=self.user,
-            status=tv_status,
-        )
-        tv_instance._history_date = self._get_history_date(entry)
-        self.bulk_media[MediaTypes.TV.value].append(tv_instance)
+            tv_instance = app.models.TV(
+                item=tv_item,
+                user=self.user,
+                status=tv_status,
+            )
+            tv_instance._history_date = self._get_history_date(entry)
+            self.bulk_media[MediaTypes.TV.value].append(tv_instance)
 
         if watched_episodes:
             self._process_seasons_and_episodes(
@@ -557,14 +619,25 @@ class StremioImporter:
             else:
                 season_status = tv_instance.status
 
-            season_instance = app.models.Season(
-                item=season_item,
+            # An already-tracked show reaches here on re-sync (tv_instance may
+            # be the existing, saved TV row) - a season already created by a
+            # prior sync must be advanced in place, not re-created.
+            existing_season = app.models.Season.objects.filter(
                 user=self.user,
-                related_tv=tv_instance,
-                status=season_status,
-            )
-            season_instance._history_date = history_date
-            self.bulk_media[MediaTypes.SEASON.value].append(season_instance)
+                item=season_item,
+            ).first()
+            if existing_season is not None:
+                self._advance_status_in_place(existing_season, season_status)
+                season_instance = existing_season
+            else:
+                season_instance = app.models.Season(
+                    item=season_item,
+                    user=self.user,
+                    related_tv=tv_instance,
+                    status=season_status,
+                )
+                season_instance._history_date = history_date
+                self.bulk_media[MediaTypes.SEASON.value].append(season_instance)
 
             episode_bucket = self._child_bucket(tv_instance.item, MediaTypes.EPISODE.value)
             for episode_number in episode_numbers:
@@ -593,7 +666,17 @@ class StremioImporter:
                         },
                     )
 
-                # Stremio has no per-episode watch dates.
+                # Stremio has no per-episode watch dates, so a previously
+                # recorded watch for this episode can't be told apart from a
+                # re-sync of the same state - skip it to avoid piling up
+                # duplicate watch rows every 2 hours (see Episode's
+                # one-row-per-watch model in app/models/tv.py).
+                if existing_season is not None and app.models.Episode.objects.filter(
+                    item=episode_item,
+                    related_season=existing_season,
+                ).exists():
+                    continue
+
                 episode_instance = app.models.Episode(
                     item=episode_item,
                     related_season=season_instance,
