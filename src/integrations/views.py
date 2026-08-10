@@ -2030,7 +2030,17 @@ def lastfm_connect(request):
 @require_POST
 def lastfm_disconnect(request):
     """Remove Last.fm connection."""
+    from integrations.models import ImportRun
+
     LastFMAccount.objects.filter(user=request.user).delete()
+    # Deleting the account already stops future self-requeued chunks (they
+    # no-op when the account is gone), but flag any in-flight run too so
+    # the cooperative cancel check picks it up before its next requeue.
+    ImportRun.objects.filter(
+        user=request.user,
+        source="lastfm",
+        status=ImportRun.Status.RUNNING,
+    ).update(cancel_requested=True)
 
     # If no users left, we could disable the periodic task, but we'll leave it
     # running - it will just skip if no users are connected

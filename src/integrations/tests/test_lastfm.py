@@ -24,6 +24,19 @@ class LastFMViewTests(TestCase):
         )
         self.client.force_login(self.user)
 
+    def test_lastfm_disconnect_flags_running_import_run_for_cancellation(self):
+        """Disconnecting must flag any in-flight backfill so it stops requeuing."""
+        LastFMAccount.objects.create(user=self.user, lastfm_username="listener")
+        run = ImportRun.objects.create(
+            user=self.user, source="lastfm", status=ImportRun.Status.RUNNING
+        )
+
+        response = self.client.post(reverse("lastfm_disconnect"))
+
+        self.assertEqual(response.status_code, 302)
+        run.refresh_from_db()
+        self.assertTrue(run.cancel_requested)
+
     @patch("integrations.views.tasks.import_lastfm_history.delay")
     @patch("integrations.views.tasks.poll_lastfm_for_user.delay")
     @patch("integrations.views.lastfm_api.get_recent_tracks")
@@ -248,6 +261,71 @@ class LastFMTaskTests(TestCase):
         mock_delay.assert_called_once_with(
             user_id=self.user.id, reset=False, import_run_id=run.id
         )
+
+    @patch("integrations.tasks.import_lastfm_history.delay")
+    @patch("integrations.lastfm_sync.sync_lastfm_account")
+    def test_import_lastfm_history_skips_requeue_when_cancelled_mid_chunk(
+        self,
+        mock_sync,
+        mock_delay,
+    ):
+        """A cancel requested while a chunk runs stops the next requeue."""
+        self.account.reset_history_import(1699999999)
+        self.account.save(
+            update_fields=[
+                "history_import_status",
+                "history_import_cutoff_uts",
+                "history_import_next_page",
+                "history_import_total_pages",
+                "history_import_started_at",
+                "history_import_completed_at",
+                "history_import_last_error_message",
+            ],
+        )
+        mock_sync.return_value = {
+            "tracks": [],
+            "pages_fetched": 5,
+            "total_pages": 12,
+            "complete": False,
+            "interrupted": False,
+            "max_seen_uts": 1699999999,
+            "processed": 30,
+            "skipped": 0,
+            "errors": 0,
+            "affected_day_keys": set(),
+        }
+
+        run = ImportRun.objects.create(user=self.user, source="lastfm")
+
+        def _cancel_mid_run(*args, **kwargs):
+            ImportRun.objects.filter(id=run.id).update(cancel_requested=True)
+            return mock_sync.return_value
+
+        mock_sync.side_effect = _cancel_mid_run
+
+        result = tasks.import_lastfm_history(self.user.id, import_run_id=run.id)
+
+        mock_delay.assert_not_called()
+        self.assertEqual(result["message"], "Last.fm history import cancelled.")
+        self.account.refresh_from_db()
+        self.assertEqual(
+            self.account.history_import_status, LastFMHistoryImportStatus.FAILED
+        )
+
+    @patch("integrations.tasks.import_lastfm_history.delay")
+    def test_import_lastfm_history_skips_entirely_when_already_cancelled(
+        self,
+        mock_delay,
+    ):
+        """A run already marked cancelled before this chunk starts is a no-op."""
+        run = ImportRun.objects.create(
+            user=self.user, source="lastfm", cancel_requested=True
+        )
+
+        result = tasks.import_lastfm_history(self.user.id, import_run_id=run.id)
+
+        mock_delay.assert_not_called()
+        self.assertEqual(result["message"], "Last.fm history import cancelled.")
 
     @patch("integrations.tasks._lastfm._enqueue_lastfm_music_enrichment")
     @patch("integrations.lastfm_sync.sync_lastfm_account")
