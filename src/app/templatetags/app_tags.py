@@ -1137,28 +1137,35 @@ def media_view_url(view_name, media):
     if not is_dict and not hasattr(media, "source"):
         return ""
 
+    media_type = media["media_type"] if is_dict else media.media_type
+
     # Build kwargs using either dict access or object attribute
     kwargs = {
         "source": media["source"] if is_dict else media.source,
         "media_type": (
-            media.get("route_media_type") or media["media_type"]
+            media.get("route_media_type") or media_type
             if is_dict
-            else getattr(media, "route_media_type", None) or media.media_type
+            else getattr(media, "route_media_type", None) or media_type
         ),
         "media_id": str(media["media_id"] if is_dict else media.media_id),
     }
 
-    # Handle season/episode numbers if they exist
-    if is_dict:
-        if "season_number" in media:
-            kwargs["season_number"] = media["season_number"]
-        if "episode_number" in media:
-            kwargs["episode_number"] = media["episode_number"]
-    else:
-        season_number = getattr(media, "season_number", None)
-        episode_number = getattr(media, "episode_number", None)
+    # Providers may include season_number=0 on top-level TV/anime metadata.
+    # Only season and episode objects use those values as URL path segments.
+    if media_type in (MediaTypes.SEASON.value, MediaTypes.EPISODE.value):
+        season_number = (
+            media.get("season_number")
+            if is_dict
+            else getattr(media, "season_number", None)
+        )
         if season_number is not None:
             kwargs["season_number"] = season_number
+    if media_type == MediaTypes.EPISODE.value:
+        episode_number = (
+            media.get("episode_number")
+            if is_dict
+            else getattr(media, "episode_number", None)
+        )
         if episode_number is not None:
             kwargs["episode_number"] = episode_number
 
