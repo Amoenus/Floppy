@@ -2,7 +2,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, tag
 from django.utils import timezone
 
 from app.models import (
@@ -19,6 +19,7 @@ from app.services.completion import select_preferred_activity_entry
 mock_path = Path(__file__).resolve().parent.parent / "mock_data"
 
 
+@tag("network")
 class MediaModel(TestCase):
     """Test the custom save of the Media model."""
 
