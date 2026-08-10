@@ -10,7 +10,7 @@ from django_celery_beat.models import IntervalSchedule, PeriodicTask
 from app.models import Music
 from integrations import lastfm_sync, tasks
 from integrations.lastfm_api import LastFMRecentTracksResult
-from integrations.models import LastFMAccount, LastFMHistoryImportStatus
+from integrations.models import ImportRun, LastFMAccount, LastFMHistoryImportStatus
 
 
 class LastFMViewTests(TestCase):
@@ -244,7 +244,10 @@ class LastFMTaskTests(TestCase):
         self.assertEqual(self.account.history_import_next_page, 6)
         self.assertEqual(self.account.last_fetch_timestamp_uts, 1700000000)
         self.assertIn("Continuing with page 6 of 12", result["message"])
-        mock_delay.assert_called_once_with(user_id=self.user.id, reset=False)
+        run = ImportRun.objects.get(user=self.user, source="lastfm")
+        mock_delay.assert_called_once_with(
+            user_id=self.user.id, reset=False, import_run_id=run.id
+        )
 
     @patch("integrations.tasks._lastfm._enqueue_lastfm_music_enrichment")
     @patch("integrations.lastfm_sync.sync_lastfm_account")
@@ -294,6 +297,55 @@ class LastFMTaskTests(TestCase):
             "Completed Last.fm history import. Music enrichment queued.",
         )
         mock_enqueue_enrichment.assert_called_once_with(self.user.id)
+
+        run = ImportRun.objects.get(user=self.user, source="lastfm")
+        self.assertEqual(run.status, ImportRun.Status.COMPLETED)
+        self.assertEqual(run.created_count, 42)
+        self.assertEqual(run.remaining_estimate, 0)
+        self.assertIsNotNone(run.finished_at)
+
+    @patch("integrations.tasks.import_lastfm_history.delay")
+    @patch("integrations.lastfm_sync.sync_lastfm_account")
+    def test_import_lastfm_history_reuses_run_across_requeued_chunks(
+        self,
+        mock_sync,
+        mock_delay,
+    ):
+        """Counts from a later chunk accumulate onto the same ImportRun."""
+        self.account.reset_history_import(1699999999)
+        self.account.save(
+            update_fields=[
+                "history_import_status",
+                "history_import_cutoff_uts",
+                "history_import_next_page",
+                "history_import_total_pages",
+                "history_import_started_at",
+                "history_import_completed_at",
+                "history_import_last_error_message",
+            ],
+        )
+        mock_sync.return_value = {
+            "tracks": [],
+            "pages_fetched": 5,
+            "total_pages": 12,
+            "complete": False,
+            "interrupted": False,
+            "max_seen_uts": 1699999999,
+            "processed": 30,
+            "skipped": 2,
+            "errors": 1,
+            "affected_day_keys": set(),
+        }
+
+        first_run = ImportRun.objects.create(user=self.user, source="lastfm")
+        tasks.import_lastfm_history(self.user.id, import_run_id=first_run.id)
+
+        first_run.refresh_from_db()
+        self.assertEqual(first_run.status, ImportRun.Status.RUNNING)
+        self.assertEqual(first_run.created_count, 30)
+        self.assertEqual(first_run.skipped_count, 2)
+        self.assertEqual(first_run.failed_count, 1)
+        self.assertEqual(ImportRun.objects.filter(user=self.user).count(), 1)
 
 
 class LastFMSyncHelperTests(TestCase):
