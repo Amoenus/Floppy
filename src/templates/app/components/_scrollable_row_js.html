@@ -66,7 +66,7 @@
 
   function triggerHomeRowLoadMore(row) {
     const { loaded, total } = getHomeRowCounts(row);
-    if (row.dataset.loading === 'true' || loaded >= total) {
+    if (row.dataset.loading === 'true' || row.dataset.homeRowExhausted === 'true' || loaded >= total) {
       return;
     }
     row.dataset.stickToEnd = 'true';
@@ -87,7 +87,7 @@
 
   function maybeAutofillHomeRow(row) {
     const { loaded, total } = getHomeRowCounts(row);
-    if (row.dataset.loading === 'true' || loaded >= total) {
+    if (row.dataset.loading === 'true' || row.dataset.homeRowExhausted === 'true' || loaded >= total) {
       return;
     }
     if (row.scrollWidth <= row.clientWidth + 1) {
@@ -97,7 +97,7 @@
   }
 
   function ensureHomeRowObserver(row) {
-    if (!('IntersectionObserver' in window) || homeRowObservers.has(row)) {
+    if (!('IntersectionObserver' in window) || homeRowObservers.has(row) || row.dataset.homeRowExhausted === 'true') {
       return;
     }
 
@@ -272,12 +272,18 @@
     const row = event.detail.elt;
     if (row && row.matches('[data-home-row="true"]')) {
       row.dataset.loading = 'true';
+      row.dataset.pendingOffset = row.dataset.loadedCount || '0';
     }
   });
 
   document.body.addEventListener('htmx:afterRequest', function(event) {
     const row = event.detail.elt;
     if (row && row.matches('[data-home-row="true"]')) {
+      const xhr = event.detail.xhr;
+      const freshTotal = xhr && xhr.getResponseHeader('X-Home-Row-Total');
+      if (freshTotal !== null && freshTotal !== undefined) {
+        row.dataset.totalCount = freshTotal;
+      }
       row.dataset.loading = 'false';
     }
   });
@@ -291,8 +297,10 @@
   document.body.addEventListener('htmx:afterSwap', function(event) {
     const row = event.detail.target;
     if (row && row.matches('[data-home-row="true"]')) {
-      if (row.dataset.fullReload === 'true') {
+      const isFullReload = row.dataset.fullReload === 'true';
+      if (isFullReload) {
         delete row.dataset.fullReload;
+        delete row.dataset.homeRowExhausted;
         const obs = homeRowObservers.get(row);
         if (obs) { obs.disconnect(); homeRowObservers.delete(row); }
         row.dataset.homeRowBound = 'false';
@@ -301,9 +309,20 @@
           delete row._prevScrollLeft;
         }
       }
+      const pendingOffset = Number.parseInt(row.dataset.pendingOffset || '0', 10);
       syncHomeRowSentinel(row);
       syncHomeRowLoadedCount(row);
       row.dataset.stickToEnd = 'false';
+      const newLoadedCount = Number.parseInt(row.dataset.loadedCount || '0', 10);
+      if (!isFullReload && row.dataset.pendingOffset !== undefined && newLoadedCount <= pendingOffset) {
+        // The response appended no new cards even though the client still
+        // believed more items existed — stop retrying this row for good,
+        // regardless of what total says, to avoid looping on the same offset.
+        row.dataset.homeRowExhausted = 'true';
+        const obs = homeRowObservers.get(row);
+        if (obs) { obs.disconnect(); homeRowObservers.delete(row); }
+      }
+      delete row.dataset.pendingOffset;
       requestAnimationFrame(() => {
         ensureHomeRowObserver(row);
         maybeAutofillHomeRow(row);
