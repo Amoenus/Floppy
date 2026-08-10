@@ -9,6 +9,7 @@ from django_celery_beat.models import PeriodicTask
 
 from app.models import (
     TV,
+    Anime,
     Episode,
     Item,
     MediaTypes,
@@ -104,6 +105,58 @@ def fake_tmdb_find(imdb_id, external_source):
     return catalog.get(imdb_id, {})
 
 
+def fake_tmdb_movie(media_id, language=None):
+    """Return minimal TMDB movie metadata for a directly-known tmdb: id."""
+    return {
+        "title": f"Movie {media_id}",
+        "image": f"http://example.com/movie-{media_id}.jpg",
+        "max_progress": 1,
+    }
+
+
+def fake_trakt_lookup(external_id_type, external_id, *, media_type):
+    """Return a deterministic Trakt external-id lookup payload."""
+    catalog = {
+        "1023371": {"external_ids": {"tmdb": 155}},
+    }
+    return catalog.get(str(external_id))
+
+
+def fake_mal_anime(media_id):
+    """Return minimal MAL anime metadata for a directly-known mal: id."""
+    return {
+        "title": f"Anime {media_id}",
+        "image": f"http://example.com/anime-{media_id}.jpg",
+    }
+
+
+def fake_provider_api_request(provider, method, url, params=None, **kwargs):
+    """Return deterministic Kitsu/AniList payloads for id-resolution tests."""
+    if provider == "KITSU":
+        kitsu_id = url.rsplit("/", 1)[-1]
+        mal_by_kitsu = {"11": "20"}
+        mal_id = mal_by_kitsu.get(kitsu_id)
+        included = []
+        if mal_id:
+            included.append(
+                {
+                    "id": "1",
+                    "type": "mappings",
+                    "attributes": {
+                        "externalSite": "myanimelist/anime",
+                        "externalId": mal_id,
+                    },
+                },
+            )
+        return {"included": included}
+    if provider == "ANILIST":
+        anilist_id = (params or {}).get("variables", {}).get("id")
+        mal_by_anilist = {101922: 21}
+        return {"data": {"Media": {"idMal": mal_by_anilist.get(anilist_id)}}}
+    msg = f"Unexpected provider {provider} in api_request mock"
+    raise AssertionError(msg)
+
+
 def fake_tv_with_seasons(media_id, season_numbers):
     """Return minimal TMDB TV metadata with the requested seasons."""
     metadata = {
@@ -136,7 +189,14 @@ class ImportStremioTests(TestCase):
             auth_key=helpers.encrypt("auth-key"),
         )
 
-    def _run_import(self, library_items, cinemeta_videos=None, mode="new"):
+    def _run_import(
+        self,
+        library_items,
+        cinemeta_videos=None,
+        mode="new",
+        trakt_configured=False,
+        tmdb_find=None,
+    ):
         with (
             patch(
                 "integrations.imports.stremio.get_library_items",
@@ -147,10 +207,21 @@ class ImportStremioTests(TestCase):
                 "_fetch_cinemeta_videos",
                 return_value=cinemeta_videos or {},
             ),
-            patch("app.providers.tmdb.find", side_effect=fake_tmdb_find),
+            patch("app.providers.tmdb.find", side_effect=tmdb_find or fake_tmdb_find),
             patch(
                 "app.providers.tmdb.tv_with_seasons",
                 side_effect=fake_tv_with_seasons,
+            ),
+            patch("app.providers.tmdb.movie", side_effect=fake_tmdb_movie),
+            patch("app.providers.trakt.is_configured", return_value=trakt_configured),
+            patch(
+                "app.providers.trakt.lookup_by_external_id",
+                side_effect=fake_trakt_lookup,
+            ),
+            patch("app.providers.mal.anime", side_effect=fake_mal_anime),
+            patch(
+                "app.providers.services.api_request",
+                side_effect=fake_provider_api_request,
             ),
         ):
             return stremio.importer(None, self.user, mode)
@@ -503,6 +574,188 @@ class ImportStremioTests(TestCase):
         self.assertIn("episode list unavailable from Cinemeta", warnings)
         episode = Episode.objects.get(item__media_id="1396")
         self.assertEqual(episode.item.episode_number, 2)
+
+    def test_tmdb_namespaced_movie_imports_without_find_call(self):
+        """A tmdb: id resolves directly, without any TMDB find lookup."""
+        library_items = [
+            {
+                "_id": "tmdb:933260",
+                "type": "movie",
+                "name": "The Substance",
+                "removed": False,
+                "temp": False,
+                "state": {"timesWatched": 1, "lastWatched": "2024-01-01T00:00:00Z"},
+            },
+        ]
+
+        def fail_if_called(*args, **kwargs):
+            msg = "tmdb.find should not be called for a tmdb: id"
+            raise AssertionError(msg)
+
+        imported_counts, warnings = self._run_import(
+            library_items,
+            tmdb_find=fail_if_called,
+        )
+
+        self.assertEqual(imported_counts[MediaTypes.MOVIE.value], 1)
+        self.assertEqual(warnings, "")
+        movie = Movie.objects.get(item__media_id="933260")
+        self.assertEqual(movie.status, Status.COMPLETED.value)
+        self.assertEqual(movie.item.title, "Movie 933260")
+
+    def test_tmdb_namespaced_series_imports_without_cinemeta(self):
+        """A tmdb: series id resolves directly and skips the Cinemeta batch."""
+        library_items = [
+            {
+                "_id": "tmdb:1396",
+                "type": "series",
+                "name": "Breaking Bad",
+                "removed": False,
+                "temp": False,
+                "state": {"timeOffset": 500000, "lastWatched": "2024-01-01T00:00:00Z"},
+            },
+        ]
+
+        imported_counts, warnings = self._run_import(library_items)
+
+        # Only imdb-namespaced series ids are ever batched to Cinemeta, so a
+        # tmdb: series never gets a video list; with no watched-episode
+        # signal in state, status still derives from timeOffset alone.
+        self.assertEqual(imported_counts[MediaTypes.TV.value], 1)
+        tv = TV.objects.get(item__media_id="1396")
+        self.assertEqual(tv.status, Status.IN_PROGRESS.value)
+        self.assertEqual(warnings, "")
+
+    def test_tvdb_namespaced_series_resolves_via_find(self):
+        """A tvdb: id resolves through TMDB's /find endpoint."""
+        library_items = [
+            {
+                "_id": "tvdb:81189",
+                "type": "series",
+                "name": "Breaking Bad",
+                "removed": False,
+                "temp": False,
+                "state": {"timesWatched": 1, "lastWatched": "2024-01-01T00:00:00Z"},
+            },
+        ]
+
+        def fake_find_with_tvdb(external_id, external_source):
+            if external_source == "tvdb_id" and external_id == "81189":
+                return {
+                    "tv_results": [
+                        {"id": 1396, "name": "Breaking Bad", "poster_path": "/bb.jpg"},
+                    ],
+                }
+            return {}
+
+        imported_counts, _ = self._run_import(
+            library_items,
+            tmdb_find=fake_find_with_tvdb,
+        )
+
+        self.assertEqual(imported_counts[MediaTypes.TV.value], 1)
+        self.assertTrue(TV.objects.filter(item__media_id="1396").exists())
+
+    def test_trakt_namespaced_movie_resolves_when_configured(self):
+        """A trakt: id resolves to a TMDB id via Trakt's external-id search."""
+        library_items = [
+            {
+                "_id": "trakt:1023371",
+                "type": "movie",
+                "name": "Dragon Age: Absolution",
+                "removed": False,
+                "temp": False,
+                "state": {"timesWatched": 1, "lastWatched": "2024-01-01T00:00:00Z"},
+            },
+        ]
+
+        imported_counts, warnings = self._run_import(
+            library_items,
+            trakt_configured=True,
+        )
+
+        self.assertEqual(imported_counts[MediaTypes.MOVIE.value], 1)
+        self.assertEqual(warnings, "")
+        self.assertTrue(Movie.objects.filter(item__media_id="155").exists())
+
+    def test_trakt_namespaced_movie_warns_when_not_configured(self):
+        """A trakt: id degrades to a warning when Trakt isn't configured."""
+        library_items = [
+            {
+                "_id": "trakt:1023371",
+                "type": "movie",
+                "name": "Dragon Age: Absolution",
+                "removed": False,
+                "temp": False,
+                "state": {"timesWatched": 1},
+            },
+        ]
+
+        imported_counts, warnings = self._run_import(
+            library_items,
+            trakt_configured=False,
+        )
+
+        self.assertNotIn(MediaTypes.MOVIE.value, imported_counts)
+        self.assertIn("couldn't find a match", warnings)
+
+    def test_kitsu_namespaced_anime_resolves_to_mal(self):
+        """A kitsu: id resolves to a MAL id via Kitsu's mappings."""
+        library_items = [
+            {
+                "_id": "kitsu:11",
+                "type": "series",
+                "name": "Naruto",
+                "removed": False,
+                "temp": False,
+                "state": {"timesWatched": 1, "lastWatched": "2024-01-01T00:00:00Z"},
+            },
+        ]
+
+        imported_counts, warnings = self._run_import(library_items)
+
+        self.assertEqual(imported_counts[MediaTypes.ANIME.value], 1)
+        self.assertEqual(warnings, "")
+        anime = Anime.objects.get(item__media_id="20")
+        self.assertEqual(anime.status, Status.COMPLETED.value)
+        self.assertEqual(anime.item.source, Sources.MAL.value)
+
+    def test_mal_namespaced_anime_imports_directly(self):
+        """A mal: id is used directly, no external resolution call."""
+        library_items = [
+            {
+                "_id": "mal:21",
+                "type": "series",
+                "name": "One Piece",
+                "removed": False,
+                "temp": False,
+                "state": {"timeOffset": 100},
+            },
+        ]
+
+        imported_counts, _ = self._run_import(library_items)
+
+        self.assertEqual(imported_counts[MediaTypes.ANIME.value], 1)
+        self.assertTrue(Anime.objects.filter(item__media_id="21").exists())
+
+    def test_anilist_namespaced_anime_resolves_to_mal(self):
+        """An anilist: id resolves to a MAL id via AniList's public GraphQL API."""
+        library_items = [
+            {
+                "_id": "anilist:101922",
+                "type": "series",
+                "name": "Some Anime",
+                "removed": False,
+                "temp": False,
+                "state": {"timesWatched": 1},
+            },
+        ]
+
+        imported_counts, warnings = self._run_import(library_items)
+
+        self.assertEqual(imported_counts[MediaTypes.ANIME.value], 1)
+        self.assertEqual(warnings, "")
+        self.assertTrue(Anime.objects.filter(item__media_id="21").exists())
 
     def test_new_mode_skips_existing(self):
         """Mode "new" never overrides a user-finalized status like Dropped."""
