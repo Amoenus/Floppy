@@ -21,6 +21,8 @@
   --color-text: #f3f4f6;
   --color-text-secondary: #d1d5db;
   --color-text-muted: #9ca3af;
+  --color-warning-text: #fde68a;
+  --color-info-text: #c7d2fe;
   color-scheme: dark;
 }
 
@@ -42,6 +44,8 @@
     --color-text: #1f2937;
     --color-text-secondary: #374151;
     --color-text-muted: #4b5563;
+    --color-warning-text: #92400e;
+    --color-info-text: #3730a3;
     color-scheme: light;
   }
 }
@@ -63,10 +67,14 @@ html.light {
   --color-text: #1f2937;
   --color-text-secondary: #374151;
   --color-text-muted: #4b5563;
+  --color-warning-text: #92400e;
+  --color-info-text: #3730a3;
   color-scheme: light;
 }
 
 html.dark {
+  --color-warning-text: #fde68a;
+  --color-info-text: #c7d2fe;
   color-scheme: dark;
 }
 

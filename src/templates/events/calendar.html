@@ -73,8 +73,8 @@
                x-transition:leave="transition ease-in duration-75"
                x-transition:leave-start="transform opacity-100 scale-100"
                x-transition:leave-end="transform opacity-0 scale-95"
-               class="absolute right-0 mt-2 w-64 rounded-md bg-[var(--color-surface-strong)] border border-gray-700 shadow-lg overflow-hidden z-40">
-            <div class="flex items-center justify-between gap-2 px-3 py-2 border-b border-gray-700">
+               class="absolute right-0 mt-2 w-64 rounded-md bg-[var(--color-surface-strong)] border border-[var(--color-border)] shadow-lg overflow-hidden z-40">
+            <div class="flex items-center justify-between gap-2 px-3 py-2 border-b border-[var(--color-border)]">
               <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Media Types</div>
               <button type="button"
                       class="text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors"
@@ -114,7 +114,7 @@
                x-transition:leave="transition ease-in duration-75"
                x-transition:leave-start="transform opacity-100 scale-100"
                x-transition:leave-end="transform opacity-0 scale-95"
-               class="absolute right-0 mt-2 w-60 rounded-md bg-[var(--color-surface-strong)] border border-gray-700 shadow-lg overflow-hidden z-40">
+               class="absolute right-0 mt-2 w-60 rounded-md bg-[var(--color-surface-strong)] border border-[var(--color-border)] shadow-lg overflow-hidden z-40">
             <form method="post" action="{% url 'reload_calendar' %}">
               {% csrf_token %}
               <button type="submit"
@@ -124,7 +124,7 @@
                 <span>Fetch New Releases</span>
               </button>
             </form>
-            <a class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] border-t border-gray-700"
+            <a class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] border-t border-[var(--color-border)]"
                href="{% url 'download_calendar' token=user.token %}"
                @click="actionsOpen = false">
               {% include "app/icons/download.svg" with classes="w-4 h-4 mr-3" %}

@@ -69,9 +69,9 @@
              return 'bg-red-500/10 text-red-300 border-red-500/30';
            }
            if (this.plexConnectionState === 'checking') {
-             return 'bg-amber-500/10 text-amber-200 border-amber-400/30';
+             return 'bg-amber-500/10 text-[var(--color-warning-text)] border-amber-400/30';
            }
-           return 'bg-gray-500/20 text-gray-300 border-gray-600/50';
+           return 'bg-gray-500/20 text-[var(--color-text-secondary)] border-gray-600/50';
          },
          plexStatusLabel() {
            if (this.plexConnectionState === 'connected') {
@@ -639,12 +639,12 @@
 
             <div x-cloak
                  x-show="plexLiveError"
-                 class="text-xs text-amber-200 bg-amber-500/10 border border-amber-400/30 rounded p-2"
+                 class="text-xs text-[var(--color-warning-text)] bg-amber-500/10 border border-amber-400/30 rounded p-2"
                  x-text="plexLiveError"></div>
 
             {% if plex_account.watchlist_last_error %}
               <div x-show="isWatchlistMode()"
-                   class="text-xs text-amber-200 bg-amber-500/10 border border-amber-400/30 rounded p-2">
+                   class="text-xs text-[var(--color-warning-text)] bg-amber-500/10 border border-amber-400/30 rounded p-2">
                 <strong>Last watchlist sync error:</strong> {{ plex_account.watchlist_last_error }}
               </div>
             {% endif %}
@@ -682,7 +682,7 @@
                   </select>
                   {% include "app/icons/chevron-down.svg" with classes="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-muted)] pointer-events-none" %}
                 </div>
-                <p x-cloak x-show="!plexSections.length && plexLibrariesLoading" class="text-xs text-amber-200 mt-1">
+                <p x-cloak x-show="!plexSections.length && plexLibrariesLoading" class="text-xs text-[var(--color-warning-text)] mt-1">
                   Checking Plex libraries...
                 </p>
                 <p x-cloak
@@ -775,7 +775,7 @@
               {% endif %}
             </div>
             {% if radarr_account.last_error_message %}
-              <div class="text-xs text-amber-200 bg-amber-500/10 border border-amber-400/30 rounded p-2">
+              <div class="text-xs text-[var(--color-warning-text)] bg-amber-500/10 border border-amber-400/30 rounded p-2">
                 <strong>Error:</strong> {{ radarr_account.last_error_message }}
               </div>
             {% endif %}
@@ -858,7 +858,7 @@
               {% endif %}
             </div>
             {% if sonarr_account.last_error_message %}
-              <div class="text-xs text-amber-200 bg-amber-500/10 border border-amber-400/30 rounded p-2">
+              <div class="text-xs text-[var(--color-warning-text)] bg-amber-500/10 border border-amber-400/30 rounded p-2">
                 <strong>Error:</strong> {{ sonarr_account.last_error_message }}
               </div>
             {% endif %}
@@ -937,7 +937,7 @@
               <div class="text-sm text-[var(--color-text-muted)]">Last sync: {{ stremio_account.last_sync_at|user_datetime_format:user }}</div>
             {% endif %}
             {% if stremio_account.last_error_message %}
-              <div class="text-xs text-amber-200 bg-amber-500/10 border border-amber-400/30 rounded p-2">
+              <div class="text-xs text-[var(--color-warning-text)] bg-amber-500/10 border border-amber-400/30 rounded p-2">
                 <strong>Error:</strong> {{ stremio_account.last_error_message }}
               </div>
             {% endif %}
@@ -1038,7 +1038,7 @@
               {% endif %}
             </div>
             {% if audiobookshelf_account.last_error_message %}
-              <div class="text-xs text-amber-200 bg-amber-500/10 border border-amber-400/30 rounded p-2">
+              <div class="text-xs text-[var(--color-warning-text)] bg-amber-500/10 border border-amber-400/30 rounded p-2">
                 <strong>Error:</strong> {{ audiobookshelf_account.last_error_message }}
               </div>
             {% endif %}
@@ -1120,7 +1120,7 @@
               </div>
             {% endif %}
             {% if storyteller_account.last_error_message %}
-              <div class="text-xs text-amber-200 bg-amber-500/10 border border-amber-400/30 rounded p-2">
+              <div class="text-xs text-[var(--color-warning-text)] bg-amber-500/10 border border-amber-400/30 rounded p-2">
                 <strong>Error:</strong> {{ storyteller_account.last_error_message }}
               </div>
             {% endif %}
@@ -1501,13 +1501,13 @@
             </div>
 
             {% if lastfm_account.connection_broken and lastfm_account.last_error_message %}
-              <div class="text-xs text-amber-200 bg-amber-500/10 border border-amber-400/30 rounded p-2">
+              <div class="text-xs text-[var(--color-warning-text)] bg-amber-500/10 border border-amber-400/30 rounded p-2">
                 <strong>Error:</strong> {{ lastfm_account.last_error_message }}
               </div>
             {% endif %}
 
             {% if lastfm_account.history_import_status == "failed" and lastfm_account.history_import_last_error_message %}
-              <div class="text-xs text-amber-200 bg-amber-500/10 border border-amber-400/30 rounded p-2">
+              <div class="text-xs text-[var(--color-warning-text)] bg-amber-500/10 border border-amber-400/30 rounded p-2">
                 <strong>History import error:</strong> {{ lastfm_account.history_import_last_error_message }}
               </div>
             {% endif %}
