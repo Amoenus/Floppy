@@ -146,7 +146,11 @@ class TVDBProviderTests(TestCase):
         tvdb.tv("81189")
 
         self.assertGreaterEqual(
-            cache.ttl(tvdb._cache_key(MediaTypes.TV.value, "81189")),
+            cache.ttl(
+                tvdb._cache_key(
+                    MediaTypes.TV.value, "81189", tvdb._preferred_language_code()
+                )
+            ),
             tvdb.TVDB_METADATA_CACHE_TIMEOUT - 1,
         )
 

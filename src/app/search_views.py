@@ -300,7 +300,13 @@ def media_search(request):
         source = source_options[0].value
 
     search_page = 1 if media_type == MediaTypes.MUSIC.value else page
-    data = services.search(media_type, query, search_page, source)
+    data = services.search(
+        media_type,
+        query,
+        search_page,
+        source,
+        language=metadata_resolution.metadata_language_default(request.user),
+    )
 
     if media_type == MediaTypes.MUSIC.value:
         context = {

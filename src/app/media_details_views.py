@@ -962,7 +962,12 @@ def media_details(
     detail_item = Item.objects.filter(**detail_item_lookup).first()
 
     try:
-        media_metadata = services.get_media_metadata(media_type, media_id, source)
+        media_metadata = services.get_media_metadata(
+            media_type,
+            media_id,
+            source,
+            language=metadata_resolution.metadata_language_default(request.user),
+        )
     except services.ProviderAPIError:
         if detail_item is None:
             raise
@@ -1021,7 +1026,12 @@ def media_details(
     )
     if render_secondary_only and should_refresh_tmdb_titles:
         cache.delete(tmdb_detail_cache_key)
-        media_metadata = services.get_media_metadata(media_type, media_id, source)
+        media_metadata = services.get_media_metadata(
+            media_type,
+            media_id,
+            source,
+            language=metadata_resolution.metadata_language_default(request.user),
+        )
         if isinstance(media_metadata, dict):
             media_metadata.update(Item.title_fields_from_metadata(media_metadata))
 
@@ -1034,7 +1044,12 @@ def media_details(
     )
     if render_secondary_only and should_refresh_tmdb_tv_credits:
         cache.delete(tmdb_detail_cache_key)
-        media_metadata = services.get_media_metadata(media_type, media_id, source)
+        media_metadata = services.get_media_metadata(
+            media_type,
+            media_id,
+            source,
+            language=metadata_resolution.metadata_language_default(request.user),
+        )
         if isinstance(media_metadata, dict):
             media_metadata.update(Item.title_fields_from_metadata(media_metadata))
 
@@ -1469,6 +1484,9 @@ def media_details(
                     media_id,
                     source,
                     [0],
+                    language=metadata_resolution.metadata_language_default(
+                        request.user
+                    ),
                 )
                 if isinstance(specials_metadata, dict) and specials_metadata.get(
                     "season/0"
@@ -1504,6 +1522,9 @@ def media_details(
                         media_id,
                         source,
                         season_numbers,
+                        language=metadata_resolution.metadata_language_default(
+                            request.user
+                        ),
                     )
                 except services.ProviderAPIError:
                     grouped_season_metadata = None
@@ -1939,6 +1960,9 @@ def media_details(
                         media_type,
                         tmdb_media_id,
                         Sources.TMDB.value,
+                        language=metadata_resolution.metadata_language_default(
+                            request.user
+                        ),
                     )
                 except services.ProviderAPIError:
                     # Watch providers are TMDB-only enrichment. A dead TMDB
