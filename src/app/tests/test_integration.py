@@ -1,3 +1,4 @@
+import copy
 import os
 from datetime import UTC, date, datetime, timedelta
 from unittest.mock import patch
@@ -45,10 +46,23 @@ class IntegrationTest(StaticLiveServerTestCase):
             "total_results": 1,
             "results": [show],
         }
+        # Views mutate the returned dicts in place (e.g. replacing related.seasons
+        # entries with enriched {"item": ..., "media": ...} wrappers), so a shared
+        # return_value would corrupt later calls within the same test. Hand back a
+        # fresh deep copy every call instead.
         for provider_patch in (
-            patch("app.providers.tmdb.search", return_value=search),
-            patch("app.providers.tmdb.tv", return_value=show),
-            patch("app.providers.tmdb.tv_with_seasons", return_value=show),
+            patch(
+                "app.providers.tmdb.search",
+                side_effect=lambda *a, **k: copy.deepcopy(search),
+            ),
+            patch(
+                "app.providers.tmdb.tv",
+                side_effect=lambda *a, **k: copy.deepcopy(show),
+            ),
+            patch(
+                "app.providers.tmdb.tv_with_seasons",
+                side_effect=lambda *a, **k: copy.deepcopy(show),
+            ),
             patch("app.providers.tmdb.get_tvdb_episode_image_map", return_value={}),
         ):
             provider_patch.start()
