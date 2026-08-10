@@ -29,9 +29,7 @@
           </form>
         </div>
         <div class="text-sm text-[var(--color-text-muted)] space-y-1">
-          {% if periodic_import.username %}
-            <div>Username: {{ periodic_import.username }}</div>
-          {% endif %}
+          {% if periodic_import.username %}<div>Username: {{ periodic_import.username }}</div>{% endif %}
           <div>Mode: {{ periodic_import.mode }}</div>
           <div>Last Import: {{ periodic_import.last_run|user_datetime_format:user }}</div>
           <div>Next Import: {{ periodic_import.next_run|user_datetime_format:user }}</div>
@@ -130,7 +128,8 @@
 
                 <div class="mt-2 bg-[var(--color-sidebar)] border border-red-900/40 rounded overflow-auto"
                      x-show="showDetails">
-                  <pre x-ref="traceback" class="text-xs text-red-400 p-3 whitespace-pre font-mono leading-relaxed select-all">{{ result.errors }}</pre>
+                  <pre x-ref="traceback"
+                       class="text-xs text-red-400 p-3 whitespace-pre font-mono leading-relaxed select-all">{{ result.errors }}</pre>
                 </div>
               {% endif %}
             {% endif %}
@@ -145,3 +144,38 @@
     {% endfor %}
   </div>
 </div>
+
+{% if import_runs %}
+  {# Import Run Summary #}
+  <div class="bg-[var(--color-surface)] rounded-lg p-6">
+    <div class="flex items-center mb-4">
+      {% include "app/icons/clock-reversing.svg" with classes="w-6 h-6 text-indigo-400 mr-3" %}
+      <h2 class="text-xl font-semibold">Recent Import Runs</h2>
+    </div>
+    <div class="space-y-3">
+      {% for run in import_runs %}
+        <div class="bg-[var(--color-surface-strong)] rounded-lg p-4">
+          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
+            <div class="flex items-center gap-3">
+              {% if run.status == "completed" %}
+                <span class="px-2 py-1 rounded text-xs font-medium text-green-400 bg-green-400/10">Completed</span>
+              {% elif run.status == "running" %}
+                <span class="px-2 py-1 rounded text-xs font-medium text-blue-400 bg-blue-400/10">Running</span>
+              {% elif run.status == "failed" %}
+                <span class="px-2 py-1 rounded text-xs font-medium text-red-400 bg-red-400/10">Failed</span>
+              {% else %}
+                <span class="px-2 py-1 rounded text-xs font-medium text-yellow-400 bg-yellow-400/10">Cancelled</span>
+              {% endif %}
+              {% source_display run.source %}
+            </div>
+            <span class="text-xs text-[var(--color-text-muted)]">{{ run.started_at|user_datetime_format:user }}</span>
+          </div>
+          <div class="text-sm text-[var(--color-text-secondary)]">
+            Created: {{ run.created_count }} · Updated: {{ run.updated_count }} · Skipped: {{ run.skipped_count }} · Failed: {{ run.failed_count }}
+            {% if run.remaining_estimate %}· Remaining: {{ run.remaining_estimate }}{% endif %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+{% endif %}

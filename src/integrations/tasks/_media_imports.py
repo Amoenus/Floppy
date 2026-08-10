@@ -40,6 +40,7 @@ from integrations.jellyfin_sync import (
     JellyfinPushSyncService,
     format_jellyfin_push_message,
 )
+from integrations.models import ImportRun
 from integrations.plex_watchlist import PlexWatchlistSyncService
 from integrations.tasks._import_helpers import (
     GOODREADS_IMPORT_TASK_NAME,
@@ -65,22 +66,38 @@ def import_media(
     user = get_user_model().objects.get(id=user_id)
     task_id = current_task.request.id if current_task and current_task.request else None
 
-    with disable_fetch_releases(), import_progress.tracking(task_id):
-        if oauth_username is None:
-            imported_counts, warnings = importer_func(
-                identifier,
-                user,
-                mode,
-                **extra_kwargs,
-            )
-        else:
-            imported_counts, warnings = importer_func(
-                identifier,
-                user,
-                mode,
-                username=oauth_username,
-                **extra_kwargs,
-            )
+    source = getattr(importer_func, "__module__", "").rsplit(".", 1)[-1]
+    import_run = ImportRun.objects.create(user=user, source=source, task_id=task_id)
+
+    try:
+        with disable_fetch_releases(), import_progress.tracking(task_id, import_run.id):
+            if oauth_username is None:
+                imported_counts, warnings = importer_func(
+                    identifier,
+                    user,
+                    mode,
+                    **extra_kwargs,
+                )
+            else:
+                imported_counts, warnings = importer_func(
+                    identifier,
+                    user,
+                    mode,
+                    username=oauth_username,
+                    **extra_kwargs,
+                )
+    except Exception:
+        ImportRun.objects.filter(id=import_run.id).update(
+            status=ImportRun.Status.FAILED,
+            finished_at=timezone.now(),
+        )
+        raise
+
+    ImportRun.objects.filter(id=import_run.id).update(
+        status=ImportRun.Status.COMPLETED,
+        created_count=sum(imported_counts.values()),
+        finished_at=timezone.now(),
+    )
 
     # Imports run inside disable_fetch_releases(), so per-item calendar triggers are
     # suppressed and a catch-up reload is needed -- but only when something actually

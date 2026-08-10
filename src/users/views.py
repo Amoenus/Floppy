@@ -27,7 +27,7 @@ from app.providers import tmdb
 from app.services import metadata_resolution
 from app.templatetags import app_tags
 from integrations import exports, plex
-from integrations.models import PlexAccount
+from integrations.models import ImportRun, LastFMAccount, PlexAccount
 from integrations.plex_watchlist import WATCHLIST_TASK_NAME
 from users import cache_management
 from users.forms import (
@@ -1330,6 +1330,7 @@ def import_data_activity(request):
     context = {
         "user": user,
         "import_tasks": user.get_import_tasks(),
+        "import_runs": ImportRun.objects.filter(user=user).order_by("-started_at")[:10],
     }
     return render(request, "users/components/import_activity.html", context)
 
@@ -1474,18 +1475,30 @@ def delete_import_schedule(request):
     """Delete an import schedule."""
     task_name = request.POST.get("task_name")
     try:
-        task = PeriodicTask.objects.get(
-            name=task_name,
-            kwargs__contains=f'"user_id": {request.user.id}',
-        )
-        if task.task == WATCHLIST_TASK_NAME:
-            PlexAccount.objects.filter(user=request.user).update(
-                watchlist_sync_enabled=False,
-            )
-        task.delete()
-        messages.success(request, "Import schedule deleted.")
+        task = PeriodicTask.objects.get(name=task_name)
     except PeriodicTask.DoesNotExist:
         messages.error(request, "Import schedule not found.")
+        return redirect("import_data")
+
+    # Last.fm polling is a single shared task covering every connected
+    # user (it has no per-user kwargs), so it can never match the
+    # kwargs__contains ownership check below. "Deleting" it for one user
+    # can only mean disconnecting that user's account.
+    if task.task == "Poll Last.fm for all users":
+        LastFMAccount.objects.filter(user=request.user).delete()
+        messages.info(request, "Disconnected Last.fm.")
+        return redirect("import_data")
+
+    if not task.kwargs or f'"user_id": {request.user.id}' not in task.kwargs:
+        messages.error(request, "Import schedule not found.")
+        return redirect("import_data")
+
+    if task.task == WATCHLIST_TASK_NAME:
+        PlexAccount.objects.filter(user=request.user).update(
+            watchlist_sync_enabled=False,
+        )
+    task.delete()
+    messages.success(request, "Import schedule deleted.")
     return redirect("import_data")
 
 

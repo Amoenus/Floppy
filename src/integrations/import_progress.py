@@ -27,25 +27,41 @@ _current_task_id: contextvars.ContextVar[str | None] = contextvars.ContextVar(
     default=None,
 )
 
+_current_import_run_id: contextvars.ContextVar[int | None] = contextvars.ContextVar(
+    "import_progress_import_run_id",
+    default=None,
+)
+
 
 def _cache_key(task_id: str) -> str:
     return f"{PROGRESS_CACHE_PREFIX}:{task_id}"
 
 
 @contextlib.contextmanager
-def tracking(task_id: str | None):
-    """Mark ``task_id`` as the active task for ``report()`` calls in this context.
+def tracking(task_id: str | None, import_run_id: int | None = None):
+    """Mark ``task_id``/``import_run_id`` as active for this import.
 
     Clears the progress cache entry on exit regardless of success/failure,
     so a finished or failed import never leaves a stale progress bar.
+    ``import_run_id`` is threaded the same way ``task_id`` is: as ambient
+    context rather than a kwarg, so importer functions can tag the media
+    they create via ``get_current_import_run_id()`` without any signature
+    changes.
     """
-    token = _current_task_id.set(task_id)
+    task_token = _current_task_id.set(task_id)
+    run_token = _current_import_run_id.set(import_run_id)
     try:
         yield
     finally:
-        _current_task_id.reset(token)
+        _current_task_id.reset(task_token)
+        _current_import_run_id.reset(run_token)
         if task_id:
             cache.delete(_cache_key(task_id))
+
+
+def get_current_import_run_id() -> int | None:
+    """Return the ``ImportRun`` id for the currently tracked import, if any."""
+    return _current_import_run_id.get()
 
 
 def report(current: int, total: int | None = None, label: str | None = None) -> None:

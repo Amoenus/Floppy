@@ -47,6 +47,14 @@ class Media(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     item = models.ForeignKey(Item, on_delete=models.CASCADE)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    import_run = models.ForeignKey(
+        "integrations.ImportRun",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+        help_text="The import run that created or last touched this row, if any.",
+    )
     score = models.DecimalField(
         null=True,
         blank=True,
