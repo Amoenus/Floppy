@@ -29,6 +29,7 @@ from app.templatetags import app_tags
 from integrations import exports, plex
 from integrations.models import PlexAccount
 from integrations.plex_watchlist import WATCHLIST_TASK_NAME
+from users import cache_management
 from users.forms import (
     AuthenticatorSetupForm,
     NotificationSettingsForm,
@@ -1788,7 +1789,7 @@ def update_jellyseerr_settings(request):
 @require_POST
 def clear_search_cache(request):
     """Clear all cached search entries."""
-    deleted = cache.delete_pattern("search_*")
+    deleted = cache_management.clear_search_cache()
 
     messages.success(
         request,
@@ -1797,6 +1798,82 @@ def clear_search_cache(request):
     logger.info(
         "Successfully cleared %s search entries",
         deleted,
+    )
+
+    return redirect("advanced")
+
+
+@require_POST
+def clear_history_cache(request):
+    """Clear the requesting user's cached History day/index payloads."""
+    deleted = cache_management.clear_history_cache_for_user(request.user.id)
+
+    messages.success(
+        request,
+        f"Successfully cleared {deleted} history cache entr{pluralize(deleted, 'y,ies')}",
+    )
+    logger.info(
+        "Successfully cleared %s history cache entries for user %s",
+        deleted,
+        request.user.id,
+    )
+
+    return redirect("advanced")
+
+
+@require_POST
+def clear_statistics_cache(request):
+    """Clear the requesting user's cached Statistics page/day payloads."""
+    deleted = cache_management.clear_statistics_cache_for_user(request.user.id)
+
+    messages.success(
+        request,
+        f"Successfully cleared {deleted} statistics cache entr{pluralize(deleted, 'y,ies')}",
+    )
+    logger.info(
+        "Successfully cleared %s statistics cache entries for user %s",
+        deleted,
+        request.user.id,
+    )
+
+    return redirect("advanced")
+
+
+@require_POST
+def clear_discover_cache(request):
+    """Clear the requesting user's cached Discover rows/taste profile."""
+    deleted = cache_management.clear_discover_cache_for_user(request.user.id)
+
+    messages.success(
+        request,
+        f"Successfully cleared {deleted} discover cache entr{pluralize(deleted, 'y,ies')}",
+    )
+    logger.info(
+        "Successfully cleared %s discover cache entries for user %s",
+        deleted,
+        request.user.id,
+    )
+
+    return redirect("advanced")
+
+
+@require_POST
+def clear_all_caches(request):
+    """Clear every clearable cache: search (instance-wide) plus this user's own."""
+    deleted = cache_management.clear_search_cache()
+    deleted += cache_management.clear_history_cache_for_user(request.user.id)
+    deleted += cache_management.clear_statistics_cache_for_user(request.user.id)
+    deleted += cache_management.clear_discover_cache_for_user(request.user.id)
+
+    messages.success(
+        request,
+        f"Successfully cleared {deleted} cache entr{pluralize(deleted, 'y,ies')} "
+        "across search, history, statistics, and discover",
+    )
+    logger.info(
+        "Successfully cleared %s total cache entries (all caches) for user %s",
+        deleted,
+        request.user.id,
     )
 
     return redirect("advanced")
