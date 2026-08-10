@@ -1835,6 +1835,7 @@ class Metadata(TestCase):
 
         self.assertIsNone(igdb_game_id)
 
+    @tag("network")
     def test_book(self):
         """Test the metadata method for books."""
         response = openlibrary.book("OL21733390M")
