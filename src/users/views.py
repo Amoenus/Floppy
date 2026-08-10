@@ -4,6 +4,7 @@ import logging
 from io import BytesIO
 
 import apprise
+from django.apps import apps
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import update_session_auth_hash
@@ -1487,6 +1488,43 @@ def about(request):
             "commit": settings.COMMIT_SHA_SHORT,
         },
     )
+
+
+@require_POST
+def rollback_import_run(request, run_id):
+    """Delete the media rows created or touched by one import run.
+
+    Music is excluded: its rows are mutated in place (progress incremented
+    per scrobble) rather than inserted per play, so a plain delete-by-run
+    could destroy plays from other runs or manual entries sharing the same
+    row. Music rollback needs a history-based revert instead (unsupported
+    for now).
+    """
+    run = get_object_or_404(ImportRun, id=run_id, user=request.user)
+
+    if run.status == ImportRun.Status.RUNNING:
+        messages.error(request, "Cancel the import before rolling it back.")
+        return redirect("import_data")
+
+    rollback_media_types = [
+        media_type
+        for media_type in MediaTypes.values
+        if media_type not in (MediaTypes.EPISODE.value, MediaTypes.MUSIC.value)
+    ]
+
+    total_deleted = 0
+    for media_type in rollback_media_types:
+        model = apps.get_model(app_label="app", model_name=media_type)
+        deleted_count, _ = model.objects.filter(
+            user=request.user, import_run=run
+        ).delete()
+        total_deleted += deleted_count
+
+    if total_deleted:
+        messages.success(request, f"Removed {total_deleted} item(s) from this import.")
+    else:
+        messages.info(request, "Nothing to remove for this import.")
+    return redirect("import_data")
 
 
 @require_POST
