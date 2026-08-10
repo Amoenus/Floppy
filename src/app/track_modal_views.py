@@ -270,15 +270,28 @@ def _render_standard_track_modal(
     elif request.GET.get("is_create"):
         media = None
     else:
-        user_medias = BasicMedia.objects.filter_media(
-            request.user,
-            media_id,
-            media_type,
-            source,
-            season_number=season_number,
-            episode_number=episode_number,
-        )
-        media = user_medias.first()
+        media = None
+        # A season tracked under a different identity bucket (e.g. via the
+        # show's TV identity) must still resolve here, so the modal receives
+        # the correct instance_id instead of trying to create a duplicate
+        # row on save — see #623.
+        if media_type == MediaTypes.SEASON.value and season_number is not None:
+            media = metadata_resolution.find_tracked_season(
+                request.user,
+                media_id,
+                source,
+                int(season_number),
+            )
+        if media is None:
+            user_medias = BasicMedia.objects.filter_media(
+                request.user,
+                media_id,
+                media_type,
+                source,
+                season_number=season_number,
+                episode_number=episode_number,
+            )
+            media = user_medias.first()
         if media:
             instance_id = media.id
 

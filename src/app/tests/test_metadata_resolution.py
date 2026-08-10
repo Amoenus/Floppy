@@ -905,3 +905,139 @@ class GetOrCreateTrackedSeasonItemTests(TestCase):
             )
 
         self.assertEqual(resolved.pk, canonical.pk)
+
+
+class FindTrackedSeasonTests(TestCase):
+    """Regression tests for issue #623: cross-identity Season lookup.
+
+    find_tracked_season must find a tracked Season regardless of which
+    Item.library_media_type bucket it's attached to, since read (season
+    detail page) and write (media_save) paths must agree on "the" tracked
+    season for a show/season/user.
+    """
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="naruto-watcher",
+            password="pw12345",
+        )
+
+    def test_returns_none_when_no_season_tracked(self):
+        resolved = metadata_resolution.find_tracked_season(
+            self.user,
+            "79824",
+            Sources.TVDB.value,
+            0,
+        )
+        self.assertIsNone(resolved)
+
+    def test_finds_season_tracked_via_other_bucket(self):
+        """A season tracked under the TV-identity bucket is still found from the anime route."""
+        tv_item = Item.objects.create(
+            media_id="79824",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Naruto Shippuden",
+            image="",
+            library_media_type=MediaTypes.TV.value,
+        )
+        tv_instance = TV.objects.create(
+            item=tv_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        season_item = Item.objects.create(
+            media_id="79824",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=0,
+            title="Naruto Shippuden",
+            image="",
+            library_media_type=MediaTypes.TV.value,
+        )
+        season = Season.objects.create(
+            item=season_item,
+            user=self.user,
+            related_tv=tv_instance,
+            status=Status.COMPLETED.value,
+        )
+
+        resolved = metadata_resolution.find_tracked_season(
+            self.user,
+            "79824",
+            Sources.TVDB.value,
+            0,
+            library_media_type=MediaTypes.ANIME.value,
+        )
+
+        self.assertEqual(resolved.pk, season.pk)
+
+    def test_prefers_exact_bucket_match_over_other_bucket(self):
+        """When both buckets have a tracked row, the requested bucket wins."""
+        tv_item = Item.objects.create(
+            media_id="79824",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Naruto Shippuden",
+            image="",
+            library_media_type=MediaTypes.TV.value,
+        )
+        tv_instance = TV.objects.create(
+            item=tv_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        tv_bucket_season_item = Item.objects.create(
+            media_id="79824",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=0,
+            title="Naruto Shippuden",
+            image="",
+            library_media_type=MediaTypes.TV.value,
+        )
+        Season.objects.create(
+            item=tv_bucket_season_item,
+            user=self.user,
+            related_tv=tv_instance,
+            status=Status.IN_PROGRESS.value,
+        )
+
+        anime_tv_item = Item.objects.create(
+            media_id="79824",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Naruto Shippuden",
+            image="",
+            library_media_type=MediaTypes.ANIME.value,
+        )
+        anime_tv_instance = TV.objects.create(
+            item=anime_tv_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        anime_bucket_season_item = Item.objects.create(
+            media_id="79824",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=0,
+            title="Naruto Shippuden",
+            image="",
+            library_media_type=MediaTypes.ANIME.value,
+        )
+        anime_season = Season.objects.create(
+            item=anime_bucket_season_item,
+            user=self.user,
+            related_tv=anime_tv_instance,
+            status=Status.COMPLETED.value,
+        )
+
+        resolved = metadata_resolution.find_tracked_season(
+            self.user,
+            "79824",
+            Sources.TVDB.value,
+            0,
+            library_media_type=MediaTypes.ANIME.value,
+        )
+
+        self.assertEqual(resolved.pk, anime_season.pk)

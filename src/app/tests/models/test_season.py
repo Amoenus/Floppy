@@ -677,6 +677,40 @@ class SeasonStatusTests(TestCase):
             self.assertEqual(tv.item.title, "Test Show")
             self.assertEqual(tv.status, Status.PLANNING.value)
 
+    def test_get_tv_prefers_matching_library_media_type_bucket(self):
+        """get_tv must not attach a season to a TV row from the other identity.
+
+        Regression test for GitHub issue #623: when a show is tracked under
+        both its TV identity and its anime identity (two separate TV rows,
+        distinguished only by Item.library_media_type), get_tv used to pick
+        whichever TV row matched media_id/source/user first, regardless of
+        bucket, silently mis-attaching the season.
+        """
+        self.tv_item.library_media_type = MediaTypes.TV.value
+        self.tv_item.save(update_fields=["library_media_type"])
+
+        anime_tv_item = Item.objects.create(
+            media_id="123",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Test Show",
+            image="http://example.com/image.jpg",
+            library_media_type=MediaTypes.ANIME.value,
+        )
+        anime_tv = TV.objects.create(
+            item=anime_tv_item,
+            user=self.user,
+            status=Status.PLANNING.value,
+        )
+
+        self.season.related_tv = None
+        self.season.item.library_media_type = MediaTypes.ANIME.value
+        self.season.item.save(update_fields=["library_media_type"])
+
+        resolved = self.season.get_tv()
+
+        self.assertEqual(resolved.id, anime_tv.id)
+
 
 class SeasonGetRemainingEpsQuickWatchDateTests(TestCase):
     """Tests for Season.get_remaining_eps with different quick_watch_date settings."""
