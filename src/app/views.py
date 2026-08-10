@@ -422,7 +422,7 @@ def home(request):
             )
             if target_row is None:
                 return HttpResponse("")
-            return render(
+            response = render(
                 request,
                 "app/components/home_grid.html",
                 {
@@ -432,6 +432,13 @@ def home(request):
                     "IMG_NONE": settings.IMG_NONE,
                 },
             )
+            # The client's data-total-count is frozen at the initial page
+            # render (home_grid.html carries no total/loaded data), so
+            # report the freshly computed values on every load-more
+            # response to keep it in sync.
+            response["X-Home-Row-Total"] = str(target_row["total"])
+            response["X-Home-Row-Loaded"] = str(target_row["loaded_count"])
+            return response
 
         context = {
             "user": request.user,
