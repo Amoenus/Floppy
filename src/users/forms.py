@@ -1,11 +1,16 @@
 import apprise
+from allauth.account.adapter import get_adapter
 from allauth.account.forms import LoginForm, SignupForm
+from allauth.socialaccount.forms import SignupForm as SocialSignupForm
 from django import forms
 from django.contrib.auth.forms import PasswordChangeForm, SetPasswordForm
 from django.core.exceptions import ValidationError
+from django.db import IntegrityError
 from django.utils import timezone
 
 from .models import User
+
+USERNAME_TAKEN_ERROR_CODE = "username_taken"
 
 
 class CustomLoginForm(LoginForm):
@@ -27,11 +32,38 @@ class CustomSignupForm(SignupForm):
         """Remove email field and change password2 label."""
         super().__init__(*args, **kwargs)
 
-        del self.fields["email"]
+        # Use pop instead of del: allauth already omits this field when
+        # ACCOUNT_SIGNUP_FIELDS excludes email, so a plain `del` would raise
+        # an unhandled KeyError (-> 500) in that configuration.
+        self.fields.pop("email", None)
 
         # Change label and placeholder for password2 field
         self.fields["password2"].label = "Confirm Password"
         self.fields["password2"].widget.attrs["placeholder"] = "Confirm your password"
+
+    def save(self, request):
+        """Save the new user, turning a race-condition IntegrityError into a form error."""
+        try:
+            return super().save(request)
+        except IntegrityError as exc:
+            raise get_adapter().validation_error(USERNAME_TAKEN_ERROR_CODE) from exc
+
+
+class CustomSocialSignupForm(SocialSignupForm):
+    """Custom OIDC/social account signup form for django-allauth."""
+
+    def __init__(self, *args, **kwargs):
+        """Remove email field, mirroring local signup."""
+        super().__init__(*args, **kwargs)
+
+        self.fields.pop("email", None)
+
+    def save(self, request):
+        """Save the new user, turning a race-condition IntegrityError into a form error."""
+        try:
+            return super().save(request)
+        except IntegrityError as exc:
+            raise get_adapter().validation_error(USERNAME_TAKEN_ERROR_CODE) from exc
 
 
 class UserUpdateForm(forms.ModelForm):

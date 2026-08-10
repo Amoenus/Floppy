@@ -4,11 +4,33 @@ import zoneinfo
 from datetime import datetime, timedelta
 
 import croniter
+from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.utils import timezone
 
 # A cron expression "minute hour ..." needs at least this many space-separated
 # fields before its hour part can be inspected for an "every X hours" pattern.
 MIN_CRON_PARTS_FOR_HOUR_PATTERN = 2
+
+IS_FIRST_RUN_CACHE_KEY = "users_is_first_run"
+IS_FIRST_RUN_CACHE_TIMEOUT = 60  # seconds
+
+
+def is_first_run() -> bool:
+    """Return whether this instance has no real (non-demo) user account yet.
+
+    Cached briefly: once a real account exists this permanently flips to
+    False, so a short TTL is enough to avoid a DB query on every request
+    while still self-correcting quickly for the handful of requests before
+    the first account is created.
+    """
+    cached = cache.get(IS_FIRST_RUN_CACHE_KEY)
+    if cached is not None:
+        return cached
+
+    no_real_users = not get_user_model().objects.filter(is_demo=False).exists()
+    cache.set(IS_FIRST_RUN_CACHE_KEY, no_real_users, IS_FIRST_RUN_CACHE_TIMEOUT)
+    return no_real_users
 
 
 def _deserialize_task_result(result):

@@ -4,12 +4,15 @@ import logging
 from io import BytesIO
 
 import apprise
+from allauth.account.views import SignupView
+from allauth.socialaccount.views import SignupView as SocialSignupView
 from django.apps import apps
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import update_session_auth_hash
 from django.contrib.auth.decorators import login_not_required, login_required
 from django.core.cache import cache
+from django.core.exceptions import ValidationError
 from django.db import IntegrityError
 from django.db.models import Q
 from django.http import HttpResponse, JsonResponse, StreamingHttpResponse
@@ -75,6 +78,30 @@ except ModuleNotFoundError:  # pragma: no cover - optional dependency guard
 
 
 logger = logging.getLogger(__name__)
+
+
+class CustomSignupView(SignupView):
+    """Local signup view that re-renders the form on a save-time username conflict."""
+
+    def form_valid(self, form):
+        """Catch a race-condition ValidationError instead of letting it 500."""
+        try:
+            return super().form_valid(form)
+        except ValidationError as exc:
+            form.add_error("username", exc)
+            return self.form_invalid(form)
+
+
+class CustomSocialSignupView(SocialSignupView):
+    """OIDC/social signup view with the same save-time conflict handling."""
+
+    def form_valid(self, form):
+        """Catch a race-condition ValidationError instead of letting it 500."""
+        try:
+            return super().form_valid(form)
+        except ValidationError as exc:
+            form.add_error("username", exc)
+            return self.form_invalid(form)
 
 
 DEFAULT_AUTO_PAUSE_WEEKS = 16
