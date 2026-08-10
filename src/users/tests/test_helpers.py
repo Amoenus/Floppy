@@ -3,6 +3,8 @@ import zoneinfo
 from datetime import datetime
 from unittest.mock import Mock, patch
 
+from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.test import TestCase
 from django_celery_beat.models import CrontabSchedule, IntervalSchedule, PeriodicTask
 
@@ -298,3 +300,44 @@ class HelpersTest(TestCase):
             2025, 2, 6, 12, 45, tzinfo=zoneinfo.ZoneInfo("UTC")
         )
         self.assertEqual(next_run_info["next_run"], expected_next_run)
+
+
+class IsFirstRunTests(TestCase):
+    """Test the is_first_run first-run detection helper."""
+
+    def setUp(self):
+        """Clear the cached flag so each test starts from a clean slate."""
+        cache.delete(helpers.IS_FIRST_RUN_CACHE_KEY)
+
+    def tearDown(self):
+        """Avoid leaking the cached flag into unrelated tests."""
+        cache.delete(helpers.IS_FIRST_RUN_CACHE_KEY)
+
+    def test_true_on_empty_database(self):
+        """Test an instance with no users at all is a first run."""
+        self.assertTrue(helpers.is_first_run())
+
+    def test_true_with_only_demo_user(self):
+        """Test the demo account alone still counts as a first run."""
+        get_user_model().objects.create_user(
+            username="demo",
+            password="demodemo",
+            is_demo=True,
+        )
+
+        self.assertTrue(helpers.is_first_run())
+
+    def test_false_once_a_real_user_exists(self):
+        """Test creating a real account ends the first-run state."""
+        get_user_model().objects.create_user(username="realuser", password="12345")
+
+        self.assertFalse(helpers.is_first_run())
+
+    def test_result_is_cached(self):
+        """Test the flag is cached rather than recomputed every call."""
+        self.assertTrue(helpers.is_first_run())
+
+        get_user_model().objects.create_user(username="realuser", password="12345")
+
+        # Still True: the earlier cached value has not expired yet.
+        self.assertTrue(helpers.is_first_run())

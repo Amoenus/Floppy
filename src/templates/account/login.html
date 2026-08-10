@@ -7,7 +7,11 @@
 {% endblock head_title %}
 
 {% block content_title %}
-  Sign in to your account
+  {% if IS_FIRST_RUN and REGISTRATION %}
+    Welcome to Floppy — set up your account to get started
+  {% else %}
+    Sign in to your account
+  {% endif %}
 {% endblock content_title %}
 
 {% block content %}
@@ -38,12 +42,18 @@
     <div class="mt-6 text-center">
       <p class="text-[var(--color-text-muted)]">
         {% if REGISTRATION %}
-          Need an account?
-          <a class="text-indigo-400 hover:text-indigo-300"
-             href="{% url 'account_signup' %}">Register now</a>
-          <span class="mx-2 text-gray-600">|</span>
-          <a class="text-indigo-400 hover:text-indigo-300"
-             href="{% url 'password_recover' %}">Forgot Password</a>
+          {% if IS_FIRST_RUN %}
+            No account exists yet.
+            <a class="text-indigo-400 hover:text-indigo-300"
+               href="{% url 'account_signup' %}">Create your account</a>
+          {% else %}
+            Need an account?
+            <a class="text-indigo-400 hover:text-indigo-300"
+               href="{% url 'account_signup' %}">Register now</a>
+            <span class="mx-2 text-gray-600">|</span>
+            <a class="text-indigo-400 hover:text-indigo-300"
+               href="{% url 'password_recover' %}">Forgot Password</a>
+          {% endif %}
         {% else %}
           Sign-ups are disabled.
           {% if FORK_OWNER_URL %}

@@ -1536,6 +1536,9 @@ ACCOUNT_FORMS = {
     "login": "users.forms.CustomLoginForm",
     "signup": "users.forms.CustomSignupForm",
 }
+SOCIALACCOUNT_FORMS = {
+    "signup": "users.forms.CustomSocialSignupForm",
+}
 
 if BASE_URL:
     # Join base only if relative URL
