@@ -361,6 +361,130 @@
           {% include "app/components/seasons_grid.html" %}
         {% endif %}
 
+        {# Episodes List #}
+        {% if media.episodes %}
+          <div class="w-full mb-8"
+               x-data="{
+                 get epLayout() { return $store.epLayout || 'grid'; },
+                 setLayout(v) { $store.epLayout = v; localStorage.setItem('ep-layout', v); },
+                 open: localStorage.getItem('detail-episodes-open') !== 'false'
+               }"
+               x-init="Alpine.store('epLayout', localStorage.getItem('ep-layout') || 'grid'); $watch('open', v => localStorage.setItem('detail-episodes-open', v))">
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="text-xl font-bold">{% if media_type == MediaTypes.COMIC.value %}Issues{% else %}Episodes{% endif %}</h2>
+              <div class="flex items-center gap-1">
+                {% if media_type != MediaTypes.PODCAST.value %}
+                  <button @click="setLayout('grid')"
+                          :class="epLayout === 'grid' ? 'bg-indigo-600 text-white' : 'bg-[var(--color-surface)] text-gray-400 hover:text-white'"
+                          class="p-1.5 rounded transition-colors cursor-pointer"
+                          title="Card view">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                      <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+                    </svg>
+                  </button>
+                  <button @click="setLayout('list')"
+                          :class="epLayout === 'list' ? 'bg-indigo-600 text-white' : 'bg-[var(--color-surface)] text-gray-400 hover:text-white'"
+                          class="p-1.5 rounded transition-colors cursor-pointer"
+                          title="List view">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                      <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+                    </svg>
+                  </button>
+                {% endif %}
+                <button type="button"
+                        class="flex items-center justify-center p-1 rounded text-gray-500 hover:text-[var(--color-text-secondary)] transition-colors cursor-pointer ml-1"
+                        @click="open = !open"
+                        :aria-expanded="open.toString()"
+                        aria-label="Toggle section">
+                  <div class="w-4 h-4 transition-transform duration-200" :class="{ 'rotate-180': open }">
+                    {% include "app/icons/chevron-down.svg" with classes="w-full h-full" %}
+                  </div>
+                </button>
+              </div>
+            </div>
+            <div x-show="open"
+                 x-transition:enter="transition ease-out duration-200"
+                 x-transition:enter-start="opacity-0 transform -translate-y-1"
+                 x-transition:enter-end="opacity-100 transform translate-y-0"
+                 x-transition:leave="transition ease-in duration-150"
+                 x-transition:leave-start="opacity-100 transform translate-y-0"
+                 x-transition:leave-end="opacity-0 transform -translate-y-1">
+              <div id="episodes-list">
+                {% if media_type == MediaTypes.PODCAST.value %}
+                  {# Use fragment for podcasts to enable infinite scroll #}
+                  {% include "app/components/podcast_episode_list.html" with episodes=paginated_episodes|default:media.episodes user=user show=podcast_show IMG_NONE=IMG_NONE TRACK_TIME=TRACK_TIME has_more=has_more|default:has_more_episodes|default:False next_page=next_page|default:2 show_id=show_id request=request csrf_token=csrf_token only %}
+                {% else %}
+                <div class="space-y-6" id="episodes-batch">
+                  {% for episode in media.episodes %}
+                    {% if media_type == MediaTypes.COMIC.value %}
+                      {% url 'media_details' source=episode.source media_type=episode.media_type media_id=episode.media_id title=episode.title|default:episode.issue_number|slug as ep_detail_url %}
+                      {% include "app/components/issue_row.html" %}
+                    {% else %}
+                      {% if media_type == MediaTypes.SEASON.value and media.source and media.media_id and media.season_number %}{% if parent_media_type == MediaTypes.ANIME.value %}{% url 'anime_episode_details' source=media.source media_id=media.media_id title=media.title|slug season_number=media.season_number episode_number=episode.episode_number as ep_detail_url %}{% else %}{% url 'episode_details' source=media.source media_id=media.media_id title=media.title|slug season_number=media.season_number episode_number=episode.episode_number as ep_detail_url %}{% endif %}{% elif media_type == MediaTypes.ANIME.value and episode.source and episode.media_id and episode.episode_number %}{% url 'anime_episode_details' source=episode.source media_id=episode.media_id title=media.title|slug season_number=episode.season_number|default:0 episode_number=episode.episode_number as ep_detail_url %}{% endif %}
+                      {% include "app/components/episode_row.html" %}
+                    {% endif %}
+                  {% endfor %}
+                  {% if episode_load_more %}
+                    <div class="detail-episode-load-more flex justify-center pt-2" data-episode-load-more>
+                      <a href="?{{ episode_load_more.querystring }}"
+                         hx-get="?{{ episode_load_more.querystring }}"
+                         hx-select="#episodes-batch > *"
+                         hx-target="closest [data-episode-load-more]"
+                         hx-swap="outerHTML"
+                         class="inline-flex items-center rounded-xl border border-white/10 bg-[var(--color-surface)] px-4 py-3 text-sm font-medium text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)]">
+                        Show {{ episode_load_more.label }}
+                      </a>
+                    </div>
+                  {% endif %}
+                </div>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+        {% elif media_type == MediaTypes.ANIME.value and identity_provider == Sources.MAL.value %}
+          <div class="w-full mb-8"
+               x-data="{ open: localStorage.getItem('detail-episodes-open') !== 'false' }"
+               x-init="$watch('open', v => localStorage.setItem('detail-episodes-open', v))">
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="text-xl font-bold">Episodes</h2>
+              <button type="button"
+                      class="flex items-center justify-center p-1 rounded text-gray-500 hover:text-[var(--color-text-secondary)] transition-colors cursor-pointer"
+                      @click="open = !open"
+                      :aria-expanded="open.toString()"
+                      aria-label="Toggle section">
+                <div class="w-4 h-4 transition-transform duration-200" :class="{ 'rotate-180': open }">
+                  {% include "app/icons/chevron-down.svg" with classes="w-full h-full" %}
+                </div>
+              </button>
+            </div>
+            <div x-show="open"
+                 x-transition:enter="transition ease-out duration-200"
+                 x-transition:enter-start="opacity-0 transform -translate-y-1"
+                 x-transition:enter-end="opacity-100 transform translate-y-0"
+                 x-transition:leave="transition ease-in duration-150"
+                 x-transition:leave-start="opacity-100 transform translate-y-0"
+                 x-transition:leave-end="opacity-0 transform -translate-y-1">
+              <div class="rounded-lg border border-[var(--color-surface-muted)] bg-[var(--color-surface-dim)] p-4 text-sm text-[var(--color-text-secondary)] space-y-2">
+                <p>Episode cards are not available from MyAnimeList metadata. MAL only returns the total episode count for this title.</p>
+                {% if grouped_preview_target and display_provider != identity_provider %}
+                  <p>
+                    This entry maps to {{ display_provider|upper }}
+                    {{ grouped_preview_target.season_title|default:"season" }}
+                    {% if grouped_preview_target.episode_start and grouped_preview_target.episode_end %}
+                      (episodes {{ grouped_preview_target.episode_start }}-{{ grouped_preview_target.episode_end }})
+                    {% elif grouped_preview_target.episode_start %}
+                      (starting at episode {{ grouped_preview_target.episode_start }})
+                    {% endif %}.
+                    Open Add to tracker to log grouped episode plays or convert it to the grouped series.
+                  </p>
+                {% else %}
+                  <p>Switch the metadata provider to TVDB or TMDB from Add to tracker to browse mapped episodes when that data is available.</p>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+        {% endif %}
+
         {% if cast_row.total %}
           <section class="mb-8">
             {% include "app/components/_scrollable_row.html" with row=cast_row grid_template="app/components/detail_cast_grid.html" collapse_key="detail-cast-open" %}
@@ -381,91 +505,6 @@
 
         {% if media_type == MediaTypes.GAME.value %}
           {% include "app/components/game_lengths_section.html" %}
-        {% endif %}
-
-        {# Episodes List #}
-        {% if media.episodes %}
-          <div class="w-full"
-               x-data="{
-                 get epLayout() { return $store.epLayout || 'grid'; },
-                 setLayout(v) { $store.epLayout = v; localStorage.setItem('ep-layout', v); }
-               }"
-               x-init="Alpine.store('epLayout', localStorage.getItem('ep-layout') || 'grid')">
-            <div class="flex items-center justify-between mb-4">
-              <h2 class="text-xl font-bold">{% if media_type == MediaTypes.COMIC.value %}Issues{% else %}Episodes{% endif %}</h2>
-              {% if media_type != MediaTypes.PODCAST.value %}
-                <div class="flex items-center gap-1">
-                  <button @click="setLayout('grid')"
-                          :class="epLayout === 'grid' ? 'bg-indigo-600 text-white' : 'bg-[var(--color-surface)] text-gray-400 hover:text-white'"
-                          class="p-1.5 rounded transition-colors cursor-pointer"
-                          title="Card view">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                      <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
-                    </svg>
-                  </button>
-                  <button @click="setLayout('list')"
-                          :class="epLayout === 'list' ? 'bg-indigo-600 text-white' : 'bg-[var(--color-surface)] text-gray-400 hover:text-white'"
-                          class="p-1.5 rounded transition-colors cursor-pointer"
-                          title="List view">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                      <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
-                    </svg>
-                  </button>
-                </div>
-              {% endif %}
-            </div>
-            <div id="episodes-list">
-              {% if media_type == MediaTypes.PODCAST.value %}
-                {# Use fragment for podcasts to enable infinite scroll #}
-                {% include "app/components/podcast_episode_list.html" with episodes=paginated_episodes|default:media.episodes user=user show=podcast_show IMG_NONE=IMG_NONE TRACK_TIME=TRACK_TIME has_more=has_more|default:has_more_episodes|default:False next_page=next_page|default:2 show_id=show_id request=request csrf_token=csrf_token only %}
-              {% else %}
-              <div class="space-y-6" id="episodes-batch">
-                {% for episode in media.episodes %}
-                  {% if media_type == MediaTypes.COMIC.value %}
-                    {% url 'media_details' source=episode.source media_type=episode.media_type media_id=episode.media_id title=episode.title|default:episode.issue_number|slug as ep_detail_url %}
-                    {% include "app/components/issue_row.html" %}
-                  {% else %}
-                    {% if media_type == MediaTypes.SEASON.value and media.source and media.media_id and media.season_number %}{% if parent_media_type == MediaTypes.ANIME.value %}{% url 'anime_episode_details' source=media.source media_id=media.media_id title=media.title|slug season_number=media.season_number episode_number=episode.episode_number as ep_detail_url %}{% else %}{% url 'episode_details' source=media.source media_id=media.media_id title=media.title|slug season_number=media.season_number episode_number=episode.episode_number as ep_detail_url %}{% endif %}{% elif media_type == MediaTypes.ANIME.value and episode.source and episode.media_id and episode.episode_number %}{% url 'anime_episode_details' source=episode.source media_id=episode.media_id title=media.title|slug season_number=episode.season_number|default:0 episode_number=episode.episode_number as ep_detail_url %}{% endif %}
-                    {% include "app/components/episode_row.html" %}
-                  {% endif %}
-                {% endfor %}
-                {% if episode_load_more %}
-                  <div class="detail-episode-load-more flex justify-center pt-2" data-episode-load-more>
-                    <a href="?{{ episode_load_more.querystring }}"
-                       hx-get="?{{ episode_load_more.querystring }}"
-                       hx-select="#episodes-batch > *"
-                       hx-target="closest [data-episode-load-more]"
-                       hx-swap="outerHTML"
-                       class="inline-flex items-center rounded-xl border border-white/10 bg-[var(--color-surface)] px-4 py-3 text-sm font-medium text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)]">
-                      Show {{ episode_load_more.label }}
-                    </a>
-                  </div>
-                {% endif %}
-              </div>
-              {% endif %}
-            </div>
-          </div>
-        {% elif media_type == MediaTypes.ANIME.value and identity_provider == Sources.MAL.value %}
-          <div class="w-full">
-            <h2 class="text-xl font-bold mb-4">Episodes</h2>
-            <div class="rounded-lg border border-[var(--color-surface-muted)] bg-[var(--color-surface-dim)] p-4 text-sm text-[var(--color-text-secondary)] space-y-2">
-              <p>Episode cards are not available from MyAnimeList metadata. MAL only returns the total episode count for this title.</p>
-              {% if grouped_preview_target and display_provider != identity_provider %}
-                <p>
-                  This entry maps to {{ display_provider|upper }}
-                  {{ grouped_preview_target.season_title|default:"season" }}
-                  {% if grouped_preview_target.episode_start and grouped_preview_target.episode_end %}
-                    (episodes {{ grouped_preview_target.episode_start }}-{{ grouped_preview_target.episode_end }})
-                  {% elif grouped_preview_target.episode_start %}
-                    (starting at episode {{ grouped_preview_target.episode_start }})
-                  {% endif %}.
-                  Open Add to tracker to log grouped episode plays or convert it to the grouped series.
-                </p>
-              {% else %}
-                <p>Switch the metadata provider to TVDB or TMDB from Add to tracker to browse mapped episodes when that data is available.</p>
-              {% endif %}
-            </div>
-          </div>
         {% endif %}
 
         </div>
