@@ -1351,6 +1351,7 @@ def import_data_activity(request):
         "user": user,
         "import_tasks": user.get_import_tasks(),
         "import_runs": ImportRun.objects.filter(user=user).order_by("-started_at")[:10],
+        "import_source_media": _import_source_media_summary(user),
     }
     return render(request, "users/components/import_activity.html", context)
 
@@ -1488,6 +1489,56 @@ def about(request):
             "commit": settings.COMMIT_SHA_SHORT,
         },
     )
+
+
+def _import_source_media_summary(user):
+    """Return media type/source/count rows the user has importer-tagged data for."""
+    summary = []
+    for media_type in MediaTypes.values:
+        if media_type == MediaTypes.EPISODE.value:
+            continue
+        model = apps.get_model(app_label="app", model_name=media_type)
+        sources = (
+            model.objects.filter(user=user, import_run__isnull=False)
+            .values_list("import_run__source", flat=True)
+            .distinct()
+        )
+        for source in sources:
+            count = model.objects.filter(
+                user=user, import_run__source=source
+            ).count()
+            summary.append(
+                {"media_type": media_type, "source": source, "count": count}
+            )
+    return summary
+
+
+@require_POST
+def bulk_delete_by_import_source(request, media_type, source):
+    """Permanently delete all of the user's media of one type from one import source.
+
+    Unlike rollback_import_run (undo one run), this is a standing cleanup
+    action across every run from that source -- e.g. "delete all Music
+    imported from Last.fm" before re-importing from Koito. Irreversible.
+    """
+    if media_type == MediaTypes.EPISODE.value or media_type not in MediaTypes.values:
+        messages.error(request, "Unknown media type.")
+        return redirect("import_data")
+
+    if not ImportRun.objects.filter(user=request.user, source=source).exists():
+        messages.error(request, "Unknown import source.")
+        return redirect("import_data")
+
+    model = apps.get_model(app_label="app", model_name=media_type)
+    deleted_count, _ = model.objects.filter(
+        user=request.user, import_run__source=source
+    ).delete()
+
+    if deleted_count:
+        messages.success(request, f"Permanently deleted {deleted_count} item(s).")
+    else:
+        messages.info(request, "Nothing to delete.")
+    return redirect("import_data")
 
 
 @require_POST

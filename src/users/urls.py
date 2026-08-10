@@ -80,6 +80,11 @@ urlpatterns = [
         name="cancel_import_run",
     ),
     path(
+        "bulk_delete_by_import_source/<str:media_type>/<str:source>",
+        views.bulk_delete_by_import_source,
+        name="bulk_delete_by_import_source",
+    ),
+    path(
         "create_export_schedule",
         views.create_export_schedule,
         name="create_export_schedule",
