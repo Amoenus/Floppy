@@ -659,7 +659,7 @@ def _matches_collection_filter(
 
 
 def _collection_filter_context(owner) -> tuple[set[int], set[tuple[str, str]]]:
-    """Return cached collection lookup sets for smart list collection filtering."""
+    """Return collection lookup sets for smart list collection filtering."""
     collected_item_ids = set(
         CollectionEntry.objects.filter(user=owner).values_list("item_id", flat=True),
     )
@@ -672,16 +672,41 @@ def _collection_filter_context(owner) -> tuple[set[int], set[tuple[str, str]]]:
     return collected_item_ids, collected_episode_pairs
 
 
+def _resolve_collection_context(
+    owner,
+    collection_context: tuple[set[int], set[tuple[str, str]]] | None,
+    collection_context_cache: dict | None,
+) -> tuple[set[int], set[tuple[str, str]]]:
+    """Return a collection context, reusing a caller-supplied value or cache.
+
+    `collection_context_cache` lets callers that resolve many rows/media types
+    for the same owner in one request (e.g. building the Home page) share a
+    single `CollectionEntry` scan instead of repeating it per row/media type.
+    The cache is expected to be a plain dict scoped to a single request/call.
+    """
+    if collection_context is not None:
+        return collection_context
+    if collection_context_cache is None:
+        return _collection_filter_context(owner)
+    cache_key = getattr(owner, "id", None)
+    if cache_key not in collection_context_cache:
+        collection_context_cache[cache_key] = _collection_filter_context(owner)
+    return collection_context_cache[cache_key]
+
+
 def _collection_only_item_ids(
     owner,
     media_type: str,
     tracked_item_ids: set[int] | None = None,
     *,
     search_query: str = "",
+    collection_context_cache: dict | None = None,
 ) -> set[int]:
     """Return collected item ids that do not already have a tracker row."""
     tracked_item_ids = tracked_item_ids or set()
-    collected_item_ids, _collected_episode_pairs = _collection_filter_context(owner)
+    collected_item_ids, _collected_episode_pairs = _resolve_collection_context(
+        owner, None, collection_context_cache,
+    )
     if not collected_item_ids:
         return set()
 
@@ -792,8 +817,15 @@ def collect_matching_item_ids(
     normalized_rules: dict,
     *,
     include_collection_only_untracked: bool = False,
+    collection_context_cache: dict | None = None,
 ) -> set[int]:
-    """Return matching Item IDs for a normalized smart-rule definition."""
+    """Return matching Item IDs for a normalized smart-rule definition.
+
+    `collection_context_cache`, when passed a plain dict by the caller, lets
+    repeated calls for the same owner within one request (e.g. one Home page
+    build iterating several rows/media types) reuse a single collection scan
+    instead of re-querying `CollectionEntry` for every row.
+    """
     target_media_types = _target_media_types(
         owner, normalized_rules.get("media_types", [])
     )
@@ -814,7 +846,9 @@ def collect_matching_item_ids(
     collected_item_ids: set[int] = set()
     collected_episode_pairs: set[tuple[str, str]] = set()
     if collection_filter != "all":
-        collected_item_ids, collected_episode_pairs = _collection_filter_context(owner)
+        collected_item_ids, collected_episode_pairs = _resolve_collection_context(
+            owner, None, collection_context_cache,
+        )
 
     tag_match_ids, tag_excluded_ids = _resolve_tag_id_sets(
         owner,
@@ -853,6 +887,7 @@ def collect_matching_item_ids(
                         media_type,
                         queryset_item_ids,
                         search_query=normalized_rules.get("search", ""),
+                        collection_context_cache=collection_context_cache,
                     ),
                 )
             continue
@@ -903,6 +938,7 @@ def collect_matching_item_ids(
                 media_type,
                 queryset_item_ids,
                 search_query=normalized_rules.get("search", ""),
+                collection_context_cache=collection_context_cache,
             )
             if collection_only_ids:
                 for item in Item.objects.filter(id__in=collection_only_ids).iterator():
