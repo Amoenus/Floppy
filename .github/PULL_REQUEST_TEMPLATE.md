@@ -1,6 +1,9 @@
 ## Summary
 - Describe what changed and why.
 
+## AI Assistance
+- If an AI agent generated or substantially shaped this change, name the specific model (e.g. `claude-sonnet-4-6`, `gpt-5.1-codex`). A tool or subscription name alone ("Claude Code", "Copilot", "Codex Subscription") is NOT sufficient — say which model actually did the work. Delete this section only if no AI assistance was used.
+
 ## Validation
 - List commands run and outcomes.
 
