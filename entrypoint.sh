@@ -7,23 +7,10 @@ set -e
 # opaque "file is not a database" traceback (issue #508). Corruption here
 # often means the db directory sits on a network filesystem that doesn't
 # support SQLite's WAL locking - see README's SQLite persistence note.
+# Rejects a non-"ok" quick_check result even when SQLite doesn't raise an
+# exception for it (issue #593).
 if [ -z "$DB_HOST" ] && [ -f /floppy/db/db.sqlite3 ]; then
-    python -c "
-import sqlite3
-import sys
-
-try:
-    conn = sqlite3.connect('/floppy/db/db.sqlite3')
-    conn.execute('PRAGMA quick_check').fetchone()
-except sqlite3.DatabaseError as e:
-    print(f'[entrypoint] Database integrity check failed: {e}', file=sys.stderr)
-    print(
-        '[entrypoint] The SQLite file may be corrupt (see README: SQLite '
-        'network filesystem caveat)',
-        file=sys.stderr,
-    )
-    sys.exit(1)
-" || exit 1
+    python -c "from config.sqlite_integrity import check_database_integrity; check_database_integrity('/floppy/db/db.sqlite3')" || exit 1
 fi
 
 # Bounded, retrying migrate: a blocked migration must fail loudly and retry
