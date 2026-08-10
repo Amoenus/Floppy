@@ -155,6 +155,17 @@ Prefer the cheapest useful check:
 
 Do not run a full test suite or full build unless risk justifies it or the user asks.
 
+### Preexisting Failures (Baseline Zero Policy)
+
+App tests, ruff, and lint were driven to zero as a dedicated cleanup effort. The expectation is to hold that baseline, not let it erode.
+
+If you discover a test/ruff/lint failure while working on something unrelated:
+
+1. Check it against baseline to confirm it's preexisting and not introduced by your change.
+2. It's fine not to fix it inline as part of the current change.
+3. Do not just silently note it — flag it explicitly to the user and state plainly that the expectation is to fix it, not just document it.
+4. Prefer fixing it in a separate commit, and where practical a separate PR, so the cleanup is easy to review independently of the change at hand.
+
 ## Command Output
 
 Protect context usage. **Any command with unknown or potentially large output must be byte-capped.**
