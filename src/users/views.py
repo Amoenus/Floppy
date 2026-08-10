@@ -1491,6 +1491,37 @@ def about(request):
 
 
 @require_POST
+def cancel_import_run(request, run_id):
+    """Cancel a running import.
+
+    Only covers importers that run as a single Celery task invocation
+    (revoke(terminate=True) stops it outright, deployed worker pool is
+    prefork so SIGTERM reaches the running task). Last.fm/Koito history
+    backfills self-reschedule across many task invocations with no single
+    task id to revoke against -- those are cancelled cooperatively instead
+    (see cancel_requested on ImportRun).
+    """
+    from config.celery import app as celery_app
+
+    run = get_object_or_404(ImportRun, id=run_id, user=request.user)
+
+    if run.status != ImportRun.Status.RUNNING:
+        messages.error(request, "This import is not running.")
+        return redirect("import_data")
+
+    if run.task_id:
+        celery_app.control.revoke(run.task_id, terminate=True)
+
+    ImportRun.objects.filter(id=run.id).update(
+        status=ImportRun.Status.CANCELLED,
+        cancel_requested=True,
+        finished_at=timezone.now(),
+    )
+    messages.success(request, "Import cancelled.")
+    return redirect("import_data")
+
+
+@require_POST
 def rollback_import_run(request, run_id):
     """Undo the media rows created or touched by one import run.
 

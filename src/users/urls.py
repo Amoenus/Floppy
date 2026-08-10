@@ -75,6 +75,11 @@ urlpatterns = [
         name="rollback_import_run",
     ),
     path(
+        "cancel_import_run/<int:run_id>",
+        views.cancel_import_run,
+        name="cancel_import_run",
+    ),
+    path(
         "create_export_schedule",
         views.create_export_schedule,
         name="create_export_schedule",
