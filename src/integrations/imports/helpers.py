@@ -47,6 +47,15 @@ def retry_on_lock(func, max_retries=5, base_delay=0.1, backoff=2.0):
     return outcome.value
 
 
+def mal_id_from_kitsu_mappings(mappings, media_type):
+    """Return the raw MyAnimeList external id from a Kitsu mappings dict.
+
+    ``mappings`` maps Kitsu's externalSite strings (e.g. "myanimelist/anime")
+    to their externalId. Returns None when no MAL mapping is present.
+    """
+    return mappings.get(f"myanimelist/{media_type}")
+
+
 def find_item_across_buckets(preferred_bucket=None, **identity):
     """Return an existing Item for an identity, preferring one library bucket.
 
