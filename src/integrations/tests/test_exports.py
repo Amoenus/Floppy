@@ -9,6 +9,7 @@ from django.urls import reverse
 
 from app.mixins import disable_fetch_releases
 from app.models import (
+    TV,
     Album,
     AlbumTracker,
     Anime,
@@ -492,4 +493,122 @@ class ExportCSVTest(TestCase):
         rows = list(csv.DictReader(StringIO(content)))
         self.assertTrue(rows)
         self.assertEqual({r["row_type"] for r in rows}, {"collection"})
-        self.assertEqual(len(rows), 3)
+
+    def _create_show_with_episodes(self, media_id, episode_count):
+        """Create a TV show, one season, and *episode_count* episodes for it."""
+        with disable_fetch_releases():
+            show_item = Item.objects.create(
+                media_id=media_id,
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.TV.value,
+                title=f"Show {media_id}",
+                image="https://image.url",
+            )
+            TV.objects.create(
+                item=show_item,
+                user=self.user,
+                status=Status.IN_PROGRESS.value,
+            )
+            season_item = Item.objects.create(
+                media_id=media_id,
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.SEASON.value,
+                title=f"Show {media_id}",
+                season_number=1,
+                image="https://image.url",
+            )
+            season = Season.objects.create(
+                item=season_item,
+                user=self.user,
+                status=Status.IN_PROGRESS.value,
+            )
+            episodes = []
+            for episode_number in range(1, episode_count + 1):
+                episode_item = Item.objects.create(
+                    media_id=media_id,
+                    source=Sources.TMDB.value,
+                    media_type=MediaTypes.EPISODE.value,
+                    title=f"Show {media_id}",
+                    season_number=1,
+                    episode_number=episode_number,
+                    image="https://image.url",
+                )
+                episodes.append(
+                    Episode(
+                        item=episode_item,
+                        related_season=season,
+                        end_date=datetime(2023, 6, 1, 0, 0, tzinfo=UTC),
+                    ),
+                )
+            Episode.objects.bulk_create(episodes)
+
+    def test_export_csv_includes_every_episode_past_iterator_chunk_size(self):
+        """All episodes are exported even when they outnumber the 500-row
+        iterator chunk size used while streaming (regression test for #618:
+        a dead season/episode prefetch on the tv/season querysets used to
+        multiply query cost per show and could truncate the stream well
+        before every episode was written).
+        """
+        episode_count = 1200
+        self._create_show_with_episodes("999001", episode_count)
+
+        response = self.client.get(reverse("export_csv"))
+        self.assertEqual(response.status_code, 200)
+
+        content = b"".join(response.streaming_content).decode("utf-8")
+        reader = csv.DictReader(StringIO(content))
+        episode_rows = [
+            r
+            for r in reader
+            if r.get("row_type") == "media" and r.get("media_type") == "episode"
+        ]
+
+        # +1 for the single episode created in setUp.
+        self.assertEqual(len(episode_rows), episode_count + 1)
+        self.assertEqual(
+            Episode.objects.filter(related_season__user=self.user).count(),
+            episode_count + 1,
+        )
+
+    def test_export_csv_skips_episodes_with_no_linked_item(self):
+        """An episode row with a null item is skipped, not emitted blank."""
+        season_item = Item.objects.create(
+            media_id="999002",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Orphaned",
+            season_number=1,
+            image="https://image.url",
+        )
+        season = Season.objects.create(
+            item=season_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        # bulk_create bypasses Episode.save(), which dereferences self.item
+        # and can't handle a null item -- this row models data that reached
+        # the DB some other way (the item FK is nullable), not something the
+        # normal save path can produce.
+        Episode.objects.bulk_create(
+            [
+                Episode(
+                    item=None,
+                    related_season=season,
+                    end_date=datetime(2023, 6, 1, 0, 0, tzinfo=UTC),
+                ),
+            ],
+        )
+
+        response = self.client.get(reverse("export_csv"))
+        self.assertEqual(response.status_code, 200)
+
+        content = b"".join(response.streaming_content).decode("utf-8")
+        reader = csv.DictReader(StringIO(content))
+        episode_rows = [
+            r
+            for r in reader
+            if r.get("row_type") == "media" and r.get("media_type") == "episode"
+        ]
+
+        # The one legitimate episode from setUp, but not the orphaned one.
+        self.assertEqual(len(episode_rows), 1)
