@@ -10,6 +10,7 @@ from app.models import (
     Item,
     ItemProviderLink,
     MetadataProviderPreference,
+    MoviePlay,
     PlaybackProgress,
 )
 
@@ -37,6 +38,14 @@ class EpisodeAdmin(admin.ModelAdmin):
 
     search_fields = ["item__title", "related_season__item__title"]
     list_display = ["__str__", "end_date"]
+
+
+@admin.register(MoviePlay)
+class MoviePlayAdmin(admin.ModelAdmin):
+    """Custom admin for MoviePlay model with search and filter options."""
+
+    search_fields = ["movie__item__title"]
+    list_display = ["__str__", "end_date", "external_id"]
 
 
 class MediaAdmin(admin.ModelAdmin):
@@ -85,6 +94,7 @@ app_models = apps.get_app_config("app").get_models()
 SpecialModels = [
     "Item",
     "Episode",
+    "MoviePlay",
     "BasicMedia",
     "Artist",
     "Album",

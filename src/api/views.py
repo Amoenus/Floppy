@@ -1394,16 +1394,22 @@ class MediaConsumptionHistoryView(drf_views.APIView):
                 status=HTTP.NOT_FOUND,
             )
 
+        # FORK: movie rewatch support (issue #577) — once a movie has real
+        # MoviePlay rows, history is served from those instead of the single
+        # tracker row. Untouched movies keep today's single-entry behavior.
+        movie_plays = fork_helpers.movie_plays_for_history(user_medias, media_type)
+        history_rows = movie_plays if movie_plays is not None else list(user_medias)
+
         # FORK: was "TODO: missing sorting"
-        user_medias, sort_err = fork_helpers.sort_history_results(
+        history_rows, sort_err = fork_helpers.sort_history_results(
             request,
-            list(user_medias),
+            history_rows,
         )
         if sort_err:
             return sort_err
         paginated_data = paginate_data(
             request,
-            user_medias,
+            history_rows,
             limit,
             offset,
         )
@@ -1458,6 +1464,14 @@ class MediaConsumptionEntryDetailView(drf_views.APIView):
 
         consumption = user_medias.filter(id=consumption_id).first()
         if not consumption:
+            # FORK: movie rewatch support (issue #577) — the id may belong to
+            # a MoviePlay rather than the Movie tracker row.
+            consumption = fork_helpers.resolve_movie_play_consumption(
+                user_medias,
+                media_type,
+                consumption_id,
+            )
+        if not consumption:
             return Response(
                 {"detail": "Consumption entry not found."},
                 status=HTTP.NOT_FOUND,
@@ -1501,6 +1515,14 @@ class MediaConsumptionEntryDetailView(drf_views.APIView):
             )
 
         consumption = user_medias.filter(id=consumption_id).first()
+        if not consumption:
+            # FORK: movie rewatch support (issue #577) — the id may belong to
+            # a MoviePlay rather than the Movie tracker row.
+            consumption = fork_helpers.resolve_movie_play_consumption(
+                user_medias,
+                media_type,
+                consumption_id,
+            )
         if not consumption:
             return Response(
                 {"detail": " Consumption entry not found."},
@@ -1547,6 +1569,14 @@ class MediaConsumptionEntryDetailView(drf_views.APIView):
             )
 
         consumption = user_medias.filter(id=consumption_id).first()
+        if not consumption:
+            # FORK: movie rewatch support (issue #577) — the id may belong to
+            # a MoviePlay rather than the Movie tracker row.
+            consumption = fork_helpers.resolve_movie_play_consumption(
+                user_medias,
+                media_type,
+                consumption_id,
+            )
         if not consumption:
             return Response(
                 {"detail": "Consumption entry not found."},

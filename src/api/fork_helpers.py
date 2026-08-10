@@ -5,7 +5,7 @@ from http import HTTPStatus as HTTP  # noqa: N814
 
 from rest_framework.response import Response
 
-from app.models import ComicIssue, MediaTypes, Music, Podcast, Sources
+from app.models import ComicIssue, MediaTypes, MoviePlay, Music, Podcast, Sources
 
 from . import helpers
 
@@ -69,6 +69,31 @@ def sort_history_results(request, results):
             status=HTTP.BAD_REQUEST,
         )
     return sorted(results, key=key, reverse=descending), None
+
+
+# FORK: movie rewatch support (issue #577). Movies keep the pre-existing
+# single-tracker-row history contract until a movie's first `watch()` call
+# creates MoviePlay rows — from then on, history for that movie is served
+# from MoviePlay instead, so untouched movies see zero behavior change.
+def movie_plays_for_history(user_medias, media_type):
+    """Return MoviePlay rows for a movie's history, or None if it has none."""
+    if media_type != MediaTypes.MOVIE.value:
+        return None
+    movie = user_medias.first()
+    if movie is None:
+        return None
+    plays = list(MoviePlay.objects.filter(movie=movie))
+    return plays or None
+
+
+def resolve_movie_play_consumption(user_medias, media_type, consumption_id):
+    """Return the MoviePlay matching consumption_id for a movie, if any."""
+    if media_type != MediaTypes.MOVIE.value:
+        return None
+    movie = user_medias.first()
+    if movie is None:
+        return None
+    return MoviePlay.objects.filter(movie=movie, id=consumption_id).first()
 
 
 def install_fork_media_types():
