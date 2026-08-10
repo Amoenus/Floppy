@@ -5,10 +5,11 @@ from urllib.parse import urlparse
 
 from django.conf import settings
 from django.contrib.auth import get_user_model, login
+from django.contrib.sessions.exceptions import SessionInterrupted
 from django.db import connection
 from django.db.utils import OperationalError
 from django.http import HttpRequest, HttpResponse
-from django.shortcuts import resolve_url
+from django.shortcuts import redirect, resolve_url
 from django.urls import reverse
 
 from app.db_retry import is_retryable_error
@@ -222,6 +223,30 @@ class DatabaseRetryMiddleware:
                 exception=exception,
             )
         return None
+
+
+class SessionInterruptedMiddleware:
+    """Recover from a session row being deleted mid-request (e.g. a stale
+    tab's OAuth callback racing session cycling from a login in another
+    tab) instead of surfacing Django's default 400 page (#622).
+    """
+
+    def __init__(self, get_response):
+        """Initialize the middleware with the get_response callable."""
+        self.get_response = get_response
+
+    def __call__(self, request):
+        """Process the request, catching a mid-flight session interruption."""
+        try:
+            return self.get_response(request)
+        except SessionInterrupted:
+            logger.warning(
+                "Session interrupted for %s %s (likely a stale tab racing "
+                "a session cycle elsewhere)",
+                request.method,
+                request.path,
+            )
+            return redirect(settings.LOGIN_REDIRECT_URL)
 
 
 class ProviderAPIErrorMiddleware:
