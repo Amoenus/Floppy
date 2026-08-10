@@ -23,14 +23,13 @@ def resolve_or_create_season(
     Mirrors the season auto-create behavior of the web episode actions:
     missing seasons are created In Progress with metadata-derived title/image.
     """
-    season_qs = Season.objects.filter(
-        item__media_id=media_id,
-        item__source=source,
-        item__season_number=season_number,
-        item__episode_number=None,
-        user=user,
+    related_season = metadata_resolution.find_tracked_season(
+        user,
+        media_id,
+        source,
+        season_number,
+        library_media_type=library_media_type or None,
     )
-    related_season = season_qs.order_by("id").first()
     if related_season is None:
         tv_with_seasons_metadata = services.get_media_metadata(
             "tv_with_seasons",
@@ -66,13 +65,6 @@ def resolve_or_create_season(
         )
 
         logger.info("%s did not exist, it was created successfully.", related_season)
-    elif season_qs.count() > 1:
-        logger.warning(
-            "Multiple Season records for media_id=%s season=%s user=%s — using oldest",
-            media_id,
-            season_number,
-            user,
-        )
 
     _sync_library_media_type(related_season, library_media_type)
     return related_season

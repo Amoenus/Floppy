@@ -136,44 +136,38 @@ def season_details(
         user_medias = []
         current_instance = None
     else:
-        if season_item_is_local_only:
-            season_qs = Season.objects.filter(
-                item__media_id=media_id,
-                item__media_type=MediaTypes.SEASON.value,
-                item__source=source,
-                item__season_number=season_number,
-                user=request.user,
-            )
-            if season_library_media_type:
-                season_qs = season_qs.filter(
-                    item__library_media_type=season_library_media_type,
-                )
-            else:
-                season_qs = season_qs.exclude(
-                    item__library_media_type=MediaTypes.ANIME.value,
-                )
+        # Resolve the tracked season across identity buckets (see #623): a
+        # season tracked via the show's TV identity must still be found from
+        # the anime-identity route, and vice versa, so read and write agree.
+        preferred_library_media_type = (
+            season_library_media_type or MediaTypes.SEASON.value
+        )
+        tracked_season = metadata_resolution.find_tracked_season(
+            request.user,
+            media_id,
+            source,
+            season_number,
+            library_media_type=preferred_library_media_type,
+        )
+        if tracked_season is None:
+            user_medias = []
+        elif season_item_is_local_only:
             user_medias = list(
-                season_qs.select_related(
-                    "item", "related_tv", "related_tv__item"
-                ).prefetch_related("episodes", "episodes__item")
+                Season.objects.filter(pk=tracked_season.pk)
+                .select_related("item", "related_tv", "related_tv__item")
+                .prefetch_related("episodes", "episodes__item")
             )
         else:
-            user_medias = BasicMedia.objects.filter_media_prefetch(
-                request.user,
-                media_id,
-                MediaTypes.SEASON.value,
-                source,
-                season_number=season_number,
+            user_medias = list(
+                BasicMedia.objects.filter_media_prefetch(
+                    request.user,
+                    media_id,
+                    MediaTypes.SEASON.value,
+                    source,
+                    season_number=season_number,
+                    library_media_type=tracked_season.item.library_media_type,
+                )
             )
-            if season_library_media_type:
-                user_medias = user_medias.filter(
-                    item__library_media_type=season_library_media_type,
-                )
-            else:
-                user_medias = user_medias.exclude(
-                    item__library_media_type=MediaTypes.ANIME.value,
-                )
-            user_medias = list(user_medias)
         current_instance = user_medias[0] if user_medias else None
 
     episodes_in_db = current_instance.episodes.all() if current_instance else []

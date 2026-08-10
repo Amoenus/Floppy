@@ -55,6 +55,26 @@ def media_save(request):
         source=source,
         identity_media_type=identity_media_type,
     )
+
+    # A season already tracked under a different identity bucket (e.g. via
+    # the show's TV identity) must resolve to the same row here as it does
+    # on the detail page, otherwise this falls into the create path below
+    # and collides with the existing row's unique constraint — see #623.
+    if (
+        not instance_id
+        and tracking_media_type == MediaTypes.SEASON.value
+        and season_number
+    ):
+        existing_season = metadata_resolution.find_tracked_season(
+            request.user,
+            media_id,
+            source,
+            int(season_number),
+            library_media_type=library_media_type,
+        )
+        if existing_season is not None:
+            instance_id = str(existing_season.id)
+
     discover_tab_cache.mark_active_from_request(
         request,
         fallback_media_type=library_media_type or media_type,
