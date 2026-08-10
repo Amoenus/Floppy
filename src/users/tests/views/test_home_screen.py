@@ -1,4 +1,5 @@
 import json
+import time
 from datetime import timedelta
 from unittest.mock import patch
 
@@ -22,6 +23,7 @@ from app.models import (
     Status,
     Tag,
 )
+from lists import smart_rules
 from lists.models import CustomList
 from users import home_screen
 from users.models import (
@@ -447,6 +449,131 @@ class HomeScreenViewTests(TestCase):
                 "Home Library Untracked Movie",
             ],
         )
+
+    def test_empty_library_query_rows_build_quickly_on_cold_cache(self):
+        """Regression test for #621: empty rows must not stall the home page.
+
+        Mirrors the issue's repro (enable several default media-type rows,
+        clear the cache, load the home page) but also stresses the
+        collection-only-untracked resolution path with a "status: all" row
+        and a sizeable CollectionEntry table across *other* media types, so
+        an unscoped/per-row-repeated collection scan would show up as
+        elapsed time here.
+        """
+        enabled_media_types = [
+            MediaTypes.MOVIE.value,
+            MediaTypes.TV.value,
+            MediaTypes.GAME.value,
+            MediaTypes.BOOK.value,
+            MediaTypes.MANGA.value,
+        ]
+        self._set_enabled_media_types(*enabled_media_types)
+
+        # A sizeable collection in media types unrelated to the empty rows,
+        # so any unscoped CollectionEntry scan has real work to do.
+        for index in range(200):
+            collected_item = Item.objects.create(
+                title=f"Collected Anime {index}",
+                media_id=f"home-cold-cache-collected-{index}",
+                media_type=MediaTypes.ANIME.value,
+                source=Sources.TMDB.value,
+                image="https://example.com/collected.jpg",
+            )
+            CollectionEntry.objects.create(user=self.user, item=collected_item)
+
+        for media_type in enabled_media_types:
+            HomeScreenRow.objects.create(
+                user=self.user,
+                media_type=media_type,
+                position=0,
+                enabled=True,
+                row_type=HomeScreenRowTypeChoices.LIBRARY_QUERY,
+                sort_by=MediaSortChoices.TITLE,
+                direction=DirectionChoices.ASC,
+                filters={"status": "all"},
+            )
+
+        start = time.perf_counter()
+        groups = home_screen.build_home_page_groups(self.user, items_limit=10)
+        elapsed = time.perf_counter() - start
+
+        self.assertEqual(groups, [])
+        self.assertLess(
+            elapsed,
+            2.0,
+            f"Building only-empty home rows took {elapsed:.2f}s, "
+            "which would 504 the home page after a cache clear (#621).",
+        )
+
+    def test_library_query_rows_share_one_collection_scan_per_request(self):
+        """`_collection_filter_context` should run once per request, not per row.
+
+        `_library_query_entries` always calls `collect_matching_item_ids`
+        with `include_collection_only_untracked=True`, which needs the
+        user's collection context whenever a row's status filter is empty.
+        Building several such rows in one `build_home_page_groups` call
+        must not re-scan `CollectionEntry` once per row/media type.
+        """
+        enabled_media_types = [
+            MediaTypes.MOVIE.value,
+            MediaTypes.TV.value,
+            MediaTypes.GAME.value,
+        ]
+        self._set_enabled_media_types(*enabled_media_types)
+        for media_type in enabled_media_types:
+            HomeScreenRow.objects.create(
+                user=self.user,
+                media_type=media_type,
+                position=0,
+                enabled=True,
+                row_type=HomeScreenRowTypeChoices.LIBRARY_QUERY,
+                sort_by=MediaSortChoices.TITLE,
+                direction=DirectionChoices.ASC,
+                filters={"status": "all"},
+            )
+
+        with patch(
+            "lists.smart_rules._collection_filter_context",
+            wraps=smart_rules._collection_filter_context,
+        ) as spy:
+            home_screen.build_home_page_groups(self.user, items_limit=10)
+
+        self.assertEqual(
+            spy.call_count,
+            1,
+            "Expected one shared CollectionEntry scan per request, "
+            f"got {spy.call_count} calls across {len(enabled_media_types)} rows.",
+        )
+
+    def test_cached_row_section_skips_rebuild_after_empty_sentinel(self):
+        """A warm empty-row cache hit must not re-invoke the row builder."""
+        self._set_enabled_media_types(MediaTypes.MOVIE.value)
+        row = HomeScreenRow.objects.create(
+            user=self.user,
+            media_type=MediaTypes.MOVIE.value,
+            position=0,
+            enabled=True,
+            row_type=HomeScreenRowTypeChoices.LIBRARY_QUERY,
+            sort_by=MediaSortChoices.TITLE,
+            direction=DirectionChoices.ASC,
+            filters={"status": [Status.IN_PROGRESS.value]},
+        )
+
+        first = home_screen._cached_row_section(
+            self.user, row, MediaTypes.MOVIE.value, items_limit=10,
+        )
+        self.assertIsNone(first)
+
+        with patch.object(
+            home_screen,
+            "_build_row_section",
+            side_effect=AssertionError("row builder should not run on a warm hit"),
+        ):
+            second = home_screen._cached_row_section(
+                self.user, row, MediaTypes.MOVIE.value, items_limit=10,
+            )
+
+        self.assertIsNone(second)
 
     def test_home_progress_filter_excludes_collected_untracked_items(self):
         self._set_enabled_media_types(MediaTypes.TV.value)
