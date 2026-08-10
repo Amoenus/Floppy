@@ -2556,32 +2556,33 @@ def emby_webhook(request, token):
     return HttpResponse(status=200)
 
 
+# kept: URL name — renaming breaks already-configured Seerr/Jellyseerr webhook URLs
 @login_not_required
 @csrf_exempt
 @require_POST
 def jellyseerr_webhook(request, token):
-    """Handle Jellyseerr webhook notifications for requested/approved media."""
+    """Handle Seerr webhook notifications for requested/approved media."""
     try:
         user = users.models.User.objects.get(token=token)
     except ObjectDoesNotExist:
         logger.warning(
-            "Could not process Jellyseerr webhook: Invalid token: %s",
+            "Could not process Seerr webhook: Invalid token: %s",
             token,
         )
         return HttpResponse(status=401)
 
     data = request.body
     if not data:
-        logger.warning("Missing payload in Jellyseerr webhook request")
+        logger.warning("Missing payload in Seerr webhook request")
         return HttpResponse("Missing payload", status=400)
 
     try:
         payload = json.loads(data)
     except Exception:
-        logger.warning("Invalid JSON payload in Jellyseerr webhook request")
+        logger.warning("Invalid JSON payload in Seerr webhook request")
         return HttpResponse("Invalid JSON", status=400)
 
-    tasks.process_webhook.delay("jellyseerr", payload, user.id)
+    tasks.process_webhook.delay("seerr", payload, user.id)
     return HttpResponse(status=200)
 
 
@@ -2591,7 +2592,7 @@ def jellyseerr_webhook(request, token):
 def seerr_global_webhook(request):
     """Handle a single shared Seerr webhook for multiple Floppy users.
 
-    Unlike the per-user Jellyseerr webhook, this endpoint has no per-user
+    Unlike the per-user Seerr webhook, this endpoint has no per-user
     token in the URL, so it demultiplexes users by matching the payload's
     requester username against each opted-in user's allowed usernames.
     """
@@ -2634,7 +2635,7 @@ def seerr_global_webhook(request):
         }
         if requester.lower() in allowed:
             matched = True
-            tasks.process_webhook.delay("jellyseerr", payload, user.id)
+            tasks.process_webhook.delay("seerr", payload, user.id)
 
     if not matched:
         logger.info(

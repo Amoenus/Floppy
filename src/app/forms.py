@@ -984,10 +984,14 @@ class ArtistTrackerForm(RatingScaleFormMixin, forms.ModelForm):
             "score": forms.NumberInput(
                 attrs={"min": 0, "max": 10, "step": 0.1, "placeholder": "0-10"},
             ),
-            "start_date": forms.DateTimeInput(attrs={"type": "datetime-local"})
+            "start_date": forms.DateTimeInput(
+                attrs={"type": "datetime-local", "step": "1"},
+            )
             if settings.TRACK_TIME
             else forms.DateInput(attrs={"type": "date"}),
-            "end_date": forms.DateTimeInput(attrs={"type": "datetime-local"})
+            "end_date": forms.DateTimeInput(
+                attrs={"type": "datetime-local", "step": "1"},
+            )
             if settings.TRACK_TIME
             else forms.DateInput(attrs={"type": "date"}),
             "notes": forms.Textarea(
@@ -1027,10 +1031,14 @@ class PodcastShowTrackerForm(RatingScaleFormMixin, forms.ModelForm):
             "score": forms.NumberInput(
                 attrs={"min": 0, "max": 10, "step": 0.1, "placeholder": "0-10"},
             ),
-            "start_date": forms.DateTimeInput(attrs={"type": "datetime-local"})
+            "start_date": forms.DateTimeInput(
+                attrs={"type": "datetime-local", "step": "1"},
+            )
             if settings.TRACK_TIME
             else forms.DateInput(attrs={"type": "date"}),
-            "end_date": forms.DateTimeInput(attrs={"type": "datetime-local"})
+            "end_date": forms.DateTimeInput(
+                attrs={"type": "datetime-local", "step": "1"},
+            )
             if settings.TRACK_TIME
             else forms.DateInput(attrs={"type": "date"}),
             "notes": forms.Textarea(
@@ -1070,10 +1078,14 @@ class AlbumTrackerForm(RatingScaleFormMixin, forms.ModelForm):
             "score": forms.NumberInput(
                 attrs={"min": 0, "max": 10, "step": 0.1, "placeholder": "0-10"},
             ),
-            "start_date": forms.DateTimeInput(attrs={"type": "datetime-local"})
+            "start_date": forms.DateTimeInput(
+                attrs={"type": "datetime-local", "step": "1"},
+            )
             if settings.TRACK_TIME
             else forms.DateInput(attrs={"type": "date"}),
-            "end_date": forms.DateTimeInput(attrs={"type": "datetime-local"})
+            "end_date": forms.DateTimeInput(
+                attrs={"type": "datetime-local", "step": "1"},
+            )
             if settings.TRACK_TIME
             else forms.DateInput(attrs={"type": "date"}),
             "notes": forms.Textarea(

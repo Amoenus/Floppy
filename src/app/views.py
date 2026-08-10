@@ -359,6 +359,7 @@ from app.track_modal_views import (
     _episode_domain_template_payload,
     _render_podcast_show_track_modal,
     _render_standard_track_modal,
+    _track_modal_date_suggestion,
     _track_modal_field_groups,
     _track_modal_release_date_shortcut,
     _track_modal_release_runtime_minutes,
@@ -746,6 +747,7 @@ def progress_edit(request, media_type, instance_id):
     )
 
 
+@login_not_required
 @never_cache
 @require_GET
 def episode_details(
@@ -1441,13 +1443,14 @@ def delete_history_record(request, media_type, history_id):
             history_day_key = history_cache.history_day_key(activity_dt)
             history_day_keys = [history_day_key] if history_day_key else []
 
-        # Keep the previous day payload readable until the targeted refresh
-        # overwrites it so later navigation does not fall into a cold-miss path.
+        # Evict the affected payload immediately; the targeted refresh remains
+        # asynchronous, and a cache miss is rebuilt inline by the history reader.
         history_cache.invalidate_history_days(
             request.user.id,
             day_keys=history_day_keys,
             logging_styles=logging_styles,
             reason="history_delete",
+            force=True,
         )
         statistics_cache.invalidate_statistics_days(
             request.user.id,
@@ -1783,6 +1786,22 @@ def cache_status(request):
                     "metadata_recently_built": metadata_recently_built,
                 }
             )
+        refresh_scheduled = False
+        if refresh_lock is None:
+            # True cold miss (no cache entry, no active lock). This is the normal
+            # state right after a bulk import, but it's also what a lost refresh
+            # looks like (task never dequeued, worker restarted mid-task, etc.).
+            # Re-schedule defensively; schedule_statistics_refresh() is debounced
+            # via its own lock/dedupe keys, so polling this repeatedly is safe.
+            refresh_scheduled = statistics_cache.schedule_statistics_refresh(
+                request.user.id,
+                range_name,
+                allow_inline=False,
+            )
+            refresh_lock = (
+                cache.get(refresh_lock_key) if refresh_scheduled else refresh_lock
+            )
+
         is_refreshing = refresh_lock is not None or metadata_refreshing
         return JsonResponse(
             {
@@ -1792,7 +1811,7 @@ def cache_status(request):
                 "is_refreshing": is_refreshing,
                 "recently_built": False,
                 "any_range_refreshing": any_range_refreshing,
-                "refresh_scheduled": False,
+                "refresh_scheduled": refresh_scheduled,
                 "metadata_refreshing": metadata_refreshing,
                 "metadata_built_at": metadata_built_at.isoformat()
                 if metadata_built_at
@@ -2003,6 +2022,7 @@ __all__ = [
     "_should_queue_game_lengths_refresh",
     "_sort_tv_media_by_time_left",
     "_statistics_day_boundary",
+    "_track_modal_date_suggestion",
     "_track_modal_field_groups",
     "_track_modal_release_date_shortcut",
     "_track_modal_release_runtime_minutes",

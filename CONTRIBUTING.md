@@ -35,13 +35,14 @@ If the answer is no, split it. Common offsets worth their own PR:
 
 ## Branch Policy
 
-**All PRs must target `latest`, not `dev`.**
+**All PRs must target `latest`, not `upstream` or `release`.**
 
-- `dev` is a strict mirror of upstream. It is never edited here.
+- `upstream` is a utility branch that must remain a byte-for-byte mirror of upstream Yamtrack. Never edit it directly and never target it with a PR.
 - `latest` is the fork integration branch. This is where all feature work, fixes, and upstream syncs land.
 - `release` is for container publication and is not a development target.
+- Upstream changes usually need to be adapted to the fork. Do not assume an upstream commit can be cherry-picked cleanly or applied without reviewing the surrounding fork-specific behavior; integrate the intent into `latest` and resolve differences deliberately.
 
-Opening a PR against `dev` will be closed and redirected.
+Opening a PR against `upstream` or `release` will be closed and redirected.
 
 ---
 
@@ -72,7 +73,7 @@ This is not a disqualifier. It helps with review triage and lets the maintainer 
 
 If an agent submitted the PR directly (no human author), the agent must:
 
-- Target `latest` (not `dev`)
+- Target `latest` (not `upstream` or `release`)
 - Include the problem, solution, validation, and screenshots sections above
 - Include the AI Assistance section with the model/tool name
 - Confirm screenshots were captured for any UI change
@@ -93,7 +94,7 @@ Match validation to risk. See `AGENTS.md` for the full matrix. Short version:
 | Template or UI logic | Screenshot + `ruff check src` |
 | Python behavior | `ruff check src` + targeted test |
 | Model or migration change | `python manage.py check_migration_hygiene --strict` + full test suite |
-| `dev` → `latest` upstream sync | Full migration sync gate (see PR template) |
+| `upstream` → `latest` upstream sync | Full migration sync gate (see PR template) |
 
 Never skip validation for migrations, models, auth, permissions, webhooks, Celery tasks, or cache behavior.
 
@@ -115,7 +116,7 @@ Never skip validation for migrations, models, auth, permissions, webhooks, Celer
 
 ## What Gets Closed Without Review
 
-- PRs targeting `dev`
+- PRs targeting `upstream` or `release`
 - PRs with no description
 - PRs with no problem/solution statement
 - UI changes with no screenshots

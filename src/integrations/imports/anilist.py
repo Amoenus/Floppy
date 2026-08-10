@@ -12,6 +12,7 @@ import app
 from app import helpers as app_helpers
 from app.models import MediaTypes, Sources, Status
 from app.providers import services
+from integrations import import_progress
 from integrations.imports import helpers
 from integrations.imports.helpers import MediaImportError, MediaImportUnexpectedError
 
@@ -232,6 +233,14 @@ class AniListImporter:
                 raise MediaImportError(msg) from error
             raise
 
+        self._progress_total = sum(
+            len(status_list["entries"])
+            for media_data in (response["data"]["anime"], response["data"]["manga"])
+            for status_list in media_data["lists"]
+            if not status_list["isCustomList"]
+        )
+        self._progress_current = 0
+
         self._process_media_data(response["data"]["anime"], MediaTypes.ANIME.value)
         self._process_media_data(response["data"]["manga"], MediaTypes.MANGA.value)
 
@@ -253,6 +262,12 @@ class AniListImporter:
         for status_list in media_data["lists"]:
             if not status_list["isCustomList"]:
                 for content in status_list["entries"]:
+                    self._progress_current += 1
+                    import_progress.report(
+                        self._progress_current,
+                        self._progress_total,
+                        "AniList",
+                    )
                     try:
                         self._process_entry(content, media_type)
                     except Exception as e:

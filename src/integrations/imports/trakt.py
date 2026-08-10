@@ -13,6 +13,7 @@ import app
 from app import helpers as app_helpers
 from app.models import MediaTypes, Sources, Status
 from app.providers import services
+from integrations import import_progress
 from integrations.imports import helpers
 from integrations.imports.helpers import MediaImportError, MediaImportUnexpectedError
 
@@ -329,6 +330,14 @@ class TraktImporter(TraktMetadataResolverMixin):
         self.dropped_tmdb_ids: set = set()
         self.dropped_tvs: list = []
 
+        # Track TV/Season rows newly created in this run, so completion/dropped
+        # status derived from Trakt history is only applied to rows Floppy is
+        # seeing for the first time (or on an explicit overwrite re-sync),
+        # never silently onto a show/season the user is already tracking
+        # locally with a status they set themselves.
+        self.tv_created_this_run: set = set()
+        self.season_created_this_run: set = set()
+
         logger.info(
             "Initialized Trakt importer for user %s with mode %s",
             username,
@@ -459,6 +468,11 @@ class TraktImporter(TraktMetadataResolverMixin):
 
             all_data.extend(page_data)
             page += 1
+            import_progress.report(
+                len(all_data),
+                total=None,
+                label=f"Trakt: gathering {item_type}…",
+            )
             logger.info(
                 "Retrieved page %s of %s for user %s (%s items)",
                 page - 1,
@@ -503,7 +517,9 @@ class TraktImporter(TraktMetadataResolverMixin):
                 )
 
         # Process in chronological order (oldest first)
-        for entry in reversed(full_history):
+        total = len(full_history)
+        for i, entry in enumerate(reversed(full_history), start=1):
+            import_progress.report(i, total, "Trakt: watch history")
             watched_at = entry["watched_at"]
             try:
                 if entry["type"] == "movie":
@@ -643,6 +659,14 @@ class TraktImporter(TraktMetadataResolverMixin):
             return
 
         episode_image = self._get_episode_image(episode_number, season_metadata)
+        matched_episode = next(
+            (
+                ep
+                for ep in season_metadata["episodes"]
+                if ep["episode_number"] == episode_number
+            ),
+            None,
+        )
 
         # Create or get TV show
         tv_item = self._get_or_create_item(MediaTypes.TV.value, tmdb_id, tv_metadata)
@@ -669,8 +693,10 @@ class TraktImporter(TraktMetadataResolverMixin):
                 if watched_at_dt is not None:
                     tv_obj._history_date = watched_at_dt
                 self.bulk_media[MediaTypes.TV.value].append(tv_obj)
+                self.tv_created_this_run.add(tv_key)
             elif (
-                tmdb_id in self.dropped_tmdb_ids
+                self.mode == "overwrite"
+                and tmdb_id in self.dropped_tmdb_ids
                 and tv_obj.status != Status.DROPPED.value
             ):
                 tv_obj.status = Status.DROPPED.value
@@ -689,10 +715,15 @@ class TraktImporter(TraktMetadataResolverMixin):
 
         season_key = f"{tmdb_id}:{season_number}"
         if season_key not in self.media_instances[MediaTypes.SEASON.value]:
-            season_obj = app.models.Season.objects.filter(
-                user=self.user,
-                item=season_item,
-            ).first()
+            tv_marked_for_deletion = (
+                tmdb_id in self.to_delete[MediaTypes.TV.value][Sources.TMDB.value]
+            )
+            season_obj = None
+            if not tv_marked_for_deletion:
+                season_obj = app.models.Season.objects.filter(
+                    user=self.user,
+                    item=season_item,
+                ).first()
             if season_obj is None:
                 season_obj = app.models.Season(
                     item=season_item,
@@ -703,15 +734,17 @@ class TraktImporter(TraktMetadataResolverMixin):
                 if watched_at_dt is not None:
                     season_obj._history_date = watched_at_dt
                 self.bulk_media[MediaTypes.SEASON.value].append(season_obj)
+                self.season_created_this_run.add(season_key)
             self.media_instances[MediaTypes.SEASON.value][season_key] = [season_obj]
         else:
             season_obj = self.media_instances[MediaTypes.SEASON.value][season_key][0]
 
         # Create Episode item and object
         episode_metadata = {
-            "title": tv_metadata["title"],
-            "original_title": tv_metadata.get("original_title"),
-            "localized_title": tv_metadata.get("localized_title"),
+            **app.models.Item.title_fields_from_episode_metadata(
+                matched_episode,
+                fallback_title=tv_metadata["title"],
+            ),
             "image": episode_image,
         }
         episode_item = self._get_or_create_item(
@@ -735,15 +768,19 @@ class TraktImporter(TraktMetadataResolverMixin):
         self.bulk_media[MediaTypes.EPISODE.value].append(episode_obj)
         self.existing_episode_watch_keys.add(episode_watch_key)
 
-        # Update status if this is the last episode
-        self._update_completion_status(
-            season_obj,
-            tv_obj,
-            season_number,
-            episode_number,
-            season_metadata,
-            tv_metadata,
-        )
+        # Update status if this is the last episode, but only for rows Floppy
+        # just created (or an explicit overwrite re-sync) — never clobber the
+        # status of a show/season the user is already tracking locally.
+        if self.mode == "overwrite" or season_key in self.season_created_this_run:
+            self._update_completion_status(
+                season_obj,
+                tv_obj,
+                season_number,
+                episode_number,
+                season_metadata,
+                tv_metadata,
+                tv_key,
+            )
 
     def _update_completion_status(
         self,
@@ -753,6 +790,7 @@ class TraktImporter(TraktMetadataResolverMixin):
         episode_number,
         season_metadata,
         tv_metadata,
+        tv_key,
     ):
         """Update completion status for season and TV show if applicable."""
         if episode_number == season_metadata["max_progress"]:
@@ -761,7 +799,10 @@ class TraktImporter(TraktMetadataResolverMixin):
                 self.completed_seasons.append(season_obj)
 
             last_season = tv_metadata.get("last_episode_season")
-            if last_season and last_season == season_number:
+            tv_eligible = (
+                self.mode == "overwrite" or tv_key in self.tv_created_this_run
+            )
+            if last_season and last_season == season_number and tv_eligible:
                 tv_obj.status = Status.COMPLETED.value
                 if tv_obj.pk:
                     self.completed_tvs.append(tv_obj)
@@ -772,7 +813,9 @@ class TraktImporter(TraktMetadataResolverMixin):
         watchlist_endpoint = f"{self.user_base_url}/watchlist"
         watchlist_data = self._get_paginated_data(watchlist_endpoint, "watchlist items")
 
-        for entry in watchlist_data:
+        total = len(watchlist_data)
+        for i, entry in enumerate(watchlist_data, start=1):
+            import_progress.report(i, total, "Trakt: watchlist")
             try:
                 self._process_generic_entry(
                     entry,
@@ -792,7 +835,9 @@ class TraktImporter(TraktMetadataResolverMixin):
         ratings_endpoint = f"{self.user_base_url}/ratings"
         ratings_data = self._get_paginated_data(ratings_endpoint, "ratings")
 
-        for entry in ratings_data:
+        total = len(ratings_data)
+        for i, entry in enumerate(ratings_data, start=1):
+            import_progress.report(i, total, "Trakt: ratings")
             try:
                 self._process_generic_entry(
                     entry,
@@ -815,7 +860,9 @@ class TraktImporter(TraktMetadataResolverMixin):
         comments_endpoint = f"{self.user_base_url}/comments"
         full_comments = self._get_paginated_data(comments_endpoint, "comments")
 
-        for entry in full_comments:
+        total = len(full_comments)
+        for i, entry in enumerate(full_comments, start=1):
+            import_progress.report(i, total, "Trakt: comments")
             try:
                 self._process_generic_entry(
                     entry,
@@ -839,7 +886,9 @@ class TraktImporter(TraktMetadataResolverMixin):
 
         movies_endpoint = f"{self.user_base_url}/collection/movies"
         collected_movies = self._get_paginated_data(movies_endpoint, "collected movies")
-        for entry in collected_movies:
+        movies_total = len(collected_movies)
+        for i, entry in enumerate(collected_movies, start=1):
+            import_progress.report(i, movies_total, "Trakt: collection (movies)")
             try:
                 self._process_collected_movie(entry, trakt_collection)
             except Exception as e:
@@ -852,7 +901,9 @@ class TraktImporter(TraktMetadataResolverMixin):
 
         shows_endpoint = f"{self.user_base_url}/collection/shows"
         collected_shows = self._get_paginated_data(shows_endpoint, "collected shows")
-        for entry in collected_shows:
+        shows_total = len(collected_shows)
+        for i, entry in enumerate(collected_shows, start=1):
+            import_progress.report(i, shows_total, "Trakt: collection (shows)")
             try:
                 self._process_collected_show(entry, trakt_collection)
             except Exception as e:

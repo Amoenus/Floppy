@@ -52,7 +52,7 @@ services:
     image: redis:8-alpine
     container_name: floppy-redis
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
+    command: ["redis-server", "--appendonly", "yes", "--save", "", "--maxmemory", "256mb", "--maxmemory-policy", "volatile-lru"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -84,7 +84,7 @@ Floppy combines the jobs people often split between a watchlist, a media diary, 
 - **Discover**: personalized recommendation rows that improve with use: genre, studio, cast, and tag affinity built from your library; not-interested and hide feedback that sticks; background refresh so rows stay current, individually refreshable from the UI, not a static recommendations page.
 - **History and statistics**: history is a filterable feed with month navigation, media-type and genre filters, inline duplicate-play cleanup, and a delete flow; statistics offer explicit refresh, compare mode, custom date ranges, top-talent breakdowns, and per-type splits covering TV, film, music, podcasts, and reading with pages read, top authors, reading streaks, and listening time.
 - **Lists: public, social, and smart**: public and private lists, custom slugs, public profile pages; RSS and JSON feeds per list; smart-list rules for collection status, release state, platform, origin, author, and tags; recommendations with approval flow; list completion percentages and media-type breakdowns in the index; Trakt list and watchlist import; sort by rating, progress, release date, last watched, or custom manual order.
-- **Integration coverage**: Plex full library import, watchlist sync, and ratings sync; Pocket Casts account sync; Last.fm history import and live poll; Audiobookshelf account import; Radarr and Sonarr scheduled library sync; Jellyseerr webhook auto-add, each with dedicated settings and status display.
+- **Integration coverage**: Plex full library import, watchlist sync, and ratings sync; Pocket Casts account sync; Last.fm history import and live poll; Audiobookshelf account import; Radarr and Sonarr scheduled library sync; Seerr webhook auto-add, each with dedicated settings and status display.
 
 ### Beyond the basics
 
@@ -104,7 +104,7 @@ Floppy combines the jobs people often split between a watchlist, a media diary, 
 - **Better search and add flows**: music-native search that creates artist and album entries from search results; improved anime and localized-title search results.
 - **Deeper filters**: rated and unrated, collected and not collected, caught-up and not-caught-up, no-status, language, country, platform, origin, format, author, tag inclusion, and tag exclusion; smart-list rules use the same expanded vocabulary, making them meaningfully programmable.
 - **More reliable under load**: WAL mode and timeout configuration for SQLite; retry logic for lock and I/O failures; prioritized background task queues for a smoother experience with large libraries.
-- **Integration settings and import UX**: import history and status visible per integration in settings; watchlist-only and collection-update-only import modes; Jellyseerr allowed usernames and defaults persisted as preferences; per-user Plex webhook library selection.
+- **Integration settings and import UX**: import history and status visible per integration in settings; watchlist-only and collection-update-only import modes; Seerr allowed usernames and defaults persisted as preferences; per-user Plex webhook library selection.
 
 ### Also included
 
@@ -212,6 +212,7 @@ services:
     image: redis:8-alpine
     container_name: floppy-redis
     restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--save", "", "--maxmemory", "256mb", "--maxmemory-policy", "volatile-lru"]
     volumes:
       - redis_data:/data
 
@@ -235,7 +236,7 @@ docker run -d \
   --restart unless-stopped \
   -v floppy-redis-data:/data \
   redis:8-alpine \
-  redis-server --appendonly yes
+  redis-server --appendonly yes --save "" --maxmemory 256mb --maxmemory-policy volatile-lru
 
 docker run -d \
   --name floppy \
@@ -244,7 +245,6 @@ docker run -d \
   -e ALLOWED_HOSTS=floppy.yourdomain.com,your.lan.ip.address \
   -e DEBUG=False \
   -e DEMO_ACCOUNT_ENABLED=False \
-  -e GUNICORN_THREADS=4 \
   -e IGDB_ID=your_igdb_client_id \
   -e IGDB_SECRET=your_igdb_client_secret \
   -e LASTFM_API_KEY=your_lastfm_api_key \
@@ -257,7 +257,6 @@ docker run -d \
   -e TMDB_API=your_tmdb_api_key \
   -e TVDB_API_KEY=your_tvdb_api_key \
   -e TZ=America/Chicago \
-  -e WEB_CONCURRENCY=2 \
   -v floppy-db:/floppy/db \
   -p 8000:8000 \
   ghcr.io/dannyvfilms/floppy:latest
@@ -296,7 +295,9 @@ The only universally required variable is `SECRET`. For Docker installs you shou
 - `TRAKT_API` / `TRAKT_API_SECRET` - Trakt private-profile OAuth imports
 - `URLS` - your public URL if using a reverse proxy, for example `https://floppy.mydomain.com`
 - `ADMIN_ENABLED` - set to `True` to enable the Django admin interface at `/admin/` (see the [Admin Guide](https://github.com/dannyvfilms/Floppy/wiki/6.-Admin-and-Operations#admin-guide))
-- `WEB_CONCURRENCY` / `GUNICORN_THREADS` - web server concurrency (defaults: 2 worker processes x 4 threads). Total concurrent requests = workers x threads; keep at least 2 workers so one slow request never blocks the whole UI
+- `WEB_CONCURRENCY` / `GUNICORN_THREADS` - optional web server concurrency overrides. Leave both unset to use the detected host profile, especially on small or swapless hosts. Total concurrent requests = workers x threads
+- `FLOPPY_RESOURCE_TIER` - `standard`, `constrained`, or `minimal`. Floppy normally detects this from the host's memory, swap and CPU and scales its process count, batch sizes and background task cadence to match, so you should not need to set it. Use it to force a tier if detection guesses wrong - for example `standard` on a host whose cgroup understates the memory actually available
+- `FLOPPY_REDIS_MAXMEMORY` - Redis memory ceiling Floppy applies at startup when Redis has none of its own, as bytes or a size like `256mb`. Set it to `0` to leave your Redis configuration completely untouched. Floppy never overrides a `maxmemory` you set yourself
 - `DEBUG` - leave unset or `False` in production; enabling it slows every request (debug toolbar, no template caching) and is only meant for troubleshooting
 - `REGISTRATION` - set to `True` to allow new signups (needed for your first account), then set to `False` afterward
 - `DEMO_ACCOUNT_ENABLED` - defaults to `True`, provisioning the built-in `demo` / `demodemo` account after migrations. The examples above set it to `False`; only turn it on if you want a shared demo login
@@ -320,13 +321,99 @@ COMICVINE_API=COMICVINE_API
 LASTFM_API_KEY=LASTFM_API_KEY
 SECRET=SECRET
 DEBUG=False
-WEB_CONCURRENCY=2
-GUNICORN_THREADS=4
 ```
+
+### Running on a small host
+
+Floppy sizes itself to the machine it finds. On startup it reads the container's cgroup
+memory and CPU limits plus `/proc/meminfo`, picks a resource tier, and scales its process
+count, batch sizes, and background task cadence accordingly. The chosen tier is logged on
+the first line of the container's output:
+
+```
+[entrypoint] resources tier=minimal mem=1.9GiB swap=0 cpus=2 -> gunicorn 1x2, celery queues "celery,interactive,discover"
+```
+
+- **standard** (3 GB+): one threaded gunicorn worker and two Celery workers. Discover and
+  beat run with the background worker; the interactive worker stays separate so webhook
+  scrobbles are never stuck behind a backfill.
+- **constrained** (under 3 GB): the same lean process layout as standard, with smaller
+  worker-recycling and cache budgets.
+- **minimal** (under 1.5 GB): one gunicorn worker and a single Celery worker serving every
+  queue.
+
+**On a small host, swap matters as much as the memory figure.** Each Celery worker holds
+its own full copy of the application, so below about 6 GB a host with no swap gets bumped
+one tier stricter — a memory spike with nowhere to page is what turns a slow container
+into a hung one. If you have disabled swap to spare an SSD, 2 GB of RAM lands on
+`minimal`, which is supported. Above 6 GB, missing swap changes nothing.
+
+Two things worth knowing:
+
+- If you set no `mem_limit` on the Floppy container, it sees the whole host's memory. That
+  is usually what you want on a dedicated VM. On a shared host, set `mem_limit` so Floppy
+  sizes itself to its share rather than to the machine.
+- Floppy gives Redis a memory ceiling and an LRU eviction policy at startup if Redis has
+  none of its own, so an unbounded cache can't exhaust the host. It never overrides a
+  `maxmemory` you configured yourself. Run `docker exec floppy python manage.py tune_redis
+  --dry-run` to see what it would do.
+
+Override any of it with `FLOPPY_RESOURCE_TIER`, `WEB_CONCURRENCY`, `GUNICORN_THREADS`, or
+`FLOPPY_REDIS_MAXMEMORY`.
+
+### Measuring container memory
+
+Use `scripts/benchmark_memory.sh` to compare two already-built Floppy images without
+touching an existing deployment. It starts each image in its own disposable Compose project
+with SQLite, samples the healthy warmed container three times, and writes CSV/JSON reports
+under a temporary directory:
+
+```bash
+scripts/benchmark_memory.sh \
+  --baseline-image floppy:baseline \
+  --candidate-image floppy:memory-test
+```
+
+The report distinguishes cgroup usage from summed process PSS/RSS and Redis usage, so shared
+preloaded pages and the separate Redis container are visible instead of being counted as a
+single opaque number. Build the candidate image locally before running the comparison.
+
+If an existing deployment has `WEB_CONCURRENCY` or `GUNICORN_THREADS` set from an
+older fixed-size configuration, remove those overrides before upgrading on a
+small host so the automatic resource profile can take effect.
+
+### Non-Docker Gunicorn installs
+
+Source-based deployments must load Floppy's Gunicorn configuration so the
+host-derived worker settings and database/Redis fork-safety hooks are active:
+
+```bash
+cd /path/to/floppy/src
+gunicorn --config python:config.gunicorn config.wsgi:application
+```
+
+Do not start the service with bare `gunicorn config.wsgi:application`; that
+skips the shipped configuration and its process lifecycle hooks.
+
+### Upgrading container images
+
+The migration conflict involving `0147_item_calendar_checked_at` and
+`0148_merge_duplicate_item_buckets` is fixed in current images by the
+`0149_merge_20260806_1556` merge migration. Pull the updated image before
+restarting instead of generating a local merge migration:
+
+```bash
+docker compose pull floppy
+docker compose up -d --force-recreate floppy
+```
+
+Because `latest` is mutable, pin a versioned image tag when reproducible
+upgrades matter.
 
 ### Persistence checklist
 
 - SQLite stores the app database at `/floppy/db/db.sqlite3`; persist `/floppy/db`. (Pre-rename `/yamtrack/db` mounts still resolve, so existing setups keep working.)
+- **Do not put `/floppy/db` on a network filesystem** (NFS, SMB/CIFS, or a NAS "share" mounted into Docker). Floppy's SQLite database uses WAL mode, which [SQLite's own documentation](https://sqlite.org/wal.html) warns is unsafe over network filesystems because they don't reliably support the locking it depends on - this can corrupt the database under normal concurrent use. Use local/block storage for `/floppy/db`, or set `DB_HOST` to use PostgreSQL if only network storage is available.
 - PostgreSQL stores its database files at `/var/lib/postgresql/data`; persist that path on the Postgres container.
 - Redis stores sessions and background-task state; resetting Redis can log users out, but it should not delete accounts if the database is persisted.
 - Do not assume `DATABASE_URL` enables PostgreSQL. Floppy uses Postgres only when `DB_HOST` is set.
@@ -376,9 +463,8 @@ environment:
 The image lives at `ghcr.io/dannyvfilms/floppy`:
 
 - `:latest` - the latest commit on the `latest` branch
-- `:release` - builds published from GitHub release tags
-- `:vX.Y.Z` - versioned release builds
-- `:dev` - built from the fork's `upstream` branch (formerly named `dev`), kept aligned with upstream Yamtrack
+- `:release` - the latest commit on the `release` branch, or the stable alias for a GitHub release tag
+- `:vX.Y.Z` - versioned release builds from GitHub release tags
 
 ## Local development
 

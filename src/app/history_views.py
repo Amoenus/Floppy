@@ -301,24 +301,25 @@ def _build_release_history_days(
         if media_type not in (MediaTypes.EPISODE.value, MediaTypes.PODCAST.value)
     ]
 
-    media_type_filter = (filters or {}).get("media_type")
+    media_type_filter_raw = (filters or {}).get("media_type")
+    media_type_filters = (
+        {t.strip() for t in media_type_filter_raw.split(",") if t.strip()}
+        if media_type_filter_raw
+        else set()
+    )
     include_episodes = True
-    if media_type_filter:
-        if media_type_filter in (
+    if media_type_filters:
+        tv_like_types = {
             MediaTypes.TV.value,
             MediaTypes.SEASON.value,
             MediaTypes.EPISODE.value,
-        ):
-            active_types = []
-            include_podcasts = False
-        elif media_type_filter == MediaTypes.PODCAST.value:
-            active_types = []
-            include_podcasts = True
-            include_episodes = False
-        else:
-            active_types = [mt for mt in active_types if mt == media_type_filter]
-            include_podcasts = False
-            include_episodes = False
+        }
+        other_types = media_type_filters - tv_like_types - {MediaTypes.PODCAST.value}
+        include_episodes = bool(media_type_filters & tv_like_types)
+        include_podcasts = MediaTypes.PODCAST.value in media_type_filters
+        active_types = (
+            [mt for mt in active_types if mt in other_types] if other_types else []
+        )
 
     def _matches_genre_filters(item, *, album=None):
         active_filters = filters or {}
@@ -636,15 +637,17 @@ def _cached_history_entry_matches_filters(entry, filters):
     album = entry.get("album") or {}
     show = entry.get("show") or {}
     entry_media_type = entry.get("media_type")
-    media_type_filter = filters.get("media_type")
-    if media_type_filter:
-        if media_type_filter == MediaTypes.TV.value:
-            if entry_media_type not in {
-                MediaTypes.EPISODE.value,
-                MediaTypes.SEASON.value,
-            }:
-                return False
-        elif entry_media_type != media_type_filter:
+    media_type_filter_raw = filters.get("media_type")
+    if media_type_filter_raw:
+        media_type_filters = {
+            t.strip() for t in media_type_filter_raw.split(",") if t.strip()
+        }
+        allowed_media_types = set(media_type_filters)
+        if MediaTypes.TV.value in media_type_filters:
+            allowed_media_types.update(
+                {MediaTypes.EPISODE.value, MediaTypes.SEASON.value},
+            )
+        if entry_media_type not in allowed_media_types:
             return False
 
     genre_filter = filters.get("genre")

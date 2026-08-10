@@ -8,7 +8,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from app.models import Item, MediaTypes, Sources
-from app.providers import tmdb
+from app.providers import tmdb, tvdb
 
 User = get_user_model()
 
@@ -286,3 +286,57 @@ class SyncMetadataViewTests(TestCase):
         self.assertEqual(len(messages), 1)
         self.assertIn("could not be reached", messages[0].lower())
         self.assertIn("cached data has been kept", messages[0].lower())
+
+    def test_sync_metadata_invalidates_versioned_tvdb_series_and_season_keys(self):
+        """TVDB refreshes should clear normalized, raw, and season cache entries."""
+        media_id = "81189"
+        season_number = 1
+        cache_keys = tvdb.metadata_cache_keys(media_id, season_number)
+        primary_key = tvdb._season_cache_key(
+            media_id,
+            season_number,
+            MediaTypes.TV.value,
+        )
+        for cache_key in cache_keys:
+            cache.set(cache_key, {"cached": True}, timeout=600)
+
+        metadata = {
+            "media_id": media_id,
+            "source": Sources.TVDB.value,
+            "media_type": MediaTypes.SEASON.value,
+            "title": "Breaking Bad Season 1",
+            "image": "https://example.com/season.jpg",
+            "details": {},
+            "related": {},
+            "episodes": [],
+        }
+        with (
+            patch(
+                "app.metadata_sync_views.services.get_media_metadata",
+                return_value=metadata,
+            ),
+            patch("app.metadata_sync_views.metadata_resolution.upsert_provider_links"),
+            patch(
+                "app.metadata_sync_views.metadata_resolution.get_preferred_provider",
+                return_value=Sources.TVDB.value,
+            ),
+            patch("app.metadata_sync_views.cache.delete_many") as mock_delete_many,
+            patch("app.metadata_sync_views._sync_plex_rating"),
+            patch("app.views.Item.fetch_releases"),
+            patch("app.views.trakt_popularity_service.refresh_trakt_popularity"),
+        ):
+            response = self.client.post(
+                reverse(
+                    "sync_metadata",
+                    kwargs={
+                        "source": Sources.TVDB.value,
+                        "media_type": MediaTypes.SEASON.value,
+                        "media_id": media_id,
+                        "season_number": season_number,
+                    },
+                ),
+                {"next": "/"},
+            )
+
+        self.assertEqual(response.status_code, 302)
+        mock_delete_many.assert_called_once_with(cache_keys)

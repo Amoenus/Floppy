@@ -2,6 +2,17 @@
 
 set -e
 
+# Fail fast with a clear message if the SQLite file is already corrupt,
+# instead of burning through the migrate retry loop below to arrive at an
+# opaque "file is not a database" traceback (issue #508). Corruption here
+# often means the db directory sits on a network filesystem that doesn't
+# support SQLite's WAL locking - see README's SQLite persistence note.
+# Rejects a non-"ok" quick_check result even when SQLite doesn't raise an
+# exception for it (issue #593).
+if [ -z "$DB_HOST" ] && [ -f /floppy/db/db.sqlite3 ]; then
+    python -c "from config.sqlite_integrity import check_database_integrity; check_database_integrity('/floppy/db/db.sqlite3')" || exit 1
+fi
+
 # Bounded, retrying migrate: a blocked migration must fail loudly and retry
 # instead of wedging the container as "unhealthy" forever (issue #341).
 # lock_timeout is libpq-only (ignored on SQLite) and fires only while waiting
@@ -32,12 +43,34 @@ usermod -o -u "$PUID" abc
 
 chown abc:abc /floppy
 
+# "logs" holds the rotating file handler every process configures at import time
+# (settings.LOG_FILE). settings.py creates the directory, so whichever process
+# imports settings first as root leaves it root-owned and every abc-owned
+# process then dies with "Unable to configure handler 'file'" -- taking gunicorn
+# with it, so the container serves 502s while reporting healthy.
+#
 # Bound each recursive chown: a stalled bind mount (e.g. network storage)
 # must degrade to a warning instead of hanging the boot silently (issue #341).
-for dir in db staticfiles /var/log/nginx /var/lib/nginx; do
+for dir in db logs staticfiles /var/log/nginx /var/lib/nginx; do
     timeout 600 chown -R abc:abc "$dir" || \
         echo "[entrypoint] WARNING: chown of ${dir} failed or timed out (stalled mount?); continuing" >&2
 done
+
+# Probe the host once, here, and export the sizing decision for supervisord to
+# expand into each program's command line. Doing it per-process would let the
+# six supervised processes disagree about the tier if the host's free memory
+# moved between their startups (issue #521). Values already set by the user are
+# echoed back untouched, so an explicit WEB_CONCURRENCY always wins.
+if resource_env=$(python -c 'from config.runtime_profile import emit_env; emit_env()'); then
+    eval "$resource_env"
+else
+    echo "[entrypoint] WARNING: resource detection failed; using built-in defaults" >&2
+fi
+export FLOPPY_RESOURCE_TIER="${FLOPPY_RESOURCE_TIER:-standard}"
+export FLOPPY_CELERY_QUEUES="${FLOPPY_CELERY_QUEUES:-celery}"
+export FLOPPY_CELERY_ROLE="${FLOPPY_CELERY_ROLE:-background}"
+export FLOPPY_START_INTERACTIVE_WORKER="${FLOPPY_START_INTERACTIVE_WORKER:-true}"
+export FLOPPY_START_DISCOVER_WORKER="${FLOPPY_START_DISCOVER_WORKER:-true}"
 
 echo "[entrypoint] Starting services" >&2
 exec /usr/local/bin/supervisord -c /etc/supervisord.conf

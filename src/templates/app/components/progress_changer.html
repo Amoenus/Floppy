@@ -8,7 +8,12 @@
           hx-vals='{"operation": "decrease"}'
           hx-swap="innerHTML"
           hx-target="#progress-{{ media.item.media_type }}-{{ media.id }}">
-    {% include "app/icons/minus.svg" with classes="w-3 h-3" %}
+    <span class="progress-btn-icon-wrap grid w-3 h-3">
+      <span class="progress-btn-icon col-start-1 row-start-1">
+        {% include "app/icons/minus.svg" with classes="w-3 h-3" %}
+      </span>
+      {% include "app/icons/circle-spinning-clockwise.svg" with classes="w-3 h-3 htmx-indicator animate-spin col-start-1 row-start-1" %}
+    </span>
   </button>
 
   <div class="text-xs text-indigo-400 font-medium min-w-[4ch] text-center">
@@ -43,7 +48,12 @@
           hx-vals='{"operation": "increase"}'
           hx-swap="innerHTML"
           hx-target="#progress-{{ media.item.media_type }}-{{ media.id }}">
-    {% include "app/icons/plus.svg" with classes="w-3 h-3" %}
+    <span class="progress-btn-icon-wrap grid w-3 h-3">
+      <span class="progress-btn-icon col-start-1 row-start-1">
+        {% include "app/icons/plus.svg" with classes="w-3 h-3" %}
+      </span>
+      {% include "app/icons/circle-spinning-clockwise.svg" with classes="w-3 h-3 htmx-indicator animate-spin col-start-1 row-start-1" %}
+    </span>
   </button>
 </div>
 

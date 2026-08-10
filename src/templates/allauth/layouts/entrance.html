@@ -2,7 +2,7 @@
 {% load allauth account static %}
 
 {% block body %}
-  <div class="flex min-h-screen bg-[#212529] text-gray-100">
+  <div class="flex min-h-screen bg-[var(--color-page-bg)] text-[var(--color-text)]">
     <div class="flex-1 flex flex-col justify-center lg:pb-40 items-center p-4">
       <div class="w-full max-w-md">
         <div class="text-center mb-8">
@@ -15,13 +15,13 @@
                  class="h-16 w-auto">
           </h1>
 
-          <p class="text-gray-400">
+          <p class="text-[var(--color-text-muted)]">
             {% block content_title %}
             {% endblock content_title %}
           </p>
 
         </div>
-        <div class="bg-[#2a2f35] rounded-lg p-8 shadow-lg">
+        <div class="bg-[var(--color-surface)] rounded-lg p-8 shadow-lg">
           {% block content %}
           {% endblock content %}
         </div>

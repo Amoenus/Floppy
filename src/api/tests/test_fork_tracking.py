@@ -4,6 +4,11 @@ import datetime
 from http import HTTPStatus as HTTP  # noqa: N814
 from unittest.mock import patch
 
+from django.core.cache import cache
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
+
+from app import history_cache
 from app.models import Episode, ItemTag, MediaTypes, Movie, Sources, Tag
 
 from .base import FloppyApiTestCase
@@ -273,6 +278,7 @@ class HistoryTimelineTests(FloppyApiTestCase):
     def setUp(self):
         """Give a movie play a concrete end date so it appears in history."""
         super().setUp()
+        cache.clear()
         movie = self.movie_medias[0]
         movie.end_date = datetime.date(2024, 5, 10)
         movie.save(update_fields=["end_date"])
@@ -302,12 +308,156 @@ class HistoryTimelineTests(FloppyApiTestCase):
             for entry in day["entries"]:
                 self.assertEqual(entry["media_type"], "game")
 
+    def test_history_types_alias_filters_categories_before_querying(self):
+        """The issue's plural types parameter excludes unrelated categories."""
+        episode = self.episode_medias[0]
+        episode.end_date = datetime.datetime(2024, 5, 11, tzinfo=datetime.UTC)
+        episode.save(update_fields=["end_date"])
+
+        game = self.game_medias[0]
+        game.start_date = datetime.datetime(2024, 5, 12, tzinfo=datetime.UTC)
+        game.end_date = datetime.datetime(2024, 5, 12, tzinfo=datetime.UTC)
+        game.progress = 60
+        game.save(update_fields=["start_date", "end_date", "progress"])
+
+        with CaptureQueriesContext(connection) as captured_queries:
+            response = self.call_api(
+                "get",
+                "api_history",
+                params={"types": "episodes,movies", "limit": 3},
+                headers=self.auth_headers,
+            )
+
+        self.assertEqual(response.status_code, HTTP.OK)
+        entries = [
+            entry
+            for day in response.json()["results"]
+            for entry in day["entries"]
+        ]
+        self.assertTrue(entries)
+        self.assertEqual(
+            {entry["media_type"] for entry in entries},
+            {MediaTypes.EPISODE.value, MediaTypes.MOVIE.value},
+        )
+        sql = "\n".join(query["sql"].lower() for query in captured_queries.captured_queries)
+        for table_name in (
+            "app_game",
+            "app_music",
+            "app_historicalmusic",
+            "app_historicalpodcast",
+            "app_book",
+            "app_comic",
+            "app_manga",
+        ):
+            self.assertNotIn(table_name, sql)
+
+    def test_history_types_pagination_preserves_total_days(self):
+        """Type-filtered pagination continues to paginate over matching days."""
+        second_movie = Movie.objects.create(
+            item=self.items_by_type[MediaTypes.MOVIE.value][1],
+            user=self.user1,
+            end_date=datetime.date(2024, 5, 11),
+        )
+        self.assertIsNotNone(second_movie)
+
+        response = self.call_api(
+            "get",
+            "api_history",
+            params={"types": "movies", "limit": 1, "offset": 1},
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, HTTP.OK)
+        payload = response.json()
+        self.assertGreaterEqual(payload["pagination"]["total"], 2)
+        self.assertEqual(len(payload["results"]), 1)
+        self.assertEqual(
+            payload["results"][0]["entries"][0]["media_type"],
+            MediaTypes.MOVIE.value,
+        )
+
+    def test_history_cache_invalidation_refreshes_unfiltered_api(self):
+        """A cached API response reflects new activity after invalidation."""
+        first_response = self.call_api(
+            "get",
+            "api_history",
+            headers=self.auth_headers,
+        )
+        self.assertEqual(first_response.status_code, HTTP.OK)
+
+        new_movie = Movie.objects.create(
+            item=self.items_by_type[MediaTypes.MOVIE.value][1],
+            user=self.user1,
+            end_date=datetime.date(2024, 5, 12),
+        )
+        history_cache.invalidate_history_cache(self.user1.id)
+
+        response = self.call_api(
+            "get",
+            "api_history",
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, HTTP.OK)
+        entries = [
+            entry
+            for day in response.json()["results"]
+            for entry in day["entries"]
+        ]
+        self.assertTrue(
+            any(entry["instance_id"] == new_movie.id for entry in entries),
+        )
+
+    def test_history_cache_invalidation_refreshes_type_only_index(self):
+        """Typed indexes do not hide a new record after invalidation."""
+        first_response = self.call_api(
+            "get",
+            "api_history",
+            params={"types": "movies"},
+            headers=self.auth_headers,
+        )
+        self.assertEqual(first_response.status_code, HTTP.OK)
+
+        new_movie = Movie.objects.create(
+            item=self.items_by_type[MediaTypes.MOVIE.value][1],
+            user=self.user1,
+            end_date=datetime.date(2024, 5, 12),
+        )
+        history_cache.invalidate_history_cache(self.user1.id)
+
+        response = self.call_api(
+            "get",
+            "api_history",
+            params={"types": "movies"},
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, HTTP.OK)
+        entries = [
+            entry
+            for day in response.json()["results"]
+            for entry in day["entries"]
+        ]
+        self.assertTrue(
+            any(entry["instance_id"] == new_movie.id for entry in entries),
+        )
+
     def test_history_invalid_int_filter_rejected(self):
         """Non-integer values for integer filters return 400."""
         response = self.call_api(
             "get",
             "api_history",
             params={"tv": "abc"},
+            headers=self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.BAD_REQUEST)
+
+    def test_history_unknown_type_rejected(self):
+        """Unknown values in the public types filter return 400."""
+        response = self.call_api(
+            "get",
+            "api_history",
+            params={"types": "spaceships"},
             headers=self.auth_headers,
         )
         self.assertEqual(response.status_code, HTTP.BAD_REQUEST)

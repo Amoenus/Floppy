@@ -17,7 +17,7 @@ class ProcessRoleDetectionTests(SimpleTestCase):
 
     def test_explicit_roles_from_environment(self):
         """The supervisord-provided label wins."""
-        for role in ("web", "interactive", "background"):
+        for role in ("web", "interactive", "background", "combined"):
             with patch.dict("os.environ", {"FLOPPY_PROCESS_ROLE": role}):
                 self.assertEqual(services.get_process_role(), role)
 

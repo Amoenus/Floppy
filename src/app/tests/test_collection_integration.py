@@ -1,6 +1,7 @@
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
+from app import config
 from app.helpers import is_item_collected
 from app.models import (
     TV,
@@ -131,6 +132,34 @@ class CollectionIntegrationTest(TestCase):
         self.assertTrue(
             CollectionEntry.objects.filter(user=self.user, item=item).exists()
         )
+
+    def test_collection_entry_comic_issue(self):
+        """Test creating collection entry for a ComicIssue, independent of its Comic."""
+        volume_item = Item.objects.create(
+            media_id="comic1",
+            source=Sources.COMICVINE.value,
+            media_type=MediaTypes.COMIC.value,
+            title="Test Comic",
+            image="http://example.com/comic.jpg",
+        )
+        issue_item = Item.objects.create(
+            media_id="issue1",
+            source=Sources.COMICVINE.value,
+            media_type=MediaTypes.COMIC_ISSUE.value,
+            title="Test Comic #1",
+            image="http://example.com/issue.jpg",
+        )
+
+        issue_entry = CollectionEntry.objects.create(user=self.user, item=issue_item)
+        self.assertTrue(
+            CollectionEntry.objects.filter(user=self.user, item=issue_item).exists()
+        )
+        self.assertFalse(
+            CollectionEntry.objects.filter(user=self.user, item=volume_item).exists()
+        )
+
+        config_fields = config.get_collection_field_config(MediaTypes.COMIC_ISSUE.value)
+        self.assertEqual(config_fields, config.COLLECTION_FIELD_CONFIG["books"])
 
     def test_collection_entry_music(self):
         """Test creating collection entry for Music."""

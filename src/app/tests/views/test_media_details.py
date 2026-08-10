@@ -32,6 +32,7 @@ from app.models import (
     Game,
     Item,
     ItemPersonCredit,
+    ItemProviderLink,
     ItemStudioCredit,
     ItemTag,
     Manga,
@@ -52,11 +53,11 @@ from app.models import (
     Tag,
     Track,
 )
-from app.providers import tmdb
+from app.providers import services, tmdb
 from app.services import game_lengths as game_length_services
 from app.services.metadata_resolution import MetadataResolutionResult
 from integrations.models import PlexAccount
-from users.models import DateFormatChoices, RatingScaleChoices
+from users.models import DateFormatChoices, RatingScaleChoices, TimeFormatChoices
 
 
 class MediaDetailsViewTests(TestCase):
@@ -471,7 +472,7 @@ class MediaDetailsViewTests(TestCase):
             'class="flex w-full items-center gap-2 sm:w-auto sm:flex-wrap"', content
         )
         self.assertIn(
-            'class="inline-flex h-11 w-full items-center justify-center rounded-xl border border-white/10 bg-[#2a2f35] text-gray-100 shadow-sm transition-colors duration-200 hover:bg-[#343a40] cursor-pointer sm:size-11 sm:w-11"',
+            'class="inline-flex h-11 w-full items-center justify-center rounded-xl border border-white/10 bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer sm:size-11 sm:w-11"',
             content,
         )
         self.assertIn("Add to tracker", content)
@@ -629,6 +630,102 @@ class MediaDetailsViewTests(TestCase):
             response,
             'style="width: min(96vw, 72rem);"',
         )
+
+    @patch("app.providers.services.get_media_metadata")
+    def test_comic_issue_details_renders_collection_section(self, mock_get_metadata):
+        """The comic issue detail page should expose collection add/summary UI."""
+        mock_get_metadata.return_value = {
+            "media_id": "114214",
+            "title": "Tracked Issue",
+            "media_type": MediaTypes.COMIC_ISSUE.value,
+            "source": Sources.COMICVINE.value,
+            "image": "http://example.com/issue.jpg",
+            "max_progress": 1,
+            "details": {
+                "volume_id": "500",
+                "volume_name": "Test Volume",
+                "issue_number": "1",
+            },
+        }
+
+        issue_item = Item.objects.create(
+            media_id="114214",
+            source=Sources.COMICVINE.value,
+            media_type=MediaTypes.COMIC_ISSUE.value,
+            title="Tracked Issue",
+            image="http://example.com/issue.jpg",
+        )
+        CollectionEntry.objects.create(
+            user=self.user,
+            item=issue_item,
+            media_type="physical",
+            purchase_price=4.99,
+        )
+
+        response = self.client.get(
+            reverse(
+                "media_details",
+                kwargs={
+                    "source": Sources.COMICVINE.value,
+                    "media_type": MediaTypes.COMIC_ISSUE.value,
+                    "media_id": "114214",
+                    "title": "tracked-issue",
+                },
+            ),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "app/comic_issue_details.html")
+        self.assertTrue(response.context["has_collection_data"])
+        self.assertIsNotNone(response.context["collection_entry"])
+        self.assertContains(response, "COLLECTION")
+        self.assertContains(
+            response,
+            reverse(
+                "collection_modal",
+                args=[
+                    Sources.COMICVINE.value,
+                    MediaTypes.COMIC_ISSUE.value,
+                    "114214",
+                ],
+            ),
+        )
+        self.assertNotContains(response, "No collection data available")
+
+    @patch("app.providers.services.get_media_metadata")
+    def test_comic_issue_details_renders_collection_empty_state(
+        self, mock_get_metadata
+    ):
+        """An untracked-for-collection comic issue shows the empty state, not stats fields."""
+        mock_get_metadata.return_value = {
+            "media_id": "114215",
+            "title": "Untracked Issue",
+            "media_type": MediaTypes.COMIC_ISSUE.value,
+            "source": Sources.COMICVINE.value,
+            "image": "http://example.com/issue2.jpg",
+            "max_progress": 1,
+            "details": {
+                "volume_id": "500",
+                "volume_name": "Test Volume",
+                "issue_number": "2",
+            },
+        }
+
+        response = self.client.get(
+            reverse(
+                "media_details",
+                kwargs={
+                    "source": Sources.COMICVINE.value,
+                    "media_type": MediaTypes.COMIC_ISSUE.value,
+                    "media_id": "114215",
+                    "title": "untracked-issue",
+                },
+            ),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.context["has_collection_data"])
+        self.assertContains(response, "No collection data available")
 
     @patch("app.providers.services.get_media_metadata")
     def test_media_details_related_sections_use_mobile_card_grid_preferences(
@@ -917,10 +1014,20 @@ class MediaDetailsViewTests(TestCase):
         )
         self.assertContains(response, "Refreshing photos")
 
+        poll_response = self.client.get(
+            reverse("prefetch_artist_relation_images", args=[band.id]),
+        )
+        self.assertEqual(poll_response.status_code, 200)
+        self.assertNotContains(
+            poll_response,
+            reverse("prefetch_artist_relation_images", args=[band.id]),
+        )
+        self.assertNotContains(poll_response, "Refreshing photos")
+
     @patch("app.services.music.needs_discography_sync", return_value=False)
     @patch("app.services.music_scrobble.dedupe_artist_albums")
     @patch("app.providers.musicbrainz.get_artist")
-    def test_music_artist_details_no_poll_when_relation_images_present(
+    def test_music_artist_details_no_poll_when_relation_images_present_or_known_missing(
         self,
         mock_get_artist,
         _mock_dedupe_artist_albums,
@@ -940,6 +1047,17 @@ class MediaDetailsViewTests(TestCase):
             band=band,
             member=member,
             role="drums",
+            is_current=True,
+        )
+        known_missing_member = Artist.objects.create(
+            name="Unknown Member",
+            musicbrainz_id="member-mbid-3",
+            image=settings.IMG_NONE,
+        )
+        ArtistMember.objects.create(
+            band=band,
+            member=known_missing_member,
+            role="keys",
             is_current=True,
         )
         mock_get_artist.return_value = {
@@ -1657,10 +1775,12 @@ class MediaDetailsViewTests(TestCase):
                         {
                             "label": "Drama",
                             "chip_classes": "border-violet-400/18 bg-violet-500/[0.07] text-violet-100",
+                            "url": "/medialist/movie?genre=Drama",
                         },
                         {
                             "label": "Mystery",
                             "chip_classes": "border-violet-400/18 bg-violet-500/[0.07] text-violet-100",
+                            "url": "/medialist/movie?genre=Mystery",
                         },
                     ],
                 },
@@ -1730,10 +1850,12 @@ class MediaDetailsViewTests(TestCase):
                         {
                             "label": "Drama",
                             "chip_classes": "border-violet-400/18 bg-violet-500/[0.07] text-violet-100",
+                            "url": "/medialist/movie?genre=Drama",
                         },
                         {
                             "label": "Mystery",
                             "chip_classes": "border-violet-400/18 bg-violet-500/[0.07] text-violet-100",
+                            "url": "/medialist/movie?genre=Mystery",
                         },
                     ],
                 },
@@ -1955,6 +2077,82 @@ class MediaDetailsViewTests(TestCase):
         self.assertEqual(item.title, "Sword Art Online")
         self.assertEqual(item.original_title, "ソードアート・オンライン")
         self.assertEqual(item.localized_title, "Sword Art Online")
+
+    @override_settings(TVDB_API_KEY="test-tvdb-key")
+    @patch("app.providers.services.get_media_metadata")
+    def test_media_details_renders_tvdb_show_when_mapped_tmdb_id_is_gone(
+        self,
+        mock_get_metadata,
+    ):
+        """A TVDB title must still render when its TMDB mapping 404s."""
+        item = Item.objects.create(
+            media_id="467589",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Ask Hank Anything",
+            image="https://example.com/cover.jpg",
+        )
+        # TVDB advertises a TMDB remote ID that TMDB has since deleted.
+        ItemProviderLink.objects.create(
+            item=item,
+            provider=Sources.TMDB.value,
+            provider_media_id="281366",
+            provider_media_type=MediaTypes.TV.value,
+        )
+        tvdb_metadata = {
+            "media_id": "467589",
+            "title": "Ask Hank Anything",
+            "media_type": MediaTypes.TV.value,
+            "source": Sources.TVDB.value,
+            "image": "https://example.com/cover.jpg",
+            "details": {},
+            "related": {},
+            "cast": [],
+            "crew": [],
+            "studios_full": [],
+        }
+
+        def metadata_side_effect(
+            media_type,
+            media_id,
+            source,
+            season_numbers=None,
+            episode_number=None,
+        ):
+            del media_type, media_id, season_numbers, episode_number
+            if source == Sources.TMDB.value:
+                tmdb_response = requests.Response()
+                tmdb_response.status_code = requests.codes.not_found
+                raise services.ProviderAPIError(
+                    Sources.TMDB.value,
+                    requests.exceptions.HTTPError(response=tmdb_response),
+                )
+            return {
+                **tvdb_metadata,
+                "details": dict(tvdb_metadata["details"]),
+                "related": dict(tvdb_metadata["related"]),
+                "cast": list(tvdb_metadata["cast"]),
+                "crew": list(tvdb_metadata["crew"]),
+                "studios_full": list(tvdb_metadata["studios_full"]),
+            }
+
+        mock_get_metadata.side_effect = metadata_side_effect
+
+        response = self.client.get(
+            reverse(
+                "media_details",
+                kwargs={
+                    "source": Sources.TVDB.value,
+                    "media_type": MediaTypes.TV.value,
+                    "media_id": "467589",
+                    "title": "ask-hank-anything",
+                },
+            ),
+            {"fragment": "secondary"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.context["watch_providers"])
 
     @patch("app.providers.services.get_media_metadata")
     def test_media_details_persists_movie_recommendation_metadata(
@@ -3082,6 +3280,9 @@ class MediaDetailsViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Add rating")
         self.assertNotContains(response, "Click to edit")
+        self.assertNotContains(response, "FIRST PLAYED")
+        self.assertNotContains(response, "LAST PLAYED")
+        self.assertNotContains(response, "TOTAL HOURS")
         self.assertContains(
             response, "x-text=\"rating ? 'Edit rating' : 'Add rating'\"", html=False
         )
@@ -4956,6 +5157,49 @@ class MediaDetailsViewTests(TestCase):
 
     @patch("app.providers.services.get_media_metadata")
     @patch("app.providers.tmdb.process_episodes")
+    def test_episode_details_view_anonymous_public(
+        self,
+        mock_process_episodes,
+        mock_get_metadata,
+    ):
+        """Anonymous users viewing a public list should reach the episode page, not login."""
+        mock_get_metadata.side_effect = lambda *_args, **_kwargs: {
+            "title": "Test TV Show",
+            "media_id": "1668",
+            "source": Sources.TMDB.value,
+            "media_type": MediaTypes.TV.value,
+            "image": "http://example.com/image.jpg",
+            "season/1": {
+                "title": "Season 1",
+                "season_title": "Season 1",
+                "media_id": "1668",
+                "media_type": MediaTypes.SEASON.value,
+                "source": Sources.TMDB.value,
+                "image": "http://example.com/season.jpg",
+                "episodes": [],
+            },
+        }
+        mock_process_episodes.return_value = []
+
+        self.client.logout()
+        response = self.client.get(
+            reverse(
+                "episode_details",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_id": "1668",
+                    "title": "test-tv-show",
+                    "season_number": 1,
+                    "episode_number": 1,
+                },
+            ),
+            {"public_view": "1"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+    @patch("app.providers.services.get_media_metadata")
+    @patch("app.providers.tmdb.process_episodes")
     def test_season_details_secondary_fragment_renders_episodes(
         self,
         mock_process_episodes,
@@ -5606,11 +5850,11 @@ class MediaDetailsViewTests(TestCase):
         )
         self.assertIn('class="relative w-full md:w-auto"', content)
         self.assertIn(
-            '<h2 class="text-sm font-medium text-gray-400 md:hidden">Season 1</h2>',
+            '<h2 class="text-sm font-medium text-[var(--color-text-muted)] md:hidden">Season 1</h2>',
             content,
         )
         self.assertIn(
-            'class="hidden flex-wrap items-center justify-start gap-y-1 text-center text-sm font-medium text-gray-400 md:flex md:text-start"',
+            'class="hidden flex-wrap items-center justify-start gap-y-1 text-center text-sm font-medium text-[var(--color-text-muted)] md:flex md:text-start"',
             content,
         )
 
@@ -5703,7 +5947,7 @@ class MediaDetailsViewTests(TestCase):
         )
         self.assertIn('aria-label="Show alternative title"', content)
         self.assertIn(
-            '<h2 class="text-sm font-medium text-gray-400">Season 3</h2>', content
+            '<h2 class="text-sm font-medium text-[var(--color-text-muted)]">Season 3</h2>', content
         )
         self.assertIn("<p>Alicization</p>", content)
 
@@ -5715,7 +5959,8 @@ class MediaDetailsViewTests(TestCase):
         mock_get_metadata,
     ):
         self.user.date_format = DateFormatChoices.ISO_8601
-        self.user.save(update_fields=["date_format"])
+        self.user.time_format = TimeFormatChoices.HH_MM
+        self.user.save(update_fields=["date_format", "time_format"])
         mock_process_episodes.return_value = []
         show_item = Item.objects.create(
             media_id="1668",
@@ -5806,16 +6051,16 @@ class MediaDetailsViewTests(TestCase):
             content,
         )
         self.assertIn(
-            '<h2 class="text-sm font-medium text-gray-400 md:hidden">Season 1</h2>',
+            '<h2 class="text-sm font-medium text-[var(--color-text-muted)] md:hidden">Season 1</h2>',
             content,
         )
         self.assertIn(
-            'class="mt-3 flex flex-wrap items-center justify-center gap-y-1 text-center text-sm font-medium text-gray-400 md:hidden"',
+            'class="mt-3 flex flex-wrap items-center justify-center gap-y-1 text-center text-sm font-medium text-[var(--color-text-muted)] md:hidden"',
             content,
         )
         self.assertRegex(
             content,
-            r'class="hidden flex-wrap items-center justify-start gap-y-1 text-center text-sm font-medium text-gray-400 md:flex md:text-start">\s*<h2 class="text-sm font-medium text-gray-400">Season 1</h2>\s*<span class="mx-2 text-gray-600">•</span>\s*<span id="season-progress-desktop-\d+" class="text-sm font-medium text-gray-400">\s*Progress: 2/8\s*</span>\s*<span class="mx-2 text-gray-600">•</span>\s*<span class="text-sm font-medium text-gray-400">\s*2026-03-01 - 2026-03-12\s*</span>',
+            r'class="hidden flex-wrap items-center justify-start gap-y-1 text-center text-sm font-medium text-\[var\(--color-text-muted\)\] md:flex md:text-start">\s*<h2 class="text-sm font-medium text-\[var\(--color-text-muted\)\]">Season 1</h2>\s*<span class="mx-2 text-gray-600">•</span>\s*<span id="season-progress-desktop-\d+" class="text-sm font-medium text-\[var\(--color-text-muted\)\]">\s*Progress: 2/8\s*</span>\s*<span class="mx-2 text-gray-600">•</span>\s*<span class="text-sm font-medium text-\[var\(--color-text-muted\)\]">\s*2026-03-01 12:00 - 2026-03-12 12:00\s*</span>',
         )
         self.assertNotIn("Your History", content)
 
@@ -6807,7 +7052,7 @@ class MediaDetailsViewTests(TestCase):
         )
         html = response.content.decode()
         self.assertEqual(
-            html.count('text-sm font-semibold text-gray-400">AUTHOR</h3>'),
+            html.count('text-sm font-semibold text-[var(--color-text-muted)]">AUTHOR</h3>'),
             1,
         )
 

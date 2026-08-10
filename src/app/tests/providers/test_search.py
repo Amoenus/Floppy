@@ -392,15 +392,88 @@ class SearchById(TestCase):
             result = services.search_by_id(MediaTypes.MOVIE.value, "99999999")
         self.assertIsNone(result)
 
+    @patch("app.providers.tmdb.search")
     @patch("app.providers.tmdb.movie")
-    def test_search_uses_id_lookup_on_page_1(self, mock_movie):
-        """services.search() returns ID-lookup result on page 1 for a numeric query."""
+    def test_search_uses_id_lookup_on_page_1(self, mock_movie, mock_tmdb_search):
+        """services.search() includes the ID-lookup result on page 1 for a numeric query."""
         mock_movie.return_value = self._make_metadata(
             MediaTypes.MOVIE.value, Sources.TMDB.value, "238", "The Godfather"
         )
+        mock_tmdb_search.return_value = {
+            "page": 1,
+            "total_results": 0,
+            "total_pages": 1,
+            "results": [],
+        }
         result = services.search(MediaTypes.MOVIE.value, "238", 1, Sources.TMDB.value)
         self.assertEqual(result["total_results"], 1)
         self.assertEqual(result["results"][0]["media_id"], "238")
+
+    @patch("app.providers.tmdb.search")
+    @patch("app.providers.tmdb.tv")
+    def test_search_merges_id_lookup_with_numeric_title_match(
+        self, mock_tv, mock_tmdb_search
+    ):
+        """A numeric title match isn't hidden behind an unrelated numeric ID.
+
+        Regression test: searching "1883" used to return only TMDB tv/1883
+        ("Dog the Bounty Hunter"), completely hiding the real show "1883"
+        (TMDB id 118357) that a text search for the same query would find.
+        """
+        mock_tv.return_value = self._make_metadata(
+            MediaTypes.TV.value, Sources.TMDB.value, "1883", "Dog the Bounty Hunter"
+        )
+        mock_tmdb_search.return_value = {
+            "page": 1,
+            "total_results": 1,
+            "total_pages": 1,
+            "results": [
+                {
+                    "media_id": "118357",
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.TV.value,
+                    "title": "1883",
+                    "original_title": "1883",
+                    "localized_title": "1883",
+                    "image": "http://example.com/img.jpg",
+                }
+            ],
+        }
+        result = services.search(MediaTypes.TV.value, "1883", 1, Sources.TMDB.value)
+
+        self.assertEqual(result["total_results"], 2)
+        media_ids = [item["media_id"] for item in result["results"]]
+        self.assertEqual(media_ids, ["1883", "118357"])
+
+    @patch("app.providers.tmdb.search")
+    @patch("app.providers.tmdb.movie")
+    def test_search_id_lookup_does_not_duplicate_text_search_match(
+        self, mock_movie, mock_tmdb_search
+    ):
+        """If the ID match is also returned by the text search, it isn't duplicated."""
+        mock_movie.return_value = self._make_metadata(
+            MediaTypes.MOVIE.value, Sources.TMDB.value, "238", "The Godfather"
+        )
+        mock_tmdb_search.return_value = {
+            "page": 1,
+            "total_results": 1,
+            "total_pages": 1,
+            "results": [
+                {
+                    "media_id": "238",
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.MOVIE.value,
+                    "title": "The Godfather",
+                    "original_title": "The Godfather",
+                    "localized_title": "The Godfather",
+                    "image": "http://example.com/img.jpg",
+                }
+            ],
+        }
+        result = services.search(MediaTypes.MOVIE.value, "238", 1, Sources.TMDB.value)
+
+        self.assertEqual(result["total_results"], 1)
+        self.assertEqual(len(result["results"]), 1)
 
     @patch("app.providers.tmdb.search")
     @patch("app.providers.tmdb.movie")

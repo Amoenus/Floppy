@@ -7,10 +7,10 @@
   <div class="w-full md:w-1/4 max-w-[250px] mx-auto md:mx-0">
     {% if artist.image and artist.image != IMG_NONE %}
       <img alt="{{ artist.name }}"
-           class="w-full rounded-lg shadow-lg bg-[#2a2f35] object-cover"
+           class="w-full rounded-lg shadow-lg bg-[var(--color-surface)] object-cover"
            src="{{ artist.image }}">
     {% else %}
-      <div class="w-full aspect-square rounded-lg shadow-lg bg-[#2a2f35] flex items-center justify-center">
+      <div class="w-full aspect-square rounded-lg shadow-lg bg-[var(--color-surface)] flex items-center justify-center">
         {% icon 'music' is_active=False extra_classes="w-24 h-24 text-gray-500" %}
       </div>
     {% endif %}
@@ -22,7 +22,7 @@
     </div>
 
     {% if music_artist_activity_subtitle %}
-      <div class="mb-3 flex flex-wrap items-center justify-center gap-y-1 text-center text-sm font-medium text-gray-400 md:justify-start md:text-start">
+      <div class="mb-3 flex flex-wrap items-center justify-center gap-y-1 text-center text-sm font-medium text-[var(--color-text-muted)] md:justify-start md:text-start">
         {% if music_artist_activity_subtitle.primary_text %}
           <span>{{ music_artist_activity_subtitle.primary_text }}</span>
         {% endif %}
@@ -55,9 +55,9 @@
             <span class="-my-px -ml-px flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-rose-400/28 bg-rose-500/14">
               <span class="text-[9px] font-black tracking-[0.12em] text-rose-100">MB</span>
             </span>
-            <span class="text-sm font-semibold text-white">{{ music_artist_rating.rating|floatformat:1 }}</span>
+            <span class="text-sm font-semibold text-[var(--color-text)]">{{ music_artist_rating.rating|floatformat:1 }}</span>
             <span class="text-sm text-gray-500">|</span>
-            <span class="text-sm text-gray-300">{{ music_artist_rating.rating_count|intcomma }} vote{{ music_artist_rating.rating_count|pluralize }}</span>
+            <span class="text-sm text-[var(--color-text-secondary)]">{{ music_artist_rating.rating_count|intcomma }} vote{{ music_artist_rating.rating_count|pluralize }}</span>
           </div>
         {% endif %}
 
@@ -72,19 +72,19 @@
                 {% include "app/icons/star.svg" with classes="h-4 w-4 text-yellow-400 fill-yellow-400" %}
               </span>
               <span class="inline-flex items-center gap-2">
-                <span class="text-sm font-semibold text-white {% if artist_tracker.score is None %}hidden{% endif %}"
+                <span class="text-sm font-semibold text-[var(--color-text)] {% if artist_tracker.score is None %}hidden{% endif %}"
                       :class="rating ? '' : 'hidden'"
                       x-text="formatRating(rating)">{% if artist_tracker.score is not None %}{% if user|rating_scale_max == 5 %}{{ artist_tracker.score|score_display:user }}/5{% else %}{{ artist_tracker.score|score_display:user }}{% endif %}{% endif %}</span>
                 <span class="text-sm text-gray-500 {% if artist_tracker.score is None %}hidden{% endif %}"
                       :class="rating ? '' : 'hidden'">|</span>
-                <span class="text-sm font-medium text-gray-200"
+                <span class="text-sm font-medium text-[var(--color-text-secondary)]"
                       x-text="rating ? 'Edit rating' : 'Add rating'">{% if artist_tracker.score is not None %}Edit rating{% else %}Add rating{% endif %}</span>
               </span>
             </button>
 
             <div x-show="showRatingPopup"
                  @click.outside="showRatingPopup = false; isHovering = false"
-                 class="absolute left-0 top-full mt-2 w-[250px] rounded-lg border border-gray-700 bg-[#2a2f35] p-3 shadow-lg z-10"
+                 class="absolute left-0 top-full mt-2 w-[250px] rounded-lg border border-gray-700 bg-[var(--color-surface)] p-3 shadow-lg z-10"
                  @mouseenter="isHovering = true"
                  @mouseleave="isHovering = false; hoverRating = null">
               <div class="flex justify-between mb-1">
@@ -101,7 +101,7 @@
                       <div :class="{ 'text-yellow-400': {{ rating_value }} <= (isHovering ? hoverRating : rating), 'text-gray-600': {{ rating_value }} > (isHovering ? hoverRating : rating) }">
                         {% include "app/icons/star.svg" with classes="w-5 h-5 hover:scale-110 transition-transform" %}
                       </div>
-                      <span class="text-xs mt-1 text-gray-400">{{ rating_value }}</span>
+                      <span class="text-xs mt-1 text-[var(--color-text-muted)]">{{ rating_value }}</span>
                     </button>
                   {% endfor %}
                 {% endwith %}
@@ -145,7 +145,7 @@
                @mouseleave="if (!linksPinned) linksOpen = false"
                @keydown.escape.window="linksOpen = false; linksPinned = false"
                @click.outside="linksOpen = false; linksPinned = false">
-            <button class="size-11 inline-flex items-center justify-center shrink-0 rounded-xl border border-white/10 bg-[#2a2f35] text-gray-100 shadow-sm transition-colors duration-200 hover:bg-[#343a40] cursor-pointer"
+            <button class="size-11 inline-flex items-center justify-center shrink-0 rounded-xl border border-white/10 bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer"
                     title="View source and external links"
                     aria-haspopup="true"
                     :aria-expanded="linksOpen.toString()"
@@ -159,16 +159,16 @@
                  x-transition:leave="transition ease-in duration-100"
                  x-transition:leave-start="opacity-100 translate-y-0"
                  x-transition:leave-end="opacity-0 -translate-y-1"
-                 class="absolute left-0 top-full z-20 mt-3 w-80 max-w-[calc(100vw-2rem)] rounded-2xl border border-white/10 bg-[#20252b]/95 p-3 shadow-2xl backdrop-blur-sm">
+                 class="absolute left-0 top-full z-20 mt-3 w-80 max-w-[calc(100vw-2rem)] rounded-2xl border border-white/10 bg-[var(--color-page-bg)]/95 p-3 shadow-2xl backdrop-blur-sm">
               {% for detail_link_section in detail_link_sections %}
                 <div class="{% if not forloop.first %}mt-3 border-t border-white/10 pt-3{% endif %}">
-                  <div class="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">{{ detail_link_section.title }}</div>
+                  <div class="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--color-text-muted)]">{{ detail_link_section.title }}</div>
                   <div class="flex flex-wrap gap-2">
                     {% for detail_link in detail_link_section.entries %}
                       <a href="{{ detail_link.url }}"
                          target="_blank"
                          rel="noreferrer"
-                         class="inline-flex h-8 items-center gap-2 rounded-full border {{ detail_link.chip_classes }} pl-0 pr-3 text-sm text-white shadow-sm transition-colors duration-200 hover:brightness-110">
+                         class="inline-flex h-8 items-center gap-2 rounded-full border {{ detail_link.chip_classes }} pl-0 pr-3 text-sm text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:brightness-110">
                         <span class="-my-px -ml-px flex h-8 w-8 shrink-0 items-center justify-center rounded-full border {{ detail_link.badge_classes }}">
                           {% if detail_link.logo_src %}
                             <img src="{{ detail_link.logo_src }}"
@@ -179,7 +179,7 @@
                             <span class="text-[9px] font-black tracking-[0.12em] {{ detail_link.accent_classes }}">{{ detail_link.fallback_text|slice:":4" }}</span>
                           {% endif %}
                         </span>
-                        <span class="text-sm font-medium text-white">{{ detail_link.label }}</span>
+                        <span class="text-sm font-medium text-[var(--color-text)]">{{ detail_link.label }}</span>
                       </a>
                     {% endfor %}
                   </div>
@@ -191,7 +191,7 @@
 
         {% for action in detail_secondary_actions %}
           {% if action.kind == "link" %}
-            <a class="size-11 inline-flex items-center justify-center shrink-0 rounded-xl border border-white/10 bg-[#2a2f35] text-gray-100 shadow-sm transition-colors duration-200 hover:bg-[#343a40] cursor-pointer"
+            <a class="size-11 inline-flex items-center justify-center shrink-0 rounded-xl border border-white/10 bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer"
                title="{{ action.title }}"
                href="{{ action.url }}">
               {% if action.icon == "history" %}
@@ -201,7 +201,7 @@
           {% else %}
             <button type="button"
                     title="{{ action.title }}"
-                    class="size-11 inline-flex items-center justify-center shrink-0 rounded-xl border border-white/10 bg-[#2a2f35] text-gray-100 shadow-sm transition-colors duration-200 hover:bg-[#343a40] cursor-pointer disabled:opacity-75 {% if action.button_classes %}{{ action.button_classes }}{% endif %}"
+                    class="size-11 inline-flex items-center justify-center shrink-0 rounded-xl border border-white/10 bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer disabled:opacity-75 {% if action.button_classes %}{{ action.button_classes }}{% endif %}"
                     hx-post="{{ action.hx_post }}"
                     hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
                     hx-swap="none"
@@ -228,7 +228,7 @@
              x-init="$nextTick(() => checkClamp())">
           <p x-ref="synopsisText"
              :class="isExpanded ? '' : 'line-clamp-3'"
-             class="text-gray-300 text-pretty">{{ media.synopsis|linebreaksbr|safe }}</p>
+             class="text-[var(--color-text-secondary)] text-pretty">{{ media.synopsis|linebreaksbr|safe }}</p>
           <button x-show="isClamped"
                   @click="isExpanded = !isExpanded"
                   class="text-indigo-400 hover:text-indigo-300 text-sm mt-2 focus:outline-none transition-colors cursor-pointer">
@@ -243,57 +243,57 @@
 <div class="flex flex-col md:flex-row gap-12 md:gap-10">
   <div class="w-full md:w-1/4 md:max-w-[250px] mx-auto lg:mx-0">
     <h2 class="text-xl font-bold mb-4">Details</h2>
-    <div class="bg-[#2a2f35] p-4 rounded-lg text-center md:text-start">
+    <div class="bg-[var(--color-surface)] p-4 rounded-lg text-center md:text-start">
       {% if music_artist_metadata.type %}
         <div class="mb-4">
-          <h3 class="text-sm font-semibold text-gray-400">TYPE</h3>
-          <p class="text-gray-200">{{ music_artist_metadata.type }}</p>
+          <h3 class="text-sm font-semibold text-[var(--color-text-muted)]">TYPE</h3>
+          <p class="text-[var(--color-text-secondary)]">{{ music_artist_metadata.type }}</p>
         </div>
       {% endif %}
       {% if music_artist_metadata.area or music_artist_metadata.country %}
         <div class="mb-4">
-          <h3 class="text-sm font-semibold text-gray-400">ORIGIN</h3>
-          <p class="text-gray-200">{{ music_artist_metadata.area|default:music_artist_metadata.country }}</p>
+          <h3 class="text-sm font-semibold text-[var(--color-text-muted)]">ORIGIN</h3>
+          <p class="text-[var(--color-text-secondary)]">{{ music_artist_metadata.area|default:music_artist_metadata.country }}</p>
         </div>
       {% endif %}
       {% if music_artist_metadata.begin_date %}
         <div class="mb-4">
-          <h3 class="text-sm font-semibold text-gray-400">{% if music_artist_metadata.type == 'Group' %}FORMED{% else %}BORN{% endif %}</h3>
-          <p class="text-gray-200">{{ music_artist_metadata.begin_date }}</p>
+          <h3 class="text-sm font-semibold text-[var(--color-text-muted)]">{% if music_artist_metadata.type == 'Group' %}FORMED{% else %}BORN{% endif %}</h3>
+          <p class="text-[var(--color-text-secondary)]">{{ music_artist_metadata.begin_date }}</p>
         </div>
       {% endif %}
       {% if music_artist_metadata.end_date %}
         <div class="mb-4">
-          <h3 class="text-sm font-semibold text-gray-400">{% if music_artist_metadata.type == 'Group' %}DISBANDED{% else %}DIED{% endif %}</h3>
-          <p class="text-gray-200">{{ music_artist_metadata.end_date }}</p>
+          <h3 class="text-sm font-semibold text-[var(--color-text-muted)]">{% if music_artist_metadata.type == 'Group' %}DISBANDED{% else %}DIED{% endif %}</h3>
+          <p class="text-[var(--color-text-secondary)]">{{ music_artist_metadata.end_date }}</p>
         </div>
       {% endif %}
       <div>
-        <h3 class="text-sm font-semibold text-gray-400">RELEASES</h3>
-        <p class="text-gray-200">{{ total_releases }}</p>
+        <h3 class="text-sm font-semibold text-[var(--color-text-muted)]">RELEASES</h3>
+        <p class="text-[var(--color-text-secondary)]">{{ total_releases }}</p>
       </div>
     </div>
 
     <h2 class="text-xl font-bold mb-4 mt-6">Collection</h2>
-    <div class="bg-[#2a2f35] p-4 rounded-lg text-center md:text-start">
+    <div class="bg-[var(--color-surface)] p-4 rounded-lg text-center md:text-start">
       <div class="mb-4">
-        <h3 class="text-sm font-semibold text-gray-400">COLLECTED ALBUMS</h3>
-        <p class="text-gray-200">
+        <h3 class="text-sm font-semibold text-[var(--color-text-muted)]">COLLECTED ALBUMS</h3>
+        <p class="text-[var(--color-text-secondary)]">
           {{ collection_stats.collected_albums }}/{{ collection_stats.total_albums }}
           {% if collection_stats.total_albums > 0 %}
             {% widthratio collection_stats.collected_albums collection_stats.total_albums 100 as album_percentage %}
-            <span class="text-gray-400 mx-1">•</span>
+            <span class="text-[var(--color-text-muted)] mx-1">•</span>
             <span>{{ album_percentage }}%</span>
           {% endif %}
         </p>
       </div>
       <div>
-        <h3 class="text-sm font-semibold text-gray-400">COLLECTED TRACKS</h3>
-        <p class="text-gray-200">
+        <h3 class="text-sm font-semibold text-[var(--color-text-muted)]">COLLECTED TRACKS</h3>
+        <p class="text-[var(--color-text-secondary)]">
           {{ collection_stats.collected_tracks }}/{{ collection_stats.total_tracks }}
           {% if collection_stats.total_tracks > 0 %}
             {% widthratio collection_stats.collected_tracks collection_stats.total_tracks 100 as track_percentage %}
-            <span class="text-gray-400 mx-1">•</span>
+            <span class="text-[var(--color-text-muted)] mx-1">•</span>
             <span>{{ track_percentage }}%</span>
           {% endif %}
         </p>
@@ -313,8 +313,8 @@
       {% if discography_groups %}
         {% include "app/components/artist_discography_container.html" with discography_groups=discography_groups artist=artist missing_cover_count=missing_cover_count poll_for_covers=poll_for_covers user=user only %}
       {% else %}
-        <div class="bg-[#2a2f35] p-6 rounded-lg text-center">
-          <p class="text-gray-400">
+        <div class="bg-[var(--color-surface)] p-6 rounded-lg text-center">
+          <p class="text-[var(--color-text-muted)]">
             {% if artist.musicbrainz_id %}
               No releases found for this artist on MusicBrainz.
             {% else %}

@@ -99,6 +99,13 @@ docs) or run `uvicorn floppy_mcp.server:mcp.streamable_http_app`.
 
 ### Notes on tool contracts
 
+- `track_media` reads the title before writing. When completing an already
+  tracked title, it targets the returned `Planning`/`In progress` consumption
+  with the exact history PATCH route, so automatic completion does not leave a
+  stale planning row. Set `new_play=true` to append a separate play; an
+  untracked title is created with POST. The underlying generic POST remains an
+  append operation and defaults an omitted status to `Planning`.
+
 - **`status`** on `track_media` accepts the display names Floppy uses in
   the UI (`"Planning"`, `"In progress"`, `"Paused"`, `"Completed"`,
   `"Dropped"`); the tool translates them to the API's numeric wire format

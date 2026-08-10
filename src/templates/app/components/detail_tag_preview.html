@@ -4,11 +4,16 @@
   {% if detail_tag_sections %}
     {% for detail_tag_section in detail_tag_sections %}
       <div class="{% if not forloop.first %}mt-3 border-t border-white/10 pt-3{% endif %}">
-        <div class="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">{{ detail_tag_section.title }}</div>
+        <div class="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--color-text-muted)]">{{ detail_tag_section.title }}</div>
         {% if detail_tag_section.entries %}
           <div class="flex flex-wrap gap-2">
             {% for detail_tag in detail_tag_section.entries %}
-              <span class="inline-flex h-8 items-center rounded-full border px-3 text-sm font-medium shadow-sm {{ detail_tag.chip_classes }}">{{ detail_tag.label }}</span>
+              {% if detail_tag.url %}
+                <a href="{{ detail_tag.url }}"
+                   class="inline-flex h-8 items-center rounded-full border px-3 text-sm font-medium shadow-sm transition-colors duration-200 hover:brightness-110 {{ detail_tag.chip_classes }}">{{ detail_tag.label }}</a>
+              {% else %}
+                <span class="inline-flex h-8 items-center rounded-full border px-3 text-sm font-medium shadow-sm {{ detail_tag.chip_classes }}">{{ detail_tag.label }}</span>
+              {% endif %}
             {% endfor %}
           </div>
         {% elif detail_tag_section.empty_label %}

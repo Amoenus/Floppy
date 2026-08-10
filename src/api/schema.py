@@ -26,7 +26,12 @@ MEDIA_TYPE_COMPLETE_PARAM = OpenApiParameter(
     type=str,
     location=OpenApiParameter.PATH,
     enum=MEDIA_TYPE_COMPLETE_VALID_LIST,
-    description="Media type, including `season` and `episode`.",
+    description=(
+        "Media type, including `season` and `episode`. POST to a media-type "
+        "collection creates a new consumption; omitted status defaults to "
+        "Planning. Use the history/{consumption_id} route to update one "
+        "specific existing consumption."
+    ),
 )
 
 MEDIA_TYPE_TV_ONLY_PARAM = OpenApiParameter(

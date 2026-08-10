@@ -50,6 +50,40 @@ class AutoLoginMiddleware:
         return self.get_response(request)
 
 
+class NoStoreHtmlMiddleware:
+    """Stop browsers heuristically caching rendered HTML.
+
+    Django sends no Cache-Control on ordinary HTML responses, which leaves the
+    document heuristically cacheable. iOS Safari (and the installed PWA, which
+    shares Safari's HTTP cache) takes that as licence to keep serving markup it
+    fetched days ago, so template fixes never reach the device until the user
+    deletes and re-adds the PWA. That is what made #442 look unfixable.
+
+    Static assets are excluded: they are cache-busted by mtime and are the one
+    thing that *should* stay in the cache.
+    """
+
+    def __init__(self, get_response):
+        """Store the next middleware in the chain."""
+        self.get_response = get_response
+
+    def __call__(self, request):
+        """Mark HTML responses as uncacheable."""
+        response = self.get_response(request)
+
+        if request.path_info.startswith(("/static/", "/media/")):
+            return response
+
+        if response.has_header("Cache-Control"):
+            return response
+
+        content_type = response.headers.get("Content-Type", "")
+        if content_type.startswith("text/html"):
+            response.headers["Cache-Control"] = "no-store, must-revalidate"
+
+        return response
+
+
 class HtmxAuthRedirectMiddleware:
     """Turn login redirects into HX-Redirect for htmx requests.
 

@@ -1,17 +1,30 @@
-import os
+from config.runtime_profile import PROFILE, by_tier, gunicorn_threads, web_concurrency
 
 bind = "localhost:8001"
 preload_app = True
-timeout = 200
-max_requests = 500
-max_requests_jitter = 10
 
 # Threaded workers so one slow request can't stall the whole UI.  The
-# container also runs nginx, three celery workers, and beat, so keep the
+# container also runs nginx, up to three celery workers, and beat, so keep the
 # process count low and rely on threads for I/O-bound concurrency.
 worker_class = "gthread"
-workers = int(os.environ.get("WEB_CONCURRENCY", "2"))
-threads = int(os.environ.get("GUNICORN_THREADS", "4"))
+
+# Sized from the host rather than fixed. One threaded, preloaded worker keeps
+# normal-host idle memory down; each extra worker duplicates private Django
+# state despite copy-on-write. WEB_CONCURRENCY and GUNICORN_THREADS still win
+# when set - see config/runtime_profile.py.
+workers = web_concurrency()
+threads = gunicorn_threads()
+
+# Recycle workers more aggressively on small hosts: RSS only creeps upward
+# within a worker's life, so a lower ceiling caps the steady-state footprint.
+max_requests = by_tier(200, 300, 500)
+max_requests_jitter = 10
+timeout = by_tier(120, 200, 200)
+
+print(  # noqa: T201  # gunicorn has no logger configured this early
+    f"[gunicorn] {PROFILE.describe()} -> workers={workers} threads={threads} "
+    f"max_requests={max_requests} timeout={timeout}",
+)
 
 accesslog = "-"
 errorlog = "-"

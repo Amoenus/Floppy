@@ -12,19 +12,19 @@
       {% include "app/icons/star.svg" with classes="h-3.5 w-3.5 text-yellow-400 fill-yellow-400 sm:h-4 sm:w-4" %}
     </span>
     <span class="inline-flex items-center gap-1 whitespace-nowrap sm:gap-2">
-      <span class="text-[12px] font-semibold text-white sm:text-sm {% if current_instance.score is None %}hidden{% endif %}"
+      <span class="text-[12px] font-semibold text-[var(--color-text)] sm:text-sm {% if current_instance.score is None %}hidden{% endif %}"
             :class="rating ? '' : 'hidden'"
             x-text="formatRating(rating)">{% if current_instance.score is not None %}{% if user|rating_scale_max == 5 %}{{ current_instance.score|score_display:user }}/5{% else %}{{ current_instance.score|score_display:user }}{% endif %}{% endif %}</span>
       <span class="text-[12px] text-gray-500 sm:text-sm {% if current_instance.score is None %}hidden{% endif %}"
             :class="rating ? '' : 'hidden'">|</span>
-      <span class="text-[12px] font-medium text-gray-200 sm:text-sm"
+      <span class="text-[12px] font-medium text-[var(--color-text-secondary)] sm:text-sm"
             x-text="rating ? 'Edit rating' : 'Add rating'">{% if current_instance.score is not None %}Edit rating{% else %}Add rating{% endif %}</span>
     </span>
   </button>
 
   <div x-show="showRatingPopup"
        @click.outside="showRatingPopup = false; isHovering = false"
-       class="absolute left-0 top-full mt-2 w-[250px] rounded-lg border border-gray-700 bg-[#2a2f35] p-3 shadow-lg z-10"
+       class="absolute left-0 top-full mt-2 w-[250px] rounded-lg border border-gray-700 bg-[var(--color-surface)] p-3 shadow-lg z-10"
        @mouseenter="isHovering = true"
        @mouseleave="isHovering = false; hoverRating = null">
     <div class="flex justify-between mb-1">
@@ -41,7 +41,7 @@
             <div :class="{ 'text-yellow-400': {{ rating_value }} <= (isHovering ? hoverRating : rating), 'text-gray-600': {{ rating_value }} > (isHovering ? hoverRating : rating) }">
               {% include "app/icons/star.svg" with classes="w-5 h-5 hover:scale-110 transition-transform" %}
             </div>
-            <span class="text-xs mt-1 text-gray-400">{{ rating_value }}</span>
+            <span class="text-xs mt-1 text-[var(--color-text-muted)]">{{ rating_value }}</span>
           </button>
         {% endfor %}
       {% endwith %}

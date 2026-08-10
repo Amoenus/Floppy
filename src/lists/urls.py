@@ -40,6 +40,7 @@ urlpatterns = [
         name="list_smart_rules_update",
     ),
     path("list/create", views_list_actions.create, name="list_create"),
+    path("list/share-view", views_list_actions.share_view, name="list_share_view"),
     path("list/edit", views_list_actions.edit, name="list_edit"),
     path("list/delete", views_list_actions.delete, name="list_delete"),
     path("list/import-csv", views_list_actions.import_list_csv, name="list_import_csv"),

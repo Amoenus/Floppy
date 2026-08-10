@@ -166,11 +166,14 @@ async def track_media(
     start_date: str | None = None,
     end_date: str | None = None,
     notes: str | None = None,
+    new_play: bool = False,  # noqa: FBT001, FBT002
 ) -> Any:
     """Start tracking a media item, or update it if already tracked.
 
     status is one of "Completed", "In progress", "Planning", "Paused",
-    "Dropped". score is 0-10. Only pass the fields you want to set.
+    "Dropped". score is 0-10. Only pass the fields you want to set. Set
+    new_play=True to append a separate consumption instead of updating an
+    existing one.
     """
     try:
         status_code = _status_code(status)
@@ -198,7 +201,17 @@ async def track_media(
         isinstance(existing, dict)
         and not existing.get("error")
         and existing.get("tracked")
+        and not new_play
     ):
+        if status_code == _STATUS_CODES["Completed"]:
+            for consumption in existing.get("consumptions") or []:
+                if consumption.get("status") in {"Planning", "In progress", 0, 1}:
+                    return await _call(
+                        "patch",
+                        f"media/{media_type}/{source}/{media_id}/history/"
+                        f"{consumption['consumption_id']}",
+                        json=body,
+                    )
         return await _call(
             "patch",
             f"media/{media_type}/{source}/{media_id}",

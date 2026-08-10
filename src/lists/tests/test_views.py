@@ -618,6 +618,37 @@ class ListDetailViewTests(TestCase):
 
     @patch.object(get_user_model(), "update_preference")
     @patch.object(CustomList, "user_can_view")
+    def test_list_detail_view_filter_by_no_status(
+        self,
+        mock_user_can_view,
+        mock_update_preference,
+    ):
+        """No Status includes untracked items and rows with a null status."""
+        mock_update_preference.side_effect = ["date_added", None, "grid"]
+        mock_user_can_view.return_value = True
+
+        Movie.objects.create(
+            item=self.movie_item,
+            status=Status.COMPLETED.value,
+            user=self.user,
+        )
+        TV.objects.create(item=self.tv_item, status=None, user=self.user)
+
+        response = self.client.get(
+            reverse("list_detail", args=[self.custom_list.id])
+            + "?status=no_status",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["current_statuses"], ("no_status",))
+        self.assertEqual(
+            {item.id for item in response.context["items"]},
+            {self.tv_item.id, self.anime_item.id},
+        )
+        self.assertIn(("no_status", "No Status"), response.context["status_choices"])
+
+    @patch.object(get_user_model(), "update_preference")
+    @patch.object(CustomList, "user_can_view")
     def test_list_detail_view_sort_by_status(
         self,
         mock_user_can_view,
@@ -740,7 +771,7 @@ class ListDetailViewTests(TestCase):
 
         content = response.content.decode()
         self.assertIn(
-            'class="inline-flex items-center text-gray-400 transition-colors hover:text-indigo-300"',
+            'class="inline-flex items-center text-[var(--color-text-muted)] transition-colors hover:text-indigo-300"',
             content,
         )
         self.assertLess(content.index("3 items"), content.index(self.user.username))
@@ -1082,6 +1113,8 @@ class ListDetailViewTests(TestCase):
             "title": "Test Movie",
         }
 
+        self.movie_item.genres = ["Drama"]
+        self.movie_item.save(update_fields=["genres"])
         Movie.objects.create(
             item=self.movie_item,
             status=Status.COMPLETED.value,
@@ -1114,6 +1147,7 @@ class ListDetailViewTests(TestCase):
         self.assertContains(response, 'id="list-table-body"')
         self.assertContains(response, "min-w-10 w-10 h-10 object-cover rounded-md")
         self.assertContains(response, 'id="media-column-config-data"')
+        self.assertContains(response, "Drama")
 
     @patch.object(get_user_model(), "update_preference")
     @patch.object(CustomList, "user_can_view")
@@ -1145,7 +1179,7 @@ class ListDetailViewTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "lists/components/list_table.html")
-        self.assertContains(response, 'class="w-full bg-[#2a2f35] media-table"')
+        self.assertContains(response, 'class="w-full bg-[var(--color-surface)] media-table"')
 
     @patch.object(get_user_model(), "update_preference")
     @patch.object(CustomList, "user_can_view")
@@ -2143,6 +2177,73 @@ class SmartRulesUpdateViewTest(TestCase):
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 400)
+
+
+class ShareViewTest(TestCase):
+    """Tests for the Share View endpoint."""
+
+    def setUp(self):
+        self.client = Client()
+        self.user = get_user_model().objects.create_user(
+            username="owner",
+            password="12345",
+        )
+        self.client.login(username="owner", password="12345")
+
+    def test_share_view_creates_public_smart_list(self):
+        response = self.client.post(
+            reverse("list_share_view"),
+            {"media_type": MediaTypes.TV.value, "status": "In progress"},
+        )
+        self.assertEqual(response.status_code, 200)
+        custom_list = CustomList.objects.get()
+        self.assertTrue(custom_list.is_smart)
+        self.assertEqual(custom_list.visibility, "public")
+        self.assertEqual(custom_list.owner, self.user)
+        self.assertEqual(custom_list.smart_media_types, [MediaTypes.TV.value])
+        self.assertEqual(custom_list.smart_filters["status"], ["In progress"])
+        self.assertEqual(
+            response.json()["url"],
+            custom_list.get_absolute_url(),
+        )
+
+    def test_share_view_reuses_existing_matching_list(self):
+        first = self.client.post(
+            reverse("list_share_view"),
+            {"media_type": MediaTypes.TV.value, "status": "In progress"},
+        ).json()
+        second = self.client.post(
+            reverse("list_share_view"),
+            {"media_type": MediaTypes.TV.value, "status": "In progress"},
+        ).json()
+        self.assertEqual(first["url"], second["url"])
+        self.assertEqual(CustomList.objects.count(), 1)
+
+    def test_share_view_different_filters_create_different_lists(self):
+        self.client.post(
+            reverse("list_share_view"),
+            {"media_type": MediaTypes.TV.value, "status": "In progress"},
+        )
+        self.client.post(
+            reverse("list_share_view"),
+            {"media_type": MediaTypes.TV.value, "status": "Completed"},
+        )
+        self.assertEqual(CustomList.objects.count(), 2)
+
+    def test_share_view_rejects_invalid_media_type(self):
+        response = self.client.post(
+            reverse("list_share_view"),
+            {"media_type": "not-a-real-type"},
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_share_view_requires_login(self):
+        self.client.logout()
+        response = self.client.post(
+            reverse("list_share_view"),
+            {"media_type": MediaTypes.TV.value},
+        )
+        self.assertEqual(response.status_code, 302)
 
 
 class EditListViewTest(TestCase):

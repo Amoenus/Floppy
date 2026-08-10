@@ -5,20 +5,23 @@ Tasks keep their original explicit Celery names so queued tasks survive the depl
 """
 
 import logging
+from datetime import timedelta
 
 from celery import shared_task
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.core.cache import cache  # noqa: F401 - imported for potential future use
+from django.core.cache import cache
+from django.utils import timezone
 
 from app import history_cache
 from app.interactive_requests import interactive_request_active
 from app.models import MediaTypes
+from app.task_cooperation import CooperativeRun
 
 logger = logging.getLogger(__name__)
 
 # Mirrors BACKGROUND_TASK_PRIORITY in tasks.py — both read from the same setting.
-BACKGROUND_TASK_PRIORITY = getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 1)
+BACKGROUND_TASK_PRIORITY = getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 9)
 
 
 @shared_task(name="Refresh Discover Rows")
@@ -130,7 +133,34 @@ def refresh_discover_tab_cache(
 # every media type would be enqueued at once, burying the celery queue.
 # Users whose tabs are not pre-warmed receive them on first page load via the
 # request-time warmup path (maybe_schedule_user_warmup).
-STARTUP_WARMUP_TASK_LIMIT = 50
+STARTUP_WARMUP_TASK_LIMIT = settings.WARMUP_USER_LIMIT
+
+# The same reasoning applies to the recurring sweeps below, which had no cap at
+# all: they iterated every active user (x2 logging styles, for history coverage)
+# on every run. A cursor makes a capped sweep still reach everyone, just across
+# several runs instead of one (issue #521).
+WARMUP_CURSOR_TTL_SECONDS = 60 * 60 * 24 * 7
+# Only recompute taste profiles for users who might actually look at them.
+PROFILE_REFRESH_ACTIVE_DAYS = 30
+
+
+def _rotating_user_batch(queryset, cursor_key: str, limit: int):
+    """Return up to `limit` users, resuming after the last sweep's cursor.
+
+    Ordered by id so the cursor is meaningful, and wrapping to the start once the
+    end is reached, so no user is starved by a cap.
+    """
+    cursor = cache.get(cursor_key) or 0
+    batch = list(queryset.filter(id__gt=cursor).order_by("id")[:limit])
+    if not batch and cursor:
+        # Reached the end; wrap around for this run rather than doing nothing.
+        batch = list(queryset.order_by("id")[:limit])
+    cache.set(
+        cursor_key,
+        batch[-1].id if batch else 0,
+        timeout=WARMUP_CURSOR_TTL_SECONDS,
+    )
+    return batch
 
 
 @shared_task(name="Warm Discover Startup Tabs")
@@ -183,12 +213,22 @@ def warm_history_day_cache_coverage(
     user_model = get_user_model()
     users = user_model.objects.filter(is_active=True)
     if user_ids:
-        users = users.filter(id__in=user_ids)
+        # An explicit request targets exactly those users, uncapped.
+        selected = list(users.filter(id__in=user_ids))
+    else:
+        selected = _rotating_user_batch(
+            users,
+            "history_coverage_warmup_cursor",
+            settings.WARMUP_USER_LIMIT,
+        )
 
     styles = logging_styles or ["sessions", "repeats"]
     scheduled = 0
     users_count = 0
-    for user in users.iterator(chunk_size=200):
+    run = CooperativeRun("history_coverage_warmup")
+    # Checked per user rather than once at entry: a sweep that starts while the
+    # user is away must stop when they come back, not run to completion.
+    for user in run.iter(selected):
         users_count += 1
         for logging_style in styles:
             scheduled += int(
@@ -208,29 +248,61 @@ def warm_history_day_cache_coverage(
     }
 
 
+@shared_task(name="Refresh Discover Profile For User")
+def refresh_discover_profile_for_user(user_id: int, media_types: list[str]):
+    """Recompute one user's Discover taste profiles."""
+    from app.discover.profile import get_or_compute_taste_profile
+
+    user_model = get_user_model()
+    user = user_model.objects.filter(id=user_id).first()
+    if not user:
+        return {"profiles_refreshed": 0, "reason": "missing_user"}
+
+    refreshed = 0
+    for media_type in media_types:
+        get_or_compute_taste_profile(user, media_type, force=True)
+        refreshed += 1
+    return {"profiles_refreshed": refreshed}
+
+
 @shared_task(name="Refresh Discover Profiles")
 def refresh_discover_profiles(
     user_ids: list[int] | None = None, media_types: list[str] | None = None
 ):
-    """Refresh Discover taste profiles for users and media types."""
-    from app.discover.profile import get_or_compute_taste_profile
+    """Fan out Discover taste profile refreshes, capped per run.
+
+    Previously computed every user's profile inline in one task, so both the
+    runtime and the peak RSS of a single worker child grew with the user count
+    (issue #521). Now one subtask per user, capped and rotating, and only for
+    users who have been active recently - a profile nobody will look at is not
+    worth recomputing.
+    """
     from app.discover.registry import ALL_MEDIA_KEY
 
     user_model = get_user_model()
-    users = user_model.objects.all().order_by("id")
-    if user_ids:
-        users = users.filter(id__in=user_ids)
-
     target_media_types = media_types or [ALL_MEDIA_KEY]
-    refreshed = 0
-    for user in users.iterator(chunk_size=200):
-        for media_type in target_media_types:
-            get_or_compute_taste_profile(user, media_type, force=True)
-            refreshed += 1
+
+    if user_ids:
+        selected = list(user_model.objects.filter(id__in=user_ids))
+    else:
+        cutoff = timezone.now() - timedelta(days=PROFILE_REFRESH_ACTIVE_DAYS)
+        selected = _rotating_user_batch(
+            user_model.objects.filter(is_active=True, last_login__gte=cutoff),
+            "discover_profile_refresh_cursor",
+            settings.WARMUP_USER_LIMIT,
+        )
+
+    for index, user in enumerate(selected):
+        refresh_discover_profile_for_user.apply_async(
+            kwargs={"user_id": user.id, "media_types": target_media_types},
+            # Spread them out so a single beat tick doesn't become a burst.
+            countdown=index * 5,
+            priority=BACKGROUND_TASK_PRIORITY,
+        )
 
     return {
-        "profiles_refreshed": refreshed,
-        "users_count": len(user_ids) if user_ids else users.count(),
+        "scheduled": len(selected),
+        "users_count": len(selected),
         "media_types": target_media_types,
     }
 

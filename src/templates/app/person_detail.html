@@ -14,9 +14,9 @@
       <img
         src="{{ person.image|default:IMG_NONE }}"
         alt="{{ person.name }}"
-        class="w-full rounded-lg shadow-lg bg-[#2a2f35] object-cover">
+        class="w-full rounded-lg shadow-lg bg-[var(--color-surface)] object-cover">
 
-      <div class="mt-4 p-3 bg-[#2a2f35] rounded-lg">
+      <div class="mt-4 p-3 bg-[var(--color-surface)] rounded-lg">
         <a
           href="{{ history_filter_url }}"
           class="w-full inline-flex items-center justify-center rounded-md bg-amber-600 px-3 py-2 text-sm text-white transition-colors hover:bg-amber-700">
@@ -36,29 +36,29 @@
         {% endif %}
         {% if tracked_plays_count is not None %}
           {% if is_author %}
-            <span class="px-3 py-1 bg-[#2a2f35] text-gray-200 rounded-full text-sm">
+            <span class="px-3 py-1 bg-[var(--color-surface)] text-[var(--color-text-secondary)] rounded-full text-sm">
               {{ watched_book_count }} book{{ watched_book_count|pluralize }}
             </span>
           {% else %}
-            <span class="px-3 py-1 bg-[#2a2f35] text-gray-200 rounded-full text-sm">
+            <span class="px-3 py-1 bg-[var(--color-surface)] text-[var(--color-text-secondary)] rounded-full text-sm">
               {{ watched_movie_count }} movie{{ watched_movie_count|pluralize }}
             </span>
-            <span class="px-3 py-1 bg-[#2a2f35] text-gray-200 rounded-full text-sm">
+            <span class="px-3 py-1 bg-[var(--color-surface)] text-[var(--color-text-secondary)] rounded-full text-sm">
               {{ watched_show_count }} show{{ watched_show_count|pluralize }}
             </span>
           {% endif %}
-          <span class="px-3 py-1 bg-[#2a2f35] text-gray-200 rounded-full text-sm">
+          <span class="px-3 py-1 bg-[var(--color-surface)] text-[var(--color-text-secondary)] rounded-full text-sm">
             {{ tracked_plays_count }} tracked {% if is_author %}read{% else %}play{% endif %}{{ tracked_plays_count|pluralize }}
           </span>
           {% if tracked_hours_count %}
-            <span class="px-3 py-1 bg-[#2a2f35] text-gray-200 rounded-full text-sm">
+            <span class="px-3 py-1 bg-[var(--color-surface)] text-[var(--color-text-secondary)] rounded-full text-sm">
               {{ tracked_hours_count }}
             </span>
           {% endif %}
         {% endif %}
       </div>
 
-      <div class="bg-[#2a2f35] p-4 rounded-lg mb-6">
+      <div class="bg-[var(--color-surface)] p-4 rounded-lg mb-6">
         {% if person.biography %}
           <div
             x-data="{ isExpanded: false, isClamped: false, checkClamp() { const element = this.$refs.bioText; this.isClamped = element.scrollHeight > element.clientHeight; } }"
@@ -66,7 +66,7 @@
             <p
               x-ref="bioText"
               :class="isExpanded ? '' : 'line-clamp-5'"
-              class="text-gray-300 text-pretty">
+              class="text-[var(--color-text-secondary)] text-pretty">
               {{ person.biography|linebreaksbr|safe }}
             </p>
             <button
@@ -83,36 +83,36 @@
 
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {% if person.birth_date %}
-          <div class="bg-[#2a2f35] rounded-lg p-3">
-            <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Born</h3>
-            <p class="text-sm text-gray-200 mt-1">{{ person.birth_date|user_date_format:user }}</p>
+          <div class="bg-[var(--color-surface)] rounded-lg p-3">
+            <h3 class="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">Born</h3>
+            <p class="text-sm text-[var(--color-text-secondary)] mt-1">{{ person.birth_date|user_date_format:user }}</p>
           </div>
         {% endif %}
         {% if person.death_date %}
-          <div class="bg-[#2a2f35] rounded-lg p-3">
-            <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Died</h3>
-            <p class="text-sm text-gray-200 mt-1">{{ person.death_date|user_date_format:user }}</p>
+          <div class="bg-[var(--color-surface)] rounded-lg p-3">
+            <h3 class="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">Died</h3>
+            <p class="text-sm text-[var(--color-text-secondary)] mt-1">{{ person.death_date|user_date_format:user }}</p>
           </div>
         {% endif %}
         {% if person.place_of_birth %}
-          <div class="bg-[#2a2f35] rounded-lg p-3">
-            <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Place of Birth</h3>
-            <p class="text-sm text-gray-200 mt-1 line-clamp-2">{{ person.place_of_birth }}</p>
+          <div class="bg-[var(--color-surface)] rounded-lg p-3">
+            <h3 class="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">Place of Birth</h3>
+            <p class="text-sm text-[var(--color-text-secondary)] mt-1 line-clamp-2">{{ person.place_of_birth }}</p>
           </div>
         {% endif %}
-        <div class="bg-[#2a2f35] rounded-lg p-3">
-          <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Source</h3>
+        <div class="bg-[var(--color-surface)] rounded-lg p-3">
+          <h3 class="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">Source</h3>
           <p class="text-sm mt-1">
             {% if source_url %}
               <a
                 href="{{ source_url }}"
                 target="_blank"
                 rel="noopener noreferrer"
-                class="text-gray-200 hover:text-indigo-500 transition-colors duration-200">
+                class="text-[var(--color-text-secondary)] hover:text-indigo-500 transition-colors duration-200">
                 {{ source|source_readable }}
               </a>
             {% else %}
-              <span class="text-gray-200">{{ source|source_readable }}</span>
+              <span class="text-[var(--color-text-secondary)]">{{ source|source_readable }}</span>
             {% endif %}
           </p>
         </div>
@@ -122,17 +122,17 @@
 
   <div x-data="{
     mediaListUrl: '{{ person_detail_url }}',
-    sort: '{{ current_sort }}',
-    direction: '{{ current_direction }}',
+    sort: '{{ current_sort|escapejs }}',
+    direction: '{{ current_direction|escapejs }}',
     statuses: [],
-    rating: '{{ current_rating }}',
-    collection: '{{ current_collection }}',
+    rating: '{{ current_rating|escapejs }}',
+    collection: '{{ current_collection|escapejs }}',
     progress: 'all',
-    genre: '{{ current_genre }}',
-    impliedGenre: '{{ current_implied_genre }}',
-    year: '{{ current_year }}',
+    genre: '{{ current_genre|escapejs }}',
+    impliedGenre: '{{ current_implied_genre|escapejs }}',
+    year: '{{ current_year|escapejs }}',
     release: 'all',
-    sourceFilter: '{{ current_source }}',
+    sourceFilter: '{{ current_source|escapejs }}',
     language: '',
     country: '',
     platform: '',
@@ -143,7 +143,7 @@
     tagMode: 'or',
     layout: 'grid',
     search: '',
-    department: '{{ current_department }}',
+    department: '{{ current_department|escapejs }}',
     showLanguages: false,
     showCountries: false,
     showPlatforms: false,

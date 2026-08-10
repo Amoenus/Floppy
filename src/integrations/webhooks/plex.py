@@ -9,6 +9,7 @@ from app.log_safety import exception_summary, mapping_keys, presence_map, safe_u
 from app.models import MediaTypes, Sources
 from app.services import music_scrobble
 from integrations import plex as plex_api
+from integrations.imports.helpers import find_item_across_buckets
 
 from .base import BaseWebhookProcessor
 
@@ -216,18 +217,27 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
                             "Live playback resolved show ID via TVDB/IMDB",
                         )
 
-                # Fallback: title search then raw tmdb_id
+                # Fallback: title search. The raw tmdb_id is stripped before
+                # calling _find_tv_media_id so its "direct TMDB ID" branch
+                # can't short-circuit the title search with a possibly
+                # episode-level ID — see the final fallback note below.
                 if media_id is None:
                     series_title = self._extract_series_title(payload)
-                    resolved_media_id, _, _ = self._find_tv_media_id(
-                        ids,
-                        series_title=series_title,
-                        allow_title_fallback=True,
-                    )
-                    if resolved_media_id:
-                        media_id = str(resolved_media_id)
-            if media_id is None:
-                media_id = ids.get("tmdb_id")
+                    if series_title:
+                        alt_ids = dict(ids)
+                        alt_ids["tmdb_id"] = None
+                        resolved_media_id, _, _ = self._find_tv_media_id(
+                            alt_ids,
+                            series_title=series_title,
+                            allow_title_fallback=True,
+                        )
+                        if resolved_media_id:
+                            media_id = str(resolved_media_id)
+            # Deliberately no further fallback to the raw ids["tmdb_id"] here:
+            # for TV episodes it may be episode-level (a separate TMDB ID
+            # namespace from the show), which would 404 the details page.
+            # Leaving media_id as None degrades gracefully — the card links to
+            # home instead of a URL that 500s. See issue #547.
 
         live_playback.apply_plex_event(
             user_id=user.id,
@@ -324,25 +334,27 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
         if original_date:
             year = str(original_date).split("-")[0]
             for result in results:
-                # Use first_air_date for TV, release_date for movies
-                date_key = (
-                    "first_air_date"
-                    if media_type == MediaTypes.TV.value
-                    else "release_date"
-                )
-                result_date = result.get("details", {}).get(date_key) or ""
-                if str(result_date).startswith(year):
+                result_year = result.get("year")
+                if result_year and str(result_year) == year:
                     tmdb_id = result.get("media_id")
                     break
 
         if not tmdb_id and results:
-            tmdb_id = results[0].get("media_id")
+            # No year match (or no year in payload): only accept a result whose
+            # title actually agrees with Plex's title. Guessing results[0] here
+            # is how unrelated titles get matched (see #510).
+            normalized_search_title = self._normalize_series_title(search_title)
+            for result in results:
+                candidate_title = self._normalize_series_title(result.get("title"))
+                if candidate_title and candidate_title == normalized_search_title:
+                    tmdb_id = result.get("media_id")
+                    break
 
         if tmdb_id:
             ids["tmdb_id"] = str(tmdb_id)
             logger.info("Resolved plex:// GUID via title search")
         else:
-            logger.debug("Title search returned no Plex GUID match")
+            logger.debug("Title search returned no confident Plex GUID match")
 
         return ids
 
@@ -621,15 +633,21 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
                 )
                 return
 
-            tv_item, _ = app.models.Item.objects.get_or_create(
+            tv_item = find_item_across_buckets(
                 media_id=tmdb_id,
                 source=Sources.TMDB.value,
                 media_type=MediaTypes.TV.value,
-                defaults={
-                    "title": tv_metadata["title"],
-                    "image": tv_metadata["image"],
-                },
             )
+            if tv_item is None:
+                tv_item, _ = app.models.Item.objects.get_or_create(
+                    media_id=tmdb_id,
+                    source=Sources.TMDB.value,
+                    media_type=MediaTypes.TV.value,
+                    defaults={
+                        "title": tv_metadata["title"],
+                        "image": tv_metadata["image"],
+                    },
+                )
 
             # Only remove rating from existing instances
             tv_instance = app.models.TV.objects.filter(

@@ -1,6 +1,8 @@
 import fnmatch
 from unittest.mock import patch
 
+import fakeredis
+from django.conf import settings
 from django.test import SimpleTestCase, override_settings
 
 from app import celery_broker
@@ -49,6 +51,89 @@ class _FakeRedisClient:
 
     def pipeline(self):
         return _FakeRedisPipeline(self)
+
+
+class CeleryTaskPriorityTests(SimpleTestCase):
+    """Guard the Redis priority direction.
+
+    Kombu's Redis transport publishes priority N to the key "<queue>:N" (0 uses
+    the bare "<queue>") and the worker BRPOPs those keys in ascending order, so a
+    *lower* number is a *higher* priority -- the opposite of AMQP. Getting this
+    backwards silently strands interactive work at the tail of the queue.
+    """
+
+    def test_priority_constants_are_ordered_for_redis(self):
+        self.assertLess(
+            settings.CELERY_TASK_PRIORITY_INTERACTIVE,
+            settings.CELERY_TASK_PRIORITY_FOLLOWUP,
+        )
+        self.assertLess(
+            settings.CELERY_TASK_PRIORITY_FOLLOWUP,
+            settings.CELERY_TASK_DEFAULT_PRIORITY,
+        )
+        self.assertLess(
+            settings.CELERY_TASK_DEFAULT_PRIORITY,
+            settings.CELERY_TASK_PRIORITY_BACKGROUND,
+        )
+
+    def test_priority_constants_are_within_configured_steps(self):
+        steps = settings.CELERY_BROKER_TRANSPORT_OPTIONS["priority_steps"]
+        for name in (
+            "CELERY_TASK_PRIORITY_INTERACTIVE",
+            "CELERY_TASK_PRIORITY_FOLLOWUP",
+            "CELERY_TASK_DEFAULT_PRIORITY",
+            "CELERY_TASK_PRIORITY_BACKGROUND",
+        ):
+            with self.subTest(setting=name):
+                self.assertIn(getattr(settings, name), steps)
+
+
+class CeleryPriorityDrainOrderTests(SimpleTestCase):
+    """Prove the priority constants actually drain in the right order.
+
+    The tests above only check the constants are ordered relative to each
+    other; they can't catch a broker-level regression because
+    CELERY_TASK_ALWAYS_EAGER=True in tests bypasses the broker entirely
+    (7ab93ebe). Kombu's Redis transport stores a priority-N message under key
+    "<queue>:N" (bare "<queue>" for N=0, see PRIORITY_STEPS handling in
+    kombu.transport.redis) and drains queues with BRPOP in ascending order.
+    This performs real LPUSH/BRPOP calls against fakeredis using our actual
+    priority constants and that key scheme, so a future accidental flip of
+    the constants fails this test even though eager-mode functional tests
+    would not notice.
+    """
+
+    def test_interactive_priority_drains_before_background(self):
+        server = fakeredis.FakeServer()
+        client = fakeredis.FakeStrictRedis(server=server)
+
+        queue = "statistics-priority-test"
+
+        def priority_key(priority):
+            return queue if priority == 0 else f"{queue}:{priority}"
+
+        # Enqueue background first, interactive second - drain order must
+        # still put interactive first, proving priority (not insertion
+        # order) governs delivery.
+        client.lpush(
+            priority_key(settings.CELERY_TASK_PRIORITY_BACKGROUND),
+            "background",
+        )
+        client.lpush(
+            priority_key(settings.CELERY_TASK_PRIORITY_INTERACTIVE),
+            "interactive",
+        )
+
+        priority_steps = settings.CELERY_BROKER_TRANSPORT_OPTIONS[
+            "priority_steps"
+        ]
+        keys_by_ascending_priority = [priority_key(p) for p in priority_steps]
+
+        first = client.brpop(keys_by_ascending_priority, timeout=1)
+        second = client.brpop(keys_by_ascending_priority, timeout=1)
+
+        self.assertEqual(first[1], b"interactive")
+        self.assertEqual(second[1], b"background")
 
 
 class CeleryBrokerRepairTests(SimpleTestCase):

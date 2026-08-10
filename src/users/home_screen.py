@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import random
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -154,6 +155,7 @@ HOME_QUERY_DEFAULT_FILTERS = {
     "origin": "",
     "format": "",
     "author": "",
+    "provider": "",
     "tag": [],
     "tag_mode": "or",
 }
@@ -169,6 +171,7 @@ SUPPORTED_FILTERS_BY_MEDIA_TYPE = {
         "source",
         "language",
         "country",
+        "provider",
         "tag",
     },
     MediaTypes.SEASON.value: {
@@ -191,6 +194,7 @@ SUPPORTED_FILTERS_BY_MEDIA_TYPE = {
         "source",
         "language",
         "country",
+        "provider",
         "tag",
     },
     MediaTypes.ANIME.value: {
@@ -204,6 +208,7 @@ SUPPORTED_FILTERS_BY_MEDIA_TYPE = {
         "source",
         "language",
         "country",
+        "provider",
         "tag",
     },
     MediaTypes.MANGA.value: {
@@ -329,6 +334,8 @@ def resolve_home_row_direction(sort_by: str, direction: str | None = None) -> st
         return DirectionChoices.DESC
     if sort_by == HomeSortChoices.EPISODES_LEFT:
         return DirectionChoices.ASC
+    if sort_by == HomeSortChoices.RANDOM:
+        return DirectionChoices.DESC
     if sort_by == MediaSortChoices.NEXT_EPISODE_AIR_DATE:
         return DirectionChoices.DESC
     return BasicMedia.objects.resolve_direction(sort_by, None)
@@ -405,6 +412,7 @@ def get_allowed_sort_choices(media_type: str, row_type: str) -> list[dict]:
         )
 
     sort_choices = relabel_end_date_sort_choice(media_type, sort_choices)
+    sort_choices.append((HomeSortChoices.RANDOM, "Random"))
 
     deduped: list[dict] = []
     seen = set()
@@ -868,6 +876,15 @@ def build_filter_field_data(
             "label": "Author",
             "options": [{"value": "", "label": "Any"}, *filter_data.get("authors", [])],
             "visible": filter_data.get("show_authors", False),
+        },
+        {
+            "key": "provider",
+            "label": "Streaming Service",
+            "options": [
+                {"value": "", "label": "Any"},
+                *filter_data.get("providers", []),
+            ],
+            "visible": filter_data.get("show_providers", False),
         },
         {
             "key": "tag",
@@ -2011,6 +2028,10 @@ def sort_home_entries(
     entries: list[HomeRowEntry], sort_by: str, direction: str
 ) -> list[HomeRowEntry]:
     """Sort Home row wrappers with graceful handling for list rows lacking media."""
+    if sort_by == HomeSortChoices.RANDOM:
+        shuffled = list(entries)
+        random.shuffle(shuffled)
+        return shuffled
     media_entries = [entry.media for entry in entries if entry.media]
     if sort_by == HomeSortChoices.UPCOMING and media_entries:
         BasicMedia.objects._annotate_next_event(media_entries)
@@ -2445,6 +2466,7 @@ def _build_row_section(
         "url": home_row_destination_url(row, user),
         "summary": row_summary(row, user),
         "summary_inline": home_row_inline_summary(row, user),
+        "direction": row.direction,
         "items": section_entries,
         "total": len(entries),
         "loaded_count": loaded_count,

@@ -22,6 +22,7 @@ from app.history_cache_utils import (
     _normalize_logging_style,
     _resolve_genres,
     _resolve_music_genres,
+    expand_history_media_types,
 )
 from app.history_entry_builders import (
     _attach_entry_score,
@@ -55,7 +56,9 @@ from app.models import (
 logger = logging.getLogger(__name__)
 
 
-def build_history_day(user, day_key, logging_style_override=None):
+def build_history_day(
+    user, day_key, logging_style_override=None, media_types=None
+):
     """Build a single history day payload for a user."""
     if not day_key:
         return None
@@ -67,6 +70,13 @@ def build_history_day(user, day_key, logging_style_override=None):
         day_key = _day_key_for_date(day_date)
     if not day_date:
         return None
+    requested_media_types = expand_history_media_types(media_types)
+    include_episode = requested_media_types is None or "episode" in requested_media_types
+    include_movie = requested_media_types is None or "movie" in requested_media_types
+    include_music = requested_media_types is None or "music" in requested_media_types
+    include_podcast = requested_media_types is None or "podcast" in requested_media_types
+    include_game = requested_media_types is None or "game" in requested_media_types
+    include_boardgame = requested_media_types is None or "boardgame" in requested_media_types
 
     day_start = timezone.make_aware(
         datetime.combine(day_date, datetime.min.time()),
@@ -89,6 +99,8 @@ def build_history_day(user, day_key, logging_style_override=None):
             "related_season__related_tv__item",
         )
         .order_by("-end_date")
+        if include_episode
+        else Episode.objects.none()
     )
     episodes = list(episodes)
     episode_title_map = {}
@@ -150,6 +162,8 @@ def build_history_day(user, day_key, logging_style_override=None):
             models.Q(end_date__isnull=False) | models.Q(start_date__isnull=False),
         )
         .select_related("item")
+        if include_movie
+        else Movie.objects.none()
     )
 
     movie_play_counts = (
@@ -189,6 +203,8 @@ def build_history_day(user, day_key, logging_style_override=None):
         (MediaTypes.MANGA.value, Manga),
         (MediaTypes.ANIME.value, Anime),
     ):
+        if requested_media_types is not None and media_type_value not in requested_media_types:
+            continue
         records = (
             model.objects.filter(user=user)
             .filter(
@@ -229,14 +245,16 @@ def build_history_day(user, day_key, logging_style_override=None):
             entries.append(entry)
 
     # Music (HistoricalMusic for the day)
-    HistoricalMusic = apps.get_model("app", "HistoricalMusic")
-    music_history = list(
-        HistoricalMusic.objects.filter(
-            _music_history_user_q(user),
-            end_date__gte=day_start,
-            end_date__lt=day_end,
-        ).values("id", "end_date", "album_id", "track_id")
-    )
+    music_history = []
+    if include_music:
+        HistoricalMusic = apps.get_model("app", "HistoricalMusic")
+        music_history = list(
+            HistoricalMusic.objects.filter(
+                _music_history_user_q(user),
+                end_date__gte=day_start,
+                end_date__lt=day_end,
+            ).values("id", "end_date", "album_id", "track_id")
+        )
     if music_history:
         album_ids = {
             record["album_id"] for record in music_history if record["album_id"]
@@ -393,14 +411,16 @@ def build_history_day(user, day_key, logging_style_override=None):
             entries.append(entry)
 
     # Podcasts (HistoricalPodcast for the day)
-    HistoricalPodcast = apps.get_model("app", "HistoricalPodcast")
-    podcast_history_records = list(
-        HistoricalPodcast.objects.filter(
-            models.Q(history_user=user) | models.Q(history_user__isnull=True),
-            end_date__gte=day_start,
-            end_date__lt=day_end,
+    podcast_history_records = []
+    if include_podcast:
+        HistoricalPodcast = apps.get_model("app", "HistoricalPodcast")
+        podcast_history_records = list(
+            HistoricalPodcast.objects.filter(
+                models.Q(history_user=user) | models.Q(history_user__isnull=True),
+                end_date__gte=day_start,
+                end_date__lt=day_end,
+            )
         )
-    )
     if podcast_history_records:
         podcast_ids = list({record.id for record in podcast_history_records})
         podcasts_lookup = {
@@ -505,7 +525,7 @@ def build_history_day(user, day_key, logging_style_override=None):
                 )
             )
             .select_related("item")
-        )
+        ) if include_game else Game.objects.none()
         for game in games:
             activity_dt = game.end_date or game.start_date or game.created_at
             played_at_local = _localize_datetime(activity_dt)
@@ -562,7 +582,7 @@ def build_history_day(user, day_key, logging_style_override=None):
                 )
             )
             .select_related("item")
-        )
+        ) if include_boardgame else BoardGame.objects.none()
         for boardgame in boardgames:
             activity_dt = (
                 boardgame.end_date or boardgame.start_date or boardgame.created_at
@@ -607,7 +627,11 @@ def build_history_day(user, day_key, logging_style_override=None):
                 entry["genres"] = genres
             entries.append(entry)
     else:
-        games = Game.objects.filter(user=user).select_related("item")
+        games = (
+            Game.objects.filter(user=user).select_related("item")
+            if include_game
+            else Game.objects.none()
+        )
         for game in games:
             total_minutes = game.progress or 0
             if total_minutes <= 0:
@@ -661,7 +685,11 @@ def build_history_day(user, day_key, logging_style_override=None):
                 entry["genres"] = genres
             entries.append(entry)
 
-        boardgames = BoardGame.objects.filter(user=user).select_related("item")
+        boardgames = (
+            BoardGame.objects.filter(user=user).select_related("item")
+            if include_boardgame
+            else BoardGame.objects.none()
+        )
         for boardgame in boardgames:
             total_plays = boardgame.progress or 0
             if total_plays <= 0:
@@ -758,7 +786,9 @@ def _cache_history_day_payload(
     return day_payload
 
 
-def _build_and_cache_history_day(user, day_key, logging_style_override=None):
+def _build_and_cache_history_day(
+    user, day_key, logging_style_override=None, media_types=None
+):
     logging_style = _normalize_logging_style(logging_style_override, user)
     normalized_day_key = _day_key_from_value(day_key)
     if not normalized_day_key:
@@ -767,6 +797,7 @@ def _build_and_cache_history_day(user, day_key, logging_style_override=None):
         user,
         normalized_day_key,
         logging_style_override=logging_style,
+        media_types=media_types,
     )
     if day_payload is None:
         day_payload = _empty_history_day(_date_from_day_key(normalized_day_key))

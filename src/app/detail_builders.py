@@ -1016,9 +1016,12 @@ def _build_detail_person_rows(media_metadata, item=None):
         "recommendations"
     ) or []
     # enrich_items_with_user_data wraps each item as {"item": <dict>, "media": <model>}.
-    # Unwrap those so the card template receives the original metadata dicts.
+    # Normalize any unwrapped raw dicts (shell render, before enrichment runs) into
+    # the same shape so home_grid.html can read entry.item / entry.media uniformly.
     recommendations = [
-        r["item"] if (isinstance(r, dict) and "item" in r and "media" in r) else r
+        r
+        if (isinstance(r, dict) and "item" in r and "media" in r)
+        else {"item": r, "media": None}
         for r in raw_recommendations
     ]
 

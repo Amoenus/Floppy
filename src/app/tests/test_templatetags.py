@@ -148,6 +148,10 @@ class AppTagsTests(TestCase):
 
             self.assertEqual(app_tags.media_type_readable_plural(media_type), expected)
 
+    def test_media_status_readable_preserves_unknown_provider_status(self):
+        """Provider metadata statuses must not break tracking-status rendering."""
+        self.assertEqual(app_tags.media_status_readable("Released"), "Released")
+
     def test_default_source(self):
         """Test the default_source filter."""
         # Test all media types from the MediaTypes class
@@ -444,6 +448,24 @@ class AppTagsTests(TestCase):
             ),
             content,
         )
+
+    def test_genres_cell_falls_back_to_plain_text_for_blank_media_type(self):
+        """Genres cell shouldn't crash reversing 'medialist' for a blank media_type."""
+        item = Item(
+            media_id="blank-type-1",
+            source=Sources.TMDB.value,
+            media_type="",
+            title="Legacy Item",
+            genres=["Drama"],
+        )
+
+        content = render_to_string(
+            "app/components/cells/media_genres_cell.html",
+            {"media": SimpleNamespace(item=item)},
+        )
+
+        self.assertIn("Drama", content)
+        self.assertNotIn("<a href", content)
 
     def test_progress_changer_uses_episode_label_for_tv_and_season(self):
         """Quick progress controls should use episode labels for TV-derived progress."""
@@ -759,6 +781,17 @@ class AppTagsTests(TestCase):
         )
         self.assertEqual(app_tags.component_id("card", candidate_like), "card-tv-1668")
 
+        # Podcast media_ids contain ":" (e.g. "itunes:12345"), which is invalid
+        # inside a CSS id selector used by hx-target="#...". It must be
+        # sanitized so htmx doesn't throw a querySelectorAll SyntaxError (#502).
+        podcast_like = SimpleNamespace(
+            media_type=MediaTypes.PODCAST.value,
+            media_id="itunes:1247343210",
+        )
+        podcast_id = app_tags.component_id("track", podcast_like, 4)
+        self.assertNotIn(":", podcast_id)
+        self.assertEqual(podcast_id, "track-podcast-itunes-1247343210-4")
+
     def test_media_view_url(self):
         """Test the media_view_url tag."""
         # Test with object for TV
@@ -1012,3 +1045,443 @@ class NextEpisodeUrlTests(TestCase):
                 kwargs={"media_id": "51553", "title": "witch-hat-atelier"},
             ),
         )
+
+    def _create_tv_with_season_stuck_planning(
+        self,
+        media_id="90210",
+        season_number=1,
+        watched_episodes=5,
+    ):
+        """Return a TV show whose tracked season has real progress but a
+        stale PLANNING status (as left behind by a failed metadata fetch
+        during Episode.save, e.g. a bulk import — see issue #517).
+        """
+        from app.models import TV, Episode, Season, Status
+        from app.providers.services import ProviderAPIError
+
+        tv_item = Item.objects.create(
+            media_id=media_id,
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Stuck Planning TV",
+            image="http://example.com/tv.jpg",
+        )
+        tv = TV.objects.create(
+            item=tv_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        season_item = Item.objects.create(
+            media_id=media_id,
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Stuck Planning TV",
+            image=f"http://example.com/tv-s{season_number}.jpg",
+            season_number=season_number,
+        )
+        season = Season.objects.create(
+            item=season_item,
+            user=self.user,
+            related_tv=tv,
+            status=Status.PLANNING.value,
+        )
+        from events.models import Event
+
+        for episode_number in range(1, watched_episodes + 2):
+            Event.objects.create(
+                item=season_item,
+                content_number=episode_number,
+                datetime=timezone.now(),
+            )
+        for episode_number in range(1, watched_episodes + 1):
+            episode_item = Item.objects.create(
+                media_id=media_id,
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.EPISODE.value,
+                season_number=season_number,
+                episode_number=episode_number,
+                title=f"Episode {episode_number}",
+                image="",
+            )
+            # Episode.save() tries a provider metadata fetch to sync the
+            # season's status; force it to fail (as it does in production
+            # when the metadata call errors during a bulk import), leaving
+            # the season's raw status untouched at PLANNING despite this
+            # real watch progress.
+            with patch(
+                "app.models.tv.providers.services.get_media_metadata",
+                side_effect=ProviderAPIError("tmdb", Exception("boom")),
+            ):
+                Episode.objects.create(
+                    item=episode_item,
+                    related_season=season,
+                    end_date=timezone.now(),
+                )
+        season.refresh_from_db()
+        self.assertEqual(season.status, Status.PLANNING.value)
+        return tv_item, tv, season_item
+
+    def test_tv_show_uses_derived_status_for_only_season_stuck_planning(self):
+        """A single season with real progress but stale PLANNING status still
+        routes to its own next episode, not the untracked-season fallback.
+        """
+        tv_item, tv, season_item = self._create_tv_with_season_stuck_planning(
+            season_number=1,
+            watched_episodes=5,
+        )
+
+        url = app_tags.next_episode_url(tv_item, tv)
+
+        self.assertEqual(
+            url,
+            reverse(
+                "episode_details",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_id": season_item.media_id,
+                    "title": "stuck-planning-tv",
+                    "season_number": 1,
+                    "episode_number": 6,
+                },
+            ),
+        )
+
+    def test_tv_show_does_not_skip_to_next_season_when_current_stuck_planning(self):
+        """A completed earlier season shouldn't cause the button to skip past
+        a later, still-in-progress season whose status is stuck at PLANNING.
+        """
+        from app.models import Episode, Season, Status
+        from app.providers.services import ProviderAPIError
+
+        tv_item, tv = self._create_tv_with_completed_season(media_id="90211")
+        season_item = Item.objects.create(
+            media_id="90211",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Untracked Next Season TV",
+            image="http://example.com/tv-s2.jpg",
+            season_number=2,
+        )
+        season = Season.objects.create(
+            item=season_item,
+            user=self.user,
+            related_tv=tv,
+            status=Status.PLANNING.value,
+        )
+        from events.models import Event
+
+        for episode_number in range(1, 5):
+            Event.objects.create(
+                item=season_item,
+                content_number=episode_number,
+                datetime=timezone.now(),
+            )
+        for episode_number in (1, 2, 3):
+            episode_item = Item.objects.create(
+                media_id="90211",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.EPISODE.value,
+                season_number=2,
+                episode_number=episode_number,
+                title=f"Episode {episode_number}",
+                image="",
+            )
+            with patch(
+                "app.models.tv.providers.services.get_media_metadata",
+                side_effect=ProviderAPIError("tmdb", Exception("boom")),
+            ):
+                Episode.objects.create(
+                    item=episode_item,
+                    related_season=season,
+                    end_date=timezone.now(),
+                )
+        season.refresh_from_db()
+        self.assertEqual(season.status, Status.PLANNING.value)
+
+        url = app_tags.next_episode_url(tv_item, tv)
+
+        self.assertEqual(
+            url,
+            reverse(
+                "episode_details",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_id": "90211",
+                    "title": "untracked-next-season-tv",
+                    "season_number": 2,
+                    "episode_number": 4,
+                },
+            ),
+        )
+
+    def test_tv_show_uses_next_tracked_season_after_completed_season(self):
+        """A completed season must not produce a nonexistent trailing episode."""
+        from app.models import Episode, Season, Status
+        from app.providers.services import ProviderAPIError
+        from events.models import Event
+
+        tv_item, tv = self._create_tv_with_completed_season(media_id="202851")
+        season_item = Item.objects.create(
+            media_id="202851",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Big Boys",
+            image="http://example.com/tv-s2.jpg",
+            season_number=2,
+        )
+        season = Season.objects.create(
+            item=season_item,
+            user=self.user,
+            related_tv=tv,
+            status=Status.PLANNING.value,
+        )
+        for episode_number in (1, 2):
+            Event.objects.create(
+                item=season_item,
+                content_number=episode_number,
+                datetime=timezone.now(),
+            )
+        episode_item = Item.objects.create(
+            media_id="202851",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=2,
+            episode_number=1,
+            title="Big Boys",
+            image="",
+        )
+        with patch(
+            "app.models.tv.providers.services.get_media_metadata",
+            side_effect=ProviderAPIError("tmdb", Exception("boom")),
+        ):
+            Episode.objects.create(
+                item=episode_item,
+                related_season=season,
+                end_date=timezone.now(),
+            )
+
+        url = app_tags.next_episode_url(tv_item, tv)
+
+        self.assertEqual(
+            url,
+            reverse(
+                "episode_details",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_id": "202851",
+                    "title": "big-boys",
+                    "season_number": 2,
+                    "episode_number": 2,
+                },
+            ),
+        )
+
+    def test_tv_show_starts_next_planned_season_after_completed_season(self):
+        """Deleting the first play of a tracked next season still shows S1E1."""
+        from app.models import Episode, Season, Status
+        from app.providers.services import ProviderAPIError
+        from events.models import Event
+
+        tv_item, tv = self._create_tv_with_completed_season(media_id="202851")
+        season_item = Item.objects.create(
+            media_id="202851",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Big Boys",
+            image="http://example.com/tv-s2.jpg",
+            season_number=2,
+        )
+        season = Season.objects.create(
+            item=season_item,
+            user=self.user,
+            related_tv=tv,
+            status=Status.PLANNING.value,
+        )
+        for episode_number in (1, 2):
+            Event.objects.create(
+                item=season_item,
+                content_number=episode_number,
+                datetime=timezone.now(),
+            )
+        episode_item = Item.objects.create(
+            media_id="202851",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=2,
+            episode_number=1,
+            title="Big Boys",
+            image="",
+        )
+        with patch(
+            "app.models.tv.providers.services.get_media_metadata",
+            side_effect=ProviderAPIError("tmdb", Exception("boom")),
+        ):
+            Episode.objects.create(
+                item=episode_item,
+                related_season=season,
+                end_date=timezone.now(),
+            )
+        Episode.objects.filter(item=episode_item, related_season=season).delete()
+
+        self.assertEqual(
+            app_tags.next_episode_url(tv_item, tv),
+            reverse(
+                "episode_details",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_id": "202851",
+                    "title": "big-boys",
+                    "season_number": 2,
+                    "episode_number": 1,
+                },
+            ),
+        )
+
+    def test_tv_show_does_not_link_past_last_known_episode(self):
+        """A fully watched season without a next event has no Next ep link."""
+        from app.models import TV, Season, Status
+        from events.models import Event
+
+        tv_item, tv, _season_item = self._create_tv_with_season_stuck_planning(
+            media_id="2382",
+            watched_episodes=5,
+        )
+
+        season = Season.objects.get(related_tv=tv)
+        Season.objects.filter(pk=season.pk).update(status=Status.COMPLETED.value)
+        TV.objects.filter(pk=tv.pk).update(status=Status.COMPLETED.value)
+        Event.objects.filter(item=season.item, content_number=6).delete()
+        tv.refresh_from_db()
+        season.refresh_from_db()
+
+        self.assertEqual(app_tags.next_episode_url(tv_item, tv), "")
+
+    def test_tv_show_uses_later_episode_when_only_later_season_is_tracked(self):
+        """The resolver stays on a tracked later season instead of season one."""
+        tv_item, tv, _season_item = self._create_tv_with_season_stuck_planning(
+            media_id="2352",
+            season_number=3,
+            watched_episodes=17,
+        )
+
+        url = app_tags.next_episode_url(tv_item, tv)
+
+        self.assertEqual(
+            url,
+            reverse(
+                "episode_details",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_id": "2352",
+                    "title": "stuck-planning-tv",
+                    "season_number": 3,
+                    "episode_number": 18,
+                },
+            ),
+        )
+
+    def _create_issue_567_tv(self, media_id, title, seasons):
+        """Create the watched/released episode shape from issue #567."""
+        from app.models import TV, Episode, Season, Status
+        from app.providers.services import ProviderAPIError
+        from events.models import Event
+
+        tv_item = Item.objects.create(
+            media_id=media_id,
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title=title,
+            image="",
+        )
+        tv = TV.objects.create(
+            item=tv_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+
+        for season_number, (watched, available) in seasons.items():
+            season_item = Item.objects.create(
+                media_id=media_id,
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.SEASON.value,
+                title=title,
+                image="",
+                season_number=season_number,
+            )
+            season = Season.objects.create(
+                item=season_item,
+                user=self.user,
+                related_tv=tv,
+                status=Status.PLANNING.value,
+            )
+            for episode_number in range(1, available + 1):
+                Event.objects.create(
+                    item=season_item,
+                    content_number=episode_number,
+                    datetime=timezone.now(),
+                )
+            for episode_number in range(1, watched + 1):
+                episode_item = Item.objects.create(
+                    media_id=media_id,
+                    source=Sources.TMDB.value,
+                    media_type=MediaTypes.EPISODE.value,
+                    season_number=season_number,
+                    episode_number=episode_number,
+                    title=title,
+                    image="",
+                )
+                with patch(
+                    "app.models.tv.providers.services.get_media_metadata",
+                    side_effect=ProviderAPIError("tmdb", Exception("boom")),
+                ):
+                    Episode.objects.create(
+                        item=episode_item,
+                        related_season=season,
+                        end_date=timezone.now(),
+                    )
+            if watched == available:
+                Season.objects.filter(pk=season.pk).update(
+                    status=Status.COMPLETED.value,
+                )
+
+        return tv_item, tv
+
+    def test_issue_567_examples_resolve_to_expected_next_episode(self):
+        """All six reported examples resolve from the same episode contract."""
+        cases = (
+            ("202851", "Big Boys", {1: (6, 6), 2: (1, 2)}, (2, 2)),
+            ("2352", "The Nanny", {3: (17, 18)}, (3, 18)),
+            ("90282", "The Morning Show", {1: (10, 10), 2: (3, 4)}, (2, 4)),
+            ("69050", "Riverdale", {1: (3, 4)}, (1, 4)),
+            ("2382", "Freaks and Geeks", {1: (5, 5)}, None),
+            (
+                "18202",
+                "Cougar Town",
+                {1: (5, 5), 2: (5, 5), 3: (5, 5), 4: (5, 5), 5: (5, 5), 6: (1, 2)},
+                (6, 2),
+            ),
+        )
+
+        for media_id, title, seasons, expected in cases:
+            with self.subTest(title=title):
+                tv_item, tv = self._create_issue_567_tv(media_id, title, seasons)
+                url = app_tags.next_episode_url(tv_item, tv)
+
+                if expected is None:
+                    self.assertEqual(url, "")
+                    continue
+
+                season_number, episode_number = expected
+                self.assertEqual(
+                    url,
+                    reverse(
+                        "episode_details",
+                        kwargs={
+                            "source": Sources.TMDB.value,
+                            "media_id": media_id,
+                            "title": title.lower().replace(" ", "-"),
+                            "season_number": season_number,
+                            "episode_number": episode_number,
+                        },
+                    ),
+                )

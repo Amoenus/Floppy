@@ -158,6 +158,17 @@ def date_format_display(format_value):
 
 
 @register.filter
+def theme_display(theme_value):
+    """Display the human-readable name for theme values."""
+    theme_display_map = {
+        "system": "System default",
+        "dark": "Dark",
+        "light": "Light",
+    }
+    return theme_display_map.get(theme_value, theme_value)
+
+
+@register.filter
 def time_format_display(format_value):
     """Display the human-readable name for time format values."""
     format_display_map = {
@@ -168,6 +179,15 @@ def time_format_display(format_value):
         "hh_mm_ss": "24-hour with seconds (HH:mm:ss) — 18:45:00",
     }
     return format_display_map.get(format_value, format_value)
+
+
+@register.filter
+def user_uses_12_hour_format(user):
+    """Return whether the user's time format preference is 12-hour."""
+    return getattr(user, "time_format", None) in (
+        TimeFormatChoices.H_MM_AMPM,
+        TimeFormatChoices.HH_MM_AMPM,
+    )
 
 
 @register.filter

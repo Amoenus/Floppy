@@ -156,6 +156,7 @@ urlpatterns = [
         views.emby_webhook,
         name="emby_webhook",
     ),
+    # kept: URL path/name unchanged — renaming breaks already-configured Seerr/Jellyseerr webhook URLs
     path(
         "webhook/jellyseerr/<str:token>",
         views.jellyseerr_webhook,

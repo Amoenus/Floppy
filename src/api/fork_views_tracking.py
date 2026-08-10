@@ -13,6 +13,7 @@ from rest_framework.response import Response
 
 from app import fork_services_history, history_cache_reader
 from app.fork_services_episode import drop_episode, resolve_or_create_season
+from app.history_cache_utils import normalize_history_media_type_tokens
 from app.models import Episode, ItemTag, MediaTypes, Season, Tag
 from app.tasks import bulk_episode_plays_task
 
@@ -360,7 +361,6 @@ _HISTORY_INT_FILTERS = (
 _HISTORY_STR_FILTERS = (
     "genre",
     "implied_genre",
-    "media_type",
     "media_id",
     "source",
     "person_source",
@@ -399,6 +399,20 @@ class HistoryView(drf_views.APIView):
             if value:
                 filters[param] = value
 
+        raw_media_types = request.GET.getlist("types")
+        raw_media_types.extend(request.GET.getlist("media_type"))
+        if raw_media_types:
+            try:
+                normalized_media_types = normalize_history_media_type_tokens(
+                    raw_media_types,
+                )
+            except ValueError as exc:
+                return Response(
+                    {"detail": str(exc)},
+                    status=HTTP.BAD_REQUEST,
+                )
+            filters["media_type"] = ",".join(sorted(normalized_media_types))
+
         logging_style = request.GET.get("logging_style")
         if logging_style not in (None, "", "sessions", "repeats"):
             return Response(
@@ -412,16 +426,37 @@ class HistoryView(drf_views.APIView):
             if value:
                 date_filters[param] = value
 
-        history_days = history_cache_reader.get_history_days(
-            request.user,
-            filters=filters or None,
-            date_filters=date_filters or None,
-            logging_style_override=logging_style or None,
+        type_only_request = not date_filters and set(filters).issubset(
+            {"media_type"},
         )
-        return Response(
-            paginate_data(request, history_days, limit, offset),
-            status=HTTP.OK,
-        )
+        if type_only_request:
+            history_days, total_days = history_cache_reader.get_cached_history_window(
+                request.user,
+                limit=limit,
+                offset=offset,
+                filters=filters or None,
+                logging_style_override=logging_style or None,
+            )
+        else:
+            history_days = history_cache_reader.get_history_days(
+                request.user,
+                filters=filters or None,
+                date_filters=date_filters or None,
+                logging_style_override=logging_style or None,
+            )
+            total_days = None
+        if type_only_request:
+            paginated = paginate_data(
+                request,
+                [],
+                limit,
+                offset,
+                total=total_days,
+            )
+            paginated["results"] = history_days
+        else:
+            paginated = paginate_data(request, history_days, limit, offset)
+        return Response(paginated, status=HTTP.OK)
 
 
 # /api/v1/history/[media_type]/[history_id]/

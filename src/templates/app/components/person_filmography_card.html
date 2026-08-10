@@ -1,13 +1,13 @@
 {% load app_tags %}
 
-<div class="media-card bg-[#2a2f35] rounded-lg overflow-hidden shadow-lg relative hover:ring-2 hover:ring-indigo-500 transition-all search-result-card group{% if user.media_card_subtitle_display == 'always' %} media-card-subtitle-always{% endif %}">
+<div class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative hover:ring-2 hover:ring-indigo-500 transition-all search-result-card group{% if user.media_card_subtitle_display == 'always' %} media-card-subtitle-always{% endif %}">
   <div class="relative">
     {% if show_watched_runtime_chip and entry.watched_person_runtime_display %}
       <span class="absolute top-2 right-2 z-10 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md shadow-md">
         {{ entry.watched_person_runtime_display }}
       </span>
     {% elif entry.vote_average %}
-      <span class="absolute top-2 right-2 z-10 bg-gray-900/90 text-gray-200 text-xs px-1.5 py-0.5 rounded shadow-md font-medium tabular-nums">
+      <span class="absolute top-2 right-2 z-10 bg-gray-900/90 text-gray-300 text-xs px-1.5 py-0.5 rounded shadow-md font-medium tabular-nums">
         ★ {{ entry.vote_average|floatformat:1 }}
       </span>
     {% endif %}
@@ -18,7 +18,7 @@
     {% endif %}
         <img
           alt="{{ entry.title }}"
-          class="media-card-poster lazyload w-full aspect-[2/3] aspect-2/3 bg-[#3e454d] {% if entry.image and entry.image != IMG_NONE %}object-cover{% endif %}"
+          class="media-card-poster lazyload w-full aspect-[2/3] aspect-2/3 bg-[var(--color-surface-alt)] {% if entry.image and entry.image != IMG_NONE %}object-cover{% endif %}"
           data-src="{{ entry.image|default:IMG_NONE }}"
           src="{{ IMG_NONE }}">
       </a>
@@ -28,20 +28,20 @@
       {% if entry.tracked_item %}
         <a
           href="{{ entry.tracked_item|media_url }}"
-          class="media-card-title text-sm font-semibold text-white hover:text-indigo-400 transition duration-300 line-clamp-1 min-w-0 block"
+          class="media-card-title text-sm font-semibold text-[var(--color-text)] hover:text-indigo-400 transition duration-300 line-clamp-1 min-w-0 block"
           title="{{ entry.title }}">
           {{ entry.title }}
         </a>
       {% else %}
         <a
           href="{% url 'media_details' source=entry.source|default:source media_type=entry.media_type media_id=entry.media_id title=entry.title|slug %}"
-          class="media-card-title text-sm font-semibold text-white hover:text-indigo-400 transition duration-300 line-clamp-1 min-w-0 block"
+          class="media-card-title text-sm font-semibold text-[var(--color-text)] hover:text-indigo-400 transition duration-300 line-clamp-1 min-w-0 block"
           title="{{ entry.title }}">
           {{ entry.title }}
         </a>
       {% endif %}
     </div>
-    <p class="media-card-year text-xs text-gray-400 mt-0.5 line-clamp-1">
+    <p class="media-card-year text-xs text-[var(--color-text-muted)] mt-0.5 line-clamp-1">
       {% if entry.year %}{{ entry.year }}{% else %}Unknown Year{% endif %}
       {% if entry.media_type %} • {{ entry.media_type|media_type_readable }}{% endif %}
     </p>

@@ -175,6 +175,9 @@ def _render_music_tracker_modal(
     from app import views as view_barrel
 
     return_url = request.GET.get("return_url") or request.POST.get("return_url", "")
+    home_row_id = (
+        request.GET.get("home_row_id") or request.POST.get("home_row_id") or ""
+    )
     track_form_id = f"track-form-{uuid4().hex}"
     field_groups = view_barrel._track_modal_field_groups(
         form,
@@ -218,13 +221,18 @@ def _render_music_tracker_modal(
             "metadata_fields": [],
             "general_hidden_fields": field_groups["hidden_fields"],
             "general_fields": field_groups["general_fields"],
-            "general_submit_formaction": f"{save_url}?next={return_url}",
+            "general_submit_formaction": (
+                f"{save_url}?next={return_url}"
+                + (f"&home_row_id={home_row_id}" if home_row_id else "")
+            ),
             "general_delete_formaction": f"{delete_url}?next={return_url}",
             "general_existing_instance": tracker,
             "image_field": None,
             "image_save_item_id": None,
-            "release_date_shortcut": release_date_shortcut,
-            "release_date_runtime_minutes": "",
+            "date_suggestion": view_barrel._track_modal_date_suggestion(
+                "Release Date",
+                release_date_shortcut,
+            ),
             "track_form_id": track_form_id,
             "initial_active_tab": initial_active_tab,
             "episode_plays_tab_available": episode_plays_tab_available,
@@ -309,7 +317,7 @@ def _build_artist_relations(user, artist):
     missing_relation_image_count = sum(
         1
         for related_artist in related_artists
-        if not related_artist.image or related_artist.image == settings.IMG_NONE
+        if not related_artist.image
     )
 
     return band_members, member_of_bands, missing_relation_image_count
@@ -322,7 +330,7 @@ def _queue_artist_relation_image_prefetch(artist, band_members, member_of_bands)
     missing_ids = [
         relation["artist"].id
         for relation in band_members + member_of_bands
-        if not relation["artist"].image or relation["artist"].image == settings.IMG_NONE
+        if not relation["artist"].image
     ]
     if not missing_ids:
         return
@@ -899,6 +907,7 @@ def _render_music_album_details(request, artist, album):
         request.user,
         fallback_genres=album.genres,
         fallback_implied_genres=album.implied_genres,
+        genre_list_media_type=MediaTypes.MUSIC.value,
     )
 
     context = {
@@ -1375,8 +1384,12 @@ def artist_save(request):
         request,
         fallback_media_type=MediaTypes.MUSIC.value,
     )
+    home_row_id = request.GET.get("home_row_id") or request.POST.get(
+        "home_row_id", ""
+    )
 
     tracker = ArtistTracker.objects.filter(user=request.user, artist=artist).first()
+    old_status = getattr(tracker, "status", None)
 
     form = ArtistTrackerForm(request.POST, instance=tracker, user=request.user)
     if form.is_valid():
@@ -1385,6 +1398,20 @@ def artist_save(request):
         tracker.artist = artist
         tracker.save()
         messages.success(request, f"Saved {artist.name}")
+
+        if request.headers.get("HX-Request"):
+            htmx_trigger = {
+                "closeModal": {},
+                "showToast": {
+                    "message": f"Saved {artist.name}.",
+                    "type": "success",
+                },
+            }
+            if home_row_id and old_status != tracker.status:
+                htmx_trigger["refreshHomeRow"] = {"rowId": int(home_row_id)}
+            response = HttpResponse(status=204)
+            response["HX-Trigger"] = json.dumps(htmx_trigger)
+            return response
     else:
         messages.error(request, f"Error saving {artist.name}: {form.errors}")
 

@@ -12,8 +12,8 @@
        class="space-y-6">
     <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
       <div>
-        <h1 class="text-3xl font-bold text-white">Discover</h1>
-        <p class="mt-1 text-sm text-gray-400">[UNDER CONSTRUCTION] Recommendations powered by global trends and your local activity.</p>
+        <h1 class="text-3xl font-bold text-[var(--color-text)]">Discover</h1>
+        <p class="mt-1 text-sm text-[var(--color-text-muted)]">[UNDER CONSTRUCTION] Recommendations powered by global trends and your local activity.</p>
       </div>
       <div x-cloak x-show="!isHiddenView()" class="flex items-center gap-2">
         <button type="button"
@@ -23,7 +23,7 @@
         <button type="button"
                 @click="refreshRows()"
                 :disabled="refreshing"
-                class="inline-flex items-center justify-center rounded-md bg-[#2a2f35] p-2 text-gray-400 transition-colors hover:bg-[#39404b] hover:text-white disabled:opacity-50 disabled:cursor-not-allowed border border-gray-700 cursor-pointer"
+                class="inline-flex items-center justify-center rounded-md bg-[var(--color-surface)] p-2 text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)] disabled:opacity-50 disabled:cursor-not-allowed border border-gray-700 cursor-pointer"
                 title="Refresh recommendations">
           <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" :class="{'animate-spin': refreshing}">
             <path d="M21.5 2v6h-6"></path>
@@ -42,7 +42,7 @@
                 class="rounded-full border px-3 py-1.5 text-sm transition-colors cursor-pointer"
                 :class="selectedMedia === '{{ option.value }}'
                   ? 'border-indigo-500 bg-indigo-600 text-white'
-                  : 'border-gray-700 bg-[#2a2f35] text-gray-300 hover:border-gray-500 hover:text-white'">
+                  : 'border-gray-700 bg-[var(--color-surface)] text-gray-300 hover:border-gray-500 hover:text-white'">
           {{ option.label }}
         </button>
       {% endfor %}
@@ -64,7 +64,7 @@
         <span x-text="refreshStatusMessage">Recommendations refreshed.</span>
         <button type="button"
                 @click="dismissRefreshStatus()"
-                class="text-emerald-100/80 transition-colors hover:text-white cursor-pointer">
+                class="text-emerald-100/80 transition-colors hover:text-[var(--color-text)] cursor-pointer">
           {% include "app/icons/x.svg" with classes="h-4 w-4" %}
         </button>
       </div>
@@ -75,7 +75,7 @@
          x-transition
          class="fixed top-24 right-0 left-0 {% block messages_sidebar_offset %}lg:left-64{% endblock messages_sidebar_offset %} z-50 flex justify-center pointer-events-none mb-4">
       <div class="w-full max-w-xl px-4 pointer-events-auto">
-        <div class="flex items-center gap-2 rounded-md border px-3 py-2 shadow-lg text-white toast-info"
+        <div class="flex items-center gap-2 rounded-md border px-3 py-2 shadow-lg text-[var(--color-text)] toast-info"
              x-init="$watch('toastVisible', v => { if (v) { $el.classList.remove('opacity-100','transform-none'); $el.classList.add('opacity-0','translate-y-[-1rem]'); setTimeout(() => $el.classList.add('opacity-100','transform-none'), 10); } })"
              :class="{ 'transition-all duration-300 ease-out': true }">
           {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-indigo-300 shrink-0" %}

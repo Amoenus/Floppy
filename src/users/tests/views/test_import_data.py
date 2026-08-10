@@ -98,7 +98,7 @@ class ImportDataViewTests(TestCase):
         )
         self.assertContains(
             response,
-            '<label class="block text-sm text-gray-300 mb-2">Profile</label>',
+            '<label class="block text-sm text-[var(--color-text-secondary)] mb-2">Profile</label>',
             html=False,
         )
         self.assertContains(

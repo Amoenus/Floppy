@@ -1,15 +1,24 @@
 """Cache-key constants, key-derivation utilities, and low-level helpers for the History cache."""
 
 import logging
+import sys
 from datetime import datetime, timedelta
 
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
-from app.models import Music
+from app.models import MediaTypes, Music
 
 logger = logging.getLogger(__name__)
+
+
+class UnsupportedHistoryMediaTypeError(ValueError):
+    """Raised when a history API media-type filter is unknown."""
+
+    def __init__(self, token):
+        """Build an error containing the rejected token."""
+        super().__init__(f"Unsupported history media type: {token}")
 
 
 # ── Constants ────────────────────────────────────────────────────────────────
@@ -60,6 +69,61 @@ HISTORY_COVERAGE_REPAIR_LOCK_TTL = getattr(
 DAY_KEY_LENGTH = 8  # length of a YYYYMMDD day key string
 
 
+_HISTORY_MEDIA_TYPE_ALIASES = {
+    "show": MediaTypes.TV.value,
+    "shows": MediaTypes.TV.value,
+    "tvs": MediaTypes.TV.value,
+    "episodes": MediaTypes.EPISODE.value,
+    "movies": MediaTypes.MOVIE.value,
+    "animes": MediaTypes.ANIME.value,
+    "mangas": MediaTypes.MANGA.value,
+    "games": MediaTypes.GAME.value,
+    "books": MediaTypes.BOOK.value,
+    "comics": MediaTypes.COMIC.value,
+    "boardgames": MediaTypes.BOARDGAME.value,
+    "board_games": MediaTypes.BOARDGAME.value,
+    "musics": MediaTypes.MUSIC.value,
+    "podcasts": MediaTypes.PODCAST.value,
+}
+
+
+def normalize_history_media_type_tokens(values):
+    """Normalize history media-type values without expanding TV aliases."""
+    if values is None:
+        return None
+    if isinstance(values, str):
+        values = [values]
+
+    normalized = set()
+    for value in values:
+        for raw_token in str(value or "").split(","):
+            token = raw_token.strip().lower()
+            if not token:
+                continue
+            canonical = _HISTORY_MEDIA_TYPE_ALIASES.get(token, token)
+            if canonical not in {media_type.value for media_type in MediaTypes}:
+                raise UnsupportedHistoryMediaTypeError(token)
+            normalized.add(canonical)
+    return normalized
+
+
+def expand_history_media_types(values):
+    """Return the concrete history entry types represented by a filter."""
+    normalized = normalize_history_media_type_tokens(values)
+    if normalized is None:
+        return None
+    expanded = set(normalized)
+    if MediaTypes.TV.value in normalized:
+        expanded.update(
+            {
+                MediaTypes.TV.value,
+                MediaTypes.SEASON.value,
+                MediaTypes.EPISODE.value,
+            },
+        )
+    return expanded
+
+
 # ── Query helpers ─────────────────────────────────────────────────────────────
 
 
@@ -76,6 +140,17 @@ def _music_history_user_q(user):
 
 def _cache_key(user_id: int, logging_style: str) -> str:
     return f"{HISTORY_CACHE_PREFIX}_{user_id}_{logging_style or 'repeats'}"
+
+
+def _typed_history_index_key(user_id: int, logging_style: str, media_types) -> str:
+    """Return a cache key for an index narrowed to concrete media types."""
+    signature = ",".join(sorted(media_types))
+    return f"{_cache_key(user_id, logging_style)}_types_{signature}"
+
+
+def _typed_history_index_registry_key(user_id: int, logging_style: str) -> str:
+    """Return the registry key used to invalidate typed history indexes."""
+    return f"{_cache_key(user_id, logging_style)}_typed_registry"
 
 
 def _refresh_lock_key(user_id: int, logging_style: str) -> str:
@@ -171,7 +246,8 @@ def _get_rss_kb():
     except Exception:
         return None
     try:
-        return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        return rss // 1024 if sys.platform == "darwin" else rss
     except Exception:
         return None
 

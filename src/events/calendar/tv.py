@@ -14,6 +14,7 @@ from app import cache_utils
 from app.models import TV, Item, MediaTypes, Season, Sources, Status
 from app.providers import services, tmdb, tvdb
 from events.models import Event
+from integrations.imports.helpers import find_item_across_buckets
 
 from .helpers import date_parser
 
@@ -49,7 +50,11 @@ def _clear_tv_time_left_cache(media_id, source, user_ids=None):
 
 
 def process_tv(tv_item, events_bulk, tv_metadata=None):
-    """Process TV item and create events for all seasons and episodes."""
+    """Process TV item and create events for all seasons and episodes.
+
+    Returns True when the show was successfully checked (including when no season
+    needed processing), False when the provider call failed or processing errored.
+    """
     logger.info("Processing TV show: %s", tv_item)
 
     try:
@@ -57,7 +62,7 @@ def process_tv(tv_item, events_bulk, tv_metadata=None):
 
         if not seasons_to_process:
             logger.info("%s - No seasons need processing", tv_item)
-            return
+            return True
 
         process_tv_seasons(
             tv_item,
@@ -70,8 +75,12 @@ def process_tv(tv_item, events_bulk, tv_metadata=None):
             "Failed to fetch metadata for %s",
             tv_item,
         )
+        return False
     except Exception:
         logger.exception("Error processing %s", tv_item)
+        return False
+
+    return True
 
 
 def _tv_provider(source):
@@ -160,25 +169,35 @@ def process_tv_seasons(tv_item, seasons_to_process, events_bulk):
         season_metadata = process_seasons_data[season_key]
 
         season_image = season_metadata.get("image") or tv_item.image
+        season_bucket = (
+            MediaTypes.ANIME.value
+            if tv_item.library_media_type == MediaTypes.ANIME.value
+            else MediaTypes.SEASON.value
+        )
 
-        season_item, season_created = Item.objects.get_or_create(
+        season_item = find_item_across_buckets(
+            preferred_bucket=season_bucket,
             media_id=tv_item.media_id,
             source=tv_item.source,
             media_type=MediaTypes.SEASON.value,
             season_number=season_number,
-            defaults={
-                **Item.title_fields_from_metadata(
-                    season_metadata,
-                    fallback_title=tv_item.title,
-                ),
-                "library_media_type": (
-                    MediaTypes.ANIME.value
-                    if tv_item.library_media_type == MediaTypes.ANIME.value
-                    else MediaTypes.SEASON.value
-                ),
-                "image": season_image,
-            },
         )
+        season_created = False
+        if season_item is None:
+            season_item, season_created = Item.objects.get_or_create(
+                media_id=tv_item.media_id,
+                source=tv_item.source,
+                media_type=MediaTypes.SEASON.value,
+                library_media_type=season_bucket,
+                season_number=season_number,
+                defaults={
+                    **Item.title_fields_from_metadata(
+                        season_metadata,
+                        fallback_title=tv_item.title,
+                    ),
+                    "image": season_image,
+                },
+            )
 
         if season_created:
             item_changes = True

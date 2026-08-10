@@ -11,6 +11,7 @@ import app
 from app import helpers as app_helpers
 from app.models import MediaTypes, Sources, Status
 from app.providers import services
+from integrations import import_progress
 from integrations.imports import helpers
 from integrations.imports.helpers import MediaImportError, MediaImportUnexpectedError
 
@@ -171,6 +172,13 @@ class SimklImporter:
 
     def _process_media_lists(self, data):
         """Process all media types from Simkl."""
+        self._progress_total = (
+            len(data.get("shows", []))
+            + len(data.get("movies", []))
+            + len(data.get("anime", []))
+        )
+        self._progress_current = 0
+
         if "shows" in data:
             self._process_tv_list(data["shows"])
         if "movies" in data:
@@ -187,6 +195,8 @@ class SimklImporter:
         existing_tv_ids = set()
 
         for tv in tv_list:
+            self._progress_current += 1
+            import_progress.report(self._progress_current, self._progress_total, "SIMKL")
             try:
                 title = tv["show"]["title"]
                 logger.debug("Processing %s", title)
@@ -337,6 +347,18 @@ class SimklImporter:
             for season_number in season_numbers
         )
 
+    def _child_bucket(self, show_item, default_bucket):
+        """Return the library bucket a show's season/episode rows belong in.
+
+        Mirrors Season.get_episode_item: children follow the show's grouping
+        bucket (grouped anime lives on TV rows) and otherwise fall back to
+        their own media type, never inheriting a container's 'tv' bucket.
+        """
+        show_bucket = show_item.library_media_type
+        if show_bucket and show_bucket != MediaTypes.TV.value:
+            return show_bucket
+        return default_bucket
+
     def _process_seasons_and_episodes(
         self,
         tv,
@@ -370,16 +392,26 @@ class SimklImporter:
             # Use season poster if available, otherwise fallback to TV show poster
             season_image = season_metadata.get("image") or metadata.get("image")
 
-            season_item, _ = app.models.Item.objects.get_or_create(
+            season_bucket = self._child_bucket(tv_instance.item, MediaTypes.SEASON.value)
+            season_item = helpers.find_item_across_buckets(
+                preferred_bucket=season_bucket,
                 media_id=tv_media_id,
                 source=tv_source,
                 media_type=MediaTypes.SEASON.value,
                 season_number=season_number,
-                defaults={
-                    **app.models.Item.title_fields_from_metadata(metadata),
-                    "image": season_image,
-                },
             )
+            if season_item is None:
+                season_item, _ = app.models.Item.objects.get_or_create(
+                    media_id=tv_media_id,
+                    source=tv_source,
+                    media_type=MediaTypes.SEASON.value,
+                    library_media_type=season_bucket,
+                    season_number=season_number,
+                    defaults={
+                        **app.models.Item.title_fields_from_metadata(metadata),
+                        "image": season_image,
+                    },
+                )
 
             if episodes[-1]["number"] == season_metadata["max_progress"]:
                 season_status = Status.COMPLETED.value
@@ -398,17 +430,28 @@ class SimklImporter:
             # Process episodes
             for episode in episodes:
                 ep_img = self._get_episode_image(episode, season_number, metadata)
-                episode_item, _ = app.models.Item.objects.get_or_create(
+                episode_bucket = self._child_bucket(tv_instance.item, MediaTypes.EPISODE.value)
+                episode_item = helpers.find_item_across_buckets(
+                    preferred_bucket=episode_bucket,
                     media_id=tv_media_id,
                     source=tv_source,
                     media_type=MediaTypes.EPISODE.value,
                     season_number=season_number,
                     episode_number=episode["number"],
-                    defaults={
-                        **app.models.Item.title_fields_from_metadata(metadata),
-                        "image": ep_img,
-                    },
                 )
+                if episode_item is None:
+                    episode_item, _ = app.models.Item.objects.get_or_create(
+                        media_id=tv_media_id,
+                        source=tv_source,
+                        media_type=MediaTypes.EPISODE.value,
+                        library_media_type=episode_bucket,
+                        season_number=season_number,
+                        episode_number=episode["number"],
+                        defaults={
+                            **app.models.Item.title_fields_from_metadata(metadata),
+                            "image": ep_img,
+                        },
+                    )
 
                 episode_instance = app.models.Episode(
                     item=episode_item,
@@ -445,6 +488,8 @@ class SimklImporter:
         existing_movie_ids = set()
 
         for movie in movie_list:
+            self._progress_current += 1
+            import_progress.report(self._progress_current, self._progress_total, "SIMKL")
             try:
                 title = movie["movie"]["title"]
                 logger.debug("Processing %s", title)
@@ -521,6 +566,8 @@ class SimklImporter:
         existing_anime_ids = set()
 
         for anime in anime_list:
+            self._progress_current += 1
+            import_progress.report(self._progress_current, self._progress_total, "SIMKL")
             try:
                 self._process_single_anime_entry(anime, existing_anime_ids)
             except Exception as error:
@@ -611,6 +658,8 @@ class SimklImporter:
         existing_movie_ids = set()
 
         for anime in anime_list:
+            self._progress_current += 1
+            import_progress.report(self._progress_current, self._progress_total, "SIMKL")
             try:
                 movie_shape = anime.get("movie")
                 show_shape = anime.get("show")

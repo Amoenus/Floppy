@@ -1,5 +1,8 @@
 import logging
 
+from django.utils import timezone
+from django.utils.dateparse import parse_datetime
+
 from app import live_playback
 from app.log_safety import mapping_keys, presence_map
 from app.models import MediaTypes, Sources
@@ -94,6 +97,30 @@ class JellyfinWebhookProcessor(BaseWebhookProcessor):
 
     def _is_unplayed(self, payload):
         return payload["Event"] == "MarkUnplayed"
+
+    def _get_played_at(self, payload):
+        """Extract Jellyfin's completion timestamp when a play finished."""
+        played_at = super()._get_played_at(payload)
+        if played_at or not self._is_played(payload):
+            return played_at
+
+        item = payload.get("Item", {}) or {}
+        user_data = item.get("UserData", {}) or {}
+        raw_timestamp = user_data.get("LastPlayedDate") or payload.get(
+            "LastPlayedDate",
+        )
+        if not raw_timestamp:
+            return None
+
+        played_at = parse_datetime(str(raw_timestamp))
+        if played_at is None:
+            return None
+        if timezone.is_naive(played_at):
+            played_at = timezone.make_aware(
+                played_at,
+                timezone.get_current_timezone(),
+            )
+        return timezone.localtime(played_at)
 
     def _get_media_type(self, payload):
         return self.MEDIA_TYPE_MAPPING.get(payload["Item"].get("Type"))

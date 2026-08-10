@@ -671,7 +671,8 @@ class MediaListViewTests(TestCase):
     def test_music_media_list_queues_background_artist_image_backfill(self):
         """Missing artist images should be backfilled via a queued Celery task,
         not a synchronous write during the GET request (avoids DB lock 503s
-        when this races with a concurrent importer)."""
+        when this races with a concurrent importer).
+        """
         artist = Artist.objects.create(name="No Image Artist", image="")
         ArtistTracker.objects.create(
             user=self.user,
@@ -2330,11 +2331,11 @@ class MediaListViewTests(TestCase):
             image="http://example.com/game.jpg",
             platforms=["Xbox Series X|S", "PlayStation 5"],
         )
-        fallback_item = Item.objects.create(
-            media_id="game-platform-sort-fallback",
+        ambiguous_item = Item.objects.create(
+            media_id="game-platform-sort-ambiguous",
             source=Sources.IGDB.value,
             media_type=MediaTypes.GAME.value,
-            title="Fallback Platform",
+            title="Ambiguous Platform",
             image="http://example.com/game.jpg",
             platforms=["Nintendo Switch", "PlayStation 5"],
         )
@@ -2342,7 +2343,7 @@ class MediaListViewTests(TestCase):
             item=collection_item, user=self.user, status=Status.PLANNING.value
         )
         Game.objects.create(
-            item=fallback_item, user=self.user, status=Status.PLANNING.value
+            item=ambiguous_item, user=self.user, status=Status.PLANNING.value
         )
         CollectionEntry.objects.create(
             user=self.user,
@@ -2357,12 +2358,15 @@ class MediaListViewTests(TestCase):
 
         self.assertEqual(response.context["current_sort"], "platform")
         self.assertEqual(response.context["current_direction"], "asc")
+        # The collection-resolved platform sorts first; the multi-platform
+        # game with no collection entry has no unambiguous platform to show,
+        # so it sorts last instead of guessing an arbitrary IGDB platform.
         self.assertEqual(
             [
                 media.item.title
                 for media in response.context["media_list"].object_list[:2]
             ],
-            ["Fallback Platform", "Collection Platform"],
+            ["Collection Platform", "Ambiguous Platform"],
         )
         self.assertContains(response, "Nintendo Switch")
         self.assertContains(response, "PlayStation 5")
@@ -2640,6 +2644,67 @@ class MediaListViewTests(TestCase):
         self.assertEqual(manga_response.context["media_list"].paginator.count, 1)
         self.assertContains(manga_response, "Author Filter Manga")
 
+    def test_movie_provider_filter_shows_and_filters_when_region_configured(self):
+        netflix_movie = Item.objects.create(
+            media_id="provider-filter-1",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Provider Filter Movie One",
+            image="http://example.com/pf1.jpg",
+            watch_providers={
+                "US": {"flatrate": [{"provider_id": 8, "provider_name": "Netflix"}]},
+            },
+        )
+        other_movie = Item.objects.create(
+            media_id="provider-filter-2",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Provider Filter Movie Two",
+            image="http://example.com/pf2.jpg",
+            watch_providers={
+                "US": {"flatrate": [{"provider_id": 384, "provider_name": "HBO Max"}]},
+            },
+        )
+        Movie.objects.create(
+            item=netflix_movie,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+            progress=0,
+        )
+        Movie.objects.create(
+            item=other_movie,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+            progress=0,
+        )
+        self.user.watch_provider_region = "US"
+        self.user.save(update_fields=["watch_provider_region"])
+
+        url = reverse("medialist", args=[MediaTypes.MOVIE.value])
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context["filter_data"]["show_providers"])
+        self.assertTrue(
+            any(
+                option["value"] == "Netflix"
+                for option in response.context["filter_data"]["providers"]
+            ),
+        )
+
+        filtered_response = self.client.get(f"{url}?provider=Netflix")
+        self.assertEqual(filtered_response.status_code, 200)
+        self.assertEqual(filtered_response.context["current_provider"], "Netflix")
+        self.assertContains(filtered_response, "Provider Filter Movie One")
+        self.assertNotContains(filtered_response, "Provider Filter Movie Two")
+
+    def test_movie_provider_filter_hidden_without_region_configured(self):
+        url = reverse("medialist", args=[MediaTypes.MOVIE.value])
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.context["filter_data"]["show_providers"])
+
     def test_movie_filter_data_hides_author_filter(self):
         response = self.client.get(reverse("medialist", args=[MediaTypes.MOVIE.value]))
         self.assertEqual(response.status_code, 200)
@@ -2679,12 +2744,16 @@ class MediaListViewTests(TestCase):
         response = self.client.get(reverse("medialist", args=[MediaTypes.MOVIE.value]))
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, ":href=\"layoutHref('grid')\"")
-        self.assertContains(response, ":href=\"layoutHref('table')\"")
+        self.assertContains(
+            response,
+            ":href=\"layoutHref(layout === 'grid' ? 'table' : 'grid')\"",
+        )
         self.assertContains(
             response,
             "layoutHref(nextLayout) { return buildMediaListHref(this.mediaListUrl, document.getElementById('filter-form'), { layout: nextLayout }); }",
         )
+        self.assertContains(response, '@click="open = false"')
+        self.assertNotContains(response, "layout = layout === 'grid' ? 'table' : 'grid'")
 
     def test_comic_media_list_can_switch_to_issue_subview(self):
         """Comic media list should reuse the music-style subview switch for issues."""

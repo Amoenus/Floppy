@@ -96,12 +96,71 @@ async def test_track_media_invalid_status_rejected():
 
 async def test_track_media_updates_when_tracked(api_base_url):
     with respx.mock:
-        respx.get(f"{api_base_url}/media/movie/tmdb/1").mock(return_value=ok())
+        respx.get(f"{api_base_url}/media/movie/tmdb/1").mock(
+            return_value=ok({"tracked": True, "consumptions": []}),
+        )
         patch_route = respx.patch(f"{api_base_url}/media/movie/tmdb/1").mock(
             return_value=Response(200, json={"ok": True}),
         )
         await server.track_media("movie", "tmdb", "1", score=8)
         assert patch_route.called
+
+
+async def test_track_media_completion_targets_pending_consumption(api_base_url):
+    with respx.mock:
+        respx.get(f"{api_base_url}/media/movie/tmdb/1").mock(
+            return_value=ok(
+                {
+                    "tracked": True,
+                    "consumptions": [
+                        {"consumption_id": 42, "status": "Planning"},
+                        {"consumption_id": 17, "status": "Completed"},
+                    ],
+                },
+            ),
+        )
+        patch_route = respx.patch(
+            f"{api_base_url}/media/movie/tmdb/1/history/42",
+        ).mock(return_value=Response(200, json={"ok": True}))
+
+        await server.track_media("movie", "tmdb", "1", status="Completed")
+
+        assert patch_route.called
+        assert not respx.calls[1].request.url.path.endswith("/media/movie/tmdb/1")
+
+
+async def test_track_media_can_append_explicit_new_play(api_base_url):
+    with respx.mock:
+        respx.get(f"{api_base_url}/media/movie/tmdb/1").mock(
+            return_value=ok({"tracked": True, "consumptions": []}),
+        )
+        create_route = respx.post(f"{api_base_url}/media/movie").mock(
+            return_value=Response(201, json={"ok": True}),
+        )
+
+        await server.track_media(
+            "movie",
+            "tmdb",
+            "1",
+            status="Completed",
+            new_play=True,
+        )
+
+        assert create_route.called
+
+
+async def test_track_media_untracked_omits_status_for_api_default(api_base_url):
+    with respx.mock:
+        respx.get(f"{api_base_url}/media/movie/tmdb/1").mock(
+            return_value=Response(404, json={"detail": "not found"}),
+        )
+        create_route = respx.post(f"{api_base_url}/media/movie").mock(
+            return_value=Response(201, json={"ok": True}),
+        )
+
+        await server.track_media("movie", "tmdb", "1")
+
+        assert "status" not in json.loads(create_route.calls.last.request.content)
 
 
 async def test_untrack_media(api_base_url):

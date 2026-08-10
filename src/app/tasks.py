@@ -9,7 +9,7 @@ from django.core.cache import cache
 from django.db.models import Q
 from django.utils import timezone
 
-from app import history_cache, metadata_utils
+from app import cache_safety, history_cache, metadata_utils
 from app.interactive_requests import interactive_request_active
 from app.log_safety import exception_summary
 from app.models import (
@@ -116,6 +116,20 @@ from app.tasks_music import (  # noqa: E402
     prefetch_album_covers_batch,
     prefetch_artist_images_batch,
 )
+from app.tasks_providers import (  # noqa: E402
+    WATCH_PROVIDERS_BACKFILL_ITEMS_QUEUE_KEY,
+    WATCH_PROVIDERS_BACKFILL_ITEMS_SCHEDULED_KEY,
+    WATCH_PROVIDERS_BACKFILL_QUEUE_TTL,
+    WATCH_PROVIDERS_BACKFILL_VERSION,
+    _populate_providers_for_items,
+    _provider_items_queryset,
+    enqueue_provider_backfill_items,
+    ensure_provider_backfill_reconcile,
+    is_provider_backfill_reconcile_complete,
+    populate_provider_backfill_queue,
+    populate_provider_data_for_items,
+    reconcile_provider_backfill,
+)
 from app.tasks_runtime import (  # noqa: E402
     RUNTIME_BACKFILL_EPISODES_LOCK_PREFIX,
     RUNTIME_BACKFILL_EPISODES_LOCK_TTL,
@@ -191,9 +205,8 @@ NIGHTLY_METADATA_QUALITY_TRAKT_POPULARITY_COUNTDOWN = 60
 NIGHTLY_METADATA_QUALITY_IMDB_GAME_CREDITS_COUNTDOWN = 90
 DISCOVER_METADATA_REFRESH_DEBOUNCE_SECONDS = 60 * 10
 DISCOVER_METADATA_REFRESH_COUNTDOWN_SECONDS = 60
-BACKGROUND_TASK_PRIORITY = getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 1)
+BACKGROUND_TASK_PRIORITY = getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 9)
 HISTORY_COVERAGE_REPAIR_REQUEUE_SECONDS = 15
-HISTORY_COVERAGE_REPAIR_INTERACTIVE_RETRY_SECONDS = 60
 
 
 def _release_items_queryset():
@@ -338,10 +351,13 @@ def _schedule_discover_refresh_for_movie_items(items: list[Item]) -> None:
 
     for user_id in user_ids:
         refresh_key = f"discover_movie_metadata_refresh:{user_id}"
-        if not cache.add(
+        # Skipping when the cache is unavailable is the right call, not just the
+        # convenient one: this warms a Redis-backed cache, so there is nothing to
+        # warm into while Redis is unwell.
+        if not cache_safety.acquire_lock(
             refresh_key,
-            True,
             timeout=DISCOVER_METADATA_REFRESH_DEBOUNCE_SECONDS,
+            on_error=cache_safety.ON_ERROR_SKIP,
         ):
             continue
         for media_type in target_media_types:
@@ -650,24 +666,7 @@ def repair_history_day_cache_coverage_task(
     """Repair missing persisted history day payloads without blocking navigation."""
     repair_key = history_cache._coverage_repair_key(user_id, logging_style)
     if interactive_request_active():
-        cache.set(
-            repair_key,
-            {
-                "started_at": timezone.now().isoformat(),
-                "batch_size": batch_size,
-                "deferred_for_interactive_request": True,
-            },
-            history_cache.HISTORY_COVERAGE_REPAIR_LOCK_TTL,
-        )
-        repair_history_day_cache_coverage_task.apply_async(
-            kwargs={
-                "user_id": user_id,
-                "logging_style": logging_style,
-                "batch_size": batch_size,
-            },
-            countdown=HISTORY_COVERAGE_REPAIR_INTERACTIVE_RETRY_SECONDS,
-            priority=BACKGROUND_TASK_PRIORITY,
-        )
+        cache.delete(repair_key)
         return {
             "skipped": True,
             "reason": "interactive_request_active",
@@ -1013,6 +1012,10 @@ __all__ = [
     "TRAKT_POPULARITY_BACKFILL_ITEMS_QUEUE_KEY",
     "TRAKT_POPULARITY_BACKFILL_ITEMS_SCHEDULED_KEY",
     "TRAKT_POPULARITY_BACKFILL_QUEUE_TTL",
+    "WATCH_PROVIDERS_BACKFILL_ITEMS_QUEUE_KEY",
+    "WATCH_PROVIDERS_BACKFILL_ITEMS_SCHEDULED_KEY",
+    "WATCH_PROVIDERS_BACKFILL_QUEUE_TTL",
+    "WATCH_PROVIDERS_BACKFILL_VERSION",
     "_add_user_day_key",
     "_backfill_delay_seconds",
     "_collect_backfill_day_keys",
@@ -1025,17 +1028,22 @@ __all__ = [
     "_normalize_season_keys",
     "_populate_credits_for_items",
     "_populate_genres_for_items",
+    "_populate_providers_for_items",
     "_populate_runtime_for_items",
+    "_provider_items_queryset",
     "_schedule_metadata_statistics_refresh",
     "bulk_episode_plays_task",
     "bulk_music_plays_task",
     "count_igdb_rating_backfill_items",
     "enqueue_igdb_rating_backfill_items",
+    "enqueue_provider_backfill_items",
     "enrich_albums_task",
     "enrich_music_library_task",
     "ensure_genre_backfill_reconcile",
+    "ensure_provider_backfill_reconcile",
     "fast_runtime_backfill_task",
     "is_genre_backfill_reconcile_complete",
+    "is_provider_backfill_reconcile_complete",
     "migrate_tv_shows_to_preferred_provider_task",
     "populate_album_tracks_batch",
     "populate_credits_backfill_queue",
@@ -1046,6 +1054,8 @@ __all__ = [
     "populate_genre_data_for_items",
     "populate_igdb_rating_backfill_queue",
     "populate_igdb_rating_data_for_items",
+    "populate_provider_backfill_queue",
+    "populate_provider_data_for_items",
     "populate_runtime_backfill_queue",
     "populate_runtime_data_batch",
     "populate_runtime_data_continuous",
@@ -1057,6 +1067,7 @@ __all__ = [
     "prefetch_artist_images_batch",
     "reconcile_genre_backfill",
     "reconcile_igdb_rating_backfill",
+    "reconcile_provider_backfill",
     "reconcile_trakt_popularity",
     "refresh_discover_rows",
     "warm_discover_api_cache",

@@ -7,6 +7,7 @@ from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from app import tasks
+from app import tasks_genre as genre_tasks
 from app.interactive_requests import (
     INTERACTIVE_REQUEST_CACHE_KEY,
     INTERACTIVE_REQUEST_TTL_SECONDS,
@@ -14,6 +15,7 @@ from app.interactive_requests import (
 from app.models import (
     CREDITS_BACKFILL_VERSION,
     TV,
+    BackfillReconcileState,
     BasicMedia,
     Episode,
     Item,
@@ -1116,7 +1118,6 @@ class MetadataBackfillTaskTests(TestCase):
             strategy_version=tasks.GENRE_BACKFILL_VERSION,
             last_success_at=timezone.now(),
         )
-        cache.delete(f"genre_backfill_reconciled_v{tasks.GENRE_BACKFILL_VERSION}")
         mock_enqueue_genre_backfill_items.side_effect = lambda item_ids, countdown=10: (
             len(item_ids)
         )
@@ -1130,14 +1131,10 @@ class MetadataBackfillTaskTests(TestCase):
             mock_enqueue_genre_backfill_items.call_args_list,
             [
                 call([first_item.id], countdown=10),
-                call([second_item.id], countdown=10),
+                call([second_item.id], countdown=25),
             ],
         )
-        self.assertEqual(result, {"selected": 2, "enqueued": 2})
-        self.assertEqual(
-            cache.get(f"genre_backfill_reconciled_v{tasks.GENRE_BACKFILL_VERSION}"),
-            "done",
-        )
+        self.assertEqual(result, {"selected": 2, "enqueued": 2, "cursor": 0})
 
     @patch("app.tasks_genre.reconcile_genre_backfill")
     def test_ensure_genre_backfill_reconcile_runs_when_version_not_done(
@@ -1152,7 +1149,9 @@ class MetadataBackfillTaskTests(TestCase):
             image="https://example.com/ensure-reconcile-run.jpg",
             genres=["Drama"],
         )
-        cache.delete(f"genre_backfill_reconciled_v{tasks.GENRE_BACKFILL_VERSION}")
+        BackfillReconcileState.objects.filter(
+            key=genre_tasks.RECONCILE_KEY,
+        ).delete()
         mock_reconcile_genre_backfill.return_value = {"selected": 3, "enqueued": 3}
 
         result = tasks.ensure_genre_backfill_reconcile(batch_size=25)
@@ -1201,7 +1200,7 @@ class MetadataBackfillTaskTests(TestCase):
         )
 
     @patch("app.tasks_genre.reconcile_genre_backfill")
-    def test_ensure_genre_backfill_reconcile_skips_pending_startup_run(
+    def test_ensure_genre_backfill_reconcile_skips_a_completed_strategy(
         self,
         mock_reconcile_genre_backfill,
     ):
@@ -1213,16 +1212,32 @@ class MetadataBackfillTaskTests(TestCase):
             image="https://example.com/ensure-reconcile-pending.jpg",
             genres=["Drama"],
         )
-        cache.set(
-            f"genre_backfill_reconciled_v{tasks.GENRE_BACKFILL_VERSION}",
-            "pending",
-            timeout=300,
+        BackfillReconcileState.objects.create(
+            key=genre_tasks.RECONCILE_KEY,
+            strategy_version=tasks.GENRE_BACKFILL_VERSION,
+            completed_at=timezone.now(),
         )
 
         result = tasks.ensure_genre_backfill_reconcile()
 
         mock_reconcile_genre_backfill.assert_not_called()
-        self.assertEqual(result, {"skipped": True, "reason": "pending"})
+        self.assertEqual(result, {"skipped": True, "reason": "not_due"})
+
+    @patch("app.tasks_genre.reconcile_genre_backfill")
+    def test_ensure_genre_backfill_reconcile_skips_a_backing_off_strategy(
+        self,
+        mock_reconcile_genre_backfill,
+    ):
+        BackfillReconcileState.objects.create(
+            key=genre_tasks.RECONCILE_KEY,
+            strategy_version=tasks.GENRE_BACKFILL_VERSION,
+            next_run_after=timezone.now() + timedelta(hours=1),
+        )
+
+        result = tasks.ensure_genre_backfill_reconcile()
+
+        mock_reconcile_genre_backfill.assert_not_called()
+        self.assertEqual(result, {"skipped": True, "reason": "not_due"})
 
     @patch("app.tasks_genre.reconcile_genre_backfill")
     def test_ensure_genre_backfill_reconcile_reruns_when_done_cache_is_stale(
@@ -1237,6 +1252,8 @@ class MetadataBackfillTaskTests(TestCase):
             image="https://example.com/stale-done.jpg",
             genres=["Drama"],
         )
+        # A stale cache value must not suppress the run: completion is now a
+        # database fact, so the cache can say whatever it likes.
         cache.set(
             f"genre_backfill_reconciled_v{tasks.GENRE_BACKFILL_VERSION}",
             "done",
@@ -1248,7 +1265,7 @@ class MetadataBackfillTaskTests(TestCase):
 
         mock_reconcile_genre_backfill.assert_called_once_with(
             strategy_version=tasks.GENRE_BACKFILL_VERSION,
-            batch_size=tasks.NIGHTLY_METADATA_QUALITY_GENRE_BATCH_SIZE,
+            batch_size=genre_tasks._GENRE_BATCH_SIZE_DEFAULT,
         )
         self.assertEqual(result, {"selected": 1, "enqueued": 1})
 

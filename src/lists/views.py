@@ -17,6 +17,7 @@ from app.columns import (
     resolve_columns,
     resolve_default_column_config,
 )
+from app.media_list_views import MEDIA_LIST_NO_STATUS, MEDIA_LIST_NO_STATUS_LABEL
 from app.models import MediaManager, MediaTypes
 from app.providers import (
     services,  # noqa: F401 — kept so legacy test patches on lists.views.services still work
@@ -29,6 +30,7 @@ from lists.models import CustomList, CustomListItem
 from lists.views_helpers import (
     _adapt_list_items_for_table,
     _attach_media_with_aggregation,
+    _build_collection_platforms_by_item_id,
     _build_list_url_template,
     _build_media_type_breakdown,
     _date_sort_value,
@@ -158,7 +160,9 @@ def list_detail(request, list_reference):
     )
 
     raw_status_filter = request.GET.getlist("status")
-    valid_status_values = set(valid_statuses) - {MediaStatusChoices.ALL}
+    valid_status_values = (set(valid_statuses) - {MediaStatusChoices.ALL}) | {
+        MEDIA_LIST_NO_STATUS,
+    }
     if request.user.is_authenticated:
         persisted_status_pref = request.user.list_detail_status
         persisted_status_filter = tuple(
@@ -252,17 +256,40 @@ def list_detail(request, list_reference):
     media_manager = MediaManager()
     media_by_item_id = {}
 
-    # Filter by status if specified
+    # Filter by status if specified. A no-status match includes list items with
+    # no tracker row as well as rows whose current status is null.
     if params["status_filter"]:
         item_ids = items.values_list("id", flat=True)
-        media_by_item_id = media_manager.fetch_media_for_items(
-            media_types,
-            item_ids,
-            media_user,
-            status_filter=params["status_filter"],
+        real_status_filter = tuple(
+            value
+            for value in params["status_filter"]
+            if value != MEDIA_LIST_NO_STATUS
         )
+        matching_item_ids = set()
+        if real_status_filter:
+            media_by_item_id = media_manager.fetch_media_for_items(
+                media_types,
+                item_ids,
+                media_user,
+                status_filter=real_status_filter,
+            )
+            matching_item_ids.update(media_by_item_id)
+
+        if MEDIA_LIST_NO_STATUS in params["status_filter"]:
+            status_items = list(items)
+            _attach_media_with_aggregation(status_items, media_user)
+            matching_item_ids.update(
+                item.id
+                for item in status_items
+                if item.media is None
+                or (
+                    getattr(item.media, "aggregated_status", None) is None
+                    and getattr(item.media, "status", None) is None
+                )
+            )
+
         # Filter items to only those with the specified status
-        items = items.filter(id__in=media_by_item_id.keys())
+        items = items.filter(id__in=matching_item_ids)
     filtered_media_types = list(items.values_list("media_type", flat=True).distinct())
 
     # Apply sorting
@@ -319,11 +346,14 @@ def list_detail(request, list_reference):
             "reverse": params["direction"] == "desc",
         },
         "platform": {
-            "key": lambda item: _platform_sort_value(item),
+            "key": lambda item: _platform_sort_value(
+                item, collection_platforms_by_item_id
+            ),
             "reverse": params["direction"] == "desc",
         },
     }
 
+    collection_platforms_by_item_id = {}
     sort_config = media_sort_config.get(params["sort_by"])
     if sort_config:
         all_items = list(
@@ -335,6 +365,11 @@ def list_detail(request, list_reference):
             ),
         )
         _attach_media_with_aggregation(all_items, media_user)
+
+        if params["sort_by"] == "platform":
+            collection_platforms_by_item_id = _build_collection_platforms_by_item_id(
+                media_user, [item.id for item in all_items]
+            )
 
         all_items = sorted(
             all_items,
@@ -361,7 +396,11 @@ def list_detail(request, list_reference):
     prefill_display_release_years(items_page)
 
     if layout == "table":
-        _adapt_list_items_for_table(items_page)
+        if not collection_platforms_by_item_id:
+            collection_platforms_by_item_id = _build_collection_platforms_by_item_id(
+                media_user, [item.id for item in items_page.object_list]
+            )
+        _adapt_list_items_for_table(items_page, collection_platforms_by_item_id)
 
     # Get recommendation count for owners/collaborators
     recommendation_count = 0
@@ -401,7 +440,11 @@ def list_detail(request, list_reference):
         "current_statuses": params["status_filter"],
         "current_layout": layout,
         "sort_choices": sort_choices,
-        "status_choices": MediaStatusChoices.choices,
+        "status_choices": [
+            *MediaStatusChoices.choices[:1],
+            (MEDIA_LIST_NO_STATUS, MEDIA_LIST_NO_STATUS_LABEL),
+            *MediaStatusChoices.choices[1:],
+        ],
         "public_view": public_view,
         "can_edit": can_edit,
         "list_ordering_enabled": can_edit

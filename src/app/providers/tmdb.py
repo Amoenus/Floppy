@@ -21,6 +21,17 @@ TMDB_GENDER_MALE = 2
 TMDB_GENDER_NON_BINARY = 3
 base_url = "https://api.themoviedb.org/3"
 TVDB_OVERRIDE_CACHE_TIMEOUT = 60 * 60 * 24 * 30
+# The /changes result for a given day doesn't change once fetched, and the
+# calendar reload is the only caller.
+TMDB_CHANGES_CACHE_TIMEOUT = 60 * 60 * 6
+# Search results are keyed on arbitrary user- and webhook-supplied strings, so
+# these keys grow without bound. They're also the cheapest thing to refetch and
+# the least valuable to keep, which makes the default 24 hours the wrong trade at
+# the point Redis is under pressure (issue #521).
+SEARCH_CACHE_TIMEOUT = 60 * 60
+# Season blobs are the largest single thing Floppy caches (full episode lists),
+# so they expire sooner than the show payload they hang off.
+SEASON_CACHE_TIMEOUT = 60 * 60 * 12
 TMDB_APPEND_TO_RESPONSE_MAX_REMOTE_CALLS = 20
 TV_DETAIL_APPEND_RESPONSES = (
     "recommendations,external_ids,aggregate_credits,alternative_titles,watch/providers"
@@ -399,7 +410,7 @@ def search(media_type, query, page, language=None):
             results,
         )
 
-        cache.set(cache_key, data)
+        cache.set(cache_key, data, SEARCH_CACHE_TIMEOUT)
 
     return data
 
@@ -554,13 +565,23 @@ def movie(media_id, language=None):
 
 
 def get_cached_seasons(media_id, season_numbers, language=None):
-    """Check cache for seasons and return cached data and list of uncached seasons."""
+    """Check cache for seasons and return cached data and list of uncached seasons.
+
+    One get_many rather than a get per season: a 40-season show meant 40 round
+    trips, and when Redis is slow it meant 40 socket timeouts back to back rather
+    than one (issue #521).
+    """
     season_numbers = _normalize_season_numbers(season_numbers)
+    keys = {
+        _season_cache_key(media_id, season_number, language): season_number
+        for season_number in season_numbers
+    }
+    found = cache.get_many(list(keys)) or {}
+
     cached_data = {}
     uncached_seasons = []
-
-    for season_number in season_numbers:
-        season_data = cache.get(_season_cache_key(media_id, season_number, language))
+    for key, season_number in keys.items():
+        season_data = found.get(key)
         if season_data:
             cached_data[f"season/{season_number}"] = season_data
         else:
@@ -723,6 +744,7 @@ def cache_fallback_season_metadata(media_id, season_number, tv_data, season_data
     cache.set(
         _season_cache_key(media_id, season_number),
         cached_season_data,
+        SEASON_CACHE_TIMEOUT,
     )
 
     tv_cache_key = f"{Sources.TMDB.value}_{MediaTypes.TV.value}_{media_id}"
@@ -933,7 +955,7 @@ def fetch_and_cache_seasons(media_id, season_numbers, tv_data, language=None):
             season_credits = response.get(f"{season_key}/credits", {}) or {}
             season_data = process_season(
                 response[season_key],
-                response[f"{season_key}/watch/providers"],
+                response.get(f"{season_key}/watch/providers", {}),
                 season_credits,
             )
             season_data = enrich_season_with_tv_data(
@@ -945,6 +967,7 @@ def fetch_and_cache_seasons(media_id, season_numbers, tv_data, language=None):
             cache.set(
                 _season_cache_key(media_id, season_number, language),
                 season_data,
+                SEASON_CACHE_TIMEOUT,
             )
             result_data[season_key] = season_data
 
@@ -959,6 +982,7 @@ def fetch_and_cache_seasons(media_id, season_numbers, tv_data, language=None):
             cache.set(
                 _season_cache_key(media_id, 0, language),
                 specials_season,
+                SEASON_CACHE_TIMEOUT,
             )
             cache.set(
                 _tv_cache_key(media_id, language),
@@ -1185,11 +1209,27 @@ def get_format(media_type):
     return "Movie"
 
 
-def get_changed_ids(media_type):
-    """Return changed TMDB ids for the given media type over the last days."""
-    url = f"{base_url}/{media_type}/changes"
+def get_changed_ids(media_type, max_pages=None):
+    """Return changed TMDB ids for the given media type over the last days.
+
+    Capped and cached. The loop was previously unbounded, and TMDB's /changes
+    endpoint reports every title changed globally in the window - total_pages can
+    run into the hundreds - so one nightly calendar reload could make hundreds of
+    sequential API calls through a 3/s rate limiter (issue #521). The first pages
+    are the ones that matter: results are ordered by recency, and anything missed
+    is picked up by the next night's window.
+    """
     end_date = timezone.localdate()
     start_date = end_date - timedelta(days=3)
+    cache_key = f"{Sources.TMDB.value}_changes_{media_type}_{end_date.isoformat()}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    if max_pages is None:
+        max_pages = settings.TMDB_CHANGES_MAX_PAGES
+
+    url = f"{base_url}/{media_type}/changes"
     changed_ids = set()
     page = 1
 
@@ -1216,8 +1256,17 @@ def get_changed_ids(media_type):
         total_pages = response.get("total_pages", 1)
         if page >= total_pages:
             break
+        if page >= max_pages:
+            logger.info(
+                "tmdb_changes_truncated media_type=%s pages=%s of %s",
+                media_type,
+                page,
+                total_pages,
+            )
+            break
         page += 1
 
+    cache.set(cache_key, changed_ids, timeout=TMDB_CHANGES_CACHE_TIMEOUT)
     return changed_ids
 
 
@@ -1959,6 +2008,19 @@ def filter_providers(all_providers, region):
     return providers
 
 
+def item_watch_provider_names(item, region):
+    """Return sorted flatrate/free watch-provider names for an item's region.
+
+    Returns None when no region is configured, so callers can distinguish
+    "region not set" (hide the filter) from "no providers for this region".
+    """
+    if not region or region == "UNSET":
+        return None
+
+    providers = filter_providers(item.watch_providers, region) or []
+    return sorted({p["provider_name"] for p in providers if p.get("provider_name")})
+
+
 def process_episodes(season_metadata, episodes_in_db):
     """Process the episodes for the selected season."""
     episodes_metadata = []
@@ -2051,22 +2113,27 @@ def process_episodes(season_metadata, episodes_in_db):
 
 
 def find_next_episode(episode_number, episodes_metadata):
-    """Find the next episode number."""
-    # Find the current episode in the sorted list
-    current_episode_index = None
-    for index, episode in enumerate(episodes_metadata):
-        if episode["episode_number"] == episode_number:
-            current_episode_index = index
-            break
+    """Return the first known episode number after the current one."""
+    try:
+        current_episode_number = int(episode_number or 0)
+    except (TypeError, ValueError):
+        current_episode_number = 0
 
-    # If episode not found or it's the last episode, return None
-    if current_episode_index is None or current_episode_index + 1 >= len(
-        episodes_metadata,
-    ):
-        return None
-
-    # Return the next episode number
-    return episodes_metadata[current_episode_index + 1]["episode_number"]
+    episode_numbers = sorted(
+        {
+            int(episode["episode_number"])
+            for episode in episodes_metadata or []
+            if episode.get("episode_number") is not None
+        },
+    )
+    return next(
+        (
+            candidate
+            for candidate in episode_numbers
+            if candidate > current_episode_number
+        ),
+        None,
+    )
 
 
 EPISODE_ERROR_CACHE_KEY = "__error_status__"

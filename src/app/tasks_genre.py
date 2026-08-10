@@ -8,10 +8,9 @@ import logging
 
 from celery import shared_task
 from django.conf import settings
-from django.core.cache import cache
 from django.db import transaction
 
-from app import metadata_utils
+from app import backfill_queue, metadata_utils, reconcile_state
 from app.interactive_requests import interactive_request_active
 from app.log_safety import exception_summary
 from app.models import Item, MediaTypes, MetadataBackfillField, Sources
@@ -29,7 +28,7 @@ from app.tasks_backfill_state import (
 
 logger = logging.getLogger(__name__)
 
-BACKGROUND_TASK_PRIORITY = getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 1)
+BACKGROUND_TASK_PRIORITY = getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 9)
 
 GENRE_BACKFILL_SOURCES = (
     Sources.TMDB.value,
@@ -49,10 +48,13 @@ GENRE_BACKFILL_RECONCILE_FALLBACK_INTERVAL_SECONDS = 60 * 5
 
 # Default batch size for reconcile tasks — mirrors NIGHTLY_METADATA_QUALITY_GENRE_BATCH_SIZE
 # in tasks.py without creating a circular import.
-_GENRE_BATCH_SIZE_DEFAULT = 1500
+_GENRE_BATCH_SIZE_DEFAULT = settings.GENRE_RECONCILE_BATCH_SIZE
+RECONCILE_KEY = "genre"
+# See tasks_providers.RECONCILE_MAX_CHUNKS_PER_RUN.
+RECONCILE_MAX_CHUNKS_PER_RUN = settings.RECONCILE_MAX_CHUNKS_PER_RUN
 
 
-def _genre_items_queryset():
+def _genre_items_queryset(*, for_reconcile: bool = False):
     from app.models import MetadataBackfillState
     from app.providers import tvdb
 
@@ -79,7 +81,11 @@ def _genre_items_queryset():
         ],
         source__in=GENRE_BACKFILL_SOURCES,
     ).filter(genre_filters)
-    queryset = _apply_backfill_state_filters(queryset, MetadataBackfillField.GENRES)
+    queryset = _apply_backfill_state_filters(
+        queryset,
+        MetadataBackfillField.GENRES,
+        for_reconcile=for_reconcile,
+    )
     completed_ids = MetadataBackfillState.objects.filter(
         field=MetadataBackfillField.GENRES,
         give_up=False,
@@ -370,16 +376,16 @@ def enqueue_genre_backfill_items(item_ids, countdown=10):
     normalized = _filter_backfill_item_ids(normalized, MetadataBackfillField.GENRES)
     if not normalized:
         return 0
-    try:
-        queue = cache.get(GENRE_BACKFILL_ITEMS_QUEUE_KEY) or []
-        queue = list(set(queue).union(normalized))
-        cache.set(
-            GENRE_BACKFILL_ITEMS_QUEUE_KEY, queue, timeout=GENRE_BACKFILL_QUEUE_TTL
-        )
-        if cache.add(GENRE_BACKFILL_ITEMS_SCHEDULED_KEY, True, timeout=30):
-            populate_genre_backfill_queue.apply_async(countdown=countdown)
-    except Exception as exc:  # pragma: no cover - cache unavailable
-        logger.debug("Genre backfill queue unavailable: %s", exception_summary(exc))
+    queued = backfill_queue.enqueue(
+        GENRE_BACKFILL_ITEMS_QUEUE_KEY,
+        GENRE_BACKFILL_ITEMS_SCHEDULED_KEY,
+        normalized,
+        ttl=GENRE_BACKFILL_QUEUE_TTL,
+        drain_task=populate_genre_backfill_queue,
+        countdown=countdown,
+    )
+    if not queued:
+        logger.debug("Genre backfill queue unavailable, dispatching directly")
         populate_genre_data_for_items.apply_async(
             args=[normalized], countdown=countdown
         )
@@ -415,22 +421,19 @@ def populate_genre_data_for_items(item_ids: list[int], delay_seconds: float = 0.
 @shared_task(name="app.tasks.populate_genre_backfill_queue")
 def populate_genre_backfill_queue(batch_size: int = 50, delay_seconds: float = 0.0):
     """Drain the genre backfill queue and process items in small batches."""
-    queue = cache.get(GENRE_BACKFILL_ITEMS_QUEUE_KEY) or []
-    if not queue:
-        cache.delete(GENRE_BACKFILL_ITEMS_SCHEDULED_KEY)
+    batch, more_remaining = backfill_queue.take(
+        GENRE_BACKFILL_ITEMS_QUEUE_KEY,
+        GENRE_BACKFILL_ITEMS_SCHEDULED_KEY,
+        batch_size,
+    )
+    if not batch:
         return {"processed": 0, "message": "No queued genre items"}
 
-    cache.delete(GENRE_BACKFILL_ITEMS_SCHEDULED_KEY)
-    batch = queue[:batch_size]
-    remaining = queue[batch_size:]
-    if remaining:
-        cache.set(
-            GENRE_BACKFILL_ITEMS_QUEUE_KEY, remaining, timeout=GENRE_BACKFILL_QUEUE_TTL
+    if more_remaining:
+        backfill_queue.reschedule(
+            GENRE_BACKFILL_ITEMS_SCHEDULED_KEY,
+            populate_genre_backfill_queue,
         )
-        if cache.add(GENRE_BACKFILL_ITEMS_SCHEDULED_KEY, True, timeout=30):
-            populate_genre_backfill_queue.apply_async(countdown=10)
-    else:
-        cache.delete(GENRE_BACKFILL_ITEMS_QUEUE_KEY)
 
     return populate_genre_data_for_items(batch, delay_seconds=delay_seconds)
 
@@ -439,41 +442,64 @@ def populate_genre_backfill_queue(batch_size: int = 50, delay_seconds: float = 0
 def reconcile_genre_backfill(
     strategy_version: int | None = None,
     batch_size: int = _GENRE_BATCH_SIZE_DEFAULT,
+    max_chunks: int | None = None,
 ):
-    """Queue all current genre-backfill candidates without waiting for the nightly sweep."""
+    """Queue a bounded slice of genre-backfill candidates.
+
+    See reconcile_provider_backfill in tasks_providers.py for why this is
+    bounded and cursor-based rather than draining the whole candidate set
+    (issue #521).
+    """
     batch_size = max(int(batch_size), 1)
-    last_item_id = 0
+    max_chunks = RECONCILE_MAX_CHUNKS_PER_RUN if max_chunks is None else max_chunks
+    resolved_version = int(strategy_version or GENRE_BACKFILL_VERSION)
+    state = reconcile_state.get_state(RECONCILE_KEY, resolved_version)
+
+    cursor = state.last_cursor_item_id
     selected = 0
     enqueued = 0
 
-    while True:
+    for chunk_index in range(max_chunks):
         batch_ids = list(
-            _genre_items_queryset()
-            .filter(id__gt=last_item_id)
+            _genre_items_queryset(for_reconcile=True)
+            .filter(id__gt=cursor)
             .order_by("id")
             .values_list("id", flat=True)[:batch_size],
         )
         if not batch_ids:
+            # Reached the end of the table. Starting from the top and finding
+            # nothing means the strategy is genuinely reconciled; otherwise wrap
+            # so the next pass rechecks the rows before the cursor, and only the
+            # pass after that can conclude completion.
+            complete = cursor == state.last_cursor_item_id == 0
+            cursor = 0
+            if complete:
+                reconcile_state.mark_complete(RECONCILE_KEY, resolved_version)
+                return {"selected": selected, "enqueued": enqueued, "complete": True}
             break
 
-        last_item_id = batch_ids[-1]
+        cursor = batch_ids[-1]
         selected += len(batch_ids)
-        enqueued += enqueue_genre_backfill_items(batch_ids, countdown=10)
-
-    if strategy_version is not None:
-        cache.set(
-            f"genre_backfill_reconciled_v{strategy_version}",
-            "done",
-            timeout=None,
+        enqueued += enqueue_genre_backfill_items(
+            batch_ids,
+            countdown=10 + chunk_index * 15,
         )
 
+    reconcile_state.mark_progress(
+        RECONCILE_KEY,
+        resolved_version,
+        cursor=cursor,
+        enqueued=enqueued,
+    )
+
     logger.info(
-        "reconcile_genre_backfill selected=%d enqueued=%d version=%s",
+        "reconcile_genre_backfill selected=%d enqueued=%d cursor=%d version=%s",
         selected,
         enqueued,
-        strategy_version,
+        cursor,
+        resolved_version,
     )
-    return {"selected": selected, "enqueued": enqueued}
+    return {"selected": selected, "enqueued": enqueued, "cursor": cursor}
 
 
 @shared_task(name="Ensure genre backfill reconcile")
@@ -481,40 +507,25 @@ def ensure_genre_backfill_reconcile(
     strategy_version: int | None = None,
     batch_size: int = _GENRE_BATCH_SIZE_DEFAULT,
 ):
-    """Retry the current genre strategy reconcile until it has completed."""
+    """Run a genre reconcile pass unless one isn't needed."""
     if interactive_request_active():
         logger.info(
             "ensure_genre_backfill_reconcile skipped reason=interactive_request_active"
         )
         return {"skipped": True, "reason": "interactive_request_active"}
 
-    resolved_strategy_version = int(strategy_version or GENRE_BACKFILL_VERSION)
-    version_key = f"genre_backfill_reconciled_v{resolved_strategy_version}"
-    status = cache.get(version_key)
-    reconcile_complete = is_genre_backfill_reconcile_complete()
+    resolved_version = int(strategy_version or GENRE_BACKFILL_VERSION)
+    state = reconcile_state.should_run(RECONCILE_KEY, resolved_version)
+    if state is None:
+        return {"skipped": True, "reason": "not_due"}
 
-    if reconcile_complete:
-        cache.set(version_key, "done", timeout=None)
-        logger.debug(
-            "ensure_genre_backfill_reconcile skipped version=%s status=done",
-            resolved_strategy_version,
+    if not reconcile_state.acquire(RECONCILE_KEY, state):
+        return {"skipped": True, "reason": "already_running"}
+
+    try:
+        return reconcile_genre_backfill(
+            strategy_version=resolved_version,
+            batch_size=batch_size,
         )
-        return {"skipped": True, "reason": "done"}
-
-    if status == "pending":
-        logger.debug(
-            "ensure_genre_backfill_reconcile skipped version=%s status=pending",
-            resolved_strategy_version,
-        )
-        return {"skipped": True, "reason": "pending"}
-
-    if status == "done":
-        logger.info(
-            "ensure_genre_backfill_reconcile rerunning version=%s stale_cache_done=1",
-            resolved_strategy_version,
-        )
-
-    return reconcile_genre_backfill(
-        strategy_version=resolved_strategy_version,
-        batch_size=batch_size,
-    )
+    finally:
+        reconcile_state.release(RECONCILE_KEY)

@@ -28,7 +28,7 @@
              }
            }">
         {% if hours_per_media_type.tv and hours_per_media_type.tv != "0h 0min" %}
-        <div class="bg-[#2a2f35] rounded-lg p-4 sm:p-6 flex items-center min-w-0" data-media-card x-show="isMediaTypeVisible('tv')">
+        <div class="bg-[var(--color-surface)] rounded-lg p-4 sm:p-6 flex items-center min-w-0" data-media-card x-show="isMediaTypeVisible('tv')">
           <div class="stats-media-card-icon" style="background-color: {{ media_type_colors.tv }}33;">
             <svg xmlns="http://www.w3.org/2000/svg"
                  width="24"
@@ -45,7 +45,7 @@
             </svg>
           </div>
           <div class="stats-media-card-copy min-w-0">
-            <h3 class="stats-media-card-title text-xs sm:text-sm font-medium text-gray-400">TV Shows</h3>
+            <h3 class="stats-media-card-title text-xs sm:text-sm font-medium text-[var(--color-text-muted)]">TV Shows</h3>
             <p class="stats-media-card-value text-xl sm:text-2xl font-bold">{{ hours_per_media_type.tv }}</p>
             {% with compare=hours_per_media_type_comparison.tv %}
               <div class="stats-media-card-meta">
@@ -83,7 +83,7 @@
                          x-transition:leave="transition ease-in duration-150"
                          x-transition:leave-start="opacity-100 scale-100"
                          x-transition:leave-end="opacity-0 scale-95"
-                         class="stats-media-card-tooltip-panel absolute right-0 bottom-full mb-2 w-56 max-w-[calc(100vw-2rem)] p-3 text-white text-xs rounded-lg z-10 stats-tooltip"
+                         class="stats-media-card-tooltip-panel absolute right-0 bottom-full mb-2 w-56 max-w-[calc(100vw-2rem)] p-3 text-[var(--color-text)] text-xs rounded-lg z-10 stats-tooltip"
                          style="display: none;">
                       <div class="stats-tooltip-lines">
                         <div class="stats-tooltip-line">
@@ -106,7 +106,7 @@
         {% endif %}
         
         {% if hours_per_media_type.movie and hours_per_media_type.movie != "0h 0min" %}
-        <div class="bg-[#2a2f35] rounded-lg p-4 sm:p-6 flex items-center min-w-0" data-media-card x-show="isMediaTypeVisible('movie')">
+        <div class="bg-[var(--color-surface)] rounded-lg p-4 sm:p-6 flex items-center min-w-0" data-media-card x-show="isMediaTypeVisible('movie')">
           <div class="stats-media-card-icon" style="background-color: {{ media_type_colors.movie }}33;">
             <svg xmlns="http://www.w3.org/2000/svg"
                  width="24"
@@ -129,7 +129,7 @@
             </svg>
           </div>
           <div class="stats-media-card-copy min-w-0">
-            <h3 class="stats-media-card-title text-xs sm:text-sm font-medium text-gray-400">Movies</h3>
+            <h3 class="stats-media-card-title text-xs sm:text-sm font-medium text-[var(--color-text-muted)]">Movies</h3>
             <p class="stats-media-card-value text-xl sm:text-2xl font-bold">{{ hours_per_media_type.movie }}</p>
             {% with compare=hours_per_media_type_comparison.movie %}
               <div class="stats-media-card-meta">
@@ -167,7 +167,7 @@
                          x-transition:leave="transition ease-in duration-150"
                          x-transition:leave-start="opacity-100 scale-100"
                          x-transition:leave-end="opacity-0 scale-95"
-                         class="stats-media-card-tooltip-panel absolute right-0 bottom-full mb-2 w-56 max-w-[calc(100vw-2rem)] p-3 text-white text-xs rounded-lg z-10 stats-tooltip"
+                         class="stats-media-card-tooltip-panel absolute right-0 bottom-full mb-2 w-56 max-w-[calc(100vw-2rem)] p-3 text-[var(--color-text)] text-xs rounded-lg z-10 stats-tooltip"
                          style="display: none;">
                       <div class="stats-tooltip-lines">
                         <div class="stats-tooltip-line">
@@ -190,7 +190,7 @@
         {% endif %}
         
         {% if hours_per_media_type.game and hours_per_media_type.game != "0h 0min" %}
-        <div class="bg-[#2a2f35] rounded-lg p-4 sm:p-6 flex items-center min-w-0" data-media-card x-show="isMediaTypeVisible('game')">
+        <div class="bg-[var(--color-surface)] rounded-lg p-4 sm:p-6 flex items-center min-w-0" data-media-card x-show="isMediaTypeVisible('game')">
           <div class="stats-media-card-icon" style="background-color: {{ media_type_colors.game }}33;">
             <svg xmlns="http://www.w3.org/2000/svg"
                  width="24"
@@ -210,7 +210,7 @@
             </svg>
           </div>
           <div class="stats-media-card-copy min-w-0">
-            <h3 class="stats-media-card-title text-xs sm:text-sm font-medium text-gray-400">Games</h3>
+            <h3 class="stats-media-card-title text-xs sm:text-sm font-medium text-[var(--color-text-muted)]">Games</h3>
             <p class="stats-media-card-value text-xl sm:text-2xl font-bold">{{ hours_per_media_type.game }}</p>
             {% with compare=hours_per_media_type_comparison.game %}
               <div class="stats-media-card-meta">
@@ -248,7 +248,7 @@
                          x-transition:leave="transition ease-in duration-150"
                          x-transition:leave-start="opacity-100 scale-100"
                          x-transition:leave-end="opacity-0 scale-95"
-                         class="stats-media-card-tooltip-panel absolute right-0 bottom-full mb-2 w-56 max-w-[calc(100vw-2rem)] p-3 text-white text-xs rounded-lg z-10 stats-tooltip"
+                         class="stats-media-card-tooltip-panel absolute right-0 bottom-full mb-2 w-56 max-w-[calc(100vw-2rem)] p-3 text-[var(--color-text)] text-xs rounded-lg z-10 stats-tooltip"
                          style="display: none;">
                       <div class="stats-tooltip-lines">
                         <div class="stats-tooltip-line">
@@ -271,7 +271,7 @@
         {% endif %}
         
         {% if user.podcast_enabled and hours_per_media_type.podcast and hours_per_media_type.podcast != "0h 0min" %}
-        <div class="bg-[#2a2f35] rounded-lg p-4 sm:p-6 flex items-center min-w-0" data-media-card x-show="isMediaTypeVisible('podcast')">
+        <div class="bg-[var(--color-surface)] rounded-lg p-4 sm:p-6 flex items-center min-w-0" data-media-card x-show="isMediaTypeVisible('podcast')">
           <div class="stats-media-card-icon" style="background-color: {{ media_type_colors.podcast }}33;">
             <svg xmlns="http://www.w3.org/2000/svg"
                  width="24"
@@ -290,7 +290,7 @@
             </svg>
           </div>
           <div class="stats-media-card-copy min-w-0">
-            <h3 class="stats-media-card-title text-xs sm:text-sm font-medium text-gray-400">Podcasts</h3>
+            <h3 class="stats-media-card-title text-xs sm:text-sm font-medium text-[var(--color-text-muted)]">Podcasts</h3>
             <p class="stats-media-card-value text-xl sm:text-2xl font-bold">{{ hours_per_media_type.podcast }}</p>
             {% with compare=hours_per_media_type_comparison.podcast %}
               <div class="stats-media-card-meta">
@@ -328,7 +328,7 @@
                          x-transition:leave="transition ease-in duration-150"
                          x-transition:leave-start="opacity-100 scale-100"
                          x-transition:leave-end="opacity-0 scale-95"
-                         class="stats-media-card-tooltip-panel absolute right-0 bottom-full mb-2 w-56 max-w-[calc(100vw-2rem)] p-3 text-white text-xs rounded-lg z-10 stats-tooltip"
+                         class="stats-media-card-tooltip-panel absolute right-0 bottom-full mb-2 w-56 max-w-[calc(100vw-2rem)] p-3 text-[var(--color-text)] text-xs rounded-lg z-10 stats-tooltip"
                          style="display: none;">
                       <div class="stats-tooltip-lines">
                         <div class="stats-tooltip-line">
@@ -351,7 +351,7 @@
         {% endif %}
         
         {% if hours_per_media_type.boardgame and hours_per_media_type.boardgame != "0 plays" %}
-        <div class="bg-[#2a2f35] rounded-lg p-4 sm:p-6 flex items-center min-w-0" data-media-card x-show="isMediaTypeVisible('boardgame')">
+        <div class="bg-[var(--color-surface)] rounded-lg p-4 sm:p-6 flex items-center min-w-0" data-media-card x-show="isMediaTypeVisible('boardgame')">
           <div class="stats-media-card-icon bg-lime-600/20">
             <svg xmlns="http://www.w3.org/2000/svg"
                  width="24"
@@ -371,7 +371,7 @@
             </svg>
           </div>
           <div class="stats-media-card-copy min-w-0">
-            <h3 class="stats-media-card-title text-xs sm:text-sm font-medium text-gray-400">Board Games</h3>
+            <h3 class="stats-media-card-title text-xs sm:text-sm font-medium text-[var(--color-text-muted)]">Board Games</h3>
             <p class="stats-media-card-value text-xl sm:text-2xl font-bold">{{ hours_per_media_type.boardgame }}</p>
             {% with compare=hours_per_media_type_comparison.boardgame %}
               <div class="stats-media-card-meta">
@@ -409,7 +409,7 @@
                          x-transition:leave="transition ease-in duration-150"
                          x-transition:leave-start="opacity-100 scale-100"
                          x-transition:leave-end="opacity-0 scale-95"
-                         class="stats-media-card-tooltip-panel absolute right-0 bottom-full mb-2 w-56 max-w-[calc(100vw-2rem)] p-3 text-white text-xs rounded-lg z-10 stats-tooltip"
+                         class="stats-media-card-tooltip-panel absolute right-0 bottom-full mb-2 w-56 max-w-[calc(100vw-2rem)] p-3 text-[var(--color-text)] text-xs rounded-lg z-10 stats-tooltip"
                          style="display: none;">
                       <div class="stats-tooltip-lines">
                         <div class="stats-tooltip-line">
@@ -432,7 +432,7 @@
         {% endif %}
         
         {% if hours_per_media_type.anime and hours_per_media_type.anime != "0h 0min" %}
-        <div class="bg-[#2a2f35] rounded-lg p-4 sm:p-6 flex items-center min-w-0" data-media-card x-show="isMediaTypeVisible('anime')">
+        <div class="bg-[var(--color-surface)] rounded-lg p-4 sm:p-6 flex items-center min-w-0" data-media-card x-show="isMediaTypeVisible('anime')">
           <div class="stats-media-card-icon bg-pink-600/20">
             <svg xmlns="http://www.w3.org/2000/svg"
                  width="24"
@@ -449,7 +449,7 @@
             </svg>
           </div>
           <div class="stats-media-card-copy min-w-0">
-            <h3 class="stats-media-card-title text-xs sm:text-sm font-medium text-gray-400">Anime</h3>
+            <h3 class="stats-media-card-title text-xs sm:text-sm font-medium text-[var(--color-text-muted)]">Anime</h3>
             <p class="stats-media-card-value text-xl sm:text-2xl font-bold">{{ hours_per_media_type.anime }}</p>
             {% with compare=hours_per_media_type_comparison.anime %}
               <div class="stats-media-card-meta">
@@ -487,7 +487,7 @@
                          x-transition:leave="transition ease-in duration-150"
                          x-transition:leave-start="opacity-100 scale-100"
                          x-transition:leave-end="opacity-0 scale-95"
-                         class="stats-media-card-tooltip-panel absolute right-0 bottom-full mb-2 w-56 max-w-[calc(100vw-2rem)] p-3 text-white text-xs rounded-lg z-10 stats-tooltip"
+                         class="stats-media-card-tooltip-panel absolute right-0 bottom-full mb-2 w-56 max-w-[calc(100vw-2rem)] p-3 text-[var(--color-text)] text-xs rounded-lg z-10 stats-tooltip"
                          style="display: none;">
                       <div class="stats-tooltip-lines">
                         <div class="stats-tooltip-line">
@@ -510,7 +510,7 @@
         {% endif %}
 
         {% if user.manga_enabled and hours_per_media_type.manga and hours_per_media_type.manga != "0h 0min" %}
-        <div class="bg-[#2a2f35] rounded-lg p-4 sm:p-6 flex items-center min-w-0" data-media-card x-show="isMediaTypeVisible('manga')">
+        <div class="bg-[var(--color-surface)] rounded-lg p-4 sm:p-6 flex items-center min-w-0" data-media-card x-show="isMediaTypeVisible('manga')">
           <div class="stats-media-card-icon" style="background-color: {{ media_type_colors.manga }}33;">
             <svg xmlns="http://www.w3.org/2000/svg"
                  width="24"
@@ -530,7 +530,7 @@
             </svg>
           </div>
           <div class="stats-media-card-copy min-w-0">
-            <h3 class="stats-media-card-title text-xs sm:text-sm font-medium text-gray-400">Manga</h3>
+            <h3 class="stats-media-card-title text-xs sm:text-sm font-medium text-[var(--color-text-muted)]">Manga</h3>
             <p class="stats-media-card-value text-xl sm:text-2xl font-bold">{{ hours_per_media_type.manga }}</p>
             {% with compare=hours_per_media_type_comparison.manga %}
               <div class="stats-media-card-meta">
@@ -568,7 +568,7 @@
                          x-transition:leave="transition ease-in duration-150"
                          x-transition:leave-start="opacity-100 scale-100"
                          x-transition:leave-end="opacity-0 scale-95"
-                         class="stats-media-card-tooltip-panel absolute right-0 bottom-full mb-2 w-56 max-w-[calc(100vw-2rem)] p-3 text-white text-xs rounded-lg z-10 stats-tooltip"
+                         class="stats-media-card-tooltip-panel absolute right-0 bottom-full mb-2 w-56 max-w-[calc(100vw-2rem)] p-3 text-[var(--color-text)] text-xs rounded-lg z-10 stats-tooltip"
                          style="display: none;">
                       <div class="stats-tooltip-lines">
                         <div class="stats-tooltip-line">
@@ -591,7 +591,7 @@
         {% endif %}
 
         {% if user.music_enabled and hours_per_media_type.music and hours_per_media_type.music != "0h 0min" %}
-        <div class="bg-[#2a2f35] rounded-lg p-4 sm:p-6 flex items-center min-w-0" data-media-card x-show="isMediaTypeVisible('music')">
+        <div class="bg-[var(--color-surface)] rounded-lg p-4 sm:p-6 flex items-center min-w-0" data-media-card x-show="isMediaTypeVisible('music')">
           <div class="stats-media-card-icon" style="background-color: {{ media_type_colors.music }}33;">
             <svg xmlns="http://www.w3.org/2000/svg"
                  width="24"
@@ -609,7 +609,7 @@
             </svg>
           </div>
           <div class="stats-media-card-copy min-w-0">
-            <h3 class="stats-media-card-title text-xs sm:text-sm font-medium text-gray-400">Music</h3>
+            <h3 class="stats-media-card-title text-xs sm:text-sm font-medium text-[var(--color-text-muted)]">Music</h3>
             <p class="stats-media-card-value text-xl sm:text-2xl font-bold">{{ hours_per_media_type.music }}</p>
             {% with compare=hours_per_media_type_comparison.music %}
               <div class="stats-media-card-meta">
@@ -647,7 +647,7 @@
                          x-transition:leave="transition ease-in duration-150"
                          x-transition:leave-start="opacity-100 scale-100"
                          x-transition:leave-end="opacity-0 scale-95"
-                         class="stats-media-card-tooltip-panel absolute right-0 bottom-full mb-2 w-56 max-w-[calc(100vw-2rem)] p-3 text-white text-xs rounded-lg z-10 stats-tooltip"
+                         class="stats-media-card-tooltip-panel absolute right-0 bottom-full mb-2 w-56 max-w-[calc(100vw-2rem)] p-3 text-[var(--color-text)] text-xs rounded-lg z-10 stats-tooltip"
                          style="display: none;">
                       <div class="stats-tooltip-lines">
                         <div class="stats-tooltip-line">
@@ -670,7 +670,7 @@
         {% endif %}
 
         {% if user.book_enabled and hours_per_media_type.book and hours_per_media_type.book != "0h 0min" %}
-        <div class="bg-[#2a2f35] rounded-lg p-4 sm:p-6 flex items-center min-w-0" data-media-card x-show="isMediaTypeVisible('book')">
+        <div class="bg-[var(--color-surface)] rounded-lg p-4 sm:p-6 flex items-center min-w-0" data-media-card x-show="isMediaTypeVisible('book')">
           <div class="stats-media-card-icon" style="background-color: {{ media_type_colors.book }}33;">
             <svg xmlns="http://www.w3.org/2000/svg"
                  width="24"
@@ -686,7 +686,7 @@
             </svg>
           </div>
           <div class="stats-media-card-copy min-w-0">
-            <h3 class="stats-media-card-title text-xs sm:text-sm font-medium text-gray-400">Books</h3>
+            <h3 class="stats-media-card-title text-xs sm:text-sm font-medium text-[var(--color-text-muted)]">Books</h3>
             <p class="stats-media-card-value text-xl sm:text-2xl font-bold">{{ hours_per_media_type.book }}</p>
             {% with compare=hours_per_media_type_comparison.book %}
               <div class="stats-media-card-meta">
@@ -724,7 +724,7 @@
                          x-transition:leave="transition ease-in duration-150"
                          x-transition:leave-start="opacity-100 scale-100"
                          x-transition:leave-end="opacity-0 scale-95"
-                         class="stats-media-card-tooltip-panel absolute right-0 bottom-full mb-2 w-56 max-w-[calc(100vw-2rem)] p-3 text-white text-xs rounded-lg z-10 stats-tooltip"
+                         class="stats-media-card-tooltip-panel absolute right-0 bottom-full mb-2 w-56 max-w-[calc(100vw-2rem)] p-3 text-[var(--color-text)] text-xs rounded-lg z-10 stats-tooltip"
                          style="display: none;">
                       <div class="stats-tooltip-lines">
                         <div class="stats-tooltip-line">
@@ -747,7 +747,7 @@
         {% endif %}
 
         {% if user.comic_enabled and hours_per_media_type.comic and hours_per_media_type.comic != "0h 0min" %}
-        <div class="bg-[#2a2f35] rounded-lg p-4 sm:p-6 flex items-center min-w-0" data-media-card x-show="isMediaTypeVisible('comic')">
+        <div class="bg-[var(--color-surface)] rounded-lg p-4 sm:p-6 flex items-center min-w-0" data-media-card x-show="isMediaTypeVisible('comic')">
           <div class="stats-media-card-icon" style="background-color: {{ media_type_colors.comic }}33;">
             <svg xmlns="http://www.w3.org/2000/svg"
                  width="24"
@@ -765,7 +765,7 @@
             </svg>
           </div>
           <div class="stats-media-card-copy min-w-0">
-            <h3 class="stats-media-card-title text-xs sm:text-sm font-medium text-gray-400">Comics</h3>
+            <h3 class="stats-media-card-title text-xs sm:text-sm font-medium text-[var(--color-text-muted)]">Comics</h3>
             <p class="stats-media-card-value text-xl sm:text-2xl font-bold">{{ hours_per_media_type.comic }}</p>
             {% with compare=hours_per_media_type_comparison.comic %}
               <div class="stats-media-card-meta">
@@ -803,7 +803,7 @@
                          x-transition:leave="transition ease-in duration-150"
                          x-transition:leave-start="opacity-100 scale-100"
                          x-transition:leave-end="opacity-0 scale-95"
-                         class="stats-media-card-tooltip-panel absolute right-0 bottom-full mb-2 w-56 max-w-[calc(100vw-2rem)] p-3 text-white text-xs rounded-lg z-10 stats-tooltip"
+                         class="stats-media-card-tooltip-panel absolute right-0 bottom-full mb-2 w-56 max-w-[calc(100vw-2rem)] p-3 text-[var(--color-text)] text-xs rounded-lg z-10 stats-tooltip"
                          style="display: none;">
                       <div class="stats-tooltip-lines">
                         <div class="stats-tooltip-line">

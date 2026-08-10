@@ -70,6 +70,24 @@ logger = logging.getLogger(__name__)
 RUNTIME_UNKNOWN_AIRED = 999998  # aired but runtime unknown
 
 
+def _stored_metadata_fallback(item):
+    """Build a minimal media_metadata dict from a stored Item when the provider is unreachable."""
+    return {
+        "media_id": item.media_id,
+        "source": item.source,
+        "media_type": item.media_type,
+        "title": item.title,
+        "original_title": item.original_title,
+        "localized_title": item.localized_title,
+        "image": item.image,
+        "synopsis": item.synopsis,
+        "genres": item.genres,
+        "cast": [],
+        "crew": [],
+        "studios_full": [],
+    }
+
+
 def _enrich_comic_issues(issues, user):
     """Attach user tracking history to each issue dict from the volume issues list."""
     if not issues:
@@ -941,12 +959,24 @@ def media_details(
     if metadata_resolution.is_grouped_anime_route(media_type, source=source):
         detail_item_lookup["library_media_type"] = MediaTypes.ANIME.value
 
-    media_metadata = services.get_media_metadata(
-        media_type,
-        media_id,
-        source,
-        language=metadata_resolution.metadata_language_default(request.user),
-    )
+    detail_item = Item.objects.filter(**detail_item_lookup).first()
+
+    try:
+        media_metadata = services.get_media_metadata(
+            media_type,
+            media_id,
+            source,
+            language=metadata_resolution.metadata_language_default(request.user),
+        )
+    except services.ProviderAPIError:
+        if detail_item is None:
+            raise
+        logger.warning(
+            "Falling back to stored metadata for media_id=%s due to provider API error",
+            media_id,
+        )
+        media_metadata = _stored_metadata_fallback(detail_item)
+
     if isinstance(media_metadata, dict):
         media_metadata.update(Item.title_fields_from_metadata(media_metadata))
 
@@ -954,8 +984,6 @@ def media_details(
         raw_issues = media_metadata.pop("issues", None)
         if raw_issues:
             media_metadata["episodes"] = _enrich_comic_issues(raw_issues, request.user)
-
-    detail_item = Item.objects.filter(**detail_item_lookup).first()
 
     if (
         render_secondary_only
@@ -1142,6 +1170,19 @@ def media_details(
         media_metadata["media_type"] = media_type
         media_metadata["media_id"] = media_id
 
+    if render_secondary_only and detail_item and isinstance(media_metadata, dict):
+        metadata_update_fields = metadata_utils.apply_item_metadata(
+            detail_item,
+            identity_media_metadata,
+        )
+        if metadata_update_fields:
+            detail_item.metadata_fetched_at = timezone.now()
+            metadata_update_fields.append("metadata_fetched_at")
+            _best_effort_detail_db_work(
+                lambda: detail_item.save(update_fields=metadata_update_fields),
+                operation_name="detail metadata sync",
+            )
+
     if (
         render_secondary_only
         and source == Sources.TMDB.value
@@ -1152,18 +1193,8 @@ def media_details(
             MediaTypes.SEASON.value,
         )
         and isinstance(media_metadata, dict)
-    ) and detail_item:
-        metadata_update_fields = metadata_utils.apply_item_metadata(
-            detail_item,
-            identity_media_metadata,
-        )
-        if metadata_update_fields:
-            detail_item.metadata_fetched_at = timezone.now()
-            metadata_update_fields.append("metadata_fetched_at")
-            _best_effort_detail_db_work(
-                lambda: detail_item.save(update_fields=metadata_update_fields),
-                operation_name="TMDB detail metadata sync",
-            )
+        and detail_item
+    ):
         missing_people = not detail_item.person_credits.exists()
         missing_studios = not detail_item.studio_credits.exists()
         if missing_people or missing_studios:
@@ -1571,7 +1602,7 @@ def media_details(
             # ready before the user hovers.
             from app.providers import trakt as _trakt
 
-            if _trakt.is_configured() and source in {
+            if not public_view and _trakt.is_configured() and source in {
                 Sources.TMDB.value,
                 Sources.TVDB.value,
             }:
@@ -1843,7 +1874,7 @@ def media_details(
     item_id_for_polling = None
 
     if (
-        render_secondary_only
+        (render_secondary_only or media_type == MediaTypes.COMIC_ISSUE.value)
         and not public_view
         and media_type != MediaTypes.PODCAST.value
     ):
@@ -1924,15 +1955,41 @@ def media_details(
                 on_deferred=_mark_detail_persistence_deferred,
             )
             if tmdb_media_id:
-                tmdb_metadata = services.get_media_metadata(
-                    media_type,
-                    tmdb_media_id,
-                    Sources.TMDB.value,
-                    language=metadata_resolution.metadata_language_default(
-                        request.user
-                    ),
-                )
-                watch_provider_payload = tmdb_metadata.get("providers")
+                try:
+                    tmdb_metadata = services.get_media_metadata(
+                        media_type,
+                        tmdb_media_id,
+                        Sources.TMDB.value,
+                        language=metadata_resolution.metadata_language_default(
+                            request.user
+                        ),
+                    )
+                except services.ProviderAPIError:
+                    # Watch providers are TMDB-only enrichment. A dead TMDB
+                    # mapping must not take down a page the tracking provider
+                    # can render on its own.
+                    logger.warning(
+                        "Skipping watch providers for %s media_id=%s: mapped TMDB "
+                        "ID %s could not be fetched",
+                        source,
+                        media_id,
+                        tmdb_media_id,
+                    )
+                else:
+                    watch_provider_payload = tmdb_metadata.get("providers")
+
+        if (
+            detail_item
+            and isinstance(watch_provider_payload, dict)
+            and watch_provider_payload
+            and detail_item.watch_providers != watch_provider_payload
+        ):
+            detail_item.watch_providers = watch_provider_payload
+            _best_effort_detail_followup(
+                lambda: detail_item.save(update_fields=["watch_providers"]),
+                operation_name="watch provider cache refresh",
+                fallback=None,
+            )
 
         watch_providers = (
             tmdb.filter_providers(
@@ -2064,6 +2121,7 @@ def media_details(
             media_metadata,
             detail_item,
             request.user,
+            genre_list_media_type=media_type,
         ),
         "detail_tag_preview_genres_json": json.dumps(
             _resolve_detail_tag_genres(media_metadata, detail_item)

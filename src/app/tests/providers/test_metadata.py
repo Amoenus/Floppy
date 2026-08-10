@@ -581,6 +581,71 @@ class Metadata(TestCase):
         self.assertEqual(result["season/0"]["max_progress"], 1)
         mock_build_specials_season.assert_called_once()
 
+    @patch("app.providers.tmdb.services.api_request")
+    def test_tv_with_seasons_handles_missing_season_watch_providers(
+        self,
+        mock_api_request,
+    ):
+        """A season without TMDB provider data should still be cached."""
+        tmdb.cache.clear()
+        mock_api_request.return_value = {
+            "id": 330881,
+            "name": "Monster",
+            "original_name": "Monster",
+            "poster_path": None,
+            "overview": "A test show.",
+            "genres": [],
+            "vote_average": 8.0,
+            "vote_count": 10,
+            "production_companies": [],
+            "production_countries": [],
+            "spoken_languages": [],
+            "recommendations": {"results": []},
+            "external_ids": {"tvdb_id": "12345"},
+            "watch/providers": {"results": {}},
+            "aggregate_credits": {"cast": [], "crew": []},
+            "alternative_titles": {"results": []},
+            "episode_run_time": [24],
+            "first_air_date": "2004-04-07",
+            "last_air_date": "2005-09-28",
+            "status": "Ended",
+            "number_of_seasons": 2,
+            "number_of_episodes": 74,
+            "seasons": [
+                {
+                    "season_number": 2,
+                    "name": "Season 2",
+                    "air_date": "2005-01-01",
+                    "episode_count": 1,
+                    "poster_path": None,
+                },
+            ],
+            "season/2": {
+                "name": "Season 2",
+                "overview": "Season overview",
+                "season_number": 2,
+                "poster_path": None,
+                "air_date": "2005-01-01",
+                "vote_average": 8.0,
+                "episodes": [
+                    {
+                        "episode_number": 1,
+                        "name": "Episode 1",
+                        "overview": "Episode overview",
+                        "still_path": None,
+                        "runtime": 24,
+                        "vote_count": 10,
+                        "air_date": "2005-01-01",
+                    },
+                ],
+            },
+        }
+
+        result = tmdb.tv_with_seasons("330881", [2])
+
+        self.assertEqual(result["season/2"]["season_number"], 2)
+        self.assertEqual(result["season/2"]["providers"], {})
+
     @patch("app.providers.tvdb._request")
     def test_tvdb_episode_map_normalizes_precise_airstamps(
         self,
@@ -1110,6 +1175,9 @@ class Metadata(TestCase):
     @patch("app.providers.tmdb.services.api_request")
     def test_tv_changes(self, mock_api_request, mock_localdate):
         """Test fetching changed TV ids from TMDB."""
+        # get_changed_ids caches per media_type per day (#521), and every
+        # test here pins localdate to the same date.
+        tmdb.cache.clear()
         mock_localdate.return_value = date(2026, 4, 5)
         mock_api_request.return_value = {
             "results": [{"id": 1}, {"id": 2}],
@@ -1128,6 +1196,9 @@ class Metadata(TestCase):
     @patch("app.providers.tmdb.services.api_request")
     def test_tv_changes_across_pages(self, mock_api_request, mock_localdate):
         """Test TMDB TV changes pagination and deduplication."""
+        # get_changed_ids caches per media_type per day (#521), and every
+        # test here pins localdate to the same date.
+        tmdb.cache.clear()
         mock_localdate.return_value = date(2026, 4, 5)
         mock_api_request.side_effect = [
             {
@@ -1147,8 +1218,48 @@ class Metadata(TestCase):
 
     @patch("app.providers.tmdb.timezone.localdate")
     @patch("app.providers.tmdb.services.api_request")
+    def test_changes_pagination_is_capped(self, mock_api_request, mock_localdate):
+        """An unbounded loop over /changes could make hundreds of calls (#521).
+
+        TMDB's changes endpoint reports every title changed globally in the
+        window, so total_pages can run into the hundreds - all sequential, all
+        through a 3/s rate limiter.
+        """
+        tmdb.cache.clear()
+        mock_localdate.return_value = date(2026, 4, 5)
+        mock_api_request.return_value = {
+            "results": [{"id": 1}],
+            "total_pages": 500,
+        }
+
+        tmdb.get_changed_ids(MediaTypes.TV.value, max_pages=3)
+
+        self.assertEqual(mock_api_request.call_count, 3)
+
+    @patch("app.providers.tmdb.timezone.localdate")
+    @patch("app.providers.tmdb.services.api_request")
+    def test_changes_are_cached_per_day(self, mock_api_request, mock_localdate):
+        """The result for a given day doesn't change once fetched."""
+        tmdb.cache.clear()
+        mock_localdate.return_value = date(2026, 4, 5)
+        mock_api_request.return_value = {
+            "results": [{"id": 7}],
+            "total_pages": 1,
+        }
+
+        first = tmdb.get_changed_ids(MediaTypes.TV.value)
+        second = tmdb.get_changed_ids(MediaTypes.TV.value)
+
+        self.assertEqual(first, second)
+        self.assertEqual(mock_api_request.call_count, 1)
+
+    @patch("app.providers.tmdb.timezone.localdate")
+    @patch("app.providers.tmdb.services.api_request")
     def test_movie_changes(self, mock_api_request, mock_localdate):
         """Test fetching changed movie ids from TMDB."""
+        # get_changed_ids caches per media_type per day (#521), and every
+        # test here pins localdate to the same date.
+        tmdb.cache.clear()
         mock_localdate.return_value = date(2026, 4, 5)
         mock_api_request.return_value = {
             "results": [{"id": 10}, {"id": 20}],
@@ -1167,6 +1278,9 @@ class Metadata(TestCase):
     @patch("app.providers.tmdb.services.api_request")
     def test_movie_changes_across_pages(self, mock_api_request, mock_localdate):
         """Test TMDB movie changes pagination and deduplication."""
+        # get_changed_ids caches per media_type per day (#521), and every
+        # test here pins localdate to the same date.
+        tmdb.cache.clear()
         mock_localdate.return_value = date(2026, 4, 5)
         mock_api_request.side_effect = [
             {

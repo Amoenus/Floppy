@@ -7,6 +7,7 @@ from django.utils import timezone
 import app
 from app.log_safety import exception_summary
 from app.models import MediaTypes, ProviderMetadataStatus, Sources, Status
+from app.services.completion import select_preferred_activity_entry
 from integrations import episode_remap
 from integrations.webhooks import anime_mappings
 
@@ -246,6 +247,8 @@ class BaseWebhookProcessor:
             alt_ids["tmdb_id"] = None
             fallback_media_id, alt_season, alt_episode = self._find_tv_media_id(
                 alt_ids,
+                series_title=series_title,
+                allow_title_fallback=True,
             )
             if fallback_media_id:
                 media_id = fallback_media_id
@@ -565,9 +568,6 @@ class BaseWebhookProcessor:
         if not raw_tmdb_id or str(media_id) != str(raw_tmdb_id):
             return False
 
-        if not (ids.get("tvdb_id") or ids.get("imdb_id")):
-            return False
-
         expected_tvdb_id = ids.get("tvdb_id")
         actual_tvdb_id = tv_metadata.get("tvdb_id")
         if (
@@ -713,6 +713,35 @@ class BaseWebhookProcessor:
                 if response.get("tv_results"):
                     result = response["tv_results"][0]
                     return result.get("id"), None, None
+
+        # Jellyfin and other media servers can send a TVDB episode ID here.
+        # TMDB's find endpoint does not resolve every TVDB episode, but TVDB
+        # can map that ID to its series and the series' TMDB ID directly.
+        tvdb_episode_id = ids.get("tvdb_id")
+        if tvdb_episode_id and app.providers.tvdb.enabled():
+            try:
+                tvdb_episode = app.providers.tvdb.episode_by_id(tvdb_episode_id)
+                if tvdb_episode:
+                    media_id = app.providers.tvdb.series_tmdb_id(
+                        tvdb_episode.get("series_id"),
+                    )
+                    if media_id:
+                        logger.info(
+                            "Resolved TVDB episode %s to TMDB show %s",
+                            tvdb_episode_id,
+                            media_id,
+                        )
+                        return (
+                            media_id,
+                            tvdb_episode.get("season_number"),
+                            tvdb_episode.get("episode_number"),
+                        )
+            except Exception as exc:  # pragma: no cover - defensive network guard
+                logger.warning(
+                    "TVDB episode resolution failed for %s: %s",
+                    tvdb_episode_id,
+                    exception_summary(exc),
+                )
 
         # Direct TMDB ID fallback (may be episode-level; _process_tv handles that case)
         if ids["tmdb_id"]:
@@ -870,7 +899,7 @@ class BaseWebhookProcessor:
         )
 
         movie_instances = app.models.Movie.objects.filter(item=movie_item, user=user)
-        current_instance = movie_instances.first()
+        current_instance = select_preferred_activity_entry(movie_instances)
         movie_played = self._is_played(payload)
 
         progress = 1 if movie_played else 0
@@ -1636,7 +1665,7 @@ class BaseWebhookProcessor:
                 )
 
         anime_instances = app.models.Anime.objects.filter(item=anime_item, user=user)
-        current_instance = anime_instances.first()
+        current_instance = select_preferred_activity_entry(anime_instances)
 
         now = timezone.now().replace(second=0, microsecond=0)
         is_completed = episode_number == anime_metadata["max_progress"]

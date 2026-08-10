@@ -8,32 +8,32 @@
 {% endblock title %}
 
 {% block settings_content %}
-  <div class="bg-[#2a2f35] rounded-lg p-6"
+  <div class="bg-[var(--color-surface)] rounded-lg p-6"
        x-data="{ activeIntegration: 'all' }">
     <div class="flex items-center mb-4">
       {% include "app/icons/database.svg" with classes="w-6 h-6 text-indigo-400 mr-3" %}
       <h2 class="text-xl font-semibold">Integrations</h2>
     </div>
-    <p class="text-gray-400 mb-5 text-sm">Connect your media servers and services via webhooks to automatically track your watching progress.</p>
+    <p class="text-[var(--color-text-muted)] mb-5 text-sm">Connect your media servers and services via webhooks to automatically track your watching progress.</p>
 
     {# API Token #}
-    <div class="bg-[#39404b] p-5 rounded-lg mb-6">
+    <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg mb-6">
       <div class="flex items-center mb-3">
         {% include "app/icons/padlock.svg" with classes="w-5 h-5 text-indigo-400 mr-2" %}
         <h3 class="text-base font-medium">API Token</h3>
       </div>
-      <p class="text-gray-400 mb-4 text-sm">This token is used to authenticate webhook requests from your media servers.</p>
-      <div class="bg-[#262a2f] p-3 rounded-md mb-4">
+      <p class="text-[var(--color-text-muted)] mb-4 text-sm">This token is used to authenticate webhook requests from your media servers.</p>
+      <div class="bg-[var(--color-surface-dim)] p-3 rounded-md mb-4">
         <div class="flex items-center gap-2">
           <input readonly=""
                  id="token"
-                 class="flex-1 py-2 pr-2 pl-3 bg-[#262a2f] rounded-md text-gray-300 text-sm border-0 focus:ring-0 outline-none font-mono"
+                 class="flex-1 py-2 pr-2 pl-3 bg-[var(--color-surface-dim)] rounded-md text-[var(--color-text-secondary)] text-sm border-0 focus:ring-0 outline-none font-mono"
                  type="text"
                  value="{{ user.token|default_if_none:"" }}">
           <span class="flex items-center cursor-pointer group pr-3"
                 title="Copy"
                 data-copy-target="#token">
-            {% include "app/icons/copy.svg" with classes="w-5 h-5 text-gray-400 group-hover:text-indigo-400 transition-colors" %}
+            {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-indigo-400 transition-colors" %}
           </span>
         </div>
       </div>
@@ -56,75 +56,75 @@
     </div>
 
     {# Filter bar #}
-    <div class="bg-[#39404b] rounded-lg p-4 mb-5">
-      <p class="text-sm text-gray-300 mb-3">Jump to integration:</p>
+    <div class="bg-[var(--color-surface-strong)] rounded-lg p-4 mb-5">
+      <p class="text-sm text-[var(--color-text-secondary)] mb-3">Jump to integration:</p>
       <div class="flex flex-wrap gap-2">
         <button type="button"
                 @click="activeIntegration = 'all'"
                 :aria-pressed="activeIntegration === 'all'"
                 class="px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer"
-                :class="activeIntegration === 'all' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[#2a2f35] text-gray-300 border-gray-600 hover:border-indigo-500 hover:text-white'">
+                :class="activeIntegration === 'all' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-gray-300 border-gray-600 hover:border-indigo-500 hover:text-white'">
           All
         </button>
         <button type="button"
                 @click="activeIntegration = 'jellyfin'"
                 :aria-pressed="activeIntegration === 'jellyfin'"
                 class="px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer"
-                :class="activeIntegration === 'jellyfin' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[#2a2f35] text-gray-300 border-gray-600 hover:border-indigo-500 hover:text-white'">
+                :class="activeIntegration === 'jellyfin' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-gray-300 border-gray-600 hover:border-indigo-500 hover:text-white'">
           Jellyfin
         </button>
         <button type="button"
                 @click="activeIntegration = 'plex'"
                 :aria-pressed="activeIntegration === 'plex'"
                 class="px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer"
-                :class="activeIntegration === 'plex' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[#2a2f35] text-gray-300 border-gray-600 hover:border-indigo-500 hover:text-white'">
+                :class="activeIntegration === 'plex' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-gray-300 border-gray-600 hover:border-indigo-500 hover:text-white'">
           Plex
         </button>
         <button type="button"
                 @click="activeIntegration = 'emby'"
                 :aria-pressed="activeIntegration === 'emby'"
                 class="px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer"
-                :class="activeIntegration === 'emby' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[#2a2f35] text-gray-300 border-gray-600 hover:border-indigo-500 hover:text-white'">
+                :class="activeIntegration === 'emby' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-gray-300 border-gray-600 hover:border-indigo-500 hover:text-white'">
           Emby
         </button>
         <button type="button"
                 @click="activeIntegration = 'kodi'"
                 :aria-pressed="activeIntegration === 'kodi'"
                 class="px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer"
-                :class="activeIntegration === 'kodi' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[#2a2f35] text-gray-300 border-gray-600 hover:border-indigo-500 hover:text-white'">
+                :class="activeIntegration === 'kodi' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-gray-300 border-gray-600 hover:border-indigo-500 hover:text-white'">
           Kodi
         </button>
         <button type="button"
                 @click="activeIntegration = 'stremio'"
                 :aria-pressed="activeIntegration === 'stremio'"
                 class="px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer"
-                :class="activeIntegration === 'stremio' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[#2a2f35] text-gray-300 border-gray-600 hover:border-indigo-500 hover:text-white'">
+                :class="activeIntegration === 'stremio' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-gray-300 border-gray-600 hover:border-indigo-500 hover:text-white'">
           Stremio
         </button>
         <button type="button"
-                @click="activeIntegration = 'jellyseerr'"
-                :aria-pressed="activeIntegration === 'jellyseerr'"
+                @click="activeIntegration = 'seerr'"
+                :aria-pressed="activeIntegration === 'seerr'"
                 class="px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer"
-                :class="activeIntegration === 'jellyseerr' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[#2a2f35] text-gray-300 border-gray-600 hover:border-indigo-500 hover:text-white'">
-          Jellyseerr
+                :class="activeIntegration === 'seerr' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-gray-300 border-gray-600 hover:border-indigo-500 hover:text-white'">
+          Seerr
         </button>
       </div>
     </div>
 
     {# Jellyfin Official #}
-    <div class="bg-[#39404b] p-5 rounded-lg mb-6"
+    <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg mb-6"
          x-show="activeIntegration === 'all' || activeIntegration === 'jellyfin'"
          x-transition.opacity.duration.150ms>
       <div class="flex items-center mb-3">
         {% include "app/icons/server.svg" with classes="w-5 h-5 text-indigo-400 mr-2" %}
         <h3 class="text-base font-medium">Jellyfin Integration (Official Repo)</h3>
       </div>
-      <p class="text-gray-400 mb-4 text-sm">Connect Jellyfin to automatically track your watching progress. Use this method if your server has access to the official Jellyfin plugin repository.</p>
-      <div class="bg-[#262a2f] p-4 rounded-md">
+      <p class="text-[var(--color-text-muted)] mb-4 text-sm">Connect Jellyfin to automatically track your watching progress. Use this method if your server has access to the official Jellyfin plugin repository.</p>
+      <div class="bg-[var(--color-surface-dim)] p-4 rounded-md">
         <h4 class="text-sm font-medium mb-3">Setup Instructions</h4>
         {% url 'jellyfin_webhook' request.user.token as jellyfin_webhook_path %}
         {% absolute_app_url jellyfin_webhook_path as jellyfin_webhook_url %}
-        <ol class="list-decimal list-inside space-y-2 text-sm text-gray-300">
+        <ol class="list-decimal list-inside space-y-2 text-sm text-[var(--color-text-secondary)]">
           <li>You will need to have TMDB and TVDB as metadata providers in Jellyfin.</li>
           <li>Install the Webhook plugin from the Jellyfin Stable repo via your server's Plugin Catalog.</li>
           <li>
@@ -132,7 +132,7 @@
           </li>
           <li>
             Configure the webhook with the following settings:
-            <ul class="list-disc list-inside ml-6 mt-2 space-y-1 text-gray-400">
+            <ul class="list-disc list-inside ml-6 mt-2 space-y-1 text-[var(--color-text-muted)]">
               <li>Name: <strong>Floppy</strong></li>
               <li>Notification Type: <strong>Playback Start</strong>, <strong>Playback Stop</strong>, and <strong>Playback Progress</strong></li>
               <li>User Filter: your Jellyfin user</li>
@@ -142,9 +142,9 @@
             Set the webhook URL to:
             {# djlint:off #}
             <div class="mt-2 inline-flex items-center gap-2 w-[calc(100%-30px)]">
-              <input readonly id="jellyfin-webhook-url-official" class="w-full bg-[#262a2f] rounded-md text-gray-400 text-sm border-0 focus:ring-0 outline-none font-mono" type="text" value="{{ jellyfin_webhook_url }}">
+              <input readonly id="jellyfin-webhook-url-official" class="w-full bg-[var(--color-surface-dim)] rounded-md text-[var(--color-text-muted)] text-sm border-0 focus:ring-0 outline-none font-mono" type="text" value="{{ jellyfin_webhook_url }}">
               <span class="flex items-center cursor-pointer group" title="Copy" data-copy-target="#jellyfin-webhook-url-official">
-                {% include "app/icons/copy.svg" with classes="w-5 h-5 text-gray-400 group-hover:text-indigo-400 transition-colors" %}
+                {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-indigo-400 transition-colors" %}
               </span>
             </div>
             {# djlint:on #}
@@ -152,7 +152,7 @@
           <li>
             Under the <strong>Template</strong> section, paste the following JSON:
             <div class="relative mt-2">
-              <textarea readonly id="jellyfin-json-template" class="w-full bg-[#39404b] rounded-md text-gray-300 text-sm border-0 focus:ring-0 outline-none font-mono p-3 resize-none overflow-auto max-h-72" rows="14">
+              <textarea readonly id="jellyfin-json-template" class="w-full bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text-secondary)] text-sm border-0 focus:ring-0 outline-none font-mono p-3 resize-none overflow-auto max-h-72" rows="14">
 {% verbatim %}{
   "Event": "{{#if_equals NotificationType 'PlaybackStart'}}Play{{/if_equals}}{{#if_equals NotificationType 'PlaybackStop'}}Stop{{/if_equals}}{{#if_equals NotificationType 'PlaybackProgress'}}{{#if IsPaused}}Pause{{else}}Play{{/if}}{{/if_equals}}",
   "PlaybackPositionTicks": "{{PlaybackPositionTicks}}",
@@ -164,7 +164,8 @@
       "Tvdb": "{{Provider_tvdb}}"
     },
     "UserData": {
-      "Played": {{#if_equals PlayedToCompletion 'True'}}true{{else}}false{{/if_equals}}
+      "Played": {{#if_equals PlayedToCompletion 'True'}}true{{else}}false{{/if_equals}},
+      "LastPlayedDate": "{{LastPlayedDate}}"
     }{{#if_equals ItemType 'Episode'}},
     "SeriesName": "{{SeriesName}}",
     "ParentIndexNumber": {{SeasonNumber}},
@@ -175,7 +176,7 @@
               <span class="absolute top-3 right-3 flex items-center cursor-pointer group"
                 title="Copy"
                 data-copy-target="#jellyfin-json-template">
-                {% include "app/icons/copy.svg" with classes="w-5 h-5 text-gray-400 group-hover:text-indigo-400 transition-colors" %}
+                {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-indigo-400 transition-colors" %}
               </span>
             </div>
           </li>
@@ -184,17 +185,17 @@
     </div>
 
     {# Jellyfin Unofficial #}
-    <div class="bg-[#39404b] p-5 rounded-lg mb-6"
+    <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg mb-6"
          x-show="activeIntegration === 'all' || activeIntegration === 'jellyfin'"
          x-transition.opacity.duration.150ms>
       <div class="flex items-center mb-3">
         {% include "app/icons/server.svg" with classes="w-5 h-5 text-indigo-400 mr-2" %}
         <h3 class="text-base font-medium">Jellyfin Integration (Unofficial Repo)</h3>
       </div>
-      <p class="text-gray-400 mb-4 text-sm">An alternative setup using an unofficial webhook plugin from a community repository. Use this method if the official Jellyfin plugin repository is not accessible from your server.</p>
-      <div class="bg-[#262a2f] p-4 rounded-md">
+      <p class="text-[var(--color-text-muted)] mb-4 text-sm">An alternative setup using an unofficial webhook plugin from a community repository. Use this method if the official Jellyfin plugin repository is not accessible from your server.</p>
+      <div class="bg-[var(--color-surface-dim)] p-4 rounded-md">
         <h4 class="text-sm font-medium mb-3">Setup Instructions</h4>
-        <ol class="list-decimal list-inside space-y-2 text-sm text-gray-300">
+        <ol class="list-decimal list-inside space-y-2 text-sm text-[var(--color-text-secondary)]">
           <li>You will need to have TMDB and TVDB as metadata providers in Jellyfin.</li>
           <li>
             In Jellyfin, go to <strong>Dashboard > Plugins > Repositories</strong> and add the following repository URL:
@@ -214,7 +215,7 @@
           </li>
           <li>
             Restart your server, then open the Unofficial Webhooks plugin and configure it:
-            <ul class="list-disc list-inside ml-6 mt-2 space-y-1 text-gray-400">
+            <ul class="list-disc list-inside ml-6 mt-2 space-y-1 text-[var(--color-text-muted)]">
               <li>Payload format: <strong>Default</strong></li>
               <li>Listen to events only for: your Jellyfin user</li>
               <li>Events: <strong>Play</strong>, <strong>Stop</strong>, <strong>MarkPlayed</strong> and <strong>MarkUnplayed</strong></li>
@@ -224,31 +225,31 @@
             Set the webhook URL to:
             {# djlint:off #}
             <div class="mt-2 inline-flex items-center gap-2 w-[calc(100%-30px)]">
-              <input readonly id="jellyfin-webhook-url-unofficial" class="w-full bg-[#262a2f] rounded-md text-gray-400 text-sm border-0 focus:ring-0 outline-none font-mono" type="text" value="{{ jellyfin_webhook_url }}">
+              <input readonly id="jellyfin-webhook-url-unofficial" class="w-full bg-[var(--color-surface-dim)] rounded-md text-[var(--color-text-muted)] text-sm border-0 focus:ring-0 outline-none font-mono" type="text" value="{{ jellyfin_webhook_url }}">
               <span class="flex items-center cursor-pointer group" title="Copy" data-copy-target="#jellyfin-webhook-url-unofficial">
-                {% include "app/icons/copy.svg" with classes="w-5 h-5 text-gray-400 group-hover:text-indigo-400 transition-colors" %}
+                {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-indigo-400 transition-colors" %}
               </span>
             </div>
             {# djlint:on #}
           </li>
         </ol>
       </div>
-      <div class="bg-[#262a2f] p-4 rounded-md mt-4">
+      <div class="bg-[var(--color-surface-dim)] p-4 rounded-md mt-4">
         <h4 class="text-sm font-medium mb-3">Webhook Events</h4>
-        <p class="text-gray-400 mb-4 text-sm">
+        <p class="text-[var(--color-text-muted)] mb-4 text-sm">
           Play and Stop events are always processed. Enable these to sync manual watched changes from the unofficial Webhooks plugin.
         </p>
         <form method="post"
               action="{% url 'update_jellyfin_webhook_events' %}"
               class="space-y-3">
           {% csrf_token %}
-          <div class="flex items-center justify-between p-3 bg-[#39404b] rounded-md">
+          <div class="flex items-center justify-between p-3 bg-[var(--color-surface-strong)] rounded-md">
             <div class="flex-1">
-              <div class="flex items-center text-gray-200 mb-1">
+              <div class="flex items-center text-[var(--color-text-secondary)] mb-1">
                 {% include "app/icons/circle-check.svg" with classes="w-5 h-5 mr-2" %}
                 <span class="text-sm font-medium">Process MarkPlayed events</span>
               </div>
-              <p class="text-xs text-gray-400 ml-7">Mark media as watched when it is manually marked played in Jellyfin.</p>
+              <p class="text-xs text-[var(--color-text-muted)] ml-7">Mark media as watched when it is manually marked played in Jellyfin.</p>
             </div>
             <label class="relative inline-flex items-center cursor-pointer ml-4">
               <input class="sr-only peer"
@@ -259,13 +260,13 @@
               </div>
             </label>
           </div>
-          <div class="flex items-center justify-between p-3 bg-[#39404b] rounded-md">
+          <div class="flex items-center justify-between p-3 bg-[var(--color-surface-strong)] rounded-md">
             <div class="flex-1">
-              <div class="flex items-center text-gray-200 mb-1">
+              <div class="flex items-center text-[var(--color-text-secondary)] mb-1">
                 {% include "app/icons/error.svg" with classes="w-5 h-5 mr-2 text-amber-400" %}
                 <span class="text-sm font-medium">Process MarkUnplayed events</span>
               </div>
-              <p class="text-xs text-gray-400 ml-7">
+              <p class="text-xs text-[var(--color-text-muted)] ml-7">
                 Remove watched progress when it is manually marked unplayed in Jellyfin. This event can delete media from Floppy.
               </p>
             </div>
@@ -290,7 +291,7 @@
     </div>
 
     {# Jellyfin push (Floppy -> Jellyfin) #}
-    <div class="bg-[#39404b] p-5 rounded-lg mb-6"
+    <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg mb-6"
          x-show="activeIntegration === 'all' || activeIntegration === 'jellyfin'"
          x-transition.opacity.duration.150ms>
       <div class="flex items-center justify-between mb-3">
@@ -301,13 +302,13 @@
         {% if jellyfin_account and jellyfin_account.is_connected %}
           <span class="px-2 py-1 text-xs rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">Connected</span>
         {% else %}
-          <span class="px-2 py-1 text-xs rounded bg-gray-500/20 text-gray-300 border border-gray-600/50">Disconnected</span>
+          <span class="px-2 py-1 text-xs rounded bg-gray-500/20 text-[var(--color-text-secondary)] border border-gray-600/50">Disconnected</span>
         {% endif %}
       </div>
-      <p class="text-gray-400 mb-4 text-sm">Push your Floppy watched status onto a Jellyfin server, e.g. after re-adding media or setting up a fresh Jellyfin instance.</p>
-      <div class="bg-[#262a2f] p-4 rounded-md space-y-3">
+      <p class="text-[var(--color-text-muted)] mb-4 text-sm">Push your Floppy watched status onto a Jellyfin server, e.g. after re-adding media or setting up a fresh Jellyfin instance.</p>
+      <div class="bg-[var(--color-surface-dim)] p-4 rounded-md space-y-3">
         {% if jellyfin_account %}
-          <div class="flex items-center gap-2 text-sm text-gray-400">
+          <div class="flex items-center gap-2 text-sm text-[var(--color-text-muted)]">
             <span>{{ jellyfin_account.base_url }}</span>
             {% if jellyfin_account.jellyfin_username %}
               <span>&bull;</span>
@@ -325,19 +326,19 @@
           {% endif %}
           <form method="post" action="{% url 'jellyfin_settings' %}" class="space-y-2">
             {% csrf_token %}
-            <label class="flex items-center gap-2 text-sm text-gray-300">
+            <label class="flex items-center gap-2 text-sm text-[var(--color-text-secondary)]">
               <input type="checkbox" name="push_watched_enabled" {% if jellyfin_account.push_watched_enabled %}checked{% endif %}>
               Push watched status to Jellyfin
             </label>
-            <label class="flex items-center gap-2 text-sm text-gray-300">
+            <label class="flex items-center gap-2 text-sm text-[var(--color-text-secondary)]">
               <input type="checkbox" name="push_unwatched_enabled" {% if jellyfin_account.push_unwatched_enabled %}checked{% endif %}>
               Push unwatched status to Jellyfin
             </label>
-            <label class="flex items-center gap-2 text-sm text-gray-300">
+            <label class="flex items-center gap-2 text-sm text-[var(--color-text-secondary)]">
               <input type="checkbox" name="scheduled_push_enabled" {% if jellyfin_account.scheduled_push_enabled %}checked{% endif %}>
               Sync on a schedule (hourly)
             </label>
-            <label class="flex items-center gap-2 text-sm text-gray-300">
+            <label class="flex items-center gap-2 text-sm text-[var(--color-text-secondary)]">
               <input type="checkbox" name="instant_push_enabled" {% if jellyfin_account.instant_push_enabled %}checked{% endif %}>
               Instant push after playback events
             </label>
@@ -363,22 +364,22 @@
             </form>
           </div>
         {% else %}
-          <p class="text-sm text-gray-400">Connect Jellyfin using your server URL and API key. If the key doesn't resolve a user automatically, also provide the exact Jellyfin username.</p>
+          <p class="text-sm text-[var(--color-text-muted)]">Connect Jellyfin using your server URL and API key. If the key doesn't resolve a user automatically, also provide the exact Jellyfin username.</p>
           <form method="post" action="{% url 'jellyfin_connect' %}" class="space-y-3">
             {% csrf_token %}
             <input name="base_url"
                    placeholder="https://jellyfin.local:8096"
-                   class="w-full py-2 px-3 bg-[#2a2f35] rounded-md text-white text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+                   class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
                    type="url"
                    required>
             <input name="api_key"
                    placeholder="Jellyfin API key"
-                   class="w-full py-2 px-3 bg-[#2a2f35] rounded-md text-white text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+                   class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
                    type="password"
                    required>
             <input name="username"
                    placeholder="Jellyfin username (only needed for server-admin keys)"
-                   class="w-full py-2 px-3 bg-[#2a2f35] rounded-md text-white text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+                   class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
                    type="text">
             <button type="submit"
                     class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
@@ -390,27 +391,27 @@
     </div>
 
     {# Plex #}
-    <div class="bg-[#39404b] p-5 rounded-lg mb-6"
+    <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg mb-6"
          x-show="activeIntegration === 'all' || activeIntegration === 'plex'"
          x-transition.opacity.duration.150ms>
       <div class="flex items-center mb-3">
         {% include "app/icons/server.svg" with classes="w-5 h-5 text-indigo-400 mr-2" %}
         <h3 class="text-base font-medium">Plex Integration</h3>
       </div>
-      <p class="text-gray-400 mb-4 text-sm">Connect Plex to automatically track your watching progress.</p>
+      <p class="text-[var(--color-text-muted)] mb-4 text-sm">Connect Plex to automatically track your watching progress.</p>
 
-      <div class="bg-[#262a2f] p-4 rounded-md mb-4">
+      <div class="bg-[var(--color-surface-dim)] p-4 rounded-md mb-4">
         <h4 class="text-sm font-medium mb-3">Plex Usernames</h4>
         <form method="post"
               action="{% url 'update_plex_usernames' %}"
               class="space-y-2">
           {% csrf_token %}
           <div>
-            <p class="text-gray-400 mb-4 text-sm">
+            <p class="text-[var(--color-text-muted)] mb-4 text-sm">
               This username (or several, comma-separated) will be used to filter which events are sent to your webhook.
             </p>
             <input name="plex_usernames"
-                   class="w-full py-2 px-3 bg-[#39404b] rounded-md text-white text-sm border {% if user.plex_usernames.errors %}border-red-500{% else %}border-gray-600{% endif %} focus:border-indigo-500 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+                   class="w-full py-2 px-3 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] text-sm border {% if user.plex_usernames.errors %}border-red-500{% else %}border-gray-600{% endif %} focus:border-indigo-500 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
                    type="text"
                    placeholder="username1, username2, username3"
                    value="{{ request.user.plex_usernames }}">
@@ -425,7 +426,7 @@
         </form>
       </div>
 
-      <div class="bg-[#262a2f] p-4 rounded-md mb-4"
+      <div class="bg-[var(--color-surface-dim)] p-4 rounded-md mb-4"
            x-data="{
              dropdownOpen: false,
              selectedLibraries: JSON.parse('{{ selected_plex_webhook_libraries_json|escapejs }}'),
@@ -465,7 +466,7 @@
              }
            }">
         <h4 class="text-sm font-medium mb-3">Plex Webhook Libraries</h4>
-        <p class="text-gray-400 mb-4 text-sm">
+        <p class="text-[var(--color-text-muted)] mb-4 text-sm">
           Choose which Plex libraries are accepted by your webhook. All libraries are selected by default.
         </p>
         {% if plex_library_options_json != "[]" %}
@@ -473,7 +474,7 @@
             {% csrf_token %}
             <div class="relative" @click.outside="dropdownOpen = false">
               <button type="button"
-                      class="h-10 px-3 text-sm bg-[#39404b] hover:bg-[#454d5a] rounded-md transition-colors flex items-center gap-2 w-full cursor-pointer"
+                      class="h-10 px-3 text-sm bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)] rounded-md transition-colors flex items-center gap-2 w-full cursor-pointer"
                       @click="dropdownOpen = !dropdownOpen"
                       :aria-expanded="dropdownOpen">
                 {% include "app/icons/funnel.svg" with classes="w-4 h-4" %}
@@ -491,18 +492,18 @@
                    x-transition:leave="transition ease-in duration-75"
                    x-transition:leave-start="transform opacity-100 scale-100"
                    x-transition:leave-end="transform opacity-0 scale-95"
-                   class="absolute left-0 mt-2 w-full rounded-md bg-[#39404b] border border-gray-700 shadow-lg overflow-hidden z-40">
+                   class="absolute left-0 mt-2 w-full rounded-md bg-[var(--color-surface-strong)] border border-gray-700 shadow-lg overflow-hidden z-40">
                 <div class="flex items-center justify-between gap-2 px-3 py-2 border-b border-gray-700">
-                  <div class="text-xs uppercase tracking-wide text-gray-300">Plex Libraries</div>
+                  <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Plex Libraries</div>
                   <button type="button"
-                          class="text-xs text-gray-300 hover:text-white transition-colors"
+                          class="text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors"
                           @click="toggleAllLibraries()"
                           x-text="allLibrariesSelected() ? 'Hide all' : 'Show all'"></button>
                 </div>
                 <div class="max-h-64 overflow-y-auto">
                   <template x-for="library in availableLibraries" :key="library.value">
                     <button type="button"
-                            class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-gray-300 hover:bg-[#454d5a] hover:text-white"
+                            class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                             @click="toggleLibrary(library.value)">
                       <span class="block min-w-0 truncate" x-text="library.server_name ? `${library.label} (${library.server_name})` : library.label"></span>
                       <span class="ml-auto" x-show="isLibrarySelected(library.value)">
@@ -531,14 +532,14 @@
         {% endif %}
       </div>
 
-      <div class="bg-[#262a2f] p-4 rounded-md mb-4">
+      <div class="bg-[var(--color-surface-dim)] p-4 rounded-md mb-4">
         <h4 class="text-sm font-medium mb-3">Webhook Status</h4>
         {% if plex_webhook_needs_update %}
           <div class="flex items-start gap-2">
             {% include "app/icons/warning.svg" with classes="w-4 h-4 mt-0.5 text-amber-300 shrink-0" %}
-            <div class="text-sm text-gray-300">
+            <div class="text-sm text-[var(--color-text-secondary)]">
               <p class="font-medium text-amber-300">Webhook URL needs updating</p>
-              <p class="text-gray-400 mt-1">
+              <p class="text-[var(--color-text-muted)] mt-1">
                 You regenerated your API token on {{ user.plex_webhook_token_rotated_at|datetime_format:user }}.
                 Plex webhooks using the old token will be rejected with a 401.
                 Update the Plex webhook URL to the one shown below.
@@ -548,9 +549,9 @@
         {% elif user.plex_webhook_last_error %}
           <div class="flex items-start gap-2">
             {% include "app/icons/warning.svg" with classes="w-4 h-4 mt-0.5 text-red-300 shrink-0" %}
-            <div class="text-sm text-gray-300">
+            <div class="text-sm text-[var(--color-text-secondary)]">
               <p class="font-medium text-red-300">Last webhook error</p>
-              <p class="text-gray-400 mt-1">
+              <p class="text-[var(--color-text-muted)] mt-1">
                 {{ user.plex_webhook_last_error }}
                 {% if user.plex_webhook_last_error_at %}
                   ({{ user.plex_webhook_last_error_at|datetime_format:user }})
@@ -561,16 +562,16 @@
         {% elif user.plex_webhook_last_received_at %}
           <div class="flex items-center gap-2">
             {% include "app/icons/states/completed.svg" with classes="w-4 h-4 text-emerald-300 shrink-0" %}
-            <p class="text-sm text-gray-300">
+            <p class="text-sm text-[var(--color-text-secondary)]">
               Last webhook received {{ user.plex_webhook_last_received_at|datetime_format:user }}.
             </p>
           </div>
         {% else %}
           <div class="flex items-start gap-2">
             {% include "app/icons/warning.svg" with classes="w-4 h-4 mt-0.5 text-amber-300 shrink-0" %}
-            <div class="text-sm text-gray-300">
+            <div class="text-sm text-[var(--color-text-secondary)]">
               <p class="font-medium text-amber-300">No Plex webhooks received yet</p>
-              <p class="text-gray-400 mt-1">
+              <p class="text-[var(--color-text-muted)] mt-1">
                 If you expect automatic logging, confirm webhooks are enabled in Plex and that the
                 URL includes your current API token.
               </p>
@@ -579,9 +580,9 @@
         {% endif %}
       </div>
 
-      <div class="bg-[#262a2f] p-4 rounded-md">
+      <div class="bg-[var(--color-surface-dim)] p-4 rounded-md">
         <h4 class="text-sm font-medium mb-3">Setup Instructions</h4>
-        <ol class="list-decimal list-inside space-y-2 text-sm text-gray-300">
+        <ol class="list-decimal list-inside space-y-2 text-sm text-[var(--color-text-secondary)]">
           <li>You will need a Plex Pass subscription to use webhooks.</li>
           <li>In Plex, go to <strong>Settings > Server > Network</strong> and enable Webhooks.</li>
           <li>
@@ -593,13 +594,13 @@
             <div class="mt-2 inline-flex items-center gap-2 w-[calc(100%-30px)]">
               <input readonly
                      id="plex-webhook-url"
-                     class="w-full bg-[#262a2f] rounded-md text-gray-400 text-sm border-0 focus:ring-0 outline-none font-mono"
+                     class="w-full bg-[var(--color-surface-dim)] rounded-md text-[var(--color-text-muted)] text-sm border-0 focus:ring-0 outline-none font-mono"
                      type="text"
                      value="{% url 'plex_webhook' request.user.token as plex_webhook_path %}{% absolute_app_url plex_webhook_path %}">
               <span class="flex items-center cursor-pointer group"
                     title="Copy"
                     data-copy-target="#plex-webhook-url">
-                {% include "app/icons/copy.svg" with classes="w-5 h-5 text-gray-400 group-hover:text-indigo-400 transition-colors" %}
+                {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-indigo-400 transition-colors" %}
               </span>
             </div>
             {# djlint:on #}
@@ -609,22 +610,22 @@
     </div>
 
     {# Emby #}
-    <div class="bg-[#39404b] p-5 rounded-lg mb-6"
+    <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg mb-6"
          x-show="activeIntegration === 'all' || activeIntegration === 'emby'"
          x-transition.opacity.duration.150ms>
       <div class="flex items-center mb-3">
         {% include "app/icons/server.svg" with classes="w-5 h-5 text-indigo-400 mr-2" %}
         <h3 class="text-base font-medium">Emby Integration</h3>
       </div>
-      <p class="text-gray-400 mb-4 text-sm">Connect Emby to automatically track your watching progress.</p>
-      <div class="bg-[#262a2f] p-4 rounded-md">
+      <p class="text-[var(--color-text-muted)] mb-4 text-sm">Connect Emby to automatically track your watching progress.</p>
+      <div class="bg-[var(--color-surface-dim)] p-4 rounded-md">
         <h4 class="text-sm font-medium mb-3">Setup Instructions</h4>
-        <ol class="list-decimal list-inside space-y-2 text-sm text-gray-300">
+        <ol class="list-decimal list-inside space-y-2 text-sm text-[var(--color-text-secondary)]">
           <li>In Emby, go to <strong>Settings > Notifications</strong>.</li>
           <li>Click <strong>Add Notification</strong>.</li>
           <li>
             Configure the notification with the following settings:
-            <ul class="list-disc list-inside ml-6 mt-2 space-y-2 text-gray-400">
+            <ul class="list-disc list-inside ml-6 mt-2 space-y-2 text-[var(--color-text-muted)]">
               <li>Request content type: <strong>multipart/form-data</strong></li>
               <li>Events: <strong>Play</strong> and <strong>Stop</strong></li>
               <li>Limit user events to: your Emby user</li>
@@ -637,13 +638,13 @@
             <div class="mt-2 inline-flex items-center gap-2 w-[calc(100%-30px)]">
               <input readonly
                      id="emby-webhook-url"
-                     class="w-full bg-[#262a2f] rounded-md text-gray-400 text-sm border-0 focus:ring-0 outline-none font-mono"
+                     class="w-full bg-[var(--color-surface-dim)] rounded-md text-[var(--color-text-muted)] text-sm border-0 focus:ring-0 outline-none font-mono"
                      type="text"
                      value="{% url 'emby_webhook' request.user.token as emby_webhook_path %}{% absolute_app_url emby_webhook_path %}">
               <span class="flex items-center cursor-pointer group"
                     title="Copy"
                     data-copy-target="#emby-webhook-url">
-                {% include "app/icons/copy.svg" with classes="w-5 h-5 text-gray-400 group-hover:text-indigo-400 transition-colors" %}
+                {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-indigo-400 transition-colors" %}
               </span>
             </div>
             {# djlint:on #}
@@ -653,34 +654,34 @@
     </div>
 
     {# Kodi #}
-    <div class="bg-[#39404b] p-5 rounded-lg mb-6"
+    <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg mb-6"
          x-show="activeIntegration === 'all' || activeIntegration === 'kodi'"
          x-transition.opacity.duration.150ms>
       <div class="flex items-center mb-3">
         {% include "app/icons/server.svg" with classes="w-5 h-5 text-indigo-400 mr-2" %}
         <h3 class="text-base font-medium">Kodi Integration</h3>
       </div>
-      <p class="text-gray-400 mb-4 text-sm">Connect Kodi to automatically track your watching progress.</p>
-      <div class="bg-[#262a2f] p-4 rounded-md">
+      <p class="text-[var(--color-text-muted)] mb-4 text-sm">Connect Kodi to automatically track your watching progress.</p>
+      <div class="bg-[var(--color-surface-dim)] p-4 rounded-md">
         <h4 class="text-sm font-medium mb-3">Setup Instructions</h4>
-        <ol class="list-decimal list-inside space-y-2 text-sm text-gray-300">
+        <ol class="list-decimal list-inside space-y-2 text-sm text-[var(--color-text-secondary)]">
           <li>You will need TMDB and/or TVDB metadata sources enabled in Kodi so that external IDs are included in webhook payloads.</li>
           <li>Download and install the <a href="https://github.com/sboddy/KodiAddon-HttpScrobbler" class="text-indigo-400 hover:underline" target="_blank" rel="noopener">HTTP Scrobbler add-on</a>.</li>
           <li>In Kodi, go to <strong>Settings > Services > Control</strong> and enable <strong>Allow remote control via HTTP</strong>.</li>
           <li>
             In the HTTP Scrobbler add-on settings, set the webhook URL to:
-            <em class="text-gray-400 not-italic text-xs block mt-1 mb-2">Tip: open the Kodi web interface at <code>http://&lt;kodi-ip&gt;:8080</code> to configure the add-on — easier than using the remote.</em>
+            <em class="text-[var(--color-text-muted)] not-italic text-xs block mt-1 mb-2">Tip: open the Kodi web interface at <code>http://&lt;kodi-ip&gt;:8080</code> to configure the add-on — easier than using the remote.</em>
             {# djlint:off #}
             <div class="inline-flex items-center gap-2 w-full">
               <input readonly
                      id="kodi-webhook-url"
-                     class="w-full bg-[#262a2f] rounded-md text-gray-400 text-sm border-0 focus:ring-0 outline-none font-mono px-2 py-1"
+                     class="w-full bg-[var(--color-surface-dim)] rounded-md text-[var(--color-text-muted)] text-sm border-0 focus:ring-0 outline-none font-mono px-2 py-1"
                      type="text"
                      value="{% url 'kodi_webhook' request.user.token as kodi_webhook_path %}{% absolute_app_url kodi_webhook_path %}">
               <span class="flex items-center cursor-pointer group"
                     title="Copy"
                     data-copy-target="#kodi-webhook-url">
-                {% include "app/icons/copy.svg" with classes="w-5 h-5 text-gray-400 group-hover:text-indigo-400 transition-colors" %}
+                {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-indigo-400 transition-colors" %}
               </span>
             </div>
             {# djlint:on #}
@@ -693,29 +694,29 @@
     </div>
 
     {# Stremio #}
-    <div class="bg-[#39404b] p-5 rounded-lg mb-6"
+    <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg mb-6"
          x-show="activeIntegration === 'all' || activeIntegration === 'stremio'"
          x-transition.opacity.duration.150ms>
       <div class="flex items-center mb-3">
         {% include "app/icons/server.svg" with classes="w-5 h-5 text-indigo-400 mr-2" %}
         <h3 class="text-base font-medium">Stremio Integration</h3>
       </div>
-      <p class="text-gray-400 mb-4 text-sm">
+      <p class="text-[var(--color-text-muted)] mb-4 text-sm">
         Install the Floppy Scrobbler addon in Stremio to mark movies and episodes as in progress the moment playback starts.
         Pair it with the Stremio import on the <a href="{% url 'import_data' %}" class="text-indigo-400 hover:underline">Import page</a>, which syncs watched state from your Stremio library every 2 hours.
       </p>
-      <div class="bg-[#262a2f] p-4 rounded-md">
+      <div class="bg-[var(--color-surface-dim)] p-4 rounded-md">
         <h4 class="text-sm font-medium mb-3">Setup Instructions</h4>
         {% url 'stremio_addon_manifest' request.user.token as stremio_addon_path %}
         {% absolute_app_url stremio_addon_path as stremio_addon_url %}
-        <ol class="list-decimal list-inside space-y-2 text-sm text-gray-300">
+        <ol class="list-decimal list-inside space-y-2 text-sm text-[var(--color-text-secondary)]">
           <li>
             Copy your personal addon URL:
             {# djlint:off #}
             <div class="mt-2 inline-flex items-center gap-2 w-[calc(100%-30px)]">
-              <input readonly id="stremio-addon-url" class="w-full bg-[#262a2f] rounded-md text-gray-400 text-sm border-0 focus:ring-0 outline-none font-mono" type="text" value="{{ stremio_addon_url }}">
+              <input readonly id="stremio-addon-url" class="w-full bg-[var(--color-surface-dim)] rounded-md text-[var(--color-text-muted)] text-sm border-0 focus:ring-0 outline-none font-mono" type="text" value="{{ stremio_addon_url }}">
               <span class="flex items-center cursor-pointer group" title="Copy" data-copy-target="#stremio-addon-url">
-                {% include "app/icons/copy.svg" with classes="w-5 h-5 text-gray-400 group-hover:text-indigo-400 transition-colors" %}
+                {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-indigo-400 transition-colors" %}
               </span>
             </div>
             {# djlint:on #}
@@ -727,39 +728,40 @@
       </div>
     </div>
 
-    {# Jellyseerr #}
-    <div class="bg-[#39404b] p-5 rounded-lg mb-6"
-         x-show="activeIntegration === 'all' || activeIntegration === 'jellyseerr'"
+    {# Seerr #}
+    <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg mb-6"
+         x-show="activeIntegration === 'all' || activeIntegration === 'seerr'"
          x-transition.opacity.duration.150ms>
       <div class="flex items-center mb-3">
         {% include "app/icons/server.svg" with classes="w-5 h-5 text-indigo-400 mr-2" %}
-        <h3 class="text-base font-medium">Jellyseerr Integration</h3>
+        <h3 class="text-base font-medium">Seerr Integration</h3>
       </div>
-      <p class="text-gray-400 mb-4 text-sm">Use a Jellyseerr webhook to automatically add requested/approved media into Floppy.</p>
+      <p class="text-[var(--color-text-muted)] mb-4 text-sm">Use a Seerr webhook to automatically add requested/approved media into Floppy.</p>
 
-      <div class="bg-[#262a2f] p-4 rounded-md mb-4">
-        <h4 class="text-sm font-medium mb-3">Jellyseerr Settings</h4>
+      <div class="bg-[var(--color-surface-dim)] p-4 rounded-md mb-4">
+        <h4 class="text-sm font-medium mb-3">Seerr Settings</h4>
+        {# kept: jellyseerr_* form fields map to unrenamed User model fields #}
         <form method="post" action="{% url 'update_jellyseerr_settings' %}" class="space-y-3">
           {% csrf_token %}
 
           <div>
-            <label for="jellyseerr_enabled" class="block text-gray-200 text-sm font-medium mb-1">
+            <label for="jellyseerr_enabled" class="block text-[var(--color-text-secondary)] text-sm font-medium mb-1">
               Auto-add requested media
             </label>
-            <p class="text-gray-400 text-sm mb-2">
-              Controls whether Jellyseerr webhooks are allowed to add items to your Floppy list.
+            <p class="text-[var(--color-text-muted)] text-sm mb-2">
+              Controls whether Seerr webhooks are allowed to add items to your Floppy list.
             </p>
 
             <div class="relative"
                 x-data="{
                   open: false,
                   selectedValue: '{{ request.user.jellyseerr_enabled|yesno:'enabled,disabled' }}',
-                  selectedLabel: '{{ request.user.jellyseerr_enabled|yesno:"Enabled - Allow Jellyseerr to automatically add media,Disabled - Do not allow Jellyseerr to add media" }}'
+                  selectedLabel: '{{ request.user.jellyseerr_enabled|yesno:"Enabled - Allow Seerr to automatically add media,Disabled - Do not allow Seerr to add media" }}'
                 }">
               <button type="button"
                       @click="open = !open"
                       @click.outside="open = false"
-                      class="flex items-center justify-between w-full px-3 py-2 bg-[#272c31] border border-gray-600 rounded-md text-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent cursor-pointer">
+                      class="flex items-center justify-between w-full px-3 py-2 bg-[var(--color-panel)] border border-gray-600 rounded-md text-[var(--color-text-secondary)] text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent cursor-pointer">
                 <span x-text="selectedLabel"></span>
                 <svg xmlns="http://www.w3.org/2000/svg"
                     width="24"
@@ -770,7 +772,7 @@
                     stroke-width="2"
                     stroke-linecap="round"
                     stroke-linejoin="round"
-                    class="w-4 h-4 text-gray-400">
+                    class="w-4 h-4 text-[var(--color-text-muted)]">
                   <path d="m6 9 6 6 6-6"></path>
                 </svg>
               </button>
@@ -782,16 +784,16 @@
                   x-transition:leave="transition ease-in duration-75"
                   x-transition:leave-start="transform opacity-100 scale-100"
                   x-transition:leave-end="transform opacity-0 scale-95"
-                  class="absolute left-0 right-0 mt-2 py-1 bg-[#272c31] rounded-md shadow-lg overflow-hidden z-10 border border-gray-600">
+                  class="absolute left-0 right-0 mt-2 py-1 bg-[var(--color-panel)] rounded-md shadow-lg overflow-hidden z-10 border border-gray-600">
                 <button type="button"
-                        @click="selectedValue = 'enabled'; selectedLabel = 'Enabled - Allow Jellyseerr to automatically add media'; open = false"
-                        class="block w-full px-3 py-2 text-left text-sm transition-colors text-gray-300 hover:bg-[#39404b] hover:text-white">
-                  Enabled - Allow Jellyseerr to automatically add media
+                        @click="selectedValue = 'enabled'; selectedLabel = 'Enabled - Allow Seerr to automatically add media'; open = false"
+                        class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]">
+                  Enabled - Allow Seerr to automatically add media
                 </button>
                 <button type="button"
-                        @click="selectedValue = 'disabled'; selectedLabel = 'Disabled - Do not allow Jellyseerr to add media'; open = false"
-                        class="block w-full px-3 py-2 text-left text-sm transition-colors text-gray-300 hover:bg-[#39404b] hover:text-white">
-                  Disabled - Do not allow Jellyseerr to add media
+                        @click="selectedValue = 'disabled'; selectedLabel = 'Disabled - Do not allow Seerr to add media'; open = false"
+                        class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]">
+                  Disabled - Do not allow Seerr to add media
                 </button>
               </div>
 
@@ -803,16 +805,16 @@
           </div>
 
           <div>
-            <label for="jellyseerr_trigger_statuses" class="block text-gray-200 text-sm font-medium mb-1">
+            <label for="jellyseerr_trigger_statuses" class="block text-[var(--color-text-secondary)] text-sm font-medium mb-1">
               Trigger statuses (comma-separated)
             </label>
-            <p class="text-gray-400 text-sm mb-2">
+            <p class="text-[var(--color-text-muted)] text-sm mb-2">
               Examples: PENDING,PROCESSING,PARTIALLY_AVAILABLE,AVAILABLE. Leave blank for default behaviour (UNKNOWN is ignored).
             </p>
             <input
               id="jellyseerr_trigger_statuses"
               name="jellyseerr_trigger_statuses"
-              class="w-full py-2 px-3 bg-[#39404b] rounded-md text-white text-sm border border-gray-600 focus:border-indigo-500 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+              class="w-full py-2 px-3 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
               type="text"
               placeholder="PENDING,PROCESSING,PARTIALLY_AVAILABLE,AVAILABLE"
               value="{{ request.user.jellyseerr_trigger_statuses }}"
@@ -820,16 +822,16 @@
           </div>
 
           <div>
-            <label for="jellyseerr_allowed_usernames" class="block text-gray-200 text-sm font-medium mb-1">
-              Allowed Jellyseerr usernames (comma-separated)
+            <label for="jellyseerr_allowed_usernames" class="block text-[var(--color-text-secondary)] text-sm font-medium mb-1">
+              Allowed Seerr usernames (comma-separated)
             </label>
-            <p class="text-gray-400 text-sm mb-2">
+            <p class="text-[var(--color-text-muted)] text-sm mb-2">
               Leave blank to allow any requester. If set, only those usernames can trigger adds.
             </p>
             <input
               id="jellyseerr_allowed_usernames"
               name="jellyseerr_allowed_usernames"
-              class="w-full py-2 px-3 bg-[#39404b] rounded-md text-white text-sm border border-gray-600 focus:border-indigo-500 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+              class="w-full py-2 px-3 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
               type="text"
               placeholder="john, someoneelse"
               value="{{ request.user.jellyseerr_allowed_usernames }}"
@@ -837,14 +839,14 @@
           </div>
 
           <div>
-            <label for="jellyseerr_default_added_status" class="block text-gray-200 text-sm font-medium mb-1">
+            <label for="jellyseerr_default_added_status" class="block text-[var(--color-text-secondary)] text-sm font-medium mb-1">
               Default Floppy status for added items
             </label>
             <div class="relative" x-data="{ open: false, selectedValue: '{{ request.user.jellyseerr_default_added_status|default:"Planning" }}', selectedLabel: '{{ request.user.jellyseerr_default_added_status|default:"Planning" }}' }">
               <button type="button"
                       @click="open = !open"
                       @click.outside="open = false"
-                      class="flex items-center justify-between w-full px-3 py-2 bg-[#272c31] border border-gray-600 rounded-md text-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent cursor-pointer">
+                      class="flex items-center justify-between w-full px-3 py-2 bg-[var(--color-panel)] border border-gray-600 rounded-md text-[var(--color-text-secondary)] text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent cursor-pointer">
                 <span x-text="selectedLabel"></span>
                 <svg xmlns="http://www.w3.org/2000/svg"
                      width="24"
@@ -855,7 +857,7 @@
                      stroke-width="2"
                      stroke-linecap="round"
                      stroke-linejoin="round"
-                     class="w-4 h-4 text-gray-400">
+                     class="w-4 h-4 text-[var(--color-text-muted)]">
                   <path d="m6 9 6 6 6-6"></path>
                 </svg>
               </button>
@@ -866,15 +868,15 @@
                    x-transition:leave="transition ease-in duration-75"
                    x-transition:leave-start="transform opacity-100 scale-100"
                    x-transition:leave-end="transform opacity-0 scale-95"
-                   class="absolute left-0 right-0 mt-2 py-1 bg-[#272c31] rounded-md shadow-lg overflow-hidden z-10 border border-gray-600">
+                   class="absolute left-0 right-0 mt-2 py-1 bg-[var(--color-panel)] rounded-md shadow-lg overflow-hidden z-10 border border-gray-600">
                 <button type="button"
                         @click="selectedValue = 'Planning'; selectedLabel = 'Planning'; open = false"
-                        class="block w-full px-3 py-2 text-left text-sm transition-colors text-gray-300 hover:bg-[#39404b] hover:text-white">
+                        class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]">
                   Planning
                 </button>
                 <button type="button"
                         @click="selectedValue = 'In progress'; selectedLabel = 'In progress'; open = false"
-                        class="block w-full px-3 py-2 text-left text-sm transition-colors text-gray-300 hover:bg-[#39404b] hover:text-white">
+                        class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]">
                   In progress
                 </button>
               </div>
@@ -892,43 +894,44 @@
         </form>
       </div>
 
-      <div class="bg-[#262a2f] p-4 rounded-md">
+      <div class="bg-[var(--color-surface-dim)] p-4 rounded-md">
         <h4 class="text-sm font-medium mb-3">Setup Instructions</h4>
-        <ol class="list-decimal list-inside space-y-2 text-sm text-gray-300">
-          <li>In Jellyseerr, go to <strong>Settings > Notifications > Webhook</strong>.</li>
+        <ol class="list-decimal list-inside space-y-2 text-sm text-[var(--color-text-secondary)]">
+          <li>In Seerr, go to <strong>Settings > Notifications > Webhook</strong>.</li>
           <li>Create a webhook with method <strong>POST</strong> and content type <strong>application/json</strong>.</li>
           <li>
             Set the webhook URL to:
             {# djlint:off #}
+            {# kept: URL name unchanged to avoid breaking configured webhook URLs #}
             <div class="mt-2 inline-flex items-center gap-2 w-[calc(100%-30px)]">
               <input readonly
-                     id="jellyseerr-webhook-url"
-                     class="w-full bg-[#262a2f] rounded-md text-gray-400 text-sm border-0 focus:ring-0 outline-none font-mono"
+                     id="seerr-webhook-url"
+                     class="w-full bg-[var(--color-surface-dim)] rounded-md text-[var(--color-text-muted)] text-sm border-0 focus:ring-0 outline-none font-mono"
                      type="text"
                      value="{% url 'jellyseerr_webhook' request.user.token as jellyseerr_webhook_path %}{% absolute_app_url jellyseerr_webhook_path %}">
               <span class="flex items-center cursor-pointer group"
                     title="Copy"
-                    data-copy-target="#jellyseerr-webhook-url">
-                {% include "app/icons/copy.svg" with classes="w-5 h-5 text-gray-400 group-hover:text-indigo-400 transition-colors" %}
+                    data-copy-target="#seerr-webhook-url">
+                {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-indigo-400 transition-colors" %}
               </span>
             </div>
             {# djlint:on #}
           </li>
           <li>
-            Paste this <strong>JSON Payload</strong> template into Jellyseerr:
-            <div class="bg-[#39404b] p-4 rounded-lg mt-2">
+            Paste this <strong>JSON Payload</strong> template into Seerr:
+            <div class="bg-[var(--color-surface-strong)] p-4 rounded-lg mt-2">
               <div class="flex items-center justify-end mb-2">
                 <span class="flex items-center cursor-pointer group"
                       title="Copy"
                       role="button"
                       aria-label="Copy JSON template"
-                      data-copy-target="#jellyseerr-json-template">
-                  {% include "app/icons/copy.svg" with classes="w-5 h-5 text-gray-400 group-hover:text-indigo-400 transition-colors" %}
+                      data-copy-target="#seerr-json-template">
+                  {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-indigo-400 transition-colors" %}
                 </span>
               </div>
               <textarea readonly
-                        id="jellyseerr-json-template"
-                        class="w-full bg-[#262a2f] rounded-md text-gray-300 text-sm border-0 focus:ring-0 outline-none font-mono p-3 resize-none overflow-auto max-h-72"
+                        id="seerr-json-template"
+                        class="w-full bg-[var(--color-surface-dim)] rounded-md text-[var(--color-text-secondary)] text-sm border-0 focus:ring-0 outline-none font-mono p-3 resize-none overflow-auto max-h-72"
                         rows="7">{% verbatim %}
 {
   "media_type": "{{media_type}}",
@@ -937,10 +940,10 @@
   "requestedBy_username": "{{requestedBy_username}}"
 }
 {% endverbatim %}</textarea>
-              <p class="text-gray-400 text-sm mt-3">
-                Important: Jellyseerr's default payload will not work with Floppy. You must use the template above.
+              <p class="text-[var(--color-text-muted)] text-sm mt-3">
+                Important: Seerr's default payload will not work with Floppy. You must use the template above.
                 If you see logs like <code class="px-1 rounded bg-black/30">unsupported media_type='{media_type}'</code>,
-                Jellyseerr is sending the literal template (it was pasted/escaped incorrectly).
+                Seerr is sending the literal template (it was pasted/escaped incorrectly).
               </p>
             </div>
           </li>
@@ -949,17 +952,17 @@
       </div>
 
       {% if seerr_global_webhook_enabled %}
-        <div class="bg-[#262a2f] p-4 rounded-md mt-4">
+        <div class="bg-[var(--color-surface-dim)] p-4 rounded-md mt-4">
           <h4 class="text-sm font-medium mb-3">Global Webhook (multi-user households)</h4>
-          <p class="text-gray-400 mb-3 text-sm">
+          <p class="text-[var(--color-text-muted)] mb-3 text-sm">
             Seerr only supports one webhook per instance. If multiple Floppy users share the same
-            Jellyseerr/Overseerr instance, point Seerr at this single global URL instead of a per-user one.
+            Seerr/Overseerr instance, point Seerr at this single global URL instead of a per-user one.
             Floppy matches each incoming request's requester username against every user's
-            <strong>Allowed Jellyseerr usernames</strong> above, so each user must still enable
+            <strong>Allowed Seerr usernames</strong> above, so each user must still enable
             "Auto-add requested media" and list their own Seerr username there.
           </p>
-          <ol class="list-decimal list-inside space-y-2 text-sm text-gray-300">
-            <li>In Jellyseerr, go to <strong>Settings > Notifications > Webhook</strong>.</li>
+          <ol class="list-decimal list-inside space-y-2 text-sm text-[var(--color-text-secondary)]">
+            <li>In Seerr, go to <strong>Settings > Notifications > Webhook</strong>.</li>
             <li>Create a webhook with method <strong>POST</strong> and content type <strong>application/json</strong>.</li>
             <li>
               Set the webhook URL to:
@@ -967,34 +970,34 @@
               <div class="mt-2 inline-flex items-center gap-2 w-[calc(100%-30px)]">
                 <input readonly
                        id="seerr-global-webhook-url"
-                       class="w-full bg-[#262a2f] rounded-md text-gray-400 text-sm border-0 focus:ring-0 outline-none font-mono"
+                       class="w-full bg-[var(--color-surface-dim)] rounded-md text-[var(--color-text-muted)] text-sm border-0 focus:ring-0 outline-none font-mono"
                        type="text"
                        value="{% url 'seerr_global_webhook' as seerr_global_webhook_path %}{% absolute_app_url seerr_global_webhook_path %}">
                 <span class="flex items-center cursor-pointer group"
                       title="Copy"
                       data-copy-target="#seerr-global-webhook-url">
-                  {% include "app/icons/copy.svg" with classes="w-5 h-5 text-gray-400 group-hover:text-indigo-400 transition-colors" %}
+                  {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-indigo-400 transition-colors" %}
                 </span>
               </div>
               {# djlint:on #}
             </li>
             <li>
-              Paste this <strong>JSON Payload</strong> template into Jellyseerr, replacing
+              Paste this <strong>JSON Payload</strong> template into Seerr, replacing
               <code class="px-1 rounded bg-black/30">REPLACE_WITH_SHARED_SECRET</code> with the value your
               administrator configured in <code class="px-1 rounded bg-black/30">SEERR_GLOBAL_WEBHOOK_SECRET</code>:
-              <div class="bg-[#39404b] p-4 rounded-lg mt-2">
+              <div class="bg-[var(--color-surface-strong)] p-4 rounded-lg mt-2">
                 <div class="flex items-center justify-end mb-2">
                   <span class="flex items-center cursor-pointer group"
                         title="Copy"
                         role="button"
                         aria-label="Copy JSON template"
                         data-copy-target="#seerr-global-json-template">
-                    {% include "app/icons/copy.svg" with classes="w-5 h-5 text-gray-400 group-hover:text-indigo-400 transition-colors" %}
+                    {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-indigo-400 transition-colors" %}
                   </span>
                 </div>
                 <textarea readonly
                           id="seerr-global-json-template"
-                          class="w-full bg-[#262a2f] rounded-md text-gray-300 text-sm border-0 focus:ring-0 outline-none font-mono p-3 resize-none overflow-auto max-h-72"
+                          class="w-full bg-[var(--color-surface-dim)] rounded-md text-[var(--color-text-secondary)] text-sm border-0 focus:ring-0 outline-none font-mono p-3 resize-none overflow-auto max-h-72"
                           rows="8">{% verbatim %}
 {
   "media_type": "{{media_type}}",

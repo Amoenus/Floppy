@@ -155,6 +155,17 @@ Prefer the cheapest useful check:
 
 Do not run a full test suite or full build unless risk justifies it or the user asks.
 
+### Preexisting Failures (Baseline Zero Policy)
+
+App tests, ruff, and lint were driven to zero as a dedicated cleanup effort. The expectation is to hold that baseline, not let it erode.
+
+If you discover a test/ruff/lint failure while working on something unrelated:
+
+1. Check it against baseline to confirm it's preexisting and not introduced by your change.
+2. It's fine not to fix it inline as part of the current change.
+3. Do not just silently note it — flag it explicitly to the user and state plainly that the expectation is to fix it, not just document it.
+4. Prefer fixing it in a separate commit, and where practical a separate PR, so the cleanup is easy to review independently of the change at hand.
+
 ## Command Output
 
 Protect context usage. **Any command with unknown or potentially large output must be byte-capped.**
@@ -264,7 +275,7 @@ Current app areas to preserve while merging:
 - Progress, history, and statistics: time-left sorting, time-watched views, history filters, cached range stats, Top Played, media-hours cards, reading/music/podcast stats, comparison tooling, and dropped-show fixes.
 - Lists and sharing: public/private lists, smart lists, public profiles, recommendations, list tags, drag-and-drop ordering, release-date sorting, completion indicators, RSS/JSON feeds, and backup export/import.
 - Media coverage and collection: music, podcasts, books, comics, manga, games, board games, collection/owned-media flows, person/author pages, localized titles, runtime chips, and grouped-anime handling.
-- Integrations, imports, and webhooks: Trakt, Plex, Jellyfin, Jellyseerr, Pocket Casts, Last.fm, Audiobookshelf, TVDB, Steam, Plex-only GUID handling, TMDB episode edge cases, SQLite lock handling during import, and auto-pause for stale in-progress items.
+- Integrations, imports, and webhooks: Trakt, Plex, Jellyfin, Seerr, Pocket Casts, Last.fm, Audiobookshelf, TVDB, Steam, Plex-only GUID handling, TMDB episode edge cases, SQLite lock handling during import, and auto-pause for stale in-progress items.
 - UI, mobile, and performance: mobile layouts, compact grids, filter controls, media card/timeline styling, statistics layout refinements, quick season updates, runtime/history caching, startup guards, and iOS/SQLite resiliency.
 - Preferences and settings: sort-direction toggles/indicators, ratings-list sort fixes, aggregate-duplicates behavior, subtitle/date-time/rating-scale preferences, and visibility/sidebar/search settings.
 - Deployment and install: Docker build improvements, Redis-unavailability guard in AppConfig.ready(), and README/install updates.

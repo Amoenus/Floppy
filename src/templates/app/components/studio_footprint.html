@@ -94,8 +94,8 @@
      }">
   <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
     <div class="flex flex-col space-y-1">
-      <h2 class="text-xl font-semibold text-white">Studio Footprint</h2>
-      <p class="text-sm text-gray-400">Studios that appear most often.</p>
+      <h2 class="text-xl font-semibold text-[var(--color-text)]">Studio Footprint</h2>
+      <p class="text-sm text-[var(--color-text-muted)]">Studios that appear most often.</p>
     </div>
 
     <div class="w-full sm:w-auto sm:min-w-32 sm:ml-auto">
@@ -103,7 +103,7 @@
         <button type="button"
                 @click="open = !open"
                 @click.outside="open = false"
-                class="flex items-center justify-between w-full gap-2 px-3 py-2 bg-[#272c31] border border-gray-600 rounded-md text-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent cursor-pointer">
+                class="flex items-center justify-between w-full gap-2 px-3 py-2 bg-[var(--color-panel)] border border-gray-600 rounded-md text-[var(--color-text-secondary)] text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent cursor-pointer">
           <span x-text="selectedLabel"></span>
           <svg xmlns="http://www.w3.org/2000/svg"
                width="24"
@@ -114,7 +114,7 @@
                stroke-width="2"
                stroke-linecap="round"
                stroke-linejoin="round"
-               class="w-4 h-4 ml-1 text-gray-400">
+               class="w-4 h-4 ml-1 text-[var(--color-text-muted)]">
             <path d="m6 9 6 6 6-6"></path>
           </svg>
         </button>
@@ -125,15 +125,15 @@
              x-transition:leave="transition ease-in duration-75"
              x-transition:leave-start="transform opacity-100 scale-100"
              x-transition:leave-end="transform opacity-0 scale-95"
-             class="absolute right-0 z-10 mt-2 min-w-full py-1 bg-[#272c31] rounded-md shadow-lg overflow-hidden border border-gray-600">
+             class="absolute right-0 z-10 mt-2 min-w-full py-1 bg-[var(--color-panel)] rounded-md shadow-lg overflow-hidden border border-gray-600">
           <button type="button"
                   @click="setSort('plays', 'Plays')"
-                  class="block w-full px-3 py-2 text-left text-sm transition-colors text-gray-300 hover:bg-[#39404b] hover:text-white">
+                  class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]">
             Plays
           </button>
           <button type="button"
                   @click="setSort('time', 'Time')"
-                  class="block w-full px-3 py-2 text-left text-sm transition-colors text-gray-300 hover:bg-[#39404b] hover:text-white">
+                  class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]">
             Time
           </button>
         </div>
@@ -143,7 +143,7 @@
 
   <div class="flex items-center gap-2 mb-3">
     {% include "app/icons/camera.svg" with classes="w-4 h-4 text-indigo-400" %}
-    <span class="text-sm font-semibold text-white">Top Studios</span>
+    <span class="text-sm font-semibold text-[var(--color-text)]">Top Studios</span>
   </div>
   <div x-ref="studioFootprintGrid">
     {% include "app/components/studio_footprint_grid.html" %}

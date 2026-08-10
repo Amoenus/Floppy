@@ -30,6 +30,7 @@ from app import helpers as app_helpers
 from app.log_safety import exception_summary
 from app.models import MediaTypes, Sources, Status
 from app.providers import services
+from integrations import import_progress
 from integrations.imports.helpers import MediaImportError, decrypt_or_raise
 from integrations.models import StorytellerAccount
 
@@ -173,7 +174,9 @@ class StorytellerImporter:
             self._mark_broken(str(error))
             raise MediaImportError(str(error)) from error
 
-        for book in books:
+        total = len(books)
+        for i, book in enumerate(books, start=1):
+            import_progress.report(i, total, "Storyteller")
             uuid = book.get("uuid") or book.get("id")
             if not uuid:
                 continue

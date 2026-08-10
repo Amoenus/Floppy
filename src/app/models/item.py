@@ -42,6 +42,11 @@ class Item(CalendarTriggerMixin, models.Model):
     title = models.TextField()
     original_title = models.TextField(null=True, blank=True)
     localized_title = models.TextField(null=True, blank=True)
+    synopsis = models.TextField(
+        blank=True,
+        default="",
+        help_text="Cached provider synopsis, used as a fallback when live metadata is unavailable",
+    )
     image = models.URLField()  # if add default, custom media entry will show the value
     season_number = models.PositiveIntegerField(null=True, blank=True)
     episode_number = models.PositiveIntegerField(null=True, blank=True)
@@ -54,6 +59,11 @@ class Item(CalendarTriggerMixin, models.Model):
     release_datetime = models.DateTimeField(null=True, blank=True)
     genres = models.JSONField(default=list, blank=True)
     implied_genres = models.JSONField(default=list, blank=True)
+    watch_providers = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="TMDB watch-provider data by region, e.g. {region: {flatrate: [...]}}",
+    )
     # Metadata fields for filtering, sorting, and statistics
     country = models.CharField(
         max_length=255, blank=True, default="", help_text="Origin country"
@@ -201,6 +211,11 @@ class Item(CalendarTriggerMixin, models.Model):
     )
     metadata_fetched_at = models.DateTimeField(
         null=True, blank=True, help_text="When metadata was last fetched"
+    )
+    calendar_checked_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When calendar releases were last fetched for this item",
     )
     manual_metadata = models.JSONField(
         blank=True,
@@ -378,6 +393,7 @@ class Item(CalendarTriggerMixin, models.Model):
             "manual_metadata",
             "provider_external_ids",
             "provider_game_lengths",
+            "watch_providers",
         ]
         for field_name in json_object_fields:
             value = getattr(self, field_name, None)

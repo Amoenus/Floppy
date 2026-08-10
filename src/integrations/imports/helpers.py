@@ -3,6 +3,7 @@ import datetime
 import hashlib
 import json
 import logging
+import time
 from collections import defaultdict
 
 from cryptography.fernet import Fernet, InvalidToken
@@ -18,6 +19,7 @@ import app
 from app import providers
 from app.db_retry import run_retryable_db_operation
 from app.models import Episode, MediaTypes, Status
+from app.services.completion import normalize_completed_entry
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +44,28 @@ def retry_on_lock(func, max_retries=5, base_delay=0.1, backoff=2.0):
         backoff=backoff,
     )
     return outcome.value
+
+
+def find_item_across_buckets(preferred_bucket=None, **identity):
+    """Return an existing Item for an identity, preferring one library bucket.
+
+    Every Item uniqueness constraint includes ``library_media_type``, and the
+    same media identity can legitimately live in more than one bucket (grouped
+    anime is stored on TV rows, and episodes auto-created for a tracked season
+    inherit the show's bucket rather than the default 'episode' one). A
+    ``get``/``get_or_create`` keyed only on the identity fields therefore raises
+    ``MultipleObjectsReturned`` as soon as two buckets exist. Reuse an existing
+    row instead of failing or creating a third, divergent one - preferring the
+    caller's bucket, then the oldest row so repeat runs stay stable.
+    """
+    candidates = list(app.models.Item.objects.filter(**identity).order_by("id"))
+    if not candidates:
+        return None
+    if preferred_bucket:
+        for item in candidates:
+            if item.library_media_type == preferred_bucket:
+                return item
+    return candidates[0]
 
 
 def get_existing_media(user):
@@ -80,8 +104,15 @@ def should_process_media(
     media_id,
     mode,
     deleted_media=None,
+    skip_existing=True,
 ):
-    """Determine if a media item should be processed based on mode."""
+    """Determine if a media item should be processed based on mode.
+
+    skip_existing=False lets callers with their own per-event dedupe (e.g.
+    Plex TV episode history, where a show already being tracked shouldn't
+    block newly watched episodes of it) route an existing item through the
+    overwrite/deleted-media handling below without a blanket "new mode" skip.
+    """
     if deleted_media and media_id in deleted_media[media_type][source]:
         logger.debug(
             "Skipping deleted %s: %s (user deleted this locally)",
@@ -92,7 +123,7 @@ def should_process_media(
 
     exists = media_id in existing_media[media_type][source]
 
-    if mode == "new" and exists:
+    if mode == "new" and exists and skip_existing:
         # In "new" mode, skip if media already exists
         logger.debug(
             "Skipping existing %s: %s (mode: new)",
@@ -227,6 +258,32 @@ def _ordered_media_types(bulk_media_list):
     return ordered_types
 
 
+def _fetch_season_metadata_with_retry(season, max_retries=3, base_delay=0.5):
+    """Fetch season metadata, retrying transient network failures.
+
+    A single dropped connection is common when a bulk import fires off
+    metadata requests for many shows back-to-back; without a retry here
+    that one blip permanently strands the season at Completed with zero
+    episodes (see issue #471). Provider errors that aren't transient (e.g.
+    a 404 for a season TMDB doesn't have) are raised immediately since
+    retrying them cannot succeed.
+    """
+    attempt = 0
+    while True:
+        try:
+            return providers.services.get_media_metadata(
+                MediaTypes.SEASON.value,
+                season.item.media_id,
+                season.item.source,
+                [season.item.season_number],
+            )
+        except RequestException:
+            attempt += 1
+            if attempt >= max_retries:
+                raise
+            time.sleep(base_delay * attempt)
+
+
 def _backfill_completed_season_episodes(seasons):
     """Create the missing Episode rows for seasons bulk-created as Completed.
 
@@ -236,6 +293,9 @@ def _backfill_completed_season_episodes(seasons):
     Completed with no per-episode history (e.g. a rating-only import) would
     otherwise end up with zero Episode rows, making it invisible to
     exports/statistics that key off episode data.
+
+    Returns warning messages for seasons that could not be backfilled, so
+    the importer can surface them to the user instead of only logging.
     """
     completed_seasons = [
         season
@@ -243,7 +303,7 @@ def _backfill_completed_season_episodes(seasons):
         if season.pk is not None and season.status == Status.COMPLETED.value
     ]
     if not completed_seasons:
-        return
+        return []
 
     existing_season_ids = set(
         Episode.objects.filter(
@@ -253,17 +313,13 @@ def _backfill_completed_season_episodes(seasons):
         .distinct(),
     )
 
+    warnings = []
     episodes_to_create = []
     for season in completed_seasons:
         if season.pk in existing_season_ids:
             continue
         try:
-            season_metadata = providers.services.get_media_metadata(
-                MediaTypes.SEASON.value,
-                season.item.media_id,
-                season.item.source,
-                [season.item.season_number],
-            )
+            season_metadata = _fetch_season_metadata_with_retry(season)
             episodes_to_create.extend(season.get_remaining_eps(season_metadata))
         except (
             providers.services.ProviderAPIError,
@@ -278,9 +334,23 @@ def _backfill_completed_season_episodes(seasons):
                 season.item.season_number,
                 error,
             )
+            warnings.append(
+                f"{season.item.title} S{season.item.season_number}: imported as "
+                f"Completed but episode data could not be fetched ({error}). "
+                "Re-import in overwrite mode once the issue clears to fill in "
+                "the missing episodes.",
+            )
 
     if episodes_to_create:
-        bulk_create_with_history(episodes_to_create, Episode, batch_size=500)
+        created_episodes = bulk_create_with_history(
+            episodes_to_create,
+            Episode,
+            batch_size=500,
+        )
+        for episode in created_episodes:
+            normalize_completed_entry(episode)
+
+    return warnings
 
 
 def _has_unique_user_item_constraint(model):
@@ -325,7 +395,11 @@ def _deduplicate_unique_user_item_rows(model, bulk_media):
 
 
 def bulk_create_media(bulk_media_list, user):
-    """Bulk create all media objects."""
+    """Bulk create all media objects.
+
+    Returns warning messages for any seasons whose Completed-status
+    episode backfill failed, for callers that want to surface them.
+    """
     for media_type in _ordered_media_types(bulk_media_list):
         bulk_media = bulk_media_list[media_type]
         if not bulk_media:
@@ -355,16 +429,19 @@ def bulk_create_media(bulk_media_list, user):
                 default_date=timezone.now(),
             )
 
-        retry_on_lock(create_media)
+        created_media = retry_on_lock(create_media)
+        for media in created_media:
+            normalize_completed_entry(media)
 
     # Run after every media type (including any episodes the importer supplied
     # directly) has been persisted, so the "does this season already have
     # episodes" check below sees the importer's own episodes too.
     bulk_seasons = bulk_media_list.get(MediaTypes.SEASON.value)
     if bulk_seasons:
-        retry_on_lock(
+        return retry_on_lock(
             lambda: _backfill_completed_season_episodes(bulk_seasons),
         )
+    return []
 
 
 def create_import_schedule(

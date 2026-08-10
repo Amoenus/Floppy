@@ -302,6 +302,91 @@ class ImportStremioTests(TestCase):
         )
         self.assertEqual(episode_numbers, {1, 2})
 
+    def test_series_reuses_season_and_episode_items_from_shows_bucket(self):
+        """Season/episode items already tracked in the show's bucket are reused."""
+        video_ids = [f"tt0903747:1:{episode}" for episode in range(1, 4)]
+        watched = {"tt0903747:1:1", "tt0903747:1:2"}
+        library_items = [
+            {
+                "_id": "tt0903747",
+                "type": "series",
+                "name": "Breaking Bad",
+                "removed": False,
+                "temp": False,
+                "state": {
+                    "watched": encode_watched_bitfield(video_ids, watched),
+                    "lastWatched": "2023-01-02T00:00:00Z",
+                    "video_id": "tt0903747:1:2",
+                },
+            },
+        ]
+
+        # Simulate grouped anime already tracked by another importer: the show,
+        # season, and episode all live in the 'anime' bucket rather than the
+        # default 'tv'/'season'/'episode' ones this importer would otherwise use.
+        tracked_tv = Item.objects.create(
+            media_id="1396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            library_media_type=MediaTypes.ANIME.value,
+            title="Breaking Bad",
+            image="http://example.com/show.jpg",
+        )
+        tracked_season = Item.objects.create(
+            media_id="1396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            library_media_type=MediaTypes.ANIME.value,
+            season_number=1,
+            title="Breaking Bad Season 1",
+            image="http://example.com/season.jpg",
+        )
+        tracked_episode = Item.objects.create(
+            media_id="1396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            library_media_type=MediaTypes.ANIME.value,
+            season_number=1,
+            episode_number=1,
+            title="Pilot",
+            image="http://example.com/e1.jpg",
+        )
+
+        imported_counts, warnings = self._run_import(
+            library_items,
+            cinemeta_videos={"tt0903747": video_ids},
+        )
+
+        self.assertEqual(warnings, "")
+        self.assertEqual(imported_counts[MediaTypes.TV.value], 1)
+        self.assertEqual(imported_counts[MediaTypes.SEASON.value], 1)
+        self.assertEqual(imported_counts[MediaTypes.EPISODE.value], 2)
+
+        # No duplicate rows forked in a different bucket.
+        self.assertEqual(
+            Item.objects.filter(media_id="1396", media_type=MediaTypes.TV.value).count(),
+            1,
+        )
+        self.assertEqual(
+            Item.objects.filter(
+                media_id="1396",
+                media_type=MediaTypes.SEASON.value,
+            ).count(),
+            1,
+        )
+        self.assertEqual(
+            Item.objects.filter(
+                media_id="1396",
+                media_type=MediaTypes.EPISODE.value,
+                episode_number=1,
+            ).count(),
+            1,
+        )
+
+        TV.objects.get(item=tracked_tv)
+        Season.objects.get(item=tracked_season)
+        Episode.objects.get(item=tracked_episode)
+
     def test_series_fully_watched_completed(self):
         """A series with every episode watched is completed."""
         video_ids = [f"tt7366338:1:{episode}" for episode in range(1, 4)]

@@ -22,7 +22,7 @@ from app.models import (
 
 logger = logging.getLogger(__name__)
 
-BACKGROUND_TASK_PRIORITY = getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 1)
+BACKGROUND_TASK_PRIORITY = getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 9)
 
 METADATA_BACKFILL_BASE_DELAY_SECONDS = 60 * 60  # 1 hour
 METADATA_BACKFILL_MAX_DELAY_SECONDS = 60 * 60 * 24  # 1 day
@@ -30,13 +30,24 @@ METADATA_BACKFILL_MAX_ATTEMPTS = 6
 GENRE_BACKFILL_VERSION = 4
 
 
-def _apply_backfill_state_filters(queryset, field: str):
+def _apply_backfill_state_filters(queryset, field: str, *, for_reconcile: bool = False):
+    """Exclude items that shouldn't be attempted right now.
+
+    ``for_reconcile`` additionally excludes items that have *ever* failed. A
+    reconcile sweep's job is discovering items nothing has tried yet; retrying
+    the failures is already ``backfill_item_metadata``'s job, on its own
+    exponential schedule. Without this the candidate set never empties - a failed
+    item's ``next_retry_at`` caps at one day, so it re-enters the sweep daily -
+    which meant the reconcile could never be marked complete and polled the
+    whole library forever (issue #521).
+    """
     now = timezone.now()
+    blocked_filter = Q(give_up=True) | Q(next_retry_at__gt=now)
+    if for_reconcile:
+        blocked_filter |= Q(fail_count__gt=0)
     blocked = (
         MetadataBackfillState.objects.filter(field=field)
-        .filter(
-            Q(give_up=True) | Q(next_retry_at__gt=now),
-        )
+        .filter(blocked_filter)
         .values("item_id")
     )
     return queryset.exclude(id__in=blocked)
@@ -50,7 +61,11 @@ def _backfill_delay_seconds(fail_count: int) -> int:
 
 
 def _record_backfill_failure(
-    item: Item, field: str, error_message: str | None = None
+    item: Item,
+    field: str,
+    error_message: str | None = None,
+    *,
+    terminal: bool = False,
 ) -> bool:
     now = timezone.now()
     state, _ = MetadataBackfillState.objects.get_or_create(item=item, field=field)
@@ -58,7 +73,11 @@ def _record_backfill_failure(
     state.last_attempt_at = now
     if error_message:
         state.last_error = str(error_message)[:500]
-    if state.fail_count >= METADATA_BACKFILL_MAX_ATTEMPTS:
+    if terminal:
+        state.fail_count = METADATA_BACKFILL_MAX_ATTEMPTS
+        state.give_up = True
+        state.next_retry_at = None
+    elif state.fail_count >= METADATA_BACKFILL_MAX_ATTEMPTS:
         state.give_up = True
         state.next_retry_at = None
     else:

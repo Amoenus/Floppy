@@ -3,7 +3,7 @@
 
 {# djlint:off #}
 <!DOCTYPE html>
-<html lang="en" class="scheme-dark bg-[#212529]">
+<html lang="en" class="scheme-dark bg-[var(--color-page-bg)]">
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -54,9 +54,9 @@
 
   <body>
     {% block body %}
-      <div class="min-h-screen bg-[#212529] text-gray-100 flex flex-col">
+      <div class="min-h-screen bg-[var(--color-page-bg)] text-[var(--color-text)] flex flex-col">
         {# Simple header for public pages #}
-        <header class="bg-[#1a1d20] border-b border-[#2c3136] shadow-md">
+        <header class="bg-[var(--color-sidebar)] border-b border-[var(--color-border)] shadow-md">
           <div class="container mx-auto px-4">
             <div class="h-16 flex items-center justify-between">
               <h1 class="flex items-center">
@@ -83,12 +83,12 @@
           {% endblock content %}
         </main>
 
-        <footer class="border-t border-[#2c3136] bg-[#1a1d20]">
+        <footer class="border-t border-[var(--color-border)] bg-[var(--color-sidebar)]">
           <div class="container mx-auto px-4 py-6 space-y-2">
-            <p class="text-sm text-gray-400">
+            <p class="text-sm text-[var(--color-text-muted)]">
               Floppy is a self-hosted media tracker for books, games, movies, music, podcasts, tv shows, and more.
             </p>
-            <p class="text-sm text-gray-400">
+            <p class="text-sm text-[var(--color-text-muted)]">
               This fork is maintained by
               {% if FORK_OWNER_URL %}
                 <a class="text-indigo-400 hover:text-indigo-300 underline" href="{{ FORK_OWNER_URL }}" rel="noopener" target="_blank">
@@ -107,7 +107,7 @@
       <div class="fixed top-24 right-0 left-0 z-50 flex justify-center pointer-events-none">
         <div class="w-full max-w-xl px-4 space-y-2 pointer-events-auto">
           {% for message in messages %}
-            <div class="flex items-center gap-2 rounded-md border px-3 py-2 shadow-lg text-white toast-{{ message.tags }} opacity-0"
+            <div class="flex items-center gap-2 rounded-md border px-3 py-2 shadow-lg text-[var(--color-text)] toast-{{ message.tags }} opacity-0"
               x-data="{
                   init() {
                     // Start entrance animation after a tiny delay

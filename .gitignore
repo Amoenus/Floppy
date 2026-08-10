@@ -26,6 +26,9 @@ db-dev/
 # Local dev DB
 db/
 
+# Runtime log file (see LOG_DIR in config/settings.py)
+src/logs/
+
 # Retired Tailwind output path; main.css is the canonical compiled asset.
 src/static/css/tailwind.css
 docs/upstream-review.md

@@ -21,6 +21,7 @@ from django.utils import timezone
 import app
 from app.models import MediaTypes, Sources, Status
 from app.providers import services
+from integrations import import_progress
 from integrations.imports import helpers
 from integrations.imports.helpers import MediaImportError, MediaImportUnexpectedError
 from lists.models import CustomList, CustomListItem
@@ -477,7 +478,10 @@ class StoryGraphImporter:
             msg = "Invalid file format. Please upload a CSV file."
             raise MediaImportError(msg) from error
 
-        for row in DictReader(decoded_file):
+        rows = list(DictReader(decoded_file))
+        total = len(rows)
+        for i, row in enumerate(rows, start=1):
+            import_progress.report(i, total, "StoryGraph")
             try:
                 self._process_row(row)
             except services.ProviderAPIError as error:

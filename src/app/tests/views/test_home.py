@@ -23,7 +23,12 @@ from app.models import (
     Sources,
     Status,
 )
-from users.models import DateFormatChoices, HomeScreenRow, HomeSortChoices
+from users.models import (
+    DateFormatChoices,
+    DirectionChoices,
+    HomeScreenRow,
+    HomeSortChoices,
+)
 
 
 class HomeViewTests(TestCase):
@@ -168,6 +173,39 @@ class HomeViewTests(TestCase):
         )
         self.assertNotContains(response, "Load All")
 
+    def test_home_row_direction_matches_persisted_row(self):
+        """Each row dict must carry its own direction for the header arrow icon.
+
+        Regression test: the row dict previously omitted "direction" entirely,
+        so the template's asc/desc check was always falsy and every row's
+        arrow rendered as descending regardless of its actual sort direction.
+        """
+        # Trigger row creation, then flip one row's direction away from its
+        # default so a stale/omitted value would be caught either way.
+        self.client.get(reverse("home"))
+        row = HomeScreenRow.objects.get(
+            user=self.user,
+            media_type=MediaTypes.SEASON.value,
+            position=0,
+        )
+        row.direction = (
+            DirectionChoices.DESC
+            if row.direction == DirectionChoices.ASC
+            else DirectionChoices.ASC
+        )
+        row.save(update_fields=["direction"])
+
+        response = self._get_hydrated_home()
+        season_row = self._get_first_row(response, MediaTypes.SEASON.value)
+
+        self.assertEqual(season_row["direction"], row.direction)
+        expected_path = (
+            'd="M10 5 L16 15 H4 Z"'
+            if row.direction == DirectionChoices.ASC
+            else 'd="M10 15 L4 5 H16 Z"'
+        )
+        self.assertContains(response, expected_path, html=False)
+
     def test_home_groups_include_label_and_icon(self):
         """Each home group exposes a media-type label and icon for headers."""
         response = self.client.get(reverse("home"))
@@ -182,7 +220,7 @@ class HomeViewTests(TestCase):
         response = self.client.get(reverse("home"))
         self.assertNotContains(
             response,
-            '<h2 class="text-3xl font-semibold text-gray-100">',
+            '<h2 class="text-3xl font-semibold text-[var(--color-text)]">',
             html=False,
         )
 
@@ -194,7 +232,7 @@ class HomeViewTests(TestCase):
         response = self.client.get(reverse("home"))
         self.assertContains(
             response,
-            '<h2 class="text-3xl font-semibold text-gray-100">',
+            '<h2 class="text-3xl font-semibold text-[var(--color-text)]">',
             html=False,
         )
         anime_group = self._get_group(response, MediaTypes.ANIME.value)

@@ -2,15 +2,29 @@ name: Docker Image
 
 on:
   workflow_dispatch:
+    inputs:
+      bootstrap_ghcr:
+        description: "Use GHCR_TOKEN once to create the renamed floppy package"
+        required: false
+        default: false
+        type: boolean
   push:
     branches:
-      - "dev"
+      - "release"
       - "latest"
     tags:
       - "v*"
   pull_request:
     branches:
-      - "dev"
+      - "latest"
+
+# A push to latest must not be overtaken by an older build that started later
+# because runners were queued. Keep one publish per ref in flight and let the
+# newest pending run replace intermediate commits without cancelling the run
+# currently publishing.
+concurrency:
+  group: docker-image-${{ github.ref }}
+  cancel-in-progress: false
 
 env:
   REGISTRY: ghcr.io
@@ -56,13 +70,12 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
             ${{ env.REGISTRY }}/${{ env.LEGACY_IMAGE_NAME }}
           tags: |
-            type=ref,event=branch,enable=${{ github.ref != 'refs/heads/latest' }}
             type=ref,event=pr
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/latest' }}
-            type=raw,value=release,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=raw,value=release,enable=${{ github.ref == 'refs/heads/release' || startsWith(github.ref, 'refs/tags/v') }}
 
       # Determine if we should push the image
       - name: Set push flag
@@ -80,8 +93,11 @@ jobs:
         uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
-          username: dannyvfilms
-          password: ${{ secrets.GHCR_TOKEN }}
+          # The one-time bootstrap is needed because floppy was created by a
+          # PAT-based push, while the existing yamtrack package is already
+          # associated with this repository. Normal builds stay on GITHUB_TOKEN.
+          username: ${{ inputs.bootstrap_ghcr == true && 'dannyvfilms' || github.actor }}
+          password: ${{ inputs.bootstrap_ghcr == true && secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Build and push Docker image
         id: build-and-push

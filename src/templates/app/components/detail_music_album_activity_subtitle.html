@@ -3,7 +3,7 @@
 {% if music_album_activity_subtitle %}
   <div id="music-album-activity-subtitle-{{ album.id }}"
        {% if subtitle_oob %}hx-swap-oob="true"{% endif %}
-       class="mb-3 flex flex-wrap items-center justify-center gap-y-1 text-center text-sm font-medium text-gray-400 md:justify-start md:text-start">
+       class="mb-3 flex flex-wrap items-center justify-center gap-y-1 text-center text-sm font-medium text-[var(--color-text-muted)] md:justify-start md:text-start">
     <span>{{ music_album_activity_subtitle.title }}</span>
     {% if music_album_activity_subtitle.progress_text %}
       <span class="mx-2 text-gray-600">•</span>

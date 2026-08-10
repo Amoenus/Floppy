@@ -1,6 +1,7 @@
 import csv
 import json
 import logging
+from collections import defaultdict
 from io import StringIO
 
 from django.apps import apps
@@ -14,6 +15,7 @@ from app.models import (
     CollectionEntry,
     Episode,
     Item,
+    ItemTag,
     MediaTypes,
     Season,
     Sources,
@@ -81,10 +83,13 @@ def generate_rows(user, media_types=None, include_lists=True, include_collection
 
     # Get fields
     fields = {
-        "item": get_model_fields(Item),
+        # watch_providers scales with ~60 TMDB regions, is never read back on
+        # import, and is fully re-fetchable via the provider backfill task.
+        "item": get_model_fields(Item, exclude={"watch_providers"}),
         "track": get_track_fields(),
         "list": get_list_fields(),
         "collection": get_collection_fields(),
+        "tags": get_tag_fields(),
     }
 
     # Yield header row
@@ -93,8 +98,11 @@ def generate_rows(user, media_types=None, include_lists=True, include_collection
         + fields["item"]
         + fields["track"]
         + fields["list"]
-        + fields["collection"],
+        + fields["collection"]
+        + fields["tags"],
     )
+
+    item_tags_map = _build_item_tags_map(user)
 
     prefetch_config = {
         MediaTypes.TV.value: Prefetch(
@@ -141,6 +149,7 @@ def generate_rows(user, media_types=None, include_lists=True, include_collection
                 + [getattr(media, field, "") for field in fields["track"]]
                 + [""] * len(fields["list"])
                 + [""] * len(fields["collection"])
+                + [json.dumps(item_tags_map.get(media.item_id, []))]
             )
 
             if media_type == MediaTypes.GAME.value:
@@ -186,6 +195,7 @@ def generate_rows(user, media_types=None, include_lists=True, include_collection
                 + [track_vals.get(f, "") for f in fields["track"]]
                 + [""] * len(fields["list"])
                 + [""] * len(fields["collection"])
+                + [""] * len(fields["tags"])
             )
             yield writer.writerow(row)
         logger.debug("Finished streaming music_artists to CSV")
@@ -222,26 +232,31 @@ def generate_rows(user, media_types=None, include_lists=True, include_collection
                 + [track_vals.get(f, "") for f in fields["track"]]
                 + [""] * len(fields["list"])
                 + [""] * len(fields["collection"])
+                + [""] * len(fields["tags"])
             )
             yield writer.writerow(row)
         logger.debug("Finished streaming music_albums to CSV")
 
     if include_lists:
-        yield from _generate_list_rows(user, writer, fields)
+        yield from _generate_list_rows(user, writer, fields, item_tags_map)
 
     if include_collection:
-        yield from _generate_collection_rows(user, writer, fields, media_types)
+        yield from _generate_collection_rows(
+            user, writer, fields, media_types, item_tags_map
+        )
 
 
-def _generate_list_rows(user, writer, fields):
+def _generate_list_rows(user, writer, fields, item_tags_map):
     """Yield ``list`` and ``list_item`` rows for the user's custom lists."""
     custom_lists = CustomList.objects.filter(owner=user).order_by("name")
 
     for custom_list in custom_lists:
-        yield from _generate_single_list_rows(custom_list, writer, fields)
+        yield from _generate_single_list_rows(
+            custom_list, writer, fields, item_tags_map
+        )
 
 
-def _generate_single_list_rows(custom_list, writer, fields):
+def _generate_single_list_rows(custom_list, writer, fields, item_tags_map):
     """Yield the ``list`` row and its ``list_item`` rows for one custom list."""
     list_row = (
         ["list"]
@@ -263,6 +278,7 @@ def _generate_single_list_rows(custom_list, writer, fields):
             "",
         ]
         + [""] * len(fields["collection"])
+        + [""] * len(fields["tags"])
     )
     yield writer.writerow(list_row)
 
@@ -291,6 +307,7 @@ def _generate_single_list_rows(custom_list, writer, fields):
                 list_item.date_added.isoformat() if list_item.date_added else "",
             ]
             + [""] * len(fields["collection"])
+            + [json.dumps(item_tags_map.get(item.id, []))]
         )
         yield writer.writerow(list_item_row)
 
@@ -305,10 +322,13 @@ def generate_list_csv(custom_list):
     writer = csv.writer(pseudo_buffer, quoting=csv.QUOTE_ALL)
 
     fields = {
-        "item": get_model_fields(Item),
+        # watch_providers scales with ~60 TMDB regions, is never read back on
+        # import, and is fully re-fetchable via the provider backfill task.
+        "item": get_model_fields(Item, exclude={"watch_providers"}),
         "track": get_track_fields(),
         "list": get_list_fields(),
         "collection": get_collection_fields(),
+        "tags": get_tag_fields(),
     }
 
     yield writer.writerow(
@@ -316,13 +336,15 @@ def generate_list_csv(custom_list):
         + fields["item"]
         + fields["track"]
         + fields["list"]
-        + fields["collection"],
+        + fields["collection"]
+        + fields["tags"],
     )
 
-    yield from _generate_single_list_rows(custom_list, writer, fields)
+    item_tags_map = _build_item_tags_map(custom_list.owner)
+    yield from _generate_single_list_rows(custom_list, writer, fields, item_tags_map)
 
 
-def _generate_collection_rows(user, writer, fields, media_types):
+def _generate_collection_rows(user, writer, fields, media_types, item_tags_map):
     """Yield ``collection`` rows for the user's collection entries.
 
     When *media_types* is a non-empty list, only entries whose item matches
@@ -351,6 +373,7 @@ def _generate_collection_rows(user, writer, fields, media_types):
             + [""] * len(fields["track"])
             + [""] * len(fields["list"])
             + collection_vals
+            + [json.dumps(item_tags_map.get(entry.item_id, []))]
         )
         yield writer.writerow(row)
     logger.debug("Finished streaming collection entries to CSV")
@@ -387,12 +410,15 @@ def write_backup(user, media_types=None, include_lists=True, include_collection=
     return str(filepath)
 
 
-def get_model_fields(model):
+def get_model_fields(model, exclude=frozenset()):
     """Get a list of fields names from a model."""
     return [
         field.name
         for field in model._meta.get_fields()
-        if isinstance(field, Field) and not field.auto_created and not field.is_relation
+        if isinstance(field, Field)
+        and not field.auto_created
+        and not field.is_relation
+        and field.name not in exclude
     ]
 
 
@@ -463,6 +489,22 @@ COLLECTION_EXPORT_FIELDS = {
 def get_collection_fields():
     """Get collection-specific export fields."""
     return list(COLLECTION_EXPORT_FIELDS)
+
+
+def get_tag_fields():
+    """Get item-tag export fields."""
+    return ["item_tags"]
+
+
+def _build_item_tags_map(user):
+    """Map Item id -> tag names, for the CSV item_tags column."""
+    tag_map = defaultdict(list)
+    for item_id, tag_name in ItemTag.objects.filter(tag__user=user).values_list(
+        "item_id",
+        "tag__name",
+    ):
+        tag_map[item_id].append(tag_name)
+    return tag_map
 
 
 TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/w500/"
@@ -659,17 +701,21 @@ def generate_sample_template():
     writer = csv.writer(output, quoting=csv.QUOTE_ALL)
 
     fields = {
-        "item": get_model_fields(Item),
+        # watch_providers scales with ~60 TMDB regions, is never read back on
+        # import, and is fully re-fetchable via the provider backfill task.
+        "item": get_model_fields(Item, exclude={"watch_providers"}),
         "track": get_track_fields(),
         "list": get_list_fields(),
         "collection": get_collection_fields(),
+        "tags": get_tag_fields(),
     }
     writer.writerow(
         ["row_type"]
         + fields["item"]
         + fields["track"]
         + fields["list"]
-        + fields["collection"],
+        + fields["collection"]
+        + fields["tags"],
     )
 
     placeholder_image = settings.IMG_NONE
@@ -686,7 +732,8 @@ def generate_sample_template():
             + [item_vals.get(field, "") for field in fields["item"]]
             + [track_vals.get(field, "") for field in fields["track"]]
             + [""] * len(fields["list"])
-            + [""] * len(fields["collection"]),
+            + [""] * len(fields["collection"])
+            + [""] * len(fields["tags"]),
         )
 
     def write_list_row(list_vals):
@@ -695,7 +742,8 @@ def generate_sample_template():
             + [""] * len(fields["item"])
             + [""] * len(fields["track"])
             + [list_vals.get(field, "") for field in fields["list"]]
-            + [""] * len(fields["collection"]),
+            + [""] * len(fields["collection"])
+            + [""] * len(fields["tags"]),
         )
 
     def write_list_item_row(item_vals, list_vals):
@@ -709,7 +757,8 @@ def generate_sample_template():
             + [item_vals.get(field, "") for field in fields["item"]]
             + [""] * len(fields["track"])
             + [list_vals.get(field, "") for field in fields["list"]]
-            + [""] * len(fields["collection"]),
+            + [""] * len(fields["collection"])
+            + [""] * len(fields["tags"]),
         )
 
     def write_collection_row(item_vals, collection_vals):
@@ -723,7 +772,8 @@ def generate_sample_template():
             + [item_vals.get(field, "") for field in fields["item"]]
             + [""] * len(fields["track"])
             + [""] * len(fields["list"])
-            + [collection_vals.get(field, "") for field in fields["collection"]],
+            + [collection_vals.get(field, "") for field in fields["collection"]]
+            + [""] * len(fields["tags"]),
         )
 
     # Every category gets the same 5-item status/score spread, so each one

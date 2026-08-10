@@ -13,6 +13,7 @@ from django_celery_beat.models import PeriodicTask
 from django_celery_results.models import TaskResult
 
 from app.models import Item, MediaTypes, Sources, Status
+from integrations import import_progress
 from users import helpers
 
 EXCLUDED_SEARCH_TYPES = [MediaTypes.SEASON.value, MediaTypes.EPISODE.value]
@@ -58,6 +59,7 @@ class HomeSortChoices(models.TextChoices):
     COMPLETION = "completion", "Completion"
     EPISODES_LEFT = "episodes_left", "Episodes Left"
     TITLE = "title", "Title"
+    RANDOM = "random", "Random"
 
 
 class MediaSortChoices(models.TextChoices):
@@ -181,6 +183,14 @@ class DateFormatChoices(models.TextChoices):
     DD_MM_YYYY = "dd_mm_yyyy", "DD.MM.YYYY"
     YYYY_MM_DD = "yyyy_mm_dd", "YYYY/MM/DD"
     LONG_EU = "long_eu", "18 Jan, 2026"
+
+
+class ThemeChoices(models.TextChoices):
+    """Choices for UI theme preference."""
+
+    SYSTEM = "system", "System default"
+    DARK = "dark", "Dark"
+    LIGHT = "light", "Light"
 
 
 class TimeFormatChoices(models.TextChoices):
@@ -331,6 +341,7 @@ class HomeScreenRowTypeChoices(models.TextChoices):
     RECENTLY_UNRATED = "recently_unrated", "Recently Played - Not Rated"
 
 
+# kept: unrenamed model field/class names and help_text below (avoids a migration; see plan)
 class JellyseerrDefaultAddedStatusChoices(models.TextChoices):
     """Choices for status applied to media added via Jellyseerr webhook."""
 
@@ -915,6 +926,12 @@ class User(AbstractUser):
         max_length=20,
         default=DateFormatChoices.SYSTEM_DEFAULT,
         choices=DateFormatChoices.choices,
+    )
+
+    theme = models.CharField(
+        max_length=10,
+        default=ThemeChoices.SYSTEM,
+        choices=ThemeChoices.choices,
     )
 
     time_format = models.CharField(
@@ -1573,6 +1590,10 @@ class User(AbstractUser):
                 "Import from Pocket Casts (Recurring)",
             ],
             "gpodder": ["Import from GPodder", "Import from GPodder (Recurring)"],
+            "stremio": [
+                "Import from Stremio",
+                "Import from Stremio (Recurring)",
+            ],
             "lastfm": ["Import from Last.fm History"],
             "hardcover": ["Import from Hardcover"],
             "storygraph": ["Import from StoryGraph"],
@@ -1586,6 +1607,7 @@ class User(AbstractUser):
             "storyteller": ["Import from Storyteller (Recurring)"],
             "pocketcasts": ["Import from Pocket Casts (Recurring)"],
             "gpodder": ["Import from GPodder (Recurring)"],
+            "stremio": ["Import from Stremio (Recurring)"],
             "lastfm": ["Poll Last.fm for all users"],
             "koito": ["Poll Koito for user"],
         }
@@ -1650,6 +1672,11 @@ class User(AbstractUser):
 
             source = result_task_to_source[task.task_name]
             processed_task = helpers.process_task_result(task)
+
+            progress = None
+            if task.status == states.STARTED:
+                progress = import_progress.get_progress(task.task_id)
+
             results.append(
                 {
                     "task": processed_task,
@@ -1658,6 +1685,14 @@ class User(AbstractUser):
                     "status": task.status,
                     "summary": processed_task.summary,
                     "errors": processed_task.errors,
+                    "progress_current": progress.get("current") if progress else None,
+                    "progress_total": progress.get("total") if progress else None,
+                    "progress_label": progress.get("label") if progress else None,
+                    "progress_percent": (
+                        round(progress["current"] / progress["total"] * 100, 1)
+                        if progress and progress.get("total")
+                        else None
+                    ),
                 },
             )
 

@@ -21,6 +21,9 @@ from app.history_cache_utils import (
     _localize_datetime,
     _music_history_user_q,
     _normalize_logging_style,
+    _typed_history_index_key,
+    _typed_history_index_registry_key,
+    expand_history_media_types,
 )
 from app.models import Anime, BoardGame, Book, Comic, Episode, Game, Manga, Movie
 
@@ -36,10 +39,19 @@ def _add_days(days_set, days_iterable):
     return added
 
 
-def build_history_index(user, logging_style_override=None):
+def build_history_index(
+    user, logging_style_override=None, media_types=None
+):
     """Build an ordered list of active history days for a user."""
     build_start = time.perf_counter()
     logging_style = _normalize_logging_style(logging_style_override, user)
+    requested_media_types = expand_history_media_types(media_types)
+    include_episode = requested_media_types is None or "episode" in requested_media_types
+    include_movie = requested_media_types is None or "movie" in requested_media_types
+    include_music = requested_media_types is None or "music" in requested_media_types
+    include_podcast = requested_media_types is None or "podcast" in requested_media_types
+    include_game = requested_media_types is None or "game" in requested_media_types
+    include_boardgame = requested_media_types is None or "boardgame" in requested_media_types
     days = set()
 
     episode_days = (
@@ -52,12 +64,14 @@ def build_history_index(user, logging_style_override=None):
         )
         .values_list("day", flat=True)
         .distinct()
-    )
+    ) if include_episode else []
     episode_count = _add_days(days, episode_days)
 
-    movie_qs = Movie.objects.filter(user=user).filter(
-        models.Q(end_date__isnull=False) | models.Q(start_date__isnull=False),
-    )
+    movie_qs = Movie.objects.none()
+    if include_movie:
+        movie_qs = Movie.objects.filter(user=user).filter(
+            models.Q(end_date__isnull=False) | models.Q(start_date__isnull=False),
+        )
     movie_end_days = (
         movie_qs.filter(
             end_date__isnull=False,
@@ -87,7 +101,16 @@ def build_history_index(user, logging_style_override=None):
     # here too - a day whose only activity is a finished book is otherwise
     # never asked for, and the read silently never appears in history.
     reading_count = 0
-    for model in (Book, Comic, Manga, Anime):
+    for model, media_type in (
+        (Book, "book"),
+        (Comic, "comic"),
+        (Manga, "manga"),
+        (Anime, "anime"),
+    ):
+        if not (
+            requested_media_types is None or media_type in requested_media_types
+        ):
+            continue
         reading_qs = model.objects.filter(user=user)
         reading_end_days = (
             reading_qs.filter(end_date__isnull=False)
@@ -104,38 +127,42 @@ def build_history_index(user, logging_style_override=None):
         reading_count += _add_days(days, reading_end_days)
         reading_count += _add_days(days, reading_start_days)
 
-    HistoricalMusic = apps.get_model("app", "HistoricalMusic")
-    music_days = (
-        HistoricalMusic.objects.filter(
-            _music_history_user_q(user),
-            end_date__isnull=False,
+    music_days = []
+    if include_music:
+        HistoricalMusic = apps.get_model("app", "HistoricalMusic")
+        music_days = (
+            HistoricalMusic.objects.filter(
+                _music_history_user_q(user),
+                end_date__isnull=False,
+            )
+            .annotate(
+                day=TruncDate("end_date"),
+            )
+            .values_list("day", flat=True)
+            .distinct()
         )
-        .annotate(
-            day=TruncDate("end_date"),
-        )
-        .values_list("day", flat=True)
-        .distinct()
-    )
     music_count = _add_days(days, music_days)
 
-    HistoricalPodcast = apps.get_model("app", "HistoricalPodcast")
-    podcast_days = (
-        HistoricalPodcast.objects.filter(
-            models.Q(history_user=user) | models.Q(history_user__isnull=True),
-            end_date__isnull=False,
+    podcast_days = []
+    if include_podcast:
+        HistoricalPodcast = apps.get_model("app", "HistoricalPodcast")
+        podcast_days = (
+            HistoricalPodcast.objects.filter(
+                models.Q(history_user=user) | models.Q(history_user__isnull=True),
+                end_date__isnull=False,
+            )
+            .annotate(
+                day=TruncDate("end_date"),
+            )
+            .values_list("day", flat=True)
+            .distinct()
         )
-        .annotate(
-            day=TruncDate("end_date"),
-        )
-        .values_list("day", flat=True)
-        .distinct()
-    )
     podcast_count = _add_days(days, podcast_days)
 
     game_count = 0
     boardgame_count = 0
     if logging_style == "sessions":
-        games = Game.objects.filter(user=user)
+        games = Game.objects.filter(user=user) if include_game else Game.objects.none()
         game_end_days = (
             games.filter(
                 end_date__isnull=False,
@@ -172,7 +199,11 @@ def build_history_index(user, logging_style_override=None):
         game_count += _add_days(days, game_start_days)
         game_count += _add_days(days, game_created_days)
 
-        boardgames = BoardGame.objects.filter(user=user)
+        boardgames = (
+            BoardGame.objects.filter(user=user)
+            if include_boardgame
+            else BoardGame.objects.none()
+        )
         boardgame_end_days = (
             boardgames.filter(
                 end_date__isnull=False,
@@ -209,11 +240,15 @@ def build_history_index(user, logging_style_override=None):
         boardgame_count += _add_days(days, boardgame_start_days)
         boardgame_count += _add_days(days, boardgame_created_days)
     else:
-        games = Game.objects.filter(user=user).only(
-            "start_date",
-            "end_date",
-            "created_at",
-            "progress",
+        games = (
+            Game.objects.filter(user=user).only(
+                "start_date",
+                "end_date",
+                "created_at",
+                "progress",
+            )
+            if include_game
+            else Game.objects.none()
         )
         for game in games.iterator():
             total_minutes = game.progress or 0
@@ -238,11 +273,15 @@ def build_history_index(user, logging_style_override=None):
                     days.add(day_value)
                     game_count += 1
 
-        boardgames = BoardGame.objects.filter(user=user).only(
-            "start_date",
-            "end_date",
-            "created_at",
-            "progress",
+        boardgames = (
+            BoardGame.objects.filter(user=user).only(
+                "start_date",
+                "end_date",
+                "created_at",
+                "progress",
+            )
+            if include_boardgame
+            else BoardGame.objects.none()
         )
         for boardgame in boardgames.iterator():
             total_plays = boardgame.progress or 0
@@ -334,19 +373,42 @@ def cache_history_payloads(user_id: int, logging_style: str, history_days):
     )
 
 
-def cache_history_index(user_id: int, logging_style: str, day_keys, built_at=None):
+def cache_history_index(
+    user_id: int,
+    logging_style: str,
+    day_keys,
+    built_at=None,
+    media_types=None,
+):
     """Return the cache history index."""
     logging_style = _normalize_logging_style(logging_style)
     if built_at is None:
         built_at = timezone.now()
+    cache_key = _cache_key(user_id, logging_style)
+    if media_types is not None:
+        cache_key = _typed_history_index_key(
+            user_id,
+            logging_style,
+            media_types,
+        )
     cache.set(
-        _cache_key(user_id, logging_style),
+        cache_key,
         {
             "days": day_keys,
             "built_at": built_at,
         },
         timeout=HISTORY_CACHE_TIMEOUT,
     )
+    if media_types is not None:
+        registry_key = _typed_history_index_registry_key(user_id, logging_style)
+        registry = cache.get(registry_key) or []
+        if cache_key not in registry:
+            registry.append(cache_key)
+            cache.set(
+                registry_key,
+                registry,
+                timeout=HISTORY_CACHE_TIMEOUT,
+            )
     return built_at
 
 

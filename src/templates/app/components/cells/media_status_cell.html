@@ -1,6 +1,6 @@
 {% load app_tags %}
 {% if media.is_statusless %}
-  <span class="text-gray-300">No Status</span>
+  <span class="text-[var(--color-text-secondary)]">No Status</span>
 {% elif media.aggregated_status %}
   <div class="font-medium">{{ media.aggregated_status|media_status_readable }}</div>
   {% if media.repeats > 1 %}

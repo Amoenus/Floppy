@@ -14,9 +14,7 @@ from urllib.parse import urljoin, urlparse
 from celery.schedules import crontab
 from debug_toolbar.settings import PANELS_DEFAULTS
 from decouple import (
-    Config,
     Csv,
-    RepositorySecret,
     Undefined,
     UndefinedValueError,
     config,
@@ -24,6 +22,22 @@ from decouple import (
 )
 from django.core.cache import CacheKeyWarning
 from django.db.backends.signals import connection_created
+
+from config.runtime_profile import (
+    PROFILE as RESOURCE_PROFILE,
+)
+from config.runtime_profile import (
+    by_tier,
+    gunicorn_threads,
+    web_concurrency,
+)
+
+# How much machine we're on. Every tier-scaled default below reads from this
+# single detection rather than repeating its own heuristic; see
+# config/runtime_profile.py for what is probed and why (issue #521).
+RESOURCE_TIER = RESOURCE_PROFILE.tier
+RUNTIME_GUNICORN_THREADS = gunicorn_threads()
+RUNTIME_WEB_CONCURRENCY = web_concurrency()
 
 BASE_URL = config("BASE_URL", default=None)
 if BASE_URL:
@@ -33,6 +47,7 @@ REDIS_PREFIX = config("REDIS_PREFIX", default=None)
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+DOCKER_SECRETS_DIR = Path("/run/secrets")
 
 
 def secret(key, default=undefined, **kwargs):
@@ -52,35 +67,24 @@ def secret(key, default=undefined, **kwargs):
         return default
 
     path = Path(file)
+    if not path.is_absolute():
+        path = DOCKER_SECRETS_DIR / path
+
     try:
-        if path.is_absolute():
-            secret_value = Config(RepositorySecret(path.parent))(
-                path.stem,
-                default,
-                **kwargs,
-            )
-        else:
-            secret_value = Config(RepositorySecret())(file, default, **kwargs)
-    except (
-        FileNotFoundError,
-        IsADirectoryError,
-        UndefinedValueError,
-    ) as err:
+        secret_value = path.read_text(encoding="utf-8").strip()
+    except (FileNotFoundError, IsADirectoryError, OSError, UnicodeDecodeError) as err:
         msg = f"File from {key} not found. Please check the path and filename."
         raise UndefinedValueError(msg) from err
-    else:
-        if isinstance(secret_value, str):
-            return secret_value.strip()
-        return secret_value
+
+    return secret_value
 
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/stable/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-try:
-    SECRET_KEY = config("SECRET")
-except UndefinedValueError:
+SECRET_KEY = config("SECRET", default=None)
+if not SECRET_KEY:
     SECRET_KEY = secret("SECRET_FILE")
 
 # secret() returns the `undefined` sentinel (truthy) when the env var is absent;
@@ -236,6 +240,9 @@ PERF_LOG_QUERY_COUNT_THRESHOLD = config(
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    # Keep rendered HTML out of the browser's heuristic cache so template fixes
+    # actually reach iOS Safari and the installed PWA (#442)
+    "app.middleware.NoStoreHtmlMiddleware",
     "app.middleware.RequestPerformanceLoggingMiddleware",
     "app.middleware.DatabaseRetryMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
@@ -310,12 +317,18 @@ USING_SQLITE_DATABASE = not bool(DB_HOST)
 if DB_HOST:
     DB_POOL_ENABLED = config("DB_POOL_ENABLED", default=True, cast=bool)
     DB_POOL_MIN = config("DB_POOL_MIN", default=2, cast=int)
-    # Default should be >= GUNICORN_THREADS (src/config/gunicorn.py) so a
-    # worker's pool never runs out of slots for its own concurrent request
-    # threads; +1 for headroom (e.g. the /health/ probe hitting the pool at
-    # the same time). A too-small pool causes psycopg_pool.PoolTimeout once
-    # concurrent requests in a worker exceed the pool size (issue #341).
-    DB_POOL_MAX = config("DB_POOL_MAX", default=5, cast=int)
+    # Derived from the same thread count gunicorn uses rather than hardcoded,
+    # so the invariant holds automatically when the tier (or the user) changes
+    # GUNICORN_THREADS. It must be >= the thread count so a worker's pool never
+    # runs out of slots for its own concurrent request threads; +1 for headroom
+    # (e.g. the /health/ probe hitting the pool at the same time). A too-small
+    # pool causes psycopg_pool.PoolTimeout once concurrent requests in a worker
+    # exceed the pool size (issue #341).
+    DB_POOL_MAX = config(
+        "DB_POOL_MAX",
+        default=max(RUNTIME_GUNICORN_THREADS + 1, DB_POOL_MIN + 1),
+        cast=int,
+    )
     DB_POOL_TIMEOUT = config("DB_POOL_TIMEOUT", default=30, cast=int)
     db_options = {}
     if DB_POOL_ENABLED:
@@ -374,20 +387,34 @@ else:
         try:
             cursor = connection.cursor()
             cursor.execute(f"PRAGMA journal_mode={SQLITE_JOURNAL_MODE}")
+            actual_journal_mode = cursor.fetchone()[0]
             cursor.execute(f"PRAGMA synchronous={SQLITE_SYNCHRONOUS}")
             cursor.execute(
                 f"PRAGMA busy_timeout={int(SQLITE_BUSY_TIMEOUT_SECONDS * 1000)}",
             )
-        except Exception as error:
+            if actual_journal_mode.lower() != SQLITE_JOURNAL_MODE.lower():
+                # A connection stuck on a different journal mode than its
+                # siblings (e.g. WAL requested but filesystem doesn't support
+                # it - common on network mounts) is a known SQLite corruption
+                # trigger, so this must be loud rather than a routine warning.
+                import logging
+
+                logging.getLogger(__name__).error(
+                    "SQLite journal_mode mismatch: requested %s but got %s. "
+                    "Mixed journal modes across connections to the same "
+                    "database file can cause corruption - this often means "
+                    "the database directory is on a network filesystem "
+                    "(NFS/SMB/CIFS) that doesn't support WAL locking.",
+                    SQLITE_JOURNAL_MODE,
+                    actual_journal_mode,
+                )
+        except Exception:
             # Log but don't raise - allow connection to proceed even if PRAGMA fails
             # This prevents disk I/O errors during connection setup from blocking all requests
             import logging
 
             logger = logging.getLogger(__name__)
-            logger.warning(
-                "Failed to configure SQLite connection PRAGMA settings: %s",
-                error,
-            )
+            logger.exception("Failed to configure SQLite connection PRAGMA settings")
         finally:
             if cursor:
                 # Closing a cursor is best-effort; a failure here is not useful.
@@ -400,6 +427,12 @@ else:
 # https://docs.djangoproject.com/en/stable/topics/cache/
 CACHE_TIMEOUT = 86400  # 24 hours
 REDIS_URL = config("REDIS_URL", default="redis://localhost:6379")
+# Byte count or a redis.conf-style size ("256mb"). Unset means "derive one from
+# the host"; 0 means "never touch the operator's Redis". See app/redis_tuning.py.
+FLOPPY_REDIS_MAXMEMORY = config(
+    "FLOPPY_REDIS_MAXMEMORY",
+    default=config("YAMTRACK_REDIS_MAXMEMORY", default=None),
+)
 KEY_PREFIX = f"{REDIS_PREFIX}" if REDIS_PREFIX else ""
 CACHES = {
     "default": {
@@ -410,6 +443,16 @@ CACHES = {
         "KEY_PREFIX": KEY_PREFIX,
         "OPTIONS": {
             "CLIENT_CLASS": "django_redis.client.DefaultClient",
+            # A cache is allowed to be unavailable. Without this, a slow or full
+            # Redis raised out of every one of ~460 cache.get calls and took
+            # page loads, webhooks and background tasks down with it (#521).
+            # Callers that use the cache for control flow rather than caching
+            # must distinguish "unavailable" from "miss" - see app/cache_safety.py.
+            "IGNORE_EXCEPTIONS": config(
+                "REDIS_IGNORE_EXCEPTIONS",
+                default=True,
+                cast=bool,
+            ),
             # A half-dead Redis (TCP accepts, never replies) must raise
             # promptly instead of blocking worker threads forever (#341).
             "SOCKET_CONNECT_TIMEOUT": config(
@@ -417,10 +460,34 @@ CACHES = {
                 default=5,
                 cast=int,
             ),
-            "SOCKET_TIMEOUT": config("REDIS_SOCKET_TIMEOUT", default=10, cast=int),
+            # Every thread that touches the cache blocks for this long when Redis
+            # stops answering, so the whole web tier stalls for
+            # threads x timeout. Shorter on hosts that can least afford it.
+            "SOCKET_TIMEOUT": config(
+                "REDIS_SOCKET_TIMEOUT",
+                default=by_tier(4, 5, 10),
+                cast=int,
+            ),
+            "CONNECTION_POOL_KWARGS": {
+                # django-redis leaves this at redis-py's 2**31 default, so a
+                # stalled Redis grows sockets and file descriptors without
+                # bound while threads pile up waiting on it.
+                "max_connections": config(
+                    "REDIS_MAX_CONNECTIONS",
+                    default=by_tier(12, 20, 32),
+                    cast=int,
+                ),
+                "retry_on_timeout": True,
+                "health_check_interval": 30,
+            },
         },
     },
 }
+
+# IGNORE_EXCEPTIONS swallows the traceback; without this a Redis outage is
+# invisible in the logs, which is the opposite of what we want while
+# diagnosing one. This is a global setting, not a per-cache OPTION.
+DJANGO_REDIS_LOG_IGNORED_EXCEPTIONS = True
 
 # not using Memcached, ignore CacheKeyWarning
 # https://docs.djangoproject.com/en/stable/topics/cache/#cache-key-warnings
@@ -451,6 +518,13 @@ AUTH_PASSWORD_VALIDATORS = [
 
 # Logging
 # https://docs.djangoproject.com/en/stable/topics/logging/
+
+# Recent logs are also kept on disk (in addition to stdout) so the app can
+# offer a sanitized log download from Settings > Advanced (#510).
+LOG_DIR = config("LOG_DIR", default=str(BASE_DIR / "logs"))
+Path(LOG_DIR).mkdir(parents=True, exist_ok=True)
+LOG_FILE = str(Path(LOG_DIR) / "floppy.log")
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
@@ -479,8 +553,16 @@ LOGGING = {
             "formatter": "verbose",
             "level": "DEBUG" if DEBUG else "INFO",
         },
+        "file": {
+            "class": "logging.handlers.RotatingFileHandler",
+            "filename": LOG_FILE,
+            "maxBytes": 5 * 1024 * 1024,
+            "backupCount": 3,
+            "formatter": "verbose",
+            "level": "DEBUG" if DEBUG else "INFO",
+        },
     },
-    "root": {"handlers": ["console"], "level": "DEBUG" if DEBUG else "INFO"},
+    "root": {"handlers": ["console", "file"], "level": "DEBUG" if DEBUG else "INFO"},
 }
 
 # Internationalization
@@ -1029,11 +1111,15 @@ HEALTHCHECK_CELERY_PING_TIMEOUT = config(
 # The container healthcheck polls /health/ constantly; the celery broadcast
 # ping always waits its full timeout (~1s), pinning a gunicorn thread per
 # probe. The probe uses this fast subset; /health/full/ runs every check.
+#
+# Redis is deliberately NOT a liveness signal. With IGNORE_EXCEPTIONS the app
+# serves correctly from Postgres through a Redis outage, so reporting unhealthy
+# would get a working container restarted by whatever watches the healthcheck -
+# turning graceful degradation into a restart loop (#521). Cache and Redis
+# checks remain on /health/full/, which is where you look to diagnose one.
 HEALTH_CHECK = {
     "SUBSETS": {
         "liveness": [
-            "CacheBackend",
-            "RedisHealthCheck",
             "DatabaseHeartBeatCheck",
         ],
     },
@@ -1078,6 +1164,18 @@ CELERY_BROKER_TRANSPORT_OPTIONS = {
     "queue_order_strategy": "priority",
     "priority_steps": list(range(10)),
     "sep": ":",
+    # A task not acked within this window is redelivered, so it must exceed the
+    # longest a task can legitimately run or work silently runs twice. Tracks
+    # CELERY_TASK_TIME_LIMIT below, with headroom.
+    "visibility_timeout": by_tier(3600, 3600, 60 * 60 * 6 + 1800),
+    # The broker connection is a long-lived BRPOP, so it needs a far longer
+    # socket timeout than the cache's - and keepalives, or a NAT/firewall idle
+    # timeout silently blackholes it and the worker stops receiving tasks.
+    "socket_timeout": 30,
+    "socket_connect_timeout": 10,
+    "socket_keepalive": True,
+    "retry_on_timeout": True,
+    "health_check_interval": 30,
 }
 if REDIS_PREFIX:
     CELERY_BROKER_TRANSPORT_OPTIONS.update(
@@ -1087,18 +1185,71 @@ if REDIS_PREFIX:
         },
     )
 
+# Broker resilience: none of this was configured, so a Redis blip at the wrong
+# moment killed a worker outright instead of being retried (#521).
+CELERY_BROKER_POOL_LIMIT = config(
+    "CELERY_BROKER_POOL_LIMIT",
+    default=by_tier(4, 6, 10),
+    cast=int,
+)
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+# Retry forever rather than exit: the container restarts into the same
+# situation, so giving up only turns a slow Redis into a crash loop.
+CELERY_BROKER_CONNECTION_MAX_RETRIES = 0
+CELERY_REDIS_RETRY_ON_TIMEOUT = True
+
 CELERY_WORKER_HIJACK_ROOT_LOGGER = False
-CELERY_WORKER_CONCURRENCY = 1
-CELERY_WORKER_PREFETCH_MULTIPLIER = 1
-CELERY_WORKER_MAX_TASKS_PER_CHILD = 50
+CELERY_WORKER_CONCURRENCY = config("CELERY_WORKER_CONCURRENCY", default=1, cast=int)
+CELERY_WORKER_PREFETCH_MULTIPLIER = config(
+    "CELERY_WORKER_PREFETCH_MULTIPLIER",
+    default=1,
+    cast=int,
+)
+# Recycling a worker child is the only thing that returns leaked/fragmented
+# memory to the OS, so smaller hosts recycle sooner (issue #521).
+CELERY_WORKER_MAX_TASKS_PER_CHILD = config(
+    "CELERY_WORKER_MAX_TASKS_PER_CHILD",
+    default=by_tier(15, 25, 50),
+    cast=int,
+)
+# A hard RSS ceiling per child: Celery retires the child after the task that
+# crosses it finishes. Unset on standard hosts, where a large import legitimately
+# needs the headroom and there is memory to spare.
+CELERY_WORKER_MAX_MEMORY_PER_CHILD = config(
+    "CELERY_WORKER_MAX_MEMORY_PER_CHILD",
+    default=by_tier(180 * 1024, 250 * 1024, 0),
+    cast=int,
+)
+if not CELERY_WORKER_MAX_MEMORY_PER_CHILD:
+    CELERY_WORKER_MAX_MEMORY_PER_CHILD = None
 CELERY_BEAT_SYNC_EVERY = 10
 
 CELERY_TASK_TRACK_STARTED = True
-CELERY_TASK_TIME_LIMIT = 60 * 60 * 6  # 6 hours
+# A wedged task holds its worker for the whole limit, and with concurrency 1
+# that is the entire queue. Six hours is survivable on a host with spare
+# workers; on a constrained one it is an outage, so bound it much sooner and
+# give tasks a SoftTimeLimitExceeded they can clean up after.
+CELERY_TASK_TIME_LIMIT = config(
+    "CELERY_TASK_TIME_LIMIT",
+    default=by_tier(60 * 30, 60 * 30, 60 * 60 * 6),
+    cast=int,
+)
+CELERY_TASK_SOFT_TIME_LIMIT = config(
+    "CELERY_TASK_SOFT_TIME_LIMIT",
+    default=by_tier(60 * 15, 60 * 15, 0),
+    cast=int,
+)
+if not CELERY_TASK_SOFT_TIME_LIMIT:
+    CELERY_TASK_SOFT_TIME_LIMIT = None
+# Redis priorities are inverted relative to AMQP: kombu publishes priority N to
+# the key "<queue>:N" (priority 0 uses the bare "<queue>"), and the worker BRPOPs
+# those keys in ascending order, so it drains "celery" first and "celery:9" last.
+# Lower number == higher priority. Keep these ordered accordingly; assigning 9 to
+# interactive work strands it behind every background batch.
+CELERY_TASK_PRIORITY_INTERACTIVE = 0
+CELERY_TASK_PRIORITY_FOLLOWUP = 3
 CELERY_TASK_DEFAULT_PRIORITY = 5
-CELERY_TASK_PRIORITY_INTERACTIVE = 9
-CELERY_TASK_PRIORITY_FOLLOWUP = 7
-CELERY_TASK_PRIORITY_BACKGROUND = 1
+CELERY_TASK_PRIORITY_BACKGROUND = 9
 
 CELERY_RESULT_EXTENDED = True
 CELERY_RESULT_BACKEND = REDIS_URL
@@ -1128,6 +1279,7 @@ CELERY_TASK_ROUTES = {
     "Warm History Day Cache Coverage": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Repair History Day Cache Coverage": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Refresh Discover Profiles": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
+    "Refresh Discover Profile For User": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     # Long-running scheduled tasks — low priority so beat-catch-up bursts don't
     # starve other celery-queue work.
     "Reload calendar": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
@@ -1172,6 +1324,84 @@ DAILY_DIGEST_HOUR = config(
     default=8,
     cast=int,
 )
+
+# Background maintenance sizing. These used to be literals in the beat schedule
+# below; a constrained host cannot absorb the same sweep as a NAS with 16 GB, and
+# several of the old values were tuned to converge a one-time migration quickly
+# rather than to be run forever (issue #521, #512).
+#
+# The reconcile cadence is 30 minutes rather than the previous 5 because a
+# reconcile now records durable completion state and backs off, so frequent
+# polling buys nothing - see app/reconcile_state.py.
+RECONCILE_INTERVAL_SECONDS = config(
+    "RECONCILE_INTERVAL_SECONDS",
+    default=by_tier(60 * 120, 60 * 60, 60 * 30),
+    cast=int,
+)
+RECONCILE_BATCH_SIZE = config(
+    "RECONCILE_BATCH_SIZE",
+    default=by_tier(200, 300, 500),
+    cast=int,
+)
+WATCH_PROVIDERS_RECONCILE_BATCH_SIZE = RECONCILE_BATCH_SIZE
+GENRE_RECONCILE_BATCH_SIZE = RECONCILE_BATCH_SIZE
+# Chunks of 50 items enqueued per reconcile pass, bounding in-flight work.
+RECONCILE_MAX_CHUNKS_PER_RUN = config(
+    "RECONCILE_MAX_CHUNKS_PER_RUN",
+    default=by_tier(4, 8, 20),
+    cast=int,
+)
+# Cap on how many users one cache-warming sweep may touch, mirroring the
+# existing STARTUP_WARMUP_TASK_LIMIT in app/tasks_discover.py.
+WARMUP_USER_LIMIT = config(
+    "WARMUP_USER_LIMIT",
+    default=by_tier(10, 20, 50),
+    cast=int,
+)
+METADATA_BACKFILL_SCALE = by_tier(0.25, 0.5, 1.0)
+# The nightly calendar reload queues a metadata backfill rather than running one
+# inline at up to 5000 items, which used to hold a worker while filling the cache
+# with thousands of provider payloads.
+CALENDAR_RELOAD_BACKFILL_BATCH_SIZE = config(
+    "CALENDAR_RELOAD_BACKFILL_BATCH_SIZE",
+    default=by_tier(250, 500, 1000),
+    cast=int,
+)
+# fetch_releases walks every tracked item, one provider call at a time. As a
+# single task that holds a worker for the whole walk -- 16.6 minutes on a
+# 1444-item library -- so process the work in bounded slices and re-queue the
+# remainder between them. Smaller hosts free the worker more often, at the cost
+# of more task round-trips; 0 disables chunking and restores the single pass.
+CALENDAR_RELOAD_CHUNK_SIZE = config(
+    "CALENDAR_RELOAD_CHUNK_SIZE",
+    default=by_tier(50, 100, 200),
+    cast=int,
+)
+# Provider responses are not cached, so every selected item costs a live network
+# call. Skip items whose calendar was checked within this window; the daily beat
+# reload still refreshes everything, while the extra import-triggered and manual
+# reloads in between stop re-walking unchanged items. Items that TMDB's change
+# feed reports as changed bypass this gate. Not tier-derived: how stale a release
+# date may be is a correctness question, not a sizing one. 0 disables it.
+CALENDAR_ITEM_STALE_AFTER_HOURS = config(
+    "CALENDAR_ITEM_STALE_AFTER_HOURS",
+    default=12,
+    cast=int,
+)
+# Cap on TMDB /changes pagination. total_pages there can run into the hundreds,
+# and the loop had no limit at all.
+TMDB_CHANGES_MAX_PAGES = config(
+    "TMDB_CHANGES_MAX_PAGES",
+    default=by_tier(5, 10, 20),
+    cast=int,
+)
+
+
+def _scaled(value: int) -> int:
+    """Scale a batch size to the host, never below 1."""
+    return max(1, int(value * METADATA_BACKFILL_SCALE))
+
+
 CELERY_BEAT_SCHEDULE = {
     "reload_calendar": {
         "task": "Reload calendar",
@@ -1193,17 +1423,23 @@ CELERY_BEAT_SCHEDULE = {
         "task": "Backfill item metadata",
         "schedule": crontab(hour=3, minute=0),  # every day at 3 AM
         "kwargs": {
-            "batch_size": 1000,
-            "game_length_batch_size": 200,
-        },  # Process 1000 items per run plus a bounded HLTB enrichment sweep.
+            "batch_size": _scaled(1000),
+            "game_length_batch_size": _scaled(200),
+        },  # A nightly bulk pass plus a bounded HLTB enrichment sweep.
         "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     },
     "backfill_item_metadata_incremental": {
         "task": "Backfill item metadata",
-        "schedule": crontab(minute="*/15"),  # every 15 minutes for gradual convergence
+        # Gradual convergence between the nightly passes. Stretched on smaller
+        # hosts, where a sweep every 15 minutes never leaves the CPU idle.
+        "schedule": by_tier(
+            crontab(minute=0),
+            crontab(minute="*/30"),
+            crontab(minute="*/15"),
+        ),
         "kwargs": {
-            "batch_size": 150,
-            "game_length_batch_size": 25,
+            "batch_size": _scaled(150),
+            "game_length_batch_size": _scaled(25),
         },
         "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     },
@@ -1211,32 +1447,42 @@ CELERY_BEAT_SCHEDULE = {
         "task": "Nightly metadata quality backfill",
         "schedule": crontab(hour=3, minute=30),  # every day at 3:30 AM
         "kwargs": {
-            "genre_batch_size": 1500,
-            "runtime_batch_size": 500,
-            "episode_season_batch_size": 300,
-            "credits_batch_size": 2500,
+            "genre_batch_size": _scaled(1500),
+            "runtime_batch_size": _scaled(500),
+            "episode_season_batch_size": _scaled(300),
+            "credits_batch_size": _scaled(2500),
             "credits_scan_multiplier": 20,
-            "trakt_popularity_batch_size": 300,
+            "trakt_popularity_batch_size": _scaled(300),
         },
         "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     },
+    # Both reconcilers gate on durable completion state and back off once they
+    # find nothing (app/reconcile_state.py), so this is a cheap liveness poll
+    # rather than the every-5-minutes whole-library scan it used to be.
     "ensure_genre_backfill_reconcile": {
         "task": "Ensure genre backfill reconcile",
-        "schedule": 60
-        * 5,  # every 5 minutes until current strategy version is reconciled
+        "schedule": RECONCILE_INTERVAL_SECONDS,
         "kwargs": {
-            "batch_size": 1500,
+            "batch_size": GENRE_RECONCILE_BATCH_SIZE,
+        },
+        "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
+    },
+    "ensure_provider_backfill_reconcile": {
+        "task": "Ensure watch provider backfill reconcile",
+        "schedule": RECONCILE_INTERVAL_SECONDS,
+        "kwargs": {
+            "batch_size": WATCH_PROVIDERS_RECONCILE_BATCH_SIZE,
         },
         "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     },
     "warm_discover_api_cache": {
         "task": "Warm Discover API Cache",
-        "schedule": 60 * 60,  # every 1 hour
+        "schedule": by_tier(60 * 60 * 6, 60 * 60 * 3, 60 * 60),
         "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     },
     "warm_history_day_cache_coverage": {
         "task": "Warm History Day Cache Coverage",
-        "schedule": 60 * 60 * 2,  # every 2 hours
+        "schedule": by_tier(60 * 60 * 12, 60 * 60 * 6, 60 * 60 * 2),
         "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     },
     "refresh_discover_profiles": {
@@ -1247,7 +1493,7 @@ CELERY_BEAT_SCHEDULE = {
     "migrate_tv_shows_to_preferred_provider": {
         "task": "Migrate TV shows to preferred metadata provider",
         "schedule": crontab(hour=3, minute=45),  # every day at 3:45 AM
-        "kwargs": {"batch_size": 200},
+        "kwargs": {"batch_size": _scaled(200)},
         "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     },
 }

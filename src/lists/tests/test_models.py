@@ -467,6 +467,95 @@ class CustomListManagerTest(TestCase):
         smart_list.sync_smart_items()
         self.assertTrue(smart_list.items.filter(id=item.id).exists())
 
+    def test_smart_list_provider_filter_matches_when_region_configured(self):
+        """Provider filter should match items available on that service in the user's region."""
+        item = Item.objects.create(
+            title="Streaming Movie",
+            media_id="1300",
+            media_type=MediaTypes.MOVIE.value,
+            source=Sources.TMDB.value,
+            image="https://example.com/movie.jpg",
+            watch_providers={
+                "US": {
+                    "flatrate": [
+                        {"provider_id": 8, "provider_name": "Netflix"},
+                    ],
+                },
+            },
+        )
+        Movie.objects.create(item=item, user=self.user, status=Status.COMPLETED.value)
+        self.user.watch_provider_region = "US"
+        self.user.save(update_fields=["watch_provider_region"])
+
+        smart_list = CustomList.objects.create(
+            name="Netflix Movies",
+            owner=self.user,
+            is_smart=True,
+            smart_media_types=[MediaTypes.MOVIE.value],
+            smart_filters={"provider": "Netflix"},
+        )
+        smart_list.sync_smart_items()
+        self.assertTrue(smart_list.items.filter(id=item.id).exists())
+
+    def test_smart_list_provider_filter_no_match_without_region_configured(self):
+        """Provider filter should exclude items when the owner has no region set."""
+        item = Item.objects.create(
+            title="Unfiltered Movie",
+            media_id="1301",
+            media_type=MediaTypes.MOVIE.value,
+            source=Sources.TMDB.value,
+            image="https://example.com/movie2.jpg",
+            watch_providers={
+                "US": {
+                    "flatrate": [
+                        {"provider_id": 8, "provider_name": "Netflix"},
+                    ],
+                },
+            },
+        )
+        Movie.objects.create(item=item, user=self.user, status=Status.COMPLETED.value)
+
+        smart_list = CustomList.objects.create(
+            name="Netflix Movies No Region",
+            owner=self.user,
+            is_smart=True,
+            smart_media_types=[MediaTypes.MOVIE.value],
+            smart_filters={"provider": "Netflix"},
+        )
+        smart_list.sync_smart_items()
+        self.assertFalse(smart_list.items.filter(id=item.id).exists())
+
+    def test_build_rule_filter_data_includes_providers_when_region_configured(self):
+        item = Item.objects.create(
+            title="Provider Data Movie",
+            media_id="1302",
+            media_type=MediaTypes.MOVIE.value,
+            source=Sources.TMDB.value,
+            image="https://example.com/movie3.jpg",
+            watch_providers={
+                "US": {
+                    "flatrate": [
+                        {"provider_id": 384, "provider_name": "HBO Max"},
+                    ],
+                },
+            },
+        )
+        Movie.objects.create(item=item, user=self.user, status=Status.COMPLETED.value)
+        self.user.watch_provider_region = "US"
+        self.user.save(update_fields=["watch_provider_region"])
+
+        filter_data = smart_rules.build_rule_filter_data(
+            self.user,
+            [MediaTypes.MOVIE.value],
+            "all",
+            "",
+        )
+
+        self.assertTrue(filter_data["show_providers"])
+        self.assertIn(
+            {"value": "HBO Max", "label": "HBO Max"}, filter_data["providers"]
+        )
+
     def test_smart_list_not_rated_excludes_rated_replays_on_full_sync(self):
         """Full smart-list rebuilds should treat any scored replay as rated."""
         item = Item.objects.create(

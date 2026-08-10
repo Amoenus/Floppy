@@ -7,10 +7,10 @@
           <img src="{{ IMG_NONE }}"
                data-src="{{ featured_person.image }}"
                alt="{{ featured_person.name }}"
-               class="lazyload rounded-full object-cover bg-[#39404b] shrink-0"
+               class="lazyload rounded-full object-cover bg-[var(--color-surface-strong)] shrink-0"
                style="width: 8rem; height: 8rem;">
         {% else %}
-          <div class="rounded-full bg-[#39404b] flex items-center justify-center shrink-0"
+          <div class="rounded-full bg-[var(--color-surface-strong)] flex items-center justify-center shrink-0"
                style="width: 8rem; height: 8rem;">
             {% include "app/icons/person.svg" with classes="w-12 h-12 text-gray-500" %}
           </div>
@@ -18,7 +18,7 @@
       </div>
 
       <div class="min-w-0 text-center lg:text-left lg:h-32 lg:flex lg:flex-col lg:justify-between lg:py-1">
-        <h3 class="text-lg font-semibold leading-tight text-white truncate">{{ featured_person.name }}</h3>
+        <h3 class="text-lg font-semibold leading-tight text-[var(--color-text)] truncate">{{ featured_person.name }}</h3>
 
         <div class="space-y-1.5">
           <p class="text-4xl font-bold text-indigo-400 leading-none">{{ featured_person.unique_titles }}</p>
@@ -55,6 +55,6 @@
   {{ featured_person.pct_of_library|json_script:"featured_person_pct" }}
 {% else %}
   <div class="flex flex-col items-center justify-center py-8 text-center">
-    <p class="text-gray-400">No repeat cast or crew found for this range.</p>
+    <p class="text-[var(--color-text-muted)]">No repeat cast or crew found for this range.</p>
   </div>
 {% endif %}

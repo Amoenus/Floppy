@@ -1,9 +1,11 @@
 import json
+from urllib.parse import urlencode
 
 from django.contrib import messages
 from django.http import HttpResponse, HttpResponseBadRequest
 from django.shortcuts import get_object_or_404, render
 from django.template.loader import render_to_string
+from django.urls import reverse
 from django.views.decorators.http import require_GET, require_POST
 
 from app import statistics as stats
@@ -74,6 +76,7 @@ def _build_detail_tag_sections(
     user,
     fallback_genres=None,
     fallback_implied_genres=None,
+    genre_list_media_type=None,
 ):
     """Return grouped genre and tag preview sections for the media detail action row."""
     sections = []
@@ -85,6 +88,11 @@ def _build_detail_tag_sections(
     )
 
     if genres:
+        genre_list_url = (
+            reverse("medialist", kwargs={"media_type": genre_list_media_type})
+            if genre_list_media_type
+            else None
+        )
         sections.append(
             {
                 "title": "Genres",
@@ -92,6 +100,11 @@ def _build_detail_tag_sections(
                     {
                         "label": genre,
                         "chip_classes": "border-violet-400/18 bg-violet-500/[0.07] text-violet-100",
+                        "url": (
+                            f"{genre_list_url}?{urlencode({'genre': genre})}"
+                            if genre_list_url
+                            else None
+                        ),
                     }
                     for genre in genres
                 ],

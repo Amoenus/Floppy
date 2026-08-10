@@ -330,6 +330,214 @@ class ArrImporterTests(TestCase):
     @patch("integrations.imports.sonarr.services.get_media_metadata")
     @patch("integrations.imports.sonarr.SonarrClient.episodes")
     @patch("integrations.imports.sonarr.SonarrClient.series")
+    def test_sonarr_import_reuses_episode_items_from_another_bucket(
+        self,
+        mock_series,
+        mock_episodes,
+        mock_get_media_metadata,
+    ):
+        """Sonarr should attach to the tracked episode row, not fork a new one."""
+        show_item = Item.objects.create(
+            media_id="95396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Severance",
+            image="https://example.com/severance.jpg",
+        )
+        # Episodes auto-created for a tracked season land in the show's bucket
+        # rather than the default 'episode' one.
+        tracked_episode = Item.objects.create(
+            media_id="95396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            library_media_type=MediaTypes.TV.value,
+            season_number=1,
+            episode_number=1,
+            title="Good News About Hell",
+            image="https://example.com/severance-s1e1.jpg",
+        )
+
+        mock_series.return_value = [
+            {
+                "id": 77,
+                "title": "Severance",
+                "statistics": {"episodeFileCount": 1},
+                "tmdbId": 95396,
+                "seasons": [{"seasonNumber": 1}],
+            },
+        ]
+        mock_episodes.return_value = [
+            {
+                "seasonNumber": 1,
+                "episodeNumber": 1,
+                "title": "Good News About Hell",
+                "airDateUtc": "2022-02-18T00:00:00Z",
+                "episodeFileId": 11,
+            },
+        ]
+        mock_get_media_metadata.return_value = {
+            "title": "Severance",
+            "image": "https://example.com/severance.jpg",
+            "genres": [],
+        }
+
+        sonarr.importer(None, self.user, "new")
+
+        episode_items = Item.objects.filter(
+            media_id="95396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=1,
+            episode_number=1,
+        )
+        self.assertEqual([item.pk for item in episode_items], [tracked_episode.pk])
+        self.assertTrue(
+            CollectionSourceState.objects.filter(
+                user=self.user,
+                item=tracked_episode,
+                source="sonarr",
+            ).exists(),
+        )
+        self.assertEqual(
+            get_tv_show_collection_stats(
+                self.user,
+                show_item,
+                metadata_episode_count=1,
+            )["collected_episodes"],
+            1,
+        )
+
+    @patch("integrations.imports.sonarr.services.get_media_metadata")
+    @patch("integrations.imports.sonarr.SonarrClient.episodes")
+    @patch("integrations.imports.sonarr.SonarrClient.series")
+    def test_sonarr_import_survives_existing_bucket_duplicates(
+        self,
+        mock_series,
+        mock_episodes,
+        mock_get_media_metadata,
+    ):
+        """A library already split across buckets must not crash the import."""
+        Item.objects.create(
+            media_id="95396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Severance",
+            image="https://example.com/severance.jpg",
+        )
+        for bucket in (MediaTypes.TV.value, MediaTypes.EPISODE.value):
+            Item.objects.create(
+                media_id="95396",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.EPISODE.value,
+                library_media_type=bucket,
+                season_number=1,
+                episode_number=1,
+                title="Good News About Hell",
+                image="https://example.com/severance-s1e1.jpg",
+            )
+
+        mock_series.return_value = [
+            {
+                "id": 77,
+                "title": "Severance",
+                "statistics": {"episodeFileCount": 1},
+                "tmdbId": 95396,
+                "seasons": [{"seasonNumber": 1}],
+            },
+        ]
+        mock_episodes.return_value = [
+            {
+                "seasonNumber": 1,
+                "episodeNumber": 1,
+                "title": "Good News About Hell",
+                "airDateUtc": "2022-02-18T00:00:00Z",
+                "episodeFileId": 11,
+            },
+        ]
+        mock_get_media_metadata.return_value = {
+            "title": "Severance",
+            "image": "https://example.com/severance.jpg",
+            "genres": [],
+        }
+
+        _imported_counts, warnings = sonarr.importer(None, self.user, "new")
+
+        self.assertEqual(warnings, "")
+        self.assertEqual(
+            Item.objects.filter(
+                media_id="95396",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.EPISODE.value,
+                season_number=1,
+                episode_number=1,
+            ).count(),
+            2,
+        )
+
+    @patch("integrations.imports.sonarr.services.get_media_metadata")
+    @patch("integrations.imports.sonarr.SonarrClient.episodes")
+    @patch("integrations.imports.sonarr.SonarrClient.series")
+    def test_sonarr_import_keeps_grouped_anime_in_its_bucket(
+        self,
+        mock_series,
+        mock_episodes,
+        mock_get_media_metadata,
+    ):
+        """Seasons and episodes of a grouped anime show stay on anime rows."""
+        Item.objects.create(
+            media_id="95396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            library_media_type=MediaTypes.ANIME.value,
+            title="Severance",
+            image="https://example.com/severance.jpg",
+        )
+
+        mock_series.return_value = [
+            {
+                "id": 77,
+                "title": "Severance",
+                "statistics": {"episodeFileCount": 1},
+                "tmdbId": 95396,
+                "seasons": [{"seasonNumber": 1}],
+            },
+        ]
+        mock_episodes.return_value = [
+            {
+                "seasonNumber": 1,
+                "episodeNumber": 1,
+                "title": "Good News About Hell",
+                "airDateUtc": "2022-02-18T00:00:00Z",
+                "episodeFileId": 11,
+            },
+        ]
+        mock_get_media_metadata.return_value = {
+            "title": "Severance",
+            "image": "https://example.com/severance.jpg",
+            "genres": [],
+        }
+
+        sonarr.importer(None, self.user, "new")
+
+        season_item = Item.objects.get(
+            media_id="95396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=1,
+        )
+        episode_item = Item.objects.get(
+            media_id="95396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=1,
+            episode_number=1,
+        )
+        self.assertEqual(season_item.library_media_type, MediaTypes.ANIME.value)
+        self.assertEqual(episode_item.library_media_type, MediaTypes.ANIME.value)
+
+    @patch("integrations.imports.sonarr.services.get_media_metadata")
+    @patch("integrations.imports.sonarr.SonarrClient.episodes")
+    @patch("integrations.imports.sonarr.SonarrClient.series")
     def test_sonarr_import_marks_existing_seeded_rows_as_fetched(
         self,
         mock_series,

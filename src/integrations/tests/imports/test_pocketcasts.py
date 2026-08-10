@@ -11,6 +11,7 @@ from app.models import (
     MediaTypes,
     Podcast,
     PodcastEpisode,
+    PodcastShow,
     PodcastShowTracker,
     Sources,
     Status,
@@ -508,6 +509,13 @@ class PocketCastsImportFlowTests(TestCase):
             ).count(),
             1,
         )
+        show = PodcastShowTracker.objects.get(
+            user=self.user, show__podcast_uuid="show-1"
+        ).show
+        self.assertEqual(
+            show.image,
+            f"{pocketcasts_api.POCKETCASTS_IMAGE_BASE_URL}/discover/images/130/show-1.jpg",
+        )
         self.assertEqual(
             PodcastEpisode.objects.filter(show__podcast_uuid="show-1").count(),
             3,
@@ -516,6 +524,23 @@ class PocketCastsImportFlowTests(TestCase):
         self.assertEqual(statuses["uuid-played"], Status.COMPLETED.value)
         self.assertEqual(statuses["uuid-inprogress"], Status.IN_PROGRESS.value)
         self.assertNotIn("uuid-unplayed", statuses)
+
+    def test_ensure_show_repairs_authenticated_image_url(self):
+        """Re-imports replace old Pocket Casts API image URLs with public URLs."""
+        PodcastShow.objects.create(
+            podcast_uuid="show-1",
+            title="Old Show",
+            image="https://api.pocketcasts.com/discover/images/130/show-1.jpg",
+        )
+        show_metadata = {"title": "Test Show", "author": "Test Author"}
+
+        with self._artwork_patches():
+            show = self.importer._ensure_show("show-1", show_metadata)
+
+        self.assertEqual(
+            show.image,
+            f"{pocketcasts_api.POCKETCASTS_IMAGE_BASE_URL}/discover/images/130/show-1.jpg",
+        )
 
     def test_import_creates_catalog_for_unplayed_episodes_without_tracking_rows(self):
         """Catalog sync keeps full show episodes browseable without creating Planning rows."""

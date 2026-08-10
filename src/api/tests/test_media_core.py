@@ -1,7 +1,9 @@
 from unittest.mock import patch
 from uuid import UUID
 
-from app.models import MediaTypes, Sources, Status
+from django.utils import timezone
+
+from app.models import MediaTypes, Movie, Sources, Status
 
 from .base import FloppyApiTestCase
 from .helpers import (
@@ -274,6 +276,58 @@ class MediaCoreTests(FloppyApiTestCase):
         self.assertEqual(str(UUID(manual_media_id)), manual_media_id)
         self.assertEqual(payload["item"]["source"], "manual")
         self.assertEqual(payload["item"]["media_type"], MediaTypes.MOVIE.value)
+
+    def test_completed_post_removes_planning_and_merges_metadata(self):
+        """Append-style Completed POST removes a stale planning row."""
+        movie = self.movie_medias[0]
+        movie.status = Status.PLANNING.value
+        movie.score = 8
+        movie.notes = "planned note"
+        movie.save(update_fields=["status", "score", "notes"])
+
+        response = self.call_api(
+            "post",
+            "api_media_type_list",
+            args=(MediaTypes.MOVIE.value,),
+            payload={
+                "source": movie.item.source,
+                "media_id": movie.item.media_id,
+                "status": 3,
+            },
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 201)
+        movies = Movie.objects.filter(item=movie.item, user=self.user1)
+        self.assertEqual(movies.count(), 1)
+        completed = movies.get()
+        self.assertEqual(completed.status, Status.COMPLETED.value)
+        self.assertEqual(completed.score, 8)
+        self.assertEqual(completed.notes, "planned note")
+
+    def test_media_type_list_post_without_status_still_defaults_to_planning(self):
+        """Generic POST keeps its append-oriented Planning default."""
+        movie = self.movie_medias[1]
+
+        response = self.call_api(
+            "post",
+            "api_media_type_list",
+            args=(MediaTypes.MOVIE.value,),
+            payload={
+                "source": movie.item.source,
+                "media_id": movie.item.media_id,
+            },
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(
+            Movie.objects.filter(
+                item=movie.item,
+                user=self.user1,
+                status=Status.PLANNING.value,
+            ).exists(),
+        )
 
     def test_media_type_list_post_invalid_type_returns_bad_request(self):
         """Media-type create endpoint should reject unsupported media types."""
@@ -1182,6 +1236,36 @@ class MediaCoreTests(FloppyApiTestCase):
         payload = response.json()
         check_consumption_structure(self, payload)
         self.assertEqual(payload["notes"], "updated-from-test")
+
+    def test_exact_history_patch_upgrades_planning_row_without_duplicate(self):
+        """Exact history PATCH updates the selected row in place."""
+        movie = self.movie_medias[2]
+        movie.status = Status.PLANNING.value
+        movie.save(update_fields=["status"])
+        consumption_id = movie.id
+        end_date = timezone.now().isoformat()
+
+        response = self.call_api(
+            "patch",
+            "api_media_consumption_entry_detail",
+            args=(
+                MediaTypes.MOVIE.value,
+                movie.item.source,
+                movie.item.media_id,
+                consumption_id,
+            ),
+            payload={"status": 3, "end_date": end_date},
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            Movie.objects.filter(item=movie.item, user=self.user1).count(),
+            1,
+        )
+        movie.refresh_from_db()
+        self.assertEqual(movie.id, consumption_id)
+        self.assertEqual(movie.status, Status.COMPLETED.value)
 
     def test_media_consumption_entry_detail_patch_null_score_clears_rating(self):
         """Entry-detail PATCH should clear an existing score when sent null."""

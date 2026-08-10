@@ -29,9 +29,9 @@
   out-of-band swaps can target them.
 {% endcomment %}
 {% if row.poll_for_covers or force_artwork_anchor %}
-<div id="home-music-row-artwork-{{ row.row_id }}"{% if oob_swap %} hx-swap-oob="outerHTML"{% endif %}>
+<div id="home-music-row-artwork-{{ row.row_id }}" data-home-row-wrapper="true"{% if oob_swap %} hx-swap-oob="outerHTML"{% endif %}>
 {% else %}
-<div>
+<div data-home-row-wrapper="true">
 {% endif %}
   {% if not hide_heading %}
   <div class="mb-2 flex items-start justify-between gap-3">
@@ -39,41 +39,40 @@
       {% if row.summary_inline %}
         <h3 class="home-row-heading flex flex-wrap items-baseline gap-x-2 gap-y-1">
           {% if row.url %}<a href="{{ row.url }}" class="home-row-heading-link inline-flex flex-wrap items-baseline gap-x-2 rounded-sm hover:underline focus:outline-none focus:ring-2 focus:ring-indigo-500">{% endif %}
-          <span class="home-row-heading-title text-lg font-semibold leading-none text-gray-100">{{ row.title_main }}</span>
+          <span class="home-row-heading-title text-lg font-semibold leading-none text-[var(--color-text)]">{{ row.title_main }}</span>
           {% if row.title_detail %}
             <span class="home-row-heading-detail-wrap inline-flex items-center gap-x-2">
-              <span class="home-row-heading-separator text-lg font-semibold leading-none text-white"
+              <span class="home-row-heading-separator text-lg font-semibold leading-none text-[var(--color-text)]"
                     aria-hidden="true">•</span>
-              <span class="home-row-heading-detail text-lg font-semibold leading-none text-gray-100">{{ row.title_detail }}</span>
+              <span class="home-row-heading-detail text-lg font-semibold leading-none text-[var(--color-text)]">{{ row.title_detail }}</span>
             </span>
           {% endif %}
           {% if row.url %}</a>{% endif %}
-          <form method="post"
-                action="{% url 'toggle_home_screen_row_direction' row.row_id %}"
-                class="home-row-heading-sort-form inline ml-3.5">
-            {% csrf_token %}
-            <button type="submit"
-                    data-home-row-sort-toggle="true"
-                    aria-label="Toggle sort direction for {{ row.title }}"
-                    class="home-row-heading-sort-button inline-flex items-center text-sm font-medium leading-none text-gray-400 transition-colors hover:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 rounded-sm">
-              <span class="home-row-heading-sort-label">{{ row.summary_inline }}</span>
-              {% if row.direction == 'asc' %}
-                <svg xmlns="http://www.w3.org/2000/svg"
-                     viewBox="0 0 20 20"
-                     class="home-row-heading-sort-icon w-4 h-4 ml-2"
-                     aria-hidden="true">
-                  <path d="M10 5 L16 15 H4 Z" fill="currentColor"></path>
-                </svg>
-              {% else %}
-                <svg xmlns="http://www.w3.org/2000/svg"
-                     viewBox="0 0 20 20"
-                     class="home-row-heading-sort-icon w-4 h-4 ml-2"
-                     aria-hidden="true">
-                  <path d="M10 15 L4 5 H16 Z" fill="currentColor"></path>
-                </svg>
-              {% endif %}
-            </button>
-          </form>
+          <button type="button"
+                  hx-post="{% url 'toggle_home_screen_row_direction' row.row_id %}"
+                  hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+                  hx-target="closest [data-home-row-wrapper]"
+                  hx-swap="outerHTML"
+                  data-home-row-sort-toggle="true"
+                  aria-label="Toggle sort direction for {{ row.title }}"
+                  class="home-row-heading-sort-form home-row-heading-sort-button inline-flex items-center ml-3.5 text-sm font-medium leading-none text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text-secondary)] focus:outline-none focus:ring-2 focus:ring-indigo-500 rounded-sm">
+            <span class="home-row-heading-sort-label">{{ row.summary_inline }}</span>
+            {% if row.direction == 'asc' %}
+              <svg xmlns="http://www.w3.org/2000/svg"
+                   viewBox="0 0 20 20"
+                   class="home-row-heading-sort-icon w-4 h-4 ml-2"
+                   aria-hidden="true">
+                <path d="M10 5 L16 15 H4 Z" fill="currentColor"></path>
+              </svg>
+            {% else %}
+              <svg xmlns="http://www.w3.org/2000/svg"
+                   viewBox="0 0 20 20"
+                   class="home-row-heading-sort-icon w-4 h-4 ml-2"
+                   aria-hidden="true">
+                <path d="M10 15 L4 5 H16 Z" fill="currentColor"></path>
+              </svg>
+            {% endif %}
+          </button>
         </h3>
       {% else %}
         <h3 class="text-lg font-semibold flex items-baseline gap-x-2">
@@ -91,7 +90,7 @@
             </a>
           {% endif %}
         </h3>
-        {% if row.summary %}<p class="text-sm text-gray-400">{{ row.summary }}</p>{% endif %}
+        {% if row.summary %}<p class="text-sm text-[var(--color-text-muted)]">{{ row.summary }}</p>{% endif %}
       {% endif %}
     </div>
     <div class="flex items-center gap-0.5 shrink-0">
@@ -99,24 +98,24 @@
               data-scroll-dir="prev"
               data-scroll-target="media-grid-row-{{ row.row_id }}"
               aria-label="Scroll left"
-              class="p-1 rounded text-gray-500 hover:text-gray-200 transition-colors opacity-0 pointer-events-none">
+              class="p-1 rounded text-gray-500 hover:text-[var(--color-text-secondary)] transition-colors opacity-0 pointer-events-none">
         {% include "app/icons/chevron-left.svg" with classes="w-5 h-5" %}
       </button>
       <button type="button"
               data-scroll-dir="next"
               data-scroll-target="media-grid-row-{{ row.row_id }}"
               aria-label="Scroll right"
-              class="p-1 rounded text-gray-500 hover:text-gray-200 transition-colors">
+              class="p-1 rounded text-gray-500 hover:text-[var(--color-text-secondary)] transition-colors">
         {% include "app/icons/chevron-right.svg" with classes="w-5 h-5" %}
       </button>
       {% if collapse_key %}
       <button type="button"
-              class="flex items-center justify-center p-1 rounded text-gray-500 hover:text-gray-200 transition-colors cursor-pointer ml-1"
+              class="flex items-center justify-center p-1 rounded text-gray-500 hover:text-[var(--color-text-secondary)] transition-colors cursor-pointer ml-1"
               @click="open = !open"
               :aria-expanded="open.toString()"
               aria-label="Toggle section">
         <div class="w-4 h-4 transition-transform duration-200" :class="{ 'rotate-180': open }">
-          {% include "app/icons/chevron-down.svg" %}
+          {% include "app/icons/chevron-down.svg" with classes="w-full h-full" %}
         </div>
       </button>
       {% endif %}

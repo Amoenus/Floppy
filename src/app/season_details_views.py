@@ -458,7 +458,8 @@ def season_details(
         from app.providers import trakt as _trakt_provider
 
         if (
-            source in {Sources.TMDB.value, Sources.TVDB.value}
+            not public_view
+            and source in {Sources.TMDB.value, Sources.TVDB.value}
             and _trakt_provider.is_configured()
             and Item.objects.filter(
                 media_id=media_id,
@@ -857,6 +858,7 @@ def season_details(
             season_metadata,
             season_item,
             request.user,
+            genre_list_media_type=parent_media_type,
         ),
         "detail_tag_preview_genres_json": json.dumps(
             _resolve_detail_tag_genres(season_metadata, season_item)

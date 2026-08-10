@@ -16,6 +16,7 @@ from app.history_cache_utils import (
     _day_key_from_value,
     _normalize_logging_style,
     _refresh_lock_key,
+    _typed_history_index_registry_key,
 )
 from app.log_safety import stable_hmac
 
@@ -54,6 +55,11 @@ def _delete_history_cache_entries(user_id: int, logging_style: str, day_keys=Non
             ],
         )
     cache.delete(_cache_key(user_id, logging_style))
+    registry_key = _typed_history_index_registry_key(user_id, logging_style)
+    typed_index_keys = cache.get(registry_key) or []
+    if typed_index_keys:
+        cache.delete_many(typed_index_keys)
+    cache.delete(registry_key)
 
 
 def invalidate_history_days(
@@ -79,6 +85,11 @@ def invalidate_history_days(
 
     for style in logging_styles:
         logging_style = _normalize_logging_style(style)
+        registry_key = _typed_history_index_registry_key(user_id, logging_style)
+        typed_index_keys = cache.get(registry_key) or []
+        if typed_index_keys:
+            cache.delete_many(typed_index_keys)
+        cache.delete(registry_key)
         if force and normalized_keys:
             cache.delete_many(
                 [
@@ -235,7 +246,7 @@ def schedule_history_refresh(
             kwargs=task_kwargs,
             countdown=countdown,
             priority=(
-                getattr(settings, "CELERY_TASK_PRIORITY_INTERACTIVE", 9)
+                getattr(settings, "CELERY_TASK_PRIORITY_INTERACTIVE", 0)
                 if priority is None
                 else priority
             ),
@@ -301,7 +312,7 @@ def schedule_history_day_cache_coverage(
             kwargs=task_kwargs,
             countdown=countdown,
             priority=(
-                getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 1)
+                getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 9)
                 if priority is None
                 else priority
             ),

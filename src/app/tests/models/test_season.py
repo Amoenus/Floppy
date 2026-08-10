@@ -79,7 +79,7 @@ class SeasonModel(TestCase):
         self.assertEqual(self.season.progress, 2)
 
     def test_completed_episode_count(self):
-        """Test completed episode count ignores duplicates and incomplete plays."""
+        """Test completed episode count ignores duplicates and non-completed plays."""
         item_ep2 = Item.objects.get(
             media_id="1668",
             source=Sources.TMDB.value,
@@ -93,6 +93,7 @@ class SeasonModel(TestCase):
             end_date=datetime(2023, 6, 3, 0, 0, tzinfo=UTC),
         )
 
+        # Completed with no end_date still counts (issue #498).
         item_ep3 = Item.objects.create(
             media_id="1668",
             source=Sources.TMDB.value,
@@ -108,7 +109,24 @@ class SeasonModel(TestCase):
             end_date=None,
         )
 
-        self.assertEqual(self.season.completed_episode_count, 2)
+        # Not-yet-watched status doesn't count, even with an end_date set.
+        item_ep4 = Item.objects.create(
+            media_id="1668",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="The One After",
+            image="http://example.com/image.jpg",
+            season_number=1,
+            episode_number=4,
+        )
+        Episode.objects.create(
+            item=item_ep4,
+            related_season=self.season,
+            end_date=datetime(2023, 6, 4, 0, 0, tzinfo=UTC),
+            status=Status.PLANNING.value,
+        )
+
+        self.assertEqual(self.season.completed_episode_count, 3)
         self.assertEqual(self.season.progress, 3)
 
     def test_progress_first_watch_with_gap(self):
@@ -176,6 +194,81 @@ class SeasonModel(TestCase):
         # 5 of 6 episodes reached a second watch, a strict majority, so
         # progress should advance to 6 rather than freeze at 4.
         self.assertEqual(season.progress, 6)
+
+    def _make_skip_ahead_season(self, media_id, runtime_minutes=None):
+        """Create a season with only episode 9 of 10 watched, nothing before it."""
+        item_season = Item.objects.create(
+            media_id=media_id,
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Skip Ahead Show",
+            image="http://example.com/image.jpg",
+            season_number=1,
+            runtime_minutes=runtime_minutes,
+        )
+        season = Season.objects.create(
+            item=item_season,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        item_ep9 = Item.objects.create(
+            media_id=media_id,
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="Skip Ahead Show",
+            image="http://example.com/image.jpg",
+            season_number=1,
+            episode_number=9,
+        )
+        Episode.objects.create(
+            item=item_ep9,
+            related_season=season,
+            end_date=datetime(2023, 6, 9, 0, 0, tzinfo=UTC),
+        )
+        return season
+
+    def test_plays_sort_value_uses_completed_count_not_position(self):
+        """Regression for #527: watching only a later episode is 1 play, not the ep number."""
+        season = self._make_skip_ahead_season("8888")
+
+        self.assertEqual(season.progress, 9)
+        self.assertEqual(season._plays_sort_value(), 1)
+
+    def test_progress_percentage_uses_completed_count(self):
+        """Regression for #527: percentage should reflect episodes watched, not position."""
+        season = self._make_skip_ahead_season("8889")
+        season.max_progress = 10
+
+        self.assertEqual(season.progress_percentage, 10)
+
+    def test_progress_percentage_none_without_max_progress(self):
+        """No max_progress attribute means percentage can't be computed."""
+        item_season = Item.objects.create(
+            media_id="8891",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="No Episodes Show",
+            image="http://example.com/image.jpg",
+            season_number=1,
+        )
+        season = Season.objects.create(
+            item=item_season,
+            user=self.user,
+            status=Status.PLANNING.value,
+        )
+
+        self.assertIsNone(season.progress_percentage)
+
+    def test_progress_percentage_clamped_at_100(self):
+        """Completed count exceeding max_progress should clamp to 100, not overshoot."""
+        self.season.max_progress = 1
+        self.assertEqual(self.season.progress_percentage, 100)
+
+    def test_time_watched_minutes_single_out_of_order_watch(self):
+        """Regression for #527: one watched episode reports one episode's runtime."""
+        season = self._make_skip_ahead_season("8890", runtime_minutes=30)
+
+        self.assertEqual(season.time_watched_minutes, 30)
 
     def test_season_start_date(self):
         """Test the start_date property of the Season model."""

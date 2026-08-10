@@ -6,9 +6,9 @@
 {% for group in home_groups %}
   <section class="space-y-4">
     {% if user.home_show_media_type_headers %}
-      <div class="flex items-center gap-2 border-b border-[#39404b] pb-3">
+      <div class="flex items-center gap-2 border-b border-[var(--color-surface-strong)] pb-3">
         <span class="text-indigo-400">{{ group.icon_svg|safe }}</span>
-        <h2 class="text-3xl font-semibold text-gray-100">{{ group.label }}</h2>
+        <h2 class="text-3xl font-semibold text-[var(--color-text)]">{{ group.label }}</h2>
       </div>
     {% endif %}
     <div class="space-y-3">

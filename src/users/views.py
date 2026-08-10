@@ -29,6 +29,7 @@ from app.templatetags import app_tags
 from integrations import exports, plex
 from integrations.models import PlexAccount
 from integrations.plex_watchlist import WATCHLIST_TASK_NAME
+from users import cache_management
 from users.forms import (
     AuthenticatorSetupForm,
     NotificationSettingsForm,
@@ -39,6 +40,7 @@ from users.forms import (
 )
 from users.home_screen import (
     HomeScreenValidationError,
+    build_home_page_groups,
     save_home_screen_configuration,
     search_home_screen_lists,
     serialize_settings_sections,
@@ -58,6 +60,7 @@ from users.models import (
     PlannedHomeDisplayChoices,
     RatingScaleChoices,
     SessionDurationChoices,
+    ThemeChoices,
     TimeFormatChoices,
     TitleDisplayPreferenceChoices,
     TopTalentSortChoices,
@@ -691,16 +694,67 @@ def home_screen_list_search(request):
 @login_required
 @require_POST
 def toggle_home_screen_row_direction(request, row_id: int):
-    """Flip a Home screen row direction and return to Home."""
+    """Flip a Home screen row direction.
+
+    HTMX requests get the row re-rendered in place; plain form posts (no JS)
+    fall back to a full redirect back to Home.
+    """
+    is_htmx = bool(request.headers.get("HX-Request"))
+
     if request.user.is_demo:
-        messages.error(request, "This section is view-only for demo accounts.")
+        message = "This section is view-only for demo accounts."
+        if is_htmx:
+            return _htmx_toast_response(message, status=403)
+        messages.error(request, message)
         return redirect("home")
 
     try:
         toggle_home_row_direction(request.user, row_id)
     except HomeScreenValidationError as exc:
+        if is_htmx:
+            return _htmx_toast_response(str(exc), status=422)
         messages.error(request, str(exc))
-    return redirect("home")
+        return redirect("home")
+
+    if not is_htmx:
+        return redirect("home")
+
+    home_groups = build_home_page_groups(
+        request.user,
+        items_limit=14,
+        only_row_id=row_id,
+        refresh_row_cache=True,
+    )
+    row = next(
+        (
+            section_row
+            for group in home_groups
+            for section_row in group["rows"]
+            if section_row["row_id"] == row_id
+        ),
+        None,
+    )
+    if row is None:
+        return HttpResponse("")
+    return render(
+        request,
+        "app/components/_scrollable_row.html",
+        {
+            "row": row,
+            "user": request.user,
+            "MediaTypes": MediaTypes,
+            "IMG_NONE": settings.IMG_NONE,
+        },
+    )
+
+
+def _htmx_toast_response(message: str, *, status: int) -> HttpResponse:
+    """Return an empty HTMX response that only triggers an error toast."""
+    response = HttpResponse(status=status)
+    response["HX-Trigger"] = json.dumps(
+        {"showToast": {"message": message, "type": "error"}},
+    )
+    return response
 
 
 @login_required
@@ -775,6 +829,7 @@ def preferences(request):
         # Process form submission for user preferences
         selected_media_types = request.POST.getlist("media_types_checkboxes")
         date_format = request.POST.get("date_format")
+        theme = request.POST.get("theme")
         time_format = request.POST.get("time_format")
         activity_history_view = request.POST.get("activity_history_view")
         game_logging_style = request.POST.get("game_logging_style")
@@ -830,6 +885,14 @@ def preferences(request):
         ):
             request.user.date_format = date_format
             fields_to_update.append("date_format")
+
+        if (
+            theme
+            and theme in ThemeChoices.values
+            and request.user.theme != theme
+        ):
+            request.user.theme = theme
+            fields_to_update.append("theme")
 
         if (
             time_format
@@ -1374,8 +1437,41 @@ def export_data(request):
 @require_GET
 def advanced(request):
     """Render the advanced settings page."""
-    context = {"tmdb_proxy_configured": bool(request.user.tmdb_proxy_url)}
+    bug_report_body = (
+        f"**Floppy version:** {settings.VERSION}\n\n"
+        "**Describe the issue:**\n\n\n"
+        "**Steps to reproduce:**\n\n\n"
+        "**Logs:** attach the file downloaded from Settings > Advanced > "
+        "Download Sanitized Logs"
+    )
+    context = {
+        "tmdb_proxy_configured": bool(request.user.tmdb_proxy_url),
+        "bug_report_title": "[BUG] ",
+        "bug_report_body": bug_report_body,
+    }
     return render(request, "users/advanced.html", context)
+
+
+@require_GET
+def export_logs(request):
+    """Return recent application logs, with secrets redacted, as a text file."""
+    from pathlib import Path
+
+    from app.log_safety import redact_secrets
+
+    log_path = Path(settings.LOG_FILE)
+    raw_logs = (
+        log_path.read_text(encoding="utf-8", errors="replace")
+        if log_path.exists()
+        else ""
+    )
+
+    sanitized_logs = redact_secrets(raw_logs)
+
+    filename = f"floppy-logs-{timezone.localtime():%Y%m%d-%H%M%S}.txt"
+    response = HttpResponse(sanitized_logs, content_type="text/plain")
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
 
 
 @require_GET
@@ -1629,12 +1725,14 @@ def update_plex_webhook_libraries(request):
     return redirect(redirect_target)
 
 
+# kept: URL name, matches urls.py route (see plan)
 @login_required
 @require_POST
 def update_jellyseerr_settings(request):
-    """Update Jellyseerr integration settings for the current user."""
+    """Update Seerr integration settings for the current user."""
     user = request.user
 
+    # kept: reads/writes the unrenamed jellyseerr_* model fields
     raw_enabled = request.POST.get("jellyseerr_enabled")
     if raw_enabled is None:
         enabled = False
@@ -1657,7 +1755,7 @@ def update_jellyseerr_settings(request):
         default_status = Status.PLANNING.value
 
     # Normalize trigger statuses: "pending, processing" -> "PENDING,PROCESSING"
-    valid_jellyseerr_statuses = {
+    valid_seerr_statuses = {
         "UNKNOWN",
         "PENDING",
         "PROCESSING",
@@ -1667,14 +1765,14 @@ def update_jellyseerr_settings(request):
 
     if raw_trigger:
         tokens = [t.strip().upper() for t in raw_trigger.split(",") if t.strip()]
-        unknown = [t for t in tokens if t not in valid_jellyseerr_statuses]
+        unknown = [t for t in tokens if t not in valid_seerr_statuses]
         if unknown:
             messages.error(
                 request,
-                "Jellyseerr trigger statuses contain invalid values: "
+                "Seerr trigger statuses contain invalid values: "
                 + ", ".join(unknown)
                 + ". Valid: "
-                + ", ".join(sorted(valid_jellyseerr_statuses)),
+                + ", ".join(sorted(valid_seerr_statuses)),
             )
             return redirect(request.META.get("HTTP_REFERER", "/settings/integrations"))
         trigger_statuses = ",".join(tokens)
@@ -1703,14 +1801,14 @@ def update_jellyseerr_settings(request):
         ],
     )
 
-    messages.success(request, "Jellyseerr settings saved.")
+    messages.success(request, "Seerr settings saved.")
     return redirect(request.META.get("HTTP_REFERER", "/settings/integrations"))
 
 
 @require_POST
 def clear_search_cache(request):
     """Clear all cached search entries."""
-    deleted = cache.delete_pattern("search_*")
+    deleted = cache_management.clear_search_cache()
 
     messages.success(
         request,
@@ -1719,6 +1817,82 @@ def clear_search_cache(request):
     logger.info(
         "Successfully cleared %s search entries",
         deleted,
+    )
+
+    return redirect("advanced")
+
+
+@require_POST
+def clear_history_cache(request):
+    """Clear the requesting user's cached History day/index payloads."""
+    deleted = cache_management.clear_history_cache_for_user(request.user.id)
+
+    messages.success(
+        request,
+        f"Successfully cleared {deleted} history cache entr{pluralize(deleted, 'y,ies')}",
+    )
+    logger.info(
+        "Successfully cleared %s history cache entries for user %s",
+        deleted,
+        request.user.id,
+    )
+
+    return redirect("advanced")
+
+
+@require_POST
+def clear_statistics_cache(request):
+    """Clear the requesting user's cached Statistics page/day payloads."""
+    deleted = cache_management.clear_statistics_cache_for_user(request.user.id)
+
+    messages.success(
+        request,
+        f"Successfully cleared {deleted} statistics cache entr{pluralize(deleted, 'y,ies')}",
+    )
+    logger.info(
+        "Successfully cleared %s statistics cache entries for user %s",
+        deleted,
+        request.user.id,
+    )
+
+    return redirect("advanced")
+
+
+@require_POST
+def clear_discover_cache(request):
+    """Clear the requesting user's cached Discover rows/taste profile."""
+    deleted = cache_management.clear_discover_cache_for_user(request.user.id)
+
+    messages.success(
+        request,
+        f"Successfully cleared {deleted} discover cache entr{pluralize(deleted, 'y,ies')}",
+    )
+    logger.info(
+        "Successfully cleared %s discover cache entries for user %s",
+        deleted,
+        request.user.id,
+    )
+
+    return redirect("advanced")
+
+
+@require_POST
+def clear_all_caches(request):
+    """Clear every clearable cache: search (instance-wide) plus this user's own."""
+    deleted = cache_management.clear_search_cache()
+    deleted += cache_management.clear_history_cache_for_user(request.user.id)
+    deleted += cache_management.clear_statistics_cache_for_user(request.user.id)
+    deleted += cache_management.clear_discover_cache_for_user(request.user.id)
+
+    messages.success(
+        request,
+        f"Successfully cleared {deleted} cache entr{pluralize(deleted, 'y,ies')} "
+        "across search, history, statistics, and discover",
+    )
+    logger.info(
+        "Successfully cleared %s total cache entries (all caches) for user %s",
+        deleted,
+        request.user.id,
     )
 
     return redirect("advanced")

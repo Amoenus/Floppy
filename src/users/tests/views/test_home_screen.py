@@ -1272,6 +1272,60 @@ class HomeScreenViewTests(TestCase):
             DirectionChoices.DESC,
         )
 
+    def test_home_screen_row_direction_toggle_htmx_swaps_row_in_place(self):
+        """An HTMX toggle request updates the row without a full-page redirect."""
+        self._set_enabled_media_types(MediaTypes.SEASON.value)
+
+        season_item = Item.objects.create(
+            media_id="1668",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Test TV Show",
+            image="http://example.com/image.jpg",
+            season_number=1,
+        )
+        season = Season.objects.create(
+            item=season_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        episode_item = Item.objects.create(
+            media_id="1668",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="Test TV Show",
+            image="http://example.com/image.jpg",
+            season_number=1,
+            episode_number=1,
+        )
+        Episode.objects.create(
+            item=episode_item,
+            related_season=season,
+            end_date=timezone.now(),
+        )
+
+        self.client.get(reverse("home_screen"))
+        row = HomeScreenRow.objects.get(
+            user=self.user,
+            media_type=MediaTypes.SEASON.value,
+            row_type=HomeScreenRowTypeChoices.LIBRARY_QUERY,
+            position=0,
+        )
+        self.assertEqual(row.direction, DirectionChoices.ASC)
+
+        response = self.client.post(
+            reverse("toggle_home_screen_row_direction", args=[row.id]),
+            HTTP_HX_REQUEST="true",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("HX-Redirect", response.headers)
+        self.assertContains(response, 'data-home-row-wrapper="true"')
+        self.assertContains(response, 'data-home-row-sort-toggle="true"')
+
+        row.refresh_from_db()
+        self.assertEqual(row.direction, DirectionChoices.DESC)
+
     def test_home_screen_post_rejects_unsupported_filter_for_media_type(self):
         self._set_enabled_media_types(MediaTypes.MOVIE.value)
         self.client.get(reverse("home_screen"))
@@ -1370,3 +1424,41 @@ class HomeScreenViewTests(TestCase):
             next(result for result in results if result["id"] == smart.id)["is_smart"]
         )
         self.assertEqual(len(returned_ids), 2)
+
+
+class HomeScreenRandomSortTests(TestCase):
+    """Tests for the Random sort option."""
+
+    def test_get_allowed_sort_choices_includes_random(self):
+        for row_type in HomeScreenRowTypeChoices.values:
+            choices = home_screen.get_allowed_sort_choices(
+                MediaTypes.GAME.value, row_type
+            )
+            self.assertIn(
+                HomeSortChoices.RANDOM.value,
+                {choice["value"] for choice in choices},
+            )
+
+    def test_sort_home_entries_random_returns_same_entries(self):
+        items = [
+            Item.objects.create(
+                title=f"Random Game {i}",
+                media_id=f"home-random-game-{i}",
+                media_type=MediaTypes.GAME.value,
+                source=Sources.IGDB.value,
+                image="https://example.com/game.jpg",
+            )
+            for i in range(5)
+        ]
+        entries = [home_screen.HomeRowEntry(item=item) for item in items]
+
+        result = home_screen.sort_home_entries(
+            entries, HomeSortChoices.RANDOM.value, DirectionChoices.DESC
+        )
+
+        self.assertCountEqual(result, entries)
+
+    def test_resolve_home_row_direction_random_does_not_raise(self):
+        direction = home_screen.resolve_home_row_direction(HomeSortChoices.RANDOM.value)
+
+        self.assertIn(direction, DirectionChoices.values)

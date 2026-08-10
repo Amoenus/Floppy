@@ -11,7 +11,7 @@
 <div class="flex flex-col md:flex-row gap-8 md:gap-10 mb-2 md:mb-8">
   <div class="w-full md:w-1/4 max-w-[250px] mx-auto md:mx-0">
     <img alt="{{ episode_title }}"
-         class="w-full rounded-lg shadow-lg bg-[#2a2f35] object-cover"
+         class="w-full rounded-lg shadow-lg bg-[var(--color-surface)] object-cover"
          src="{% if episode %}{{ episode.image }}{% else %}{{ IMG_NONE }}{% endif %}">
   </div>
 
@@ -30,7 +30,7 @@
       <div class="w-full">
         <div class="flex flex-col gap-y-4 md:flex-row md:gap-y-0 items-center justify-between mb-1">
           <div class="text-center md:text-start">
-            <div class="hidden flex-wrap items-center justify-start gap-y-1 text-sm font-medium text-gray-400 md:flex md:text-start">
+            <div class="hidden flex-wrap items-center justify-start gap-y-1 text-sm font-medium text-[var(--color-text-muted)] md:flex md:text-start">
               <a href="{{ season_url }}" class="hover:text-indigo-400 transition-colors">{{ season_title }}</a>
               <span class="mx-2 text-gray-600">•</span>
               <span>{{ episode_title }}</span>
@@ -58,7 +58,7 @@
               {% endif %}
             </div>
             {# Mobile subtitle #}
-            <div class="md:hidden text-sm font-medium text-gray-400 text-center">
+            <div class="md:hidden text-sm font-medium text-[var(--color-text-muted)] text-center">
               <a href="{{ season_url }}" class="hover:text-indigo-400 transition-colors">{{ season_title }}</a>
               <span class="mx-1 text-gray-600">•</span>
               {{ episode_title }}
@@ -77,7 +77,7 @@
               <button @click="open = !open"
                       class="flex w-full items-center justify-center space-x-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-md transition-colors duration-200 cursor-pointer md:w-auto md:justify-start">
                 <span class="text-sm font-medium">{{ episode.display_episode_number|default:episode_number }}. {{ episode_title }}</span>
-                <div class="w-4 h-4" :class="{ 'rotate-180': open }">{% include "app/icons/chevron-down.svg" %}</div>
+                <div class="w-4 h-4" :class="{ 'rotate-180': open }">{% include "app/icons/chevron-down.svg" with classes="w-full h-full" %}</div>
               </button>
               <div x-show="open"
                    x-transition:enter="transition ease-out duration-200"
@@ -86,18 +86,18 @@
                    x-transition:leave="transition ease-in duration-150"
                    x-transition:leave-start="opacity-100 transform scale-100"
                    x-transition:leave-end="opacity-0 transform scale-95"
-                   class="absolute right-1/2 md:right-0 translate-x-1/2 md:translate-x-0 mt-2 w-64 bg-[#2a2f35] rounded-md shadow-lg overflow-hidden z-10">
+                   class="absolute right-1/2 md:right-0 translate-x-1/2 md:translate-x-0 mt-2 w-64 bg-[var(--color-surface)] rounded-md shadow-lg overflow-hidden z-10">
                 <div class="max-h-[300px] overflow-y-auto">
                   {% for ep in episodes %}
                     <a href="{% if parent_media_type == MediaTypes.ANIME.value %}{% url 'anime_episode_details' source=source media_id=media_id title=show_title|slug season_number=season_number episode_number=ep.episode_number %}{% else %}{% url 'episode_details' source=source media_id=media_id title=show_title|slug season_number=season_number episode_number=ep.episode_number %}{% endif %}"
                        hx-boost="true"
-                       class="w-full px-4 py-3 flex items-center space-x-3 hover:bg-gray-700 transition-colors duration-200 cursor-pointer {% if ep.episode_number == episode_number %}bg-[#343a40]{% endif %}">
+                       class="w-full px-4 py-3 flex items-center space-x-3 hover:bg-gray-700 transition-colors duration-200 cursor-pointer {% if ep.episode_number == episode_number %}bg-[var(--color-surface-muted)]{% endif %}">
                       <div class="w-8 h-8 rounded-full flex items-center justify-center bg-indigo-600 text-white shrink-0">
                         {{ ep.display_episode_number|default:ep.episode_number }}
                       </div>
                       <div class="flex-1 text-left min-w-0">
                         <div class="text-sm font-medium line-clamp-1">{{ ep.title }}</div>
-                        <div class="text-xs text-gray-400">
+                        <div class="text-xs text-[var(--color-text-muted)]">
                           {{ ep.air_date|user_date_format:user|default_if_none:"Unknown date" }}
                         </div>
                       </div>
@@ -123,12 +123,12 @@
                 <img src="{% static 'img/tmdb-logo.png' %}" alt="" aria-hidden="true" class="h-3 w-3 object-contain sm:h-3.5 sm:w-3.5">
               </span>
               {% if episode_metadata.score is not None %}
-                <span class="text-[12px] font-semibold text-white sm:text-sm">{{ episode_metadata.score }}</span>
+                <span class="text-[12px] font-semibold text-[var(--color-text)] sm:text-sm">{{ episode_metadata.score }}</span>
               {% else %}
-                <span class="text-[12px] font-semibold text-gray-400 sm:text-sm">-</span>
+                <span class="text-[12px] font-semibold text-[var(--color-text-muted)] sm:text-sm">-</span>
               {% endif %}
               <span class="text-[12px] text-gray-500 sm:text-sm">|</span>
-              <span class="text-[12px] text-gray-300 sm:text-sm">{{ episode_metadata.score_count|intcomma }} vote{{ episode_metadata.score_count|pluralize }}</span>
+              <span class="text-[12px] text-[var(--color-text-secondary)] sm:text-sm">{{ episode_metadata.score_count|intcomma }} vote{{ episode_metadata.score_count|pluralize }}</span>
             </div>
           {% endif %}
           {# User episode rating chip — always-present slot so it can be OOB-swapped into place on first watch without a page refresh. #}
@@ -161,7 +161,7 @@
             <div class="flex w-full items-center gap-2 sm:w-auto sm:flex-wrap">
               {% if episode.item or season_metadata %}
                 <div x-data="{ listsOpen: false }" class="flex-1 sm:flex-none">
-                  <button class="inline-flex h-11 w-full items-center justify-center rounded-xl border border-white/10 bg-[#2a2f35] text-gray-100 shadow-sm transition-colors duration-200 hover:bg-[#343a40] cursor-pointer sm:size-11 sm:w-11"
+                  <button class="inline-flex h-11 w-full items-center justify-center rounded-xl border border-white/10 bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer sm:size-11 sm:w-11"
                           title="Add to custom lists"
                           hx-get="{% if episode.item %}{% media_view_url 'lists_modal' episode.item %}{% else %}{% media_view_url 'lists_modal' episode %}{% endif %}"
                           hx-vals='{"return_url": "{{ detail_return_url|urlencode }}"}'
@@ -183,7 +183,7 @@
 
               {% if episode.item %}
                 <div x-data="{ historyOpen: false }" class="flex-1 sm:flex-none">
-                  <button class="inline-flex h-11 w-full items-center justify-center rounded-xl border border-white/10 bg-[#2a2f35] text-gray-100 shadow-sm transition-colors duration-200 hover:bg-[#343a40] cursor-pointer sm:size-11 sm:w-11"
+                  <button class="inline-flex h-11 w-full items-center justify-center rounded-xl border border-white/10 bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer sm:size-11 sm:w-11"
                           title="View your activity history"
                           hx-get="{% media_view_url 'history_modal' episode.item %}"
                           hx-vals='{"return_url": "{{ detail_return_url|urlencode }}"}'
@@ -227,9 +227,9 @@
                @resize.window="$nextTick(() => checkClamp())">
             <div x-ref="measureEl"
                  aria-hidden="true"
-                 class="pointer-events-none invisible absolute inset-x-0 top-0 -z-10 text-gray-300 text-pretty"></div>
+                 class="pointer-events-none invisible absolute inset-x-0 top-0 -z-10 text-[var(--color-text-secondary)] text-pretty"></div>
             <p :class="isClamped && !isExpanded ? 'line-clamp-3' : ''"
-               class="text-gray-300 text-pretty">
+               class="text-[var(--color-text-secondary)] text-pretty">
               {{ episode.overview }}
             </p>
             <button x-show="isClamped"
@@ -259,12 +259,12 @@
       <div class="flex items-center justify-between mb-4">
         <h2 class="text-xl font-bold">Cast</h2>
         <button type="button"
-                class="flex items-center justify-center p-2 rounded-md text-gray-300 hover:text-white hover:bg-gray-700 transition-colors duration-200 cursor-pointer"
+                class="flex items-center justify-center p-2 rounded-md text-[var(--color-text-secondary)] hover:text-[var(--color-text)] hover:bg-gray-700 transition-colors duration-200 cursor-pointer"
                 @click="castOpen = !castOpen"
                 :aria-expanded="castOpen.toString()"
                 aria-label="Toggle cast section">
           <div class="w-4 h-4 transition-transform duration-200" :class="{ 'rotate-180': castOpen }">
-            {% include "app/icons/chevron-down.svg" %}
+            {% include "app/icons/chevron-down.svg" with classes="w-full h-full" %}
           </div>
         </button>
       </div>
@@ -278,13 +278,13 @@
            class="detail-media-grid">
         {% for person in episode_metadata.cast|slice:":20" %}
           <div x-show="shouldShowDetailCard({{ forloop.counter0 }})"
-               class="media-card bg-[#2a2f35] rounded-lg overflow-hidden shadow-lg relative search-result-card group{% if user.media_card_subtitle_display == 'always' %} media-card-subtitle-always{% endif %}">
+               class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative search-result-card group{% if user.media_card_subtitle_display == 'always' %} media-card-subtitle-always{% endif %}">
             <div class="relative">
               {% if person.person_id and person.name %}
                 <a href="{% url 'person_detail' source=source person_id=person.person_id name=person.name|slug %}">
               {% endif %}
               <img alt="{{ person.name|default:'Unknown Person' }}"
-                   class="media-card-poster lazyload w-full aspect-[2/3] aspect-2/3 bg-[#3e454d] {% if person.image and person.image != IMG_NONE %}object-cover{% endif %}"
+                   class="media-card-poster lazyload w-full aspect-[2/3] aspect-2/3 bg-[var(--color-surface-alt)] {% if person.image and person.image != IMG_NONE %}object-cover{% endif %}"
                    data-src="{{ person.image|default:IMG_NONE }}"
                    src="{{ IMG_NONE }}">
               {% if person.person_id and person.name %}
@@ -295,17 +295,17 @@
               <div class="media-card-title-row flex items-center gap-2 min-w-0">
                 {% if person.person_id and person.name %}
                   <a href="{% url 'person_detail' source=source person_id=person.person_id name=person.name|slug %}"
-                     class="media-card-title text-sm font-semibold text-white hover:text-indigo-400 transition duration-300 line-clamp-1 min-w-0"
+                     class="media-card-title text-sm font-semibold text-[var(--color-text)] hover:text-indigo-400 transition duration-300 line-clamp-1 min-w-0"
                      title="{{ person.name }}">
                     {{ person.name }}
                   </a>
                 {% else %}
-                  <p class="media-card-title text-sm font-semibold text-white line-clamp-1 min-w-0" title="{{ person.name|default:'Unknown Person' }}">
+                  <p class="media-card-title text-sm font-semibold text-[var(--color-text)] line-clamp-1 min-w-0" title="{{ person.name|default:'Unknown Person' }}">
                     {{ person.name|default:"Unknown Person" }}
                   </p>
                 {% endif %}
               </div>
-              <p class="media-card-year text-xs text-gray-400 mt-1 line-clamp-2">
+              <p class="media-card-year text-xs text-[var(--color-text-muted)] mt-1 line-clamp-2">
                 {% if person.role %}{{ person.role }}{% else %}Cast{% endif %}
               </p>
             </div>
@@ -328,12 +328,12 @@
       <div class="flex items-center justify-between mb-4">
         <h2 class="text-xl font-bold">Crew</h2>
         <button type="button"
-                class="flex items-center justify-center p-2 rounded-md text-gray-300 hover:text-white hover:bg-gray-700 transition-colors duration-200 cursor-pointer"
+                class="flex items-center justify-center p-2 rounded-md text-[var(--color-text-secondary)] hover:text-[var(--color-text)] hover:bg-gray-700 transition-colors duration-200 cursor-pointer"
                 @click="crewOpen = !crewOpen"
                 :aria-expanded="crewOpen.toString()"
                 aria-label="Toggle crew section">
           <div class="w-4 h-4 transition-transform duration-200" :class="{ 'rotate-180': crewOpen }">
-            {% include "app/icons/chevron-down.svg" %}
+            {% include "app/icons/chevron-down.svg" with classes="w-full h-full" %}
           </div>
         </button>
       </div>
@@ -347,13 +347,13 @@
            class="detail-media-grid">
         {% for person in episode_metadata.crew|slice:":20" %}
           <div x-show="shouldShowDetailCard({{ forloop.counter0 }})"
-               class="media-card bg-[#2a2f35] rounded-lg overflow-hidden shadow-lg relative search-result-card group{% if user.media_card_subtitle_display == 'always' %} media-card-subtitle-always{% endif %}">
+               class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative search-result-card group{% if user.media_card_subtitle_display == 'always' %} media-card-subtitle-always{% endif %}">
             <div class="relative">
               {% if person.person_id and person.name %}
                 <a href="{% url 'person_detail' source=source person_id=person.person_id name=person.name|slug %}">
               {% endif %}
               <img alt="{{ person.name|default:'Unknown Person' }}"
-                   class="media-card-poster lazyload w-full aspect-[2/3] aspect-2/3 bg-[#3e454d] {% if person.image and person.image != IMG_NONE %}object-cover{% endif %}"
+                   class="media-card-poster lazyload w-full aspect-[2/3] aspect-2/3 bg-[var(--color-surface-alt)] {% if person.image and person.image != IMG_NONE %}object-cover{% endif %}"
                    data-src="{{ person.image|default:IMG_NONE }}"
                    src="{{ IMG_NONE }}">
               {% if person.person_id and person.name %}
@@ -364,17 +364,17 @@
               <div class="media-card-title-row flex items-center gap-2 min-w-0">
                 {% if person.person_id and person.name %}
                   <a href="{% url 'person_detail' source=source person_id=person.person_id name=person.name|slug %}"
-                     class="media-card-title text-sm font-semibold text-white hover:text-indigo-400 transition duration-300 line-clamp-1 min-w-0"
+                     class="media-card-title text-sm font-semibold text-[var(--color-text)] hover:text-indigo-400 transition duration-300 line-clamp-1 min-w-0"
                      title="{{ person.name }}">
                     {{ person.name }}
                   </a>
                 {% else %}
-                  <p class="media-card-title text-sm font-semibold text-white line-clamp-1 min-w-0" title="{{ person.name|default:'Unknown Person' }}">
+                  <p class="media-card-title text-sm font-semibold text-[var(--color-text)] line-clamp-1 min-w-0" title="{{ person.name|default:'Unknown Person' }}">
                     {{ person.name|default:"Unknown Person" }}
                   </p>
                 {% endif %}
               </div>
-              <p class="media-card-year text-xs text-gray-400 mt-1 line-clamp-2">
+              <p class="media-card-year text-xs text-[var(--color-text-muted)] mt-1 line-clamp-2">
                 {% if person.role %}{{ person.role }}{% elif person.department %}{{ person.department }}{% else %}Crew{% endif %}
               </p>
             </div>

@@ -27,11 +27,11 @@ case "${1:-}" in
     ;;
   --slow)
     shift
-    exec python src/manage.py test "${APPS[@]}" "${COMMON[@]}" --tag slow "$@"
+    exec python src/manage.py test "${APPS[@]}" "${COMMON[@]}" "$@" --tag slow
     ;;
   --network)
     shift
-    exec python src/manage.py test "${APPS[@]}" "${COMMON[@]}" --tag network "$@"
+    exec python src/manage.py test "${APPS[@]}" "${COMMON[@]}" "$@" --tag network
     ;;
   "")
     exec python src/manage.py test "${APPS[@]}" "${COMMON[@]}" \

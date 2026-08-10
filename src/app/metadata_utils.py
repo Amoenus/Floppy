@@ -9,6 +9,7 @@ from app.models import MediaTypes, Sources
 ANIME_SUPPLEMENT_GENRE = "Anime"
 
 CORE_METADATA_FIELDS = [
+    "synopsis",
     "country",
     "languages",
     "platforms",
@@ -145,6 +146,7 @@ def extract_item_metadata_values(metadata: dict | None) -> dict[str, object]:
         number_of_pages = None
 
     return {
+        "synopsis": payload.get("synopsis") or "",
         "country": details.get("country") or "",
         "languages": _coerce_list(details.get("languages")),
         "platforms": _coerce_list(details.get("platforms"), allow_scalar=False),

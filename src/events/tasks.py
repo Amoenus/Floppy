@@ -1,19 +1,16 @@
 import logging
 
 from celery import shared_task
+from django.conf import settings
 from django.contrib.auth import get_user_model
 
 from app.models import Item
 from app.services import auto_pause
 from events import notifications
 from events.calendar.main import fetch_releases
+from events.calendar.selectors import get_items_to_process
 
 logger = logging.getLogger(__name__)
-
-# Above this many items still needing metadata, use a larger batch size to
-# finish the initial backfill quickly; below it, fall back to a smaller
-# cleanup batch size.
-LARGE_BACKFILL_ITEM_THRESHOLD = 1000
 
 # A Pocket Casts episode UUID is a standard 36-character UUID string
 # containing 4 hyphens; RSS GUIDs that already look like one are left alone.
@@ -88,16 +85,50 @@ def reload_calendar(user_id=None, item_ids=None, user=None, items_to_process=Non
                 len(missing_item_ids),
             )
 
+    is_global_refresh = resolved_user is None and normalized_item_ids is None
+    if is_global_refresh:
+        # Resolve the work list here rather than inside fetch_releases so the
+        # selection -- which queries TMDB's change feed -- runs once per reload
+        # instead of once per chunk.
+        resolved_items = list(get_items_to_process(None))
+
+    # Process a bounded slice now and re-queue the rest as its own task, so the
+    # worker is released between chunks instead of being held for the length of
+    # the whole walk.
+    chunk_size = getattr(settings, "CALENDAR_RELOAD_CHUNK_SIZE", 200)
+    deferred_item_ids = []
+    if (
+        chunk_size > 0
+        and resolved_items is not None
+        and len(resolved_items) > chunk_size
+    ):
+        deferred_item_ids = [item.id for item in resolved_items[chunk_size:]]
+        resolved_items = resolved_items[:chunk_size]
+
     result = fetch_releases(
         user=resolved_user,
         items_to_process=resolved_items,
     )
 
-    if resolved_user is None and normalized_item_ids is None:
+    if deferred_item_ids:
+        reload_calendar.delay(item_ids=deferred_item_ids)
+        logger.info(
+            "calendar_reload_chunked processed=%s deferred=%s",
+            len(resolved_items),
+            len(deferred_item_ids),
+        )
+
+    if is_global_refresh:
         auto_pause.auto_pause_stale_items()
 
-        # Backfill metadata for items that have never been fetched
-        # Use aggressive batch size to complete initial backfill quickly
+        # Queue a metadata backfill for items that have never been fetched.
+        #
+        # This used to run inline at a batch size of up to 5000, so one calendar
+        # reload became a single task holding a worker while it fetched thousands
+        # of items' metadata - and each fetch caches a full provider payload, so
+        # it was also the fastest way to fill Redis (issue #521). Queued at the
+        # tier's normal batch size instead: convergence takes more passes, but no
+        # single task can monopolise a worker or the cache.
         try:
             from app.tasks import (
                 backfill_item_metadata_task,
@@ -109,44 +140,26 @@ def reload_calendar(user_id=None, item_ids=None, user=None, items_to_process=Non
             ).count()
             remaining_release_count = count_release_backfill_items()
 
-            # Use larger batch for initial metadata imports, then keep release backfill
-            # running nightly so stale cached metadata can be corrected over time.
-            if remaining_metadata_count > LARGE_BACKFILL_ITEM_THRESHOLD:
-                batch_size = 5000  # Aggressive initial backfill
-                logger.info(
-                    "Initial metadata backfill: processing %s items (batch of 5000)",
-                    remaining_metadata_count,
-                )
-            elif remaining_metadata_count > 0:
-                batch_size = 1000  # Cleanup mode
-                logger.info(
-                    "Metadata backfill cleanup: processing remaining %s items",
-                    remaining_metadata_count,
-                )
-            elif remaining_release_count > 0:
-                batch_size = 1000  # Release-date maintenance mode
-                logger.info(
-                    "Release-date backfill maintenance: processing remaining %s items",
-                    remaining_release_count,
-                )
-            else:
-                batch_size = 0  # Skip if nothing to do
-
-            if batch_size > 0:
-                backfill_result = backfill_item_metadata_task(batch_size=batch_size)
+            batch_size = 0
+            if remaining_metadata_count > 0 or remaining_release_count > 0:
+                batch_size = settings.CALENDAR_RELOAD_BACKFILL_BATCH_SIZE
                 logger.info(
                     (
-                        "Metadata backfill completed: %s successful, %s release dates updated, "
-                        "%s errors, %s metadata remaining, %s release remaining"
+                        "Queueing metadata backfill: %s metadata and %s release "
+                        "items remaining, batch of %s"
                     ),
-                    backfill_result.get("success_count", 0),
-                    backfill_result.get("release_updated_count", 0),
-                    backfill_result.get("error_count", 0),
-                    backfill_result.get("remaining_metadata", 0),
-                    backfill_result.get("remaining_release", 0),
+                    remaining_metadata_count,
+                    remaining_release_count,
+                    batch_size,
+                )
+
+            if batch_size > 0:
+                backfill_item_metadata_task.apply_async(
+                    kwargs={"batch_size": batch_size},
+                    priority=getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 9),
                 )
         except Exception:
-            logger.exception("Failed to backfill metadata during calendar reload")
+            logger.exception("Failed to queue metadata backfill during calendar reload")
 
     return result
 

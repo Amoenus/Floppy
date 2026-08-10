@@ -1,6 +1,7 @@
 from datetime import UTC, date
 from uuid import uuid4
 
+from django.apps import apps
 from django.conf import settings
 from django.shortcuts import render
 from django.urls import reverse
@@ -229,6 +230,15 @@ def _track_modal_release_runtime_minutes(media_type, *candidates):
     return ""
 
 
+def _track_modal_date_suggestion(label, iso_date, runtime_minutes=""):
+    """Normalize a single labeled date suggestion for the shared date/time picker."""
+    return {
+        "label": label,
+        "date": iso_date or "",
+        "runtime_minutes": runtime_minutes or "",
+    }
+
+
 def _render_standard_track_modal(
     request,
     source,
@@ -247,11 +257,16 @@ def _render_standard_track_modal(
     """Build and render the standard media track modal context."""
     instance_id = request.GET.get("instance_id") or request.POST.get("instance_id")
     if instance_id:
-        media = BasicMedia.objects.get_media(
-            request.user,
-            media_type,
-            instance_id,
-        )
+        model = apps.get_model(app_label="app", model_name=media_type)
+        try:
+            media = BasicMedia.objects.get_media(
+                request.user,
+                media_type,
+                instance_id,
+            )
+        except model.DoesNotExist:
+            media = None
+            instance_id = None
     elif request.GET.get("is_create"):
         media = None
     else:
@@ -604,6 +619,11 @@ def _render_standard_track_modal(
         ),
         base_metadata,
     )
+    date_suggestion = _track_modal_date_suggestion(
+        "Air date" if media_type == MediaTypes.EPISODE.value else "Release Date",
+        release_date_shortcut,
+        release_date_runtime_minutes,
+    )
     context = {
         "user": request.user,
         "title": title,
@@ -663,8 +683,7 @@ def _render_standard_track_modal(
             if media and metadata_item and not can_edit_custom_metadata
             else None
         ),
-        "release_date_shortcut": release_date_shortcut,
-        "release_date_runtime_minutes": release_date_runtime_minutes,
+        "date_suggestion": date_suggestion,
         "manual_metadata_form": manual_metadata_form,
         "manual_metadata_formaction": (
             reverse("update_manual_item_metadata", args=[metadata_item.id])
@@ -735,6 +754,9 @@ def _render_podcast_show_track_modal(
             or request.POST.get("return_url", "")
             or request.POST.get("next", "")
         )
+    home_row_id = (
+        request.GET.get("home_row_id") or request.POST.get("home_row_id") or ""
+    )
 
     if form_override is not None:
         form = form_override
@@ -791,6 +813,7 @@ def _render_podcast_show_track_modal(
             "general_fields": field_groups["general_fields"],
             "general_submit_formaction": (
                 f"{reverse('podcast_show_save')}?next={return_url}"
+                + (f"&home_row_id={home_row_id}" if home_row_id else "")
             ),
             "general_delete_formaction": (
                 f"{reverse('podcast_show_delete')}?next={return_url}"
@@ -798,8 +821,7 @@ def _render_podcast_show_track_modal(
             "general_existing_instance": tracker,
             "image_field": None,
             "image_save_item_id": None,
-            "release_date_shortcut": "",
-            "release_date_runtime_minutes": "",
+            "date_suggestion": _track_modal_date_suggestion("Release Date", ""),
             "track_form_id": track_form_id,
             "track_action_update": track_action_update,
             "initial_active_tab": initial_active_tab,

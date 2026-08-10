@@ -200,6 +200,7 @@ def delete_history_record_core(user, media_type, history_id):
         day_keys=history_day_keys,
         logging_styles=logging_styles,
         reason="history_delete",
+        force=True,
     )
     statistics_cache.invalidate_statistics_days(
         user.id,

@@ -13,6 +13,7 @@ class SQLiteSettingsTests(SimpleTestCase):
     def test_configure_sqlite_connection_uses_configured_busy_timeout(self):
         """SQLite connections should honor the configured timeout value."""
         cursor = MagicMock()
+        cursor.fetchone.return_value = ("wal",)
         connection = SimpleNamespace(
             vendor="sqlite",
             cursor=MagicMock(return_value=cursor),
@@ -32,6 +33,28 @@ class SQLiteSettingsTests(SimpleTestCase):
         cursor.execute.assert_any_call("PRAGMA synchronous=NORMAL")
         cursor.execute.assert_any_call("PRAGMA busy_timeout=17000")
         cursor.close.assert_called_once()
+
+    def test_configure_sqlite_connection_logs_journal_mode_mismatch(self):
+        """A journal_mode that didn't actually apply must be logged loudly."""
+        cursor = MagicMock()
+        cursor.fetchone.return_value = ("delete",)
+        connection = SimpleNamespace(
+            vendor="sqlite",
+            cursor=MagicMock(return_value=cursor),
+        )
+
+        with (
+            patch.object(project_settings, "SQLITE_JOURNAL_MODE", "WAL"),
+            patch.object(project_settings, "SQLITE_SYNCHRONOUS", "NORMAL"),
+            patch.object(project_settings, "SQLITE_BUSY_TIMEOUT_SECONDS", 17),
+            self.assertLogs(project_settings.__name__, level="ERROR") as logs,
+        ):
+            project_settings.configure_sqlite_connection(
+                sender=None,
+                connection=connection,
+            )
+
+        self.assertIn("journal_mode mismatch", logs.output[0])
 
     def test_discover_warmup_defaults_off_on_sqlite(self):
         """SQLite deployments should not auto-enable Discover warmup by default."""

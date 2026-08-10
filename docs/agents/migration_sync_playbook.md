@@ -1,11 +1,13 @@
 # Migration Sync Playbook (`upstream` -> `latest`)
 
-This playbook defines the required migration process for syncing upstream `dev` into fork `latest`.
+This playbook defines the required migration process for syncing upstream Yamtrack's `dev` branch into fork `latest` through the local `upstream` mirror.
 
 ## Branch model
-- `upstream` (fork branch, formerly named `dev`): exact mirror of `upstream/dev` (the actual FuzzyGrim/Yamtrack `dev` branch).
+- `upstream`: utility branch that must remain a byte-for-byte mirror of `upstream/dev` (the actual FuzzyGrim/Yamtrack `dev` branch). Never edit it directly or target it with a PR.
 - `latest`: integration branch for fork features and upstream sync merges.
 - `release`: versioned release/container publication flow.
+
+Upstream changes are expected to require adaptation because `latest` contains fork-specific behavior. Treat the upstream commit as a source of intent, not as a commit to cherry-pick blindly; integrate it into `latest` and resolve differences deliberately.
 
 ## Migration policy
 - Same migration numbers across branches are valid in Django.
@@ -26,6 +28,7 @@ This playbook defines the required migration process for syncing upstream `dev` 
 3. Resolve conflicts:
    - Keep upstream maintenance changes.
    - Keep fork-visible behavior and UX.
+   - Adapt upstream changes to the fork instead of assuming a cherry-pick will apply cleanly or preserve the intended behavior.
    - For migration conflicts, follow policy above.
 4. Resolve migration graph:
    - `cd src && python manage.py makemigrations --merge`

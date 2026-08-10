@@ -44,6 +44,12 @@ TRANSIENT_HTTP_STATUS_CODES = frozenset(
     },
 )
 TRANSIENT_HTTP_MAX_RETRIES = 2
+RATE_LIMIT_MAX_RETRIES = 3
+# Retry-After is attacker-ish input from our perspective: providers occasionally
+# return minutes or hours, and each retry sleeps a Celery worker that runs at
+# concurrency 1, so the whole queue stalls for that long.
+RATE_LIMIT_MAX_WAIT_SECONDS = 60
+RATE_LIMIT_DEFAULT_WAIT_SECONDS = 5
 
 # MusicBrainz MBIDs are UUIDs (36 chars); shorter values are not valid
 # recording IDs and should be treated as "no metadata available".
@@ -163,7 +169,42 @@ def get_redis_pool():
         import fakeredis
 
         return fakeredis.FakeRedis().connection_pool
-    return ConnectionPool.from_url(settings.REDIS_URL)
+    # Bounded, unlike redis-py's 2**31 default: a stalled Redis would otherwise
+    # accumulate sockets for every blocked rate-limit check (#521).
+    return ConnectionPool.from_url(
+        settings.REDIS_URL,
+        max_connections=getattr(settings, "REDIS_LIMITER_MAX_CONNECTIONS", 8),
+    )
+
+
+def build_limiter_session():
+    """Return a rate-limited session, falling back to in-memory on Redis failure.
+
+    The shared token bucket lives in Redis so the container's processes can't
+    collectively exceed a provider's budget. That makes Redis a hard dependency
+    of *every* outbound API call, and it bypasses the Django cache entirely, so
+    IGNORE_EXCEPTIONS does nothing for it - a Redis fault surfaced as a failure
+    of whatever the user was doing, which is the tv_with_seasons path in #521.
+
+    An in-process bucket is a worse rate limiter (each process gets its own
+    budget, so the aggregate can overshoot) but a much better failure mode than
+    no outbound requests at all. The per-host adapters mounted below are already
+    in-memory, so this is the existing pattern rather than a new one.
+    """
+    try:
+        return LimiterSession(
+            per_second=_GLOBAL_PER_SECOND,
+            bucket_class=RedisBucket,
+            bucket_kwargs={"redis_pool": get_redis_pool(), "bucket_name": bucket_key},
+        )
+    except Exception as error:
+        logger.warning(
+            "Redis rate-limit bucket unavailable (%s); falling back to a "
+            "per-process limiter. Provider budgets are shared across processes "
+            "again once Redis recovers and Floppy restarts.",
+            error,
+        )
+        return LimiterSession(per_second=_GLOBAL_PER_SECOND)
 
 
 def get_process_role():
@@ -174,13 +215,20 @@ def get_process_role():
     "background" (the default Celery worker and beat). Set explicitly via
     FLOPPY_PROCESS_ROLE in supervisord; unlabeled celery processes fall
     back to "background" so they can never starve interactive requests.
+
+    "combined" is the fourth role, used only on the "minimal" resource tier
+    where one Celery worker consumes every queue because three resident Django
+    imports don't fit (see config/runtime_profile.py). The cross-process
+    starvation the split exists to prevent can't occur there - a single worker
+    at concurrency 1 runs one task at a time either way - so ordering falls to
+    the broker's priority queue strategy instead of to separate buckets.
     """
     role = os.environ.get(
         "FLOPPY_PROCESS_ROLE",
         os.environ.get("YAMTRACK_PROCESS_ROLE", ""),
     )
     role = role.strip().lower()
-    if role in {"web", "interactive", "background"}:
+    if role in {"web", "interactive", "background", "combined"}:
         return role
     argv0 = Path(sys.argv[0]).name.lower() if sys.argv and sys.argv[0] else ""
     if "celery" in argv0:
@@ -190,7 +238,6 @@ def get_process_role():
 
 PROCESS_ROLE = get_process_role()
 
-redis_pool = get_redis_pool()
 bucket_key = f"{settings.REDIS_PREFIX}_api" if settings.REDIS_PREFIX else "api"
 
 # Background workers draw from their own, smaller bucket so bulk backfills and
@@ -200,14 +247,15 @@ bucket_key = f"{settings.REDIS_PREFIX}_api" if settings.REDIS_PREFIX else "api"
 if PROCESS_ROLE == "background":
     bucket_key = f"{bucket_key}_background"
     _GLOBAL_PER_SECOND = 3
+elif PROCESS_ROLE == "combined":
+    # One worker serving every queue: there is no other worker to starve, so it
+    # gets a single bucket sized between the two split budgets.
+    bucket_key = f"{bucket_key}_combined"
+    _GLOBAL_PER_SECOND = 4
 else:
     _GLOBAL_PER_SECOND = 5
 
-session = LimiterSession(
-    per_second=_GLOBAL_PER_SECOND,
-    bucket_class=RedisBucket,
-    bucket_kwargs={"redis_pool": redis_pool, "bucket_name": bucket_key},
-)
+session = build_limiter_session()
 
 session.mount("http://", HTTPAdapter(max_retries=3))
 session.mount("https://", HTTPAdapter(max_retries=3))
@@ -371,6 +419,23 @@ def _get_tmdb_proxy_url():
     return proxy_url or None
 
 
+def _rate_limit_wait_seconds(response) -> int:
+    """Return how long to wait after a 429, clamped and never raising.
+
+    Retry-After may legitimately be an HTTP date rather than a number, and some
+    providers send neither; an unguarded int() would throw out of the exception
+    handler and lose the original error.
+    """
+    raw = response.headers.get("Retry-After") if response is not None else None
+    try:
+        seconds = int(raw)
+    except (TypeError, ValueError):
+        seconds = RATE_LIMIT_DEFAULT_WAIT_SECONDS
+    # A small margin over what the provider asked for, so a clock skew of a
+    # second doesn't earn another 429 immediately.
+    return max(1, min(seconds + 3, RATE_LIMIT_MAX_WAIT_SECONDS))
+
+
 def api_request(
     provider,
     method,
@@ -427,11 +492,19 @@ def api_request(
         status_code = error_resp.status_code
 
         # handle rate limiting
-        if status_code == requests.codes.too_many_requests:
-            seconds_to_wait = int(error_resp.headers.get("Retry-After", 5))
-            logger.warning("Rate limited, waiting %s seconds", seconds_to_wait)
-            time.sleep(seconds_to_wait + 3)
-            logger.info("Retrying request")
+        if (
+            status_code == requests.codes.too_many_requests
+            and _retry_attempt < RATE_LIMIT_MAX_RETRIES
+        ):
+            seconds_to_wait = _rate_limit_wait_seconds(error_resp)
+            logger.warning(
+                "%s rate limited, waiting %s seconds (attempt %s/%s)",
+                provider,
+                seconds_to_wait,
+                _retry_attempt + 1,
+                RATE_LIMIT_MAX_RETRIES,
+            )
+            time.sleep(seconds_to_wait)
             return api_request(
                 provider,
                 method,
@@ -440,7 +513,10 @@ def api_request(
                 data=data,
                 headers=headers,
                 response_format=response_format,
-                _retry_attempt=_retry_attempt,
+                # Previously passed through unchanged, so a provider that kept
+                # returning 429 recursed and slept forever, holding a worker
+                # (#521).
+                _retry_attempt=_retry_attempt + 1,
             )
 
         if (
@@ -1000,11 +1076,15 @@ def search(
 
     source = _resolve_search_source(media_type, source)
 
-    # Attempt direct ID lookup on page 1 only
+    # Attempt direct ID lookup on page 1 only. The result is merged with the
+    # normal text-search results below rather than returned immediately, so a
+    # numeric title (e.g. "1883") isn't hidden behind an unrelated provider ID
+    # lookup (e.g. TMDB tv/1883 is "Dog the Bounty Hunter", not the show
+    # "1883"). The ID match still comes first so pasting a known ID keeps
+    # jumping straight to that item.
+    id_result = None
     if page == 1:
         id_result = search_by_id(media_type, query, source)
-        if id_result is not None:
-            return id_result
 
         if media_type == MediaTypes.BOOK.value and source != Sources.OPENLIBRARY.value:
             isbn_result = _resolve_hardcover_isbn_search(query, page)
@@ -1063,7 +1143,44 @@ def search(
 
     if response is None:
         # Return empty results for non-pocketcasts podcast sources.
-        return helpers.format_search_response(page, settings.PER_PAGE, 0, [])
+        response = helpers.format_search_response(page, settings.PER_PAGE, 0, [])
+
+    if id_result is not None:
+        response = _merge_id_result(response, id_result, page=page)
+
+    return response
+
+
+def _merge_id_result(response, id_result, *, page):
+    """Prepend a direct ID-lookup match to a text-search response.
+
+    Skips the merge if the item is already present in the text-search
+    results (same media_id and source), and only ever runs for page 1 since
+    ``id_result`` is only computed there.
+    """
+    if page != 1:
+        return response
+
+    id_items = id_result.get("results") or []
+    if not id_items:
+        return response
+
+    existing = {
+        (item.get("media_id"), item.get("source"))
+        for item in response.get("results", [])
+    }
+    new_items = [
+        item
+        for item in id_items
+        if (item.get("media_id"), item.get("source")) not in existing
+    ]
+    if not new_items:
+        return response
+
+    response = dict(response)
+    response["results"] = [*new_items, *response.get("results", [])]
+    response["total_results"] = response.get("total_results", 0) + len(new_items)
+    response["total_pages"] = response["total_results"] // settings.PER_PAGE + 1
     return response
 
 

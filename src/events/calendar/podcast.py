@@ -9,7 +9,11 @@ logger = logging.getLogger(__name__)
 
 
 def process_podcast(item, events_bulk):
-    """Process podcast episodes using stored publish dates."""
+    """Process podcast episodes using stored publish dates.
+
+    Always returns True: this reads locally stored publish dates rather than
+    calling a provider, so there is no failure mode that a retry would fix.
+    """
     logger.info("Processing podcast episode: %s", item)
 
     release_datetime = item.release_datetime
@@ -25,7 +29,7 @@ def process_podcast(item, events_bulk):
 
     if not release_datetime:
         logger.debug("Skipping podcast %s - no release date available", item)
-        return
+        return True
 
     if timezone.is_naive(release_datetime):
         release_datetime = timezone.make_aware(release_datetime)
@@ -37,3 +41,5 @@ def process_podcast(item, events_bulk):
             datetime=release_datetime,
         ),
     )
+
+    return True

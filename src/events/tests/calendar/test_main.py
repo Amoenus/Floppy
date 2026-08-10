@@ -52,16 +52,20 @@ class CalendarMainTests(CalendarFixturesMixin, TestCase):
                 datetime=timezone.now(),
             ),
         )
-        mock_process_anime_bulk.side_effect = lambda items, events_bulk: [
-            events_bulk.append(
-                Event(
-                    item=item,
-                    content_number=1,
-                    datetime=timezone.now(),
-                ),
-            )
-            for item in items
-        ]
+
+        def _process_anime_bulk(items, events_bulk):
+            for item in items:
+                events_bulk.append(
+                    Event(
+                        item=item,
+                        content_number=1,
+                        datetime=timezone.now(),
+                    ),
+                )
+            # process_anime_bulk reports the items it successfully checked.
+            return list(items)
+
+        mock_process_anime_bulk.side_effect = _process_anime_bulk
 
         result = fetch_releases(self.user.id)
 
@@ -241,3 +245,41 @@ class CalendarMainTests(CalendarFixturesMixin, TestCase):
 
         mock_process_other.assert_called_once()
         self.assertIn("No releases have been updated.", result)
+
+
+class CalendarCheckRecordingTests(CalendarFixturesMixin, TestCase):
+    """Test that only successfully checked items are stamped."""
+
+    @patch("events.calendar.main.process_other")
+    def test_successful_check_is_recorded(self, mock_process_other):
+        """A successful check is stamped so the staleness gate can skip it."""
+        mock_process_other.return_value = True
+
+        fetch_releases(items_to_process=[self.book_item])
+
+        self.book_item.refresh_from_db()
+        self.assertIsNotNone(self.book_item.calendar_checked_at)
+
+    @patch("events.calendar.main.process_other")
+    def test_failed_check_is_not_recorded(self, mock_process_other):
+        """A provider failure must stay retryable, not be suppressed for 12 hours."""
+        mock_process_other.return_value = False
+
+        fetch_releases(items_to_process=[self.book_item])
+
+        self.book_item.refresh_from_db()
+        self.assertIsNone(self.book_item.calendar_checked_at)
+
+    @patch("events.calendar.main.process_other")
+    def test_only_the_succeeding_item_is_recorded(self, mock_process_other):
+        """A failure for one item must not stamp the others in the same batch."""
+        mock_process_other.side_effect = lambda item, events_bulk: (
+            item.id != self.book_item.id
+        )
+
+        fetch_releases(items_to_process=[self.book_item, self.movie_item])
+
+        self.book_item.refresh_from_db()
+        self.movie_item.refresh_from_db()
+        self.assertIsNone(self.book_item.calendar_checked_at)
+        self.assertIsNotNone(self.movie_item.calendar_checked_at)

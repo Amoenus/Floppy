@@ -4,11 +4,59 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import re
 from collections.abc import Iterable, Mapping
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
 from django.conf import settings
+
+# Query/form/header param names that commonly carry secrets across Floppy's
+# integrations (Plex, Jellyfin, Trakt, TMDB, Last.fm, Koito, Pocket Casts,
+# gpodder, Stremio). Matches "name=value" (URL/form encoded) up to the next
+# delimiter, or "Name: value" (header style) to end of line.
+_SECRET_PARAM_NAMES = (
+    "token",
+    "access_token",
+    "refresh_token",
+    "api_key",
+    "apikey",
+    "client_secret",
+    "client_id",
+    "password",
+    "passwd",
+    "secret",
+    "x-plex-token",
+)
+
+_SECRET_PATTERNS: list[tuple[re.Pattern[str], str]] = [
+    (
+        re.compile(r"(?i)\bBearer\s+[A-Za-z0-9\-_.~+/]+=*"),
+        "Bearer [REDACTED]",
+    ),
+    (
+        re.compile(
+            r"(?i)\b(" + "|".join(_SECRET_PARAM_NAMES) + r")\s*[=:]\s*[^&\s\"'<>]+"
+        ),
+        r"\1=[REDACTED]",
+    ),
+]
+
+
+def redact_secrets(text: str) -> str:
+    """Strip common secret/token patterns out of raw log text.
+
+    Unlike the structured helpers below, this scrubs text that may already
+    contain a raw token (e.g. logged before a call site adopted these
+    conventions, or from a third-party library's own log lines).
+    """
+    if not text:
+        return ""
+
+    redacted = text
+    for pattern, replacement in _SECRET_PATTERNS:
+        redacted = pattern.sub(replacement, redacted)
+    return redacted
 
 
 def exception_summary(exc: BaseException | None) -> str:

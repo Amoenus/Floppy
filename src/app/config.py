@@ -419,6 +419,7 @@ COLLECTION_FIELD_BY_TYPE = {
     MediaTypes.BOOK.value: COLLECTION_FIELD_CONFIG["books"],
     MediaTypes.MANGA.value: COLLECTION_FIELD_CONFIG["books"],
     MediaTypes.COMIC.value: COLLECTION_FIELD_CONFIG["books"],
+    MediaTypes.COMIC_ISSUE.value: COLLECTION_FIELD_CONFIG["books"],
     MediaTypes.GAME.value: COLLECTION_FIELD_CONFIG["games"],
     MediaTypes.BOARDGAME.value: COLLECTION_FIELD_CONFIG["boardgames"],
 }

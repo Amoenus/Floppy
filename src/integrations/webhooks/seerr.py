@@ -9,18 +9,18 @@ from app.models import TV, Item, MediaTypes, Movie, Sources, Status
 logger = logging.getLogger(__name__)
 
 
-class JellyseerrWebhookProcessor:
+class SeerrWebhookProcessor:
     """
-    Processor for Jellyseerr webhook events.
+    Processor for Seerr webhook events.
 
-    Expected payload keys (configure in Jellyseerr webhook JSON):
+    Expected payload keys (configure in Seerr webhook JSON):
       - media_type: "movie" or "tv"
       - media_tmdbid: TMDB ID
       - media_status: UNKNOWN|PENDING|PROCESSING|PARTIALLY_AVAILABLE|AVAILABLE
       - requestedBy_username or notifyuser_username
     """
 
-    VALID_JELLYSEERR_STATUSES = {
+    VALID_SEERR_STATUSES = {
         "UNKNOWN",
         "PENDING",
         "PROCESSING",
@@ -30,9 +30,10 @@ class JellyseerrWebhookProcessor:
 
     def process_payload(self, payload, user):
         """Return the process payload."""
+        # kept: model field name, not renamed (see plan)
         if not getattr(user, "jellyseerr_enabled", False):
             logger.debug(
-                "Jellyseerr webhook ignored: user %s has jellyseerr_enabled=False",
+                "Seerr webhook ignored: user %s has jellyseerr_enabled=False",
                 user.username,
             )
             return
@@ -40,7 +41,7 @@ class JellyseerrWebhookProcessor:
         media_type = (payload.get("media_type") or "").strip().lower()
         if media_type not in ("movie", "tv"):
             logger.warning(
-                "Jellyseerr webhook ignored: unsupported media_type=%r",
+                "Seerr webhook ignored: unsupported media_type=%r",
                 media_type,
             )
             return
@@ -49,18 +50,18 @@ class JellyseerrWebhookProcessor:
         tmdb_id = self._coerce_int_string(raw_tmdb_id)
         if not tmdb_id:
             logger.warning(
-                "Jellyseerr webhook ignored: missing/invalid media_tmdbid=%r",
+                "Seerr webhook ignored: missing/invalid media_tmdbid=%r",
                 raw_tmdb_id,
             )
             return
 
         media_status = (payload.get("media_status") or "").strip().upper()
         if not media_status:
-            logger.warning("Jellyseerr webhook ignored: missing media_status")
+            logger.warning("Seerr webhook ignored: missing media_status")
             return
-        if media_status not in self.VALID_JELLYSEERR_STATUSES:
+        if media_status not in self.VALID_SEERR_STATUSES:
             logger.warning(
-                "Jellyseerr webhook ignored: unknown media_status=%r",
+                "Seerr webhook ignored: unknown media_status=%r",
                 media_status,
             )
             return
@@ -71,14 +72,14 @@ class JellyseerrWebhookProcessor:
         if trigger_statuses:
             if media_status not in trigger_statuses:
                 logger.debug(
-                    "Jellyseerr webhook ignored: status %s not in trigger set %s",
+                    "Seerr webhook ignored: status %s not in trigger set %s",
                     media_status,
                     sorted(trigger_statuses),
                 )
                 return
         # Default behaviour: do not add at UNKNOWN unless user explicitly configures it.
         elif media_status == "UNKNOWN":
-            logger.debug("Jellyseerr webhook ignored: default behaviour skips UNKNOWN")
+            logger.debug("Seerr webhook ignored: default behaviour skips UNKNOWN")
             return
 
         requester = (payload.get("requestedBy_username") or "").strip() or (
@@ -90,12 +91,12 @@ class JellyseerrWebhookProcessor:
         if allowed_requesters:
             if not requester:
                 logger.debug(
-                    "Jellyseerr webhook ignored: requester missing but allowlist configured",
+                    "Seerr webhook ignored: requester missing but allowlist configured",
                 )
                 return
             if requester.lower() not in allowed_requesters:
                 logger.debug(
-                    "Jellyseerr webhook ignored: requester %r not in allowlist %s",
+                    "Seerr webhook ignored: requester %r not in allowlist %s",
                     requester,
                     sorted(allowed_requesters),
                 )
@@ -113,7 +114,7 @@ class JellyseerrWebhookProcessor:
         )
 
         logger.info(
-            "Jellyseerr accepted: user=%s requester=%r type=%s tmdb=%s status=%s -> yamtrack_status=%s",
+            "Seerr accepted: user=%s requester=%r type=%s tmdb=%s status=%s -> yamtrack_status=%s",
             user.username,
             requester,
             yamtrack_media_type,
@@ -137,7 +138,7 @@ class JellyseerrWebhookProcessor:
             )
         except Exception as exc:
             logger.warning(
-                "Jellyseerr: failed TMDB metadata for %s/%s: %s",
+                "Seerr: failed TMDB metadata for %s/%s: %s",
                 media_type,
                 tmdb_id,
                 exc,
@@ -156,7 +157,7 @@ class JellyseerrWebhookProcessor:
             )
         except IntegrityError as exc:
             logger.warning(
-                "Jellyseerr: Item create race for %s/%s: %s",
+                "Seerr: Item create race for %s/%s: %s",
                 media_type,
                 tmdb_id,
                 exc,
@@ -184,7 +185,7 @@ class JellyseerrWebhookProcessor:
 
         if created:
             logger.info(
-                "Jellyseerr: created Item %s/%s (%s)", media_type, tmdb_id, item.title
+                "Seerr: created Item %s/%s (%s)", media_type, tmdb_id, item.title
             )
 
         return item

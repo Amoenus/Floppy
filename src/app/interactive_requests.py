@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 from django.core.cache import cache
 
 if TYPE_CHECKING:
     from django.http import HttpRequest
+
+logger = logging.getLogger(__name__)
 
 INTERACTIVE_REQUEST_CACHE_KEY = "interactive_request_active"
 INTERACTIVE_REQUEST_TTL_SECONDS = 30
@@ -52,5 +55,20 @@ def mark_interactive_request() -> None:
 
 
 def interactive_request_active() -> bool:
-    """Return whether a recent interactive browser request is active."""
-    return bool(cache.get(INTERACTIVE_REQUEST_CACHE_KEY))
+    """Return whether a recent interactive browser request is active.
+
+    Falls back to False when the cache is unreachable. Guarding here rather than
+    at the ~30 call sites matters because ``CooperativeRun.iter()`` calls this
+    once per item from *outside* the per-item try/except in the backfill tasks,
+    so a raise would abandon the whole batch (#521).
+
+    False is the right answer despite looking like the incautious one: True
+    would defer every background task for as long as the outage lasted, so
+    maintenance would never converge, and yielding to a user who may not even
+    be there is a courtesy rather than a correctness requirement.
+    """
+    try:
+        return bool(cache.get(INTERACTIVE_REQUEST_CACHE_KEY))
+    except Exception as error:
+        logger.debug("Cache unavailable reading interactive marker: %s", error)
+        return False
