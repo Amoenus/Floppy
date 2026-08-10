@@ -130,7 +130,7 @@ class PlexWebhookTests(TestCase):
         )
         self.movie_patcher.start()
 
-        def fake_tmdb_search(media_type, query, page):
+        def fake_tmdb_search(media_type, query, page, language=None):
             if (
                 media_type == MediaTypes.MOVIE.value
                 and str(query).casefold() == "the matrix"

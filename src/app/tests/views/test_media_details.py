@@ -131,6 +131,7 @@ class MediaDetailsViewTests(TestCase):
             MediaTypes.MOVIE.value,
             "238",
             Sources.TMDB.value,
+            language="en",
         )
 
     @patch("integrations.tasks.fetch_collection_metadata_for_item.delay")
@@ -2118,8 +2119,9 @@ class MediaDetailsViewTests(TestCase):
             source,
             season_numbers=None,
             episode_number=None,
+            language=None,
         ):
-            del media_type, media_id, season_numbers, episode_number
+            del media_type, media_id, season_numbers, episode_number, language
             if source == Sources.TMDB.value:
                 tmdb_response = requests.Response()
                 tmdb_response.status_code = requests.codes.not_found
@@ -3646,8 +3648,9 @@ class MediaDetailsViewTests(TestCase):
             source,
             season_numbers=None,
             episode_number=None,
+            language=None,
         ):
-            del media_id, episode_number
+            del media_id, episode_number, language
             if media_type == MediaTypes.ANIME.value and source == Sources.TVDB.value:
                 return grouped_series_metadata
             if media_type == "tv_with_seasons" and source == Sources.TVDB.value:
@@ -3923,8 +3926,9 @@ class MediaDetailsViewTests(TestCase):
             source,
             season_numbers=None,
             episode_number=None,
+            language=None,
         ):
-            del media_id, episode_number
+            del media_id, episode_number, language
             if media_type == MediaTypes.ANIME.value and source == Sources.TVDB.value:
                 return {
                     **grouped_series_metadata,
@@ -5110,6 +5114,7 @@ class MediaDetailsViewTests(TestCase):
             "1668",
             Sources.TMDB.value,
             [1],
+            language="en",
         )
 
     @patch("app.providers.services.get_media_metadata")
@@ -6600,8 +6605,9 @@ class MediaDetailsViewTests(TestCase):
             source,
             season_numbers=None,
             episode_number=None,
+            language=None,
         ):
-            del episode_number
+            del episode_number, language
             self.assertEqual(media_id, "114410")
             self.assertEqual(source, Sources.TMDB.value)
             if media_type == MediaTypes.TV.value:
@@ -6883,8 +6889,9 @@ class MediaDetailsViewTests(TestCase):
             source,
             season_numbers=None,
             episode_number=None,
+            language=None,
         ):
-            del episode_number
+            del episode_number, language
             self.assertEqual(media_id, "76703")
             self.assertEqual(source, Sources.TVDB.value)
             if media_type == MediaTypes.ANIME.value:
@@ -7273,7 +7280,7 @@ class MediaDetailsViewTests(TestCase):
                 (MediaTypes.TV.value, "1396", Sources.TMDB.value),
             )
             self.assertFalse(args)
-            self.assertFalse(kwargs)
+            self.assertEqual(set(kwargs) - {"language"}, set())
             detail_call_count["count"] += 1
             if detail_call_count["count"] == 1:
                 return stale_metadata
