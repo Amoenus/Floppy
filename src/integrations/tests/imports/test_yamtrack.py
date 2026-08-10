@@ -368,6 +368,7 @@ class ImportYamtrackTagsRoundTrip(TestCase):
         self.assertEqual(tag_names, ["ABCXYZ"])
 
 
+@tag("network")
 class ImportSampleTemplate(TestCase):
     """Test that the downloadable sample template imports cleanly, unmodified."""
 
@@ -379,7 +380,6 @@ class ImportSampleTemplate(TestCase):
         file = BytesIO(content.encode("utf-8"))
         self.import_results, self.warnings = yamtrack.importer(file, self.user, "new")
 
-    @tag("network")
     def test_no_warnings(self):
         """The sample template should import without any warnings."""
         self.assertEqual(self.warnings, "")

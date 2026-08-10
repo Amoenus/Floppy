@@ -41,6 +41,7 @@ class CreateMedia(TestCase):
         self.user = get_user_model().objects.create_user(**self.credentials)
         self.client.login(**self.credentials)
 
+    @tag("network")
     @override_settings(MEDIA_ROOT=("create_media"))
     def test_create_anime(self):
         """Test the creation of a TV object."""

@@ -115,6 +115,7 @@ class GenericScrobbleProcessPayloadTests(TestCase):
         self.assertEqual(movie.status, Status.COMPLETED.value)
         self.assertEqual(movie.progress, 1)
 
+    @tag("network")
     def test_movie_stop_without_completion_marks_in_progress(self):
         """A stop event without completion marks the movie in progress."""
         self.processor.process_payload(
@@ -178,6 +179,7 @@ class GenericScrobbleProcessPayloadTests(TestCase):
         self.assertEqual(prior_completed.status, Status.COMPLETED.value)
         self.assertEqual(Movie.objects.filter(item=item, user=self.user).count(), 2)
 
+    @tag("network")
     def test_episode_stop_marks_episode_played(self):
         """A completed episode stop event resolves the show via tvdb/imdb."""
         self.processor.process_payload(
