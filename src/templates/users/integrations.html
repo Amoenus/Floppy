@@ -63,49 +63,49 @@
                 @click="activeIntegration = 'all'"
                 :aria-pressed="activeIntegration === 'all'"
                 class="px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer"
-                :class="activeIntegration === 'all' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-gray-300 border-gray-600 hover:border-indigo-500 hover:text-white'">
+                :class="activeIntegration === 'all' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-indigo-500 hover:text-[var(--color-text)]'">
           All
         </button>
         <button type="button"
                 @click="activeIntegration = 'jellyfin'"
                 :aria-pressed="activeIntegration === 'jellyfin'"
                 class="px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer"
-                :class="activeIntegration === 'jellyfin' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-gray-300 border-gray-600 hover:border-indigo-500 hover:text-white'">
+                :class="activeIntegration === 'jellyfin' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-indigo-500 hover:text-[var(--color-text)]'">
           Jellyfin
         </button>
         <button type="button"
                 @click="activeIntegration = 'plex'"
                 :aria-pressed="activeIntegration === 'plex'"
                 class="px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer"
-                :class="activeIntegration === 'plex' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-gray-300 border-gray-600 hover:border-indigo-500 hover:text-white'">
+                :class="activeIntegration === 'plex' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-indigo-500 hover:text-[var(--color-text)]'">
           Plex
         </button>
         <button type="button"
                 @click="activeIntegration = 'emby'"
                 :aria-pressed="activeIntegration === 'emby'"
                 class="px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer"
-                :class="activeIntegration === 'emby' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-gray-300 border-gray-600 hover:border-indigo-500 hover:text-white'">
+                :class="activeIntegration === 'emby' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-indigo-500 hover:text-[var(--color-text)]'">
           Emby
         </button>
         <button type="button"
                 @click="activeIntegration = 'kodi'"
                 :aria-pressed="activeIntegration === 'kodi'"
                 class="px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer"
-                :class="activeIntegration === 'kodi' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-gray-300 border-gray-600 hover:border-indigo-500 hover:text-white'">
+                :class="activeIntegration === 'kodi' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-indigo-500 hover:text-[var(--color-text)]'">
           Kodi
         </button>
         <button type="button"
                 @click="activeIntegration = 'stremio'"
                 :aria-pressed="activeIntegration === 'stremio'"
                 class="px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer"
-                :class="activeIntegration === 'stremio' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-gray-300 border-gray-600 hover:border-indigo-500 hover:text-white'">
+                :class="activeIntegration === 'stremio' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-indigo-500 hover:text-[var(--color-text)]'">
           Stremio
         </button>
         <button type="button"
                 @click="activeIntegration = 'seerr'"
                 :aria-pressed="activeIntegration === 'seerr'"
                 class="px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer"
-                :class="activeIntegration === 'seerr' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-gray-300 border-gray-600 hover:border-indigo-500 hover:text-white'">
+                :class="activeIntegration === 'seerr' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-indigo-500 hover:text-[var(--color-text)]'">
           Seerr
         </button>
       </div>
@@ -320,7 +320,7 @@
             {% endif %}
           </div>
           {% if jellyfin_account.last_error_message %}
-            <div class="text-xs text-amber-200 bg-amber-500/10 border border-amber-400/30 rounded p-2">
+            <div class="text-xs text-[var(--color-warning-text)] bg-amber-500/10 border border-amber-400/30 rounded p-2">
               <strong>Error:</strong> {{ jellyfin_account.last_error_message }}
             </div>
           {% endif %}

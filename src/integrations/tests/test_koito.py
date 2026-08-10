@@ -12,7 +12,7 @@ from app.models import Music
 from app.services import music_scrobble
 from integrations import koito_api, koito_sync, tasks
 from integrations.imports import helpers
-from integrations.models import KoitoAccount, LastFMHistoryImportStatus
+from integrations.models import ImportRun, KoitoAccount, LastFMHistoryImportStatus
 from integrations.webhooks.koito import KoitoScrobbleProcessor
 
 API_KEY = "koito-secret-key"
@@ -498,6 +498,13 @@ class KoitoExportTests(KoitoTestCase):
         )
         self.assertIsNotNone(self.account.history_import_completed_at)
 
+        run = ImportRun.objects.get(user=self.user, source="koito")
+        self.assertEqual(run.status, ImportRun.Status.COMPLETED)
+        self.assertEqual(run.created_count, 1)
+        self.assertIsNotNone(run.finished_at)
+        music = Music.objects.get(user=self.user)
+        self.assertEqual(music.import_run_id, run.id)
+
     @patch(
         "integrations.koito_api.get_export",
         side_effect=koito_api.KoitoAuthError("bad key"),
@@ -516,6 +523,10 @@ class KoitoExportTests(KoitoTestCase):
         # Lock released, so a retry is possible.
         lock_key = koito_sync.get_koito_history_import_lock_key(self.user.id)
         self.assertIsNone(cache.get(lock_key))
+
+        run = ImportRun.objects.get(user=self.user, source="koito")
+        self.assertEqual(run.status, ImportRun.Status.FAILED)
+        self.assertIsNotNone(run.finished_at)
 
     @patch("integrations.koito_api.get_album")
     @patch("integrations.koito_api.get_track")

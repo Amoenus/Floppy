@@ -18,6 +18,7 @@ from rest_framework.response import Response
 from app.forms import ManualItemForm, get_form_class
 from app.models import BasicMedia, Item, MediaTypes, Sources
 from app.providers import services, tmdb
+from app.services import metadata_resolution
 from app.statistics import (
     get_activity_data,
     get_media_type_distribution,
@@ -956,6 +957,7 @@ class MediaTypeListView(drf_views.APIView):
                 media_id,
                 source,
                 [season_number],
+                language=metadata_resolution.metadata_language_default(request.user),
             )
         except Exception as e:
             return Response(
@@ -1102,7 +1104,12 @@ class MediaDetailView(drf_views.APIView):
             )
 
         try:
-            media_metadata = services.get_media_metadata(media_type, media_id, source)
+            media_metadata = services.get_media_metadata(
+                media_type,
+                media_id,
+                source,
+                language=metadata_resolution.metadata_language_default(request.user),
+            )
         except Exception as e:
             return Response(
                 {
@@ -1255,7 +1262,12 @@ class MediaDetailView(drf_views.APIView):
         media.refresh_from_db()
 
         try:
-            media_metadata = services.get_media_metadata(media_type, media_id, source)
+            media_metadata = services.get_media_metadata(
+                media_type,
+                media_id,
+                source,
+                language=metadata_resolution.metadata_language_default(request.user),
+            )
         except Exception as e:
             return Response(
                 {
@@ -1394,16 +1406,22 @@ class MediaConsumptionHistoryView(drf_views.APIView):
                 status=HTTP.NOT_FOUND,
             )
 
+        # FORK: movie rewatch support (issue #577) — once a movie has real
+        # MoviePlay rows, history is served from those instead of the single
+        # tracker row. Untouched movies keep today's single-entry behavior.
+        movie_plays = fork_helpers.movie_plays_for_history(user_medias, media_type)
+        history_rows = movie_plays if movie_plays is not None else list(user_medias)
+
         # FORK: was "TODO: missing sorting"
-        user_medias, sort_err = fork_helpers.sort_history_results(
+        history_rows, sort_err = fork_helpers.sort_history_results(
             request,
-            list(user_medias),
+            history_rows,
         )
         if sort_err:
             return sort_err
         paginated_data = paginate_data(
             request,
-            user_medias,
+            history_rows,
             limit,
             offset,
         )
@@ -1458,6 +1476,14 @@ class MediaConsumptionEntryDetailView(drf_views.APIView):
 
         consumption = user_medias.filter(id=consumption_id).first()
         if not consumption:
+            # FORK: movie rewatch support (issue #577) — the id may belong to
+            # a MoviePlay rather than the Movie tracker row.
+            consumption = fork_helpers.resolve_movie_play_consumption(
+                user_medias,
+                media_type,
+                consumption_id,
+            )
+        if not consumption:
             return Response(
                 {"detail": "Consumption entry not found."},
                 status=HTTP.NOT_FOUND,
@@ -1501,6 +1527,14 @@ class MediaConsumptionEntryDetailView(drf_views.APIView):
             )
 
         consumption = user_medias.filter(id=consumption_id).first()
+        if not consumption:
+            # FORK: movie rewatch support (issue #577) — the id may belong to
+            # a MoviePlay rather than the Movie tracker row.
+            consumption = fork_helpers.resolve_movie_play_consumption(
+                user_medias,
+                media_type,
+                consumption_id,
+            )
         if not consumption:
             return Response(
                 {"detail": " Consumption entry not found."},
@@ -1547,6 +1581,14 @@ class MediaConsumptionEntryDetailView(drf_views.APIView):
             )
 
         consumption = user_medias.filter(id=consumption_id).first()
+        if not consumption:
+            # FORK: movie rewatch support (issue #577) — the id may belong to
+            # a MoviePlay rather than the Movie tracker row.
+            consumption = fork_helpers.resolve_movie_play_consumption(
+                user_medias,
+                media_type,
+                consumption_id,
+            )
         if not consumption:
             return Response(
                 {"detail": "Consumption entry not found."},
@@ -1746,7 +1788,7 @@ class MediaRecommendationsView(drf_views.APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     @extend_schema(parameters=[MEDIA_TYPE_PARAM])
-    def get(self, _, media_type, source, media_id):
+    def get(self, request, media_type, source, media_id):
         """Retrieve recommendations for a specific media."""
         if not check_valid_type(media_type):
             return Response(
@@ -1763,7 +1805,12 @@ class MediaRecommendationsView(drf_views.APIView):
             )
 
         try:
-            media_metadata = services.get_media_metadata(media_type, media_id, source)
+            media_metadata = services.get_media_metadata(
+                media_type,
+                media_id,
+                source,
+                language=metadata_resolution.metadata_language_default(request.user),
+            )
         except Exception as e:
             return Response(
                 {
@@ -1821,7 +1868,12 @@ class MediaSeasonsView(drf_views.APIView):
             )
 
         try:
-            media_metadata = services.get_media_metadata(media_type, media_id, source)
+            media_metadata = services.get_media_metadata(
+                media_type,
+                media_id,
+                source,
+                language=metadata_resolution.metadata_language_default(request.user),
+            )
         except Exception as e:
             return Response(
                 {
@@ -2006,6 +2058,7 @@ class MediaSyncView(drf_views.APIView):
                 media_type,
                 media_id,
                 source,
+                language=metadata_resolution.metadata_language_default(request.user),
             )
 
             # FORK: bucket-aware resolution + localized title fields, mirroring
@@ -2148,6 +2201,7 @@ class MediaSeasonDetailView(drf_views.APIView):
                 media_id,
                 source,
                 [season_number],
+                language=metadata_resolution.metadata_language_default(request.user),
             )
         except Exception as e:
             return Response(
@@ -2311,6 +2365,7 @@ class MediaSeasonDetailView(drf_views.APIView):
                 media_id,
                 source,
                 [season_number],
+                language=metadata_resolution.metadata_language_default(request.user),
             )
         except Exception as e:
             return Response(
@@ -2451,6 +2506,7 @@ class MediaSeasonEpisodesView(drf_views.APIView):
                 media_id,
                 source,
                 [season_number],
+                language=metadata_resolution.metadata_language_default(request.user),
             )
         except Exception as e:
             return Response(
@@ -3063,6 +3119,7 @@ class MediaSeasonSyncView(drf_views.APIView):
                 media_id,
                 source,
                 [season_number],
+                language=metadata_resolution.metadata_language_default(request.user),
             )
 
             # FORK: bucket-aware resolution + localized title fields, mirroring
@@ -3266,6 +3323,7 @@ class MediaEpisodeDetailView(drf_views.APIView):
                 media_id,
                 source,
                 [season_number],
+                language=metadata_resolution.metadata_language_default(request.user),
             )
         except Exception as e:
             return Response(
@@ -3434,6 +3492,7 @@ class MediaEpisodeDetailView(drf_views.APIView):
                 media_id,
                 source,
                 [season_number],
+                language=metadata_resolution.metadata_language_default(request.user),
             )
         except Exception as e:
             return Response(
@@ -4198,6 +4257,9 @@ class SearchProviderView(drf_views.APIView):
                     limit=limit,
                     offset=offset,
                     user=request.user,
+                    language=metadata_resolution.metadata_language_default(
+                        request.user
+                    ),
                 )
                 if (
                     not isinstance(last_response, dict)

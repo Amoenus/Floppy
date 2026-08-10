@@ -42,10 +42,22 @@ TV_DETAIL_SEASON_APPEND_RESPONSES = (
     "season/{season}/watch/providers",
 )
 TMDB_SEASON_CACHE_VERSION = 4
-base_params = {
-    "api_key": settings.TMDB_API,
-    "language": settings.TMDB_LANG,
-}
+
+
+def base_params(language=None):
+    """Return the base TMDB request params for the given (or default) language."""
+    return {
+        "api_key": settings.TMDB_API,
+        "language": language or settings.TMDB_LANG,
+    }
+
+
+def _language_suffix(language=None):
+    """Return a cache-key suffix for non-default languages, empty string otherwise."""
+    language = language or settings.TMDB_LANG
+    if language == settings.TMDB_LANG:
+        return ""
+    return f"_lang{language}"
 
 
 def _tv_detail_max_seasons_per_request():
@@ -58,11 +70,24 @@ def _tv_detail_max_seasons_per_request():
     )
 
 
-def _season_cache_key(media_id, season_number):
+def _season_cache_key(media_id, season_number, language=None):
     """Return the cache key for a TMDB season payload."""
     return (
         f"{Sources.TMDB.value}_{MediaTypes.SEASON.value}_v{TMDB_SEASON_CACHE_VERSION}_"
-        f"{media_id}_{season_number}"
+        f"{media_id}_{season_number}{_language_suffix(language)}"
+    )
+
+
+def _tv_cache_key(media_id, language=None):
+    """Return the cache key for a TMDB TV show payload."""
+    return f"{Sources.TMDB.value}_{MediaTypes.TV.value}_{media_id}{_language_suffix(language)}"
+
+
+def _movie_cache_key(media_id, language=None):
+    """Return the cache key for a TMDB movie payload."""
+    return (
+        f"{Sources.TMDB.value}_{MediaTypes.MOVIE.value}_{media_id}"
+        f"{_language_suffix(language)}"
     )
 
 
@@ -332,16 +357,19 @@ def _normalize_season_numbers(season_numbers):
     return normalized_seasons
 
 
-def search(media_type, query, page):
+def search(media_type, query, page, language=None):
     """Search for media on TMDB."""
-    cache_key = f"search_{Sources.TMDB.value}_{media_type}_{query}_{page}"
+    cache_key = (
+        f"search_{Sources.TMDB.value}_{media_type}_{query}_{page}"
+        f"{_language_suffix(language)}"
+    )
     data = cache.get(cache_key)
 
     if data is None:
         url = f"{base_url}/search/{media_type}"
 
         params = {
-            **base_params,
+            **base_params(language),
             "query": query,
             "page": page,
         }
@@ -387,16 +415,19 @@ def search(media_type, query, page):
     return data
 
 
-def find(external_id, external_source):
+def find(external_id, external_source, language=None):
     """Search for media on TMDB."""
-    cache_key = f"find_{Sources.TMDB.value}_{external_id}_{external_source}"
+    cache_key = (
+        f"find_{Sources.TMDB.value}_{external_id}_{external_source}"
+        f"{_language_suffix(language)}"
+    )
     data = cache.get(cache_key)
 
     if data is None:
         url = f"{base_url}/find/{external_id}"
 
         params = {
-            **base_params,
+            **base_params(language),
             "external_source": external_source,
         }
 
@@ -416,9 +447,9 @@ def find(external_id, external_source):
     return data
 
 
-def movie(media_id):
+def movie(media_id, language=None):
     """Return the metadata for the selected movie from The Movie Database."""
-    cache_key = f"{Sources.TMDB.value}_{MediaTypes.MOVIE.value}_{media_id}"
+    cache_key = _movie_cache_key(media_id, language)
     data = cache.get(cache_key)
 
     if data is None:
@@ -433,7 +464,7 @@ def movie(media_id):
             "release_dates",
         ]
         params = {
-            **base_params,
+            **base_params(language),
             "append_to_response": ",".join(appends),
         }
 
@@ -452,7 +483,7 @@ def movie(media_id):
                         Sources.TMDB.value,
                         "GET",
                         f"{base_url}/collection/{collection_id}",
-                        params={**base_params},
+                        params={**base_params(language)},
                     )
                 except requests.exceptions.HTTPError as error:
                     logger.warning(
@@ -533,7 +564,7 @@ def movie(media_id):
     return data
 
 
-def get_cached_seasons(media_id, season_numbers):
+def get_cached_seasons(media_id, season_numbers, language=None):
     """Check cache for seasons and return cached data and list of uncached seasons.
 
     One get_many rather than a get per season: a 40-season show meant 40 round
@@ -542,7 +573,7 @@ def get_cached_seasons(media_id, season_numbers):
     """
     season_numbers = _normalize_season_numbers(season_numbers)
     keys = {
-        _season_cache_key(media_id, season_number): season_number
+        _season_cache_key(media_id, season_number, language): season_number
         for season_number in season_numbers
     }
     found = cache.get_many(list(keys)) or {}
@@ -861,7 +892,7 @@ def get_tvdb_episode_image_map(tvdb_id, season_number, *, tmdb_media_id=None):
     return episode_images
 
 
-def fetch_and_cache_seasons(media_id, season_numbers, tv_data):
+def fetch_and_cache_seasons(media_id, season_numbers, tv_data, language=None):
     """Fetch uncached seasons from API and cache them."""
     url = f"{base_url}/tv/{media_id}"
     max_seasons_per_request = _tv_detail_max_seasons_per_request()
@@ -877,7 +908,7 @@ def fetch_and_cache_seasons(media_id, season_numbers, tv_data):
         )
 
         params = {
-            **base_params,
+            **base_params(language),
             "append_to_response": f"{TV_DETAIL_APPEND_RESPONSES},{append_text}",
         }
 
@@ -905,7 +936,7 @@ def fetch_and_cache_seasons(media_id, season_numbers, tv_data):
                     media_id,
                     refreshed_tv_data,
                 )
-        tv_cache_key = f"{Sources.TMDB.value}_{MediaTypes.TV.value}_{media_id}"
+        tv_cache_key = _tv_cache_key(media_id, language)
         if fetched_tv_data is None or fetched_tv_data != refreshed_tv_data:
             fetched_tv_data = refreshed_tv_data
             cache.set(tv_cache_key, fetched_tv_data)
@@ -934,7 +965,7 @@ def fetch_and_cache_seasons(media_id, season_numbers, tv_data):
                 season_number,
             )
             cache.set(
-                _season_cache_key(media_id, season_number),
+                _season_cache_key(media_id, season_number, language),
                 season_data,
                 SEASON_CACHE_TIMEOUT,
             )
@@ -949,41 +980,46 @@ def fetch_and_cache_seasons(media_id, season_numbers, tv_data):
             result_data["season/0"] = specials_season
             _attach_specials_to_tv_data(fetched_tv_data, specials_season)
             cache.set(
-                _season_cache_key(media_id, 0),
+                _season_cache_key(media_id, 0, language),
                 specials_season,
                 SEASON_CACHE_TIMEOUT,
             )
             cache.set(
-                f"{Sources.TMDB.value}_{MediaTypes.TV.value}_{media_id}",
+                _tv_cache_key(media_id, language),
                 fetched_tv_data,
             )
 
     return result_data, fetched_tv_data
 
 
-def tv_with_seasons(media_id, season_numbers):
+def tv_with_seasons(media_id, season_numbers, language=None):
     """Return the metadata for the tv show with seasons appended to the response."""
     if not season_numbers:
-        return tv(media_id)
+        return tv(media_id, language)
     season_numbers = _normalize_season_numbers(season_numbers)
 
-    tv_cache_key = f"{Sources.TMDB.value}_{MediaTypes.TV.value}_{media_id}"
+    tv_cache_key = _tv_cache_key(media_id, language)
     tv_data = cache.get(tv_cache_key)
     if tv_data is not None:
         tv_data, changed = _apply_tvdb_id_override_to_tv_data(media_id, tv_data)
         if changed:
             cache.set(tv_cache_key, tv_data)
 
-    cached_seasons, uncached_seasons = get_cached_seasons(media_id, season_numbers)
+    cached_seasons, uncached_seasons = get_cached_seasons(
+        media_id,
+        season_numbers,
+        language,
+    )
 
     if tv_data is None and not uncached_seasons:
-        tv_data = tv(media_id)
+        tv_data = tv(media_id, language)
 
     if uncached_seasons:
         fetched_seasons, fetched_tv_data = fetch_and_cache_seasons(
             media_id,
             uncached_seasons,
             tv_data,
+            language,
         )
 
         if fetched_tv_data is not None:
@@ -994,9 +1030,9 @@ def tv_with_seasons(media_id, season_numbers):
     return tv_data | cached_seasons
 
 
-def tv(media_id):
+def tv(media_id, language=None):
     """Return the metadata for the selected tv show from The Movie Database."""
-    cache_key = f"{Sources.TMDB.value}_{MediaTypes.TV.value}_{media_id}"
+    cache_key = _tv_cache_key(media_id, language)
     data = cache.get(cache_key)
 
     # Invalidate stale cache entries that predate the season score field being added
@@ -1012,7 +1048,7 @@ def tv(media_id):
     if data is None:
         url = f"{base_url}/tv/{media_id}"
         params = {
-            **base_params,
+            **base_params(language),
             "append_to_response": TV_DETAIL_APPEND_RESPONSES,
         }
 
@@ -1199,7 +1235,7 @@ def get_changed_ids(media_type, max_pages=None):
 
     while True:
         params = {
-            **base_params,
+            **base_params(),
             "start_date": start_date.isoformat(),
             "end_date": end_date.isoformat(),
             "page": page,
@@ -1846,7 +1882,7 @@ def _person_filmography_entries(combined_credits):
     return filmography
 
 
-def search_person_profile(name):
+def search_person_profile(name, language=None):
     """Look up a headshot and gender by name, with no id cross-reference.
 
     This is a name match only.
@@ -1860,13 +1896,16 @@ def search_person_profile(name):
     if not name:
         return None
 
-    cache_key = f"{Sources.TMDB.value}_person_search_profile_{name}"
+    cache_key = (
+        f"{Sources.TMDB.value}_person_search_profile_{name}"
+        f"{_language_suffix(language)}"
+    )
     cached = cache.get(cache_key)
     if cached is not None:
         return cached or None
 
     url = f"{base_url}/search/person"
-    params = {**base_params, "query": name}
+    params = {**base_params(language), "query": name}
     try:
         response = services.api_request(
             Sources.TMDB.value,
@@ -1893,9 +1932,9 @@ def search_person_profile(name):
     return profile
 
 
-def person(person_id):
+def person(person_id, language=None):
     """Return metadata for a TMDB person profile."""
-    cache_key = f"{Sources.TMDB.value}_person_{person_id}"
+    cache_key = f"{Sources.TMDB.value}_person_{person_id}{_language_suffix(language)}"
     data = cache.get(cache_key)
 
     if data is not None:
@@ -1907,7 +1946,7 @@ def person(person_id):
 
     url = f"{base_url}/person/{person_id}"
     params = {
-        **base_params,
+        **base_params(language),
         "append_to_response": "combined_credits,external_ids",
     }
     try:
@@ -2114,9 +2153,12 @@ def _raise_cached_episode_error(status_code):
     )
 
 
-def episode(media_id, season_number, episode_number):
+def episode(media_id, season_number, episode_number, language=None):
     """Return the metadata for the selected episode from The Movie Database."""
-    cache_key = f"{Sources.TMDB.value}_{MediaTypes.EPISODE.value}_{media_id}_{season_number}_{episode_number}"
+    cache_key = (
+        f"{Sources.TMDB.value}_{MediaTypes.EPISODE.value}_{media_id}_{season_number}_"
+        f"{episode_number}{_language_suffix(language)}"
+    )
     data = cache.get(cache_key)
 
     if isinstance(data, dict) and EPISODE_ERROR_CACHE_KEY in data:
@@ -2127,7 +2169,7 @@ def episode(media_id, season_number, episode_number):
             f"{base_url}/tv/{media_id}/season/{season_number}/episode/{episode_number}"
         )
         params = {
-            **base_params,
+            **base_params(language),
             "append_to_response": "credits",
         }
 
@@ -2157,7 +2199,7 @@ def episode(media_id, season_number, episode_number):
                 )
             handle_error(error)
 
-        tv_metadata = tv_with_seasons(media_id, [season_number])
+        tv_metadata = tv_with_seasons(media_id, [season_number], language)
         season_metadata = tv_metadata.get(f"season/{season_number}", {})
 
         # TMDB episode payload exposes both regular cast and guest stars.
@@ -2215,7 +2257,7 @@ def watch_provider_regions():
 
     if data is None:
         url = f"{base_url}/watch/providers/regions"
-        params = {**base_params}
+        params = {**base_params()}
 
         try:
             response = services.api_request(
@@ -2236,6 +2278,37 @@ def watch_provider_regions():
                 if not name:
                     name = key
                 data.append((key, name))
+
+        cache.set(cache_key, data)
+
+    return data
+
+
+def metadata_languages():
+    """Return the available metadata languages from The Movie Database."""
+    cache_key = f"{Sources.TMDB.value}_metadata_languages"
+    data = cache.get(cache_key)
+
+    if data is None:
+        url = f"{base_url}/configuration/languages"
+        params = {**base_params()}
+
+        try:
+            response = services.api_request(
+                Sources.TMDB.value,
+                "GET",
+                url,
+                params=params,
+            )
+        except requests.exceptions.HTTPError as error:
+            handle_error(error)
+
+        data = [("", f"Server Default ({settings.TMDB_LANG})")]
+        for lang in sorted(response, key=lambda entry: entry.get("english_name", "")):
+            code = lang.get("iso_639_1")
+            name = lang.get("english_name")
+            if code:
+                data.append((code, name or code))
 
         cache.set(cache_key, data)
 

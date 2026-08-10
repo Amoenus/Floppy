@@ -446,7 +446,7 @@ class ServicesTests(TestCase):
 
         self.assert_metadata_title_payload(result, "Test TV")
 
-        mock_tv.assert_called_once_with("1")
+        mock_tv.assert_called_once_with("1", None)
 
     @patch("app.providers.tvdb.tv")
     def test_get_media_metadata_tv_tvdb(self, mock_tv):
@@ -460,7 +460,11 @@ class ServicesTests(TestCase):
         )
 
         self.assert_metadata_title_payload(result, "Test TVDB Show")
-        mock_tv.assert_called_once_with("81189", routed_media_type=MediaTypes.TV.value)
+        mock_tv.assert_called_once_with(
+            "81189",
+            routed_media_type=MediaTypes.TV.value,
+            language=None,
+        )
 
     @patch("app.providers.tmdb.tv_with_seasons")
     def test_get_media_metadata_tv_with_seasons(self, mock_tv_with_seasons):
@@ -476,7 +480,7 @@ class ServicesTests(TestCase):
 
         self.assert_metadata_title_payload(result, "Test TV with Seasons")
 
-        mock_tv_with_seasons.assert_called_once_with("1", [1, 2])
+        mock_tv_with_seasons.assert_called_once_with("1", [1, 2], None)
 
     @patch("app.providers.tvdb.tv_with_seasons")
     def test_get_media_metadata_tv_with_seasons_tvdb(self, mock_tv_with_seasons):
@@ -495,6 +499,7 @@ class ServicesTests(TestCase):
             "81189",
             [0, 1],
             routed_media_type=MediaTypes.TV.value,
+            language=None,
         )
 
     @patch("app.providers.tmdb.tv_with_seasons")
@@ -513,7 +518,7 @@ class ServicesTests(TestCase):
 
         self.assert_metadata_title_payload(result, "Test Season")
 
-        mock_tv_with_seasons.assert_called_once_with("1", [1])
+        mock_tv_with_seasons.assert_called_once_with("1", [1], None)
 
     @patch("app.providers.tmdb.episode")
     def test_get_media_metadata_episode(self, mock_episode):
@@ -530,7 +535,7 @@ class ServicesTests(TestCase):
 
         self.assert_metadata_title_payload(result, "Test Episode")
 
-        mock_episode.assert_called_once_with("1", 1, "2")
+        mock_episode.assert_called_once_with("1", 1, "2", None)
 
     @patch("app.providers.tmdb.movie")
     def test_get_media_metadata_movie(self, mock_movie):
@@ -545,7 +550,7 @@ class ServicesTests(TestCase):
 
         self.assert_metadata_title_payload(result, "Test Movie")
 
-        mock_movie.assert_called_once_with("1")
+        mock_movie.assert_called_once_with("1", None)
 
     @patch("app.providers.igdb.game")
     def test_get_media_metadata_game(self, mock_game):
@@ -665,7 +670,7 @@ class ServicesTests(TestCase):
 
         self.assertEqual(cm.exception.provider, Sources.TMDB.value)
 
-        mock_episode.assert_called_once_with("1396", 1, "3")
+        mock_episode.assert_called_once_with("1396", 1, "3", None)
 
     @patch("app.providers.hardcover.book")
     def test_get_media_metadata_hardcover_book(self, mock_book):
@@ -706,7 +711,7 @@ class ServicesTests(TestCase):
         )
 
         self.assertEqual(result, {"results": []})
-        mock_search.assert_called_once_with(MediaTypes.ANIME.value, "test", 1)
+        mock_search.assert_called_once_with(MediaTypes.ANIME.value, "test", 1, None)
 
     @patch("app.providers.mangaupdates.search")
     def test_search_manga_mangaupdates(self, mock_search):
@@ -744,7 +749,7 @@ class ServicesTests(TestCase):
 
         self.assertEqual(result, [{"title": "Test TV"}])
 
-        mock_search.assert_called_once_with(MediaTypes.TV.value, "test", 1)
+        mock_search.assert_called_once_with(MediaTypes.TV.value, "test", 1, None)
 
     @patch("app.providers.tmdb.search")
     def test_search_movie(self, mock_search):
@@ -755,7 +760,7 @@ class ServicesTests(TestCase):
 
         self.assertEqual(result, [{"title": "Test Movie"}])
 
-        mock_search.assert_called_once_with(MediaTypes.MOVIE.value, "test", 1)
+        mock_search.assert_called_once_with(MediaTypes.MOVIE.value, "test", 1, None)
 
     @patch("app.providers.igdb.search")
     def test_search_game(self, mock_search):

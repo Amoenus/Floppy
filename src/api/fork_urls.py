@@ -29,6 +29,11 @@ urlpatterns = [
         name="api_media_episode_drop",
     ),
     re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/watch/?$",
+        fork_views_tracking.MediaMovieWatchView.as_view(),
+        name="api_media_movie_watch",
+    ),
+    re_path(
         r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/(?P<season_number>\d+)/episodes/(?P<episode_number>\d+)/score/?$",
         fork_views_metadata.MediaEpisodeScoreView.as_view(),
         name="api_media_episode_score",

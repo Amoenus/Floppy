@@ -302,6 +302,72 @@ class ImportStremioTests(TestCase):
         )
         self.assertEqual(episode_numbers, {1, 2})
 
+    def test_recurring_sync_advances_series_without_duplicating_episodes(self):
+        """A re-sync of an already-tracked show adds new episodes only once.
+
+        Regression test for #580: once an already-tracked TV show is no
+        longer skipped outright by mode="new", re-syncing it must not
+        re-append the episodes a prior sync already recorded (Episode rows
+        have no per-item uniqueness - each row is a watch event).
+        """
+        video_ids = [f"tt0903747:1:{episode}" for episode in range(1, 4)]
+
+        first_sync_items = [
+            {
+                "_id": "tt0903747",
+                "type": "series",
+                "name": "Breaking Bad",
+                "removed": False,
+                "temp": False,
+                "state": {
+                    "watched": encode_watched_bitfield(video_ids, {"tt0903747:1:1"}),
+                    "lastWatched": "2023-01-01T00:00:00Z",
+                    "video_id": "tt0903747:1:1",
+                },
+            },
+        ]
+        self._run_import(first_sync_items, cinemeta_videos={"tt0903747": video_ids})
+
+        self.assertEqual(
+            Episode.objects.filter(item__media_id="1396").count(),
+            1,
+        )
+        tv_obj = TV.objects.get(item__media_id="1396")
+        self.assertEqual(tv_obj.status, Status.IN_PROGRESS.value)
+
+        second_sync_items = [
+            {
+                "_id": "tt0903747",
+                "type": "series",
+                "name": "Breaking Bad",
+                "removed": False,
+                "temp": False,
+                "state": {
+                    "watched": encode_watched_bitfield(
+                        video_ids,
+                        {"tt0903747:1:1", "tt0903747:1:2"},
+                    ),
+                    "lastWatched": "2023-01-02T00:00:00Z",
+                    "video_id": "tt0903747:1:2",
+                },
+            },
+        ]
+        self._run_import(second_sync_items, cinemeta_videos={"tt0903747": video_ids})
+
+        episode_numbers = set(
+            Episode.objects.filter(item__media_id="1396").values_list(
+                "item__episode_number",
+                flat=True,
+            ),
+        )
+        self.assertEqual(episode_numbers, {1, 2})
+        self.assertEqual(Episode.objects.filter(item__media_id="1396").count(), 2)
+
+        tv_obj.refresh_from_db()
+        self.assertEqual(tv_obj.status, Status.IN_PROGRESS.value)
+        season = Season.objects.get(item__media_id="1396")
+        self.assertEqual(season.status, Status.IN_PROGRESS.value)
+
     def test_series_reuses_season_and_episode_items_from_shows_bucket(self):
         """Season/episode items already tracked in the show's bucket are reused."""
         video_ids = [f"tt0903747:1:{episode}" for episode in range(1, 4)]
@@ -439,7 +505,7 @@ class ImportStremioTests(TestCase):
         self.assertEqual(episode.item.episode_number, 2)
 
     def test_new_mode_skips_existing(self):
-        """Mode "new" leaves existing media untouched."""
+        """Mode "new" never overrides a user-finalized status like Dropped."""
         item, _ = Item.objects.get_or_create(
             media_id="278",
             source=Sources.TMDB.value,
@@ -467,6 +533,47 @@ class ImportStremioTests(TestCase):
         self.assertNotIn(MediaTypes.MOVIE.value, imported_counts)
         movie = Movie.objects.get(item=item)
         self.assertEqual(movie.status, Status.DROPPED.value)
+
+    def test_new_mode_advances_in_progress_movie_to_completed(self):
+        """Mode "new" flips an already-tracked In progress movie to Completed.
+
+        Regression test for #580: the Stremio webhook only ever marks a
+        movie In progress on playback start and relies on the recurring
+        (mode="new") library sync to pick up completion. Before this fix,
+        should_process_media's blanket "new mode" skip meant an
+        already-tracked movie's status was never recomputed.
+        """
+        item, _ = Item.objects.get_or_create(
+            media_id="278",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            defaults={"title": "The Shawshank Redemption", "image": "none.svg"},
+        )
+        Movie.objects.create(
+            item=item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+
+        library_items = [
+            {
+                "_id": "tt0111161",
+                "type": "movie",
+                "name": "The Shawshank Redemption",
+                "removed": False,
+                "temp": False,
+                "state": {
+                    "timesWatched": 1,
+                    "lastWatched": "2023-02-01T00:00:00Z",
+                },
+            },
+        ]
+        self._run_import(library_items, mode="new")
+
+        movie = Movie.objects.get(item=item)
+        self.assertEqual(movie.status, Status.COMPLETED.value)
+        self.assertEqual(movie.progress, 1)
+        self.assertIsNotNone(movie.end_date)
 
     def test_overwrite_mode_replaces_existing(self):
         """Mode "overwrite" replaces existing media."""

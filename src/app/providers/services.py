@@ -571,6 +571,7 @@ def get_media_metadata(
     source,
     season_numbers=None,
     episode_number=None,
+    language=None,
 ):
     """Return the metadata for the selected media."""
     if media_type == MediaTypes.MUSIC.value and source == Sources.MANUAL.value:
@@ -597,7 +598,7 @@ def get_media_metadata(
 
     def tmdb_season_metadata():
         """Return TMDB season metadata or raise a not-found error."""
-        seasons = tmdb.tv_with_seasons(media_id, season_numbers)
+        seasons = tmdb.tv_with_seasons(media_id, season_numbers, language)
         season_key = f"season/{season_numbers[0]}"
         if season_key not in seasons:
             raise_not_found_error(
@@ -619,7 +620,7 @@ def get_media_metadata(
 
     def tvdb_series_metadata(routed_media_type=MediaTypes.TV.value):
         """Return TVDB series metadata for TV or grouped anime routes."""
-        return tvdb.tv(media_id, routed_media_type=routed_media_type)
+        return tvdb.tv(media_id, routed_media_type=routed_media_type, language=language)
 
     def tvdb_series_with_seasons(routed_media_type=MediaTypes.TV.value):
         """Return TVDB season bundle for TV or grouped anime routes."""
@@ -627,6 +628,7 @@ def get_media_metadata(
             media_id,
             season_numbers,
             routed_media_type=routed_media_type,
+            language=language,
         )
 
     def tvdb_season_metadata(routed_media_type=MediaTypes.TV.value):
@@ -645,7 +647,7 @@ def get_media_metadata(
         MediaTypes.ANIME.value: lambda: (
             mal.anime(media_id)
             if source == Sources.MAL.value
-            else tmdb.tv(media_id)
+            else tmdb.tv(media_id, language)
             | {
                 "media_type": MediaTypes.ANIME.value,
                 "identity_media_type": MediaTypes.TV.value,
@@ -660,12 +662,12 @@ def get_media_metadata(
             else mal.manga(media_id)
         ),
         MediaTypes.TV.value: lambda: (
-            tmdb.tv(media_id)
+            tmdb.tv(media_id, language)
             if source == Sources.TMDB.value
             else tvdb_series_metadata(MediaTypes.TV.value)
         ),
         "tv_with_seasons": lambda: (
-            tmdb.tv_with_seasons(media_id, season_numbers)
+            tmdb.tv_with_seasons(media_id, season_numbers, language)
             if source == Sources.TMDB.value
             else tvdb_series_with_seasons(MediaTypes.TV.value)
         ),
@@ -679,15 +681,17 @@ def get_media_metadata(
                 media_id,
                 season_numbers[0],
                 episode_number,
+                language,
             )
             if source == Sources.TMDB.value
             else tvdb.episode(
                 media_id,
                 season_numbers[0],
                 episode_number,
+                language=language,
             )
         ),
-        MediaTypes.MOVIE.value: lambda: tmdb.movie(media_id),
+        MediaTypes.MOVIE.value: lambda: tmdb.movie(media_id, language),
         MediaTypes.GAME.value: lambda: igdb.game(media_id),
         MediaTypes.BOOK.value: lambda: (
             hardcover.book(media_id)
@@ -1053,7 +1057,16 @@ def search_by_id(media_type, query, source=None):
     return helpers.format_search_response(1, 1, 1, [result])
 
 
-def search(media_type, query, page, source=None, limit=None, offset=None, user=None):
+def search(
+    media_type,
+    query,
+    page,
+    source=None,
+    limit=None,
+    offset=None,
+    user=None,
+    language=None,
+):
     """Search for media based on the query and return the results."""
     if source == Sources.MANUAL.value:
         return manual.search(
@@ -1092,27 +1105,27 @@ def search(media_type, query, page, source=None, limit=None, offset=None, user=N
             mal.search(media_type, query, page)
             if source == Sources.MAL.value
             else _annotate_grouped_anime_results(
-                tmdb.search(MediaTypes.TV.value, query, page),
+                tmdb.search(MediaTypes.TV.value, query, page, language),
                 source=Sources.TMDB.value,
             )
             if source == Sources.TMDB.value
-            else tvdb.search(media_type, query, page)
+            else tvdb.search(media_type, query, page, language)
         ),
         MediaTypes.TV.value: lambda: (
-            tmdb.search(media_type, query, page)
+            tmdb.search(media_type, query, page, language)
             if source == Sources.TMDB.value
-            else tvdb.search(media_type, query, page)
+            else tvdb.search(media_type, query, page, language)
         ),
-        MediaTypes.MOVIE.value: lambda: tmdb.search(media_type, query, page),
+        MediaTypes.MOVIE.value: lambda: tmdb.search(media_type, query, page, language),
         MediaTypes.SEASON.value: lambda: (
-            tmdb.search(MediaTypes.TV.value, query, page)
+            tmdb.search(MediaTypes.TV.value, query, page, language)
             if source == Sources.TMDB.value
-            else tvdb.search(MediaTypes.TV.value, query, page)
+            else tvdb.search(MediaTypes.TV.value, query, page, language)
         ),
         MediaTypes.EPISODE.value: lambda: (
-            tmdb.search(MediaTypes.TV.value, query, page)
+            tmdb.search(MediaTypes.TV.value, query, page, language)
             if source == Sources.TMDB.value
-            else tvdb.search(MediaTypes.TV.value, query, page)
+            else tvdb.search(MediaTypes.TV.value, query, page, language)
         ),
         MediaTypes.GAME.value: lambda: igdb.search(query, page),
         MediaTypes.BOOK.value: lambda: (

@@ -47,6 +47,14 @@ class Media(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     item = models.ForeignKey(Item, on_delete=models.CASCADE)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    import_run = models.ForeignKey(
+        "integrations.ImportRun",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+        help_text="The import run that created or last touched this row, if any.",
+    )
     score = models.DecimalField(
         null=True,
         blank=True,
@@ -836,6 +844,77 @@ class Movie(Media):
     """Model for movies."""
 
     tracker = FieldTracker()
+
+    def watch(self, end_date, external_id=None):
+        """Create a play of the movie, returning (play, created)."""
+        if external_id:
+            existing = self.plays.filter(external_id=external_id).first()
+            if existing:
+                return existing, False
+
+        if not self.plays.exists() and self.end_date:
+            # lazily preserve the pre-existing watch so it isn't lost once plays start
+            MoviePlay.objects.create(movie=self, end_date=self.end_date)
+
+        play = MoviePlay.objects.create(
+            movie=self,
+            end_date=end_date,
+            external_id=external_id or None,
+        )
+
+        if self.end_date is None or end_date > self.end_date:
+            self.end_date = end_date
+            self.status = Status.COMPLETED.value
+            self.save(update_fields=["end_date", "status"])
+
+        return play, True
+
+    def unwatch(self, external_id=None):
+        """Delete a play of the movie, returning the deleted play (or None)."""
+        plays = self.plays.all()
+        play = (
+            plays.filter(external_id=external_id).first()
+            if external_id
+            else plays.order_by("-end_date", "-id").first()
+        )
+
+        if play is None:
+            return None
+
+        play.delete()
+
+        latest = self.plays.order_by("-end_date", "-id").first()
+        self.end_date = latest.end_date if latest else None
+        self.save(update_fields=["end_date"])
+
+        return play
+
+
+class MoviePlay(models.Model):
+    """A single watch (play) of a movie."""
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    movie = models.ForeignKey(Movie, on_delete=models.CASCADE, related_name="plays")
+    end_date = models.DateTimeField(null=True, blank=True)
+    external_id = models.CharField(max_length=255, null=True, blank=True)
+
+    class Meta:
+        """Meta options for MoviePlay."""
+
+        ordering = ["movie", "-end_date", "-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["movie", "external_id"],
+                name="app_movieplay_unique_movie_external_id",
+                condition=models.Q(external_id__isnull=False) & ~models.Q(
+                    external_id="",
+                ),
+            ),
+        ]
+
+    def __str__(self):
+        """Return a description of the play."""
+        return f"{self.movie} play ({self.end_date})"
 
 
 class Game(Media):

@@ -4,6 +4,7 @@ import logging
 from io import BytesIO
 
 import apprise
+from django.apps import apps
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import update_session_auth_hash
@@ -27,7 +28,7 @@ from app.providers import tmdb
 from app.services import metadata_resolution
 from app.templatetags import app_tags
 from integrations import exports, plex
-from integrations.models import PlexAccount
+from integrations.models import ImportRun, LastFMAccount, PlexAccount
 from integrations.plex_watchlist import WATCHLIST_TASK_NAME
 from users import cache_management
 from users.forms import (
@@ -797,6 +798,13 @@ def preferences(request):
     except Exception as exc:  # pragma: no cover - defensive provider fallback
         logger.warning("Could not load TMDB watch provider regions: %s", exc)
         watch_provider_regions = [("UNSET", "Not set")]
+    try:
+        metadata_language_choices = tmdb.metadata_languages()
+    except Exception as exc:  # pragma: no cover - defensive provider fallback
+        logger.warning("Could not load TMDB metadata languages: %s", exc)
+        metadata_language_choices = [
+            ("", f"Server Default ({settings.TMDB_LANG})"),
+        ]
     tv_metadata_source_choices = [
         (choice.value, choice.label)
         for choice in metadata_resolution.available_metadata_sources(
@@ -1045,6 +1053,17 @@ def preferences(request):
             request.user.watch_provider_region = "UNSET"
             fields_to_update.append("watch_provider_region")
 
+        metadata_language = request.POST.get("metadata_language", "")
+        if metadata_language in {
+            choice[0] for choice in metadata_language_choices
+        }:
+            if request.user.metadata_language != metadata_language:
+                request.user.metadata_language = metadata_language
+                fields_to_update.append("metadata_language")
+        elif request.user.metadata_language != "":
+            request.user.metadata_language = ""
+            fields_to_update.append("metadata_language")
+
         if (
             tv_metadata_source_default
             in {choice[0] for choice in tv_metadata_source_choices}
@@ -1117,6 +1136,7 @@ def preferences(request):
         "auto_pause_rules_json": json.dumps(request.user.auto_pause_rules or []),
         "library_labels_json": json.dumps(library_labels),
         "watch_provider_choices": watch_provider_regions,
+        "metadata_language_choices": metadata_language_choices,
         "tv_metadata_source_choices": tv_metadata_source_choices,
         "anime_metadata_source_choices": anime_metadata_source_choices,
         "anime_library_mode_choices": AnimeLibraryModeChoices.choices,
@@ -1332,6 +1352,7 @@ def import_data_activity(request):
     context = {
         "user": user,
         "import_tasks": user.get_import_tasks(),
+        "import_runs": ImportRun.objects.filter(user=user).order_by("-started_at")[:10],
     }
     return render(request, "users/components/import_activity.html", context)
 
@@ -1472,22 +1493,71 @@ def about(request):
 
 
 @require_POST
+def rollback_import_run(request, run_id):
+    """Delete the media rows created or touched by one import run.
+
+    Music is excluded: its rows are mutated in place (progress incremented
+    per scrobble) rather than inserted per play, so a plain delete-by-run
+    could destroy plays from other runs or manual entries sharing the same
+    row. Music rollback needs a history-based revert instead (unsupported
+    for now).
+    """
+    run = get_object_or_404(ImportRun, id=run_id, user=request.user)
+
+    if run.status == ImportRun.Status.RUNNING:
+        messages.error(request, "Cancel the import before rolling it back.")
+        return redirect("import_data")
+
+    rollback_media_types = [
+        media_type
+        for media_type in MediaTypes.values
+        if media_type not in (MediaTypes.EPISODE.value, MediaTypes.MUSIC.value)
+    ]
+
+    total_deleted = 0
+    for media_type in rollback_media_types:
+        model = apps.get_model(app_label="app", model_name=media_type)
+        deleted_count, _ = model.objects.filter(
+            user=request.user, import_run=run
+        ).delete()
+        total_deleted += deleted_count
+
+    if total_deleted:
+        messages.success(request, f"Removed {total_deleted} item(s) from this import.")
+    else:
+        messages.info(request, "Nothing to remove for this import.")
+    return redirect("import_data")
+
+
+@require_POST
 def delete_import_schedule(request):
     """Delete an import schedule."""
     task_name = request.POST.get("task_name")
     try:
-        task = PeriodicTask.objects.get(
-            name=task_name,
-            kwargs__contains=f'"user_id": {request.user.id}',
-        )
-        if task.task == WATCHLIST_TASK_NAME:
-            PlexAccount.objects.filter(user=request.user).update(
-                watchlist_sync_enabled=False,
-            )
-        task.delete()
-        messages.success(request, "Import schedule deleted.")
+        task = PeriodicTask.objects.get(name=task_name)
     except PeriodicTask.DoesNotExist:
         messages.error(request, "Import schedule not found.")
+        return redirect("import_data")
+
+    # Last.fm polling is a single shared task covering every connected
+    # user (it has no per-user kwargs), so it can never match the
+    # kwargs__contains ownership check below. "Deleting" it for one user
+    # can only mean disconnecting that user's account.
+    if task.task == "Poll Last.fm for all users":
+        LastFMAccount.objects.filter(user=request.user).delete()
+        messages.info(request, "Disconnected Last.fm.")
+        return redirect("import_data")
+
+    if not task.kwargs or f'"user_id": {request.user.id}' not in task.kwargs:
+        messages.error(request, "Import schedule not found.")
+        return redirect("import_data")
+
+    if task.task == WATCHLIST_TASK_NAME:
+        PlexAccount.objects.filter(user=request.user).update(
+            watchlist_sync_enabled=False,
+        )
+    task.delete()
+    messages.success(request, "Import schedule deleted.")
     return redirect("import_data")
 
 

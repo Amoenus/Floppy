@@ -1,9 +1,10 @@
+import datetime
 from unittest.mock import patch
 from uuid import UUID
 
 from django.utils import timezone
 
-from app.models import MediaTypes, Movie, Sources, Status
+from app.models import MediaTypes, Movie, MoviePlay, Sources, Status
 
 from .base import FloppyApiTestCase
 from .helpers import (
@@ -1093,6 +1094,77 @@ class MediaCoreTests(FloppyApiTestCase):
         )
 
         self.assertEqual(response.status_code, 404)
+
+    def test_media_consumption_history_untouched_movie_unchanged(self):
+        """A movie with zero MoviePlay rows returns the tracker row as before."""
+        movie_item = self.items_by_type[MediaTypes.MOVIE.value][0]
+        response = self.call_api(
+            "get",
+            "api_media_consumption_history",
+            args=(MediaTypes.MOVIE.value, movie_item.source, movie_item.media_id),
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        check_pagination_structure(
+            self,
+            payload["pagination"],
+            total=1,
+            limit=20,
+            offset=0,
+        )
+        self.assertEqual(
+            payload["results"][0]["consumption_id"],
+            self.movie_medias[0].id,
+        )
+
+    def test_media_consumption_history_shows_multiple_movie_plays(self):
+        """Once a movie has MoviePlay rows, history lists each play separately."""
+        movie = self.movie_medias[0]
+        movie_item = self.items_by_type[MediaTypes.MOVIE.value][0]
+        play_one, _ = movie.watch(datetime.datetime(2024, 1, 1, tzinfo=datetime.UTC))
+        play_two, _ = movie.watch(datetime.datetime(2024, 6, 1, tzinfo=datetime.UTC))
+
+        response = self.call_api(
+            "get",
+            "api_media_consumption_history",
+            args=(MediaTypes.MOVIE.value, movie_item.source, movie_item.media_id),
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        check_pagination_structure(
+            self,
+            payload["pagination"],
+            total=2,
+            limit=20,
+            offset=0,
+        )
+        returned_ids = {entry["consumption_id"] for entry in payload["results"]}
+        self.assertEqual(returned_ids, {play_one.id, play_two.id})
+
+    def test_media_consumption_entry_detail_delete_removes_movie_play(self):
+        """Entry-detail DELETE finds a MoviePlay id once the movie has plays."""
+        movie = self.movie_medias[0]
+        movie_item = self.items_by_type[MediaTypes.MOVIE.value][0]
+        play, _ = movie.watch(datetime.datetime(2024, 1, 1, tzinfo=datetime.UTC))
+
+        response = self.call_api(
+            "delete",
+            "api_media_consumption_entry_detail",
+            args=(
+                MediaTypes.MOVIE.value,
+                movie_item.source,
+                movie_item.media_id,
+                play.id,
+            ),
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 204)
+        self.assertFalse(MoviePlay.objects.filter(id=play.id).exists())
 
     def test_media_consumption_entry_detail_delete_removes_history_entry(self):
         """Entry-detail DELETE should remove an existing consumption row."""

@@ -3,7 +3,7 @@
 import logging
 import re
 from collections import defaultdict
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from http import HTTPStatus
 
 import urllib3
@@ -37,6 +37,14 @@ logger = logging.getLogger(__name__)
 MAX_SKIPPED_USER_SAMPLES = 5
 RATING_SCALE_MAX = 10
 RATING_PERCENTAGE_SCALE_MAX = 100
+
+# Window used to match an imported history record against a pre-existing
+# row (e.g. one already created by a live webhook) for the same item.
+# Cross-source timestamps rarely match exactly - a live webhook's timestamp
+# and Plex's own recorded viewedAt for the same session can differ by close
+# to the item's runtime - so this is a generous flat window rather than an
+# exact match. See issue #415.
+EXISTING_ROW_DEDUPE_WINDOW = timedelta(hours=3)
 
 
 def importer(library, user, mode):
@@ -79,8 +87,13 @@ class PlexHistoryImporter:
         self._episode_records: list[dict] = []
         self._movie_ids: set[str] = set()
         self._tv_ids: set[str] = set()
-        self._existing_movie_keys: set[tuple[str, datetime]] = set()
-        self._existing_episode_keys: set[tuple[str, int, int, datetime]] = set()
+        # media_id[, season, episode] -> existing end_date timestamps, used for a
+        # windowed (not exact-match) duplicate check against cross-source rows
+        # (e.g. a row already created by a live webhook). See issue #415.
+        self._existing_movie_keys: dict[str, list[datetime]] = defaultdict(list)
+        self._existing_episode_keys: dict[tuple[str, int, int], list[datetime]] = (
+            defaultdict(list)
+        )
         self._import_movie_keys: set[tuple[str, datetime]] = set()
         self._import_episode_keys: set[tuple] = set()
         self._movie_metadata_cache: dict[str, dict] = {}
@@ -1736,7 +1749,7 @@ class PlexHistoryImporter:
         return self._preserved_scores.get(key)
 
     def _build_existing_dedupe_sets(self):
-        """Collect existing movie/episode keys for replay-safe imports."""
+        """Collect existing movie/episode end_dates for replay-safe imports."""
         if self._movie_ids:
             existing_movies = app.models.Movie.objects.filter(
                 user=self.user,
@@ -1746,8 +1759,7 @@ class PlexHistoryImporter:
             for movie in existing_movies:
                 if not movie.end_date:
                     continue
-                key = (movie.item.media_id, self._round_datetime(movie.end_date))
-                self._existing_movie_keys.add(key)
+                self._existing_movie_keys[movie.item.media_id].append(movie.end_date)
 
         if self._tv_ids:
             existing_episodes = app.models.Episode.objects.filter(
@@ -1762,9 +1774,8 @@ class PlexHistoryImporter:
                     episode.item.media_id,
                     episode.item.season_number,
                     episode.item.episode_number,
-                    self._round_datetime(episode.end_date),
                 )
-                self._existing_episode_keys.add(key)
+                self._existing_episode_keys[key].append(episode.end_date)
 
     def _build_bulk_media(self):
         """Convert collected history records into bulk media instances."""
@@ -2168,6 +2179,17 @@ class PlexHistoryImporter:
 
         return self._tv_metadata_cache[tmdb_id].get(season_key)
 
+    def _has_nearby_timestamp(
+        self,
+        candidates: list[datetime],
+        watched_at: datetime,
+    ) -> bool:
+        """Check whether any candidate timestamp falls within the dedupe window."""
+        return any(
+            abs(candidate - watched_at) < EXISTING_ROW_DEDUPE_WINDOW
+            for candidate in candidates
+        )
+
     def _should_skip_movie_record(self, record: dict) -> bool:
         """Check for duplicate movie history records."""
         key = (record["tmdb_id"], self._round_datetime(record["watched_at"]))
@@ -2177,7 +2199,10 @@ class PlexHistoryImporter:
 
         self._import_movie_keys.add(key)
 
-        if self.mode == "new" and key in self._existing_movie_keys:
+        if self.mode == "new" and self._has_nearby_timestamp(
+            self._existing_movie_keys.get(record["tmdb_id"], []),
+            record["watched_at"],
+        ):
             self.summary_counts["skipped_existing"] += 1
             return True
 
@@ -2197,9 +2222,11 @@ class PlexHistoryImporter:
                 record["tmdb_id"],
                 record["season_number"],
                 record["episode_number"],
-                self._round_datetime(record["watched_at"]),
             )
-            if existing_key in self._existing_episode_keys:
+            if self._has_nearby_timestamp(
+                self._existing_episode_keys.get(existing_key, []),
+                record["watched_at"],
+            ):
                 self.summary_counts["skipped_existing"] += 1
                 return True
 

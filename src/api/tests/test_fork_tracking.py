@@ -9,7 +9,7 @@ from django.db import connection
 from django.test.utils import CaptureQueriesContext
 
 from app import history_cache
-from app.models import Episode, ItemTag, MediaTypes, Movie, Sources, Tag
+from app.models import Episode, ItemTag, MediaTypes, Movie, MoviePlay, Sources, Tag
 
 from .base import FloppyApiTestCase
 
@@ -161,6 +161,153 @@ class EpisodeWatchTests(FloppyApiTestCase):
                 end_date=None,
             ).exists(),
         )
+
+
+class MovieWatchTests(FloppyApiTestCase):
+    """POST/DELETE movie watch (issue #577)."""
+
+    def _watch(self, media_id="701", payload=None):
+        return self.call_api(
+            "post",
+            "api_media_movie_watch",
+            args=("movie", "tmdb", media_id),
+            payload=payload or {},
+            headers=self.auth_headers,
+        )
+
+    def _unwatch(self, media_id="701", params=None):
+        return self.call_api(
+            "delete",
+            "api_media_movie_watch",
+            args=("movie", "tmdb", media_id),
+            params=params,
+            headers=self.auth_headers,
+        )
+
+    def test_watch_creates_play(self):
+        """POST watch appends a MoviePlay with the given end_date."""
+        response = self._watch(payload={"end_date": "2024-03-05T00:00:00Z"})
+        self.assertEqual(response.status_code, HTTP.CREATED)
+        payload = response.json()
+        self.assertTrue(payload["end_date"].startswith("2024-03-05"))
+        self.assertTrue(
+            MoviePlay.objects.filter(
+                movie=self.movie_medias[0],
+                end_date__date="2024-03-05",
+            ).exists(),
+        )
+
+    def test_watch_defaults_end_date_to_now(self):
+        """POST watch without end_date uses now."""
+        response = self._watch()
+        self.assertEqual(response.status_code, HTTP.CREATED)
+        self.assertIsNotNone(response.json()["end_date"])
+
+    def test_watch_invalid_date_rejected(self):
+        """POST watch with a bad end_date returns 400."""
+        response = self._watch(payload={"end_date": "not-a-date"})
+        self.assertEqual(response.status_code, HTTP.BAD_REQUEST)
+
+    def test_watch_non_movie_rejected(self):
+        """POST watch on a non-movie media type returns 400."""
+        response = self.call_api(
+            "post",
+            "api_media_movie_watch",
+            args=("tv", "tmdb", "1001"),
+            payload={},
+            headers=self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.BAD_REQUEST)
+
+    def test_repeated_watch_creates_multiple_plays(self):
+        """Three watches with distinct dates leave three plays, not one."""
+        self._watch(payload={"end_date": "2023-05-14T21:30:00Z"})
+        self._watch(payload={"end_date": "2026-02-03T20:00:00Z"})
+        self._watch(payload={"end_date": "2026-07-19T22:15:00Z"})
+
+        self.assertEqual(
+            MoviePlay.objects.filter(movie=self.movie_medias[0]).count(),
+            3,
+        )
+        self.movie_medias[0].refresh_from_db()
+        self.assertEqual(
+            str(self.movie_medias[0].end_date.date()),
+            "2026-07-19",
+        )
+
+    def test_watch_lazily_backfills_preexisting_end_date(self):
+        """The movie's pre-existing end_date survives as a play on first watch()."""
+        movie = self.movie_medias[0]
+        movie.end_date = datetime.datetime(2020, 1, 1, tzinfo=datetime.UTC)
+        movie.save(update_fields=["end_date"])
+
+        self._watch(payload={"end_date": "2026-01-01T00:00:00Z"})
+
+        self.assertEqual(MoviePlay.objects.filter(movie=movie).count(), 2)
+        self.assertTrue(
+            MoviePlay.objects.filter(
+                movie=movie,
+                end_date__date="2020-01-01",
+            ).exists(),
+        )
+
+    def test_watch_idempotent_external_id_replay(self):
+        """A duplicate external_id is a no-op that returns the existing play."""
+        first = self._watch(
+            payload={"end_date": "2024-01-01T00:00:00Z", "external_id": "evt-1"},
+        )
+        second = self._watch(
+            payload={"end_date": "2024-06-01T00:00:00Z", "external_id": "evt-1"},
+        )
+        self.assertEqual(first.status_code, HTTP.CREATED)
+        self.assertEqual(second.status_code, HTTP.OK)
+        self.assertEqual(
+            first.json()["consumption_id"],
+            second.json()["consumption_id"],
+        )
+        self.assertEqual(
+            MoviePlay.objects.filter(movie=self.movie_medias[0]).count(),
+            1,
+        )
+
+    def test_unwatch_removes_most_recent_play(self):
+        """DELETE watch removes the most recent play only."""
+        self._watch(payload={"end_date": "2024-01-01T00:00:00Z"})
+        self._watch(payload={"end_date": "2024-02-01T00:00:00Z"})
+
+        response = self._unwatch()
+        self.assertEqual(response.status_code, HTTP.NO_CONTENT)
+
+        remaining = MoviePlay.objects.filter(movie=self.movie_medias[0])
+        self.assertEqual(remaining.count(), 1)
+        self.assertEqual(str(remaining.first().end_date.date()), "2024-01-01")
+        self.movie_medias[0].refresh_from_db()
+        self.assertEqual(
+            str(self.movie_medias[0].end_date.date()),
+            "2024-01-01",
+        )
+
+    def test_unwatch_by_external_id(self):
+        """DELETE watch with external_id targets that specific play."""
+        self._watch(payload={"end_date": "2024-01-01T00:00:00Z", "external_id": "a"})
+        self._watch(payload={"end_date": "2024-02-01T00:00:00Z", "external_id": "b"})
+
+        response = self._unwatch(params={"external_id": "a"})
+        self.assertEqual(response.status_code, HTTP.NO_CONTENT)
+
+        remaining = MoviePlay.objects.filter(movie=self.movie_medias[0])
+        self.assertEqual(remaining.count(), 1)
+        self.assertEqual(remaining.first().external_id, "b")
+
+    def test_unwatch_movie_with_no_plays_not_found(self):
+        """DELETE watch on a movie with zero plays returns 404."""
+        response = self._unwatch()
+        self.assertEqual(response.status_code, HTTP.NOT_FOUND)
+
+    def test_unwatch_untracked_movie_not_found(self):
+        """DELETE watch on an untracked movie returns 404."""
+        response = self._unwatch(media_id="999999")
+        self.assertEqual(response.status_code, HTTP.NOT_FOUND)
 
 
 class TagTests(FloppyApiTestCase):

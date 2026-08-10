@@ -87,6 +87,7 @@ class SearchTests(FloppyApiTestCase):
             limit=5,
             offset=2,
             user=self.user1,
+            language="en",
         )
 
         payload = response.json()

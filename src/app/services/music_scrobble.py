@@ -32,6 +32,7 @@ from app.services.music import (
     sync_artist_discography,
     sync_music_item_genres_from_album,
 )
+from integrations import import_progress
 
 logger = logging.getLogger(__name__)
 
@@ -1091,6 +1092,12 @@ def _update_music_entry(
             "start_date": played_at,
             "end_date": played_at,
         }
+        import_run_id = import_progress.get_current_import_run_id()
+        if import_run_id:
+            # get_or_create() only applies defaults on creation, so a fresh
+            # row can be fully populated (and thus never hit the `changed`
+            # save() below) -- tag provenance here too, not only there.
+            defaults["import_run_id"] = import_run_id
 
         music, created = Music.objects.get_or_create(
             item=item,
@@ -1166,6 +1173,9 @@ def _update_music_entry(
             changed = True
 
     if changed:
+        import_run_id = import_progress.get_current_import_run_id()
+        if import_run_id:
+            music.import_run_id = import_run_id
         music.save()
 
     return music

@@ -2143,3 +2143,306 @@ class TestPlexEpisodeResyncForExistingShow(TestCase):
         )
         self.assertEqual(episodes.count(), 2)
         self.assertEqual(episodes.last().item.episode_number, 2)
+
+
+class TestPlexImportCrossSourceDedup(TestCase):
+    """Regression test for issue #415.
+
+    A live webhook and a later Plex history import use different timestamp
+    sources for the same real watch (a live webhook's own capture time vs.
+    Plex's official per-history-entry viewedAt), so they can differ by up
+    to roughly the item's runtime. The import's existing-row check must
+    catch that as a duplicate instead of only matching an exact minute,
+    while a genuine rewatch well outside that window must still import.
+    """
+
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(username="dedupuser")
+        self.account = PlexAccount.objects.create(
+            user=self.user,
+            plex_token="token",
+            plex_username="dedupuser",
+            plex_account_id="333",
+        )
+        self.webhook_watched_at = timezone.now().replace(
+            second=0,
+            microsecond=0,
+            hour=8,
+            minute=0,
+        )
+
+    def _importer(self, mode="new"):
+        return PlexHistoryImporter(
+            user=self.user,
+            account=self.account,
+            mode=mode,
+            library="machine::1",
+        )
+
+    def _movie_ids(self, tmdb_id="900"):
+        return {
+            "tmdb_id": tmdb_id,
+            "tvdb_id": None,
+            "imdb_id": None,
+            "anidb_id": None,
+            "plex_guid": None,
+        }
+
+    def test_should_skip_movie_record_true_within_dedupe_window(self):
+        """`_should_skip_movie_record` flags an import record as a
+        duplicate when a pre-existing row (e.g. one already created by a
+        live webhook) for the same movie has an end_date within the
+        cross-source dedupe window (here, ~2h14m, matching the drift
+        observed in issue #415).
+
+        Exercised directly against `_should_skip_movie_record` rather than
+        the full `_record_movie_entry`/`_build_bulk_media` pipeline: Movie
+        imports have a separate, pre-existing "new mode + already tracked"
+        shortcut (`skip_existing=True` in `_should_process_media`) that
+        bails out before recording a record at all once any row exists for
+        the movie, which would mask whether the dedupe-window check itself
+        is correct.
+        """
+        movie_item, _ = Item.objects.get_or_create(
+            media_id="900",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            defaults={"title": "Dedup Movie", "image": "https://example.com/m.jpg"},
+        )
+        Movie.objects.create(
+            item=movie_item,
+            user=self.user,
+            status=Status.COMPLETED.value,
+            end_date=self.webhook_watched_at,
+        )
+
+        importer = self._importer()
+        importer._movie_ids.add("900")
+        importer._build_existing_dedupe_sets()
+
+        import_watched_at = self.webhook_watched_at + timezone.timedelta(
+            hours=2,
+            minutes=14,
+        )
+        record = {"tmdb_id": "900", "watched_at": import_watched_at}
+        self.assertTrue(importer._should_skip_movie_record(record))
+        self.assertEqual(importer.summary_counts["skipped_existing"], 1)
+
+    def test_should_skip_movie_record_false_outside_dedupe_window(self):
+        """A genuine rewatch well outside the dedupe window is not flagged
+        as a duplicate of the earlier watch.
+        """
+        movie_item, _ = Item.objects.get_or_create(
+            media_id="900",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            defaults={"title": "Dedup Movie", "image": "https://example.com/m.jpg"},
+        )
+        Movie.objects.create(
+            item=movie_item,
+            user=self.user,
+            status=Status.COMPLETED.value,
+            end_date=self.webhook_watched_at,
+        )
+
+        importer = self._importer()
+        importer._movie_ids.add("900")
+        importer._build_existing_dedupe_sets()
+
+        rewatch_at = self.webhook_watched_at + timezone.timedelta(hours=5)
+        record = {"tmdb_id": "900", "watched_at": rewatch_at}
+        self.assertFalse(importer._should_skip_movie_record(record))
+        self.assertEqual(importer.summary_counts["skipped_existing"], 0)
+
+    @patch("integrations.webhooks.anime_mappings.fetch_mapping_data", return_value={})
+    @patch("integrations.imports.plex.app.providers.tvdb.enabled", return_value=False)
+    def test_import_skips_episode_within_dedupe_window_of_webhook_row(
+        self,
+        _mock_tvdb_enabled,
+        _mock_mapping_data,
+    ):
+        """Same cross-source dedup behavior for TV episodes."""
+        tv_item, _ = Item.objects.get_or_create(
+            media_id="901",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            defaults={"title": "Dedup Show", "image": "https://example.com/t.jpg"},
+        )
+        tv_row = TV.objects.create(
+            item=tv_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        season_item, _ = Item.objects.get_or_create(
+            media_id="901",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=1,
+            defaults={"title": "Dedup Show", "image": "https://example.com/t.jpg"},
+        )
+        season_row = Season.objects.create(
+            item=season_item,
+            user=self.user,
+            related_tv=tv_row,
+            status=Status.IN_PROGRESS.value,
+        )
+        episode_item, _ = Item.objects.get_or_create(
+            media_id="901",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=1,
+            episode_number=8,
+            defaults={"title": "Episode 8", "image": "https://example.com/t.jpg"},
+        )
+        Episode.objects.create(
+            item=episode_item,
+            related_season=season_row,
+            end_date=self.webhook_watched_at,
+        )
+
+        importer = self._importer()
+        import_watched_at = self.webhook_watched_at + timezone.timedelta(
+            hours=2,
+            minutes=14,
+        )
+        metadata = {
+            "type": "episode",
+            "title": "Episode 8",
+            "grandparentTitle": "Dedup Show",
+            "parentIndex": 1,
+            "index": 8,
+            "viewedAt": int(import_watched_at.timestamp()),
+            "ratingKey": "rk-ep-dup",
+        }
+        ids = {
+            "tmdb_id": "901",
+            "tvdb_id": None,
+            "imdb_id": None,
+            "anidb_id": None,
+            "plex_guid": None,
+        }
+
+        recorded = importer._record_episode_entry(metadata, ids)
+        self.assertTrue(recorded)
+
+        importer._tv_metadata_cache = {
+            "901": {
+                "media_id": "901",
+                "title": "Dedup Show",
+                "original_title": "Dedup Show",
+                "localized_title": "Dedup Show",
+                "image": "https://example.com/t.jpg",
+                "season/1": {
+                    "image": "https://example.com/t-s1.jpg",
+                    "max_progress": 10,
+                    "episodes": [{"episode_number": 8}],
+                },
+            },
+        }
+
+        importer._build_existing_dedupe_sets()
+        importer._build_bulk_media()
+
+        self.assertEqual(importer.summary_counts["created"], 0)
+        self.assertEqual(importer.summary_counts["skipped_existing"], 1)
+        self.assertEqual(
+            Episode.objects.filter(related_season=season_row).count(),
+            1,
+        )
+
+    @patch("integrations.webhooks.anime_mappings.fetch_mapping_data", return_value={})
+    @patch("integrations.imports.plex.app.providers.tvdb.enabled", return_value=False)
+    def test_import_creates_episode_rewatch_outside_dedupe_window(
+        self,
+        _mock_tvdb_enabled,
+        _mock_mapping_data,
+    ):
+        """A genuine rewatch of the same episode well outside the dedupe
+        window still imports as a second watch.
+        """
+        tv_item, _ = Item.objects.get_or_create(
+            media_id="902",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            defaults={"title": "Rewatch Show", "image": "https://example.com/t.jpg"},
+        )
+        tv_row = TV.objects.create(
+            item=tv_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        season_item, _ = Item.objects.get_or_create(
+            media_id="902",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=1,
+            defaults={"title": "Rewatch Show", "image": "https://example.com/t.jpg"},
+        )
+        season_row = Season.objects.create(
+            item=season_item,
+            user=self.user,
+            related_tv=tv_row,
+            status=Status.IN_PROGRESS.value,
+        )
+        episode_item, _ = Item.objects.get_or_create(
+            media_id="902",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=1,
+            episode_number=1,
+            defaults={"title": "Episode 1", "image": "https://example.com/t.jpg"},
+        )
+        Episode.objects.create(
+            item=episode_item,
+            related_season=season_row,
+            end_date=self.webhook_watched_at,
+        )
+
+        importer = self._importer()
+        rewatch_at = self.webhook_watched_at + timezone.timedelta(hours=5)
+        metadata = {
+            "type": "episode",
+            "title": "Episode 1",
+            "grandparentTitle": "Rewatch Show",
+            "parentIndex": 1,
+            "index": 1,
+            "viewedAt": int(rewatch_at.timestamp()),
+            "ratingKey": "rk-ep-rewatch",
+        }
+        ids = {
+            "tmdb_id": "902",
+            "tvdb_id": None,
+            "imdb_id": None,
+            "anidb_id": None,
+            "plex_guid": None,
+        }
+
+        recorded = importer._record_episode_entry(metadata, ids)
+        self.assertTrue(recorded)
+
+        importer._tv_metadata_cache = {
+            "902": {
+                "media_id": "902",
+                "title": "Rewatch Show",
+                "original_title": "Rewatch Show",
+                "localized_title": "Rewatch Show",
+                "image": "https://example.com/t.jpg",
+                "season/1": {
+                    "image": "https://example.com/t-s1.jpg",
+                    "max_progress": 10,
+                    "episodes": [{"episode_number": 1}],
+                },
+            },
+        }
+
+        importer._build_existing_dedupe_sets()
+        importer._build_bulk_media()
+
+        self.assertEqual(importer.summary_counts["created"], 1)
+        self.assertEqual(importer.summary_counts["skipped_existing"], 0)
+        helpers.bulk_create_media(importer.bulk_media, self.user)
+        self.assertEqual(
+            Episode.objects.filter(related_season=season_row).count(),
+            2,
+        )

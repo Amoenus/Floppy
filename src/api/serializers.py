@@ -16,6 +16,7 @@ from app.models import (
     Manga,
     MediaTypes,
     Movie,
+    MoviePlay,
     Music,  # FORK: fork-only media type
     Podcast,  # FORK: fork-only media type
     Season,
@@ -515,9 +516,11 @@ class HistorySerializer(serializers.Serializer):
 
     def to_representation(self, instance):
         """Transform a user media instance into a watch history entry."""
-        # For Episode instances, use simplified structure
-        if isinstance(instance, Episode):
-            # FORK: episodes expose the same tracking details as other media.
+        # For Episode/MoviePlay instances (play-per-instance types with no
+        # standalone status/progress fields), use simplified structure.
+        if isinstance(instance, (Episode, MoviePlay)):
+            # FORK: episodes and movie plays expose the same tracking details
+            # as other media.
             return {
                 "consumption_id": instance.id,
                 "created": instance.created_at
@@ -528,10 +531,10 @@ class HistorySerializer(serializers.Serializer):
                 else None,
                 "progress": 1 if instance.end_date else 0,
                 "progressed_at": instance.end_date,
-                "status": get_media_status(instance.status),
-                "start_date": instance.start_date,
+                "status": get_media_status(getattr(instance, "status", None)),
+                "start_date": getattr(instance, "start_date", None),
                 "end_date": instance.end_date,
-                "notes": instance.notes,
+                "notes": getattr(instance, "notes", ""),
             }
         status = StatusField().to_representation(instance)
 

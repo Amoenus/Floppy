@@ -7,7 +7,7 @@ import logging
 import random
 import time
 
-from celery import shared_task
+from celery import current_task, shared_task
 from django.core.cache import cache
 from django.utils import timezone
 
@@ -260,8 +260,8 @@ def poll_all_koito_accounts():
 @shared_task(name="Import from Koito History")
 def import_koito_history(user_id, reset=False):
     """Import a user's full Koito history from the export endpoint."""
-    from integrations import koito_api, koito_sync
-    from integrations.models import KoitoAccount, LastFMHistoryImportStatus
+    from integrations import import_progress, koito_api, koito_sync
+    from integrations.models import ImportRun, KoitoAccount, LastFMHistoryImportStatus
     from integrations.webhooks.koito import KoitoScrobbleProcessor
 
     account = (
@@ -276,6 +276,9 @@ def import_koito_history(user_id, reset=False):
 
     if not getattr(account.user, "music_enabled", False):
         return {"message": "Music tracking is disabled."}
+
+    task_id = current_task.request.id if current_task and current_task.request else None
+    import_run = ImportRun.objects.create(user_id=user_id, source="koito", task_id=task_id)
 
     if reset:
         account.reset_history_import()
@@ -317,6 +320,13 @@ def import_koito_history(user_id, reset=False):
         try:
             base_url, api_key = koito_sync.get_account_credentials(account)
             export_payload = koito_api.get_export(base_url, api_key)
+
+            listens = koito_sync.export_to_listens(export_payload)
+            listens.sort(key=lambda listen: koito_api.listen_timestamp_uts(listen) or 0)
+
+            processor = KoitoScrobbleProcessor(base_url, api_key, account_id=account.id)
+            with import_progress.tracking(task_id, import_run.id):
+                stats = processor.process_listens(listens, account.user)
         except Exception as exc:
             account.refresh_from_db()
             account.history_import_status = LastFMHistoryImportStatus.FAILED
@@ -332,13 +342,11 @@ def import_koito_history(user_id, reset=False):
                     ],
                 ),
             )
+            ImportRun.objects.filter(id=import_run.id).update(
+                status=ImportRun.Status.FAILED,
+                finished_at=timezone.now(),
+            )
             raise
-
-        listens = koito_sync.export_to_listens(export_payload)
-        listens.sort(key=lambda listen: koito_api.listen_timestamp_uts(listen) or 0)
-
-        processor = KoitoScrobbleProcessor(base_url, api_key, account_id=account.id)
-        stats = processor.process_listens(listens, account.user)
 
         _refresh_koito_statistics(user_id, stats["affected_day_keys"])
 
@@ -354,6 +362,13 @@ def import_koito_history(user_id, reset=False):
                     "history_import_last_error_message",
                 ],
             ),
+        )
+        ImportRun.objects.filter(id=import_run.id).update(
+            status=ImportRun.Status.COMPLETED,
+            created_count=stats["processed"],
+            skipped_count=stats["skipped"],
+            failed_count=stats["errors"],
+            finished_at=timezone.now(),
         )
 
         _enqueue_koito_music_enrichment(user_id)

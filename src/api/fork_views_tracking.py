@@ -13,8 +13,9 @@ from rest_framework.response import Response
 
 from app import fork_services_history, history_cache_reader
 from app.fork_services_episode import drop_episode, resolve_or_create_season
+from app.fork_services_movie import resolve_or_create_movie
 from app.history_cache_utils import normalize_history_media_type_tokens
-from app.models import Episode, ItemTag, MediaTypes, Season, Tag
+from app.models import Episode, ItemTag, MediaTypes, Movie, Season, Tag
 from app.tasks import bulk_episode_plays_task
 
 from .helpers import (
@@ -27,7 +28,7 @@ from .helpers import (
     try_parse_datetime_input,
 )
 from .schema import MEDIA_TYPE_PARAM, MEDIA_TYPE_TV_ONLY_PARAM
-from .serializers import serialize_data
+from .serializers import HistorySerializer, serialize_data
 
 logger = logging.getLogger(__name__)
 
@@ -163,6 +164,105 @@ class MediaEpisodeWatchView(drf_views.APIView):
             )
 
         related_season.unwatch(int(episode_number))
+        return Response(status=HTTP.NO_CONTENT)
+
+
+# /api/v1/media/movie/[source]/[media_id]/watch/
+class MediaMovieWatchView(drf_views.APIView):
+    """Add or remove a watch (play) for a movie.
+
+    POST appends a dated play (mirroring episode watch); repeated calls
+    leave multiple plays instead of overwriting the tracker's end_date.
+    DELETE mirrors unwatching: the most recent play is removed. An optional
+    `external_id` makes both calls idempotent/targetable for callers that
+    replay the same event.
+    """
+
+    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
+    def post(self, request, media_type, source, media_id):
+        """Record a watch (play) for the movie."""
+        if media_type != MediaTypes.MOVIE.value:
+            return Response(
+                {"detail": "This endpoint is supported only for 'movie' media type."},
+                status=HTTP.BAD_REQUEST,
+            )
+        if not check_source_type(media_type, source):
+            return Response(
+                {"detail": f"Cannot query `{source}` for `{media_type}` media type"},
+                status=HTTP.BAD_REQUEST,
+            )
+
+        raw_end_date = request.data.get("end_date")
+        if raw_end_date in (None, ""):
+            end_date = timezone.now()
+        else:
+            try:
+                end_date = try_parse_datetime_input(raw_end_date)
+            except (TypeError, ValueError):
+                return Response(
+                    {"detail": "Invalid end_date format."},
+                    status=HTTP.BAD_REQUEST,
+                )
+
+        external_id = (request.data.get("external_id") or "").strip() or None
+
+        try:
+            movie = resolve_or_create_movie(request.user, media_id, source)
+        except Exception as e:
+            return Response(
+                {"detail": "Could not resolve movie.", "errors": str(e)},
+                status=HTTP.NOT_FOUND,
+            )
+
+        play, created = movie.watch(end_date, external_id=external_id)
+        status_code = HTTP.CREATED if created else HTTP.OK
+        return Response(
+            serialize_data(play, serializer_class=HistorySerializer),
+            status=status_code,
+        )
+
+    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
+    def delete(self, request, media_type, source, media_id):
+        """Remove a watch (play) of the movie.
+
+        Removes the most recent play by default, or the play matching an
+        `external_id` query parameter if provided.
+        """
+        if media_type != MediaTypes.MOVIE.value:
+            return Response(
+                {"detail": "This endpoint is supported only for 'movie' media type."},
+                status=HTTP.BAD_REQUEST,
+            )
+        if not check_source_type(media_type, source):
+            return Response(
+                {"detail": f"Cannot query `{source}` for `{media_type}` media type"},
+                status=HTTP.BAD_REQUEST,
+            )
+
+        movie = (
+            Movie.objects.filter(
+                item__media_id=media_id,
+                item__source=source,
+                item__media_type=MediaTypes.MOVIE.value,
+                user=request.user,
+            )
+            .order_by("id")
+            .first()
+        )
+        if movie is None:
+            return Response(
+                {"detail": "Movie not found or not tracked."},
+                status=HTTP.NOT_FOUND,
+            )
+
+        external_id = (request.GET.get("external_id") or "").strip() or None
+        play = movie.unwatch(external_id=external_id)
+        if play is None:
+            return Response(
+                {"detail": "Movie has no watches."},
+                status=HTTP.NOT_FOUND,
+            )
+
         return Response(status=HTTP.NO_CONTENT)
 
 

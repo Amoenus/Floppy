@@ -2,9 +2,10 @@ import logging
 import random
 import time
 
-from celery import shared_task
+from celery import current_task, shared_task
 from django.conf import settings
 from django.core.cache import cache
+from django.db.models import F
 from django.utils import timezone
 
 from app.log_safety import exception_summary
@@ -250,10 +251,10 @@ def poll_lastfm_for_user(user_id):
 
 
 @shared_task(name="Import from Last.fm History")
-def import_lastfm_history(user_id, reset=False):
+def import_lastfm_history(user_id, reset=False, import_run_id=None):
     """Import a user's historical Last.fm scrobbles in bounded chunks."""
-    from integrations import lastfm_api, lastfm_sync
-    from integrations.models import LastFMAccount, LastFMHistoryImportStatus
+    from integrations import import_progress, lastfm_api, lastfm_sync
+    from integrations.models import ImportRun, LastFMAccount, LastFMHistoryImportStatus
 
     account = (
         LastFMAccount.objects.filter(user_id=user_id).select_related("user").first()
@@ -264,6 +265,17 @@ def import_lastfm_history(user_id, reset=False):
             user_id,
         )
         return {"message": "No connected Last.fm account."}
+
+    task_id = current_task.request.id if current_task and current_task.request else None
+    # A fresh backfill (reset=True) always starts a new run; otherwise reuse the
+    # run passed in from the previous self-requeued chunk, if any.
+    import_run = None
+    if import_run_id and not reset:
+        import_run = ImportRun.objects.filter(id=import_run_id).first()
+    if import_run is None:
+        import_run = ImportRun.objects.create(user_id=user_id, source="lastfm", task_id=task_id)
+    elif task_id and import_run.task_id != task_id:
+        ImportRun.objects.filter(id=import_run.id).update(task_id=task_id)
 
     if reset:
         cutoff_uts = (account.last_fetch_timestamp_uts or int(time.time())) - 1
@@ -330,13 +342,14 @@ def import_lastfm_history(user_id, reset=False):
         )
 
         try:
-            sync_result = lastfm_sync.sync_lastfm_account(
-                account,
-                to_timestamp_uts=account.history_import_cutoff_uts,
-                page_start=account.history_import_next_page,
-                max_pages=getattr(settings, "LASTFM_HISTORY_PAGES_PER_TASK", 5),
-                fast_mode=True,
-            )
+            with import_progress.tracking(task_id, import_run.id):
+                sync_result = lastfm_sync.sync_lastfm_account(
+                    account,
+                    to_timestamp_uts=account.history_import_cutoff_uts,
+                    page_start=account.history_import_next_page,
+                    max_pages=getattr(settings, "LASTFM_HISTORY_PAGES_PER_TASK", 5),
+                    fast_mode=True,
+                )
         except lastfm_api.LastFMClientError as exc:
             account.refresh_from_db()
             account.connection_broken = True
@@ -357,6 +370,10 @@ def import_lastfm_history(user_id, reset=False):
                     "history_import_last_error_message",
                 ],
             )
+            ImportRun.objects.filter(id=import_run.id).update(
+                status=ImportRun.Status.FAILED,
+                finished_at=timezone.now(),
+            )
             raise
         except lastfm_api.LastFMAPIError as exc:
             account.refresh_from_db()
@@ -368,7 +385,22 @@ def import_lastfm_history(user_id, reset=False):
                     "history_import_last_error_message",
                 ]
             )
+            ImportRun.objects.filter(id=import_run.id).update(
+                status=ImportRun.Status.FAILED,
+                finished_at=timezone.now(),
+            )
             raise
+
+        # "processed" mixes newly-created and incremented-in-place Music rows
+        # (see app.services.music_scrobble.record_music_playback) -- there is
+        # no cheap way to split created vs. updated here, so it's counted as
+        # created, matching the level of granularity import_media() uses for
+        # the other importers.
+        ImportRun.objects.filter(id=import_run.id).update(
+            created_count=F("created_count") + sync_result["processed"],
+            skipped_count=F("skipped_count") + sync_result["skipped"],
+            failed_count=F("failed_count") + sync_result["errors"],
+        )
 
         _refresh_lastfm_statistics(user_id, sync_result["affected_day_keys"])
 
@@ -389,6 +421,10 @@ def import_lastfm_history(user_id, reset=False):
                     "history_import_last_error_message",
                 ],
             )
+            ImportRun.objects.filter(id=import_run.id).update(
+                status=ImportRun.Status.FAILED,
+                finished_at=timezone.now(),
+            )
             raise ValueError(LASTFM_PARTIAL_SYNC_ERROR)
 
         if sync_result["complete"]:
@@ -404,6 +440,11 @@ def import_lastfm_history(user_id, reset=False):
                     "history_import_last_error_message",
                 ],
             )
+            ImportRun.objects.filter(id=import_run.id).update(
+                status=ImportRun.Status.COMPLETED,
+                remaining_estimate=0,
+                finished_at=timezone.now(),
+            )
             _enqueue_lastfm_music_enrichment(user_id)
             return {
                 "message": "Completed Last.fm history import. Music enrichment queued.",
@@ -417,7 +458,14 @@ def import_lastfm_history(user_id, reset=False):
                 "history_import_next_page",
             ],
         )
-        import_lastfm_history.delay(user_id=user_id, reset=False)
+        ImportRun.objects.filter(id=import_run.id).update(
+            remaining_estimate=max(
+                sync_result["total_pages"] - account.history_import_next_page, 0
+            ),
+        )
+        import_lastfm_history.delay(
+            user_id=user_id, reset=False, import_run_id=import_run.id
+        )
         current_page = min(account.history_import_next_page, sync_result["total_pages"])
         return {
             "message": (

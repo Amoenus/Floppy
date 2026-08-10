@@ -833,3 +833,56 @@ class TraktAccount(models.Model):
     def is_configured(self):
         """Return True when client credentials are stored."""
         return bool(self.client_id and self.client_secret)
+
+
+class ImportRun(models.Model):
+    """Track a single import run's provenance and progress.
+
+    `source` identifies the importer (e.g. "trakt", "lastfm", "koito") and
+    is intentionally separate from `app.models.choices.Sources`, which
+    tags metadata *provider* (e.g. "tmdb") and can't distinguish which
+    importer created a row.
+    """
+
+    class Status(models.TextChoices):
+        """Lifecycle states for an import run."""
+
+        RUNNING = "running", "Running"
+        COMPLETED = "completed", "Completed"
+        FAILED = "failed", "Failed"
+        CANCELLED = "cancelled", "Cancelled"
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="import_runs",
+    )
+    source = models.CharField(max_length=32)
+    task_id = models.CharField(max_length=255, null=True, blank=True)
+    status = models.CharField(
+        max_length=20,
+        choices=Status,
+        default=Status.RUNNING,
+    )
+    created_count = models.PositiveIntegerField(default=0)
+    updated_count = models.PositiveIntegerField(default=0)
+    skipped_count = models.PositiveIntegerField(default=0)
+    failed_count = models.PositiveIntegerField(default=0)
+    remaining_estimate = models.PositiveIntegerField(null=True, blank=True)
+    started_at = models.DateTimeField(auto_now_add=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+    cancel_requested = models.BooleanField(default=False)
+
+    class Meta:
+        """Model options."""
+
+        verbose_name = "import run"
+        verbose_name_plural = "import runs"
+        indexes = [
+            models.Index(fields=["user", "-started_at"]),
+            models.Index(fields=["user", "status"]),
+        ]
+
+    def __str__(self):
+        """Readable representation."""
+        return f"ImportRun({self.source}, {self.user.username}, {self.status})"

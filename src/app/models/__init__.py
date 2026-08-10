@@ -47,6 +47,7 @@ from app.models.media import (
     Manga,
     Media,
     Movie,
+    MoviePlay,
 )
 from app.models.music import (
     Album,
@@ -115,6 +116,7 @@ __all__ = [
     "MetadataBackfillState",
     "MetadataProviderPreference",
     "Movie",
+    "MoviePlay",
     "Music",
     "Person",
     "PersonGender",
