@@ -27,6 +27,12 @@ class IntegrationTest(StaticLiveServerTestCase):
         cls.playwright = sync_playwright().start()
         # use headless=False, slow_mo=200 to see the browser
         cls.browser = cls.playwright.chromium.launch()
+        # CI runners for this repo's full test suite (~2900 tests including
+        # heavy benchmarks) get slow enough under load that the default 5s
+        # expect() timeout occasionally races a real HTMX swap/navigation
+        # that would otherwise succeed. Reset in tearDownClass since this is
+        # process-global, not scoped to this class.
+        expect.set_options(timeout=15000)
 
     def setUp(self):
         """Set up test data for CustomList model."""
@@ -93,6 +99,7 @@ class IntegrationTest(StaticLiveServerTestCase):
     @classmethod
     def tearDownClass(cls):
         """Tear down the test class."""
+        expect.set_options(timeout=5000)
         cls.browser.close()
         cls.playwright.stop()
         super().tearDownClass()
