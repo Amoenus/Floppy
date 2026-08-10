@@ -34,6 +34,7 @@ from integrations import (
     lastfm_api,
     pocketcasts_api,
     tasks,
+    xbox_api,
 )
 from integrations import plex as plex_api
 from integrations.gpodder_api import GPodderAuthError, GPodderClientError
@@ -75,6 +76,7 @@ from integrations.models import (
     SonarrAccount,
     StorytellerAccount,
     StremioAccount,
+    XboxAccount,
 )
 from integrations.plex_watchlist import (
     WATCHLIST_SYNC_INTERVAL_MINUTES,
@@ -1718,6 +1720,110 @@ def import_stremio(request):
     tasks.import_stremio.delay(user_id=request.user.id, mode="new")
     _ensure_stremio_schedule(request.user)
     messages.info(request, "Stremio import queued.")
+    return redirect("import_data")
+
+
+XBOX_RECURRING_TASK_NAME = "Import from Xbox (Recurring)"
+
+
+def _ensure_xbox_schedule(user, mode="new"):
+    """Create or update the recurring Xbox import schedule."""
+    from django_celery_beat.models import CrontabSchedule, PeriodicTask
+
+    desired_kwargs = json.dumps({"user_id": user.id, "mode": mode})
+    existing_task = PeriodicTask.objects.filter(
+        task=XBOX_RECURRING_TASK_NAME,
+        kwargs__contains=f'"user_id": {user.id}',
+        enabled=True,
+    ).first()
+    if existing_task:
+        if existing_task.kwargs != desired_kwargs:
+            existing_task.kwargs = desired_kwargs
+            existing_task.save(update_fields=["kwargs"])
+        return
+
+    crontab, _ = CrontabSchedule.objects.get_or_create(
+        minute=0,
+        hour="4",
+        day_of_week="*",
+        day_of_month="*",
+        month_of_year="*",
+        timezone=timezone.get_default_timezone(),
+    )
+    PeriodicTask.objects.create(
+        name=f"Import from Xbox for {user.username} (daily)",
+        task=XBOX_RECURRING_TASK_NAME,
+        crontab=crontab,
+        kwargs=desired_kwargs,
+        start_time=timezone.now(),
+        enabled=True,
+    )
+
+
+@require_POST
+def xbox_connect(request):
+    """Connect an Xbox account using an OpenXBL API key."""
+    api_key = request.POST.get("api_key", "").strip()
+    if not api_key:
+        messages.error(request, "An OpenXBL API key is required.")
+        return redirect("import_data")
+
+    try:
+        xuid, gamertag = xbox_api.get_account(api_key)
+    except helpers.MediaImportError as error:
+        messages.error(request, f"Could not connect to Xbox: {error}")
+        return redirect("import_data")
+    except Exception as error:
+        logger.exception("Failed to connect to Xbox")
+        messages.error(request, f"Failed to connect to Xbox: {error}")
+        return redirect("import_data")
+
+    XboxAccount.objects.update_or_create(
+        user=request.user,
+        defaults={
+            "api_key": helpers.encrypt(api_key),
+            "xuid": xuid,
+            "gamertag": gamertag,
+            "connection_broken": False,
+            "last_error_message": "",
+        },
+    )
+    tasks.import_xbox.delay(user_id=request.user.id, mode="new")
+    _ensure_xbox_schedule(request.user)
+    messages.success(
+        request,
+        f"Connected to Xbox as {gamertag or xuid}. "
+        "Initial import queued; your games will sync daily.",
+    )
+    return redirect("import_data")
+
+
+@require_POST
+def xbox_disconnect(request):
+    """Disconnect the Xbox integration."""
+    from django_celery_beat.models import PeriodicTask
+
+    PeriodicTask.objects.filter(
+        task=XBOX_RECURRING_TASK_NAME,
+        kwargs__contains=f'"user_id": {request.user.id}',
+    ).delete()
+    XboxAccount.objects.filter(user=request.user).delete()
+    messages.info(request, "Disconnected Xbox.")
+    return redirect("import_data")
+
+
+@require_POST
+def import_xbox(request):
+    """Queue an Xbox import and ensure the recurring schedule exists."""
+    account = getattr(request.user, "xbox_account", None)
+    if not account:
+        messages.error(request, "Connect Xbox before importing.")
+        return redirect("import_data")
+
+    mode = request.POST.get("mode", "new")
+    tasks.import_xbox.delay(user_id=request.user.id, mode=mode)
+    _ensure_xbox_schedule(request.user, mode)
+    messages.info(request, "Xbox import queued.")
     return redirect("import_data")
 
 

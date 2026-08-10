@@ -65,6 +65,10 @@ SOURCES_CONFIG = {
         "name": "Steam",
         "logo": static("img/steam-logo.ico"),
     },
+    "xbox": {
+        "name": "Xbox",
+        "logo": static("img/xbox-logo.svg"),
+    },
     "goodreads": {
         "name": "Goodreads",
         "logo": static("img/logo-goodreads.svg"),

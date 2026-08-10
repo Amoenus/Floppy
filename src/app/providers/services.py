@@ -292,6 +292,10 @@ session.mount(
     "https://boardgamegeek.com/xmlapi2",
     LimiterAdapter(per_second=2),
 )
+session.mount(
+    "https://xbl.io/api",
+    LimiterAdapter(per_hour=120),
+)
 
 
 class ProviderAPIError(Exception):
