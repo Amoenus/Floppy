@@ -1492,14 +1492,16 @@ def about(request):
 
 @require_POST
 def rollback_import_run(request, run_id):
-    """Delete the media rows created or touched by one import run.
+    """Undo the media rows created or touched by one import run.
 
-    Music is excluded: its rows are mutated in place (progress incremented
-    per scrobble) rather than inserted per play, so a plain delete-by-run
-    could destroy plays from other runs or manual entries sharing the same
-    row. Music rollback needs a history-based revert instead (unsupported
-    for now).
+    Most media types are insert-only for a given run, so those rows are
+    just deleted. Music is different: rows are mutated in place (progress
+    incremented per scrobble), so a plain delete-by-run could destroy
+    plays from other runs or manual entries sharing the same row -- it
+    gets a history-based revert instead (see revert_music_import_run).
     """
+    from app.services.music_scrobble import revert_music_import_run
+
     run = get_object_or_404(ImportRun, id=run_id, user=request.user)
 
     if run.status == ImportRun.Status.RUNNING:
@@ -1520,8 +1522,17 @@ def rollback_import_run(request, run_id):
         ).delete()
         total_deleted += deleted_count
 
-    if total_deleted:
-        messages.success(request, f"Removed {total_deleted} item(s) from this import.")
+    music_result = revert_music_import_run(run, request.user)
+    total_deleted += music_result["deleted"]
+    total_reverted = music_result["reverted"]
+
+    if total_deleted or total_reverted:
+        parts = []
+        if total_deleted:
+            parts.append(f"removed {total_deleted} item(s)")
+        if total_reverted:
+            parts.append(f"reverted {total_reverted} play(s)")
+        messages.success(request, f"Undo complete: {' and '.join(parts)}.")
     else:
         messages.info(request, "Nothing to remove for this import.")
     return redirect("import_data")

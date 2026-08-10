@@ -2,6 +2,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.messages import get_messages
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from app.models import Item, MediaTypes, Movie, Music, Sources, Status
 from integrations.models import ImportRun
@@ -58,7 +59,7 @@ class RollbackImportRunTests(TestCase):
 
         messages = list(get_messages(response.wsgi_request))
         self.assertEqual(len(messages), 1)
-        self.assertIn("Removed 1 item", str(messages[0]))
+        self.assertIn("removed 1 item", str(messages[0]))
 
     def test_rollback_is_scoped_to_the_requesting_user(self):
         """A user cannot roll back another user's import run."""
@@ -90,13 +91,13 @@ class RollbackImportRunTests(TestCase):
         messages = list(get_messages(response.wsgi_request))
         self.assertIn("Cancel the import", str(messages[0]))
 
-    def test_rollback_leaves_music_rows_untouched(self):
-        """Music rollback is unsupported for now; its rows must survive."""
+    def test_rollback_deletes_music_row_the_run_created(self):
+        """A Music row with no history before this run's touch is deleted."""
         run = ImportRun.objects.create(
             user=self.user, source="lastfm", status=ImportRun.Status.COMPLETED
         )
         item = Item.objects.create(
-            media_id="music-item",
+            media_id="music-item-new",
             source=Sources.MUSICBRAINZ.value,
             media_type=MediaTypes.MUSIC.value,
             title="Some Track",
@@ -105,6 +106,7 @@ class RollbackImportRunTests(TestCase):
             item=item,
             user=self.user,
             status=Status.COMPLETED.value,
+            progress=1,
             import_run=run,
         )
 
@@ -113,6 +115,43 @@ class RollbackImportRunTests(TestCase):
         )
 
         self.assertRedirects(response, reverse("import_data"))
-        self.assertTrue(Music.objects.filter(id=music.id).exists())
+        self.assertFalse(Music.objects.filter(id=music.id).exists())
         messages = list(get_messages(response.wsgi_request))
-        self.assertIn("Nothing to remove", str(messages[0]))
+        self.assertIn("removed 1 item", str(messages[0]))
+
+    def test_rollback_reverts_music_row_the_run_only_incremented(self):
+        """A pre-existing row the run only updated is reverted, not deleted."""
+        item = Item.objects.create(
+            media_id="music-item-existing",
+            source=Sources.MUSICBRAINZ.value,
+            media_type=MediaTypes.MUSIC.value,
+            title="Some Track",
+        )
+        original_end_date = timezone.now() - timezone.timedelta(days=1)
+        music = Music.objects.create(
+            item=item,
+            user=self.user,
+            status=Status.COMPLETED.value,
+            progress=1,
+            end_date=original_end_date,
+        )
+
+        run = ImportRun.objects.create(
+            user=self.user, source="lastfm", status=ImportRun.Status.COMPLETED
+        )
+        music.progress = 2
+        music.end_date = timezone.now()
+        music.import_run = run
+        music.save()
+
+        response = self.client.post(
+            reverse("rollback_import_run", args=[run.id]),
+        )
+
+        self.assertRedirects(response, reverse("import_data"))
+        music.refresh_from_db()
+        self.assertEqual(music.progress, 1)
+        self.assertEqual(music.end_date, original_end_date)
+        self.assertIsNone(music.import_run_id)
+        messages = list(get_messages(response.wsgi_request))
+        self.assertIn("reverted 1 play", str(messages[0]))
