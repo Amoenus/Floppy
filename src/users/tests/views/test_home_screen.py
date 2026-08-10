@@ -1589,3 +1589,98 @@ class HomeScreenRandomSortTests(TestCase):
         direction = home_screen.resolve_home_row_direction(HomeSortChoices.RANDOM.value)
 
         self.assertIn(direction, DirectionChoices.values)
+
+
+class CrossProviderDedupTests(TestCase):
+    """Home rows must not show duplicate tiles for a verified TMDB/TVDB pair (#620)."""
+
+    def setUp(self):
+        self.credentials = {"username": "dedup-user", "password": "testpass123"}
+        self.user = get_user_model().objects.create_user(**self.credentials)
+
+    def _tv_pair(self):
+        tmdb_item = Item.objects.create(
+            title="Breaking Bad",
+            media_id="1396",
+            media_type=MediaTypes.TV.value,
+            source=Sources.TMDB.value,
+            image="",
+            provider_external_ids={"tvdb_id": "81189"},
+        )
+        tvdb_item = Item.objects.create(
+            title="Breaking Bad",
+            media_id="81189",
+            media_type=MediaTypes.TV.value,
+            source=Sources.TVDB.value,
+            image="",
+        )
+        TV.objects.create(item=tmdb_item, user=self.user, status=Status.IN_PROGRESS.value)
+        TV.objects.create(item=tvdb_item, user=self.user, status=Status.IN_PROGRESS.value)
+        return tmdb_item, tvdb_item
+
+    def test_prefers_tvdb_item_for_tvdb_preferring_user(self):
+        tmdb_item, tvdb_item = self._tv_pair()
+
+        result = home_screen._dedupe_cross_provider_items(
+            [tmdb_item, tvdb_item],
+            Sources.TVDB.value,
+        )
+
+        self.assertEqual([item.pk for item in result], [tvdb_item.pk])
+
+    def test_prefers_tmdb_item_for_tmdb_preferring_user(self):
+        tmdb_item, tvdb_item = self._tv_pair()
+
+        result = home_screen._dedupe_cross_provider_items(
+            [tmdb_item, tvdb_item],
+            Sources.TMDB.value,
+        )
+
+        self.assertEqual([item.pk for item in result], [tmdb_item.pk])
+
+    def test_never_collapses_on_title_alone(self):
+        """Two unrelated items that merely share a title must both survive."""
+        remake_item = Item.objects.create(
+            title="Breaking Bad",
+            media_id="999999",
+            media_type=MediaTypes.TV.value,
+            source=Sources.TMDB.value,
+            image="",
+        )
+        tvdb_item = Item.objects.create(
+            title="Breaking Bad",
+            media_id="81189",
+            media_type=MediaTypes.TV.value,
+            source=Sources.TVDB.value,
+            image="",
+        )
+
+        result = home_screen._dedupe_cross_provider_items(
+            [remake_item, tvdb_item],
+            Sources.TVDB.value,
+        )
+
+        self.assertCountEqual(
+            [item.pk for item in result],
+            [remake_item.pk, tvdb_item.pk],
+        )
+
+    def test_library_query_entries_returns_one_entry_for_verified_pair(self):
+        tmdb_item, tvdb_item = self._tv_pair()
+        self.user.tv_metadata_source_default = Sources.TVDB.value
+        self.user.save()
+
+        row = HomeScreenRow.objects.create(
+            user=self.user,
+            media_type=MediaTypes.TV.value,
+            position=0,
+            enabled=True,
+            row_type=HomeScreenRowTypeChoices.LIBRARY_QUERY,
+            sort_by=MediaSortChoices.TITLE,
+            direction=DirectionChoices.ASC,
+            filters={"status": [Status.IN_PROGRESS.value]},
+        )
+
+        entries = home_screen._library_query_entries(self.user, row)
+
+        self.assertEqual([entry.item.pk for entry in entries], [tvdb_item.pk])
