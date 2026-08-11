@@ -50,6 +50,7 @@ class Command(BaseCommand):
             runtime_minutes__isnull=True,
             media_type__in=[
                 MediaTypes.MOVIE.value,
+                MediaTypes.TV.value,
                 MediaTypes.ANIME.value,
                 MediaTypes.EPISODE.value,
             ],
