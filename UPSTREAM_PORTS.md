@@ -2,10 +2,10 @@
 
 > **Status:** Initial baseline accepted
 > **Parent issue:** [#645](https://github.com/dannyvfilms/Floppy/issues/645)
-> **Floppy review baseline:** `latest` at `3c946d1182631b88813d012d95f98fe59a3e4732`
+> **Floppy review baseline:** `latest` at `3cefbadfd7a9c092918ce6cb2f728b804cc193bb`
 > **Yamtrack review baseline:** `dev` at `85646a36298d61d39544f80eacf541c232c4df7b` (`0.26.1`)
 > **Common ancestor:** `88c92c9cfb5b41f807a8e9b82c4dd77f3d7723c4`
-> **Reviewed range:** 138 Yamtrack-only commits and 1,697 Floppy-only commits
+> **Reviewed range:** 138 Yamtrack-only commits and 1,703 Floppy-only commits
 > **Last upstream review:** 2026-08-11
 > **Next comparison:** `85646a36298d61d39544f80eacf541c232c4df7b..upstream/dev`
 
@@ -104,7 +104,7 @@ The **Canonical upstream SHA(s)** column is the machine-audited inventory for `8
 | 35 | `d6cbd46c` | Integration settings tabs | **Deferred** | #645 reconsiders when the integrations page receives an approved information-architecture pass; no reliability outcome depends on it. | P3 / Phase 6 |
 | 36 | `41b080b8` | Clarify Redis URL when Docker service names collide | **Superseded** | `README.md` direct-container instructions name `floppy-redis` and set `redis://floppy-redis:6379`; Compose uses its scoped `redis` service. | Done |
 | 37 | `881cc198` `0ec6aefa` `e51eedfa` `f6b2eb37` | Yamtrack stale/pending-answer automation | **Discarded (D3)** | Repository triage policy is not runtime parity; adopt only through a separate governance decision. | — |
-| 38 | `69454ff6` | AniList nested airing-schedule pages and unknown episode totals | **Pending** | `src/integrations/imports/anilist.py` lacks complete nested pagination; [#649](https://github.com/dannyvfilms/Floppy/issues/649) owns offline fixtures and the port. | P1 / Phase 4 |
+| 38 | `69454ff6` | AniList nested airing-schedule pages and unknown episode totals | **Pending** | `src/events/calendar/anime.py` paginates the outer media page only and skips unknown totals; `src/events/tests/calendar/test_anime.py` lacks nested-page and unknown-total regressions. [#649](https://github.com/dannyvfilms/Floppy/issues/649) owns the fixtures and port. | P1 / Phase 4 |
 | 39 | `1c449bf5` | Provider network errors without response objects | **Adapted** | `src/app/providers/services.py`, `src/app/tests/providers/test_services.py`, commit `e6d7d502`; Floppy also has bounded retry/rate-limit fallback. | Done |
 | 40 | `156c6f6f` | Abbreviated Open Library publication dates | **Superseded** | `src/app/providers/openlibrary.py` and `src/app/tests/providers/test_metadata.py` cover full, month/year, year-only, prefixed, and malformed values. | Done |
 | 41 | `2348f0c1` `c7872dda` `f8763f53` | Split webhook processing and TV IMDb/TVDB/TMDB fallbacks | **Adapted** | `src/integrations/webhooks/base.py` and webhook tests implement provider-link resolution; commit `d5503a53`, issue #420. | Done |
@@ -117,11 +117,11 @@ The **Canonical upstream SHA(s)** column is the machine-audited inventory for `8
 | 48 | `1c48c27c` | Deduplicate repeated/multi-season top-rated statistics | **Superseded** | `src/app/statistics_aggregator.py`, statistics tests, commits `5f15e27e`, `137a1cf4`, and `c73e6445`. | Done |
 | 49 | `6d68cfc7` | Quote Codecov threshold value | **Pending** | `.github/codecov.yml` still uses numeric `5.0`; [#647](https://github.com/dannyvfilms/Floppy/issues/647) owns the isolated tooling validation. | P1 / Phase 2 |
 | 50 | `60a40362` | Normalize Trakt/SIMKL editable dates to UTC minutes | **Pending** | Importers retain inconsistent precision; [#648](https://github.com/dannyvfilms/Floppy/issues/648) owns one helper, timezone tests, audit, and final semantics. | P0 / Phase 3 |
-| 51 | `7bb3a6fb` | Exclude undated episodes from released progress | **Pending** | `src/app/models/tv.py` still needs explicit unknown/unreleased semantics; [#648](https://github.com/dannyvfilms/Floppy/issues/648). | P0 / Phase 3 |
+| 51 | `7bb3a6fb` | Exclude undated episodes from released progress | **Pending** | `src/events/calendar/tv.py` produces unknown episode dates while `src/events/calendar/selectors.py` still interprets year-1/year-9999 sentinels. [#648](https://github.com/dannyvfilms/Floppy/issues/648) owns one explicit unknown/unreleased contract and dashboard regression. | P0 / Phase 3 |
 | 52 | `6a240cc2` | Media-details section-tab redesign | **Deferred** | #645 reconsiders only through an approved detail-page design pass; current Floppy details expose additional media/integration surfaces. | P3 / Phase 6 |
 | 53 | `3494dee9` | Imported episode activity uses watch/end date | **Pending** | `src/integrations/imports/yamtrack.py` applies only `progressed_at` to history; [#648](https://github.com/dannyvfilms/Floppy/issues/648) owns `progressed_at → end_date → import time` with a test. | P0 / Phase 3 |
 | 54 | `4cb1ea02` | Global change journal | **Deferred** | Playback History is not equivalent. #645 reconsiders after a product decision on scope, retention, pagination, and privacy. | P3 / Phase 6 |
-| 55 | `157765e4` | Replace statistics timeline with two badges | **Discarded (D1/D7)** | Floppy's richer statistics/timeline surfaces are intentional; badge ideas may be proposed independently without removing them. | — |
+| 55 | `157765e4` | Replace statistics timeline with two badges | **Discarded (D1/D7)** | `src/app/statistics_views.py`, `src/templates/app/statistics.html`, and `src/app/tests/views/test_statistics.py` prove Floppy's richer timeline, comparison, hours, and badge surfaces; badge ideas may be proposed independently without removing them. | — |
 | 56 | `95800c91` | SQLite concurrent-write settings | **Superseded** | `src/config/settings.py`, `src/app/db_retry.py`, `src/app/tests/test_sqlite_settings.py`, commits `0684be9b`, `fc8c3b15`, and `0d3c088a`; Floppy adds lock/corruption handling. | Done |
 | 57 | `7a5edac0` `e67dbb9d` `7cce302f` `3ee9ad8a` `83cdea8c` `83d7315f` | Local-time modal prefill, in-place HTMX edit, and no-date episode option | **Superseded** | `src/templates/app/components/fill_track_episode*.html`, date picker JS, track-modal tests, commits `a9bd662e`, `9f05f8d5`, and `8356d4cc`. | Done |
 | 58 | `66cbf007` | Skip unsupported Goodreads shelves and map DNF | **Deferred** | #645 opens a scoped importer issue after P0/P1 packages; trigger is Phase 6 scheduling or a new user report. | P2 / Phase 6 |

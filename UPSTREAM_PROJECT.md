@@ -9,39 +9,48 @@
 
 The ledger records durable decisions and evidence. Project #1 is the changing operational view: what is being reviewed or implemented, what is blocked, and what comes next. A project-field change never replaces a ledger update.
 
-Phase 0 is complete only when PR #651 is merged and the active rows below are represented on Project #1. Runtime packages do not begin from an unmerged draft ledger unless #645 records a narrow exception.
+**Current live state (2026-08-11): population is outstanding.** Project #1 contains 17 draft upstream-review cards and none of #645–#653 or the coordination items below. The table prescribes the required population; it does not describe current board membership.
 
-## Initial population
+Phase 0 is complete only when PR #651 is merged and this population is actually added and verified. Runtime packages do not begin from an unmerged draft ledger unless #645 records a narrow exception.
 
-| Item | Role | Initial state | Priority | Dependency or relationship |
+## Required population (outstanding)
+
+| Item | Role | Required Status | Priority | Dependency or relationship |
 |---|---|---|---|---|
-| [#651](https://github.com/dannyvfilms/Floppy/pull/651) | Exhaustive decision ledger and governance | Review | P0 | Merge gate for Phase 0 |
+| [#651](https://github.com/dannyvfilms/Floppy/pull/651) | Exhaustive decision ledger and governance | In review | P0 | Merge gate for Phase 0 |
 | [#645](https://github.com/dannyvfilms/Floppy/issues/645) | Programme index | In progress | P0 | Done after #651 merges and this board is populated |
-| [#646](https://github.com/dannyvfilms/Floppy/issues/646) | Built-image smoke gate | Ready next | P0 | #651 |
-| [#647](https://github.com/dannyvfilms/Floppy/issues/647) | uv, lockfile, CI, lint, and Docker | Blocked | P0 | #646; no dependency upgrades during conversion |
-| [#648](https://github.com/dannyvfilms/Floppy/issues/648) | Datetime/calendar integrity and import-date fixes | Blocked | P0 | #646; final runtime semantics before migrations |
-| [#649](https://github.com/dannyvfilms/Floppy/issues/649) | MAL, AniList, and Open Library correctness | Ready after safety baseline | P1 | #646; coordinate unknown dates with #648 |
-| [#650](https://github.com/dannyvfilms/Floppy/issues/650) | Identity audit, repair, and constraints | Blocked | P1 | #646 and #648 |
-| [#653](https://github.com/dannyvfilms/Floppy/pull/653) | Restore first-run query-budget signal | Exception in review | P0 | Narrow Phase 0 exception recorded on #645; not an upstream runtime port |
-| [#597](https://github.com/dannyvfilms/Floppy/issues/597) | Reusable deployment preflight | Related active work | P1 | Complements #646; does not replace external image validation |
-| [#639](https://github.com/dannyvfilms/Floppy/issues/639) | Cross-provider episode/calendar duplicate regression | Active acceptance target | P1 | Concrete target for #650; do not close from epic completion alone |
-| [#390](https://github.com/dannyvfilms/Floppy/issues/390) | Existing CI/Ruff signal | Coordination evidence | P1 | #647 preserves or deliberately replaces its chosen policy |
-| [#512](https://github.com/dannyvfilms/Floppy/issues/512) | Low-tier performance/startup audit | Coordination evidence | P1 | Receives measurements from #646 and #647 |
+| [#646](https://github.com/dannyvfilms/Floppy/issues/646) | Built-image smoke gate | Ready | P0 | #651 |
+| [#647](https://github.com/dannyvfilms/Floppy/issues/647) | uv, lockfile, CI, lint, and Docker | Backlog | P0 | #646; no dependency upgrades during conversion |
+| [#648](https://github.com/dannyvfilms/Floppy/issues/648) | Datetime/calendar integrity and import-date fixes | Backlog | P0 | #646; final runtime semantics before migrations |
+| [#649](https://github.com/dannyvfilms/Floppy/issues/649) | MAL, AniList, and Open Library correctness | Backlog | P1 | #646; coordinate unknown dates with #648 |
+| [#650](https://github.com/dannyvfilms/Floppy/issues/650) | Identity audit, repair, and constraints | Backlog | P1 | #646 and #648 |
+| [#653](https://github.com/dannyvfilms/Floppy/pull/653) | Restore first-run query-budget signal | In review | P0 | Narrow Phase 0 exception recorded on #645; not an upstream runtime port |
+| [#597](https://github.com/dannyvfilms/Floppy/issues/597) | Reusable deployment preflight | In progress | P1 | Complements #646; does not replace external image validation |
+| [#639](https://github.com/dannyvfilms/Floppy/issues/639) | Cross-provider episode/calendar duplicate regression | In progress | P1 | Concrete target for #650; do not close from epic completion alone |
+| [#390](https://github.com/dannyvfilms/Floppy/issues/390) | Existing CI/Ruff signal | Backlog | P1 | #647 preserves or deliberately replaces its chosen policy |
+| [#512](https://github.com/dannyvfilms/Floppy/issues/512) | Low-tier performance/startup audit | Backlog | P1 | Receives measurements from #646 and #647 |
 
 PR [#638](https://github.com/dannyvfilms/Floppy/pull/638) remains historical/open work unless separately closed. Its merge/cherry-pick convergence strategy is superseded by semantic resolution and must not be used as the programme implementation path.
 
 Closed issues remain evidence rather than active cards unless the project deliberately retains completed cards for traceability. Relevant examples include #30, #36, #246, #295, #379, #529, #557, #559, #593, #604, #620, and #623.
 
-## Fields
+## Project fields
 
-Reuse existing equivalent fields rather than creating duplicates.
+### Existing live fields
 
 | Field | Values | Purpose |
 |---|---|---|
-| **Status** | Triage, Review, Ready, In progress, Blocked, Done | Day-to-day execution |
+| **Status** | Backlog, Ready, In progress, In review, Done | Day-to-day execution |
+| **Priority** | P0, P1, P2 | Portfolio order; P3 remains ledger-only unless the field is expanded |
+
+### Proposed fields to add
+
+These fields do not currently exist on Project #1.
+
+| Field | Proposed values | Purpose |
+|---|---|---|
 | **Phase** | 0 through 6 | Package grouping from the ledger |
 | **Decision** | Pending, Ported, Adapted, Superseded, Deferred, Discarded | Mirrors the durable ledger |
-| **Priority** | P0, P1, P2, P3 | Portfolio order, not raw RICE alone |
 | **Blocked by** | Issue or PR reference | Explicit sequencing |
 | **Upstream baseline** | Reviewed Yamtrack SHA | Incremental comparison boundary |
 | **Outcome owner** | One issue or maintainer | Accountability for each accepted outcome |
