@@ -188,6 +188,17 @@ class TagCreateViewTest(TestCase):
         self.assertContains(response, "Tags")
         self.assertContains(response, "New Tag")
 
+    def test_create_tag_busts_cached_medialist_filter_data(self):
+        """Creating a tag invalidates the cached filter_data so it appears immediately."""
+        list_url = reverse("medialist", args=[MediaTypes.MOVIE.value])
+        first_response = self.client.get(list_url)
+        self.assertNotIn("Cozy", first_response.context["filter_data"]["tags"])
+
+        self.client.post(reverse("tag_create"), {"name": "Cozy"})
+
+        second_response = self.client.get(list_url)
+        self.assertIn("Cozy", second_response.context["filter_data"]["tags"])
+
     def test_create_tag_auto_applies(self):
         """Tag is auto-applied to item when item_id provided."""
         url = reverse("tag_create")
@@ -387,3 +398,163 @@ class TagFilterViewTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Tagged Movie")
         self.assertContains(response, "Untagged Movie")
+
+
+class TagIndexViewTest(TestCase):
+    """Test the tag_index view."""
+
+    def setUp(self):
+        self.credentials = {"username": "test", "password": "12345"}
+        self.user = get_user_model().objects.create_user(**self.credentials)
+        self.client.login(**self.credentials)
+
+        self.movie_item = Item.objects.create(
+            media_id="278",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="The Shawshank Redemption",
+            image="http://example.com/image.jpg",
+        )
+        self.other_movie_item = Item.objects.create(
+            media_id="279",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Se7en",
+            image="http://example.com/image2.jpg",
+        )
+        self.tag = Tag.objects.create(user=self.user, name="Favorite")
+        self.empty_tag = Tag.objects.create(user=self.user, name="Someday")
+        ItemTag.objects.create(tag=self.tag, item=self.movie_item)
+        ItemTag.objects.create(tag=self.tag, item=self.other_movie_item)
+
+    def test_shows_tags_with_item_counts(self):
+        """Index page lists tags with usage counts and per-media-type links."""
+        response = self.client.get(reverse("tag_index"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Favorite")
+        self.assertContains(response, "Someday")
+        tags_by_name = {tag.name: tag for tag in response.context["tags"]}
+        self.assertEqual(tags_by_name["Favorite"].item_count, 2)
+        self.assertEqual(tags_by_name["Someday"].item_count, 0)
+
+    def test_only_shows_current_users_tags(self):
+        """Index page never surfaces another user's tags."""
+        other_user = get_user_model().objects.create_user(
+            username="other", password="12345"
+        )
+        Tag.objects.create(user=other_user, name="Not Mine")
+        response = self.client.get(reverse("tag_index"))
+        self.assertNotContains(response, "Not Mine")
+
+    def test_delete_from_index_removes_tag(self):
+        """Deleting a tag from the index page removes it without an item_id."""
+        response = self.client.post(
+            reverse("tag_delete"),
+            {"tag_id": self.tag.id},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Tag.objects.filter(id=self.tag.id).exists())
+
+
+class TagBulkToggleViewTest(TestCase):
+    """Test the tag_bulk_toggle view."""
+
+    def setUp(self):
+        self.credentials = {"username": "test", "password": "12345"}
+        self.user = get_user_model().objects.create_user(**self.credentials)
+        self.client.login(**self.credentials)
+
+        self.item1 = Item.objects.create(
+            media_id="278",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="The Shawshank Redemption",
+            image="http://example.com/image.jpg",
+        )
+        self.item2 = Item.objects.create(
+            media_id="279",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Se7en",
+            image="http://example.com/image2.jpg",
+        )
+        self.tag = Tag.objects.create(user=self.user, name="Favorite")
+
+    def test_bulk_add_applies_to_all_items(self):
+        """Bulk add creates ItemTag links for every selected item."""
+        url = reverse("tag_bulk_toggle")
+        response = self.client.post(
+            url,
+            {
+                "tag_name": "Favorite",
+                "action": "add",
+                "item_ids": [self.item1.id, self.item2.id],
+            },
+        )
+        self.assertEqual(response.status_code, 204)
+        self.assertTrue(
+            ItemTag.objects.filter(tag=self.tag, item=self.item1).exists(),
+        )
+        self.assertTrue(
+            ItemTag.objects.filter(tag=self.tag, item=self.item2).exists(),
+        )
+
+    def test_bulk_add_is_idempotent(self):
+        """Bulk add does not error when an item already has the tag."""
+        ItemTag.objects.create(tag=self.tag, item=self.item1)
+        url = reverse("tag_bulk_toggle")
+        response = self.client.post(
+            url,
+            {
+                "tag_name": "Favorite",
+                "action": "add",
+                "item_ids": [self.item1.id, self.item2.id],
+            },
+        )
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(
+            ItemTag.objects.filter(tag=self.tag, item=self.item1).count(),
+            1,
+        )
+
+    def test_bulk_remove_removes_from_all_items(self):
+        """Bulk remove deletes ItemTag links for every selected item."""
+        ItemTag.objects.create(tag=self.tag, item=self.item1)
+        ItemTag.objects.create(tag=self.tag, item=self.item2)
+        url = reverse("tag_bulk_toggle")
+        response = self.client.post(
+            url,
+            {
+                "tag_name": "Favorite",
+                "action": "remove",
+                "item_ids": [self.item1.id, self.item2.id],
+            },
+        )
+        self.assertEqual(response.status_code, 204)
+        self.assertFalse(ItemTag.objects.filter(tag=self.tag).exists())
+
+    def test_cannot_bulk_tag_with_other_users_tag(self):
+        """Cannot apply a tag owned by another user."""
+        other_user = get_user_model().objects.create_user(
+            username="other", password="12345"
+        )
+        Tag.objects.create(user=other_user, name="Not Mine")
+        url = reverse("tag_bulk_toggle")
+        response = self.client.post(
+            url,
+            {
+                "tag_name": "Not Mine",
+                "action": "add",
+                "item_ids": [self.item1.id],
+            },
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_requires_item_ids(self):
+        """Rejects requests with no items selected."""
+        url = reverse("tag_bulk_toggle")
+        response = self.client.post(
+            url,
+            {"tag_name": "Favorite", "action": "add", "item_ids": []},
+        )
+        self.assertEqual(response.status_code, 400)
