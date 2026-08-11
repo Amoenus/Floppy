@@ -45,3 +45,6 @@ docs/brand/*-source.png
 # Worktrees
 .worktrees/
 worktrees/
+
+# Antigravity Superpowers Docs
+docs/superpowers/
