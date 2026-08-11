@@ -64,6 +64,17 @@ These fields do not currently exist on Project #1.
 5. When a decision changes, update `UPSTREAM_PORTS.md`; project state alone is not durable evidence.
 6. After each upstream review, update the Yamtrack baseline and add cards only for accepted work.
 
+## Pull request topology
+
+Use GitHub's native [stacked pull requests](https://docs.github.com/en/pull-requests/how-tos/stacked-pull-requests), currently a public preview, through the installed `gh stack` extension only for genuine code dependencies. Do not create a stack merely to couple reviews of otherwise independent work.
+
+- Keep every stack in the Floppy repository. The bottom pull request targets `latest`; each higher pull request targets the branch immediately below it. Every layer must satisfy the same branch rules and CI gates.
+- Merge bottom-up, either one layer at a time or as a contiguous group starting at the lowest unmerged layer. Use the supported cascading rebase and automatic retargeting when lower layers change or merge.
+- Keep stacks short and reviewable: the default maximum is three layers unless a documented dependency requires more.
+- PRs [#651](https://github.com/dannyvfilms/Floppy/pull/651), [#653](https://github.com/dannyvfilms/Floppy/pull/653), and [#654](https://github.com/dannyvfilms/Floppy/pull/654) remain independent because none has a code dependency on another.
+- Candidate stacks are #646 smoke gate -> the dependent #647 uv/Docker adaptation; #648 runtime semantics -> read-only audit -> migrations; and #650 audit -> repair -> constraint. MAL and Open Library fixes remain independent; AniList may stack on the #648 unknown-date layer when it depends on those semantics.
+- Each layer still requires the user's separate merge authorization. Never use a stack to merge Yamtrack history, and never merge a contiguous group unless every included layer has been authorized.
+
 ## Execution order
 
 1. Review and merge #651, then verify the initial Project #1 population.
