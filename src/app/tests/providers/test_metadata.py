@@ -1030,6 +1030,25 @@ class Metadata(TestCase):
         self.assertIn("season/8", result)
         self.assertEqual(result["season/8"]["season_number"], 8)
 
+        # The base show fields (recommendations, external_ids,
+        # aggregate_credits, alternative_titles, watch/providers) don't
+        # change between batches for the same show, so they should only be
+        # requested on the first batch and reused for the rest (#512).
+        # Compare exact comma-separated tokens (not substrings), since
+        # "watch/providers" is also a suffix of the per-season
+        # "season/N/watch/providers" append token.
+        base_fields = set(tmdb.TV_DETAIL_APPEND_RESPONSES.split(","))
+        first_batch_fields = set(append_requests[0].split(","))
+        second_batch_fields = set(append_requests[1].split(","))
+        self.assertTrue(
+            base_fields.issubset(first_batch_fields),
+            "First batch should request the base show fields.",
+        )
+        self.assertFalse(
+            base_fields & second_batch_fields,
+            "Subsequent batches should not re-request the base show fields.",
+        )
+
     @patch("app.providers.tvdb.search")
     @patch("app.providers.tmdb.services.api_request")
     @override_settings(TVDB_API_KEY="test-tvdb-key")
