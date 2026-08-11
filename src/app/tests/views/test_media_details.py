@@ -5489,6 +5489,17 @@ class MediaDetailsViewTests(TestCase):
             episode_number=2,
             release_datetime=None,
         )
+        concurrent_episode = Item.objects.create(
+            media_id="1668",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="Test TV Show",
+            image=settings.IMG_NONE,
+            season_number=1,
+            episode_number=6,
+            release_datetime=None,
+        )
+        concurrent_trusted_date = datetime(2024, 2, 2, tzinfo=UTC)
 
         mock_get_metadata.side_effect = lambda *_args, **_kwargs: {
             "title": "Test TV Show",
@@ -5541,12 +5552,31 @@ class MediaDetailsViewTests(TestCase):
                         "air_date": "9999-12-31",
                         "runtime": 46,
                     },
+                    {
+                        "episode_number": 6,
+                        "name": "Episode 6",
+                        "air_date": "2023-01-22",
+                        "runtime": 47,
+                    },
                 ],
             },
         }
         mock_process_episodes.return_value = []
 
+        original_bulk_update = Item.objects.bulk_update
+
+        def bulk_update_after_concurrent_date(objects, fields, batch_size=None):
+            Item.objects.filter(pk=concurrent_episode.pk).update(
+                release_datetime=concurrent_trusted_date,
+            )
+            return original_bulk_update(objects, fields, batch_size=batch_size)
+
         with (
+            patch.object(
+                Item.objects,
+                "bulk_update",
+                side_effect=bulk_update_after_concurrent_date,
+            ),
             patch("app.providers.trakt.is_configured", return_value=False),
             timezone.override("Pacific/Kiritimati"),
         ):
@@ -5610,6 +5640,12 @@ class MediaDetailsViewTests(TestCase):
                 episode_number=5,
             ).release_datetime,
             "year-9999 unknown-date sentinels must remain NULL",
+        )
+        concurrent_episode.refresh_from_db()
+        self.assertEqual(
+            concurrent_episode.release_datetime,
+            concurrent_trusted_date,
+            "an intervening trusted date must survive the metadata batch update",
         )
 
     @patch("app.views.trakt_popularity_service.refresh_trakt_popularity")

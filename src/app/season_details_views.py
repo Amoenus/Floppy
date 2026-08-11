@@ -6,6 +6,7 @@ from datetime import datetime
 from django.conf import settings
 from django.contrib.auth.decorators import login_not_required
 from django.db import IntegrityError, transaction
+from django.db.models import Case, DateTimeField, Value, When
 from django.shortcuts import render
 from django.utils import timezone
 from django.views.decorators.http import require_GET
@@ -336,6 +337,7 @@ def season_details(
         raw_episodes = season_metadata["episodes"]
         current_datetime = timezone.now()
         episodes_to_update = []
+        release_datetime_updates = []
 
         for episode in raw_episodes:
             episode_number = episode.get("episode_number")
@@ -434,9 +436,9 @@ def season_details(
                 episode_item.provider_rating = score
                 episode_item.provider_rating_count = score_count
             if release_datetime_changed:
-                episode_item.release_datetime = air_date_dt
+                release_datetime_updates.append((episode_item.pk, air_date_dt))
 
-            if runtime_changed or rating_changed or release_datetime_changed:
+            if runtime_changed or rating_changed:
                 episodes_to_update.append(episode_item)
 
         if episodes_to_update:
@@ -446,10 +448,28 @@ def season_details(
                     "runtime_minutes",
                     "provider_rating",
                     "provider_rating_count",
-                    "release_datetime",
                 ],
                 batch_size=100,
             )
+
+        for batch_start in range(0, len(release_datetime_updates), 100):
+            release_datetime_batch = release_datetime_updates[
+                batch_start : batch_start + 100
+            ]
+            Item.objects.filter(
+                pk__in=[item_id for item_id, _ in release_datetime_batch],
+                release_datetime__isnull=True,
+            ).update(
+                release_datetime=Case(
+                    *(
+                        When(pk=item_id, then=Value(release_datetime))
+                        for item_id, release_datetime in release_datetime_batch
+                    ),
+                    output_field=DateTimeField(),
+                ),
+            )
+
+        if episodes_to_update or release_datetime_updates:
             # Invalidate time_left + media_list cache for all users
             from app.cache_utils import (
                 clear_media_list_cache_for_user,
