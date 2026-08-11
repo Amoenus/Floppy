@@ -48,3 +48,11 @@ worktrees/
 
 # Antigravity Superpowers Docs
 docs/superpowers/
+
+# Local dev
+.env.web-dev
+.flatpak-builder/
+.gstack/
+.worktrees/
+desktop/
+dump.rdb
