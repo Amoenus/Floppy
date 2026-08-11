@@ -1984,12 +1984,14 @@ class ListDetailViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'title="Add to custom lists"')
 
+    @patch("app.models.tv.providers.services.get_media_metadata")
     @patch.object(get_user_model(), "update_preference")
     @patch.object(CustomList, "user_can_view")
     def test_list_detail_episode_watch_button_loads_real_modal_and_reflects_state(
         self,
         mock_user_can_view,
         mock_update_preference,
+        mock_get_metadata,
     ):
         """Episode cards' watch-toggle button must actually load the track modal.
 
@@ -2002,6 +2004,9 @@ class ListDetailViewTests(TestCase):
         """
         mock_update_preference.side_effect = ["date_added", None]
         mock_user_can_view.return_value = True
+        mock_get_metadata.return_value = {
+            "season/1": {"episodes": [{"episode_number": 1}, {"episode_number": 2}]},
+        }
 
         unwatched_item = Item.objects.create(
             media_id="9001",
@@ -2070,6 +2075,7 @@ class ListDetailViewTests(TestCase):
         )
         self.assertContains(response, 'title="Mark watched"')
         self.assertContains(response, 'title="Watched"')
+        self.assertContains(response, 'aria-label="Edit watched entry"')
 
         # Regression: Django's {# #} comment syntax is single-line only —
         # spreading one across multiple lines silently stops it being
@@ -2149,6 +2155,7 @@ class ListDetailViewTests(TestCase):
         self.assertContains(response, "Rebirth")
         self.assertEqual(episode_item.title, "Rebirth")
         self.assertContains(response, "http://example.com/season-zero.jpg")
+        self.assertContains(response, "&season_number=0")
 
 
 class CreateListViewTest(TestCase):
