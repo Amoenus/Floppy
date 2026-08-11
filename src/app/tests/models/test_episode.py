@@ -15,6 +15,7 @@ from app.models import (
     Sources,
     Status,
 )
+from events.models import Event
 
 mock_path = Path(__file__).resolve().parent.parent / "mock_data"
 
@@ -24,6 +25,9 @@ class EpisodeModel(TestCase):
 
     def setUp(self):
         """Create a user and a season."""
+        credits_patcher = patch("app.signals._schedule_credits_backfill_if_needed")
+        credits_patcher.start()
+        self.addCleanup(credits_patcher.stop)
         self.credentials = {"username": "test", "password": "12345"}
         self.user = get_user_model().objects.create_user(**self.credentials)
 
@@ -36,9 +40,23 @@ class EpisodeModel(TestCase):
             season_number=1,
         )
 
+        tv_item = Item.objects.create(
+            media_id="1668",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Friends",
+            image="http://example.com/image.jpg",
+        )
+        tv = TV.objects.create(
+            item=tv_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+
         self.season = Season.objects.create(
             item=item_season,
             user=self.user,
+            related_tv=tv,
             status=Status.IN_PROGRESS.value,
             notes="",
         )
@@ -59,6 +77,11 @@ class EpisodeModel(TestCase):
         }
 
         for i in range(1, 25):
+            Event.objects.create(
+                item=self.season.item,
+                content_number=i,
+                datetime=datetime(2023, 5, i, 0, 0, tzinfo=UTC),
+            )
             item_episode = Item.objects.create(
                 media_id="1668",
                 source=Sources.TMDB.value,
@@ -82,6 +105,9 @@ class EpisodeStatusTests(TestCase):
 
     def setUp(self):
         """Create test data."""
+        credits_patcher = patch("app.signals._schedule_credits_backfill_if_needed")
+        credits_patcher.start()
+        self.addCleanup(credits_patcher.stop)
         self.credentials = {"username": "test", "password": "12345"}
         self.user = get_user_model().objects.create_user(**self.credentials)
 
@@ -162,6 +188,11 @@ class EpisodeStatusTests(TestCase):
             },
         }
         mock_get_metadata.return_value = mock_metadata
+        Event.objects.create(
+            item=self.season_item,
+            content_number=1,
+            datetime=timezone.now(),
+        )
 
         Episode.objects.create(
             item=self.episode_item,
@@ -229,6 +260,11 @@ class EpisodeStatusTests(TestCase):
             },
         }
         mock_get_metadata.return_value = mock_metadata
+        Event.objects.create(
+            item=self.season_item,
+            content_number=1,
+            datetime=timezone.now(),
+        )
 
         Episode.objects.create(
             item=self.episode_item,
@@ -266,6 +302,11 @@ class EpisodeStatusTests(TestCase):
             },
         }
         mock_get_metadata.return_value = mock_metadata
+        Event.objects.create(
+            item=self.season_item,
+            content_number=1,
+            datetime=timezone.now(),
+        )
 
         Episode.objects.create(
             item=self.episode_item,
@@ -278,6 +319,66 @@ class EpisodeStatusTests(TestCase):
 
         self.tv.refresh_from_db()
         self.assertEqual(self.tv.status, Status.IN_PROGRESS.value)
+
+    @patch("app.models.providers.services.get_media_metadata")
+    def test_new_release_advances_stale_completed_season(self, mock_get_metadata):
+        """Finishing a newly released episode must start the next season."""
+        next_season_item = Item.objects.create(
+            media_id="123",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Test Show",
+            image="http://example.com/image2.jpg",
+            season_number=2,
+        )
+        next_season = Season.objects.create(
+            item=next_season_item,
+            user=self.user,
+            related_tv=self.tv,
+            status=Status.PLANNING.value,
+        )
+        second_episode_item = Item.objects.create(
+            media_id="123",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="Test Episode 2",
+            season_number=1,
+            episode_number=2,
+        )
+        Event.objects.bulk_create(
+            [
+                Event(
+                    item=self.season_item,
+                    content_number=episode_number,
+                    datetime=timezone.now(),
+                )
+                for episode_number in (1, 2)
+            ],
+        )
+        Episode.objects.bulk_create(
+            [
+                Episode(
+                    item=self.episode_item,
+                    related_season=self.season,
+                    end_date=timezone.now(),
+                ),
+            ],
+        )
+        Season.objects.filter(pk=self.season.pk).update(
+            status=Status.COMPLETED.value,
+        )
+        TV.objects.filter(pk=self.tv.pk).update(status=Status.COMPLETED.value)
+        self.season.refresh_from_db()
+
+        Episode.objects.create(
+            item=second_episode_item,
+            related_season=self.season,
+            end_date=timezone.now(),
+        )
+
+        next_season.refresh_from_db()
+        self.assertEqual(next_season.status, Status.IN_PROGRESS.value)
+        mock_get_metadata.assert_not_called()
 
     @patch("app.models.providers.services.get_media_metadata")
     def test_earlier_episode_after_finale_keeps_completed_season_completed(
@@ -297,6 +398,12 @@ class EpisodeStatusTests(TestCase):
                 "seasons": [{"season_number": 1}],
             },
         }
+        for episode_number in range(1, 4):
+            Event.objects.create(
+                item=self.season_item,
+                content_number=episode_number,
+                datetime=timezone.now(),
+            )
 
         final_episode_item = Item.objects.create(
             media_id="123",
@@ -322,6 +429,9 @@ class EpisodeStatusTests(TestCase):
             related_season=self.season,
             end_date=timezone.now(),
         )
+        self.season.refresh_from_db()
+        self.assertEqual(self.season.status, Status.IN_PROGRESS.value)
+
         Episode.objects.create(
             item=self.episode_item,
             related_season=self.season,
@@ -338,3 +448,35 @@ class EpisodeStatusTests(TestCase):
 
         self.tv.refresh_from_db()
         self.assertEqual(self.tv.status, Status.COMPLETED.value)
+
+    @patch("app.models.providers.services.get_media_metadata")
+    def test_duplicate_rewatch_keeps_manual_in_progress_status(
+        self,
+        mock_get_metadata,
+    ):
+        """A duplicate play must not end a manually started rewatch."""
+        mock_get_metadata.return_value = {
+            "related": {"seasons": [{"season_number": 1}]},
+        }
+        Event.objects.create(
+            item=self.season_item,
+            content_number=1,
+            datetime=timezone.now(),
+        )
+        Episode.objects.create(
+            item=self.episode_item,
+            related_season=self.season,
+            end_date=timezone.now(),
+        )
+        Season.objects.filter(pk=self.season.pk).update(
+            status=Status.IN_PROGRESS.value,
+        )
+
+        Episode.objects.create(
+            item=self.episode_item,
+            related_season=self.season,
+            end_date=timezone.now(),
+        )
+
+        self.season.refresh_from_db()
+        self.assertEqual(self.season.status, Status.IN_PROGRESS.value)

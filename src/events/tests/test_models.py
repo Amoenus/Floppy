@@ -1,9 +1,11 @@
 import datetime
 from zoneinfo import ZoneInfo, available_timezones
 
+from django.contrib import admin
 from django.contrib.admin.sites import AdminSite
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
+from django.urls import path, reverse
 from django.utils import timezone
 
 from app.models import (
@@ -26,6 +28,8 @@ from events.models import (
     Event,
 )
 
+urlpatterns = [path("admin/", admin.site.urls)]
+
 
 class EventModelTests(TestCase):
     """Test the Event model."""
@@ -42,6 +46,18 @@ class EventModelTests(TestCase):
             media_type=MediaTypes.SEASON.value,
             title="Test TV Show",
             season_number=1,
+        )
+
+        tv_item = Item.objects.create(
+            media_id="1668",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Test TV Show",
+        )
+        tv = TV.objects.create(
+            item=tv_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
         )
 
         self.movie_item = Item.objects.create(
@@ -68,6 +84,7 @@ class EventModelTests(TestCase):
         self.season = Season.objects.create(
             user=self.user,
             item=self.season_item,
+            related_tv=tv,
             status=Status.IN_PROGRESS.value,
         )
 
@@ -143,6 +160,39 @@ class EventModelTests(TestCase):
             with self.subTest(timezone=timezone_name, state="unreleased"):
                 UNKNOWN_UNRELEASED_DATETIME.astimezone(zone)
 
+    def test_admin_formats_dublin_winter_and_summer_offsets(self):
+        """Known dates retain Dublin's winter and daylight-saving offsets."""
+        event_admin = EventAdmin(Event, AdminSite())
+
+        with timezone.override(ZoneInfo("Europe/Dublin")):
+            winter = event_admin.formatted_datetime(
+                Event(
+                    item=self.movie_item,
+                    datetime=datetime.datetime(
+                        2026,
+                        1,
+                        15,
+                        12,
+                        tzinfo=datetime.UTC,
+                    ),
+                ),
+            )
+            summer = event_admin.formatted_datetime(
+                Event(
+                    item=self.movie_item,
+                    datetime=datetime.datetime(
+                        2026,
+                        7,
+                        15,
+                        12,
+                        tzinfo=datetime.UTC,
+                    ),
+                ),
+            )
+
+        self.assertEqual(winter, "2026-01-15 12:00")
+        self.assertEqual(summer, "2026-07-15 13:00")
+
     def test_unknown_predicates_preserve_legacy_context(self):
         """Legacy year-one season events are unreleased, unlike other media."""
         released = Event(item=self.movie_item, datetime=UNKNOWN_RELEASED_DATETIME)
@@ -193,6 +243,30 @@ class EventModelTests(TestCase):
             ),
             "Unknown (unreleased)",
         )
+
+    @override_settings(
+        ROOT_URLCONF=__name__,
+        TIME_ZONE="Pacific/Kiritimati",
+    )
+    def test_admin_change_form_renders_legacy_unknown_unreleased_event(self):
+        """The real admin widget must not localize legacy max past year 9999."""
+        self.user.is_staff = True
+        self.user.is_superuser = True
+        self.user.save(update_fields=["is_staff", "is_superuser"])
+        self.client.force_login(self.user)
+        event = Event.objects.create(
+            item=self.season_item,
+            content_number=2,
+            datetime=LEGACY_UNKNOWN_UNRELEASED_DATETIME,
+        )
+
+        with timezone.override(ZoneInfo("Pacific/Kiritimati")):
+            response = self.client.get(
+                reverse("admin:events_event_change", args=[event.pk]),
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Unknown (unreleased)")
 
 
 class EventManagerTests(TestCase):

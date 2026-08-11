@@ -372,6 +372,38 @@ class CalendarTVTests(CalendarFixturesMixin, TestCase):
         self.assertIsNone(episode_items[4].release_datetime)
         self.assertEqual(episode_items[5].release_datetime, future)
 
+    @patch("events.calendar.tv.get_tvmaze_episode_map", return_value={})
+    def test_missing_provider_date_preserves_stored_episode_date(
+        self,
+        _mock_tvmaze,
+    ):
+        """A transient missing provider date must not erase known metadata."""
+        stored_date = date_parser("2008-01-20")
+        episode_item = Item.objects.create(
+            media_id=self.season_item.media_id,
+            source=self.season_item.source,
+            media_type=MediaTypes.EPISODE.value,
+            title=self.season_item.title,
+            season_number=1,
+            episode_number=1,
+            release_datetime=stored_date,
+        )
+        events_bulk = []
+
+        process_season_episodes(
+            self.season_item,
+            {
+                "season_number": 1,
+                "tvdb_id": "81189",
+                "episodes": [{"episode_number": 1, "air_date": None}],
+            },
+            events_bulk,
+        )
+
+        episode_item.refresh_from_db()
+        self.assertEqual(episode_item.release_datetime, stored_date)
+        self.assertEqual(events_bulk[0].datetime, stored_date)
+
     def test_unknown_unreleased_season_does_not_reopen_completed_show(self):
         """A placeholder is refreshable, but is not evidence of a new release."""
         TV.objects.filter(item=self.tv_item, user=self.user).update(

@@ -16,7 +16,11 @@ from app.models import (
     Sources,
     Status,
 )
-from events.models import LEGACY_UNKNOWN_RELEASED_DATETIME, Event
+from events.models import (
+    LEGACY_UNKNOWN_RELEASED_DATETIME,
+    UNKNOWN_UNRELEASED_DATETIME,
+    Event,
+)
 from users.models import QuickWatchDateChoices
 
 mock_path = Path(__file__).resolve().parent.parent / "mock_data"
@@ -27,6 +31,9 @@ class SeasonModel(TestCase):
 
     def setUp(self):
         """Create a user and a season with episodes."""
+        credits_patcher = patch("app.signals._schedule_credits_backfill_if_needed")
+        credits_patcher.start()
+        self.addCleanup(credits_patcher.stop)
         self.credentials = {"username": "test", "password": "12345"}
         self.user = get_user_model().objects.create_user(**self.credentials)
 
@@ -39,9 +46,23 @@ class SeasonModel(TestCase):
             season_number=1,
         )
 
+        tv_item = Item.objects.create(
+            media_id="1668",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Friends",
+            image="http://example.com/image.jpg",
+        )
+        tv = TV.objects.create(
+            item=tv_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+
         self.season = Season.objects.create(
             item=item_season,
             user=self.user,
+            related_tv=tv,
             status=Status.IN_PROGRESS.value,
         )
 
@@ -54,12 +75,6 @@ class SeasonModel(TestCase):
             season_number=1,
             episode_number=1,
         )
-        Episode.objects.create(
-            item=item_ep1,
-            related_season=self.season,
-            end_date=datetime(2023, 6, 1, 0, 0, tzinfo=UTC),
-        )
-
         item_ep2 = Item.objects.create(
             media_id="1668",
             source=Sources.TMDB.value,
@@ -69,10 +84,19 @@ class SeasonModel(TestCase):
             season_number=1,
             episode_number=2,
         )
-        Episode.objects.create(
-            item=item_ep2,
-            related_season=self.season,
-            end_date=datetime(2023, 6, 2, 0, 0, tzinfo=UTC),
+        Episode.objects.bulk_create(
+            [
+                Episode(
+                    item=item_ep1,
+                    related_season=self.season,
+                    end_date=datetime(2023, 6, 1, 0, 0, tzinfo=UTC),
+                ),
+                Episode(
+                    item=item_ep2,
+                    related_season=self.season,
+                    end_date=datetime(2023, 6, 2, 0, 0, tzinfo=UTC),
+                ),
+            ],
         )
 
     def test_season_progress(self):
@@ -265,6 +289,19 @@ class SeasonModel(TestCase):
         self.season.max_progress = 1
         self.assertEqual(self.season.progress_percentage, 100)
 
+    def test_available_episode_numbers_loads_event_context_in_one_query(self):
+        """Legacy TV sentinel checks must not query each event's item."""
+        Event.objects.create(
+            item=self.season.item,
+            content_number=3,
+            datetime=LEGACY_UNKNOWN_RELEASED_DATETIME,
+        )
+
+        with self.assertNumQueries(1):
+            episode_numbers = self.season.available_episode_numbers()
+
+        self.assertEqual(episode_numbers, [])
+
     def test_time_watched_minutes_single_out_of_order_watch(self):
         """Regression for #527: one watched episode reports one episode's runtime."""
         season = self._make_skip_ahead_season("8890", runtime_minutes=30)
@@ -449,6 +486,9 @@ class SeasonStatusTests(TestCase):
 
     def setUp(self):
         """Create test data."""
+        credits_patcher = patch("app.signals._schedule_credits_backfill_if_needed")
+        credits_patcher.start()
+        self.addCleanup(credits_patcher.stop)
         self.credentials = {"username": "test", "password": "12345"}
         self.user = get_user_model().objects.create_user(**self.credentials)
 
@@ -591,6 +631,7 @@ class SeasonStatusTests(TestCase):
 
     def test_status_sync_ignores_legacy_unknown_tv_episode(self):
         """A legacy TV placeholder must not expand the released episode total."""
+        episodes = []
         for episode_number in (1, 2):
             episode_item = Item.objects.create(
                 media_id=self.season_item.media_id,
@@ -600,11 +641,14 @@ class SeasonStatusTests(TestCase):
                 season_number=1,
                 episode_number=episode_number,
             )
-            Episode.objects.create(
-                item=episode_item,
-                related_season=self.season,
-                end_date=datetime(2024, 1, episode_number, tzinfo=UTC),
+            episodes.append(
+                Episode(
+                    item=episode_item,
+                    related_season=self.season,
+                    end_date=datetime(2024, 1, episode_number, tzinfo=UTC),
+                ),
             )
+        Episode.objects.bulk_create(episodes)
 
         Event.objects.create(
             item=self.season_item,
@@ -621,6 +665,66 @@ class SeasonStatusTests(TestCase):
         self.season.refresh_from_db()
 
         self.assertEqual(self.season.status, Status.COMPLETED.value)
+
+    @patch(
+        "app.models.providers.services.get_media_metadata",
+        return_value={
+            "season/1": {
+                "episodes": [{"episode_number": 1}, {"episode_number": 2}],
+            },
+        },
+    )
+    @patch("app.signals._schedule_credits_backfill_if_needed")
+    def test_episode_save_uses_released_total_for_status(
+        self,
+        _mock_schedule_credits,
+        mock_get_metadata,
+    ):
+        """An unknown provider episode must not block released completion."""
+        next_season_item = Item.objects.create(
+            media_id=self.season_item.media_id,
+            source=self.season_item.source,
+            media_type=MediaTypes.SEASON.value,
+            title="Test Show",
+            season_number=2,
+        )
+        next_season = Season.objects.create(
+            item=next_season_item,
+            user=self.user,
+            related_tv=self.tv,
+            status=Status.PLANNING.value,
+        )
+        Event.objects.create(
+            item=self.season_item,
+            content_number=1,
+            datetime=datetime(2024, 1, 1, tzinfo=UTC),
+        )
+        Event.objects.create(
+            item=self.season_item,
+            content_number=2,
+            datetime=UNKNOWN_UNRELEASED_DATETIME,
+        )
+        episode_item = Item.objects.create(
+            media_id=self.season_item.media_id,
+            source=self.season_item.source,
+            media_type=MediaTypes.EPISODE.value,
+            title="Test Show episode 1",
+            season_number=1,
+            episode_number=1,
+            release_datetime=datetime(2024, 1, 1, tzinfo=UTC),
+        )
+
+        Episode.objects.create(
+            item=episode_item,
+            related_season=self.season,
+            end_date=datetime(2024, 1, 2, tzinfo=UTC),
+        )
+
+        self.season.refresh_from_db()
+        self.assertEqual(self.season.status, Status.COMPLETED.value)
+        next_season.refresh_from_db()
+        self.assertEqual(next_season.status, Status.IN_PROGRESS.value)
+        mock_get_metadata.assert_not_called()
 
     @patch("app.models.providers.services.get_media_metadata")
     def test_completed_status_noop_if_no_remaining_episodes(self, mock_get_metadata):

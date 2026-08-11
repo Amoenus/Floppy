@@ -12,7 +12,7 @@ from simple_history.utils import bulk_create_with_history, bulk_update_with_hist
 from app import cache_utils
 from app.models import TV, Item, MediaTypes, Season, Sources, Status
 from app.providers import services, tmdb, tvdb
-from events.models import UNKNOWN_UNRELEASED_DATETIME, Event
+from events.models import UNKNOWN_EVENT_DATETIMES, UNKNOWN_UNRELEASED_DATETIME, Event
 from integrations.imports.helpers import find_item_across_buckets
 
 from .helpers import date_parser
@@ -387,12 +387,25 @@ def process_season_episodes(item, metadata, events_bulk):
 
     for episode in metadata["episodes"]:
         episode_number = episode["episode_number"]
-        episode_datetimes[episode_number] = _resolve_episode_datetime(
+        episode_datetime, provider_supplied = _resolve_episode_datetime(
             episode,
             metadata["season_number"],
             episode_number,
             tvmaze_map,
         )
+        existing_datetime = getattr(
+            existing_episode_items.get(episode_number),
+            "release_datetime",
+            None,
+        )
+        if (
+            not provider_supplied
+            and existing_datetime is not None
+            and existing_datetime not in UNKNOWN_EVENT_DATETIMES
+        ):
+            episode_datetime = existing_datetime
+            provider_supplied = True
+        episode_datetimes[episode_number] = (episode_datetime, provider_supplied)
 
     nearest_later_aired = None
     for episode_number in sorted(episode_datetimes, reverse=True):

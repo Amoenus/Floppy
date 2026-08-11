@@ -570,11 +570,11 @@ def season_details(
     if current_instance and hasattr(
         current_instance, "derived_status_from_episode_progress"
     ):
-        season_max_progress = (
-            season_metadata.get("max_progress")
-            if isinstance(season_metadata, dict)
-            else None
+        BasicMedia.objects.annotate_max_progress(
+            user_medias,
+            MediaTypes.SEASON.value,
         )
+        season_max_progress = current_instance.max_progress
         derived = current_instance.derived_status_from_episode_progress(
             max_progress=season_max_progress,
         )

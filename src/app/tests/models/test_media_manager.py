@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -781,10 +782,15 @@ class MediaManagerTests(TestCase):
 
         tv_list = TV.objects.filter(user=self.user.id)
 
-        Event.objects.create(
-            item=self.season1_item,
-            content_number=10,
-            datetime=timezone.now() - timedelta(days=10),
+        Event.objects.bulk_create(
+            [
+                Event(
+                    item=self.season1_item,
+                    content_number=episode_number,
+                    datetime=timezone.now() - timedelta(days=10),
+                )
+                for episode_number in range(1, 11)
+            ],
         )
         Event.objects.create(
             item=self.season1_item,
@@ -808,6 +814,90 @@ class MediaManagerTests(TestCase):
 
         manager._annotate_tv_released_episodes(tv_list, timezone.now())
         self.assertEqual(tv_list[0].max_progress, 10)
+
+    def test_tv_and_season_progress_count_non_contiguous_releases(self):
+        """Released progress counts known episodes instead of the highest number."""
+        Event.objects.bulk_create(
+            [
+                Event(
+                    item=self.season1_item,
+                    content_number=episode_number,
+                    datetime=timezone.now() - timedelta(days=1),
+                )
+                for episode_number in (1, 3)
+            ],
+        )
+        season_list = list(
+            Season.objects.filter(pk=self.season1.pk).select_related("item"),
+        )
+        tv_list = list(TV.objects.filter(pk=self.tv.pk).select_related("item"))
+
+        MediaManager().annotate_max_progress(season_list, MediaTypes.SEASON.value)
+        MediaManager()._annotate_tv_released_episodes(tv_list, timezone.now())
+
+        self.assertEqual(season_list[0].max_progress, 2)
+        self.assertEqual(tv_list[0].released_episode_breakdown, {1: 2})
+        self.assertEqual(tv_list[0].max_progress, 2)
+
+    @patch(
+        "app.providers.services.get_media_metadata",
+        return_value={"max_progress": 8},
+    )
+    def test_season_max_progress_counts_released_episodes(self, mock_get_metadata):
+        """Tracked progress excludes provider episodes without a release date."""
+        Event.objects.create(
+            item=self.season1_item,
+            content_number=1,
+            datetime=timezone.now() - timedelta(days=1),
+        )
+        Event.objects.create(
+            item=self.season1_item,
+            content_number=8,
+            datetime=UNKNOWN_UNRELEASED_DATETIME,
+        )
+        season_list = list(
+            Season.objects.filter(pk=self.season1.pk).select_related("item"),
+        )
+
+        MediaManager().annotate_max_progress(season_list, MediaTypes.SEASON.value)
+
+        self.assertEqual(season_list[0].max_progress, 1)
+        mock_get_metadata.assert_not_called()
+
+    def test_season_max_progress_uses_local_only_episode_count(self):
+        """A media-server count remains authoritative over partial release data."""
+        self.season1_item.local_season_episode_count = 2
+        self.season1_item.save(update_fields=["local_season_episode_count"])
+        Event.objects.create(
+            item=self.season1_item,
+            content_number=1,
+            datetime=timezone.now() - timedelta(days=1),
+        )
+        season_list = list(
+            Season.objects.filter(pk=self.season1.pk).select_related("item"),
+        )
+
+        MediaManager().annotate_max_progress(season_list, MediaTypes.SEASON.value)
+
+        self.assertEqual(season_list[0].max_progress, 2)
+
+    def test_untracked_next_air_date_loads_event_context_in_one_query(self):
+        """Legacy TV sentinel checks must not query each event's item."""
+        Event.objects.create(
+            item=self.season1_item,
+            content_number=1,
+            datetime=LEGACY_UNKNOWN_RELEASED_DATETIME,
+        )
+        media = SimpleNamespace(
+            item=self.tv.item,
+            seasons=[],
+            aggregated_progress=0,
+        )
+
+        with self.assertNumQueries(1):
+            air_date = MediaManager()._next_episode_air_date_value(media)
+
+        self.assertIsNone(air_date)
 
     @patch("app.models.providers.services.get_media_metadata")
     def test_annotate_max_progress_for_books_uses_stored_pages_only(
