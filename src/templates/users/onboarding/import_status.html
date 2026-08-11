@@ -1,0 +1,40 @@
+{% extends "users/onboarding/_layout.html" %}
+{% load user_tags %}
+
+{% block step_title %}You're all set{% endblock step_title %}
+
+{% block step_explanation %}
+  <p>
+    Your connected services are queued to import. This can take a few
+    minutes depending on how much history they have.
+  </p>
+  <p>You can check progress and history anytime from Settings &gt; Import.</p>
+{% endblock step_explanation %}
+
+{% block step_options %}
+  {% if connected_sources %}
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
+      {% for source in connected_sources %}
+        <div class="flex items-center gap-3 p-3 bg-[var(--color-surface-strong)] rounded-lg">
+          {% source_display source.slug %}
+          <span class="ml-auto flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" title="Connected">
+            {% include "app/icons/checkmark.svg" with classes="w-3 h-3" %}
+          </span>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="text-sm text-[var(--color-text-muted)] mb-6">
+      No services connected yet — you can connect one anytime from
+      Settings &gt; Import.
+    </p>
+  {% endif %}
+  {% include "users/components/import_activity.html" %}
+  <form method="post" class="mt-6 flex justify-end">
+    {% csrf_token %}
+    <button type="submit"
+            class="px-4 py-2 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer">
+      Take me to my library
+    </button>
+  </form>
+{% endblock step_options %}

@@ -91,6 +91,10 @@ class CustomSignupView(SignupView):
             form.add_error("username", exc)
             return self.form_invalid(form)
 
+    def get_success_url(self):
+        """Send a newly created account into guided setup instead of Home."""
+        return reverse("onboarding_media_types")
+
 
 class CustomSocialSignupView(SocialSignupView):
     """OIDC/social signup view with the same save-time conflict handling."""
@@ -102,6 +106,10 @@ class CustomSocialSignupView(SocialSignupView):
         except ValidationError as exc:
             form.add_error("username", exc)
             return self.form_invalid(form)
+
+    def get_success_url(self):
+        """Send a newly created account into guided setup instead of Home."""
+        return reverse("onboarding_media_types")
 
 
 DEFAULT_AUTO_PAUSE_WEEKS = 16
@@ -597,6 +605,42 @@ def test_notification(request):
     return redirect("notifications")
 
 
+def apply_media_type_preferences(user, selected_media_types, submitted_order):
+    """Apply media-type enabled/order preferences onto ``user``.
+
+    Shared by the Sidebar settings page and the setup wizard's "choose what
+    to track" step so both persist through the exact same rules. Mutates
+    ``user`` in place and returns the list of changed field names, ready to
+    pass to ``user.save(update_fields=...)``.
+    """
+    media_types = SIDEBAR_MEDIA_TYPES
+    fields_to_update = []
+
+    for media_type in media_types:
+        enabled_field = f"{media_type}_enabled"
+        is_enabled = media_type in selected_media_types
+        current_value = getattr(user, enabled_field, False)
+        if current_value != is_enabled:
+            setattr(user, enabled_field, is_enabled)
+            fields_to_update.append(enabled_field)
+
+    sidebar_media_type_order = list(
+        dict.fromkeys(
+            media_type for media_type in submitted_order if media_type in media_types
+        ),
+    )
+    sidebar_media_type_order += [
+        media_type
+        for media_type in media_types
+        if media_type not in sidebar_media_type_order
+    ]
+    if user.sidebar_media_type_order != sidebar_media_type_order:
+        user.sidebar_media_type_order = sidebar_media_type_order
+        fields_to_update.append("sidebar_media_type_order")
+
+    return fields_to_update
+
+
 @require_http_methods(["GET", "POST"])
 def sidebar(request):
     """Render the sidebar settings page (media types visibility and UI preferences)."""
@@ -616,32 +660,12 @@ def sidebar(request):
             request.user.clickable_media_cards = clickable_media_cards
             fields_to_update.append("clickable_media_cards")
 
-        # Handle media types checkboxes
-        selected_media_types = request.POST.getlist("media_types_checkboxes")
-        for media_type in media_types:
-            enabled_field = f"{media_type}_enabled"
-            is_enabled = media_type in selected_media_types
-            current_value = getattr(request.user, enabled_field, False)
-            if current_value != is_enabled:
-                setattr(request.user, enabled_field, is_enabled)
-                fields_to_update.append(enabled_field)
-
-        submitted_order = request.POST.get("sidebar_media_type_order", "").split(",")
-        sidebar_media_type_order = list(
-            dict.fromkeys(
-                media_type
-                for media_type in submitted_order
-                if media_type in media_types
-            ),
+        # Handle media types checkboxes + order
+        fields_to_update += apply_media_type_preferences(
+            request.user,
+            request.POST.getlist("media_types_checkboxes"),
+            request.POST.get("sidebar_media_type_order", "").split(","),
         )
-        sidebar_media_type_order += [
-            media_type
-            for media_type in media_types
-            if media_type not in sidebar_media_type_order
-        ]
-        if request.user.sidebar_media_type_order != sidebar_media_type_order:
-            request.user.sidebar_media_type_order = sidebar_media_type_order
-            fields_to_update.append("sidebar_media_type_order")
 
         if fields_to_update:
             request.user.save(update_fields=fields_to_update)
