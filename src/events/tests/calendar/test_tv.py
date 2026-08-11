@@ -331,7 +331,9 @@ class CalendarTVTests(CalendarFixturesMixin, TestCase):
         _mock_tvmaze,
     ):
         """Only an already-aired later episode may date an earlier Event."""
-        aired = date_parser("2008-01-20")
+        nearest_aired = date_parser("2008-01-20")
+        later_aired = date_parser("2008-02-03")
+        future = date_parser("2999-01-20")
         events_bulk = []
 
         process_season_episodes(
@@ -342,15 +344,19 @@ class CalendarTVTests(CalendarFixturesMixin, TestCase):
                 "episodes": [
                     {"episode_number": 1, "air_date": None},
                     {"episode_number": 2, "air_date": "2008-01-20"},
-                    {"episode_number": 3, "air_date": None},
+                    {"episode_number": 3, "air_date": "2008-02-03"},
+                    {"episode_number": 4, "air_date": None},
+                    {"episode_number": 5, "air_date": "2999-01-20"},
                 ],
             },
             events_bulk,
         )
 
-        self.assertEqual(events_bulk[0].datetime, aired)
-        self.assertEqual(events_bulk[1].datetime, aired)
-        self.assertEqual(events_bulk[2].datetime, UNKNOWN_UNRELEASED_DATETIME)
+        self.assertEqual(events_bulk[0].datetime, nearest_aired)
+        self.assertEqual(events_bulk[1].datetime, nearest_aired)
+        self.assertEqual(events_bulk[2].datetime, later_aired)
+        self.assertEqual(events_bulk[3].datetime, UNKNOWN_UNRELEASED_DATETIME)
+        self.assertEqual(events_bulk[4].datetime, future)
 
         episode_items = {
             item.episode_number: item
@@ -361,8 +367,10 @@ class CalendarTVTests(CalendarFixturesMixin, TestCase):
             )
         }
         self.assertIsNone(episode_items[1].release_datetime)
-        self.assertEqual(episode_items[2].release_datetime, aired)
-        self.assertIsNone(episode_items[3].release_datetime)
+        self.assertEqual(episode_items[2].release_datetime, nearest_aired)
+        self.assertEqual(episode_items[3].release_datetime, later_aired)
+        self.assertIsNone(episode_items[4].release_datetime)
+        self.assertEqual(episode_items[5].release_datetime, future)
 
     def test_unknown_unreleased_season_does_not_reopen_completed_show(self):
         """A placeholder is refreshable, but is not evidence of a new release."""

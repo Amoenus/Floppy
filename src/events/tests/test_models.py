@@ -372,6 +372,11 @@ class EventManagerTests(TestCase):
         )  # Past event, but filtered by active status
     def test_get_user_events_excludes_all_unknown_sentinel_classes(self):
         """Public calendar queries must not expose semantic placeholders."""
+        real_boundary_event = Event.objects.create(
+            item=self.manga_item,
+            content_number=12,
+            datetime=datetime.datetime(1, 2, 3, 4, 5, tzinfo=datetime.UTC),
+        )
         unknown_events = [
             Event.objects.create(
                 item=self.manga_item,
@@ -401,6 +406,7 @@ class EventManagerTests(TestCase):
             datetime.date.max,
         )
 
+        self.assertIn(real_boundary_event, events)
         for event in unknown_events:
             self.assertNotIn(event, events)
 

@@ -9,6 +9,7 @@ from events.calendar.anime import (
     get_anime_schedule_bulk,
     process_anime_bulk,
 )
+from events.models import UNKNOWN_RELEASED_DATETIME
 from events.tests.calendar.utils import CalendarFixturesMixin
 
 
@@ -181,6 +182,35 @@ class CalendarAnimeTests(CalendarFixturesMixin, TestCase):
 
         expected_date = datetime.datetime.fromtimestamp(870739200, tz=ZoneInfo("UTC"))
         self.assertEqual(events_bulk[0].datetime, expected_date)
+
+    @patch("events.calendar.anime.services.api_request")
+    def test_process_anime_bulk_preserves_unknown_released_semantics(
+        self,
+        mock_api_request,
+    ):
+        """Missing AniList airingAt remains released with an unknown date."""
+        mock_api_request.return_value = {
+            "data": {
+                "Page": {
+                    "pageInfo": {"hasNextPage": False},
+                    "media": [
+                        {
+                            "idMal": 437,
+                            "endDate": {"year": None, "month": None, "day": None},
+                            "episodes": 1,
+                            "airingSchedule": {
+                                "nodes": [{"episode": 1, "airingAt": None}],
+                            },
+                        },
+                    ],
+                },
+            },
+        }
+
+        events_bulk = []
+        process_anime_bulk([self.anime_item], events_bulk)
+
+        self.assertEqual(events_bulk[0].datetime, UNKNOWN_RELEASED_DATETIME)
 
     @patch("events.calendar.anime.services.get_media_metadata")
     @patch("events.calendar.anime.services.api_request")
