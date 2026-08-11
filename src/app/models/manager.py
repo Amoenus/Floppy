@@ -396,13 +396,17 @@ class MediaManager(models.Manager):
             # Fetch ALL entries (across all statuses) for only the queried items.
             # Using all statuses is intentional: an item filtered as IN_PROGRESS may have
             # a more-recent COMPLETED entry that should determine its aggregated_status.
+            #
+            # _aggregate_item_data only reads scalar fields (progress, status, dates,
+            # score) and item.media_type off these entries, so this intentionally
+            # skips _apply_prefetch_related: the events/tags/seasons/episodes
+            # prefetch bundle it would pull in is for the *displayed* media_list,
+            # not this internal aggregation pass, and re-fetching it here was
+            # doubling those queries for every list page.
             all_media = model.objects.filter(
                 user=user.id,
                 item_id__in=queried_item_ids,
             ).select_related("item")
-            all_media = self._apply_prefetch_related(
-                all_media, media_type, list_mode=True
-            )
 
             # Group media by item_id
             media_by_item = {}

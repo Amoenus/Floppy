@@ -1969,11 +1969,12 @@ def _apply_progress_filter(
     if normalized_progress == "all" or media_type not in HOME_PROGRESS_MEDIA_TYPES:
         return entries
 
-    media_objects = [entry.media for entry in entries if entry.media]
-    if media_objects and any(
-        getattr(media, "max_progress", None) is None for media in media_objects
-    ):
-        BasicMedia.objects.annotate_max_progress(media_objects, media_type)
+    # media entries here always come from _media_lookup_for_items, which
+    # already calls annotate_max_progress on every group it builds - a media
+    # object's max_progress is None at this point because it genuinely has
+    # no progress data, not because annotation hasn't run yet. Re-annotating
+    # "just in case" was re-issuing the same events/episode bulk queries a
+    # second time for every progress-filtered row.
 
     if normalized_progress == "caught_up":
         return [

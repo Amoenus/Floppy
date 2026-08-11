@@ -224,6 +224,15 @@ def list_detail(request, list_reference):
     # Build and filter base queryset
     items = custom_list.items.all()
     total_items_count = items.count()
+    # Search/type/status filters are the only things that can narrow `items`
+    # below the full list, so without them the paginator's count is always
+    # exactly total_items_count - reuse it instead of a second identical
+    # COUNT query below.
+    list_is_unfiltered = (
+        not params["search_query"]
+        and not params["media_types"]
+        and not params["status_filter"]
+    )
 
     media_type_breakdown = _build_media_type_breakdown(custom_list)
 
@@ -388,6 +397,8 @@ def list_detail(request, list_reference):
 
         # Paginate and prepare media objects
         paginator = Paginator(items, 16)
+        if list_is_unfiltered:
+            paginator.__dict__["count"] = total_items_count
         items_page = paginator.get_page(params["page"])
         filtered_items_count = paginator.count
 
