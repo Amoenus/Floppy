@@ -330,8 +330,6 @@ def season_details(
         and source != Sources.MANUAL.value
         and season_metadata.get("episodes")
     ):
-        from datetime import UTC, datetime
-
         raw_episodes = season_metadata["episodes"]
         current_datetime = timezone.now()
         episodes_to_update = []
@@ -365,30 +363,20 @@ def season_details(
             # (that's the only other code path that extracts it), so an
             # episode created here from a page view stays permanently NULL
             # even once the provider does have its air date.
-            #
-            # Anchored to UTC, not the server's configured TIME_ZONE: a
-            # provider air date is a calendar date with no real-world
-            # timezone attached, and interpreting it as server-local
-            # midnight shifted it by the server's UTC offset (e.g. +2h under
-            # Europe/Berlin in summer), which can flip the calendar date a
-            # user sees depending on deployment timezone.
-            air_date_dt = None
             raw_air_date = episode.get("air_date")
-            if raw_air_date:
-                try:
-                    if isinstance(raw_air_date, str):
-                        date_obj = datetime.strptime(raw_air_date, "%Y-%m-%d")  # noqa: DTZ007  # date-only value; no timezone applies
-                        air_date_dt = date_obj.replace(tzinfo=UTC)
-                    elif hasattr(raw_air_date, "year"):
-                        air_date_dt = (
-                            raw_air_date
-                            if timezone.is_aware(raw_air_date)
-                            else raw_air_date.replace(tzinfo=UTC)
-                        )
-                except (ValueError, TypeError):
-                    air_date_dt = None
-                if air_date_dt and air_date_dt.year <= MIN_PLAUSIBLE_YEAR:
-                    air_date_dt = None
+            # Episode provider dates are calendar dates, even when a provider
+            # has already wrapped one in a datetime. Persist UTC midnight so a
+            # shared Item does not depend on the timezone of the first viewer.
+            normalized_air_date = (
+                raw_air_date.date().isoformat()
+                if isinstance(raw_air_date, timezone.datetime)
+                else raw_air_date
+            )
+            air_date_dt = helpers.extract_release_datetime(
+                {"release_date": normalized_air_date},
+            )
+            if air_date_dt and air_date_dt.year <= MIN_PLAUSIBLE_YEAR:
+                air_date_dt = None
 
             parsed_episodes.append((episode, episode_number, air_date_dt))
             episode_numbers.append(episode_number)
