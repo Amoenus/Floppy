@@ -10,10 +10,14 @@ reimplementing them:
   link (see ``import_data.html``).
 - import progress reuses ``users/components/import_activity.html`` and
   ``integrations.import_progress``.
+- for a connected source with a separate realtime integration (currently
+  just Plex's webhook), one more step deep-links into Settings >
+  Integrations the same way; sources without one never show this step.
 
 Wizard state lives on a handful of ``User`` fields
 (``onboarding_status``/``onboarding_step``/``onboarding_selected_sources``/
-``onboarding_skipped_sources``); see ``users/models.py``.
+``onboarding_skipped_sources``/``onboarding_skipped_integrations``); see
+``users/models.py``.
 """
 
 from __future__ import annotations
@@ -38,8 +42,15 @@ STEP_URL_NAMES = {
     "services_summary": "onboarding_services_summary",
     "service_setup": "onboarding_service_setup",
     "import_status": "onboarding_import_status",
+    "integration_setup": "onboarding_integration_setup",
     "done": "home",
 }
+
+# TV Seasons isn't a real choice for a new user ("do you want to track TV
+# Shows?" already implies seasons); Settings > Sidebar still offers it.
+ONBOARDING_MEDIA_TYPES = [
+    mt for mt in SIDEBAR_MEDIA_TYPES if mt != MediaTypes.SEASON.value
+]
 
 STEP_LABELS = [
     ("media_types", "Media Types"),
@@ -47,6 +58,7 @@ STEP_LABELS = [
     ("services_summary", "Summary"),
     ("service_setup", "Connect"),
     ("import_status", "Import"),
+    ("integration_setup", "Scrobbling"),
 ]
 
 
@@ -110,19 +122,22 @@ def onboarding_media_types(request):
         if request.POST.get("action") == "skip":
             return _finish(request.user)
 
-        fields = apply_media_type_preferences(
-            request.user,
-            request.POST.getlist("media_types_checkboxes"),
-            request.POST.get("sidebar_media_type_order", "").split(","),
-        )
-        if not request.user.get_enabled_media_types():
+        selected_media_types = request.POST.getlist("media_types_checkboxes")
+        if not selected_media_types:
             messages.error(request, "Choose at least one media type to continue.")
             return redirect("onboarding_media_types")
+
+        fields = apply_media_type_preferences(
+            request.user,
+            selected_media_types,
+            request.POST.get("sidebar_media_type_order", "").split(","),
+            media_types=ONBOARDING_MEDIA_TYPES,
+        )
         return _advance(request.user, request, "services", fields)
 
     preferred_order = request.user.sidebar_media_type_order or []
-    media_types = [mt for mt in preferred_order if mt in SIDEBAR_MEDIA_TYPES]
-    media_types += [mt for mt in SIDEBAR_MEDIA_TYPES if mt not in media_types]
+    media_types = [mt for mt in preferred_order if mt in ONBOARDING_MEDIA_TYPES]
+    media_types += [mt for mt in ONBOARDING_MEDIA_TYPES if mt not in media_types]
     return render(
         request,
         "users/onboarding/media_types.html",
@@ -268,13 +283,13 @@ def onboarding_skip_service(request, slug):
 
 @require_http_methods(["GET", "POST"])
 def onboarding_import_status(request):
-    """Step 5: show import progress/history for connected services, then finish."""
+    """Step 5: show import progress/history for connected services, then continue."""
     blocked = _blocked_for_demo(request)
     if blocked:
         return blocked
 
     if request.method == "POST":
-        return _finish(request.user)
+        return _advance(request.user, request, "integration_setup")
 
     connected_sources = [
         source
@@ -294,6 +309,68 @@ def onboarding_import_status(request):
             **_wizard_progress("import_status"),
         },
     )
+
+
+def _remaining_integrations(user):
+    """Return connected sources with an unconfigured realtime integration.
+
+    Automatically empty (and so automatically skipped) unless a connected
+    source actually has a companion integration — most sources are import-
+    only and never appear here.
+    """
+    skipped = set(user.onboarding_skipped_integrations)
+    return [
+        source
+        for slug in user.onboarding_selected_sources
+        if (source := get_source(slug))
+        and source.has_integration()
+        and source.is_connected(user)
+        and not source.is_integration_configured(user)
+        and slug not in skipped
+    ]
+
+
+@require_GET
+def onboarding_integration_setup(request):
+    """Step 6: for connected services with a realtime integration, set it up too.
+
+    Recomputes the remaining queue on every visit, same as
+    ``onboarding_service_setup``: an empty queue (the common case, since
+    most sources have no separate integration) advances straight through
+    without the user ever seeing this step.
+    """
+    blocked = _blocked_for_demo(request)
+    if blocked:
+        return blocked
+
+    remaining = _remaining_integrations(request.user)
+    if not remaining:
+        return _finish(request.user)
+
+    current = remaining[0]
+    return render(
+        request,
+        "users/onboarding/integration_setup.html",
+        {
+            "current_source": current,
+            "remaining_count": len(remaining),
+            **_wizard_progress("integration_setup"),
+        },
+    )
+
+
+@require_http_methods(["POST"])
+def onboarding_skip_integration(request, slug):
+    """Skip a queued integration without losing progress on the others."""
+    blocked = _blocked_for_demo(request)
+    if blocked:
+        return blocked
+
+    skipped = set(request.user.onboarding_skipped_integrations)
+    skipped.add(slug)
+    request.user.onboarding_skipped_integrations = sorted(skipped)
+    request.user.save(update_fields=["onboarding_skipped_integrations"])
+    return redirect("onboarding_integration_setup")
 
 
 @require_GET

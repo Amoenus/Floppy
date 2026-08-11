@@ -605,15 +605,22 @@ def test_notification(request):
     return redirect("notifications")
 
 
-def apply_media_type_preferences(user, selected_media_types, submitted_order):
+def apply_media_type_preferences(
+    user, selected_media_types, submitted_order, media_types=None
+):
     """Apply media-type enabled/order preferences onto ``user``.
 
     Shared by the Sidebar settings page and the setup wizard's "choose what
     to track" step so both persist through the exact same rules. Mutates
     ``user`` in place and returns the list of changed field names, ready to
     pass to ``user.save(update_fields=...)``.
+
+    ``media_types`` defaults to every sidebar-eligible type; pass a smaller
+    list (e.g. the wizard omitting TV Seasons) to leave types outside it
+    untouched rather than treating their absence from ``selected_media_types``
+    as "turn this off".
     """
-    media_types = SIDEBAR_MEDIA_TYPES
+    media_types = media_types if media_types is not None else SIDEBAR_MEDIA_TYPES
     fields_to_update = []
 
     for media_type in media_types:

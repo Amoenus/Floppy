@@ -38,7 +38,7 @@
       </form>
       <a href="{% url 'import_data' %}?open={{ current_source.slug }}&onboarding=1"
          class="px-4 py-2 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors">
-        Connect {{ current_source.slug }}
+        Connect {{ current_source.slug|source_name }}
       </a>
     </div>
   </div>

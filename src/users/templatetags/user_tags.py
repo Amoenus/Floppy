@@ -124,6 +124,13 @@ SOURCES_CONFIG = {
 }
 
 
+@register.filter
+def source_name(slug):
+    """Return a source's display name (e.g. "plex" -> "Plex") for plain-text use."""
+    info = SOURCES_CONFIG.get(slug)
+    return info["name"] if info else slug
+
+
 @register.simple_tag
 def source_display(source_name):
     """Generate HTML display for a media source with logo and name."""

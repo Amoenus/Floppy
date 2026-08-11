@@ -14,7 +14,7 @@
 {% block step_options %}
   <form method="post">
     {% csrf_token %}
-    {% include "users/components/media_type_picker.html" %}
+    {% include "users/components/media_type_picker.html" with grid_cols_class="md:grid-cols-2" %}
     <div class="mt-6 flex items-center justify-between">
       <button type="submit"
               name="action"

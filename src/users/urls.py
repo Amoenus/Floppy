@@ -29,6 +29,16 @@ urlpatterns = [
         onboarding_views.onboarding_import_status,
         name="onboarding_import_status",
     ),
+    path(
+        "setup/integrations/",
+        onboarding_views.onboarding_integration_setup,
+        name="onboarding_integration_setup",
+    ),
+    path(
+        "setup/integrations/<slug:slug>/skip/",
+        onboarding_views.onboarding_skip_integration,
+        name="onboarding_skip_integration",
+    ),
     path("setup/resume/", onboarding_views.onboarding_resume, name="onboarding_resume"),
     path("setup/restart/", onboarding_views.onboarding_restart, name="onboarding_restart"),
     path("accounts/password/recover/", views.password_recover, name="password_recover"),

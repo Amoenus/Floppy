@@ -55,6 +55,8 @@ class OnboardingSource:
     account_attr: str | None = None  # request.user.<attr> if persistently connected
     recommended_import_mode: str = "new"
     tags: tuple[str, ...] = field(default_factory=tuple)  # matches import_data.html's activeMediaTag values
+    integration_tag: str | None = None  # matches integrations.html's activeIntegration values
+    integration_configured_attr: str | None = None  # request.user.<attr> truthy once webhook is live
 
     def is_connected(self, user) -> bool:
         """Whether this user already has a persistent connection for this source."""
@@ -62,9 +64,27 @@ class OnboardingSource:
             return False
         return getattr(user, self.account_attr, None) is not None
 
+    def has_integration(self) -> bool:
+        """Whether this source has a separate realtime integration (e.g. a webhook)."""
+        return self.integration_tag is not None
+
+    def is_integration_configured(self, user) -> bool:
+        """Whether the realtime integration has already received activity."""
+        if not self.integration_configured_attr:
+            return False
+        return bool(getattr(user, self.integration_configured_attr, None))
+
 
 ONBOARDING_SOURCES: tuple[OnboardingSource, ...] = (
-    OnboardingSource("plex", (MOVIE, TV, MUSIC), "oauth", "plex_account", tags=("screen", "music")),
+    OnboardingSource(
+        "plex",
+        (MOVIE, TV, MUSIC),
+        "oauth",
+        "plex_account",
+        tags=("screen", "music"),
+        integration_tag="plex",
+        integration_configured_attr="plex_webhook_last_received_at",
+    ),
     OnboardingSource("radarr", (MOVIE,), "host_url", "radarr_account", tags=("screen",)),
     OnboardingSource("sonarr", (TV,), "host_url", "sonarr_account", tags=("screen",)),
     OnboardingSource("stremio", (MOVIE, TV), "credentials", "stremio_account", tags=("screen",)),

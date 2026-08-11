@@ -280,6 +280,7 @@ class OnboardingStepChoices(models.TextChoices):
     SERVICES_SUMMARY = "services_summary", "Review Services"
     SERVICE_SETUP = "service_setup", "Connect Services"
     IMPORT_STATUS = "import_status", "Import Status"
+    INTEGRATION_SETUP = "integration_setup", "Set Up Scrobbling"
     DONE = "done", "Done"
 
 
@@ -1001,6 +1002,14 @@ class User(AbstractUser):
         default=list,
         blank=True,
         help_text="Source slugs explicitly skipped during the setup wizard.",
+    )
+    onboarding_skipped_integrations = models.JSONField(
+        default=list,
+        blank=True,
+        help_text=(
+            "Source slugs whose realtime integration (e.g. a webhook) was "
+            "explicitly skipped during the setup wizard."
+        ),
     )
 
     game_logging_style = models.CharField(

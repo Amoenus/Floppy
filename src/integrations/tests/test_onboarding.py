@@ -1,5 +1,6 @@
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.utils import timezone
 
 from app.models import MediaTypes
 from integrations.models import PlexAccount
@@ -53,3 +54,22 @@ class OnboardingRegistryTests(TestCase):
         trakt = get_source("trakt")
 
         self.assertFalse(trakt.is_connected(user))
+
+    def test_only_plex_declares_a_realtime_integration(self):
+        """Most sources are import-only; the integration step should stay invisible for them."""
+        with_integration = {s.slug for s in ONBOARDING_SOURCES if s.has_integration()}
+        self.assertEqual(with_integration, {"plex"})
+
+    def test_integration_configured_reflects_webhook_activity(self):
+        """Plex's integration counts as configured once its webhook has ever fired."""
+        user = get_user_model().objects.create_user(
+            username="onboarding-user-3", password="testpass123"
+        )
+        plex = get_source("plex")
+
+        self.assertFalse(plex.is_integration_configured(user))
+
+        user.plex_webhook_last_received_at = timezone.now()
+        user.save(update_fields=["plex_webhook_last_received_at"])
+
+        self.assertTrue(plex.is_integration_configured(user))

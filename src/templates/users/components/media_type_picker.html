@@ -5,10 +5,12 @@ Reusable media-type multi-select grid with drag-to-reorder.
 Used by Settings > Sidebar and by the setup wizard's "choose what to
 track" step. Expects `media_types` (ordered list of MediaTypes values)
 and `user` in context; renders into a form that also submits
-`sidebar_media_type_order` and `media_types_checkboxes`.
+`sidebar_media_type_order` and `media_types_checkboxes`. Optional
+`grid_cols_class` overrides the column count for a narrower container
+(e.g. the wizard passes "md:grid-cols-2").
 {% endcomment %}
 <input type="hidden" name="sidebar_media_type_order" value="{{ media_types|join:',' }}" data-sidebar-order-input>
-<div class="grid gap-3 md:grid-cols-3" data-sidebar-order-list>
+<div class="grid gap-3 {{ grid_cols_class|default:"md:grid-cols-3" }}" data-sidebar-order-list>
   {% for media_type in media_types %}
     <div class="flex items-center justify-between p-3 bg-[var(--color-surface-strong)] rounded-md" data-sidebar-media-type="{{ media_type }}">
       <div class="flex items-center text-[var(--color-text-muted)]">

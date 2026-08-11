@@ -3,6 +3,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from app.models import MediaTypes
+from integrations.models import PlexAccount
 
 
 class OnboardingWizardTests(TestCase):
@@ -26,6 +27,20 @@ class OnboardingWizardTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "users/onboarding/media_types.html")
         self.assertTemplateUsed(response, "users/components/media_type_picker.html")
+        self.assertNotIn(MediaTypes.SEASON.value, response.context["media_types"])
+
+    def test_media_types_post_ignores_season_entirely(self):
+        """TV Seasons isn't offered, so this step must never touch season_enabled."""
+        self.user.season_enabled = True
+        self.user.save(update_fields=["season_enabled"])
+
+        self.client.post(
+            reverse("onboarding_media_types"),
+            {"media_types_checkboxes": [MediaTypes.MOVIE.value]},
+        )
+
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.season_enabled)
 
     def test_media_types_post_advances_to_services(self):
         """Choosing media types moves to the services step and marks in_progress."""
@@ -127,14 +142,75 @@ class OnboardingWizardTests(TestCase):
         response = self.client.get(reverse("onboarding_service_setup"))
         self.assertRedirects(response, reverse("onboarding_import_status"))
 
-    def test_import_status_post_finishes_onboarding(self):
-        """Finishing the last step marks the wizard completed."""
+    def test_import_status_post_advances_to_integration_setup(self):
+        """Finishing imports moves to the (usually auto-skipped) integration step."""
         response = self.client.post(reverse("onboarding_import_status"))
+
+        self.assertRedirects(
+            response,
+            reverse("onboarding_integration_setup"),
+            fetch_redirect_response=False,
+        )
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.onboarding_step, "integration_setup")
+
+    def test_integration_setup_auto_finishes_when_nothing_to_configure(self):
+        """No connected source has a pending integration -> the step is invisible."""
+        self.user.onboarding_step = "integration_setup"
+        self.user.save(update_fields=["onboarding_step"])
+
+        response = self.client.get(reverse("onboarding_integration_setup"))
 
         self.assertRedirects(response, reverse("home"))
         self.user.refresh_from_db()
         self.assertEqual(self.user.onboarding_status, "completed")
-        self.assertEqual(self.user.onboarding_step, "done")
+
+    def test_integration_setup_shown_for_connected_plex_without_webhook(self):
+        """A connected Plex account with no webhook activity yet gets the extra step."""
+        PlexAccount.objects.create(
+            user=self.user, plex_token="token", plex_username="u"
+        )
+        self.user.onboarding_selected_sources = ["plex"]
+        self.user.onboarding_step = "integration_setup"
+        self.user.save(update_fields=["onboarding_selected_sources", "onboarding_step"])
+
+        response = self.client.get(reverse("onboarding_integration_setup"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Set up webhook")
+
+    def test_skip_integration_advances_to_finish(self):
+        """Skipping the only pending integration completes onboarding."""
+        PlexAccount.objects.create(
+            user=self.user, plex_token="token", plex_username="u"
+        )
+        self.user.onboarding_selected_sources = ["plex"]
+        self.user.onboarding_step = "integration_setup"
+        self.user.save(update_fields=["onboarding_selected_sources", "onboarding_step"])
+
+        skip_response = self.client.post(
+            reverse("onboarding_skip_integration", kwargs={"slug": "plex"})
+        )
+        self.assertRedirects(
+            skip_response,
+            reverse("onboarding_integration_setup"),
+            fetch_redirect_response=False,
+        )
+
+        follow_up = self.client.get(reverse("onboarding_integration_setup"))
+        self.assertRedirects(follow_up, reverse("home"))
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.onboarding_status, "completed")
+
+    def test_integrations_open_query_param_deep_links_a_section(self):
+        """The wizard's integration step opens the right section on Settings > Integrations."""
+        response = self.client.get(
+            reverse("integrations") + "?open=plex&onboarding=1"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "activeIntegration = deepLinkTag")
+        self.assertContains(response, "Continue Guided Setup")
 
     def test_resume_redirects_to_saved_step(self):
         """Resuming sends the user back to wherever they left off."""
