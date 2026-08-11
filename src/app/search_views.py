@@ -19,7 +19,7 @@ from app.models import (
 from app.providers import services
 from app.services import metadata_resolution
 from app.templatetags.app_tags import media_url, music_album_url, music_artist_url
-from users.models import MediaStatusChoices
+from users.models import VALID_SEARCH_TYPES, MediaStatusChoices
 
 logger = logging.getLogger(__name__)
 
@@ -105,10 +105,16 @@ def _matched_title(item_obj, search_query, user):
 @require_GET
 def media_search(request):
     """Return the media search page."""
-    media_type = request.user.update_preference(
-        "last_search_type",
-        request.GET["media_type"],
-    )
+    requested_media_type = request.GET["media_type"]
+    if request.user.is_authenticated:
+        media_type = request.user.update_preference(
+            "last_search_type",
+            requested_media_type,
+        )
+    elif requested_media_type in VALID_SEARCH_TYPES:
+        media_type = requested_media_type
+    else:
+        media_type = MediaTypes.TV.value
     query = request.GET["q"]
     page = int(request.GET.get("page", 1))
     layout = request.GET.get("layout", "grid")

@@ -610,6 +610,7 @@ class ImportSimkl(TestCase):
             "https://example.com/episode-2019-1.jpg",
         )
 
+    @tag("network")
     @patch("integrations.imports.simkl.SimklImporter._get_user_list")
     def test_history_month_view_updates_after_simkl_import_without_manual_refresh(
         self,
