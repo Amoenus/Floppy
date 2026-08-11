@@ -859,21 +859,36 @@
     // list_item_button.html's toggle swaps itself out via hx-swap="outerHTML",
     // so an hx-on::after-request on that same button never fires reliably —
     // htmx doesn't consistently rebind it once the element that carried it
-    // has been replaced by its own response. Listening at the document level
+    // has been replaced by its own response. Listening on the persistent body
     // (already how this app hooks htmx:afterRequest elsewhere) sidesteps
     // that and keeps this grid in sync when an item is added/removed via the
     // hover "Lists" modal on this list's own page.
-    document.body.addEventListener('htmx:afterRequest', (event) => {
-      const requestPath = event.detail && event.detail.pathInfo
-        && event.detail.pathInfo.requestPath;
-      if (
-        event.detail.successful
-        && requestPath
-        && requestPath.endsWith('/list_item_toggle')
-      ) {
-        refreshCustomListGrid();
+    (() => {
+      const itemsView = document.getElementById('items-view');
+      if (window.__floppyListToggleRefreshHandler) {
+        document.body.removeEventListener(
+          'htmx:afterRequest',
+          window.__floppyListToggleRefreshHandler,
+        );
       }
-    });
+      window.__floppyListToggleRefreshHandler = (event) => {
+        const requestPath = event.detail && event.detail.pathInfo
+          && event.detail.pathInfo.requestPath;
+        if (
+          itemsView
+          && itemsView.isConnected
+          && event.detail.successful
+          && requestPath
+          && requestPath.endsWith('/list_item_toggle')
+        ) {
+          refreshCustomListGrid();
+        }
+      };
+      document.body.addEventListener(
+        'htmx:afterRequest',
+        window.__floppyListToggleRefreshHandler,
+      );
+    })();
   </script>
 
   <script>

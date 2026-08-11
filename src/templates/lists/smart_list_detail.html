@@ -949,18 +949,33 @@
     window.destroyListSortable = destroyListSortable;
     window.refreshCustomListGrid = refreshCustomListGrid;
 
-    // See list_detail.html for why this listens at the document level
+    // See list_detail.html for why this listens on the persistent body
     // instead of hx-on::after-request on the toggle button itself.
-    document.body.addEventListener('htmx:afterRequest', (event) => {
-      const requestPath = event.detail && event.detail.pathInfo
-        && event.detail.pathInfo.requestPath;
-      if (
-        event.detail.successful
-        && requestPath
-        && requestPath.endsWith('/list_item_toggle')
-      ) {
-        refreshCustomListGrid();
+    (() => {
+      const itemsView = document.getElementById('items-view');
+      if (window.__floppyListToggleRefreshHandler) {
+        document.body.removeEventListener(
+          'htmx:afterRequest',
+          window.__floppyListToggleRefreshHandler,
+        );
       }
-    });
+      window.__floppyListToggleRefreshHandler = (event) => {
+        const requestPath = event.detail && event.detail.pathInfo
+          && event.detail.pathInfo.requestPath;
+        if (
+          itemsView
+          && itemsView.isConnected
+          && event.detail.successful
+          && requestPath
+          && requestPath.endsWith('/list_item_toggle')
+        ) {
+          refreshCustomListGrid();
+        }
+      };
+      document.body.addEventListener(
+        'htmx:afterRequest',
+        window.__floppyListToggleRefreshHandler,
+      );
+    })();
   </script>
 {% endblock js %}
