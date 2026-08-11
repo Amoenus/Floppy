@@ -58,6 +58,7 @@
       impliedGenreSearch: '',
       yearSearch: '',
       sourceSearch: '',
+      mediaStatusSearch: '',
       languageSearch: '',
       countrySearch: '',
       platformSearch: '',
@@ -71,6 +72,7 @@
       impliedGenres: data.implied_genres || [],
       years: data.years || [],
       sources: data.sources || [],
+      mediaStatuses: data.media_statuses || [],
       languages: data.languages || [],
       countries: data.countries || [],
       platforms: data.platforms || [],
@@ -85,6 +87,7 @@
         this.impliedGenreSearch = '';
         this.yearSearch = '';
         this.sourceSearch = '';
+        this.mediaStatusSearch = '';
         this.languageSearch = '';
         this.countrySearch = '';
         this.platformSearch = '';
@@ -122,6 +125,13 @@
           return this.sources;
         }
         return this.sources.filter(option => option.label.toLowerCase().includes(term));
+      },
+      filteredMediaStatuses() {
+        const term = this.mediaStatusSearch.toLowerCase();
+        if (!term) {
+          return this.mediaStatuses;
+        }
+        return this.mediaStatuses.filter(option => option.label.toLowerCase().includes(term));
       },
       filteredLanguages() {
         const term = this.languageSearch.toLowerCase();

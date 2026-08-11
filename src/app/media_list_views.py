@@ -351,6 +351,7 @@ def build_filter_data_from_items(
     formats_set = set()
     authors_set = set()
     providers_set = set()
+    media_statuses_set = set()
     has_region = bool(region and region != "UNSET")
     has_unknown_year = False
     for media in media_items:
@@ -372,6 +373,9 @@ def build_filter_data_from_items(
             has_unknown_year = True
         if getattr(item, "source", None):
             sources_set.add(item.source)
+        media_status_value = str(getattr(item, "status", "") or "").strip()
+        if media_status_value:
+            media_statuses_set.add(media_status_value)
         db_languages = _extract_item_languages(item)
         if db_languages:
             languages_set.update(db_languages)
@@ -439,6 +443,10 @@ def build_filter_data_from_items(
         {"value": value, "label": value}
         for value in sorted(providers_set, key=lambda val: val.lower())
     ]
+    media_statuses = [
+        {"value": value, "label": value}
+        for value in sorted(media_statuses_set, key=lambda val: val.lower())
+    ]
     return {
         "genres": genres,
         "implied_genres": implied_genres,
@@ -451,6 +459,7 @@ def build_filter_data_from_items(
         "formats": formats,
         "authors": authors,
         "providers": providers,
+        "media_statuses": media_statuses,
         "show_languages": False,
         "show_countries": False,
         "show_platforms": False,
@@ -685,9 +694,18 @@ def media_list(request, media_type):
     if release_filter not in valid_release_filters:
         release_filter = "all"
     source_filter = (request.GET.get("source") or "").strip()
+    media_status_filter = (request.GET.get("media_status") or "").strip()
     language_filter = (request.GET.get("language") or "").strip()
     country_filter = (request.GET.get("country") or "").strip()
-    platform_filter = (request.GET.get("platform") or "").strip()
+    platform_values = tuple(
+        dict.fromkeys(
+            value.strip() for value in request.GET.getlist("platform") if value.strip()
+        ),
+    )
+    platform_mode = (request.GET.get("platform_mode") or "or").strip().lower()
+    if platform_mode not in {"and", "or", "not"}:
+        platform_mode = "or"
+    platform_filter = platform_values[0] if platform_values else ""
     origin_filter = (request.GET.get("origin") or "").strip()
     format_filter = (request.GET.get("format") or "").strip()
     author_filter = (request.GET.get("author") or "").strip()
@@ -1164,9 +1182,11 @@ def media_list(request, media_type):
         "year": year_filter,
         "release": release_filter,
         "source": source_filter,
+        "media_status": media_status_filter,
         "language": language_filter,
         "country": country_filter,
-        "platform": platform_filter,
+        "platform_values": platform_values,
+        "platform_mode": platform_mode,
         "tag_included_ids": tag_included_ids,
         "tag_excluded_ids": tag_excluded_ids,
     }
@@ -1299,7 +1319,27 @@ def media_list(request, media_type):
                         normalized_collection_format
                     )
 
-        effective_platform_filter = "" if ignore_platform_filter else platform_filter
+        effective_platform_values = () if ignore_platform_filter else platform_values
+
+        def _item_matches_platform_values(item):
+            if not effective_platform_values:
+                return True
+            item_platforms = {
+                _normalize_filter_value(platform)
+                for platform in _extract_item_platforms_with_collection(
+                    item,
+                    collection_platforms_by_item_id,
+                )
+            }
+            normalized_values = [
+                _normalize_filter_value(value) for value in effective_platform_values
+            ]
+            if platform_mode == "and":
+                return all(value in item_platforms for value in normalized_values)
+            if platform_mode == "not":
+                return not any(value in item_platforms for value in normalized_values)
+            return any(value in item_platforms for value in normalized_values)
+
         today = timezone.localdate()
         filtered_items = []
         candidate_items = list(
@@ -1340,6 +1380,8 @@ def media_list(request, media_type):
                     continue
             if source_filter and getattr(item, "source", None) != source_filter:
                 continue
+            if media_status_filter and getattr(item, "status", None) != media_status_filter:
+                continue
             if not _matches_release_filter_value(
                 getattr(item, "release_datetime", None),
                 release_filter,
@@ -1356,13 +1398,10 @@ def media_list(request, media_type):
                 _extract_item_country(item)
             ) != _normalize_filter_value(country_filter):
                 continue
-            if effective_platform_filter and media_type == MediaTypes.GAME.value:
-                normalized_platform = _normalize_filter_value(effective_platform_filter)
-                if not any(
-                    _normalize_filter_value(platform) == normalized_platform
-                    for platform in _extract_item_platforms_with_collection(item)
-                ):
-                    continue
+            if media_type == MediaTypes.GAME.value and not _item_matches_platform_values(
+                item,
+            ):
+                continue
             if tag_included_ids is not None and item.id not in tag_included_ids:
                 continue
             if tag_excluded_ids is not None and item.id in tag_excluded_ids:
@@ -1384,6 +1423,7 @@ def media_list(request, media_type):
     _include_untracked_entries = MEDIA_LIST_NO_STATUS in status_filter
     _status_cache_key = ",".join(sorted(status_filter))
     _tag_cache_key = ",".join(sorted(tag_values))
+    _platform_cache_key = ",".join(sorted(platform_values))
     _media_list_cache_key = (
         cache_utils.build_media_list_cache_key(
             request.user.id,
@@ -1404,13 +1444,15 @@ def media_list(request, media_type):
             source_filter,
             language_filter,
             country_filter,
-            platform_filter,
+            _platform_cache_key,
+            platform_mode,
             origin_filter,
             _tag_cache_key,
             tag_mode,
             cache_variant,
             provider_filter=provider_filter,
             watch_provider_region=watch_provider_region,
+            media_status_filter=media_status_filter,
         )
         if _use_media_list_cache
         else None
@@ -1429,7 +1471,8 @@ def media_list(request, media_type):
             source_filter,
             language_filter,
             country_filter,
-            platform_filter,
+            _platform_cache_key,
+            platform_mode,
             author_filter,
             format_filter,
             _tag_cache_key,
@@ -1437,6 +1480,7 @@ def media_list(request, media_type):
             cache_variant,
             provider_filter=provider_filter,
             watch_provider_region=watch_provider_region,
+            media_status_filter=media_status_filter,
         )
         if (_use_media_list_cache or _time_left_active)
         else None
@@ -1472,12 +1516,14 @@ def media_list(request, media_type):
             source_filter,
             language_filter,
             country_filter,
-            platform_filter,
+            _platform_cache_key,
+            platform_mode,
             origin_filter,
             _tag_cache_key,
             tag_mode,
             provider_filter=provider_filter,
             watch_provider_region=watch_provider_region,
+            media_status_filter=media_status_filter,
         )
         _time_left_cached_order = cache.get(_time_left_cache_key)
         if _time_left_cached_order is not None and filter_data is not None:
@@ -1577,10 +1623,10 @@ def media_list(request, media_type):
         filter_data_source_items = media_list
         if (
             media_type == MediaTypes.GAME.value
-            and platform_filter
+            and platform_values
             and filter_data is None
         ):
-            filter_sql_filters = {**list_sql_filters, "platform": ""}
+            filter_sql_filters = {**list_sql_filters, "platform_values": (), "platform_mode": "or"}
             filter_data_source_items = [
                 MediaListEntry.from_media(media)
                 for media in list(
@@ -1817,8 +1863,8 @@ def media_list(request, media_type):
             media.item_id for media in media_list if getattr(media, "item_id", None)
         }
         filter_data_source_items = media_list
-        if media_type == MediaTypes.GAME.value and platform_filter:
-            filter_sql_filters = {**list_sql_filters, "platform": ""}
+        if media_type == MediaTypes.GAME.value and platform_values:
+            filter_sql_filters = {**list_sql_filters, "platform_values": (), "platform_mode": "or"}
             filter_data_source_items = [
                 MediaListEntry.from_media(media)
                 for media in list(
@@ -2035,15 +2081,19 @@ def media_list(request, media_type):
         "current_year": year_filter,
         "current_release": release_filter,
         "current_source": source_filter,
+        "current_media_status": media_status_filter,
         "current_language": language_filter,
         "current_country": country_filter,
         "current_platform": platform_filter,
+        "current_platform_values": list(platform_values),
+        "current_platform_mode": platform_mode,
         "current_origin": origin_filter,
         "current_format": format_filter,
         "current_author": author_filter,
         "current_provider": provider_filter,
         "current_tag": list(tag_values),
         "current_tag_mode": tag_mode,
+        "enable_bulk_select": True,
         "sort_choices": sorted_media_sort_choices,
         "status_choices": status_choices,
         "rating_choices": MEDIA_RATING_CHOICES,
@@ -2261,10 +2311,14 @@ def media_list(request, media_type):
             "current_year": year_filter,
             "current_release": release_filter,
             "current_source": source_filter,
+        "current_media_status": media_status_filter,
             "current_language": language_filter,
             "current_country": country_filter,
             "current_platform": platform_filter,
+            "current_platform_values": list(platform_values),
+            "current_platform_mode": platform_mode,
             "current_origin": origin_filter,
+            "enable_bulk_select": True,
             "sort_choices": sorted_media_sort_choices,
             "status_choices": status_choices,
             "rating_choices": MEDIA_RATING_CHOICES,

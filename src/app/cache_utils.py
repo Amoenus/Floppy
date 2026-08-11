@@ -38,11 +38,13 @@ def build_time_left_cache_key(
     language_filter: str = "",
     country_filter: str = "",
     platform_filter: str = "",
+    platform_mode: str = "",
     origin_filter: str = "",
     tag_filter: str = "",
     tag_mode: str = "",
     provider_filter: str = "",
     watch_provider_region: str = "",
+    media_status_filter: str = "",
 ) -> str:
     """Create the cache key used for time-left sorted TV lists."""
     normalized_status = status_filter or ""
@@ -58,17 +60,20 @@ def build_time_left_cache_key(
     normalized_language = language_filter or ""
     normalized_country = country_filter or ""
     normalized_platform = platform_filter or ""
+    normalized_platform_mode = platform_mode or ""
     normalized_origin = origin_filter or ""
     normalized_tag = tag_filter or ""
     normalized_tag_mode = tag_mode or ""
     normalized_provider = provider_filter or ""
     normalized_region = watch_provider_region or ""
+    normalized_media_status = media_status_filter or ""
     return (
         f"{TIME_LEFT_CACHE_PREFIX}_{user_id}_{media_type}_{normalized_status}_"
         f"{normalized_query}_{normalized_direction}_{normalized_rating}_{normalized_progress}_{normalized_collection}_"
         f"{normalized_genre}_{normalized_year}_{normalized_release}_{normalized_source}_"
-        f"{normalized_language}_{normalized_country}_{normalized_platform}_{normalized_origin}_"
-        f"{normalized_tag}_{normalized_tag_mode}_{normalized_provider}_{normalized_region}"
+        f"{normalized_language}_{normalized_country}_{normalized_platform}_{normalized_platform_mode}_{normalized_origin}_"
+        f"{normalized_tag}_{normalized_tag_mode}_{normalized_provider}_{normalized_region}_"
+        f"{normalized_media_status}"
     )
 
 
@@ -130,12 +135,14 @@ def build_media_list_cache_key(
     language_filter: str = "",
     country_filter: str = "",
     platform_filter: str = "",
+    platform_mode: str = "",
     origin_filter: str = "",
     tag_filter: str = "",
     tag_mode: str = "",
     cache_variant: str = "",
     provider_filter: str = "",
     watch_provider_region: str = "",
+    media_status_filter: str = "",
 ) -> str:
     """Create the cache key for a fully-processed media list page."""
     parts = [
@@ -159,12 +166,14 @@ def build_media_list_cache_key(
         language_filter or "",
         country_filter or "",
         platform_filter or "",
+        platform_mode or "",
         origin_filter or "",
         tag_filter or "",
         tag_mode or "",
         cache_variant or "",
         provider_filter or "",
         watch_provider_region or "",
+        media_status_filter or "",
     ]
     return "_".join(parts)
 
@@ -183,6 +192,7 @@ def build_media_list_filter_cache_key(
     language_filter: str = "",
     country_filter: str = "",
     platform_filter: str = "",
+    platform_mode: str = "",
     author_filter: str = "",
     format_filter: str = "",
     tag_filter: str = "",
@@ -190,6 +200,7 @@ def build_media_list_filter_cache_key(
     cache_variant: str = "",
     provider_filter: str = "",
     watch_provider_region: str = "",
+    media_status_filter: str = "",
 ) -> str:
     """Create the cache key for media-list filter summary data."""
     parts = [
@@ -207,6 +218,7 @@ def build_media_list_filter_cache_key(
         language_filter or "",
         country_filter or "",
         platform_filter or "",
+        platform_mode or "",
         author_filter or "",
         format_filter or "",
         tag_filter or "",
@@ -214,6 +226,7 @@ def build_media_list_filter_cache_key(
         cache_variant or "",
         provider_filter or "",
         watch_provider_region or "",
+        media_status_filter or "",
     ]
     return "_".join(parts)
 

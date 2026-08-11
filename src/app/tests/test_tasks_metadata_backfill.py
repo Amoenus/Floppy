@@ -933,6 +933,39 @@ class MetadataBackfillTaskTests(TestCase):
         self.assertEqual(mock_refresh_tab_cache.call_count, 2)
 
     @patch("app.providers.services.get_media_metadata")
+    def test_backfill_fills_blank_status_for_already_fetched_tv(
+        self,
+        mock_get_media_metadata,
+    ):
+        old_fetched_at = timezone.now() - timedelta(days=30)
+        item = Item.objects.create(
+            media_id="9999",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Blank Status Show",
+            image="https://example.com/blank-status.jpg",
+            metadata_fetched_at=old_fetched_at,
+            status="",
+        )
+
+        self.assertIn(item.id, tasks._status_items_queryset().values_list("id", flat=True))
+
+        mock_get_media_metadata.return_value = {
+            "details": {"status": "Ended"},
+        }
+
+        result = tasks.backfill_item_metadata_task(batch_size=1)
+
+        item.refresh_from_db()
+        self.assertEqual(item.status, "Ended")
+        self.assertEqual(result["success_count"], 1)
+        self.assertIn("remaining_status", result)
+        self.assertNotIn(
+            item.id,
+            tasks._status_items_queryset().values_list("id", flat=True),
+        )
+
+    @patch("app.providers.services.get_media_metadata")
     def test_backfill_prioritizes_never_fetched_items(self, mock_get_media_metadata):
         never_fetched = Item.objects.create(
             media_id="100",

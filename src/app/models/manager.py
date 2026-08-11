@@ -161,6 +161,10 @@ class MediaManager(models.Manager):
         if source:
             queryset = queryset.filter(item__source=source)
 
+        media_status = str(filters.get("media_status") or "").strip()
+        if media_status:
+            queryset = queryset.filter(item__status=media_status)
+
         if media_type in (
             MediaTypes.TV.value,
             MediaTypes.MOVIE.value,
@@ -178,32 +182,56 @@ class MediaManager(models.Manager):
                 queryset = queryset.filter(item__country__iexact=country)
 
         if media_type == MediaTypes.GAME.value:
-            platform = str(filters.get("platform") or "").strip()
-            if platform:
-                normalized_platform = _normalize_media_list_filter_value(platform)
+            platform_values = filters.get("platform_values") or ()
+            platform_mode = (filters.get("platform_mode") or "or").strip().lower()
+            if platform_values:
                 CollectionEntry = apps.get_model("app", "CollectionEntry")
-                explicit_collection_platforms = CollectionEntry.objects.filter(
-                    user=user,
-                    item_id=OuterRef("item_id"),
-                ).exclude(resolution="")
-                matching_collection_platforms = explicit_collection_platforms.filter(
-                    resolution__iexact=platform,
-                )
-                platform_json_qs = _filter_queryset_by_item_json_array_ci(
-                    queryset,
-                    "platforms",
-                    normalized_platform,
-                )
-                queryset = queryset.annotate(
-                    has_collection_platform=Exists(explicit_collection_platforms),
-                    matches_collection_platform=Exists(matching_collection_platforms),
-                ).filter(
-                    Q(matches_collection_platform=True)
-                    | Q(
-                        has_collection_platform=False,
-                        pk__in=platform_json_qs.values("pk"),
-                    ),
-                )
+
+                def _matching_platform_item_ids(platform):
+                    normalized_platform = _normalize_media_list_filter_value(platform)
+                    explicit_collection_platforms = CollectionEntry.objects.filter(
+                        user=user,
+                        item_id=OuterRef("item_id"),
+                    ).exclude(resolution="")
+                    matching_collection_platforms = explicit_collection_platforms.filter(
+                        resolution__iexact=platform,
+                    )
+                    platform_json_qs = _filter_queryset_by_item_json_array_ci(
+                        queryset,
+                        "platforms",
+                        normalized_platform,
+                    )
+                    matching_queryset = queryset.annotate(
+                        has_collection_platform=Exists(explicit_collection_platforms),
+                        matches_collection_platform=Exists(
+                            matching_collection_platforms,
+                        ),
+                    ).filter(
+                        Q(matches_collection_platform=True)
+                        | Q(
+                            has_collection_platform=False,
+                            pk__in=platform_json_qs.values("pk"),
+                        ),
+                    )
+                    return set(matching_queryset.values_list("item_id", flat=True))
+
+                platform_id_sets = [
+                    _matching_platform_item_ids(value) for value in platform_values
+                ]
+                if platform_mode == "and":
+                    platform_included_ids = set.intersection(*platform_id_sets)
+                    platform_excluded_ids = None
+                elif platform_mode == "not":
+                    platform_included_ids = None
+                    platform_excluded_ids = set().union(*platform_id_sets)
+                else:
+                    platform_included_ids = set().union(*platform_id_sets)
+                    platform_excluded_ids = None
+
+                if platform_included_ids is not None:
+                    queryset = queryset.filter(item_id__in=platform_included_ids)
+                if platform_excluded_ids is not None:
+                    queryset = queryset.exclude(item_id__in=platform_excluded_ids)
 
         tag_included_ids = filters.get("tag_included_ids")
         if tag_included_ids is not None:
