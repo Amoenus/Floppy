@@ -6181,6 +6181,11 @@ class MediaDetailsViewTests(TestCase):
         )
         Event.objects.create(
             item=season_item,
+            content_number=1,
+            datetime=datetime(2026, 3, 1, 12, 0, tzinfo=UTC),
+        )
+        Event.objects.create(
+            item=season_item,
             content_number=2,
             datetime=datetime(2026, 3, 2, 12, 0, tzinfo=UTC),
         )

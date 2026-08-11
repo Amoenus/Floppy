@@ -17,6 +17,7 @@ from simple_history.utils import bulk_create_with_history, bulk_update_with_hist
 
 import events
 from app import cache_utils, providers
+from app.log_safety import exception_summary
 from app.models.choices import MediaTypes, Sources, Status
 from app.models.item import Item
 from app.models.media import Media
@@ -579,7 +580,7 @@ class Season(Media):
         return sorted(episode_numbers)
 
     def _released_episode_completion(self):
-        """Return whether history exists and all locally released episodes are done."""
+        """Return history presence and local completion, or None if unknown."""
         episode_rows = self.episodes.filter(
             status__in=[Status.COMPLETED.value, Status.DROPPED.value],
         ).values_list("item__episode_number", "status")
@@ -613,7 +614,7 @@ class Season(Media):
         elif released_numbers:
             is_complete = released_numbers.issubset(completed_numbers)
         else:
-            is_complete = False
+            is_complete = None
         return bool(tracked_numbers), is_complete
 
     def next_episode_number(self, episode_numbers=None):
@@ -977,12 +978,14 @@ class Season(Media):
             return
 
         has_history, is_complete = self._released_episode_completion()
-        if is_complete:
+        if is_complete is True:
             desired_status = (
                 Status.IN_PROGRESS.value
                 if preserve_in_progress and self.status == Status.IN_PROGRESS.value
                 else Status.COMPLETED.value
             )
+        elif is_complete is None and self.status == Status.COMPLETED.value:
+            desired_status = Status.COMPLETED.value
         elif has_history:
             desired_status = Status.IN_PROGRESS.value
         else:
@@ -1410,11 +1413,13 @@ class Episode(models.Model):
         )
 
         season_number = self.item.season_number
-        was_complete = (
-            self.related_season._released_episode_completion()[1]
-            if season_number is not None
-            else False
-        )
+        was_complete = False
+        if season_number is not None:
+            completion_before = self.related_season._released_episode_completion()[1]
+            was_complete = completion_before is True or (
+                completion_before is None
+                and self.related_season.status == Status.COMPLETED.value
+            )
 
         if self.tracker.has_changed("status"):
             self.dropped = self.status == Status.DROPPED.value
@@ -1448,7 +1453,22 @@ class Episode(models.Model):
             not was_complete
             and self.related_season.status == Status.COMPLETED.value
         ):
-            self.related_season.related_tv._handle_completed_season(season_number)
+            try:
+                self.related_season.related_tv._handle_completed_season(season_number)
+            except (
+                providers.services.ProviderAPIError,
+                RequestException,
+                KeyError,
+                TypeError,
+                ValueError,
+            ) as error:
+                logger.warning(
+                    "Skipping next-season sync due to missing metadata for "
+                    "%s S%s: %s",
+                    self.item.media_id,
+                    season_number,
+                    exception_summary(error),
+                )
 
     @property
     def progress(self):

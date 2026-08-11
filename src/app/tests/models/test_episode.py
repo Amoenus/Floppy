@@ -15,6 +15,7 @@ from app.models import (
     Sources,
     Status,
 )
+from app.providers.services import ProviderAPIError
 from events.models import Event
 
 mock_path = Path(__file__).resolve().parent.parent / "mock_data"
@@ -205,6 +206,116 @@ class EpisodeStatusTests(TestCase):
 
         self.tv.refresh_from_db()
         self.assertEqual(self.tv.status, Status.COMPLETED.value)
+
+    @patch("app.models.providers.services.get_media_metadata")
+    def test_provider_failure_keeps_local_completion(self, mock_get_metadata):
+        """A failed next-season lookup must not fail the completed episode save."""
+        provider_error = ProviderAPIError(
+            "tmdb",
+            Exception("boom"),
+        )
+        provider_error.args = (
+            "https://api.example.test/show?api_key=super-secret raw provider failure",
+        )
+        mock_get_metadata.side_effect = provider_error
+        Event.objects.create(
+            item=self.season_item,
+            content_number=1,
+            datetime=timezone.now(),
+        )
+
+        with self.assertLogs("app.models.tv", level="WARNING") as captured:
+            Episode.objects.create(
+                item=self.episode_item,
+                related_season=self.season,
+                end_date=timezone.now(),
+            )
+
+        warning = "\n".join(captured.output)
+        self.assertIn(
+            "Skipping next-season sync due to missing metadata for 123 S1: "
+            "ProviderAPIError",
+            warning,
+        )
+        self.assertNotIn("api_key=", warning)
+        self.assertNotIn("super-secret", warning)
+        self.assertNotIn("raw provider failure", warning)
+
+        self.assertTrue(
+            Episode.objects.filter(
+                item=self.episode_item,
+                related_season=self.season,
+            ).exists(),
+        )
+        self.season.refresh_from_db()
+        self.assertEqual(self.season.status, Status.COMPLETED.value)
+        self.tv.refresh_from_db()
+        self.assertEqual(self.tv.status, Status.IN_PROGRESS.value)
+        mock_get_metadata.assert_called_once_with(
+            MediaTypes.TV.value,
+            self.tv_item.media_id,
+            self.tv_item.source,
+        )
+
+    @patch("app.models.providers.services.get_media_metadata")
+    def test_completed_season_without_release_evidence_stays_completed(
+        self,
+        mock_get_metadata,
+    ):
+        """Missing release evidence must not reopen an explicit completion."""
+        Season.objects.filter(pk=self.season.pk).update(
+            status=Status.COMPLETED.value,
+        )
+        TV.objects.filter(pk=self.tv.pk).update(status=Status.COMPLETED.value)
+        self.season.refresh_from_db()
+
+        Episode.objects.create(
+            item=self.episode_item,
+            related_season=self.season,
+            end_date=timezone.now(),
+        )
+
+        self.season.refresh_from_db()
+        self.assertEqual(self.season.status, Status.COMPLETED.value)
+        self.tv.refresh_from_db()
+        self.assertEqual(self.tv.status, Status.COMPLETED.value)
+        mock_get_metadata.assert_not_called()
+
+    @patch("app.models.providers.services.get_media_metadata")
+    def test_completion_discovers_untracked_next_season(self, mock_get_metadata):
+        """Completion still discovers and starts a provider-only next season."""
+        mock_get_metadata.return_value = {
+            "related": {
+                "seasons": [
+                    {"season_number": 1},
+                    {"season_number": 2, "image": "https://example.com/s2.jpg"},
+                ],
+            },
+        }
+        Event.objects.create(
+            item=self.season_item,
+            content_number=1,
+            datetime=timezone.now(),
+        )
+
+        Episode.objects.create(
+            item=self.episode_item,
+            related_season=self.season,
+            end_date=timezone.now(),
+        )
+
+        next_season = Season.objects.get(
+            related_tv=self.tv,
+            item__season_number=2,
+        )
+        self.assertEqual(next_season.status, Status.IN_PROGRESS.value)
+        self.tv.refresh_from_db()
+        self.assertEqual(self.tv.status, Status.IN_PROGRESS.value)
+        mock_get_metadata.assert_called_once_with(
+            MediaTypes.TV.value,
+            self.tv_item.media_id,
+            self.tv_item.source,
+        )
 
     @patch("app.models.providers.services.get_media_metadata")
     def test_middle_episode_does_not_change_status(self, mock_get_metadata):

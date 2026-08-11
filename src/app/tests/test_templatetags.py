@@ -1103,11 +1103,7 @@ class NextEpisodeUrlTests(TestCase):
                 title=f"Episode {episode_number}",
                 image="",
             )
-            # Episode.save() tries a provider metadata fetch to sync the
-            # season's status; force it to fail (as it does in production
-            # when the metadata call errors during a bulk import), leaving
-            # the season's raw status untouched at PLANNING despite this
-            # real watch progress.
+            # Keep metadata isolated while constructing the legacy fixture.
             with patch(
                 "app.models.tv.providers.services.get_media_metadata",
                 side_effect=ProviderAPIError("tmdb", Exception("boom")),
@@ -1117,6 +1113,9 @@ class NextEpisodeUrlTests(TestCase):
                     related_season=season,
                     end_date=timezone.now(),
                 )
+        # New saves repair this state locally. Recreate the stale legacy row
+        # explicitly so the resolver regression remains covered.
+        Season.objects.filter(pk=season.pk).update(status=Status.PLANNING.value)
         season.refresh_from_db()
         self.assertEqual(season.status, Status.PLANNING.value)
         return tv_item, tv, season_item
@@ -1195,6 +1194,7 @@ class NextEpisodeUrlTests(TestCase):
                     related_season=season,
                     end_date=timezone.now(),
                 )
+        Season.objects.filter(pk=season.pk).update(status=Status.PLANNING.value)
         season.refresh_from_db()
         self.assertEqual(season.status, Status.PLANNING.value)
 
