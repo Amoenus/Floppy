@@ -327,7 +327,7 @@ Run tests through `scripts/test.sh`, in this priority order:
 
 1. **Targeted (default while iterating):** `scripts/test.sh <dotted.label> [...]` — run only the tests for what you touched, e.g. `scripts/test.sh app.tests.views.test_media_details` or a whole app label like `scripts/test.sh lists`.
 2. **Fast suite (default before finishing):** `scripts/test.sh` — the whole suite minus tests tagged `slow` (benchmarks and Playwright integration). Output is bounded (`--buffer` suppresses stdout of passing tests) and no `playwright install` is needed.
-3. **Full suite (CI / rarely needed locally):** `scripts/test.sh --full` — everything, including benchmarks and Playwright. Takes 20+ minutes and produces huge output. Only run it when the user asks or the risk clearly justifies it; CI runs it on every PR anyway.
+3. **Full suite (rarely needed locally):** `scripts/test.sh --full` — all tags, including slow benchmarks/Playwright and live-provider `network` tests. Takes 20+ minutes and produces huge output. Only run it when the user asks or the risk clearly justifies it. Application-impacting PRs run the CI application suite, which excludes `network` tests; documentation-only trigger filtering is owned by `.github/workflows/app-tests.yml`.
 
 Notes:
 - Quick confidence: `ruff check src`
