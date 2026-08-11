@@ -337,12 +337,17 @@ class IntegrationTest(StaticLiveServerTestCase):
         expect(create_modal).to_be_visible()
 
         end_date_input = create_modal.locator('input[name="end_date"]')
-        end_date_before = end_date_input.input_value()
-        self.assertIn("T", end_date_before)
-        end_time_segment = end_date_before.split("T", 1)[1]
+        end_time_segment = "14:25"
         start_date_input = create_modal.locator('input[name="start_date"]')
 
         create_modal.get_by_role("button", name="End date picker").click()
+        end_date_picker = create_modal.get_by_role(
+            "dialog",
+            name="End date picker",
+        )
+        time_selects = end_date_picker.locator("select")
+        time_selects.nth(0).select_option("14")
+        time_selects.nth(1).select_option("25")
         create_modal.get_by_role("button", name="Release date").click()
         expect(end_date_input).to_have_value(f"2019-11-08T{end_time_segment}")
         end_hour, end_minute = [int(segment) for segment in end_time_segment.split(":")]
