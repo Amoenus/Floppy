@@ -158,7 +158,10 @@ class AppConfig(AppConfig):
                     repair_summary["removed"],
                 )
         except Exception as error:
-            logger.warning("Failed to normalize Kombu Redis bindings: %s", error)
+            logger.warning(
+                "Failed to normalize Kombu Redis bindings: %s",
+                exception_summary(error),
+            )
 
     def _tune_redis(self):
         """Give Redis a memory ceiling if the operator hasn't set one.
