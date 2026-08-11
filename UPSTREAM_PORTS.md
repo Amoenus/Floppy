@@ -51,7 +51,7 @@ RICE informed the first review using `(reach × impact × confidence) / effort`,
 
 | Package | Owner | Priority | Exit condition |
 |---|---|---|---|
-| Phase 0 — decision contract | [#645](https://github.com/dannyvfilms/Floppy/issues/645), PR [#651](https://github.com/dannyvfilms/Floppy/pull/651) | P0 | This exhaustive ledger and governance policy are merged; Project #1 reflects the active packages. |
+| Phase 0 — decision contract | [#645](https://github.com/dannyvfilms/Floppy/issues/645), PR [#651](https://github.com/dannyvfilms/Floppy/pull/651) | P0 | This ledger and governance policy are merged; #646–#650 are sub-issues of #645; relevant issue/PR labels are applied; #638 is closed as superseded with a ledger link; #645 remains open for the full programme. |
 | Phase 1 — built-image smoke gate | [#646](https://github.com/dannyvfilms/Floppy/issues/646) | P0 | The publishable image starts, becomes healthy, serves core surfaces, validates MCP, and restarts on persistent data. |
 | Phase 2 — uv and reproducible build | [#647](https://github.com/dannyvfilms/Floppy/issues/647) | P0 | One locked app/MCP dependency graph drives CI and Docker without a bundled dependency upgrade. |
 | Phase 3 — datetime/calendar integrity | [#648](https://github.com/dannyvfilms/Floppy/issues/648) | P0 | Final UTC-safe semantics, audit, Floppy migrations, and SQLite/PostgreSQL upgrade validation. |
@@ -159,7 +159,7 @@ For each incremental review:
 2. Compare the stored baseline with `upstream/dev`.
 3. Group commits into coherent outcomes and verify issue/PR/code history in both repositories.
 4. Add each new canonical SHA exactly once, with a decision and evidence or owner/trigger.
-5. Create project cards only for accepted Pending work.
+5. Create or link scoped issues only for accepted Pending work.
 6. Update the stored baseline after the range has zero unclassified commits.
 
-The parent issue [#645](https://github.com/dannyvfilms/Floppy/issues/645) is the programme index. Project status is operational; this file is the durable decision record.
+The parent issue [#645](https://github.com/dannyvfilms/Floppy/issues/645) is the authoritative operational programme index and remains open for the full programme. Issue status, labels, and relationships are operational; this file is the durable decision record.
