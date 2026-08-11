@@ -22,7 +22,11 @@ from app.models import (
     Sources,
     Status,
 )
-from events.models import Event
+from events.models import (
+    LEGACY_UNKNOWN_RELEASED_DATETIME,
+    UNKNOWN_UNRELEASED_DATETIME,
+    Event,
+)
 from users.models import HomeSortChoices, MediaStatusChoices
 
 mock_path = Path(__file__).resolve().parent.parent / "mock_data"
@@ -575,6 +579,11 @@ class MediaManagerTests(TestCase):
             datetime=timezone.now() - timedelta(days=1),
             notification_sent=True,
         )
+        Event.objects.create(
+            item=anime_item2,
+            content_number=2,
+            datetime=UNKNOWN_UNRELEASED_DATETIME,
+        )
 
         queryset = Anime.objects.filter(
             user=self.user.id,
@@ -776,6 +785,16 @@ class MediaManagerTests(TestCase):
             item=self.season1_item,
             content_number=10,
             datetime=timezone.now() - timedelta(days=10),
+        )
+        Event.objects.create(
+            item=self.season1_item,
+            content_number=11,
+            datetime=LEGACY_UNKNOWN_RELEASED_DATETIME,
+        )
+        Event.objects.create(
+            item=self.season1_item,
+            content_number=12,
+            datetime=UNKNOWN_UNRELEASED_DATETIME,
         )
 
         # Prefetch events

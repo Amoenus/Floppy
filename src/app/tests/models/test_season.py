@@ -16,6 +16,7 @@ from app.models import (
     Sources,
     Status,
 )
+from events.models import LEGACY_UNKNOWN_RELEASED_DATETIME, Event
 from users.models import QuickWatchDateChoices
 
 mock_path = Path(__file__).resolve().parent.parent / "mock_data"
@@ -587,6 +588,39 @@ class SeasonStatusTests(TestCase):
 
             # TV save shouldn't have been called
             mock_tv_save.assert_not_called()
+
+    def test_status_sync_ignores_legacy_unknown_tv_episode(self):
+        """A legacy TV placeholder must not expand the released episode total."""
+        for episode_number in (1, 2):
+            episode_item = Item.objects.create(
+                media_id=self.season_item.media_id,
+                source=self.season_item.source,
+                media_type=MediaTypes.EPISODE.value,
+                title=f"Test Show episode {episode_number}",
+                season_number=1,
+                episode_number=episode_number,
+            )
+            Episode.objects.create(
+                item=episode_item,
+                related_season=self.season,
+                end_date=datetime(2024, 1, episode_number, tzinfo=UTC),
+            )
+
+        Event.objects.create(
+            item=self.season_item,
+            content_number=1,
+            datetime=datetime(2024, 1, 1, tzinfo=UTC),
+        )
+        Event.objects.create(
+            item=self.season_item,
+            content_number=3,
+            datetime=LEGACY_UNKNOWN_RELEASED_DATETIME,
+        )
+
+        self.season._sync_status_after_episode_change()
+        self.season.refresh_from_db()
+
+        self.assertEqual(self.season.status, Status.COMPLETED.value)
 
     @patch("app.models.providers.services.get_media_metadata")
     def test_completed_status_noop_if_no_remaining_episodes(self, mock_get_metadata):

@@ -1,5 +1,7 @@
 import datetime
+from zoneinfo import ZoneInfo, available_timezones
 
+from django.contrib.admin.sites import AdminSite
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
@@ -15,7 +17,14 @@ from app.models import (
     Sources,
     Status,
 )
-from events.models import Event
+from events.admin import EventAdmin
+from events.models import (
+    LEGACY_UNKNOWN_RELEASED_DATETIME,
+    LEGACY_UNKNOWN_UNRELEASED_DATETIME,
+    UNKNOWN_RELEASED_DATETIME,
+    UNKNOWN_UNRELEASED_DATETIME,
+    Event,
+)
 
 
 class EventModelTests(TestCase):
@@ -124,6 +133,60 @@ class EventModelTests(TestCase):
 
         # Manga event
         self.assertEqual(str(self.manga_event), "Test Manga #1")
+
+    def test_unknown_sentinels_convert_in_every_installed_timezone(self):
+        """Both current sentinels must survive every installed IANA zone."""
+        for timezone_name in available_timezones():
+            zone = ZoneInfo(timezone_name)
+            with self.subTest(timezone=timezone_name, state="released"):
+                UNKNOWN_RELEASED_DATETIME.astimezone(zone)
+            with self.subTest(timezone=timezone_name, state="unreleased"):
+                UNKNOWN_UNRELEASED_DATETIME.astimezone(zone)
+
+    def test_unknown_predicates_preserve_legacy_context(self):
+        """Legacy year-one season events are unreleased, unlike other media."""
+        released = Event(item=self.movie_item, datetime=UNKNOWN_RELEASED_DATETIME)
+        unreleased = Event(
+            item=self.season_item,
+            datetime=UNKNOWN_UNRELEASED_DATETIME,
+        )
+        legacy_released = Event(
+            item=self.movie_item,
+            datetime=LEGACY_UNKNOWN_RELEASED_DATETIME,
+        )
+        legacy_tv_unreleased = Event(
+            item=self.season_item,
+            datetime=LEGACY_UNKNOWN_RELEASED_DATETIME,
+        )
+        legacy_max = Event(
+            item=self.season_item,
+            datetime=LEGACY_UNKNOWN_UNRELEASED_DATETIME,
+        )
+
+        self.assertTrue(released.is_unknown_released)
+        self.assertTrue(legacy_released.is_unknown_released)
+        self.assertTrue(unreleased.is_unknown_unreleased)
+        self.assertTrue(legacy_tv_unreleased.is_unknown_unreleased)
+        self.assertTrue(legacy_max.is_unknown_unreleased)
+        self.assertTrue(legacy_max.is_max_datetime)
+        self.assertFalse(legacy_tv_unreleased.is_unknown_released)
+
+    def test_admin_formats_unknown_state_without_localizing_boundary_dates(self):
+        """Admin should render semantic state instead of a boundary timestamp."""
+        event_admin = EventAdmin(Event, AdminSite())
+
+        self.assertEqual(
+            event_admin.formatted_datetime(
+                Event(item=self.movie_item, datetime=UNKNOWN_RELEASED_DATETIME),
+            ),
+            "Unknown (released)",
+        )
+        self.assertEqual(
+            event_admin.formatted_datetime(
+                Event(item=self.season_item, datetime=UNKNOWN_UNRELEASED_DATETIME),
+            ),
+            "Unknown (unreleased)",
+        )
 
 
 class EventManagerTests(TestCase):
@@ -301,6 +364,39 @@ class EventManagerTests(TestCase):
             self.past_event,
             limited_events,
         )  # Past event, but filtered by active status
+    def test_get_user_events_excludes_all_unknown_sentinel_classes(self):
+        """Public calendar queries must not expose semantic placeholders."""
+        unknown_events = [
+            Event.objects.create(
+                item=self.manga_item,
+                content_number=10,
+                datetime=UNKNOWN_RELEASED_DATETIME,
+            ),
+            Event.objects.create(
+                item=self.season_item,
+                content_number=10,
+                datetime=UNKNOWN_UNRELEASED_DATETIME,
+            ),
+            Event.objects.create(
+                item=self.manga_item,
+                content_number=11,
+                datetime=LEGACY_UNKNOWN_RELEASED_DATETIME,
+            ),
+            Event.objects.create(
+                item=self.season_item,
+                content_number=11,
+                datetime=LEGACY_UNKNOWN_UNRELEASED_DATETIME,
+            ),
+        ]
+
+        events = Event.objects.get_user_events(
+            self.user,
+            datetime.date.min,
+            datetime.date.max,
+        )
+
+        for event in unknown_events:
+            self.assertNotIn(event, events)
 
 
 class EventManagerCrossProviderDedupTests(TestCase):
