@@ -4,52 +4,52 @@ repos:
     hooks:
       - id: detect-secrets
         args: ["--baseline", ".secrets.baseline"]
-  - repo: https://github.com/pypa/pip-audit
-    rev: v2.10.1
-    hooks:
-      - id: pip-audit
-        args: ["-r", "requirements.txt"]
-        files: ^requirements(-dev)?\.txt$
   - repo: local
     hooks:
+      - id: pip-audit
+        name: pip-audit
+        entry: scripts/audit_dependencies.sh
+        language: system
+        pass_filenames: false
+        files: ^(pyproject\.toml|uv\.lock|mcp_server/pyproject\.toml)$
+      - id: uv-lock-check
+        name: uv-lock-check
+        entry: uv lock --check
+        language: system
+        pass_filenames: false
+        files: ^(pyproject\.toml|uv\.lock|mcp_server/pyproject\.toml)$
       - id: check-migrations
         name: check-migrations
-        entry: python src/manage.py makemigrations --check
+        entry: uv run --no-sync python src/manage.py makemigrations --check
         language: system
         pass_filenames: false
         always_run: true
       - id: django-upgrade
         name: django-upgrade
-        entry: django-upgrade
+        entry: uv run --no-sync django-upgrade
         language: system
         types: [python]
-      - id: pyflakes
-        name: pyflakes
-        entry: python -m pyflakes
-        language: system
-        types: [python]
-        require_serial: true
       - id: ruff
         name: ruff
-        entry: ruff check --fix
+        entry: uv run --no-sync ruff check --fix
         language: system
         types: [python]
         require_serial: true
       - id: ruff-format
         name: ruff-format
-        entry: ruff format
+        entry: uv run --no-sync ruff format
         language: system
         types: [python]
         require_serial: true
       - id: djlint-lint
         name: djlint-lint
-        entry: djlint --lint
+        entry: uv run --no-sync djlint --lint
         language: system
         types: [html]
         require_serial: true
       - id: djlint-reformat
         name: djlint-reformat
-        entry: djlint --reformat
+        entry: uv run --no-sync djlint --reformat
         language: system
         types: [html]
         require_serial: true

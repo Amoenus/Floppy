@@ -15,11 +15,11 @@ misleading. This skill exists mostly to save you from rediscovering those.
 ```bash
 cd <repo>/src
 redis-server --port 6379 --daemonize yes --save '' --dir /tmp
-python manage.py migrate --noinput
-python manage.py collectstatic --noinput --settings=local_serve   # see below
-bash .claude/skills/run-floppy/scripts/serve.sh start
-python .claude/skills/run-floppy/scripts/smoke.py --base http://localhost:8299
-bash .claude/skills/run-floppy/scripts/serve.sh stop
+uv run --project .. --no-sync python manage.py migrate --noinput
+uv run --project .. --no-sync python manage.py collectstatic --noinput --settings=local_serve   # see below
+uv run --project .. --no-sync bash ../.claude/skills/run-floppy/scripts/serve.sh start
+uv run --project .. --no-sync python ../.claude/skills/run-floppy/scripts/smoke.py --base http://localhost:8299
+uv run --project .. --no-sync bash ../.claude/skills/run-floppy/scripts/serve.sh stop
 ```
 
 `serve.sh` and `smoke.py` encode everything below. Read on when you need to
@@ -67,8 +67,13 @@ from config.settings import *  # noqa: F403
 IS_PROD = False
 ```
 
-Then `python manage.py collectstatic --noinput --settings=local_serve` and run
-gunicorn with `DJANGO_SETTINGS_MODULE=local_serve`.
+Then run the collectstatic command through uv:
+
+```bash
+uv run --project .. --no-sync python manage.py collectstatic --noinput --settings=local_serve
+```
+
+Start gunicorn through uv with `DJANGO_SETTINGS_MODULE=local_serve`.
 
 The stylesheet is `static/css/main.css` and it is committed pre-built — there is
 no npm build step, and `package.json` has no scripts. If you find yourself
@@ -104,7 +109,7 @@ tier that determines how many gunicorn workers and Celery workers run.
 `entrypoint.sh` probes it once and exports the result; reproduce that with:
 
 ```bash
-eval "$(python -c 'from config.runtime_profile import emit_env; emit_env()')"
+eval "$(uv run --project .. --no-sync python -c 'from config.runtime_profile import emit_env; emit_env()')"
 ```
 
 That sets `WEB_CONCURRENCY`, `GUNICORN_THREADS`, `FLOPPY_CELERY_QUEUES`,
@@ -123,7 +128,7 @@ hunting for one.
 Start a worker when you need that path:
 
 ```bash
-FLOPPY_PROCESS_ROLE=background celery --app config worker \
+FLOPPY_PROCESS_ROLE=background uv run --project .. --no-sync celery --app config worker \
   --queues "${FLOPPY_CELERY_QUEUES:-celery}" --loglevel INFO \
   --without-mingle --without-gossip &
 ```
@@ -157,7 +162,7 @@ Registration is off by default and the demo account only exists when
 `DEMO_ACCOUNT_ENABLED` is set. Make one directly:
 
 ```bash
-python -c "
+uv run --project .. --no-sync python -c "
 import os, django
 os.environ.setdefault('DJANGO_SETTINGS_MODULE','local_serve')
 django.setup()

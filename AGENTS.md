@@ -144,7 +144,7 @@ Also validate when:
 - the user asked for validation
 - the change affects multiple routes, components, or packages
 
-Prefer targeted tests first (`scripts/test.sh <dotted.label>`), then `ruff check src`, then the fast suite (`scripts/test.sh`) only when risk justifies it. See the Testing section.
+Prefer targeted tests first (`scripts/test.sh <dotted.label>`), then `uv run --no-sync ruff check src`, then the fast suite (`scripts/test.sh`) only when risk justifies it. See the Testing section.
 
 Prefer the cheapest useful check:
 
@@ -303,13 +303,13 @@ Models/migrations and divergent UI normally require manual adaptation. Provider 
 - `docs/agents/migration_sync_playbook.md`: hard-gate flow for adapting accepted upstream migration outcomes to Floppy's current graph.
 
 ## Local Commands
-- Install dev dependencies: `python -m pip install -U -r requirements-dev.txt`
-- Run migrations: `cd src && python manage.py migrate`
-- Run the app: `cd src && python manage.py runserver`
+- Install locked dev dependencies: `uv sync --locked`
+- Run migrations: `uv run --no-sync python src/manage.py migrate`
+- Run the app: `uv run --no-sync python src/manage.py runserver`
 - Run Celery (two workers in one command, mirrors production):
   ```bash
-  PYTHONPATH=src celery -A config worker --queues interactive --hostname celery-interactive@%h --loglevel DEBUG &
-  PYTHONPATH=src celery -A config worker --queues celery --beat --scheduler django --hostname celery@%h --loglevel DEBUG
+  PYTHONPATH=src uv run --no-sync celery -A config worker --queues interactive --hostname celery-interactive@%h --loglevel DEBUG &
+  PYTHONPATH=src uv run --no-sync celery -A config worker --queues celery --beat --scheduler django --hostname celery@%h --loglevel DEBUG
   ```
   The interactive worker must be dedicated — **never add `celery` to its `--queues`** or long-running background tasks (Reload calendar, imports) will block user-triggered refreshes.
 - Run Tailwind: `cd src && tailwindcss -i ./static/css/input.css -o ./static/css/main.css --watch`
@@ -330,8 +330,8 @@ Run tests through `scripts/test.sh`, in this priority order:
 3. **Full suite (rarely needed locally):** `scripts/test.sh --full` — all tags, including slow benchmarks/Playwright and live-provider `network` tests. Takes 20+ minutes and produces huge output. Only run it when the user asks or the risk clearly justifies it. Application-impacting PRs run the CI application suite, which excludes `network` tests; documentation-only trigger filtering is owned by `.github/workflows/app-tests.yml`.
 
 Notes:
-- Quick confidence: `ruff check src`
-- Migration sync confidence: `cd src && python manage.py check_migration_hygiene --strict`
+- Quick confidence: `uv run --no-sync ruff check src`
+- Migration sync confidence: `uv run --no-sync python src/manage.py check_migration_hygiene --strict`
 - Migration upgrade replay: `scripts/replay_upgrade_matrix.sh --from-tag <previous_release_tag> --to-ref latest --db sqlite,postgres --with-drift-scenarios`
 - Tag vocabulary: `slow` and `network` are the exclusion tags used by the fast
   suite. `network` marks tests that call a live provider API: they need keys and
@@ -347,7 +347,7 @@ Notes:
 - Python target is 3.12 (see `Dockerfile` and CI).
 - Ruff config lives in `pyproject.toml` and excludes `migrations/`.
 - Djlint config is in `pyproject.toml`; Stylelint config is in `.stylelintrc`.
-- After model changes, keep migration files under `src/*/migrations/` and run `cd src && python manage.py migrate`.
+- After model changes, keep migration files under `src/*/migrations/` and run `uv run --no-sync python src/manage.py migrate`.
 - Media type changes follow `docs/agents/media_type_integration.md` (MediaTypes enum + `media_type_config` wiring).
 
 ## PR / Commit Expectations

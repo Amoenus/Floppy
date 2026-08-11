@@ -95,9 +95,9 @@ Match validation to risk. See `AGENTS.md` for the full matrix. Short version:
 |---|---|
 | Copy, labels, static content | None required |
 | CSS / Tailwind spacing | Visual screenshot |
-| Template or UI logic | Screenshot + `ruff check src` |
-| Python behavior | `ruff check src` + targeted test |
-| Model or migration change | `python manage.py check_migration_hygiene --strict` + full test suite |
+| Template or UI logic | Screenshot + `uv run --no-sync ruff check src` |
+| Python behavior | `uv run --no-sync ruff check src` + targeted test |
+| Model or migration change | `uv run --no-sync python src/manage.py check_migration_hygiene --strict` + full test suite |
 | `upstream` → `latest` upstream sync | Full migration sync gate (see PR template) |
 
 Never skip validation for migrations, models, auth, permissions, webhooks, Celery tasks, or cache behavior.
@@ -107,6 +107,7 @@ Never skip validation for migrations, models, auth, permissions, webhooks, Celer
 ## Style
 
 - Python 3.12. Ruff configured in `pyproject.toml` (88-char line limit, migrations excluded).
+- Python dependencies are declared in `pyproject.toml` and locked in `uv.lock`; use uv 0.12.3 and `uv sync --locked` rather than maintaining requirements files.
 - Templates: djlint config in `pyproject.toml`. CSS: Stylelint config in `.stylelintrc`.
 - Tailwind output is committed at `src/static/css/main.css`. Run `npx @tailwindcss/cli -i ./src/static/css/input.css -o ./src/static/css/main.css` after any template or class changes — this uses the version pinned in `package.json`, so it always matches the committed output. Do not use a bare/global `tailwindcss` binary or unpinned `npx`; a version mismatch regenerates the file with a different (larger) utility set and produces spurious diffs.
 - Commit messages: short imperative title, optional 1–3 bullet body, then issue lines.

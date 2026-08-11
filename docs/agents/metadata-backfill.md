@@ -34,22 +34,28 @@ The system runs automatically with intelligent batch sizing:
 
 ### Manual Backfill
 
-For Docker users or initial setup, you can manually trigger backfill:
+From a source checkout, run the backfill from the repository root through the locked uv environment:
 
 ```bash
 # Process all items that have never been checked
-python manage.py backfill_item_metadata
+uv run --no-sync python src/manage.py backfill_item_metadata
 
 # Test with a small batch
-python manage.py backfill_item_metadata --limit 100
+uv run --no-sync python src/manage.py backfill_item_metadata --limit 100
 
 # Process specific media type
-python manage.py backfill_item_metadata --media-type tv
-python manage.py backfill_item_metadata --media-type movie
-python manage.py backfill_item_metadata --media-type anime
+uv run --no-sync python src/manage.py backfill_item_metadata --media-type tv
+uv run --no-sync python src/manage.py backfill_item_metadata --media-type movie
+uv run --no-sync python src/manage.py backfill_item_metadata --media-type anime
 
 # Force re-fetch for all items (rarely needed)
-python manage.py backfill_item_metadata --force
+uv run --no-sync python src/manage.py backfill_item_metadata --force
+```
+
+Docker deployments use the environment bundled in the application container. Run the Django command with `docker exec`, for example:
+
+```bash
+docker exec floppy python manage.py backfill_item_metadata
 ```
 
 ## What Gets Stored
@@ -79,10 +85,10 @@ You can check the backfill progress:
 
 ```bash
 # Check how many items still need metadata
-python manage.py shell -c "from app.models import Item; print(f'Items pending: {Item.objects.filter(metadata_fetched_at__isnull=True).count()}')"
+uv run --no-sync python src/manage.py shell -c "from app.models import Item; print(f'Items pending: {Item.objects.filter(metadata_fetched_at__isnull=True).count()}')"
 
 # Check when an item was last updated
-python manage.py shell -c "from app.models import Item; item = Item.objects.first(); print(f'Last fetched: {item.metadata_fetched_at}')"
+uv run --no-sync python src/manage.py shell -c "from app.models import Item; item = Item.objects.first(); print(f'Last fetched: {item.metadata_fetched_at}')"
 ```
 
 ## Benefits
