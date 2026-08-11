@@ -66,7 +66,7 @@ These fields do not currently exist on Project #1.
 
 ## Pull request topology
 
-Use GitHub's native [stacked pull requests](https://docs.github.com/en/pull-requests/how-tos/stacked-pull-requests), currently a public preview, through the installed `gh stack` extension only for genuine code dependencies. Do not create a stack merely to couple reviews of otherwise independent work.
+Use GitHub's native [stacked pull requests](https://docs.github.com/en/pull-requests/how-tos/stacked-pull-requests), currently a public preview, through GitHub's official `gh stack` extension only for genuine code dependencies. Do not create a stack merely to couple reviews of otherwise independent work.
 
 - Keep every stack in the Floppy repository. The bottom pull request targets `latest`; each higher pull request targets the branch immediately below it. Every layer must satisfy the same branch rules and CI gates.
 - Merge bottom-up, either one layer at a time or as a contiguous group starting at the lowest unmerged layer. Use the supported cascading rebase and automatic retargeting when lower layers change or merge.
