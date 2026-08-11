@@ -1,10 +1,12 @@
 {% load user_tags %}
 {% load app_tags %}
-{# Reusable media-type multi-select grid with drag-to-reorder.
-   Used by Settings > Sidebar and by the setup wizard's "choose what to
-   track" step. Expects `media_types` (ordered list of MediaTypes values)
-   and `user` in context; renders into a form that also submits
-   `sidebar_media_type_order` and `media_types_checkboxes`. #}
+{% comment %}
+Reusable media-type multi-select grid with drag-to-reorder.
+Used by Settings > Sidebar and by the setup wizard's "choose what to
+track" step. Expects `media_types` (ordered list of MediaTypes values)
+and `user` in context; renders into a form that also submits
+`sidebar_media_type_order` and `media_types_checkboxes`.
+{% endcomment %}
 <input type="hidden" name="sidebar_media_type_order" value="{{ media_types|join:',' }}" data-sidebar-order-input>
 <div class="grid gap-3 md:grid-cols-3" data-sidebar-order-list>
   {% for media_type in media_types %}

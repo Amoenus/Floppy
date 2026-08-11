@@ -32,7 +32,7 @@
       <form method="post" action="{% url 'onboarding_skip_service' slug=current_source.slug %}">
         {% csrf_token %}
         <button type="submit"
-                class="px-4 py-2 text-sm rounded-md bg-slate-500/10 text-slate-200 border border-slate-400/30 hover:bg-slate-500/20 transition-colors cursor-pointer">
+                class="px-4 py-2 text-sm rounded-md text-[var(--color-text-secondary)] border border-[var(--color-surface-border)] hover:bg-[var(--color-hover-dim)] hover:text-[var(--color-text)] transition-colors cursor-pointer">
           Skip for now
         </button>
       </form>
