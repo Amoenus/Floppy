@@ -52,6 +52,14 @@ class IntegrationTest(StaticLiveServerTestCase):
             "total_results": 1,
             "results": [show],
         }
+        episode = {
+            "title": show["title"],
+            "episode_title": "Episode 1",
+            "image": "https://example.com/episode.jpg",
+            "image_source": "primary",
+            "score": None,
+            "score_count": None,
+        }
         # Views mutate the returned dicts in place (e.g. replacing related.seasons
         # entries with enriched {"item": ..., "media": ...} wrappers), so a shared
         # return_value would corrupt later calls within the same test. Hand back a
@@ -69,7 +77,14 @@ class IntegrationTest(StaticLiveServerTestCase):
                 "app.providers.tmdb.tv_with_seasons",
                 side_effect=lambda *a, **k: copy.deepcopy(show),
             ),
+            patch(
+                "app.providers.tmdb.episode",
+                side_effect=lambda *a, **k: copy.deepcopy(episode),
+            ),
             patch("app.providers.tmdb.get_tvdb_episode_image_map", return_value={}),
+            patch(
+                "app.tasks_trakt.populate_trakt_episode_ratings_for_season.delay",
+            ),
         ):
             provider_patch.start()
             self.addCleanup(provider_patch.stop)
