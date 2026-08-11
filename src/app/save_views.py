@@ -196,6 +196,7 @@ def media_save(request):
             season_number,
             identity_media_type=identity_media_type,
             library_media_type=library_media_type,
+            edition_id=(request.POST.get("edition_id") or "").strip() or None,
         )
         model = apps.get_model(app_label="app", model_name=tracking_media_type)
         instance = model(item=hydrated.item, user=request.user)

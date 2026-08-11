@@ -113,6 +113,7 @@ SpecialModels = [
     "BackfillReconcileState",
     "ItemProviderLink",
     "MetadataProviderPreference",
+    "HardcoverEditionPreference",
     "CollectionEntry",
     "Tag",
     "ItemTag",

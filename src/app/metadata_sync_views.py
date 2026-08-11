@@ -24,12 +24,13 @@ from app.log_safety import exception_summary, safe_url
 from app.models import (
     CollectionEntry,
     Episode,
+    HardcoverEditionPreference,
     Item,
     MediaTypes,
     MetadataProviderPreference,
     Sources,
 )
-from app.providers import services, tmdb, tvdb
+from app.providers import hardcover, services, tmdb, tvdb
 from app.services import (
     anime_migration,
     bulk_episode_tracking,
@@ -220,6 +221,91 @@ def remap_metadata_provider(request, source, media_type, media_id):
         source=source,
         media_type=media_type,
         media_id=media_id,
+        title=title if (title := item.get_display_title(request.user)) else "item",
+    )
+
+
+@login_required
+@require_GET
+def list_hardcover_editions(request, media_id):
+    """List Hardcover editions for a book, for the edition picker (#539)."""
+    item = Item.objects.filter(
+        media_id=media_id,
+        source=Sources.HARDCOVER.value,
+        media_type=MediaTypes.BOOK.value,
+    ).first()
+    query = (request.GET.get("q") or "").strip().lower()
+    editions = hardcover.editions(media_id)
+    if query:
+        editions = [
+            edition
+            for edition in editions
+            if query
+            in " ".join(
+                str(edition.get(field) or "")
+                for field in ("title", "language", "format", "publisher")
+            ).lower()
+        ]
+    return render(
+        request,
+        "app/components/hardcover_edition_results.html",
+        {
+            "editions": editions,
+            "query": query,
+            "media_id": media_id,
+            "item_id": item.id if item else None,
+            "return_url": helpers.normalize_navigation_url(
+                request.GET.get("return_url"),
+            ),
+        },
+    )
+
+
+@login_required
+@require_POST
+def set_hardcover_edition(request, item_id):
+    """Persist a per-user Hardcover edition choice for a tracked book (#539)."""
+    item = get_object_or_404(
+        Item,
+        id=item_id,
+        source=Sources.HARDCOVER.value,
+        media_type=MediaTypes.BOOK.value,
+    )
+    return_url = helpers.normalize_navigation_url(request.POST.get("return_url"))
+    edition_id = (request.POST.get("edition_id") or "").strip()
+
+    if not edition_id:
+        messages.error(request, "Select an edition to use.")
+    else:
+        HardcoverEditionPreference.objects.update_or_create(
+            user=request.user,
+            item=item,
+            defaults={"edition_id": edition_id},
+        )
+        cache.delete(
+            f"{Sources.HARDCOVER.value}_{MediaTypes.BOOK.value}_{item.media_id}",
+        )
+        cache.delete(
+            f"{Sources.HARDCOVER.value}_{MediaTypes.BOOK.value}_"
+            f"{item.media_id}_{edition_id}",
+        )
+        messages.success(request, "Edition updated.")
+
+    if return_url and (
+        return_url.startswith("/")
+        or url_has_allowed_host_and_scheme(
+            return_url,
+            allowed_hosts={request.get_host()},
+            require_https=request.is_secure(),
+        )
+    ):
+        return redirect(return_url)
+
+    return redirect(
+        "media_details",
+        source=Sources.HARDCOVER.value,
+        media_type=MediaTypes.BOOK.value,
+        media_id=item.media_id,
         title=title if (title := item.get_display_title(request.user)) else "item",
     )
 

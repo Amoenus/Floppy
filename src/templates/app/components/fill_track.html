@@ -75,6 +75,9 @@
                   @submit="closeTrackModal($el)">
           {% csrf_token %}
           <input type="hidden" name="track_form_id" value="{{ track_form_id }}">
+          {% if can_manage_hardcover_edition and hardcover_edition_id_hint %}
+            <input type="hidden" name="edition_id" value="{{ hardcover_edition_id_hint }}">
+          {% endif %}
           {% for hidden_field in general_hidden_fields %}
             {{ hidden_field }}
           {% endfor %}

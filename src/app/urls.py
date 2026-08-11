@@ -34,6 +34,7 @@ urlpatterns = [
         views.update_table_columns,
         name="medialist_columns",
     ),
+    path("tags", views.tag_index, name="tag_index"),
     path("search", views.media_search, name="search"),
     path(
         "search/suggestions",
@@ -116,6 +117,16 @@ urlpatterns = [
         "details/remap/<source:source>/<media_type:media_type>/<path:media_id>",
         views.remap_metadata_provider,
         name="remap_metadata_provider",
+    ),
+    path(
+        "details/hardcover-editions/<path:media_id>",
+        views.list_hardcover_editions,
+        name="list_hardcover_editions",
+    ),
+    path(
+        "details/hardcover-edition/<int:item_id>",
+        views.set_hardcover_edition,
+        name="set_hardcover_edition",
     ),
     path(
         "details/image/<int:item_id>",
@@ -447,6 +458,7 @@ urlpatterns = [
         name="tags_modal",
     ),
     path("tag_item_toggle", views.tag_item_toggle, name="tag_item_toggle"),
+    path("tag_bulk_toggle", views.tag_bulk_toggle, name="tag_bulk_toggle"),
     path("tag_create", views.tag_create, name="tag_create"),
     path("tag_delete", views.tag_delete, name="tag_delete"),
 ]

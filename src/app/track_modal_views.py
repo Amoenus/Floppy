@@ -1,3 +1,4 @@
+from contextlib import suppress
 from datetime import UTC, date
 from uuid import uuid4
 
@@ -19,13 +20,14 @@ from app.forms import BulkEpisodeTrackForm, get_form_class
 from app.models import (
     Anime,
     BasicMedia,
+    HardcoverEditionPreference,
     Item,
     MediaTypes,
     MetadataProviderPreference,
     Sources,
     Status,
 )
-from app.providers import services
+from app.providers import hardcover, services
 from app.services import bulk_episode_tracking, metadata_resolution
 
 RUNTIME_UNKNOWN_AIRED = 999998  # aired but runtime unknown
@@ -558,6 +560,27 @@ def _render_standard_track_modal(
         metadata_item is not None and metadata_provider_options
     )
 
+    can_manage_hardcover_edition = bool(
+        media_type == MediaTypes.BOOK.value and source == Sources.HARDCOVER.value
+    )
+
+    hardcover_selected_edition = None
+    if can_manage_hardcover_edition and metadata_item is not None:
+        preference = HardcoverEditionPreference.objects.filter(
+            user=request.user,
+            item=metadata_item,
+        ).first()
+        if preference:
+            with suppress(Exception):
+                hardcover_selected_edition = next(
+                    (
+                        edition
+                        for edition in hardcover.editions(media_id)
+                        if edition["id"] == preference.edition_id
+                    ),
+                    None,
+                )
+
     manual_metadata_form = None
     can_edit_custom_metadata = bool(
         metadata_item is not None
@@ -575,6 +598,7 @@ def _render_standard_track_modal(
         or can_update_metadata_provider
         or can_migrate_grouped_anime
         or manual_metadata_form
+        or can_manage_hardcover_edition
     )
 
     episode_plays_domain = bulk_episode_tracking.build_episode_play_domain(
@@ -658,6 +682,12 @@ def _render_standard_track_modal(
         "metadata_provider_mapping_status": metadata_provider_mapping_status,
         "metadata_provider_options": metadata_provider_options,
         "can_update_metadata_provider": can_update_metadata_provider,
+        "can_manage_hardcover_edition": can_manage_hardcover_edition,
+        "hardcover_edition_media_id": media_id if can_manage_hardcover_edition else None,
+        "hardcover_selected_edition": hardcover_selected_edition,
+        "hardcover_edition_id_hint": (
+            request.GET.get("edition_id") if can_manage_hardcover_edition else None
+        ),
         "can_migrate_grouped_anime": can_migrate_grouped_anime,
         "metadata_tab_available": metadata_tab_available,
         "metadata_item": metadata_item,

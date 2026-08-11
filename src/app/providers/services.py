@@ -568,6 +568,7 @@ def get_media_metadata(
     season_numbers=None,
     episode_number=None,
     language=None,
+    edition_id=None,
 ):
     """Return the metadata for the selected media."""
     if media_type == MediaTypes.MUSIC.value and source == Sources.MANUAL.value:
@@ -690,7 +691,7 @@ def get_media_metadata(
         MediaTypes.MOVIE.value: lambda: tmdb.movie(media_id, language),
         MediaTypes.GAME.value: lambda: igdb.game(media_id),
         MediaTypes.BOOK.value: lambda: (
-            hardcover.book(media_id)
+            hardcover.book(media_id, edition_id=edition_id)
             if source == Sources.HARDCOVER.value
             else _audiobookshelf_book(media_id)
             if source == Sources.AUDIOBOOKSHELF.value

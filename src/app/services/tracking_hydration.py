@@ -15,7 +15,16 @@ from app import (
     metadata_utils,
 )
 from app import statistics as stats
-from app.models import Album, Artist, Item, MediaTypes, PodcastShow, Sources, Track
+from app.models import (
+    Album,
+    Artist,
+    HardcoverEditionPreference,
+    Item,
+    MediaTypes,
+    PodcastShow,
+    Sources,
+    Track,
+)
 from app.providers import pocketcasts, services
 from app.services.metadata_resolution import (
     get_library_media_type,
@@ -263,6 +272,7 @@ def ensure_item_metadata(
     fallback_title: str = "",
     fallback_image: str | None = None,
     fallback_release_date: str | None = None,
+    edition_id: str | None = None,
 ) -> HydratedItemResult:
     """Get or create an Item with the same metadata quality used for tracked saves."""
     season_numbers = [season_number]
@@ -272,6 +282,7 @@ def ensure_item_metadata(
         source,
         season_numbers,
         episode_number,
+        edition_id=edition_id,
     )
     podcast_show = None
     if media_type == MediaTypes.PODCAST.value and source in {
@@ -386,6 +397,19 @@ def ensure_item_metadata(
             "metadata_fetched_at": timezone.now(),
         },
     )
+
+    if (
+        edition_id
+        and source == Sources.HARDCOVER.value
+        and media_type == MediaTypes.BOOK.value
+        and user
+        and getattr(user, "is_authenticated", False)
+    ):
+        HardcoverEditionPreference.objects.update_or_create(
+            user=user,
+            item=item,
+            defaults={"edition_id": edition_id},
+        )
 
     update_fields: list[str] = []
     title_fields = Item.title_fields_from_metadata(

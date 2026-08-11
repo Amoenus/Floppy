@@ -100,6 +100,57 @@
     </section>
   {% endif %}
 
+  {% if can_manage_hardcover_edition %}
+    <section class="space-y-3"
+             x-data="{ editionOpen: false }"
+             @click.outside="editionOpen = false">
+      <div>
+        <h3 class="text-xl font-semibold text-[var(--color-text)]">Edition</h3>
+        <p class="text-sm text-[var(--color-text-muted)] mt-1">
+          Pick a specific Hardcover edition (e.g. a different language or cover) to use for this title's title and cover. Leave the search blank to see every edition.
+        </p>
+      </div>
+      {% if hardcover_selected_edition %}
+        <div>
+          <p class="text-xs font-medium text-[var(--color-text-muted)] mb-1">Selected edition</p>
+          <div class="flex items-center gap-3 px-3 py-2 text-sm bg-[var(--color-surface)] rounded-md border border-gray-600">
+            {% if hardcover_selected_edition.image %}
+              <img src="{{ hardcover_selected_edition.image }}" alt="" loading="lazy" class="object-cover w-8 h-10 rounded bg-[var(--color-surface-alt)] shrink-0">
+            {% else %}
+              <span class="flex items-center justify-center w-8 h-10 text-gray-600 rounded bg-[var(--color-surface-alt)] shrink-0">
+                {% include "app/icons/magnifying-glass.svg" with classes="w-4 h-4" %}
+              </span>
+            {% endif %}
+            <span class="flex-1 min-w-0">
+              <span class="block truncate text-[var(--color-text)]">{{ hardcover_selected_edition.title }}</span>
+              {% if hardcover_selected_edition.language or hardcover_selected_edition.format %}
+                <span class="block text-xs text-gray-500 truncate">
+                  {{ hardcover_selected_edition.language|default:"" }}{% if hardcover_selected_edition.language and hardcover_selected_edition.format %} · {% endif %}{{ hardcover_selected_edition.format|default:"" }}
+                </span>
+              {% endif %}
+            </span>
+          </div>
+        </div>
+      {% endif %}
+      <div class="relative">
+        <input type="text"
+               name="q"
+               placeholder="Search editions..."
+               autocomplete="off"
+               role="combobox"
+               aria-autocomplete="list"
+               aria-controls="hardcover-edition-results"
+               @focus="editionOpen = true"
+               hx-get="{% url 'list_hardcover_editions' media_id=hardcover_edition_media_id %}?return_url={{ return_url|urlencode }}"
+               hx-trigger="focus, keyup changed delay:250ms"
+               hx-target="#hardcover-edition-results"
+               hx-swap="innerHTML"
+               class="w-full h-10 px-3 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]">
+        <div id="hardcover-edition-results" x-show="editionOpen" x-cloak></div>
+      </div>
+    </section>
+  {% endif %}
+
   {% if manual_metadata_form %}
     <section class="space-y-4">
       <div>
