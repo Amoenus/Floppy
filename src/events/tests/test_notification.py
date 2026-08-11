@@ -8,7 +8,7 @@ from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from app.models import TV, Anime, Item, Manga, MediaTypes, Season, Sources, Status
-from events.models import Event
+from events.models import UNKNOWN_UNRELEASED_DATETIME, Event
 from events.notifications import (
     format_notification,
     format_notification_html,
@@ -197,6 +197,23 @@ class NotificationTests(TestCase):
 
         # User1 excludes manga_item
         self.user1.notification_excluded_items.add(self.manga_item)
+
+    @patch("events.notifications.send_notifications")
+    @patch("events.notifications.timezone.now", return_value=UNKNOWN_UNRELEASED_DATETIME)
+    def test_unknown_unreleased_event_is_not_notified(
+        self,
+        _mock_now,
+        mock_send_notifications,
+    ):
+        """An unknown TV date must not become a release notification."""
+        Event.objects.create(
+            item=self.season1_item,
+            content_number=99,
+            datetime=UNKNOWN_UNRELEASED_DATETIME,
+        )
+
+        self.assertEqual(send_releases(), "No recent releases found")
+        mock_send_notifications.assert_not_called()
 
     @patch("events.notifications.send_notifications")
     def test_end_to_end_notification(self, mock_send_notifications):

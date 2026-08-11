@@ -592,6 +592,11 @@ class MediaManager(models.Manager):
         def _is_usable_datetime(value):
             return value is not None and getattr(value, "year", 0) >= MIN_PLAUSIBLE_YEAR
 
+        def _is_unknown_event(candidate):
+            return isinstance(candidate, events.models.Event) and (
+                candidate.is_unknown_released or candidate.is_unknown_unreleased
+            )
+
         def _progress_index():
             progress_value = getattr(media, "aggregated_progress", None)
             if progress_value is None:
@@ -687,6 +692,8 @@ class MediaManager(models.Manager):
                 return None
 
             candidate = candidates[progress_index]
+            if _is_unknown_event(candidate):
+                return None
             air_date = getattr(candidate, "datetime", None)
             if air_date is None:
                 air_date = getattr(
@@ -703,6 +710,8 @@ class MediaManager(models.Manager):
                 return None
 
             candidate = candidates[progress_index]
+            if _is_unknown_event(candidate):
+                return None
             air_date = getattr(candidate, "datetime", None)
             if air_date is None:
                 air_date = getattr(
@@ -719,6 +728,8 @@ class MediaManager(models.Manager):
                 return None
 
             candidate = candidates[progress_index]
+            if _is_unknown_event(candidate):
+                return None
             air_date = getattr(candidate, "datetime", None)
             if air_date is None:
                 air_date = getattr(
@@ -1289,6 +1300,7 @@ class MediaManager(models.Manager):
                     event
                     for event in getattr(media.item, "prefetched_events", [])
                     if event.datetime > current_time
+                    and not event.is_unknown_unreleased
                 ],
                 key=lambda e: e.datetime,
             )
@@ -1535,7 +1547,7 @@ class MediaManager(models.Manager):
                 datetime__lte=current_datetime,
                 content_number__isnull=False,
             )
-            .exclude(datetime__year__lt=1900)
+            .exclude(events.models.UNKNOWN_UNRELEASED_QUERY)
             .values(
                 "item__media_id",
                 "item__source",
@@ -1632,7 +1644,7 @@ class MediaManager(models.Manager):
                 datetime__lte=current_datetime,
                 content_number__isnull=False,
             )
-            .exclude(datetime__year__lt=1900)
+            .exclude(events.models.UNKNOWN_UNRELEASED_QUERY)
             .values(
                 "item__media_id",
                 "item__source",

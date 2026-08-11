@@ -24,6 +24,10 @@ class EventAdmin(admin.ModelAdmin):
 
     def formatted_datetime(self, obj):
         """Display datetime in a safe format, handling extreme values."""
+        if obj.is_unknown_released:
+            return "Unknown (released)"
+        if obj.is_unknown_unreleased:
+            return "Unknown (unreleased)"
         try:
             return timezone.localtime(obj.datetime).strftime("%Y-%m-%d %H:%M")
         except (OverflowError, ValueError):

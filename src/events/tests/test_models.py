@@ -162,6 +162,10 @@ class EventModelTests(TestCase):
             item=self.season_item,
             datetime=LEGACY_UNKNOWN_UNRELEASED_DATETIME,
         )
+        real_boundary_date = Event(
+            item=self.season_item,
+            datetime=datetime.datetime(1, 2, 3, 4, 5, tzinfo=datetime.UTC),
+        )
 
         self.assertTrue(released.is_unknown_released)
         self.assertTrue(legacy_released.is_unknown_released)
@@ -170,6 +174,8 @@ class EventModelTests(TestCase):
         self.assertTrue(legacy_max.is_unknown_unreleased)
         self.assertTrue(legacy_max.is_max_datetime)
         self.assertFalse(legacy_tv_unreleased.is_unknown_released)
+        self.assertFalse(real_boundary_date.is_unknown_released)
+        self.assertFalse(real_boundary_date.is_unknown_unreleased)
 
     def test_admin_formats_unknown_state_without_localizing_boundary_dates(self):
         """Admin should render semantic state instead of a boundary timestamp."""

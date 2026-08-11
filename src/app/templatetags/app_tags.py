@@ -796,7 +796,13 @@ def natural_day(datetime, user):
 @register.filter
 def user_event_time(event, user):
     """Format event time according to user's time format preference."""
-    if not event or not user or event.is_sentinel_time:
+    if (
+        not event
+        or not user
+        or event.is_sentinel_time
+        or getattr(event, "is_unknown_released", False)
+        or getattr(event, "is_unknown_unreleased", False)
+    ):
         return ""
 
     try:
@@ -828,7 +834,12 @@ def user_event_time(event, user):
 @register.filter
 def event_within_days(event, days):
     """Return True if an event is within the next N days (inclusive)."""
-    if not event or not hasattr(event, "datetime"):
+    if (
+        not event
+        or not hasattr(event, "datetime")
+        or getattr(event, "is_unknown_released", False)
+        or getattr(event, "is_unknown_unreleased", False)
+    ):
         return False
 
     try:
@@ -946,7 +957,7 @@ def _untracked_season_next_episode_url(item, seasons, actual_media_type):
     season without a Season row. Untracked seasons are only visible through
     their calendar events (same source as _next_episode_air_date_value).
     """
-    from events.models import Event
+    from events.models import UNKNOWN_UNRELEASED_QUERY, Event
 
     is_dict = isinstance(item, dict)
     media_id = item["media_id"] if is_dict else getattr(item, "media_id", None)
@@ -968,7 +979,7 @@ def _untracked_season_next_episode_url(item, seasons, actual_media_type):
             content_number__isnull=False,
         )
         .exclude(item__season_number__in=tracked_season_numbers)
-        .exclude(datetime__year__lt=1900)
+        .exclude(UNKNOWN_UNRELEASED_QUERY)
         .filter(datetime__lte=timezone.now())
         .order_by("item__season_number", "content_number")
         .select_related("item")
@@ -1007,16 +1018,20 @@ def _next_episode_number_for_season_item(item, media):
     if not media_id or not source or season_number is None:
         return None
 
-    from events.models import Event
+    from events.models import UNKNOWN_UNRELEASED_QUERY, Event
 
-    event_numbers = Event.objects.filter(
-        item__media_id=media_id,
-        item__source=source,
-        item__media_type=MediaTypes.SEASON.value,
-        item__season_number=season_number,
-        content_number__isnull=False,
-        datetime__lte=timezone.now(),
-    ).exclude(datetime__year__lt=1900).values_list("content_number", flat=True)
+    event_numbers = (
+        Event.objects.filter(
+            item__media_id=media_id,
+            item__source=source,
+            item__media_type=MediaTypes.SEASON.value,
+            item__season_number=season_number,
+            content_number__isnull=False,
+            datetime__lte=timezone.now(),
+        )
+        .exclude(UNKNOWN_UNRELEASED_QUERY)
+        .values_list("content_number", flat=True)
+    )
     episode_numbers = sorted({int(number) for number in event_numbers})
     if not episode_numbers:
         max_progress = getattr(media, "max_progress", None)

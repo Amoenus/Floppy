@@ -27,7 +27,6 @@ logger = logging.getLogger(__name__)
 # user's resolve_watch_date behavior) from an explicit value, including None
 # (blank date deliberately chosen on the completion form).
 _UNSET_END_DATE = object()
-MIN_VALID_RELEASE_YEAR = 1900
 
 
 def _runtime_minutes(value):
@@ -566,7 +565,7 @@ class Season(Media):
             event_datetime = getattr(event, "datetime", None)
             if episode_number is None or event_datetime is None:
                 continue
-            if event_datetime.year < MIN_VALID_RELEASE_YEAR or event_datetime > now:
+            if event.is_unknown_unreleased or event_datetime > now:
                 continue
             try:
                 episode_numbers.add(int(episode_number))
@@ -950,7 +949,9 @@ class Season(Media):
                 item=self.item,
                 content_number__isnull=False,
                 datetime__lte=timezone.now(),
-            ).aggregate(max_ep=Max("content_number"))["max_ep"]
+            )
+            .exclude(events.models.UNKNOWN_UNRELEASED_QUERY)
+            .aggregate(max_ep=Max("content_number"))["max_ep"]
             or 0
         )
 
