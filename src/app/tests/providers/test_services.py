@@ -685,7 +685,7 @@ class ServicesTests(TestCase):
 
         self.assert_metadata_title_payload(result, "Test Hardcover Book")
 
-        mock_book.assert_called_once_with("1")
+        mock_book.assert_called_once_with("1", edition_id=None)
 
     @patch("app.providers.mal.search")
     def test_search_anime(self, mock_search):
