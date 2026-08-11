@@ -85,6 +85,18 @@ class IntegrationTest(StaticLiveServerTestCase):
         )
         self.page.get_by_role("button", name="Sign in").click()
 
+    def search_and_submit(self, query):
+        """Run a global search via the submit button.
+
+        The search form's Alpine.js submit guard only reliably recognizes
+        the click event's target as its own search button; relying on the
+        input's implicit Enter-to-submit behavior races with the
+        hx-trigger="... , search" suggestions fetch firing on the same
+        native `search` event and is intermittently swallowed.
+        """
+        self.page.locator("#global-search").fill(query)
+        self.page.locator('form:has(#global-search) button[type="submit"]').click()
+
     def set_date_input(self, locator, value):
         """Set a hidden date-picker input and dispatch its change events."""
         locator.evaluate(
@@ -111,8 +123,7 @@ class IntegrationTest(StaticLiveServerTestCase):
 
     def test_season_progress_edit(self):
         """Test the progress edit of a season."""
-        self.page.locator("#global-search").fill("breaking bad")
-        self.page.locator("#global-search").press("Enter")
+        self.search_and_submit("breaking bad")
         expect(self.page.locator("h2", has_text="Search Results")).to_be_visible()
         self.page.get_by_title("Breaking Bad", exact=True).click()
         expect(self.page.get_by_role("main")).to_contain_text("Breaking Bad")
@@ -146,9 +157,7 @@ class IntegrationTest(StaticLiveServerTestCase):
 
     def test_tv_completed(self):
         """Test the completed status of a TV show."""
-        self.page.locator("#global-search").click()
-        self.page.locator("#global-search").fill("breaking bad")
-        self.page.locator("#global-search").press("Enter")
+        self.search_and_submit("breaking bad")
         expect(self.page.locator("h2", has_text="Search Results")).to_be_visible()
         self.page.get_by_title("Breaking Bad", exact=True).click()
         expect(self.page.get_by_role("main")).to_contain_text("Breaking Bad")
@@ -167,8 +176,7 @@ class IntegrationTest(StaticLiveServerTestCase):
 
     def test_season_completed(self):
         """Test the completed status of a season."""
-        self.page.locator("#global-search").fill("breaking bad")
-        self.page.locator("#global-search").press("Enter")
+        self.search_and_submit("breaking bad")
         expect(self.page.locator("h2", has_text="Search Results")).to_be_visible()
         self.page.get_by_title("Breaking Bad", exact=True).click()
         expect(self.page.get_by_role("main")).to_contain_text("Breaking Bad")
