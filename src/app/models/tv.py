@@ -18,7 +18,7 @@ from simple_history.utils import bulk_create_with_history, bulk_update_with_hist
 import events
 from app import cache_utils, providers
 from app.log_safety import exception_summary
-from app.models.choices import MediaTypes, Sources, Status
+from app.models.choices import MediaTypes, ProviderMetadataStatus, Sources, Status
 from app.models.item import Item
 from app.models.media import Media
 
@@ -608,9 +608,18 @@ class Season(Media):
             .exclude(release_datetime__in=events.models.UNKNOWN_EVENT_DATETIMES)
             .values_list("episode_number", flat=True),
         )
-        local_total = self.item.local_season_episode_count or 0
-        if local_total > 0:
-            is_complete = len(completed_numbers) >= local_total
+        authoritative_total = (
+            self.item.local_season_episode_count
+            or getattr(self, "max_progress", 0)
+            or 0
+        )
+        if authoritative_total > 0:
+            is_complete = len(completed_numbers) >= authoritative_total
+        elif (
+            self.item.provider_metadata_status
+            == ProviderMetadataStatus.LOCAL_ONLY_MISSING_SEASON.value
+        ):
+            is_complete = None
         elif released_numbers:
             is_complete = released_numbers.issubset(completed_numbers)
         else:

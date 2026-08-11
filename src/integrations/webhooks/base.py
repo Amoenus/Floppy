@@ -1530,6 +1530,10 @@ class BaseWebhookProcessor:
             episode_number,
             item_season_metadata,
         )
+        if not used_local_only_fallback:
+            season_instance.max_progress = len(
+                item_season_metadata.get("episodes") or [],
+            )
 
         if self._is_played(payload):
             now = self._get_played_at(payload) or timezone.now().replace(
