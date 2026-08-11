@@ -118,6 +118,7 @@ class StremioWebhookProcessorTests(TestCase):
         self.assertEqual(movie.status, Status.IN_PROGRESS.value)
         self.assertEqual(movie.progress, 0)
 
+    @tag("network")
     def test_episode_start_marks_show_in_progress(self):
         """An episode playback start marks the show and season in progress."""
         response = self._get("series", "tt0108778:1:1")
@@ -160,6 +161,7 @@ class StremioWebhookProcessorTests(TestCase):
         self.assertEqual(kwargs["media_id"], "603")
         self.assertEqual(kwargs["title"], "The Matrix")
 
+    @tag("network")
     @patch("integrations.webhooks.stremio.live_playback.apply_playback_event")
     def test_episode_start_updates_live_playback(self, mock_apply_event):
         """An episode playback start updates the Now Playing card."""

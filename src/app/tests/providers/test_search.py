@@ -25,6 +25,7 @@ class Search(TestCase):
         """Clear the cache so search tests do not share IGDB responses."""
         cache.clear()
 
+    @tag("network")
     def test_anime(self):
         """Test the search method for anime.
 
@@ -37,6 +38,7 @@ class Search(TestCase):
         for anime in response["results"]:
             self.assertTrue(all(key in anime for key in required_keys))
 
+    @tag("network")
     def test_anime_not_found(self):
         """Test the search method for anime with no results."""
         response = mal.search(MediaTypes.ANIME.value, "q", 1)
@@ -161,6 +163,7 @@ class Search(TestCase):
         )
         mock_get_access_token.assert_called_once()
 
+    @tag("network")
     def test_books(self):
         """Test the search method for books.
 
@@ -184,6 +187,7 @@ class Search(TestCase):
         for comic in response["results"]:
             self.assertTrue(all(key in comic for key in required_keys))
 
+    @tag("network")
     def test_hardcover(self):
         """Test the search method for books from Hardcover.
 
@@ -197,6 +201,7 @@ class Search(TestCase):
         for book in response["results"]:
             self.assertTrue(all(key in book for key in required_keys))
 
+    @tag("network")
     def test_hardcover_not_found(self):
         """Test the search method for books from Hardcover with no results."""
         response = hardcover.search("xjkqzptmvnsieurytowahdbfglc", 1)

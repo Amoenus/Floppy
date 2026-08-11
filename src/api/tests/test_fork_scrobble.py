@@ -3,6 +3,8 @@
 from http import HTTPStatus as HTTP  # noqa: N814
 from unittest.mock import patch
 
+from django.test import tag
+
 from app.models import Episode, Movie, Status
 
 from .base import FloppyApiTestCase
@@ -133,6 +135,7 @@ class ScrobbleLivePlaybackTests(FloppyApiTestCase):
 class ScrobbleStopTests(FloppyApiTestCase):
     """'stop' persists a durable watch/progress update."""
 
+    @tag("network")
     def test_stop_completed_marks_movie_completed(self):
         """A completed stop event creates a completed Movie instance."""
         response = self.call_api(
@@ -152,6 +155,7 @@ class ScrobbleStopTests(FloppyApiTestCase):
         movie = Movie.objects.get(item__media_id="603", user=self.user1)
         self.assertEqual(movie.status, Status.COMPLETED.value)
 
+    @tag("network")
     def test_stop_episode_dedup_within_five_seconds(self):
         """Two rapid duplicate stop events create only one Episode play."""
         payload = {

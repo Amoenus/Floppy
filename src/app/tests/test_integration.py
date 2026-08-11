@@ -1,3 +1,4 @@
+import copy
 import os
 from datetime import UTC, date, datetime, timedelta
 from unittest.mock import patch
@@ -10,6 +11,7 @@ from django.utils import timezone
 from playwright.sync_api import expect, sync_playwright
 
 from app.models import Game, Item, MediaTypes, Movie, Sources, Status
+from app.tests.views.test_track_modal import _tv_with_seasons_payload
 from users.models import DateFormatChoices
 
 
@@ -25,7 +27,12 @@ class IntegrationTest(StaticLiveServerTestCase):
         cls.playwright = sync_playwright().start()
         # use headless=False, slow_mo=200 to see the browser
         cls.browser = cls.playwright.chromium.launch()
-        cls.page = cls.browser.new_page()
+        # CI runners for this repo's full test suite (~2900 tests including
+        # heavy benchmarks) get slow enough under load that the default 5s
+        # expect() timeout occasionally races a real HTMX swap/navigation
+        # that would otherwise succeed. Reset in tearDownClass since this is
+        # process-global, not scoped to this class.
+        expect.set_options(timeout=15000)
 
     def setUp(self):
         """Set up test data for CustomList model."""
@@ -33,6 +40,42 @@ class IntegrationTest(StaticLiveServerTestCase):
         self.user = get_user_model().objects.create_user(**self.credentials)
         self.user.date_format = DateFormatChoices.ISO_8601
         self.user.save(update_fields=["date_format"])
+        show = _tv_with_seasons_payload(
+            "1396",
+            Sources.TMDB.value,
+            title="Breaking Bad",
+            episode_count=1,
+        )
+        search = {
+            "page": 1,
+            "total_pages": 1,
+            "total_results": 1,
+            "results": [show],
+        }
+        # Views mutate the returned dicts in place (e.g. replacing related.seasons
+        # entries with enriched {"item": ..., "media": ...} wrappers), so a shared
+        # return_value would corrupt later calls within the same test. Hand back a
+        # fresh deep copy every call instead.
+        for provider_patch in (
+            patch(
+                "app.providers.tmdb.search",
+                side_effect=lambda *a, **k: copy.deepcopy(search),
+            ),
+            patch(
+                "app.providers.tmdb.tv",
+                side_effect=lambda *a, **k: copy.deepcopy(show),
+            ),
+            patch(
+                "app.providers.tmdb.tv_with_seasons",
+                side_effect=lambda *a, **k: copy.deepcopy(show),
+            ),
+            patch("app.providers.tmdb.get_tvdb_episode_image_map", return_value={}),
+        ):
+            provider_patch.start()
+            self.addCleanup(provider_patch.stop)
+
+        self.context = self.browser.new_context()
+        self.page = self.context.new_page()
         self.page.goto(f"{self.live_server_url}/")
         self.page.get_by_placeholder("Enter your username").fill(
             self.credentials["username"],
@@ -41,6 +84,18 @@ class IntegrationTest(StaticLiveServerTestCase):
             self.credentials["password"],
         )
         self.page.get_by_role("button", name="Sign in").click()
+
+    def search_and_submit(self, query):
+        """Run a global search via the submit button.
+
+        The search form's Alpine.js submit guard only reliably recognizes
+        the click event's target as its own search button; relying on the
+        input's implicit Enter-to-submit behavior races with the
+        hx-trigger="... , search" suggestions fetch firing on the same
+        native `search` event and is intermittently swallowed.
+        """
+        self.page.locator("#global-search").fill(query)
+        self.page.locator('form:has(#global-search) button[type="submit"]').click()
 
     def set_date_input(self, locator, value):
         """Set a hidden date-picker input and dispatch its change events."""
@@ -56,14 +111,19 @@ class IntegrationTest(StaticLiveServerTestCase):
     @classmethod
     def tearDownClass(cls):
         """Tear down the test class."""
-        super().tearDownClass()
+        expect.set_options(timeout=5000)
         cls.browser.close()
         cls.playwright.stop()
+        super().tearDownClass()
+
+    def tearDown(self):
+        """Close browser connections before Django flushes the database."""
+        self.context.close()
+        super().tearDown()
 
     def test_season_progress_edit(self):
         """Test the progress edit of a season."""
-        self.page.locator("#global-search").fill("breaking bad")
-        self.page.locator("#global-search").press("Enter")
+        self.search_and_submit("breaking bad")
         expect(self.page.locator("h2", has_text="Search Results")).to_be_visible()
         self.page.get_by_title("Breaking Bad", exact=True).click()
         expect(self.page.get_by_role("main")).to_contain_text("Breaking Bad")
@@ -97,9 +157,7 @@ class IntegrationTest(StaticLiveServerTestCase):
 
     def test_tv_completed(self):
         """Test the completed status of a TV show."""
-        self.page.locator("#global-search").click()
-        self.page.locator("#global-search").fill("breaking bad")
-        self.page.locator("#global-search").press("Enter")
+        self.search_and_submit("breaking bad")
         expect(self.page.locator("h2", has_text="Search Results")).to_be_visible()
         self.page.get_by_title("Breaking Bad", exact=True).click()
         expect(self.page.get_by_role("main")).to_contain_text("Breaking Bad")
@@ -118,8 +176,7 @@ class IntegrationTest(StaticLiveServerTestCase):
 
     def test_season_completed(self):
         """Test the completed status of a season."""
-        self.page.locator("#global-search").fill("breaking bad")
-        self.page.locator("#global-search").press("Enter")
+        self.search_and_submit("breaking bad")
         expect(self.page.locator("h2", has_text="Search Results")).to_be_visible()
         self.page.get_by_title("Breaking Bad", exact=True).click()
         expect(self.page.get_by_role("main")).to_contain_text("Breaking Bad")

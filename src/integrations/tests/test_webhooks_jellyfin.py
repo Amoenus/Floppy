@@ -584,6 +584,7 @@ class JellyfinWebhookTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(Movie.objects.count(), 0)
 
+    @tag("network")
     def test_mark_played_event_marks_movie_completed_when_enabled(self):
         """Test MarkPlayed events mark a movie as completed once opted in."""
         self.user.jellyfin_mark_played_enabled = True
@@ -643,6 +644,7 @@ class JellyfinWebhookTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(Movie.objects.count(), 1)
 
+    @tag("network")
     def test_mark_unplayed_event_deletes_movie_when_enabled(self):
         """Test MarkUnplayed events delete the tracked movie once opted in."""
         self.user.jellyfin_mark_unplayed_enabled = True
@@ -675,6 +677,7 @@ class JellyfinWebhookTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(Movie.objects.count(), 0)
 
+    @tag("network")
     def test_mark_unplayed_event_deletes_episode_when_enabled(self):
         """Test MarkUnplayed events delete the tracked episode once opted in."""
         self.user.jellyfin_mark_unplayed_enabled = True
