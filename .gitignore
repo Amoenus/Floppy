@@ -22,6 +22,7 @@ TODO.txt
 .env.dev
 docker-compose.dev.yml
 db-dev/
+src/local_serve.py
 
 # Local dev DB
 db/

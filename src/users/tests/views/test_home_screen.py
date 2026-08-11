@@ -23,6 +23,7 @@ from app.models import (
     Status,
     Tag,
 )
+from app.services.item_merge import dedupe_cross_provider_items
 from lists import smart_rules
 from lists.models import CustomList
 from users import home_screen
@@ -1621,7 +1622,7 @@ class CrossProviderDedupTests(TestCase):
     def test_prefers_tvdb_item_for_tvdb_preferring_user(self):
         tmdb_item, tvdb_item = self._tv_pair()
 
-        result = home_screen._dedupe_cross_provider_items(
+        result = dedupe_cross_provider_items(
             [tmdb_item, tvdb_item],
             Sources.TVDB.value,
         )
@@ -1631,7 +1632,7 @@ class CrossProviderDedupTests(TestCase):
     def test_prefers_tmdb_item_for_tmdb_preferring_user(self):
         tmdb_item, tvdb_item = self._tv_pair()
 
-        result = home_screen._dedupe_cross_provider_items(
+        result = dedupe_cross_provider_items(
             [tmdb_item, tvdb_item],
             Sources.TMDB.value,
         )
@@ -1655,7 +1656,7 @@ class CrossProviderDedupTests(TestCase):
             image="",
         )
 
-        result = home_screen._dedupe_cross_provider_items(
+        result = dedupe_cross_provider_items(
             [remake_item, tvdb_item],
             Sources.TVDB.value,
         )
