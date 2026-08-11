@@ -258,45 +258,26 @@ Oververbosity:low
 Floppy is a Django 5.2 app for self-hosted media tracking with Celery workers and Redis. Tailwind CSS output is committed under `src/static/css/`, and templates load `src/static/css/main.css` via `src/templates/base.html`.
 
 ## Branch Policy
-- `upstream` (formerly named `dev` in this fork) must be an exact mirror of upstream `FuzzyGrim/Yamtrack:dev` with no fork-only commits or edits. You will never update this branch.
-- Any local `upstream` divergence should be reset/fast-forwarded back to upstream before merging. `upstream` will always be a perfect mirror of upstream.
-- `latest` is the fork integration branch for day-to-day feature work and upstream sync merges.
+- `upstream` (formerly named `dev` in this fork) must be an exact mirror of `FuzzyGrim/Yamtrack:dev`. Never commit to it, target it with a PR, or add fork-only edits. Refresh it only by exact fast-forward/reset to the upstream remote.
+- `latest` is the fork integration branch for day-to-day work and semantic upstream ports. Do not merge or rebase `upstream` into `latest`.
 - `release` is for versioned release/container publication flow, not the primary integration branch.
 
-## Merge Workflow
-This workspace is `dannyvfilms/Floppy` (a fork of `FuzzyGrim/Yamtrack`), branch `latest`. When syncing upstream `dev` into `latest`, treat the merge as a conflict-resolution task where the fork's `upstream` branch (mirroring upstream `dev`) brings maintenance changes and `latest` preserves fork features.
+## Upstream Resolution Workflow
 
-High-level rules:
-- Use upstream `dev` (mirrored locally as `upstream`) as the source of truth for dependency versions, security/bugfix patches, small refactors, settings/config changes, CSS cleanups, and tests.
-- Use `latest` as the source of truth for fork-specific features and behavior changes.
-- When logic overlaps, merge intent from both sides rather than choosing one side wholesale.
+[`UPSTREAM_PORTS.md`](UPSTREAM_PORTS.md) is the durable source of truth. “Up to date” means zero unclassified upstream outcomes, not matching Git histories.
 
-Current app areas to preserve while merging:
-- Progress, history, and statistics: time-left sorting, time-watched views, history filters, cached range stats, Top Played, media-hours cards, reading/music/podcast stats, comparison tooling, and dropped-show fixes.
-- Lists and sharing: public/private lists, smart lists, public profiles, recommendations, list tags, drag-and-drop ordering, release-date sorting, completion indicators, RSS/JSON feeds, and backup export/import.
-- Media coverage and collection: music, podcasts, books, comics, manga, games, board games, collection/owned-media flows, person/author pages, localized titles, runtime chips, and grouped-anime handling.
-- Integrations, imports, and webhooks: Trakt, Plex, Jellyfin, Seerr, Pocket Casts, Last.fm, Audiobookshelf, TVDB, Steam, Plex-only GUID handling, TMDB episode edge cases, SQLite lock handling during import, and auto-pause for stale in-progress items.
-- UI, mobile, and performance: mobile layouts, compact grids, filter controls, media card/timeline styling, statistics layout refinements, quick season updates, runtime/history caching, startup guards, and iOS/SQLite resiliency.
-- Preferences and settings: sort-direction toggles/indicators, ratings-list sort fixes, aggregate-duplicates behavior, subtitle/date-time/rating-scale preferences, and visibility/sidebar/search settings.
-- Deployment and install: Docker build improvements, Redis-unavailability guard in AppConfig.ready(), and README/install updates.
+For each new outcome in `last-reviewed..upstream/dev`:
 
-Conflict-resolution steps:
-1. Scan for conflict markers (`<<<<<<<`, `=======`, `>>>>>>>`) and resolve every file.
-2. For each conflict, understand both sides; keep upstream maintenance changes and layer them into fork features.
-3. For views/templates/runtime/history/statistics/lists/preferences/import/webhook logic, start from `latest` behavior and integrate upstream improvements.
-4. For migration conflicts:
-   - Same migration numbers on different branches are valid in Django; resolve with merge migrations.
-   - Keep upstream migration filenames unchanged in `latest`.
-   - Renumber only fork-local migrations that are unpushed/unreleased.
-   - Never rename or rewrite any migration file that exists in `origin/latest` or any `v*` release tag.
-5. For lists/configs (.gitignore, CSS classes, INSTALLED_APPS, URLs, etc.), keep the union and deduplicate.
-6. Remove all conflict markers; run linters/tests and fix underlying issues, not just tests.
-7. For upstream syncs, run the hard gates that apply to the change:
-   - `cd src && python manage.py makemigrations --merge`
-   - `cd src && python manage.py check_migration_hygiene --strict`
-   - `scripts/replay_upgrade_matrix.sh --from-tag <previous_release_tag> --to-ref latest --db sqlite,postgres --with-drift-scenarios`
-   - `coverage run src/manage.py test app users integrations lists events --parallel`
-8. If a choice is unavoidable, prioritize fork-visible features while honoring upstream data contracts/integrations.
+1. Record the canonical upstream commits and group related implementation, tests, migrations, and repairs.
+2. Choose exactly one evidence-backed decision: Ported, Adapted, Superseded, Deferred, Discarded, or Pending with an owner issue.
+3. Prefer a clean cherry-pick only for isolated changes whose paths and architecture still match. Otherwise implement the behaviour through Floppy's current public APIs and bounded contexts.
+4. Preserve Floppy features, deployment paths, security/privacy, and user data. Dependency versions and generated assets are not upstream sources of truth.
+5. Port useful regression cases even when the implementation is superseded or reimplemented.
+6. For schema work, define final semantics first, audit existing data, and generate new Floppy migrations against the current graph. Never cherry-pick upstream migration files or reproduce an unsafe intermediate migration.
+7. Update the ledger, owning issue, documentation, configuration examples, API schema/output, wiki, and upgrade guidance affected by the outcome.
+8. Validate in proportion to risk using the repository's normal targeted, migration, database, container, and full-suite gates. Record actual evidence in the PR.
+
+Models/migrations and divergent UI normally require manual adaptation. Provider modules and isolated importers may permit small ports. CI, Docker, and dependencies move as coherent platform packages. Branding, version bumps, merge commits, generated churn, and individual dependency-bot commits are normally discarded with the ledger's reason codes.
 
 ## Repository Map
 - `src/` Django project code (apps: `app`, `users`, `lists`, `integrations`, `events`; config in `config/`).
@@ -319,7 +300,7 @@ Conflict-resolution steps:
 - `docs/agents/media_type_integration.md`: playbook for adding new media types safely.
 - `docs/agents/music_integration.md`: music-specific data model and UI integration notes.
 - `docs/agents/pocketcasts_workflow.md`: Pocket Casts import/schedule workflow details.
-- `docs/agents/migration_sync_playbook.md`: required hard-gate flow for upstream syncs and migration drift replay.
+- `docs/agents/migration_sync_playbook.md`: hard-gate flow for adapting accepted upstream migration outcomes to Floppy's current graph.
 
 ## Local Commands
 - Install dev dependencies: `python -m pip install -U -r requirements-dev.txt`
@@ -351,7 +332,7 @@ Run tests through `scripts/test.sh`, in this priority order:
 Notes:
 - Quick confidence: `ruff check src`
 - Migration sync confidence: `cd src && python manage.py check_migration_hygiene --strict`
-- Upstream sync replay: `scripts/replay_upgrade_matrix.sh --from-tag <previous_release_tag> --to-ref latest --db sqlite,postgres --with-drift-scenarios`
+- Migration upgrade replay: `scripts/replay_upgrade_matrix.sh --from-tag <previous_release_tag> --to-ref latest --db sqlite,postgres --with-drift-scenarios`
 - Tag vocabulary: `slow` and `network` are the exclusion tags used by the fast
   suite. `network` marks tests that call a live provider API: they need keys and
   internet, they are slow and flaky, and a fork PR cannot read repository secrets,

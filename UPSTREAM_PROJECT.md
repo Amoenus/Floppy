@@ -1,82 +1,65 @@
-# Upstream parity execution board
+# Upstream resolution execution board
 
-> **GitHub Project:** [dannyvfilms project #1](https://github.com/users/dannyvfilms/projects/1)  
-> **Durable decision ledger:** [`UPSTREAM_PORTS.md`](UPSTREAM_PORTS.md)  
-> **Programme issue:** [#645](https://github.com/dannyvfilms/Floppy/issues/645)  
+> **GitHub Project:** [dannyvfilms project #1](https://github.com/users/dannyvfilms/projects/1)
+> **Durable decision ledger:** [`UPSTREAM_PORTS.md`](UPSTREAM_PORTS.md)
+> **Programme issue:** [#645](https://github.com/dannyvfilms/Floppy/issues/645)
 > **Phase 0 PR:** [#651](https://github.com/dannyvfilms/Floppy/pull/651)
 
 ## Purpose
 
-`UPSTREAM_PORTS.md` records long-lived decisions: what was reviewed, what Floppy will port, what Floppy already supersedes, what is intentionally discarded, and why.
+The ledger records durable decisions and evidence. Project #1 is the changing operational view: what is being reviewed or implemented, what is blocked, and what comes next. A project-field change never replaces a ledger update.
 
-Project #1 is the operational layer. It should show what is being reviewed or implemented now, what is blocked, and what comes next. Project status is allowed to change frequently; discard and supersession rationale must remain in Git history rather than living only in project fields.
+Phase 0 is complete only when PR #651 is merged and the active rows below are represented on Project #1. Runtime packages do not begin from an unmerged draft ledger unless #645 records a narrow exception.
 
-## Initial board population
+## Initial population
 
-| Item | Role | Initial state | Priority | Blocked by / relationship |
+| Item | Role | Initial state | Priority | Dependency or relationship |
 |---|---|---|---|---|
-| [#651](https://github.com/dannyvfilms/Floppy/pull/651) | Phase 0 decision-ledger PR | Review | P0 | None |
-| [#645](https://github.com/dannyvfilms/Floppy/issues/645) | Programme index | In progress | P0 | Complete Phase 0 when #651 is merged and the board is populated |
+| [#651](https://github.com/dannyvfilms/Floppy/pull/651) | Exhaustive decision ledger and governance | Review | P0 | Merge gate for Phase 0 |
+| [#645](https://github.com/dannyvfilms/Floppy/issues/645) | Programme index | In progress | P0 | Done after #651 merges and this board is populated |
 | [#646](https://github.com/dannyvfilms/Floppy/issues/646) | Built-image smoke gate | Ready next | P0 | #651 |
-| [#647](https://github.com/dannyvfilms/Floppy/issues/647) | uv project, workspace lockfile, CI and Docker | Blocked | P0 | #646 |
-| [#648](https://github.com/dannyvfilms/Floppy/issues/648) | Datetime and calendar integrity | Blocked | P0 | #646; runtime semantics before migrations |
-| [#649](https://github.com/dannyvfilms/Floppy/issues/649) | Provider correctness | Ready after safety baseline | P1 | #646; coordinate unknown dates with #648 |
-| [#650](https://github.com/dannyvfilms/Floppy/issues/650) | Identity audit, repair and constraints | Blocked | P1 | #646 and #648 |
-| [#597](https://github.com/dannyvfilms/Floppy/issues/597) | Reusable deployment preflight | Related active work | P1 | Integrate with #646 without replacing the external image test |
-| [#639](https://github.com/dannyvfilms/Floppy/issues/639) | Cross-provider episode/calendar duplicate regression | Active acceptance target | P1 | Concrete user-facing target for #650; do not close from epic completion alone |
-| [#390](https://github.com/dannyvfilms/Floppy/issues/390) | Existing CI/Ruff signal | Coordination evidence | P1 | #647 must preserve its chosen CI policy |
+| [#647](https://github.com/dannyvfilms/Floppy/issues/647) | uv, lockfile, CI, lint, and Docker | Blocked | P0 | #646; no dependency upgrades during conversion |
+| [#648](https://github.com/dannyvfilms/Floppy/issues/648) | Datetime/calendar integrity and import-date fixes | Blocked | P0 | #646; final runtime semantics before migrations |
+| [#649](https://github.com/dannyvfilms/Floppy/issues/649) | MAL, AniList, and Open Library correctness | Ready after safety baseline | P1 | #646; coordinate unknown dates with #648 |
+| [#650](https://github.com/dannyvfilms/Floppy/issues/650) | Identity audit, repair, and constraints | Blocked | P1 | #646 and #648 |
+| [#653](https://github.com/dannyvfilms/Floppy/pull/653) | Restore first-run query-budget signal | Exception in review | P0 | Narrow Phase 0 exception recorded on #645; not an upstream runtime port |
+| [#597](https://github.com/dannyvfilms/Floppy/issues/597) | Reusable deployment preflight | Related active work | P1 | Complements #646; does not replace external image validation |
+| [#639](https://github.com/dannyvfilms/Floppy/issues/639) | Cross-provider episode/calendar duplicate regression | Active acceptance target | P1 | Concrete target for #650; do not close from epic completion alone |
+| [#390](https://github.com/dannyvfilms/Floppy/issues/390) | Existing CI/Ruff signal | Coordination evidence | P1 | #647 preserves or deliberately replaces its chosen policy |
 | [#512](https://github.com/dannyvfilms/Floppy/issues/512) | Low-tier performance/startup audit | Coordination evidence | P1 | Receives measurements from #646 and #647 |
 
-Closed historical issues are evidence, not active project work, unless the project already retains completed cards for traceability.
+PR [#638](https://github.com/dannyvfilms/Floppy/pull/638) remains historical/open work unless separately closed. Its merge/cherry-pick convergence strategy is superseded by semantic resolution and must not be used as the programme implementation path.
 
-## Recommended fields
+Closed issues remain evidence rather than active cards unless the project deliberately retains completed cards for traceability. Relevant examples include #30, #36, #246, #295, #379, #529, #557, #559, #593, #604, #620, and #623.
 
-Use existing equivalent fields instead of creating duplicates.
+## Fields
 
-| Field | Suggested values | Use |
+Reuse existing equivalent fields rather than creating duplicates.
+
+| Field | Values | Purpose |
 |---|---|---|
 | **Status** | Triage, Review, Ready, In progress, Blocked, Done | Day-to-day execution |
-| **Phase** | 0 through 8 | Roadmap grouping |
-| **Decision** | Pending, In progress, Ported, Superseded, Discarded, Deferred | Mirrors the durable ledger state |
+| **Phase** | 0 through 6 | Package grouping from the ledger |
+| **Decision** | Pending, Ported, Adapted, Superseded, Deferred, Discarded | Mirrors the durable ledger |
 | **Priority** | P0, P1, P2, P3 | Portfolio order, not raw RICE alone |
-| **Blocked by** | Issue or PR reference | Makes sequencing explicit |
-| **Upstream baseline** | Reviewed Yamtrack SHA | Enables incremental future review |
-| **Outcome owner** | Issue or maintainer | One owner per coherent outcome |
+| **Blocked by** | Issue or PR reference | Explicit sequencing |
+| **Upstream baseline** | Reviewed Yamtrack SHA | Incremental comparison boundary |
+| **Outcome owner** | One issue or maintainer | Accountability for each accepted outcome |
 
 ## Board rules
 
-1. Review and merge the ledger before implementation begins.
-2. Add accepted Pending or In-progress outcomes to the project.
-3. Add active Floppy issues that serve as concrete regression or coordination targets.
-4. Do not create cards for merge commits, version bumps, generated CSS/lock churn, individual Dependabot commits, or other discarded port units.
-5. Do not close an active concrete bug merely because a broader work-package issue exists.
-6. Keep closed historical evidence closed; link it from the ledger and owning issue.
-7. Move an outcome to Done only after the ledger records the merged Floppy PR and validation evidence.
-8. When a decision changes, update `UPSTREAM_PORTS.md`; a project-field change alone is insufficient.
-9. After each upstream review, update the stored Yamtrack baseline and create cards only for accepted work.
+1. Add accepted Pending outcomes and active Floppy regression/coordination targets.
+2. Do not create cards for merge commits, release bumps, generated churn, discarded implementations, or individual dependency-bot commits.
+3. Do not close a concrete bug because a broader package exists.
+4. Move work to Done only after the ledger records the merged Floppy PR and validation evidence.
+5. When a decision changes, update `UPSTREAM_PORTS.md`; project state alone is not durable evidence.
+6. After each upstream review, update the Yamtrack baseline and add cards only for accepted work.
 
-## Current issue matching
+## Execution order
 
-### Exact or active Floppy targets
-
-- #597 complements Yamtrack's built-image validation precedent but owns a reusable preflight command, not the release gate.
-- #639 is the active cross-provider episode canonicalisation bug and remains a direct acceptance target for #650.
-- #390 and #512 are active coordination surfaces for uv, CI, startup and performance measurements.
-
-### Independently implemented or closed evidence
-
-- #379 independently fixed Goodreads decimal ratings and therefore supersedes Yamtrack #1577.
-- #30, #36 and #559 provide historical timezone/date regression evidence for #648.
-- #544, #620 and #623 provide recent identity architecture and producer/lookup evidence for #650 and #639.
-- #557 and #593 provide startup, migration and SQLite integrity-gate evidence for #646.
-- #529 and #604 provide closed release-engineering context.
-
-## Next executable order
-
-1. Review and merge #651.
-2. Populate Project #1 using the initial table above.
-3. Implement #646.
-4. Implement #647 without dependency upgrades.
-5. Land isolated low-risk fixes owned by #648 and #649.
-6. Complete the staged datetime, provider and identity packages.
-7. Schedule deferred P2/P3 product work only after release and data-safety baselines are stable.
+1. Review and merge #651, then verify the initial Project #1 population.
+2. Complete #646.
+3. Complete #647 without dependency upgrades.
+4. Land isolated correctness fixes within #648 and #649, then their larger staged packages.
+5. Complete the audit/repair/constraint sequence in #650.
+6. Create focused issues for deferred product work only when its ledger trigger fires.
