@@ -5440,7 +5440,7 @@ class MediaDetailsViewTests(TestCase):
         """
         tv_item = Item.objects.create(
             media_id="1668",
-            source=Sources.TMDB.value,
+            source=Sources.TVDB.value,
             media_type=MediaTypes.TV.value,
             title="Test TV Show",
             image="http://example.com/show.jpg",
@@ -5452,7 +5452,7 @@ class MediaDetailsViewTests(TestCase):
         )
         season_item = Item.objects.create(
             media_id="1668",
-            source=Sources.TMDB.value,
+            source=Sources.TVDB.value,
             media_type=MediaTypes.SEASON.value,
             title="Test TV Show",
             image="http://example.com/show.jpg",
@@ -5469,7 +5469,7 @@ class MediaDetailsViewTests(TestCase):
         # clobbered by a differing value from the live payload.
         already_dated_episode = Item.objects.create(
             media_id="1668",
-            source=Sources.TMDB.value,
+            source=Sources.TVDB.value,
             media_type=MediaTypes.EPISODE.value,
             title="No Shortcuts",
             image=settings.IMG_NONE,
@@ -5481,7 +5481,7 @@ class MediaDetailsViewTests(TestCase):
         # air date was known) but was never given a release_datetime.
         stale_episode = Item.objects.create(
             media_id="1668",
-            source=Sources.TMDB.value,
+            source=Sources.TVDB.value,
             media_type=MediaTypes.EPISODE.value,
             title="Test TV Show",
             image=settings.IMG_NONE,
@@ -5493,7 +5493,7 @@ class MediaDetailsViewTests(TestCase):
         mock_get_metadata.side_effect = lambda *_args, **_kwargs: {
             "title": "Test TV Show",
             "media_id": "1668",
-            "source": Sources.TMDB.value,
+            "source": Sources.TVDB.value,
             "media_type": MediaTypes.TV.value,
             "image": "http://example.com/image.jpg",
             "season/1": {
@@ -5513,7 +5513,14 @@ class MediaDetailsViewTests(TestCase):
                     {
                         "episode_number": 2,
                         "name": "Episode 2",
-                        "air_date": "2023-01-08",
+                        # TVDB normalizes its date-only value to an aware
+                        # datetime before this view receives it.
+                        "air_date": datetime(
+                            2023,
+                            1,
+                            8,
+                            tzinfo=timezone.get_fixed_timezone(840),
+                        ),
                         "runtime": 42,
                     },
                     {
@@ -5522,23 +5529,33 @@ class MediaDetailsViewTests(TestCase):
                         "air_date": "2023-01-15",
                         "runtime": 44,
                     },
+                    {
+                        "episode_number": 4,
+                        "name": "Episode 4",
+                        "air_date": "0001-01-01",
+                        "runtime": 45,
+                    },
                 ],
             },
         }
         mock_process_episodes.return_value = []
 
-        response = self.client.get(
-            reverse(
-                "season_details",
-                kwargs={
-                    "source": Sources.TMDB.value,
-                    "media_id": "1668",
-                    "title": "test-tv-show",
-                    "season_number": 1,
-                },
-            ),
-            {"fragment": "secondary"},
-        )
+        with (
+            patch("app.providers.trakt.is_configured", return_value=False),
+            timezone.override("Pacific/Kiritimati"),
+        ):
+            response = self.client.get(
+                reverse(
+                    "season_details",
+                    kwargs={
+                        "source": Sources.TVDB.value,
+                        "media_id": "1668",
+                        "title": "test-tv-show",
+                        "season_number": 1,
+                    },
+                ),
+                {"fragment": "secondary"},
+            )
 
         self.assertEqual(response.status_code, 200)
 
@@ -5552,21 +5569,31 @@ class MediaDetailsViewTests(TestCase):
         stale_episode.refresh_from_db()
         self.assertEqual(
             stale_episode.release_datetime,
-            timezone.make_aware(datetime(2023, 1, 8)),
+            datetime(2023, 1, 8, tzinfo=UTC),
             "a NULL release_datetime must self-heal from the live payload",
         )
 
         new_episode = Item.objects.get(
             media_id="1668",
-            source=Sources.TMDB.value,
+            source=Sources.TVDB.value,
             media_type=MediaTypes.EPISODE.value,
             season_number=1,
             episode_number=3,
         )
         self.assertEqual(
             new_episode.release_datetime,
-            timezone.make_aware(datetime(2023, 1, 15)),
+            datetime(2023, 1, 15, tzinfo=UTC),
             "a newly created episode must get release_datetime from the same payload",
+        )
+        self.assertIsNone(
+            Item.objects.get(
+                media_id="1668",
+                source=Sources.TVDB.value,
+                media_type=MediaTypes.EPISODE.value,
+                season_number=1,
+                episode_number=4,
+            ).release_datetime,
+            "unknown-date sentinels must remain NULL",
         )
 
     @patch("app.views.trakt_popularity_service.refresh_trakt_popularity")
