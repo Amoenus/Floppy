@@ -5535,6 +5535,12 @@ class MediaDetailsViewTests(TestCase):
                         "air_date": "0001-01-01",
                         "runtime": 45,
                     },
+                    {
+                        "episode_number": 5,
+                        "name": "Episode 5",
+                        "air_date": "9999-12-31",
+                        "runtime": 46,
+                    },
                 ],
             },
         }
@@ -5594,6 +5600,16 @@ class MediaDetailsViewTests(TestCase):
                 episode_number=4,
             ).release_datetime,
             "unknown-date sentinels must remain NULL",
+        )
+        self.assertIsNone(
+            Item.objects.get(
+                media_id="1668",
+                source=Sources.TVDB.value,
+                media_type=MediaTypes.EPISODE.value,
+                season_number=1,
+                episode_number=5,
+            ).release_datetime,
+            "year-9999 unknown-date sentinels must remain NULL",
         )
 
     @patch("app.views.trakt_popularity_service.refresh_trakt_popularity")

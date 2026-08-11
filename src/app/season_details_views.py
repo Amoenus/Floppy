@@ -1,6 +1,7 @@
 import json
 import logging
 import time
+from datetime import datetime
 
 from django.conf import settings
 from django.contrib.auth.decorators import login_not_required
@@ -55,6 +56,7 @@ from lists.models import CustomList
 logger = logging.getLogger(__name__)
 
 MIN_PLAUSIBLE_YEAR = 1900
+UNKNOWN_RELEASE_YEAR = 9999
 
 
 @login_not_required
@@ -353,13 +355,16 @@ def season_details(
             # shared Item does not depend on the timezone of the first viewer.
             normalized_air_date = (
                 raw_air_date.date().isoformat()
-                if isinstance(raw_air_date, timezone.datetime)
+                if isinstance(raw_air_date, datetime)
                 else raw_air_date
             )
             air_date_dt = helpers.extract_release_datetime(
                 {"release_date": normalized_air_date},
             )
-            if air_date_dt and air_date_dt.year <= MIN_PLAUSIBLE_YEAR:
+            if air_date_dt and (
+                air_date_dt.year <= MIN_PLAUSIBLE_YEAR
+                or air_date_dt.year == UNKNOWN_RELEASE_YEAR
+            ):
                 air_date_dt = None
 
             # Get or create episode item — retry on race condition
