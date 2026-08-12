@@ -2,6 +2,7 @@ import datetime
 from unittest.mock import patch
 from uuid import UUID
 
+from django.db.utils import OperationalError
 from django.utils import timezone
 
 from app.models import MediaTypes, Movie, MoviePlay, Sources, Status
@@ -1591,6 +1592,29 @@ class MediaCoreTests(FloppyApiTestCase):
         )
 
         self.assertEqual(response.status_code, 404)
+
+    @patch("api.views.run_retryable_db_operation")
+    def test_media_list_detail_put_returns_503_on_persistent_lock(self, mock_retry):
+        """Media list detail PUT should return 503 when the DB stays locked."""
+        mock_retry.side_effect = OperationalError("database is locked")
+        list_id = self.lists_by_name["favorites"].id
+        movie_item = self.items_by_type[MediaTypes.MOVIE.value][1]
+
+        response = self.call_api(
+            "put",
+            "api_media_list_detail",
+            args=(
+                MediaTypes.MOVIE.value,
+                movie_item.source,
+                movie_item.media_id,
+                list_id,
+            ),
+            payload={},
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("detail", response.json())
 
     def test_media_list_detail_put_invalid_list_id_returns_not_found(self):
         """Media list detail PUT should reject unknown list ids."""
