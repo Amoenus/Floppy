@@ -1142,6 +1142,7 @@ class ListDetailViewTests(TestCase):
                 "date_added",
                 "start_date",
                 "end_date",
+                "notes",
             ],
         )
         self.assertContains(response, 'id="list-table-body"')
@@ -1391,6 +1392,7 @@ class ListDetailViewTests(TestCase):
                     "date_added",
                     "start_date",
                     "end_date",
+                    "notes",
                 ],
                 "hidden": ["status"],
             },
