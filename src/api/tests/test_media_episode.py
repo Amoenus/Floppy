@@ -1,5 +1,6 @@
 from unittest.mock import patch
 
+from django.db.utils import OperationalError
 from django.urls import reverse
 
 from app.models import MediaTypes, Sources
@@ -667,6 +668,36 @@ class MediaEpisodeTests(FloppyApiTestCase):
         self.assertEqual(response.status_code, 200)
         for entry in response.json():
             check_minimized_lists_structure(self, entry)
+
+    @patch("api.views.run_retryable_db_operation")
+    def test_episode_list_detail_put_returns_503_on_persistent_lock(
+        self,
+        mock_retry,
+    ):
+        """Episode list-detail PUT should return 503 when the DB stays locked."""
+        mock_retry.side_effect = OperationalError("database is locked")
+        tv_item = self.items_by_type[MediaTypes.TV.value][0]
+        season_item = self.items_by_type[MediaTypes.SEASON.value][0]
+        episode_item = self.items_by_type[MediaTypes.EPISODE.value][0]
+        list_id = self.lists_by_name["favorites"].id
+
+        response = self.call_api(
+            "put",
+            "api_media_episode_list_detail",
+            args=(
+                MediaTypes.TV.value,
+                tv_item.source,
+                tv_item.media_id,
+                season_item.season_number,
+                episode_item.episode_number,
+                list_id,
+            ),
+            payload={},
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("detail", response.json())
 
     def test_episode_list_detail_delete_removes_media_from_list(self):
         """Episode list-detail DELETE should remove episode from list."""

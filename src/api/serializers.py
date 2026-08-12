@@ -633,6 +633,9 @@ class ListSerializer(serializers.Serializer):
             ],
             "items_count": item_count,
             "latest_update": latest_update,
+            "is_public": instance.is_public,
+            "public_slug": instance.public_slug,
+            "allow_recommendations": instance.allow_recommendations,
         }
 
         if include_items:

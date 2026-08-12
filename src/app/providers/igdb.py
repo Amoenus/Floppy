@@ -16,7 +16,7 @@ from app.providers import services
 
 logger = logging.getLogger(__name__)
 base_url = "https://api.igdb.com/v4"
-IGDB_SEARCH_CACHE_VERSION = "v2"
+IGDB_SEARCH_CACHE_VERSION = "v4"
 TOKENIZED_SEARCH_MIN_TERMS = 2
 
 
@@ -270,12 +270,18 @@ def _build_search_query_condition(query, *, tokenized=False):
         terms = _tokenize_search_query(query)
         if len(terms) < TOKENIZED_SEARCH_MIN_TERMS:
             return None
-        return " & ".join(f'name ~ *"{term}"*' for term in terms)
+        return " & ".join(
+            f'(name ~ *"{term}"* | alternative_names.name ~ *"{term}"*)'
+            for term in terms
+        )
 
     escaped_query = str(query or "").strip().replace("\\", "\\\\").replace('"', '\\"')
     if not escaped_query:
         return None
-    return f'name ~ *"{escaped_query}"*'
+    return (
+        f'(name ~ *"{escaped_query}"* '
+        f'| alternative_names.name ~ *"{escaped_query}"*)'
+    )
 
 
 def _build_search_multiquery(query, page, *, tokenized=False):
@@ -284,7 +290,7 @@ def _build_search_multiquery(query, page, *, tokenized=False):
     if not search_condition:
         return None
 
-    conditions = [search_condition, "game_type = (0,1,2,3,4,5,6,7,8,9,10)"]
+    conditions = [search_condition, "game_type = (0,1,2,3,4,5,6,7,8,9,10,11)"]
     if not settings.IGDB_NSFW:
         conditions.append("themes != (42)")
 
