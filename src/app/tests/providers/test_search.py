@@ -2,7 +2,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from django.core.cache import cache
-from django.test import TestCase, tag
+from django.test import TestCase, override_settings, tag
 
 from app.models import MediaTypes, Sources
 from app.providers import (
@@ -44,6 +44,47 @@ class Search(TestCase):
         response = mal.search(MediaTypes.ANIME.value, "q", 1)
 
         self.assertEqual(response["results"], [])
+
+    @override_settings(PER_PAGE=2, MAL_NSFW=False)
+    @patch("app.providers.mal.services.api_request")
+    def test_mal_search_uses_page_offset_and_page_specific_cache(self, mock_request):
+        """MAL pagination sends offsets without mixing cached pages."""
+        mock_request.side_effect = [
+            {
+                "data": [
+                    {
+                        "node": {
+                            "id": 1,
+                            "title": "Original one",
+                            "alternative_titles": {"en": "Localized one"},
+                        },
+                    },
+                    {"node": {"id": 2, "title": "Original two"}},
+                ],
+                "paging": {"next": "https://api.myanimelist.net/v2/anime?offset=2"},
+            },
+            {
+                "data": [
+                    {"node": {"id": 3, "title": "Original three"}},
+                    {"node": {"id": 4, "title": "Original four"}},
+                ],
+                "paging": {},
+            },
+        ]
+
+        first_page = mal.search(MediaTypes.ANIME.value, "test", 1)
+        cached_first_page = mal.search(MediaTypes.ANIME.value, "test", 1)
+        second_page = mal.search(MediaTypes.ANIME.value, "test", 2)
+
+        self.assertEqual(first_page, cached_first_page)
+        self.assertEqual([result["media_id"] for result in first_page["results"]], [1, 2])
+        self.assertEqual([result["media_id"] for result in second_page["results"]], [3, 4])
+        self.assertEqual(first_page["results"][0]["title"], "Localized one")
+        self.assertEqual(first_page["total_pages"], 2)
+        self.assertEqual(second_page["total_pages"], 2)
+        self.assertEqual(mock_request.call_count, 2)
+        self.assertEqual(mock_request.call_args_list[0].kwargs["params"]["offset"], 0)
+        self.assertEqual(mock_request.call_args_list[1].kwargs["params"]["offset"], 2)
 
     @tag("network")
     def test_mangaupdates(self):
