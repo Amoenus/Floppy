@@ -721,7 +721,6 @@ def studio_detail(request, source, studio_id, name):
         }
         tracked_items = Item.objects.filter(
             source=source,
-            media_type=MediaTypes.GAME.value,
             media_id__in=game_ids,
         )
         tracked_item_map = {
@@ -754,11 +753,17 @@ def studio_detail(request, source, studio_id, name):
         studio_developed_count = studio_details.get("developed_count")
         studio_published_count = studio_details.get("published_count")
 
+    media_types_present = {entry.get("media_type") for entry in credited_titles}
+    credited_media_type = (
+        media_types_present.pop() if len(media_types_present) == 1 else None
+    )
+
     context = {
         "user": request.user,
         "studio": studio,
         "source": source,
         "credited_titles": credited_titles,
+        "credited_media_type": credited_media_type,
         "studio_description": studio_description,
         "studio_source_url": studio_source_url,
         "studio_founded": studio_founded,
