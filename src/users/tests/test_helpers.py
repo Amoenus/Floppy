@@ -3,6 +3,7 @@ import zoneinfo
 from datetime import datetime
 from unittest.mock import Mock, patch
 
+from celery import states
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.test import TestCase
@@ -133,6 +134,35 @@ class HelpersTest(TestCase):
             "This task has been queued and is waiting to run.",
         )
         self.assertIsNone(processed_task.errors)
+
+    def test_process_task_result_revoked(self):
+        """A cancelled import reads as cancelled instead of crashing the panel."""
+        task = Mock()
+        task.status = "REVOKED"
+        task.result = None
+        task.traceback = None
+
+        processed_task = helpers.process_task_result(task)
+
+        self.assertEqual(
+            processed_task.summary,
+            "This task was cancelled before it finished.",
+        )
+        self.assertIsNone(processed_task.errors)
+
+    def test_process_task_result_every_celery_state_has_a_summary(self):
+        """The activity panel reads summary and errors for whatever state it finds."""
+        for status in states.ALL_STATES | {"SOME_CUSTOM_STATE"}:
+            with self.subTest(status=status):
+                task = Mock()
+                task.status = status
+                task.result = None
+                task.traceback = None
+
+                processed_task = helpers.process_task_result(task)
+
+                self.assertTrue(processed_task.summary)
+                self.assertIsInstance(processed_task.summary, str)
 
     @patch("django.utils.timezone.now")
     def test_get_next_run_info_daily(self, mock_now):

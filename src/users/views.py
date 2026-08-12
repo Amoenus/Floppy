@@ -1,6 +1,7 @@
 import base64
 import json
 import logging
+import re
 from io import BytesIO
 
 import apprise
@@ -1307,6 +1308,7 @@ def import_data(request):
     radarr_account = getattr(user, "radarr_account", None)
     sonarr_account = getattr(user, "sonarr_account", None)
     stremio_account = getattr(user, "stremio_account", None)
+    xbox_account = getattr(user, "xbox_account", None)
 
     audiobookshelf_poll_interval = getattr(
         settings, "AUDIOBOOKSHELF_POLL_INTERVAL_MINUTES", 15
@@ -1375,6 +1377,7 @@ def import_data(request):
         "radarr_account": radarr_account,
         "sonarr_account": sonarr_account,
         "stremio_account": stremio_account,
+        "xbox_account": xbox_account,
         "lastfm_periodic_task": lastfm_periodic_task,
         "lastfm_poll_interval": lastfm_poll_interval,
         "lastfm_history_status_label": lastfm_history_status_label,
@@ -1695,6 +1698,24 @@ def rollback_import_run(request, run_id):
     return redirect("import_data")
 
 
+def _task_belongs_to_user(task, user):
+    """Return whether a periodic task's kwargs name exactly this user.
+
+    A plain substring test reads `"user_id": 1` out of `"user_id": 11`, so
+    the id has to be anchored on the delimiter that follows it. Quoting and
+    spacing vary with how the kwargs were written.
+    """
+    if not task.kwargs:
+        return False
+
+    return bool(
+        re.search(
+            rf"""['"]user_id['"]:\s*{user.id}\s*[,}}]""",
+            task.kwargs,
+        ),
+    )
+
+
 @require_POST
 def delete_import_schedule(request):
     """Delete an import schedule."""
@@ -1714,7 +1735,7 @@ def delete_import_schedule(request):
         messages.info(request, "Disconnected Last.fm.")
         return redirect("import_data")
 
-    if not task.kwargs or f'"user_id": {request.user.id}' not in task.kwargs:
+    if not _task_belongs_to_user(task, request.user):
         messages.error(request, "Import schedule not found.")
         return redirect("import_data")
 

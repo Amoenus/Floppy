@@ -35,6 +35,7 @@
     --color-lime-400: oklch(84.1% 0.238 128.85);
     --color-lime-500: oklch(76.8% 0.233 130.85);
     --color-lime-600: oklch(64.8% 0.2 131.684);
+    --color-green-100: oklch(96.2% 0.044 156.743);
     --color-green-300: oklch(87.1% 0.15 154.449);
     --color-green-400: oklch(79.2% 0.209 151.711);
     --color-green-500: oklch(72.3% 0.219 149.579);
@@ -3215,6 +3216,9 @@
   }
   .text-gray-600 {
     color: var(--color-gray-600);
+  }
+  .text-green-100 {
+    color: var(--color-green-100);
   }
   .text-green-300 {
     color: var(--color-green-300);

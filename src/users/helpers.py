@@ -4,6 +4,7 @@ import zoneinfo
 from datetime import datetime, timedelta
 
 import croniter
+from celery import states
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.utils import timezone
@@ -99,9 +100,32 @@ def _format_structured_success_result(result):
     return str(result), None
 
 
+STATUS_SUMMARIES = {
+    states.PENDING: "This task has been queued and is waiting to run.",
+    states.RECEIVED: "This task has been picked up and is about to run.",
+    states.STARTED: "This task is currently running.",
+    states.RETRY: "This task failed and is waiting to be retried.",
+    states.REVOKED: "This task was cancelled before it finished.",
+    states.REJECTED: "This task was turned away by the worker and never ran.",
+    states.IGNORED: "This task ran without recording a result.",
+}
+
+
 def process_task_result(task):
-    """Process task result based on status and format appropriately."""
-    if task.status == "FAILURE":
+    """Process task result based on status and format appropriately.
+
+    A task can hold any Celery state, not just the four the activity panel
+    styles: cancelling an import leaves it REVOKED, and a worker can report
+    RETRY or REJECTED. Callers read `summary` and `errors` unconditionally,
+    so every state has to leave both set.
+    """
+    task.summary = STATUS_SUMMARIES.get(
+        task.status,
+        f"This task is in an unrecognised state ({task.status}).",
+    )
+    task.errors = None
+
+    if task.status == states.FAILURE:
         result_json = _deserialize_task_result(task.result)
         if (
             isinstance(result_json, dict)
@@ -109,22 +133,15 @@ def process_task_result(task):
             and result_json.get("exc_message")
         ):
             task.summary = result_json["exc_message"][0]
-            task.errors = task.traceback
         else:
             task.summary = "Unexpected error occurred while processing the task."
-            task.errors = task.traceback
-    elif task.status == "STARTED":
-        task.summary = "This task is currently running."
-        task.errors = None
-    elif task.status == "SUCCESS":
+        task.errors = task.traceback
+    elif task.status == states.SUCCESS:
         result_json = _deserialize_task_result(task.result)
         if isinstance(result_json, str):
             task.summary, task.errors = _split_success_result(result_json)
         else:
             task.summary, task.errors = _format_structured_success_result(result_json)
-    elif task.status == "PENDING":
-        task.summary = "This task has been queued and is waiting to run."
-        task.errors = None
 
     return task
 
