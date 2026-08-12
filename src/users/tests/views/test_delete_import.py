@@ -94,6 +94,32 @@ class DeleteImportScheduleTests(TestCase):
 
         self.assertTrue(PeriodicTask.objects.filter(id=self.other_task.id).exists())
 
+    def test_delete_import_schedule_id_prefix_is_not_ownership(self):
+        """User 1 must not reach the schedules of users 11, 12 and friends."""
+        prefixed_user = get_user_model().objects.create_user(
+            username="prefixed",
+            password="testpass123",
+        )
+        # Ids are sequential, so force the prefix relationship the check has
+        # to survive: "user_id": 1 is a substring of "user_id": 1X.
+        prefixed_task = PeriodicTask.objects.create(
+            name="Import from Trakt for prefixed at daily",
+            task="Import from Trakt",
+            kwargs=f'{{"user_id": {self.user.id}{prefixed_user.id}}}',
+            crontab=self.crontab,
+            enabled=True,
+        )
+
+        response = self.client.post(
+            reverse("delete_import_schedule"),
+            {"task_name": prefixed_task.name},
+        )
+
+        self.assertRedirects(response, reverse("import_data"))
+        messages = list(get_messages(response.wsgi_request))
+        self.assertIn("Import schedule not found", str(messages[0]))
+        self.assertTrue(PeriodicTask.objects.filter(id=prefixed_task.id).exists())
+
     def test_delete_import_schedule_disables_watchlist_sync(self):
         """Deleting the Plex watchlist schedule should clear the account flag."""
         PlexAccount.objects.create(

@@ -6,16 +6,19 @@ import logging
 import re
 import secrets
 import zipfile
+import zoneinfo
 from datetime import datetime, timedelta
 from http import HTTPStatus
 from io import BytesIO
 from urllib.parse import unquote
 
+import croniter
 import requests
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_not_required
 from django.core.exceptions import ObjectDoesNotExist
+from django.db import IntegrityError
 from django.db.models import Q
 from django.http import HttpResponse, JsonResponse, StreamingHttpResponse
 from django.shortcuts import redirect
@@ -34,6 +37,7 @@ from integrations import (
     lastfm_api,
     pocketcasts_api,
     tasks,
+    xbox_api,
 )
 from integrations import plex as plex_api
 from integrations.gpodder_api import GPodderAuthError, GPodderClientError
@@ -75,6 +79,7 @@ from integrations.models import (
     SonarrAccount,
     StorytellerAccount,
     StremioAccount,
+    XboxAccount,
 )
 from integrations.plex_watchlist import (
     WATCHLIST_SYNC_INTERVAL_MINUTES,
@@ -1378,6 +1383,54 @@ def jellyfin_push_now(request):
     return redirect("integrations")
 
 
+def _ensure_audiobookshelf_schedule(user):
+    """Create or update the recurring Audiobookshelf import schedule for a user."""
+    from django_celery_beat.models import IntervalSchedule, PeriodicTask
+
+    poll_interval_minutes = getattr(
+        settings, "AUDIOBOOKSHELF_POLL_INTERVAL_MINUTES", 15
+    )
+    interval, _ = IntervalSchedule.objects.get_or_create(
+        every=poll_interval_minutes,
+        period=IntervalSchedule.MINUTES,
+    )
+    task_name = (
+        f"Import from Audiobookshelf for {user.username} "
+        f"(every {poll_interval_minutes} minutes)"
+    )
+    existing_task = PeriodicTask.objects.filter(
+        task="Import from Audiobookshelf (Recurring)",
+        kwargs__contains=f'"user_id": {user.id}',
+    ).first()
+
+    if existing_task:
+        updated_fields = []
+        if existing_task.name != task_name:
+            existing_task.name = task_name
+            updated_fields.append("name")
+        if existing_task.interval_id != interval.id:
+            existing_task.interval = interval
+            updated_fields.append("interval")
+        if existing_task.crontab_id is not None:
+            existing_task.crontab = None
+            updated_fields.append("crontab")
+        if not existing_task.enabled:
+            existing_task.enabled = True
+            updated_fields.append("enabled")
+        if updated_fields:
+            existing_task.save(update_fields=updated_fields)
+        return existing_task
+
+    return PeriodicTask.objects.create(
+        name=task_name,
+        task="Import from Audiobookshelf (Recurring)",
+        interval=interval,
+        kwargs=json.dumps({"user_id": user.id}),
+        start_time=timezone.now(),
+        enabled=True,
+    )
+
+
 @require_POST
 def audiobookshelf_connect(request):
     """Connect Audiobookshelf account using base URL + API token."""
@@ -1408,6 +1461,7 @@ def audiobookshelf_connect(request):
         },
     )
 
+    _ensure_audiobookshelf_schedule(request.user)
     tasks.import_audiobookshelf.delay(user_id=request.user.id, mode="new")
     messages.success(request, "Connected Audiobookshelf. Initial import queued.")
     return _integration_redirect(request, connected_slug="audiobookshelf")
@@ -1430,38 +1484,13 @@ def audiobookshelf_disconnect(request):
 @require_POST
 def import_audiobookshelf(request):
     """Queue Audiobookshelf import and ensure recurring schedule exists."""
-    from django_celery_beat.models import CrontabSchedule, PeriodicTask
-
     account = getattr(request.user, "audiobookshelf_account", None)
     if not account:
         messages.error(request, "Connect Audiobookshelf before importing.")
         return redirect("import_data")
 
     tasks.import_audiobookshelf.delay(user_id=request.user.id, mode="new")
-
-    existing_task = PeriodicTask.objects.filter(
-        task="Import from Audiobookshelf (Recurring)",
-        kwargs__contains=f'"user_id": {request.user.id}',
-        enabled=True,
-    ).first()
-
-    if not existing_task:
-        crontab, _ = CrontabSchedule.objects.get_or_create(
-            minute=0,
-            hour="*/2",
-            day_of_week="*",
-            day_of_month="*",
-            month_of_year="*",
-            timezone=timezone.get_default_timezone(),
-        )
-        PeriodicTask.objects.create(
-            name=f"Import from Audiobookshelf for {request.user.username} (every 2 hours)",
-            task="Import from Audiobookshelf (Recurring)",
-            crontab=crontab,
-            kwargs=json.dumps({"user_id": request.user.id}),
-            start_time=timezone.now(),
-            enabled=True,
-        )
+    _ensure_audiobookshelf_schedule(request.user)
 
     messages.info(request, "Audiobookshelf import queued.")
     return redirect("import_data")
@@ -1749,6 +1778,220 @@ def import_stremio(request):
     tasks.import_stremio.delay(user_id=request.user.id, mode="new")
     _ensure_stremio_schedule(request.user)
     messages.info(request, "Stremio import queued.")
+    return redirect("import_data")
+
+
+XBOX_RECURRING_TASK_NAME = "Import from Xbox (Recurring)"
+XBOX_RECURRING_FREQUENCIES = {"daily": "*", "2days": "*/2"}
+XBOX_DEFAULT_IMPORT_TIME = "04:00"
+
+
+def _next_crontab_run(crontab):
+    """Return the next fire time for a crontab schedule.
+
+    New periodic tasks are created with this as their `start_time`; beat
+    treats a task whose `start_time` has already passed as due immediately,
+    which would run the import once on creation and again on schedule.
+    """
+    schedule_timezone = zoneinfo.ZoneInfo(str(crontab.timezone))
+    cron_expression = (
+        f"{crontab.minute} {crontab.hour} {crontab.day_of_month} "
+        f"{crontab.month_of_year} {crontab.day_of_week}"
+    )
+    now = timezone.now().astimezone(schedule_timezone)
+    return croniter.croniter(cron_expression, now).get_next(datetime)
+
+
+def _xbox_schedule_name(user, parsed_time, frequency):
+    """Name a user's Xbox schedule for the beat admin and the schedule list."""
+    return f"Import from Xbox for {user.username} at {parsed_time} {frequency}"
+
+
+def _reclaim_xbox_schedule_name(task_name, parsed_time, frequency):
+    """Free a schedule name whose holder no longer answers to it.
+
+    `PeriodicTask.name` is unique and these names are built from the
+    username, which can be changed and freed for someone else to take — so
+    a name outlives its owner's claim to it. The kwargs `user_id` is the
+    real owner: rename the holder to match whoever that is now, or drop it
+    if that user is gone. Returns whether the name is ours to take.
+    """
+    from django_celery_beat.models import PeriodicTask
+
+    holder = PeriodicTask.objects.filter(name=task_name).first()
+    if holder is None:
+        return True
+
+    try:
+        holder_user_id = json.loads(holder.kwargs or "{}").get("user_id")
+    except (TypeError, ValueError):
+        holder_user_id = None
+
+    holder_user = (
+        users.models.User.objects.filter(id=holder_user_id).first()
+        if holder_user_id
+        else None
+    )
+    if holder_user is None:
+        holder.delete()
+        return True
+
+    current_name = _xbox_schedule_name(holder_user, parsed_time, frequency)
+    if current_name == task_name:
+        # The holder is entitled to the name; it just isn't ours.
+        return False
+
+    holder.name = current_name
+    holder.save(update_fields=["name"])
+    return True
+
+
+def _create_xbox_schedule(request, mode, frequency, import_time):
+    """Create a recurring Xbox import schedule for the chosen time."""
+    from django_celery_beat.models import CrontabSchedule, PeriodicTask
+
+    try:
+        parsed_time = datetime.strptime(import_time, "%H:%M").time()  # noqa: DTZ007  # wall-clock value; the crontab carries the timezone
+    except (TypeError, ValueError):
+        messages.error(request, "Invalid import time.")
+        return
+
+    crontab, _ = CrontabSchedule.objects.get_or_create(
+        minute=parsed_time.minute,
+        hour=parsed_time.hour,
+        day_of_week=XBOX_RECURRING_FREQUENCIES[frequency],
+        day_of_month="*",
+        month_of_year="*",
+        timezone=timezone.get_default_timezone(),
+    )
+
+    task_name = _xbox_schedule_name(request.user, parsed_time, frequency)
+    desired_kwargs = json.dumps({"user_id": request.user.id, "mode": mode})
+    existing_task = (
+        PeriodicTask.objects.filter(
+            _periodic_task_filter_for_user(request.user.id),
+            task=XBOX_RECURRING_TASK_NAME,
+            crontab=crontab,
+        )
+        .order_by("-enabled", "id")
+        .first()
+    )
+    if existing_task:
+        if existing_task.enabled:
+            messages.error(request, "The same import task is already scheduled.")
+            return
+
+        # A disabled task still owns its unique name, so revive it instead of
+        # creating a second one that would collide.
+        existing_task.name = task_name
+        existing_task.kwargs = desired_kwargs
+        existing_task.start_time = _next_crontab_run(crontab)
+        existing_task.enabled = True
+        existing_task.save(
+            update_fields=["name", "kwargs", "start_time", "enabled"],
+        )
+        messages.success(request, "Xbox import task re-enabled.")
+        return
+
+    if not _reclaim_xbox_schedule_name(task_name, parsed_time, frequency):
+        messages.error(request, "The same import task is already scheduled.")
+        return
+
+    try:
+        PeriodicTask.objects.create(
+            name=task_name,
+            task=XBOX_RECURRING_TASK_NAME,
+            crontab=crontab,
+            kwargs=desired_kwargs,
+            start_time=_next_crontab_run(crontab),
+            enabled=True,
+        )
+    except IntegrityError:
+        logger.exception("Xbox schedule %s could not be created", task_name)
+        messages.error(request, "The same import task is already scheduled.")
+        return
+
+    messages.success(request, "Xbox import task scheduled.")
+
+
+def _start_xbox_import(request):
+    """Queue a one-off Xbox import, or schedule a recurring one.
+
+    A scheduled import only runs on its schedule; a one time import runs
+    straight away and creates no periodic task.
+    """
+    mode = request.POST.get("mode") or "new"
+    frequency = request.POST.get("frequency") or "once"
+    import_time = request.POST.get("time") or XBOX_DEFAULT_IMPORT_TIME
+
+    if frequency not in XBOX_RECURRING_FREQUENCIES:
+        tasks.import_xbox.delay(user_id=request.user.id, mode=mode)
+        messages.info(request, "The task to import media from Xbox has been queued.")
+        return
+
+    _create_xbox_schedule(request, mode, frequency, import_time)
+
+
+@require_POST
+def xbox_connect(request):
+    """Connect an Xbox account using an OpenXBL API key."""
+    api_key = request.POST.get("api_key", "").strip()
+    if not api_key:
+        messages.error(request, "An OpenXBL API key is required.")
+        return redirect("import_data")
+
+    try:
+        xuid, gamertag = xbox_api.get_account(api_key)
+    except helpers.MediaImportError as error:
+        messages.error(request, f"Could not connect to Xbox: {error}")
+        return redirect("import_data")
+    except Exception as error:
+        logger.exception("Failed to connect to Xbox")
+        messages.error(
+            request,
+            "Failed to connect to Xbox "
+            f"({exception_summary(error)}). Check the logs for details.",
+        )
+        return redirect("import_data")
+
+    XboxAccount.objects.update_or_create(
+        user=request.user,
+        defaults={
+            "api_key": helpers.encrypt(api_key),
+            "xuid": xuid,
+            "gamertag": gamertag,
+            "connection_broken": False,
+            "last_error_message": "",
+        },
+    )
+    messages.success(request, f"Connected to Xbox as {gamertag or xuid}.")
+    _start_xbox_import(request)
+    return redirect("import_data")
+
+
+@require_POST
+def xbox_disconnect(request):
+    """Disconnect the Xbox integration."""
+    from django_celery_beat.models import PeriodicTask
+
+    PeriodicTask.objects.filter(
+        _periodic_task_filter_for_user(request.user.id),
+        task=XBOX_RECURRING_TASK_NAME,
+    ).delete()
+    XboxAccount.objects.filter(user=request.user).delete()
+    messages.info(request, "Disconnected Xbox.")
+    return redirect("import_data")
+
+
+@require_POST
+def import_xbox(request):
+    """Queue a one-off Xbox import or schedule a recurring one."""
+    account = getattr(request.user, "xbox_account", None)
+    if not account:
+        messages.error(request, "Connect Xbox before importing.")
+        return redirect("import_data")
+
+    _start_xbox_import(request)
     return redirect("import_data")
 
 

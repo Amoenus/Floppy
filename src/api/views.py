@@ -1,10 +1,12 @@
 import logging
 from http import HTTPStatus as HTTP  # noqa: N814
 
+from django import forms as django_forms
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.db import IntegrityError
+from django.db.utils import OperationalError
 from django.utils.timezone import datetime, localdate, make_aware
 
 # FORK: the fork pins django-health-check 3.x (no async HealthCheckView);
@@ -15,6 +17,7 @@ from rest_framework import permissions
 from rest_framework import views as drf_views
 from rest_framework.response import Response
 
+from app.db_retry import run_retryable_db_operation
 from app.forms import ManualItemForm, get_form_class
 from app.models import BasicMedia, Item, MediaTypes, Sources
 from app.providers import services, tmdb
@@ -30,6 +33,7 @@ from app.statistics import (
 )
 from events import tasks
 from events.models import Event
+from lists.forms import validate_public_slug
 from lists.models import CustomList, CustomListItem
 from users.models import MediaStatusChoices
 
@@ -326,12 +330,35 @@ class ListsView(drf_views.APIView):
                 status=HTTP.BAD_REQUEST,
             )
 
+        is_public = body.get("is_public", False)
+        if not isinstance(is_public, bool):
+            return Response(
+                {"detail": "Field 'is_public' must be a boolean."},
+                status=HTTP.BAD_REQUEST,
+            )
+        allow_recommendations = body.get("allow_recommendations", False)
+        if not isinstance(allow_recommendations, bool):
+            return Response(
+                {"detail": "Field 'allow_recommendations' must be a boolean."},
+                status=HTTP.BAD_REQUEST,
+            )
+        try:
+            public_slug = validate_public_slug(body.get("public_slug", ""))
+        except django_forms.ValidationError as e:
+            return Response({"detail": e.messages[0]}, status=HTTP.BAD_REQUEST)
+
+        if not is_public:
+            allow_recommendations = False
+
         try:
             # TODO: move to lists/models.py
             custom_list = CustomList.objects.create(
                 name=name,
                 description=description,
                 owner=user,
+                visibility="public" if is_public else "private",
+                public_slug=public_slug,
+                allow_recommendations=allow_recommendations,
             )
 
             if collaborator_ids:
@@ -494,6 +521,8 @@ class ListDetailView(drf_views.APIView):
         name = body.get("name")
         description = body.get("description")
         collaborator_ids = body.get("collaborators")
+        is_public = body.get("is_public")
+        allow_recommendations = body.get("allow_recommendations")
 
         if name is not None:
             custom_list.name = name.strip()
@@ -516,6 +545,31 @@ class ListDetailView(drf_views.APIView):
                     status=HTTP.BAD_REQUEST,
                 )
             custom_list.collaborators.set(collaborators)
+        if is_public is not None:
+            if not isinstance(is_public, bool):
+                return Response(
+                    {"detail": "Field 'is_public' must be a boolean."},
+                    status=HTTP.BAD_REQUEST,
+                )
+            custom_list.visibility = "public" if is_public else "private"
+        if "public_slug" in body:
+            try:
+                custom_list.public_slug = validate_public_slug(
+                    body.get("public_slug", ""),
+                    exclude_pk=custom_list.pk,
+                )
+            except django_forms.ValidationError as e:
+                return Response({"detail": e.messages[0]}, status=HTTP.BAD_REQUEST)
+        if allow_recommendations is not None:
+            if not isinstance(allow_recommendations, bool):
+                return Response(
+                    {"detail": "Field 'allow_recommendations' must be a boolean."},
+                    status=HTTP.BAD_REQUEST,
+                )
+            custom_list.allow_recommendations = allow_recommendations
+
+        if custom_list.visibility != "public":
+            custom_list.allow_recommendations = False
 
         custom_list.save()
         serialized_data = serialize_data(
@@ -1773,7 +1827,17 @@ class MediaListDetailView(drf_views.APIView):
                 status=HTTP.CONFLICT,
             )
 
-        user_list.items.add(item)
+        try:
+            run_retryable_db_operation(
+                lambda: user_list.items.add(item),
+                operation_name="add item to list",
+                operation_logger=logger,
+            )
+        except OperationalError:
+            return Response(
+                {"detail": "Database is busy. Please try again in a moment."},
+                status=HTTP.SERVICE_UNAVAILABLE,
+            )
 
         lists = get_item_lists(user, media_id, source, media_type)
 
@@ -3044,7 +3108,17 @@ class MediaSeasonListDetailView(drf_views.APIView):
                 status=HTTP.CONFLICT,
             )
 
-        user_list.items.add(item)
+        try:
+            run_retryable_db_operation(
+                lambda: user_list.items.add(item),
+                operation_name="add item to list",
+                operation_logger=logger,
+            )
+        except OperationalError:
+            return Response(
+                {"detail": "Database is busy. Please try again in a moment."},
+                status=HTTP.SERVICE_UNAVAILABLE,
+            )
 
         lists = get_item_lists(
             user,
@@ -4109,7 +4183,17 @@ class MediaEpisodeListDetailView(drf_views.APIView):
                 status=HTTP.CONFLICT,
             )
 
-        user_list.items.add(item)
+        try:
+            run_retryable_db_operation(
+                lambda: user_list.items.add(item),
+                operation_name="add item to list",
+                operation_logger=logger,
+            )
+        except OperationalError:
+            return Response(
+                {"detail": "Database is busy. Please try again in a moment."},
+                status=HTTP.SERVICE_UNAVAILABLE,
+            )
 
         lists = get_item_lists(
             user,

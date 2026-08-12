@@ -8,6 +8,27 @@ from lists.models import CustomList
 RESERVED_PUBLIC_SLUGS = {"create", "edit", "delete"}
 
 
+def validate_public_slug(raw_slug, *, exclude_pk=None):
+    """Normalize and validate an optional public list slug.
+
+    Shared by CustomListForm and the API so both enforce identical rules.
+    """
+    public_slug = slugify(raw_slug or "").strip("-")
+    if not public_slug:
+        return ""
+
+    if public_slug.isdigit():
+        msg = "Custom list URLs cannot be only numbers."
+        raise forms.ValidationError(msg)
+    if public_slug in RESERVED_PUBLIC_SLUGS:
+        msg = "That URL is reserved."
+        raise forms.ValidationError(msg)
+    if CustomList.objects.filter(public_slug=public_slug).exclude(pk=exclude_pk).exists():
+        msg = "That URL is already in use."
+        raise forms.ValidationError(msg)
+    return public_slug
+
+
 class CollaboratorsWidget(s2forms.ModelSelect2MultipleWidget):
     """Custom widget for selecting multiple users."""
 
@@ -143,24 +164,10 @@ class CustomListForm(forms.ModelForm):
 
     def clean_public_slug(self):
         """Normalize and validate the optional public slug."""
-        public_slug = slugify(self.cleaned_data.get("public_slug", "") or "").strip("-")
-        if not public_slug:
-            return ""
-
-        if public_slug.isdigit():
-            msg = "Custom list URLs cannot be only numbers."
-            raise forms.ValidationError(msg)
-        if public_slug in RESERVED_PUBLIC_SLUGS:
-            msg = "That URL is reserved."
-            raise forms.ValidationError(msg)
-        if (
-            CustomList.objects.filter(public_slug=public_slug)
-            .exclude(pk=getattr(self.instance, "pk", None))
-            .exists()
-        ):
-            msg = "That URL is already in use."
-            raise forms.ValidationError(msg)
-        return public_slug
+        return validate_public_slug(
+            self.cleaned_data.get("public_slug", ""),
+            exclude_pk=getattr(self.instance, "pk", None),
+        )
 
     @staticmethod
     def _normalize_tags(tags):
