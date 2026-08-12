@@ -1847,7 +1847,11 @@ def xbox_connect(request):
         return redirect("import_data")
     except Exception as error:
         logger.exception("Failed to connect to Xbox")
-        messages.error(request, f"Failed to connect to Xbox: {error}")
+        messages.error(
+            request,
+            "Failed to connect to Xbox "
+            f"({exception_summary(error)}). Check the logs for details.",
+        )
         return redirect("import_data")
 
     XboxAccount.objects.update_or_create(

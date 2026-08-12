@@ -19,6 +19,7 @@ import logging
 
 import requests
 
+from app.log_safety import exception_summary
 from app.providers import services
 from integrations.imports.helpers import MediaImportError
 
@@ -74,8 +75,38 @@ def _describe(response):
     return type(payload).__name__
 
 
+def _http_error_message(status_code):
+    """Return the user-facing message for a failed OpenXBL response.
+
+    Chosen from the status code alone. The raw ``HTTPError`` string embeds the
+    request URL and the response body, and the caller persists whatever comes
+    back here on the account row, so nothing raw is reflected.
+    """
+    if status_code in {
+        requests.codes.unauthorized,
+        requests.codes.payment_required,
+    }:
+        return "Invalid or expired OpenXBL API key. Reconnect your Xbox account."
+    if status_code == requests.codes.forbidden:
+        return "OpenXBL denied access to this Xbox profile. Check its privacy settings."
+    if status_code == requests.codes.too_many_requests:
+        return "OpenXBL rate limit exceeded. Please try again later."
+    if status_code is None:
+        # HTTPError without a response: nothing to key on beyond "it failed".
+        return "OpenXBL request failed. Please try again later."
+    return f"OpenXBL API error: {status_code}"
+
+
 def _request(api_key, method, path, params=None):
-    """Call OpenXBL and translate HTTP failures into import errors."""
+    """Call OpenXBL and translate every failure into a MediaImportError.
+
+    Transport failures matter as much as HTTP ones here: ``api_request`` wraps
+    connection, timeout, TLS and unparseable-JSON errors in a
+    :class:`~app.providers.services.ProviderAPIError`, which is not a
+    ``MediaImportError``. Left untranslated it sails past the importer's
+    handler, so the account is never flagged and keeps reading as connected
+    while every scheduled run fails.
+    """
     try:
         return services.api_request(
             PROVIDER,
@@ -85,20 +116,23 @@ def _request(api_key, method, path, params=None):
             headers=_headers(api_key),
         )
     except requests.HTTPError as e:
-        status_code = e.response.status_code
-        if status_code in {
-            requests.codes.unauthorized,
-            requests.codes.payment_required,
-        }:
-            msg = "Invalid or expired OpenXBL API key. Reconnect your Xbox account."
-            raise MediaImportError(msg) from e
-        if status_code == requests.codes.forbidden:
-            msg = "OpenXBL denied access to this Xbox profile. Check its privacy settings."
-            raise MediaImportError(msg) from e
-        if status_code == requests.codes.too_many_requests:
-            msg = "OpenXBL rate limit exceeded. Please try again later."
-            raise MediaImportError(msg) from e
-        msg = f"OpenXBL API error: {status_code}"
+        status_code = getattr(getattr(e, "response", None), "status_code", None)
+        logger.warning(
+            "OpenXBL %s %s failed: %s",
+            method,
+            path,
+            exception_summary(e),
+        )
+        msg = _http_error_message(status_code)
+        raise MediaImportError(msg) from e
+    except (services.ProviderAPIError, requests.RequestException) as e:
+        logger.warning(
+            "OpenXBL %s %s could not be completed: %s",
+            method,
+            path,
+            exception_summary(e),
+        )
+        msg = "Could not reach OpenXBL. Check your connection and try again later."
         raise MediaImportError(msg) from e
 
 

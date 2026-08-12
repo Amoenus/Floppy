@@ -8,6 +8,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django_celery_beat.models import PeriodicTask
 from requests import Response
+from requests.exceptions import ConnectionError as RequestsConnectionError
 from requests.exceptions import HTTPError
 
 from app.models import Game, Item, MediaTypes, Sources, Status
@@ -401,6 +402,83 @@ class ImportXbox(TestCase):
         self.account.refresh_from_db()
         self.assertTrue(self.account.connection_broken)
 
+    @patch("integrations.xbox_api.services.api_request")
+    def test_unreachable_provider_marks_account_broken(self, mock_api_request):
+        """A wrapped transport failure flags the account instead of escaping."""
+        mock_api_request.side_effect = services.ProviderAPIError(
+            "OpenXBL",
+            RequestsConnectionError("HTTPSConnectionPool(host='xbl.io'): timed out"),
+        )
+
+        with self.assertRaises(helpers.MediaImportError) as context:
+            xbox.importer(None, self.user, "new")
+
+        self.assertIn("Could not reach OpenXBL", str(context.exception))
+        self.account.refresh_from_db()
+        self.assertTrue(self.account.connection_broken)
+        self.assertIn("Could not reach OpenXBL", self.account.last_error_message)
+        self.assertNotIn("HTTPSConnectionPool", self.account.last_error_message)
+
+    @patch("integrations.xbox_api.services.api_request")
+    def test_transport_failure_marks_account_broken(self, mock_api_request):
+        """A bare requests failure is translated rather than left to escape."""
+        mock_api_request.side_effect = RequestsConnectionError(
+            "Max retries exceeded with url: /api/v2/account?api_key=super-secret",
+        )
+
+        with self.assertRaises(helpers.MediaImportError):
+            xbox.importer(None, self.user, "new")
+
+        self.account.refresh_from_db()
+        self.assertTrue(self.account.connection_broken)
+        self.assertNotIn("super-secret", self.account.last_error_message)
+
+    @patch("integrations.xbox_api.services.api_request")
+    def test_http_error_without_a_response_is_still_translated(self, mock_api_request):
+        """An HTTPError carrying no response must not fail while being handled."""
+        mock_api_request.side_effect = HTTPError("request never completed")
+
+        with self.assertRaises(helpers.MediaImportError) as context:
+            xbox.importer(None, self.user, "new")
+
+        self.assertIn("OpenXBL request failed", str(context.exception))
+        self.account.refresh_from_db()
+        self.assertTrue(self.account.connection_broken)
+
+    @patch("integrations.xbox_api.services.api_request")
+    def test_unexpected_fetch_failure_marks_account_broken(self, mock_api_request):
+        """An error xbox_api doesn't model still lands as durable account state."""
+        mock_api_request.side_effect = ValueError(
+            "bad payload from https://xbl.io/api/v2/account?token=super-secret",
+        )
+
+        with self.assertRaises(helpers.MediaImportError) as context:
+            xbox.importer(None, self.user, "new")
+
+        self.assertIn("ValueError", str(context.exception))
+        self.assertNotIn("super-secret", str(context.exception))
+        self.account.refresh_from_db()
+        self.assertTrue(self.account.connection_broken)
+        self.assertIn("ValueError", self.account.last_error_message)
+        self.assertNotIn("super-secret", self.account.last_error_message)
+
+    def test_stored_error_messages_are_scrubbed_and_bounded(self):
+        """Whatever reaches the account row is redacted and length-capped."""
+        self.assertEqual(
+            xbox._safe_message("failed with api_key=super-secret sent"),
+            "failed with api_key=[REDACTED] sent",
+        )
+
+        importer = xbox.XboxImporter(self.user, "new")
+        importer._mark_broken("x" * 5000)
+
+        self.account.refresh_from_db()
+        self.assertLessEqual(
+            len(self.account.last_error_message),
+            xbox.MAX_ERROR_MESSAGE_LENGTH,
+        )
+        self.assertTrue(self.account.last_error_message.endswith("…"))
+
     def test_import_without_connected_account(self):
         """Importing without a connected account raises a clear error."""
         XboxAccount.objects.filter(user=self.user).delete()
@@ -677,7 +755,10 @@ class ImportXbox(TestCase):
 
         message = str(context.exception)
         self.assertNotIn("Could not reach", message)
-        self.assertIn("unhashable type", message)
+        # The exception type is named; its message is not, since an unexpected
+        # exception can carry the request URL or the credentials sent with it.
+        self.assertIn("TypeError", message)
+        self.assertNotIn("unhashable type", message)
         self.assertEqual(Game.objects.filter(user=self.user).count(), 0)
 
     @patch("integrations.imports.xbox.services.search")
@@ -701,7 +782,8 @@ class ImportXbox(TestCase):
         imported_counts, warnings = xbox.importer(None, self.user, "new")
 
         self.assertEqual(imported_counts[MediaTypes.GAME.value], 2)
-        self.assertIn("response", warnings)
+        self.assertIn("UnboundLocalError", warnings)
+        self.assertNotIn("cannot access local variable", warnings)
 
     @patch("integrations.imports.xbox.services.search")
     @patch("integrations.xbox_api.services.api_request")
@@ -936,6 +1018,23 @@ class XboxViewTests(TestCase):
         )
 
         self.assertContains(response, "Could not connect to Xbox")
+        self.assertFalse(XboxAccount.objects.filter(user=self.user).exists())
+
+    @patch(
+        "integrations.views.xbox_api.get_account",
+        side_effect=ValueError("bad payload for api_key=super-secret"),
+    )
+    def test_connect_failure_does_not_echo_the_raw_error(self, _mock_get_account):
+        """The key travels with this request, so nothing raw goes back to the page."""
+        response = self.client.post(
+            reverse("xbox_connect"),
+            {"api_key": "openxbl-key"},
+            follow=True,
+        )
+
+        self.assertContains(response, "Failed to connect to Xbox")
+        self.assertContains(response, "ValueError")
+        self.assertNotContains(response, "super-secret")
         self.assertFalse(XboxAccount.objects.filter(user=self.user).exists())
 
     @patch("integrations.views.tasks.import_xbox.delay")

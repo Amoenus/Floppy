@@ -15,6 +15,7 @@ from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
 import app
+from app.log_safety import exception_summary, redact_secrets
 from app.models import MediaTypes, Sources, Status
 from app.providers import services
 from app.providers.igdb import ExternalGameSource, external_game
@@ -27,6 +28,11 @@ logger = logging.getLogger(__name__)
 
 IMPORT_NOTE = "Imported from Xbox"
 RECENTLY_PLAYED_DAYS = 14
+
+# last_error_message is rendered on the import page and kept until the next
+# successful sync, so what lands there is scrubbed and bounded rather than
+# whatever an exception happened to stringify to.
+MAX_ERROR_MESSAGE_LENGTH = 500
 
 # Xbox reports a played library, so only the two library-sync modes mean
 # anything here; "watchlist" and "update_collection" have nothing to act on and
@@ -69,6 +75,14 @@ EDITION_SUFFIX_RE = re.compile(
     re.IGNORECASE,
 )
 BRAND_PREFIX_RE = re.compile(r"^(?:ea\s+sports|ea|disney)\s+", re.IGNORECASE)
+
+
+def _safe_message(message):
+    """Return a message fit to persist on the account and show to the user."""
+    scrubbed = redact_secrets(str(message)).strip()
+    if len(scrubbed) > MAX_ERROR_MESSAGE_LENGTH:
+        return scrubbed[: MAX_ERROR_MESSAGE_LENGTH - 1].rstrip() + "…"
+    return scrubbed
 
 
 def _search_names(name):
@@ -186,6 +200,21 @@ class XboxImporter:
         except MediaImportError as error:
             self._mark_broken(str(error))
             raise
+        except Exception as error:
+            # xbox_api translates the failures it knows about; anything else
+            # would otherwise leave the account reading as connected while
+            # every scheduled run keeps failing. The summary names the
+            # exception type only -- the traceback goes to the log.
+            logger.exception(
+                "Xbox library fetch failed for user %s",
+                self.user.username,
+            )
+            msg = (
+                "Xbox import failed while fetching your library "
+                f"({exception_summary(error)}). Check the logs for details."
+            )
+            self._mark_broken(msg)
+            raise MediaImportError(msg) from error
 
         if not titles:
             logger.info("No Xbox titles found for user %s", self.user.username)
@@ -286,9 +315,9 @@ class XboxImporter:
         )
 
     def _mark_broken(self, message):
-        """Flag the account as needing attention."""
+        """Flag the account as needing attention, storing a scrubbed reason."""
         self.account.connection_broken = True
-        self.account.last_error_message = message
+        self.account.last_error_message = _safe_message(message)
         self.account.save(
             update_fields=["connection_broken", "last_error_message", "updated_at"],
         )
@@ -306,15 +335,30 @@ class XboxImporter:
         try:
             igdb_game = self._match_with_igdb(title, name)
         except services.ProviderAPIError as e:
-            logger.warning("IGDB lookup failed for Xbox title %s: %s", name, e)
-            self.warnings.append(f"{name} ({title_id}): {Sources.IGDB.label} error: {e}")
-            self._record_failure(f"{name}: {Sources.IGDB.label} error: {e}")
+            # ProviderAPIError writes its own user-facing message and keeps the
+            # response body out of it; scrub it anyway before it is persisted.
+            logger.warning(
+                "IGDB lookup failed for Xbox title %s: %s",
+                name,
+                exception_summary(e),
+            )
+            detail = f"{Sources.IGDB.label} error: {_safe_message(e)}"
+            self.warnings.append(f"{name} ({title_id}): {detail}")
+            self._record_failure(f"{name}: {detail}")
             self.provider_failures += 1
             return
         except Exception as e:
-            logger.warning("Failed to process Xbox title %s (%s): %s", name, title_id, e)
-            self.warnings.append(f"{name} ({title_id}): {e!s}")
-            self._record_failure(f"{name}: {e!s}")
+            # An unexpected exception's message is not written for display: it
+            # can carry the request URL, the response body, or the credentials
+            # sent with it, and the first one seen ends up on the account row.
+            logger.exception(
+                "Failed to process Xbox title %s (%s)",
+                name,
+                title_id,
+            )
+            detail = exception_summary(e)
+            self.warnings.append(f"{name} ({title_id}): {detail}")
+            self._record_failure(f"{name}: {detail}")
             return
 
         if not igdb_game:
