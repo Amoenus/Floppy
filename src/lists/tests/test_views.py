@@ -1942,6 +1942,144 @@ class ListDetailViewTests(TestCase):
         self.assertContains(response, "http://example.com/season.jpg")
         self.assertContains(response, "media-card-subtitle-always")
 
+    @patch.object(get_user_model(), "update_preference")
+    @patch.object(CustomList, "user_can_view")
+    def test_list_detail_episode_cards_show_lists_button_on_hover(
+        self,
+        mock_user_can_view,
+        mock_update_preference,
+    ):
+        """Episode cards in a list grid must expose the "add to lists" action.
+
+        Previously the episode branch of media_card.html only rendered the
+        "mark watched" toggle, so an episode already in a custom list (e.g. a
+        "watch together" list of specific episodes) had no way to be removed
+        from the list overview screen — the Lists button only existed on the
+        episode's own detail page.
+        """
+        mock_update_preference.side_effect = ["date_added", None]
+        mock_user_can_view.return_value = True
+
+        episode_item = Item.objects.create(
+            media_id="1668",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="The One Where It Starts",
+            season_number=1,
+            episode_number=1,
+            image=settings.IMG_NONE,
+        )
+
+        episode_list = CustomList.objects.create(
+            name="Episode List",
+            owner=self.user,
+        )
+        CustomListItem.objects.create(
+            custom_list=episode_list,
+            item=episode_item,
+        )
+
+        response = self.client.get(reverse("list_detail", args=[episode_list.id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'title="Add to custom lists"')
+
+    @patch.object(get_user_model(), "update_preference")
+    @patch.object(CustomList, "user_can_view")
+    def test_list_detail_episode_watch_button_loads_real_modal_and_reflects_state(
+        self,
+        mock_user_can_view,
+        mock_update_preference,
+    ):
+        """Episode cards' watch-toggle button must actually load the track modal.
+
+        Previously this button only set trackOpen=true with no hx-get, so
+        clicking it opened a permanently empty modal overlay (verified live
+        in a browser) — Alpine had nothing to load into the target div. It
+        also always said "Mark watched" even when the episode was already
+        watched, unlike every other media type's tracking button which
+        reflects an already-in-progress/edit state.
+        """
+        mock_update_preference.side_effect = ["date_added", None]
+        mock_user_can_view.return_value = True
+
+        unwatched_item = Item.objects.create(
+            media_id="9001",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="The One Where It Starts",
+            season_number=1,
+            episode_number=1,
+            image=settings.IMG_NONE,
+        )
+        watched_item = Item.objects.create(
+            media_id="9001",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="The One With Two Parts",
+            season_number=1,
+            episode_number=2,
+            image=settings.IMG_NONE,
+        )
+        season_item = Item.objects.create(
+            media_id="9001",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=1,
+            image=settings.IMG_NONE,
+        )
+        tv_item = Item.objects.create(
+            media_id="9001",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            image=settings.IMG_NONE,
+        )
+        tv = TV.objects.create(item=tv_item, user=self.user, status=Status.IN_PROGRESS.value)
+        season = Season.objects.create(
+            item=season_item,
+            user=self.user,
+            related_tv=tv,
+            status=Status.IN_PROGRESS.value,
+        )
+        watched_episode = Episode.objects.create(
+            item=watched_item,
+            related_season=season,
+        )
+
+        episode_list = CustomList.objects.create(name="Episode List", owner=self.user)
+        CustomListItem.objects.create(custom_list=episode_list, item=unwatched_item)
+        CustomListItem.objects.create(custom_list=episode_list, item=watched_item)
+
+        response = self.client.get(reverse("list_detail", args=[episode_list.id]))
+
+        self.assertEqual(response.status_code, 200)
+        expected_url = reverse(
+            "track_modal",
+            kwargs={
+                "source": Sources.TMDB.value,
+                "media_type": MediaTypes.EPISODE.value,
+                "media_id": "9001",
+                "season_number": 1,
+            },
+        )
+        self.assertContains(response, f'hx-get="{expected_url}"')
+        self.assertContains(response, '"is_create": "1"')
+        self.assertContains(
+            response,
+            f'"instance_id": "{watched_episode.id}"',
+        )
+        self.assertContains(response, 'title="Mark watched"')
+        self.assertContains(response, 'title="Watched"')
+
+        # Regression: Django's {# #} comment syntax is single-line only —
+        # spreading one across multiple lines silently stops it being
+        # recognized as a comment at all, and the literal text (including
+        # this internal implementation note) renders straight into the
+        # page. Caught live: it showed up as visible text on an episode
+        # card. `{% comment %}...{% endcomment %}` is the multi-line form.
+        self.assertNotContains(response, "hero_track_button")
+        self.assertNotContains(response, "empty overlay")
+
     @patch("lists.views.services.get_media_metadata")
     @patch.object(get_user_model(), "update_preference")
     @patch.object(CustomList, "user_can_view")
@@ -2774,6 +2912,50 @@ class ListItemToggleTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertNotIn(self.item, self.list.items.all())
 
+    def test_list_detail_page_refreshes_its_grid_after_list_item_toggle(self):
+        """The list's own page must refresh its grid after a toggle.
+
+        The toggle button's hx-swap replaces itself (hx-swap="outerHTML"),
+        so an hx-on::after-request on that same button doesn't reliably fire
+        — verified live: htmx doesn't rebind it once the element carrying it
+        has replaced itself with its own response. Without some refresh,
+        removing an item while viewing that list's own page leaves the
+        item's card on screen even though it was removed from the DB —
+        looking exactly like the toggle silently did nothing (reported:
+        removing Daredevil: Born Again from a Watchlist custom list via the
+        hover list-icon modal never made the card disappear).
+
+        The working fix listens for htmx:afterRequest at the document level
+        instead (the same pattern already used elsewhere in this app, e.g.
+        app/media_list.html), filtered to list_item_toggle's response.
+        """
+        self.client.login(**self.credentials)
+        response = self.client.get(reverse("list_detail", args=[self.list.id]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "addEventListener('htmx:afterRequest'")
+        self.assertContains(response, "endsWith('/list_item_toggle')")
+
+    def test_list_item_toggle_response_no_longer_relies_on_self_swap_hx_on(self):
+        """The toggle button must not re-introduce the non-firing hx-on hook.
+
+        hx-on::after-request on a button that swaps itself out via
+        hx-swap="outerHTML" was verified (via a live browser session) to
+        never actually invoke its handler, even though the attribute renders
+        correctly and the underlying htmx:afterRequest event does fire and
+        bubble to the document. Guards against silently regressing back to
+        that dead approach.
+        """
+        self.client.login(**self.credentials)
+        response = self.client.post(
+            reverse("list_item_toggle"),
+            {
+                "item_id": self.item.id,
+                "custom_list_id": self.list.id,
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "hx-on::after-request")
+
     def test_list_item_collaborator_toggle(self):
         """Test adding an item to a list as collaborator."""
         self.client.login(**self.collaborator_credentials)
@@ -2872,6 +3054,70 @@ class ListItemToggleTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.context["has_item"])  # Item was removed
+
+    def test_list_item_toggle_remove_failure_logs_and_toasts_error(self):
+        """An unexpected failure while removing must be logged and surfaced.
+
+        Regression coverage for the class of bug that produced the real
+        UniqueViolation crash: whatever throws here, the user must see an
+        error toast (not a dead redirect) and the failure must land in the
+        server logs with enough context to diagnose it, since the browser
+        gives no useful detail on a bare 500.
+        """
+        self.client.login(**self.credentials)
+        self.list.items.add(self.item)
+
+        with (
+            patch(
+                "lists.models.CustomListItem.delete",
+                side_effect=RuntimeError("boom"),
+            ),
+            self.assertLogs("lists.views_list_actions", level="ERROR") as logs,
+        ):
+            response = self.client.post(
+                reverse("list_item_toggle"),
+                {
+                    "item_id": self.item.id,
+                    "custom_list_id": self.list.id,
+                },
+            )
+
+        self.assertEqual(response.status_code, 500)
+        self.assertIn(str(self.item.id), "".join(logs.output))
+        self.assertIn(str(self.list.id), "".join(logs.output))
+
+        trigger = json.loads(response.headers["HX-Trigger"])
+        self.assertEqual(trigger["showToast"]["type"], "error")
+        self.assertIn("try again", trigger["showToast"]["message"])
+
+        # Nothing committed: the item is still in the list.
+        self.assertIn(self.item, self.list.items.all())
+
+    def test_list_item_toggle_add_failure_logs_and_toasts_error(self):
+        """Same guarantee on the add path, not just remove."""
+        self.client.login(**self.credentials)
+
+        with (
+            patch(
+                "lists.models.CustomListItem.objects.create",
+                side_effect=RuntimeError("boom"),
+            ),
+            self.assertLogs("lists.views_list_actions", level="ERROR"),
+        ):
+            response = self.client.post(
+                reverse("list_item_toggle"),
+                {
+                    "item_id": self.item.id,
+                    "custom_list_id": self.list.id,
+                },
+            )
+
+        self.assertEqual(response.status_code, 500)
+        trigger = json.loads(response.headers["HX-Trigger"])
+        self.assertEqual(trigger["showToast"]["type"], "error")
+
+        # Nothing committed: the item was never added.
+        self.assertNotIn(self.item, self.list.items.all())
 
 
 class ListRssFeedTests(TestCase):

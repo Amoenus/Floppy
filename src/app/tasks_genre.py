@@ -32,6 +32,7 @@ BACKGROUND_TASK_PRIORITY = getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 
 
 GENRE_BACKFILL_SOURCES = (
     Sources.TMDB.value,
+    Sources.TVDB.value,
     Sources.MAL.value,
     "simkl",
     Sources.IGDB.value,
