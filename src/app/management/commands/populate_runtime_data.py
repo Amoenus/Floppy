@@ -55,6 +55,7 @@ class Command(BaseCommand):
             ],
             source__in=[
                 "tmdb",
+                "tvdb",
                 "mal",
                 "simkl",
             ],  # Only process items from providers that have runtime data

@@ -168,6 +168,7 @@ from app.tasks_tv_provider_migration import (  # noqa: E402
 
 RELEASE_BACKFILL_SOURCES = (
     Sources.TMDB.value,
+    Sources.TVDB.value,
     Sources.MAL.value,
     Sources.MANGAUPDATES.value,
     Sources.IGDB.value,
