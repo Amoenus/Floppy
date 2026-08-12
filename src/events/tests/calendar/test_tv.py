@@ -16,8 +16,9 @@ from events.calendar.tv import (
     process_season_episodes,
     process_tv,
     process_tv_seasons,
+    reopen_completed_tv_with_new_seasons,
 )
-from events.models import Event
+from events.models import UNKNOWN_UNRELEASED_DATETIME, Event
 from events.tests.calendar.utils import CalendarFixturesMixin
 
 
@@ -322,7 +323,120 @@ class CalendarTVTests(CalendarFixturesMixin, TestCase):
             tvmaze_map={},
         )
 
-        self.assertEqual(result, datetime.datetime.min.replace(tzinfo=ZoneInfo("UTC")))
+        self.assertEqual(result, UNKNOWN_UNRELEASED_DATETIME)
+
+    @patch("events.calendar.tv.get_tvmaze_episode_map", return_value={})
+    def test_missing_episode_dates_are_unreleased_with_event_only_inference(
+        self,
+        _mock_tvmaze,
+    ):
+        """Only an already-aired later episode may date an earlier Event."""
+        nearest_aired = date_parser("2008-01-20")
+        later_aired = date_parser("2008-02-03")
+        future = date_parser("2999-01-20")
+        events_bulk = []
+
+        process_season_episodes(
+            self.season_item,
+            {
+                "season_number": 1,
+                "tvdb_id": "81189",
+                "episodes": [
+                    {"episode_number": 1, "air_date": None},
+                    {"episode_number": 2, "air_date": "2008-01-20"},
+                    {"episode_number": 3, "air_date": "2008-02-03"},
+                    {"episode_number": 4, "air_date": None},
+                    {"episode_number": 5, "air_date": "2999-01-20"},
+                ],
+            },
+            events_bulk,
+        )
+
+        self.assertEqual(events_bulk[0].datetime, nearest_aired)
+        self.assertEqual(events_bulk[1].datetime, nearest_aired)
+        self.assertEqual(events_bulk[2].datetime, later_aired)
+        self.assertEqual(events_bulk[3].datetime, UNKNOWN_UNRELEASED_DATETIME)
+        self.assertEqual(events_bulk[4].datetime, future)
+
+        episode_items = {
+            item.episode_number: item
+            for item in Item.objects.filter(
+                media_id=self.season_item.media_id,
+                media_type=MediaTypes.EPISODE.value,
+                season_number=1,
+            )
+        }
+        self.assertIsNone(episode_items[1].release_datetime)
+        self.assertEqual(episode_items[2].release_datetime, nearest_aired)
+        self.assertEqual(episode_items[3].release_datetime, later_aired)
+        self.assertIsNone(episode_items[4].release_datetime)
+        self.assertEqual(episode_items[5].release_datetime, future)
+
+    @patch("events.calendar.tv.get_tvmaze_episode_map", return_value={})
+    def test_missing_provider_date_preserves_stored_episode_date(
+        self,
+        _mock_tvmaze,
+    ):
+        """A transient missing provider date must not erase known metadata."""
+        stored_date = date_parser("2008-01-20")
+        episode_item = Item.objects.create(
+            media_id=self.season_item.media_id,
+            source=self.season_item.source,
+            media_type=MediaTypes.EPISODE.value,
+            title=self.season_item.title,
+            season_number=1,
+            episode_number=1,
+            release_datetime=stored_date,
+        )
+        events_bulk = []
+
+        process_season_episodes(
+            self.season_item,
+            {
+                "season_number": 1,
+                "tvdb_id": "81189",
+                "episodes": [{"episode_number": 1, "air_date": None}],
+            },
+            events_bulk,
+        )
+
+        episode_item.refresh_from_db()
+        self.assertEqual(episode_item.release_datetime, stored_date)
+        self.assertEqual(events_bulk[0].datetime, stored_date)
+
+    def test_unknown_unreleased_season_does_not_reopen_completed_show(self):
+        """A placeholder is refreshable, but is not evidence of a new release."""
+        TV.objects.filter(item=self.tv_item, user=self.user).update(
+            status=Status.COMPLETED.value,
+        )
+        Season.objects.filter(item=self.season_item, user=self.user).update(
+            status=Status.COMPLETED.value,
+        )
+        season_two_item = Item.objects.create(
+            media_id=self.tv_item.media_id,
+            source=self.tv_item.source,
+            media_type=MediaTypes.SEASON.value,
+            title=self.tv_item.title,
+            season_number=2,
+        )
+
+        reopen_completed_tv_with_new_seasons(
+            self.tv_item,
+            [season_two_item],
+            [
+                Event(
+                    item=season_two_item,
+                    content_number=1,
+                    datetime=UNKNOWN_UNRELEASED_DATETIME,
+                ),
+            ],
+        )
+
+        self.assertEqual(
+            TV.objects.get(item=self.tv_item, user=self.user).status,
+            Status.COMPLETED.value,
+        )
+        self.assertFalse(Season.objects.filter(item=season_two_item).exists())
 
     @patch("events.calendar.tv.services.api_request")
     def test_get_tvmaze_response_returns_empty_on_not_found(self, mock_api_request):

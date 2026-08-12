@@ -11,7 +11,7 @@ from events.calendar.selectors import (
     get_changed_tmdb_tv_ids,
     get_items_to_process,
 )
-from events.models import Event
+from events.models import LEGACY_UNKNOWN_RELEASED_DATETIME, Event
 from events.tests.calendar.utils import CalendarFixturesMixin
 
 
@@ -214,14 +214,14 @@ class CalendarSelectorTests(CalendarFixturesMixin, TestCase):
         mock_tv_changes,
         mock_movie_changes,
     ):
-        """TVDB TV with datetime.min unknown-date events should keep refreshing."""
+        """TVDB TV with the legacy minimum placeholder should keep refreshing."""
         mock_tv_changes.return_value = set()
         mock_movie_changes.return_value = set()
         tvdb_tv_item, tvdb_season_item = self._create_tvdb_tv()
         Event.objects.create(
             item=tvdb_season_item,
             content_number=1,
-            datetime=timezone.now().replace(year=1, month=1, day=1),
+            datetime=LEGACY_UNKNOWN_RELEASED_DATETIME,
         )
 
         items = get_items_to_process(self.user)

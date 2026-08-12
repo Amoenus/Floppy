@@ -1,7 +1,11 @@
 import datetime
+from zoneinfo import ZoneInfo, available_timezones
 
+from django.contrib import admin
+from django.contrib.admin.sites import AdminSite
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
+from django.urls import path, reverse
 from django.utils import timezone
 
 from app.models import (
@@ -15,7 +19,17 @@ from app.models import (
     Sources,
     Status,
 )
-from events.models import Event
+from events.admin import EventAdmin
+from events.models import (
+    LEGACY_END_OF_DAY_UNKNOWN_UNRELEASED_DATETIME,
+    LEGACY_UNKNOWN_RELEASED_DATETIME,
+    LEGACY_UNKNOWN_UNRELEASED_DATETIME,
+    UNKNOWN_RELEASED_DATETIME,
+    UNKNOWN_UNRELEASED_DATETIME,
+    Event,
+)
+
+urlpatterns = [path("admin/", admin.site.urls)]
 
 
 class EventModelTests(TestCase):
@@ -33,6 +47,18 @@ class EventModelTests(TestCase):
             media_type=MediaTypes.SEASON.value,
             title="Test TV Show",
             season_number=1,
+        )
+
+        tv_item = Item.objects.create(
+            media_id="1668",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Test TV Show",
+        )
+        tv = TV.objects.create(
+            item=tv_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
         )
 
         self.movie_item = Item.objects.create(
@@ -59,6 +85,7 @@ class EventModelTests(TestCase):
         self.season = Season.objects.create(
             user=self.user,
             item=self.season_item,
+            related_tv=tv,
             status=Status.IN_PROGRESS.value,
         )
 
@@ -124,6 +151,137 @@ class EventModelTests(TestCase):
 
         # Manga event
         self.assertEqual(str(self.manga_event), "Test Manga #1")
+
+    def test_unknown_sentinels_convert_in_every_installed_timezone(self):
+        """Both current sentinels must survive every installed IANA zone."""
+        for timezone_name in available_timezones():
+            zone = ZoneInfo(timezone_name)
+            with self.subTest(timezone=timezone_name, state="released"):
+                UNKNOWN_RELEASED_DATETIME.astimezone(zone)
+            with self.subTest(timezone=timezone_name, state="unreleased"):
+                UNKNOWN_UNRELEASED_DATETIME.astimezone(zone)
+
+    def test_admin_formats_dublin_winter_and_summer_offsets(self):
+        """Known dates retain Dublin's winter and daylight-saving offsets."""
+        event_admin = EventAdmin(Event, AdminSite())
+
+        with timezone.override(ZoneInfo("Europe/Dublin")):
+            winter = event_admin.formatted_datetime(
+                Event(
+                    item=self.movie_item,
+                    datetime=datetime.datetime(
+                        2026,
+                        1,
+                        15,
+                        12,
+                        tzinfo=datetime.UTC,
+                    ),
+                ),
+            )
+            summer = event_admin.formatted_datetime(
+                Event(
+                    item=self.movie_item,
+                    datetime=datetime.datetime(
+                        2026,
+                        7,
+                        15,
+                        12,
+                        tzinfo=datetime.UTC,
+                    ),
+                ),
+            )
+
+        self.assertEqual(winter, "2026-01-15 12:00")
+        self.assertEqual(summer, "2026-07-15 13:00")
+
+    def test_unknown_predicates_preserve_legacy_context(self):
+        """Legacy year-one season events are unreleased, unlike other media."""
+        released = Event(item=self.movie_item, datetime=UNKNOWN_RELEASED_DATETIME)
+        unreleased = Event(
+            item=self.season_item,
+            datetime=UNKNOWN_UNRELEASED_DATETIME,
+        )
+        legacy_released = Event(
+            item=self.movie_item,
+            datetime=LEGACY_UNKNOWN_RELEASED_DATETIME,
+        )
+        legacy_tv_unreleased = Event(
+            item=self.season_item,
+            datetime=LEGACY_UNKNOWN_RELEASED_DATETIME,
+        )
+        legacy_max = Event(
+            item=self.season_item,
+            datetime=LEGACY_UNKNOWN_UNRELEASED_DATETIME,
+        )
+        legacy_end_of_day_max = Event(
+            item=self.season_item,
+            datetime=LEGACY_END_OF_DAY_UNKNOWN_UNRELEASED_DATETIME,
+        )
+        real_boundary_date = Event(
+            item=self.season_item,
+            datetime=datetime.datetime(1, 2, 3, 4, 5, tzinfo=datetime.UTC),
+        )
+
+        self.assertTrue(released.is_unknown_released)
+        self.assertTrue(legacy_released.is_unknown_released)
+        self.assertTrue(unreleased.is_unknown_unreleased)
+        self.assertTrue(legacy_tv_unreleased.is_unknown_unreleased)
+        self.assertTrue(legacy_max.is_unknown_unreleased)
+        self.assertTrue(legacy_max.is_max_datetime)
+        self.assertTrue(legacy_end_of_day_max.is_unknown_unreleased)
+        self.assertTrue(legacy_end_of_day_max.is_max_datetime)
+        self.assertFalse(legacy_tv_unreleased.is_unknown_released)
+        self.assertFalse(real_boundary_date.is_unknown_released)
+        self.assertFalse(real_boundary_date.is_unknown_unreleased)
+
+    def test_admin_formats_unknown_state_without_localizing_boundary_dates(self):
+        """Admin should render semantic state instead of a boundary timestamp."""
+        event_admin = EventAdmin(Event, AdminSite())
+
+        self.assertEqual(
+            event_admin.formatted_datetime(
+                Event(item=self.movie_item, datetime=UNKNOWN_RELEASED_DATETIME),
+            ),
+            "Unknown (released)",
+        )
+        self.assertEqual(
+            event_admin.formatted_datetime(
+                Event(item=self.season_item, datetime=UNKNOWN_UNRELEASED_DATETIME),
+            ),
+            "Unknown (unreleased)",
+        )
+
+    @override_settings(
+        ROOT_URLCONF=__name__,
+        TIME_ZONE="Pacific/Kiritimati",
+    )
+    def test_admin_change_form_renders_legacy_unknown_unreleased_event(self):
+        """The real admin widget must not localize legacy max past year 9999."""
+        self.user.is_staff = True
+        self.user.is_superuser = True
+        self.user.save(update_fields=["is_staff", "is_superuser"])
+        self.client.force_login(self.user)
+        for content_number, sentinel in enumerate(
+            (
+                LEGACY_UNKNOWN_UNRELEASED_DATETIME,
+                LEGACY_END_OF_DAY_UNKNOWN_UNRELEASED_DATETIME,
+            ),
+            start=2,
+        ):
+            with self.subTest(sentinel=sentinel):
+                event = Event.objects.create(
+                    item=self.season_item,
+                    content_number=content_number,
+                    datetime=sentinel,
+                )
+
+                with timezone.override(ZoneInfo("Pacific/Kiritimati")):
+                    response = self.client.get(
+                        reverse("admin:events_event_change", args=[event.pk]),
+                    )
+
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, "Unknown (unreleased)")
 
 
 class EventManagerTests(TestCase):
@@ -301,6 +459,50 @@ class EventManagerTests(TestCase):
             self.past_event,
             limited_events,
         )  # Past event, but filtered by active status
+    def test_get_user_events_excludes_all_unknown_sentinel_classes(self):
+        """Public calendar queries must not expose semantic placeholders."""
+        real_boundary_event = Event.objects.create(
+            item=self.manga_item,
+            content_number=12,
+            datetime=datetime.datetime(1, 2, 3, 4, 5, tzinfo=datetime.UTC),
+        )
+        unknown_events = [
+            Event.objects.create(
+                item=self.manga_item,
+                content_number=10,
+                datetime=UNKNOWN_RELEASED_DATETIME,
+            ),
+            Event.objects.create(
+                item=self.season_item,
+                content_number=10,
+                datetime=UNKNOWN_UNRELEASED_DATETIME,
+            ),
+            Event.objects.create(
+                item=self.manga_item,
+                content_number=11,
+                datetime=LEGACY_UNKNOWN_RELEASED_DATETIME,
+            ),
+            Event.objects.create(
+                item=self.season_item,
+                content_number=11,
+                datetime=LEGACY_UNKNOWN_UNRELEASED_DATETIME,
+            ),
+            Event.objects.create(
+                item=self.season_item,
+                content_number=12,
+                datetime=LEGACY_END_OF_DAY_UNKNOWN_UNRELEASED_DATETIME,
+            ),
+        ]
+
+        events = Event.objects.get_user_events(
+            self.user,
+            datetime.date.min,
+            datetime.date.max,
+        )
+
+        self.assertIn(real_boundary_event, events)
+        for event in unknown_events:
+            self.assertNotIn(event, events)
 
 
 class EventManagerCrossProviderDedupTests(TestCase):

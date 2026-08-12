@@ -376,6 +376,15 @@ class HomeScreenViewTests(TestCase):
                     end_date=now - timedelta(days=episode_number),
                 )
 
+        # The view contract covers legacy stale statuses. Episode.save now
+        # repairs new rows, so preserve the intended database shape explicitly.
+        Season.objects.filter(pk__in=[stale_season.pk, active_season.pk]).update(
+            status=Status.IN_PROGRESS.value,
+        )
+        TV.objects.filter(pk__in=[stale_tv.pk, active_tv.pk]).update(
+            status=Status.IN_PROGRESS.value,
+        )
+
         mock_get_metadata.return_value = {"max_progress": 3}
 
         HomeScreenRow.objects.create(

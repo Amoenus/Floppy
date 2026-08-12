@@ -10,7 +10,7 @@ from django.utils import timezone
 
 from app.models import TV, MediaTypes, Season
 from app.templatetags import app_tags
-from events.models import INACTIVE_TRACKING_STATUSES, Event
+from events.models import INACTIVE_TRACKING_STATUSES, UNKNOWN_UNRELEASED_QUERY, Event
 
 logger = logging.getLogger(__name__)
 
@@ -34,11 +34,15 @@ def send_releases():
         return "No users with release notifications enabled"
 
     # Find events that were released recently and haven't been notified yet
-    base_queryset = Event.objects.filter(
-        datetime__gte=thirty_minutes_ago,
-        datetime__lte=now,
-        notification_sent=False,
-    ).select_related("item")
+    base_queryset = (
+        Event.objects.filter(
+            datetime__gte=thirty_minutes_ago,
+            datetime__lte=now,
+            notification_sent=False,
+        )
+        .exclude(UNKNOWN_UNRELEASED_QUERY)
+        .select_related("item")
+    )
 
     events = Event.objects.sort_with_sentinel_last(base_queryset)
 
@@ -93,10 +97,14 @@ def send_daily_digest():
         return "No users with daily digest enabled"
 
     # Get today's events using the converted UTC times
-    base_queryset = Event.objects.filter(
-        datetime__gte=today_start_utc,
-        datetime__lt=today_end_utc,
-    ).select_related("item")
+    base_queryset = (
+        Event.objects.filter(
+            datetime__gte=today_start_utc,
+            datetime__lt=today_end_utc,
+        )
+        .exclude(UNKNOWN_UNRELEASED_QUERY)
+        .select_related("item")
+    )
 
     events = Event.objects.sort_with_sentinel_last(base_queryset)
 
@@ -142,12 +150,16 @@ def send_premiere_digest():
         return "No users with premiere notifications enabled"
 
     # A season's first episode (content_number=1) marks its premiere
-    base_queryset = Event.objects.filter(
-        item__media_type=MediaTypes.SEASON.value,
-        content_number=1,
-        datetime__gte=today_start_utc,
-        datetime__lt=week_end_utc,
-    ).select_related("item")
+    base_queryset = (
+        Event.objects.filter(
+            item__media_type=MediaTypes.SEASON.value,
+            content_number=1,
+            datetime__gte=today_start_utc,
+            datetime__lt=week_end_utc,
+        )
+        .exclude(UNKNOWN_UNRELEASED_QUERY)
+        .select_related("item")
+    )
 
     events = Event.objects.sort_with_sentinel_last(base_queryset)
 
@@ -506,7 +518,11 @@ def format_notification(releases):
             notification_body.append(f"{icon}  {media_type.upper()}")
 
         for event in media_events:
-            if event.is_sentinel_time:
+            if (
+                event.is_sentinel_time
+                or event.is_unknown_released
+                or event.is_unknown_unreleased
+            ):
                 # Don't show time for sentinel times
                 notification_body.append(f"  • {event}")
             else:
@@ -541,7 +557,11 @@ def format_notification_html(releases):
         )
 
         for event in media_events:
-            if event.is_sentinel_time:
+            if (
+                event.is_sentinel_time
+                or event.is_unknown_released
+                or event.is_unknown_unreleased
+            ):
                 line = escape(str(event))
             else:
                 local_dt = timezone.localtime(event.datetime)
@@ -571,7 +591,11 @@ def format_premiere_notification_html(releases):
 
         notification_html.append(f"<p><strong>{escape(heading)}</strong></p><ul>")
         for event in events:
-            if event.is_sentinel_time:
+            if (
+                event.is_sentinel_time
+                or event.is_unknown_released
+                or event.is_unknown_unreleased
+            ):
                 line = escape(str(event.item))
             else:
                 local_dt = timezone.localtime(event.datetime)

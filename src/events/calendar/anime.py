@@ -4,7 +4,7 @@ from zoneinfo import ZoneInfo
 
 from app.models import MediaTypes, Sources
 from app.providers import services
-from events.models import Event
+from events.models import UNKNOWN_RELEASED_DATETIME, Event
 
 from .other import process_other
 
@@ -53,7 +53,7 @@ def process_anime_bulk(items, events_bulk):
         if episodes:
             for episode in episodes:
                 if episode["airingAt"] is None:
-                    episode_datetime = datetime.min.replace(tzinfo=ZoneInfo("UTC"))
+                    episode_datetime = UNKNOWN_RELEASED_DATETIME
                 else:
                     episode_datetime = datetime.fromtimestamp(
                         episode["airingAt"],

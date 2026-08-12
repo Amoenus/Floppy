@@ -592,6 +592,11 @@ class MediaManager(models.Manager):
         def _is_usable_datetime(value):
             return value is not None and getattr(value, "year", 0) >= MIN_PLAUSIBLE_YEAR
 
+        def _is_unknown_event(candidate):
+            return isinstance(candidate, events.models.Event) and (
+                candidate.is_unknown_released or candidate.is_unknown_unreleased
+            )
+
         def _progress_index():
             progress_value = getattr(media, "aggregated_progress", None)
             if progress_value is None:
@@ -679,6 +684,7 @@ class MediaManager(models.Manager):
                         content_number__isnull=False,
                     )
                     .exclude(item__season_number__in=tracked_season_numbers)
+                    .select_related("item")
                     .order_by("item__season_number", "content_number")
                 )
                 candidates.extend(untracked_events)
@@ -687,6 +693,8 @@ class MediaManager(models.Manager):
                 return None
 
             candidate = candidates[progress_index]
+            if _is_unknown_event(candidate):
+                return None
             air_date = getattr(candidate, "datetime", None)
             if air_date is None:
                 air_date = getattr(
@@ -703,6 +711,8 @@ class MediaManager(models.Manager):
                 return None
 
             candidate = candidates[progress_index]
+            if _is_unknown_event(candidate):
+                return None
             air_date = getattr(candidate, "datetime", None)
             if air_date is None:
                 air_date = getattr(
@@ -719,6 +729,8 @@ class MediaManager(models.Manager):
                 return None
 
             candidate = candidates[progress_index]
+            if _is_unknown_event(candidate):
+                return None
             air_date = getattr(candidate, "datetime", None)
             if air_date is None:
                 air_date = getattr(
@@ -1289,6 +1301,7 @@ class MediaManager(models.Manager):
                     event
                     for event in getattr(media.item, "prefetched_events", [])
                     if event.datetime > current_time
+                    and not event.is_unknown_unreleased
                 ],
                 key=lambda e: e.datetime,
             )
@@ -1408,31 +1421,7 @@ class MediaManager(models.Manager):
             media_list = flat_media
 
         if media_type == MediaTypes.SEASON.value:
-            # For seasons, use metadata max_progress instead of database annotation
-            # The metadata value is more accurate as it reflects the actual total episodes
-            # from the provider, not just episodes with release_datetime set
-            from app.providers import services
-
-            for season in media_list:
-                try:
-                    season_metadata = services.get_media_metadata(
-                        MediaTypes.SEASON.value,
-                        season.item.media_id,
-                        season.item.source,
-                        [season.item.season_number],
-                    )
-                    # Use metadata max_progress if available, otherwise fall back to annotation
-                    metadata_max_progress = season_metadata.get("max_progress")
-                    if metadata_max_progress is not None:
-                        season.max_progress = metadata_max_progress
-                    else:
-                        # Fall back to database annotation if metadata doesn't have max_progress
-                        self._annotate_season_released_episodes(
-                            [season], current_datetime
-                        )
-                except Exception:
-                    # If metadata fetch fails, fall back to database annotation
-                    self._annotate_season_released_episodes([season], current_datetime)
+            self._annotate_season_released_episodes(media_list, current_datetime)
             return
 
         if media_type == MediaTypes.BOOK.value:
@@ -1502,29 +1491,28 @@ class MediaManager(models.Manager):
         media_ids = {media_id for media_id, _ in media_keys}
         media_sources = {source for _, source in media_keys}
 
-        released_by_show: dict[tuple[str, str], dict[int, int]] = defaultdict(dict)
+        released_by_show: dict[tuple[str, str], dict[int, set[int]]] = defaultdict(
+            lambda: defaultdict(set),
+        )
 
         episode_rows = (
             Item.objects.filter(
                 media_type=MediaTypes.EPISODE.value,
                 media_id__in=media_ids,
                 source__in=media_sources,
+                episode_number__isnull=False,
                 release_datetime__isnull=False,
                 release_datetime__lte=current_datetime,
                 season_number__gt=0,
             )
-            .values("media_id", "source", "season_number")
-            .annotate(max_episode=models.Max("episode_number"))
+            .exclude(release_datetime__in=events.models.UNKNOWN_EVENT_DATETIMES)
+            .values("media_id", "source", "season_number", "episode_number")
         )
 
         for row in episode_rows:
             key = (row["media_id"], row["source"])
             season_number = row["season_number"]
-            max_episode = row["max_episode"] or 0
-            released_by_show[key][season_number] = max(
-                released_by_show[key].get(season_number, 0),
-                max_episode,
-            )
+            released_by_show[key][season_number].add(row["episode_number"])
 
         released_events = (
             events.models.Event.objects.filter(
@@ -1535,27 +1523,29 @@ class MediaManager(models.Manager):
                 datetime__lte=current_datetime,
                 content_number__isnull=False,
             )
-            .exclude(datetime__year__lt=1900)
+            .exclude(events.models.UNKNOWN_UNRELEASED_QUERY)
             .values(
                 "item__media_id",
                 "item__source",
                 "item__season_number",
+                "content_number",
             )
-            .annotate(max_episode=models.Max("content_number"))
         )
 
         for row in released_events:
             key = (row["item__media_id"], row["item__source"])
             season_number = row["item__season_number"]
-            max_episode = row["max_episode"] or 0
-            released_by_show[key][season_number] = max(
-                released_by_show[key].get(season_number, 0),
-                max_episode,
-            )
+            released_by_show[key][season_number].add(row["content_number"])
 
         for tv in tv_list:
             key = (tv.item.media_id, tv.item.source)
-            breakdown = released_by_show.get(key, {})
+            breakdown = {
+                season_number: len(episode_numbers)
+                for season_number, episode_numbers in released_by_show.get(
+                    key,
+                    {},
+                ).items()
+            }
             tv.released_episode_breakdown = breakdown
             if breakdown:
                 dropped_season_numbers = (
@@ -1603,7 +1593,7 @@ class MediaManager(models.Manager):
             if season_number is not None
         }
 
-        released_by_season: dict[tuple[str, str, int], int] = {}
+        released_by_season: dict[tuple[str, str, int], set[int]] = defaultdict(set)
 
         episode_rows = (
             Item.objects.filter(
@@ -1611,17 +1601,17 @@ class MediaManager(models.Manager):
                 media_id__in=media_ids,
                 source__in=media_sources,
                 season_number__in=season_numbers,
+                episode_number__isnull=False,
                 release_datetime__isnull=False,
                 release_datetime__lte=current_datetime,
             )
-            .values("media_id", "source", "season_number")
-            .annotate(max_episode=models.Max("episode_number"))
+            .exclude(release_datetime__in=events.models.UNKNOWN_EVENT_DATETIMES)
+            .values("media_id", "source", "season_number", "episode_number")
         )
 
         for row in episode_rows:
             key = (row["media_id"], row["source"], row["season_number"])
-            max_episode = row["max_episode"] or 0
-            released_by_season[key] = max(released_by_season.get(key, 0), max_episode)
+            released_by_season[key].add(row["episode_number"])
 
         released_events = (
             events.models.Event.objects.filter(
@@ -1632,13 +1622,13 @@ class MediaManager(models.Manager):
                 datetime__lte=current_datetime,
                 content_number__isnull=False,
             )
-            .exclude(datetime__year__lt=1900)
+            .exclude(events.models.UNKNOWN_UNRELEASED_QUERY)
             .values(
                 "item__media_id",
                 "item__source",
                 "item__season_number",
+                "content_number",
             )
-            .annotate(max_episode=models.Max("content_number"))
         )
 
         for row in released_events:
@@ -1647,12 +1637,14 @@ class MediaManager(models.Manager):
                 row["item__source"],
                 row["item__season_number"],
             )
-            max_episode = row["max_episode"] or 0
-            released_by_season[key] = max(released_by_season.get(key, 0), max_episode)
+            released_by_season[key].add(row["content_number"])
 
         for season in season_list:
             key = (season.item.media_id, season.item.source, season.item.season_number)
-            season.max_progress = released_by_season.get(key)
+            released_numbers = released_by_season.get(key)
+            season.max_progress = len(released_numbers) if released_numbers else None
+            if season.item.local_season_episode_count is not None:
+                season.max_progress = season.item.local_season_episode_count
             if (
                 season.max_progress is None
                 and season.item.source == Sources.MANUAL.value

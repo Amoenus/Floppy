@@ -17,7 +17,8 @@ from simple_history.utils import bulk_create_with_history, bulk_update_with_hist
 
 import events
 from app import cache_utils, providers
-from app.models.choices import MediaTypes, Sources, Status
+from app.log_safety import exception_summary
+from app.models.choices import MediaTypes, ProviderMetadataStatus, Sources, Status
 from app.models.item import Item
 from app.models.media import Media
 
@@ -27,7 +28,6 @@ logger = logging.getLogger(__name__)
 # user's resolve_watch_date behavior) from an explicit value, including None
 # (blank date deliberately chosen on the completion form).
 _UNSET_END_DATE = object()
-MIN_VALID_RELEASE_YEAR = 1900
 
 
 def _runtime_minutes(value):
@@ -552,10 +552,14 @@ class Season(Media):
         """Return released episode numbers known by the local calendar."""
         prefetched_events = getattr(self.item, "prefetched_events", None)
         if prefetched_events is None:
-            event_rows = events.models.Event.objects.filter(
-                item=self.item,
-                content_number__isnull=False,
-            ).only("content_number", "datetime")
+            event_rows = (
+                events.models.Event.objects.filter(
+                    item=self.item,
+                    content_number__isnull=False,
+                )
+                .select_related("item")
+                .only("content_number", "datetime", "item__media_type")
+            )
         else:
             event_rows = prefetched_events
 
@@ -566,7 +570,7 @@ class Season(Media):
             event_datetime = getattr(event, "datetime", None)
             if episode_number is None or event_datetime is None:
                 continue
-            if event_datetime.year < MIN_VALID_RELEASE_YEAR or event_datetime > now:
+            if event.is_unknown_unreleased or event_datetime > now:
                 continue
             try:
                 episode_numbers.add(int(episode_number))
@@ -574,6 +578,53 @@ class Season(Media):
                 continue
 
         return sorted(episode_numbers)
+
+    def _released_episode_completion(self):
+        """Return history presence and local completion, or None if unknown."""
+        episode_rows = self.episodes.filter(
+            status__in=[Status.COMPLETED.value, Status.DROPPED.value],
+        ).values_list("item__episode_number", "status")
+        tracked_numbers = {
+            episode_number
+            for episode_number, _status in episode_rows
+            if episode_number is not None
+        }
+        completed_numbers = {
+            episode_number
+            for episode_number, status in episode_rows
+            if episode_number is not None and status == Status.COMPLETED.value
+        }
+        released_numbers = set(self.available_episode_numbers())
+        released_numbers.update(
+            Item.objects.filter(
+                media_id=self.item.media_id,
+                source=self.item.source,
+                media_type=MediaTypes.EPISODE.value,
+                season_number=self.item.season_number,
+                episode_number__isnull=False,
+                release_datetime__isnull=False,
+                release_datetime__lte=timezone.now(),
+            )
+            .exclude(release_datetime__in=events.models.UNKNOWN_EVENT_DATETIMES)
+            .values_list("episode_number", flat=True),
+        )
+        authoritative_total = (
+            self.item.local_season_episode_count
+            or getattr(self, "max_progress", 0)
+            or 0
+        )
+        if authoritative_total > 0:
+            is_complete = len(completed_numbers) >= authoritative_total
+        elif (
+            self.item.provider_metadata_status
+            == ProviderMetadataStatus.LOCAL_ONLY_MISSING_SEASON.value
+        ):
+            is_complete = None
+        elif released_numbers:
+            is_complete = released_numbers.issubset(completed_numbers)
+        else:
+            is_complete = None
+        return bool(tracked_numbers), is_complete
 
     def next_episode_number(self, episode_numbers=None):
         """Return the next released episode, or none when the season is caught up."""
@@ -928,47 +979,23 @@ class Season(Media):
         cache_utils.clear_time_left_cache_for_user(self.user_id)
         cache_utils.clear_media_list_cache_for_user(self.user_id)
 
-    def _sync_status_after_episode_change(self):
+    def _sync_status_after_episode_change(self, *, preserve_in_progress=True):
         """Recalculate season (and TV) status using local data (no provider calls)."""
         if self.status == Status.DROPPED.value:
             return
         if self.status == Status.PAUSED.value:
             return
 
-        # What episodes do we have logged?
-        episode_numbers = set(
-            self.episodes.filter(
-                status__in=[Status.COMPLETED.value, Status.DROPPED.value],
-            ).values_list("item__episode_number", flat=True),
-        )
-        episode_numbers.discard(None)
-        max_watched = max(episode_numbers) if episode_numbers else 0
-
-        # Best local hint for total episodes: release events in the DB
-        total_eps = (
-            events.models.Event.objects.filter(
-                item=self.item,
-                content_number__isnull=False,
-                datetime__lte=timezone.now(),
-            ).aggregate(max_ep=Max("content_number"))["max_ep"]
-            or 0
-        )
-
-        desired_status = None
-
-        if total_eps > 0 and max_watched >= total_eps:
-            # We know how many have released and we've logged them all.
-            # Respect a manual IN_PROGRESS override (rewatch) rather than
-            # forcing back to Completed.
+        has_history, is_complete = self._released_episode_completion()
+        if is_complete is True:
             desired_status = (
                 Status.IN_PROGRESS.value
-                if self.status == Status.IN_PROGRESS.value
+                if preserve_in_progress and self.status == Status.IN_PROGRESS.value
                 else Status.COMPLETED.value
             )
-        elif max_watched > 0 and total_eps == 0:
-            # No release data, but we have watches — stay in progress
-            desired_status = Status.IN_PROGRESS.value
-        elif max_watched > 0:
+        elif is_complete is None and self.status == Status.COMPLETED.value:
+            desired_status = Status.COMPLETED.value
+        elif has_history:
             desired_status = Status.IN_PROGRESS.value
         else:
             desired_status = Status.PLANNING.value
@@ -1394,6 +1421,15 @@ class Episode(models.Model):
             prepare_completed_entry,
         )
 
+        season_number = self.item.season_number
+        was_complete = False
+        if season_number is not None:
+            completion_before = self.related_season._released_episode_completion()[1]
+            was_complete = completion_before is True or (
+                completion_before is None
+                and self.related_season.status == Status.COMPLETED.value
+            )
+
         if self.tracker.has_changed("status"):
             self.dropped = self.status == Status.DROPPED.value
         elif self.tracker.has_changed("dropped"):
@@ -1413,72 +1449,35 @@ class Episode(models.Model):
         else:
             super().save(*args, **kwargs)
 
-        season_number = self.item.season_number
         if season_number is None:
             return
-        try:
-            tv_with_seasons_metadata = providers.services.get_media_metadata(
-                "tv_with_seasons",
-                self.item.media_id,
-                self.item.source,
-                [season_number],
-            )
-            season_metadata = tv_with_seasons_metadata[f"season/{season_number}"]
-            max_progress = len(season_metadata["episodes"])
-            self.related_season.max_progress = max_progress
-        except (
-            providers.services.ProviderAPIError,
-            RequestException,
-            KeyError,
-            TypeError,
-            ValueError,
-        ) as error:
-            max_progress = self._local_season_max_progress()
-            if not max_progress:
-                logger.warning(
-                    "Skipping Episode status sync due to missing metadata for "
-                    "%s S%sE%s: %s",
-                    self.item.media_id,
-                    season_number,
-                    self.item.episode_number,
-                    error,
-                )
-                return
-            logger.info(
-                "Using locally recorded episode count %s for %s S%s "
-                "(provider metadata missing)",
-                max_progress,
-                self.item.media_id,
-                season_number,
-            )
-            self.related_season.max_progress = max_progress
 
-        # clear prefetch cache to get the updated episodes
         if hasattr(self.related_season, "_episode_stats_cache"):
             delattr(self.related_season, "_episode_stats_cache")
         self.related_season.refresh_from_db()
-
-        desired_status = self.related_season.derived_status_from_episode_progress(
-            max_progress=max_progress,
+        self.related_season._sync_status_after_episode_change(
+            preserve_in_progress=was_complete,
         )
-
-        if desired_status != self.related_season.status:
-            self.related_season.status = desired_status
-            bulk_update_with_history(
-                [self.related_season],
-                Season,
-                fields=["status"],
-            )
-
-        if desired_status == Status.COMPLETED.value:
-            self.related_season.related_tv._handle_completed_season(season_number)
-        elif self.related_season.related_tv.status != Status.IN_PROGRESS.value:
-            self.related_season.related_tv.status = Status.IN_PROGRESS.value
-            bulk_update_with_history(
-                [self.related_season.related_tv],
-                TV,
-                fields=["status"],
-            )
+        if (
+            not was_complete
+            and self.related_season.status == Status.COMPLETED.value
+        ):
+            try:
+                self.related_season.related_tv._handle_completed_season(season_number)
+            except (
+                providers.services.ProviderAPIError,
+                RequestException,
+                KeyError,
+                TypeError,
+                ValueError,
+            ) as error:
+                logger.warning(
+                    "Skipping next-season sync due to missing metadata for "
+                    "%s S%s: %s",
+                    self.item.media_id,
+                    season_number,
+                    exception_summary(error),
+                )
 
     @property
     def progress(self):
@@ -1508,13 +1507,3 @@ class Episode(models.Model):
     def progressed_at(self):
         """Return the progressed at."""
         return None
-
-    def _local_season_max_progress(self):
-        """Return the media-server-sourced episode count for this season, if any.
-
-        Only set when the provider has no metadata for the season, so the count
-        is the sole authority available for completion.
-        """
-        season_item = getattr(self.related_season, "item", None)
-        count = getattr(season_item, "local_season_episode_count", None)
-        return count if count and count > 0 else None

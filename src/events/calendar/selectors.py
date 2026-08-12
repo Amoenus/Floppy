@@ -6,7 +6,7 @@ from django.utils import timezone
 
 from app.models import Item, MediaTypes, Sources
 from app.providers import services, tmdb
-from events.models import Event
+from events.models import UNKNOWN_UNRELEASED_QUERY, Event
 
 logger = logging.getLogger(__name__)
 
@@ -167,10 +167,9 @@ def get_tvdb_tv_items_to_include(tv_items):
         item__source=OuterRef("source"),
         item__media_type=MediaTypes.SEASON.value,
     )
-    # Unknown air dates are stored as datetime.min (year 1); future events
-    # include the year-9999 sentinel. Both mean dates may still change.
+    # Future and exact legacy/current unknown events may still change.
     refreshable_season_events = season_events.filter(
-        Q(datetime__gte=now) | Q(datetime__year=1),
+        Q(datetime__gte=now) | UNKNOWN_UNRELEASED_QUERY,
     )
 
     included_tv_rows = list(

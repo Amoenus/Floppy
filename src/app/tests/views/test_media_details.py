@@ -56,6 +56,7 @@ from app.models import (
 from app.providers import services, tmdb
 from app.services import game_lengths as game_length_services
 from app.services.metadata_resolution import MetadataResolutionResult
+from events.models import UNKNOWN_UNRELEASED_DATETIME, Event
 from integrations.models import PlexAccount
 from users.models import DateFormatChoices, RatingScaleChoices, TimeFormatChoices
 
@@ -2549,6 +2550,16 @@ class MediaDetailsViewTests(TestCase):
             item=episode_item,
             related_season=season,
             end_date=datetime(2026, 3, 12, 12, 0, tzinfo=UTC),
+        )
+        Event.objects.create(
+            item=season_item,
+            content_number=2,
+            datetime=datetime(2026, 3, 2, 12, 0, tzinfo=UTC),
+        )
+        Event.objects.create(
+            item=season_item,
+            content_number=8,
+            datetime=UNKNOWN_UNRELEASED_DATETIME,
         )
         mock_get_metadata.return_value = {
             "media_id": "1668",
@@ -6168,6 +6179,21 @@ class MediaDetailsViewTests(TestCase):
             related_season=season,
             end_date=datetime(2026, 3, 12, 12, 0, tzinfo=UTC),
         )
+        Event.objects.create(
+            item=season_item,
+            content_number=1,
+            datetime=datetime(2026, 3, 1, 12, 0, tzinfo=UTC),
+        )
+        Event.objects.create(
+            item=season_item,
+            content_number=2,
+            datetime=datetime(2026, 3, 2, 12, 0, tzinfo=UTC),
+        )
+        Event.objects.create(
+            item=season_item,
+            content_number=8,
+            datetime=UNKNOWN_UNRELEASED_DATETIME,
+        )
         mock_get_metadata.return_value = {
             "title": "Test TV Show",
             "media_id": "1668",
@@ -6214,7 +6240,7 @@ class MediaDetailsViewTests(TestCase):
         )
         self.assertRegex(
             content,
-            r'class="hidden flex-wrap items-center justify-start gap-y-1 text-center text-sm font-medium text-\[var\(--color-text-muted\)\] md:flex md:text-start">\s*<h2 class="text-sm font-medium text-\[var\(--color-text-muted\)\]">Season 1</h2>\s*<span class="mx-2 text-gray-600">•</span>\s*<span id="season-progress-desktop-\d+" class="text-sm font-medium text-\[var\(--color-text-muted\)\]">\s*Progress: 2/8\s*</span>\s*<span class="mx-2 text-gray-600">•</span>\s*<span class="text-sm font-medium text-\[var\(--color-text-muted\)\]">\s*2026-03-01 12:00 - 2026-03-12 12:00\s*</span>',
+            r'class="hidden flex-wrap items-center justify-start gap-y-1 text-center text-sm font-medium text-\[var\(--color-text-muted\)\] md:flex md:text-start">\s*<h2 class="text-sm font-medium text-\[var\(--color-text-muted\)\]">Season 1</h2>\s*<span class="mx-2 text-gray-600">•</span>\s*<span id="season-progress-desktop-\d+" class="text-sm font-medium text-\[var\(--color-text-muted\)\]">\s*Progress: 2/2\s*</span>\s*<span class="mx-2 text-gray-600">•</span>\s*<span class="text-sm font-medium text-\[var\(--color-text-muted\)\]">\s*2026-03-01 12:00 - 2026-03-12 12:00\s*</span>',
         )
         self.assertNotIn("Your History", content)
 

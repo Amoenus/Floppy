@@ -1370,6 +1370,7 @@ class PlexWebhookTests(TestCase):
         season_item = Item.objects.get(
             media_type=MediaTypes.SEASON.value,
             media_id="555002",
+            season_number=1,
         )
         self.assertEqual(season_item.source, Sources.TVDB.value)
         mock_tvdb_tv_with_seasons.assert_called_with("555002", [1])
