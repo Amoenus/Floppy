@@ -519,6 +519,36 @@ class TVDBProviderTests(TestCase):
         mock_request.assert_called_once_with("series/407407/extended")
 
     @patch("app.providers.tvdb._request")
+    def test_series_tmdb_id_reuses_cached_series_extended_payload(
+        self,
+        mock_request,
+    ):
+        """series_tmdb_id should reuse _get_series_extended's cache, not refetch."""
+        series_payload = {
+            "data": {
+                "id": 81189,
+                "name": "Breaking Bad",
+                "seasons": [],
+                "characters": [],
+                "remoteIds": [
+                    {"sourceName": "TheMovieDB.com", "id": "1396"},
+                ],
+            },
+        }
+        mock_request.side_effect = [
+            series_payload,
+            {"data": {}},
+            series_payload,
+        ]
+
+        tvdb.tv("81189")
+        result = tvdb.series_tmdb_id("81189")
+
+        self.assertEqual(result, "1396")
+        requested_paths = [call.args[0] for call in mock_request.call_args_list]
+        self.assertEqual(requested_paths.count("series/81189/extended"), 1)
+
+    @patch("app.providers.tvdb._request")
     def test_get_episode_airstamp_map_caches_precise_episode_times(self, mock_request):
         """Default-order episode maps should cache normalized airstamps."""
         mock_request.return_value = {

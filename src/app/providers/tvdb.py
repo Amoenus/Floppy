@@ -1112,18 +1112,14 @@ def series_tmdb_id(series_id):
     if series_id in (None, ""):
         return None
 
-    cache_key = _cache_key("series_tmdb_id", series_id)
-    cached = cache.get(cache_key)
-    if cached is not None:
-        return cached
-
-    series_data = _unwrap_data(_request(f"series/{series_id}/extended")) or {}
+    # Reuse _get_series_extended's own 12h cache instead of independently
+    # re-fetching and caching the same endpoint under a separate key.
+    series_data = _get_series_extended(series_id, MediaTypes.TV.value)
     tmdb_id = _get_remote_ids_map(series_data).get("tmdb_id")
     if not tmdb_id:
         logger.debug("TVDB series metadata has no TMDB ID for %s", series_id)
         return None
 
-    cache.set(cache_key, tmdb_id)
     return tmdb_id
 
 
