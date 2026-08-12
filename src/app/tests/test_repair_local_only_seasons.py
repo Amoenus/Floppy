@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
-from django.test import TestCase
+from django.test import TestCase, tag
 
 from app.models import (
     TV,
@@ -129,6 +129,7 @@ class RepairLocalOnlySeasonsTests(TestCase):
             ProviderMetadataStatus.LOCAL_ONLY_MISSING_SEASON.value,
         )
 
+    @tag("network")
     def test_restores_season_when_provider_has_it_again(self):
         """A season the provider now knows about loses its local-only flag."""
         self._add_episode(1)

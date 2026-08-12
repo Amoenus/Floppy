@@ -1817,6 +1817,36 @@ class MediaListViewTests(TestCase):
         self.assertContains(not_released_response, "Test Movie 2")
         self.assertNotContains(not_released_response, "Test Movie 1")
 
+    def test_media_list_with_media_status_filter(self):
+        """Media status filter should match Item.status exactly and exclude blanks."""
+        ended_item = (
+            Item.objects.filter(
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.MOVIE.value,
+                title="Test Movie 1",
+            )
+            .only("id")
+            .first()
+        )
+        self.assertIsNotNone(ended_item)
+        Item.objects.filter(id=ended_item.id).update(status="Ended")
+
+        url = reverse("medialist", args=[MediaTypes.MOVIE.value])
+
+        response = self.client.get(f"{url}?media_status=Ended")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["current_media_status"], "Ended")
+        self.assertEqual(response.context["media_list"].paginator.count, 1)
+        self.assertContains(response, "Test Movie 1")
+        self.assertNotContains(response, "Test Movie 2")
+
+        all_response = self.client.get(url)
+        self.assertEqual(all_response.context["media_list"].paginator.count, 5)
+        media_statuses = [
+            option["value"] for option in all_response.context["filter_data"]["media_statuses"]
+        ]
+        self.assertEqual(media_statuses, ["Ended"])
+
     def test_game_platform_filter_prefers_collection_resolution(self):
         """Game platform filtering should prefer collection platform over metadata platforms."""
         switch_override_item = Item.objects.create(
@@ -1872,6 +1902,90 @@ class MediaListViewTests(TestCase):
         }
         self.assertIn("Nintendo Switch", platform_values)
         self.assertIn("PlayStation 5", platform_values)
+
+    def test_game_platform_filter_multi_select_or_and_not(self):
+        """Game platform filtering supports OR/AND/NOT across multiple platforms."""
+        switch_item = Item.objects.create(
+            media_id="game-platform-multi-1",
+            source=Sources.IGDB.value,
+            media_type=MediaTypes.GAME.value,
+            title="Switch Only Game",
+            image="http://example.com/game3.jpg",
+            platforms=["Nintendo Switch"],
+        )
+        ps5_item = Item.objects.create(
+            media_id="game-platform-multi-2",
+            source=Sources.IGDB.value,
+            media_type=MediaTypes.GAME.value,
+            title="PS5 Only Game",
+            image="http://example.com/game4.jpg",
+            platforms=["PlayStation 5"],
+        )
+        both_item = Item.objects.create(
+            media_id="game-platform-multi-3",
+            source=Sources.IGDB.value,
+            media_type=MediaTypes.GAME.value,
+            title="Switch and PS5 Game",
+            image="http://example.com/game5.jpg",
+            platforms=["Nintendo Switch", "PlayStation 5"],
+        )
+
+        Game.objects.bulk_create(
+            [
+                Game(
+                    item=switch_item,
+                    user=self.user,
+                    status=Status.IN_PROGRESS.value,
+                    progress=1,
+                ),
+                Game(
+                    item=ps5_item,
+                    user=self.user,
+                    status=Status.IN_PROGRESS.value,
+                    progress=1,
+                ),
+                Game(
+                    item=both_item,
+                    user=self.user,
+                    status=Status.IN_PROGRESS.value,
+                    progress=1,
+                ),
+            ],
+        )
+
+        url = reverse("medialist", args=[MediaTypes.GAME.value])
+
+        or_response = self.client.get(
+            url,
+            {
+                "platform": ["Nintendo Switch", "PlayStation 5"],
+                "platform_mode": "or",
+                "status": "All",
+            },
+        )
+        self.assertEqual(or_response.context["media_list"].paginator.count, 3)
+
+        and_response = self.client.get(
+            url,
+            {
+                "platform": ["Nintendo Switch", "PlayStation 5"],
+                "platform_mode": "and",
+                "status": "All",
+            },
+        )
+        self.assertEqual(and_response.context["media_list"].paginator.count, 1)
+        self.assertContains(and_response, "Switch and PS5 Game")
+
+        not_response = self.client.get(
+            url,
+            {
+                "platform": ["Nintendo Switch"],
+                "platform_mode": "not",
+                "status": "All",
+            },
+        )
+        self.assertEqual(not_response.context["media_list"].paginator.count, 1)
+        self.assertContains(not_response, "PS5 Only Game")
 
     def test_game_table_renders_time_to_beat_column(self):
         self._create_game_entry("325609", "Dispatch", hltb_minutes=555)
@@ -3077,6 +3191,7 @@ class MediaListViewTests(TestCase):
             first_refresh,
             [
                 "",
+                "",
                 "Title",
                 "End Date",
                 "Status",
@@ -3115,6 +3230,7 @@ class MediaListViewTests(TestCase):
         assert_partial_table_refresh(
             second_refresh,
             [
+                "",
                 "",
                 "Title",
                 "Score",

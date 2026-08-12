@@ -1181,6 +1181,53 @@ def _update_music_entry(
     return music
 
 
+# Fields a scrobble import can change on an existing Music row (see the
+# `if changed:` block above) -- the only ones a revert needs to restore.
+_REVERTIBLE_SCROBBLE_FIELDS = ("progress", "status", "start_date", "end_date")
+
+
+def revert_music_import_run(run, user) -> dict[str, int]:
+    """Undo a Music import run's effect on rows it created or mutated.
+
+    Music rows are mutated in place (one row per user+item, `progress`
+    incremented per play), so a run may have only incremented an existing
+    row rather than inserted one -- deleting rows tagged with this run
+    would destroy plays from other runs or manual entries sharing that
+    row. Instead, for each row still tagged with this run, find its
+    historical state immediately before the run's first touch (via
+    django-simple-history) and restore the fields a scrobble import can
+    change. Rows this run created outright (no prior history) are deleted.
+    """
+    deleted = 0
+    reverted = 0
+
+    for music in Music.objects.filter(user=user, import_run=run):
+        history_qs = list(music.history.all().order_by("history_date"))
+        first_touch_index = next(
+            (
+                index
+                for index, record in enumerate(history_qs)
+                if record.import_run_id == run.id
+            ),
+            None,
+        )
+
+        if first_touch_index is None or first_touch_index == 0:
+            # No prior state recorded: this run created the row.
+            music.delete()
+            deleted += 1
+            continue
+
+        pre_run_record = history_qs[first_touch_index - 1]
+        for field_name in _REVERTIBLE_SCROBBLE_FIELDS:
+            setattr(music, field_name, getattr(pre_run_record, field_name))
+        music.import_run_id = pre_run_record.import_run_id
+        music.save()
+        reverted += 1
+
+    return {"deleted": deleted, "reverted": reverted}
+
+
 def _select_media_id(
     recording_id: str | None,
     plex_rating_key: str | None,

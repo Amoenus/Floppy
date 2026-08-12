@@ -28,5 +28,11 @@
       {% include "app/icons/link.svg" with classes="w-4 h-4" %}
       <span x-text="sharing ? 'Sharing…' : 'Share View'"></span>
     </button>
+    <button class="flex items-center gap-2 w-full px-3 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
+            type="button"
+            @click="open = false; toggleSelectMode()">
+      {% include "app/icons/tag.svg" with classes="w-4 h-4" %}
+      <span x-text="selectMode ? 'Cancel Select' : 'Select Items'"></span>
+    </button>
   </div>
 </div>

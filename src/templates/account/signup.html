@@ -6,7 +6,11 @@
 {% endblock head_title %}
 
 {% block content_title %}
-  Create your account
+  {% if IS_FIRST_RUN %}
+    Welcome to Floppy — create your first account
+  {% else %}
+    Create your account
+  {% endif %}
 {% endblock content_title %}
 
 {% block content %}

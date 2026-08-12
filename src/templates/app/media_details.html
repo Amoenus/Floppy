@@ -438,7 +438,7 @@
                   </div>
                 </div>
               {% else %}
-                {% include "app/components/detail_track_action.html" with media=media current_instance=current_instance return_url=request.get_full_path|urlencode track_action_update=True %}
+                {% include "app/components/detail_track_action.html" with media=media current_instance=current_instance return_url=request.get_full_path|urlencode track_action_update=True edition_id=hardcover_edition_id %}
               {% endif %}
             {% endif %}
           </div>

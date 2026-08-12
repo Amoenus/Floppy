@@ -379,6 +379,30 @@ def lists_modal(
     )
 
 
+def _list_item_toggle_error_response():
+    """Return an empty HTMX response that only triggers an error toast.
+
+    htmx doesn't swap the response body for 4xx/5xx status codes by
+    default, so the button stays exactly as it was — accurate, since
+    nothing committed — while HX-Trigger still fires the toast regardless
+    of swap/status.
+    """
+    response = HttpResponse(status=500)
+    response["HX-Trigger"] = json.dumps(
+        {
+            "showToast": {
+                "message": (
+                    "Couldn't update this list — please try again. If it "
+                    "keeps happening, file a bug report from "
+                    "Settings > Advanced."
+                ),
+                "type": "error",
+            },
+        },
+    )
+    return response
+
+
 @require_POST
 def list_item_toggle(request):
     """Add or remove an item from a custom list."""
@@ -400,37 +424,52 @@ def list_item_toggle(request):
     if custom_list.is_smart:
         return HttpResponse(status=403)
 
-    if custom_list.items.filter(id=item.id).exists():
-        # Instance-level delete so CustomListItem.delete() renumbers the
-        # per-list list_item_id sequence (queryset delete would bypass it).
-        custom_list_item = CustomListItem.objects.filter(
-            custom_list=custom_list,
-            item=item,
-        ).first()
-        if custom_list_item is not None:
-            custom_list_item.delete()
-        logger.info("%s removed from %s.", item, custom_list)
-        has_item = False
-        ListActivity.objects.create(
-            custom_list=custom_list,
-            user=request.user,
-            activity_type=ListActivityType.ITEM_REMOVED,
-            item=item,
+    try:
+        if custom_list.items.filter(id=item.id).exists():
+            # Instance-level delete so CustomListItem.delete() renumbers the
+            # per-list list_item_id sequence (queryset delete would bypass it).
+            custom_list_item = CustomListItem.objects.filter(
+                custom_list=custom_list,
+                item=item,
+            ).first()
+            if custom_list_item is not None:
+                custom_list_item.delete()
+            logger.info("%s removed from %s.", item, custom_list)
+            has_item = False
+            ListActivity.objects.create(
+                custom_list=custom_list,
+                user=request.user,
+                activity_type=ListActivityType.ITEM_REMOVED,
+                item=item,
+            )
+        else:
+            CustomListItem.objects.create(
+                custom_list=custom_list,
+                item=item,
+                added_by=request.user,
+            )
+            logger.info("%s added to %s.", item, custom_list)
+            has_item = True
+            ListActivity.objects.create(
+                custom_list=custom_list,
+                user=request.user,
+                activity_type=ListActivityType.ITEM_ADDED,
+                item=item,
+            )
+    except Exception:
+        # Broad on purpose: whatever goes wrong here (a constraint violation,
+        # a transient DB error, anything unanticipated), the user is staring
+        # at a button that just silently failed unless we tell them.
+        # log_safety.py already scrubs anything sensitive request-side, so
+        # this is safe to log at full detail.
+        logger.exception(
+            "Failed to toggle list membership (item_id=%s, custom_list_id=%s, "
+            "user_id=%s)",
+            item.id,
+            custom_list.id,
+            request.user.id,
         )
-    else:
-        CustomListItem.objects.create(
-            custom_list=custom_list,
-            item=item,
-            added_by=request.user,
-        )
-        logger.info("%s added to %s.", item, custom_list)
-        has_item = True
-        ListActivity.objects.create(
-            custom_list=custom_list,
-            user=request.user,
-            activity_type=ListActivityType.ITEM_ADDED,
-            item=item,
-        )
+        return _list_item_toggle_error_response()
 
     return render(
         request,

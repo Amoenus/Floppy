@@ -129,7 +129,11 @@ checkout_ref() {
 }
 
 run_manage_sqlite() {
-  (cd "$WORKTREE_DIR/src" && SECRET=dev DEBUG=True python manage.py "$@")
+  (
+    cd "$WORKTREE_DIR/src"
+    SECRET=dev DEBUG=True \
+      uv run --project "$REPO_ROOT" --no-sync python manage.py "$@"
+  )
 }
 
 start_postgres() {
@@ -180,7 +184,7 @@ run_manage_postgres() {
       DB_USER=postgres \
       DB_PASSWORD=postgres \
       DB_PORT="$REPLAY_PORT" \
-      python manage.py "$@"
+      uv run --project "$REPO_ROOT" --no-sync python manage.py "$@"
   )
 }
 

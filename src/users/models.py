@@ -264,6 +264,26 @@ class ImportModeChoices(models.TextChoices):
     UPDATE_COLLECTION = "update_collection", "Update Collection Metadata Only"
 
 
+class OnboardingStatusChoices(models.TextChoices):
+    """Progress state for the first-run setup wizard."""
+
+    NOT_STARTED = "not_started", "Not Started"
+    IN_PROGRESS = "in_progress", "In Progress"
+    COMPLETED = "completed", "Completed"
+
+
+class OnboardingStepChoices(models.TextChoices):
+    """Step to resume the first-run setup wizard on."""
+
+    MEDIA_TYPES = "media_types", "Choose Media Types"
+    SERVICES = "services", "Choose Services"
+    SERVICES_SUMMARY = "services_summary", "Review Services"
+    SERVICE_SETUP = "service_setup", "Connect Services"
+    IMPORT_STATUS = "import_status", "Import Status"
+    INTEGRATION_SETUP = "integration_setup", "Set Up Scrobbling"
+    DONE = "done", "Done"
+
+
 class TopTalentSortChoices(models.TextChoices):
     """Choices for sorting top cast/crew/studio cards on statistics."""
 
@@ -959,6 +979,42 @@ class User(AbstractUser):
         max_length=20,
         default=ImportModeChoices.NEW,
         choices=ImportModeChoices.choices,
+    )
+
+    onboarding_status = models.CharField(
+        max_length=20,
+        default=OnboardingStatusChoices.NOT_STARTED,
+        choices=OnboardingStatusChoices.choices,
+        help_text="Progress state for the first-run setup wizard.",
+    )
+    onboarding_step = models.CharField(
+        max_length=20,
+        default=OnboardingStepChoices.MEDIA_TYPES,
+        choices=OnboardingStepChoices.choices,
+        help_text="Step to resume the first-run setup wizard on.",
+    )
+    onboarding_selected_sources = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Source slugs chosen to connect during the setup wizard.",
+    )
+    onboarding_skipped_sources = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Source slugs explicitly skipped during the setup wizard.",
+    )
+    onboarding_connected_sources = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Source slugs successfully connected during the setup wizard.",
+    )
+    onboarding_skipped_integrations = models.JSONField(
+        default=list,
+        blank=True,
+        help_text=(
+            "Source slugs whose realtime integration (e.g. a webhook) was "
+            "explicitly skipped during the setup wizard."
+        ),
     )
 
     game_logging_style = models.CharField(

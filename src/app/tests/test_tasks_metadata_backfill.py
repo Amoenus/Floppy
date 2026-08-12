@@ -933,6 +933,39 @@ class MetadataBackfillTaskTests(TestCase):
         self.assertEqual(mock_refresh_tab_cache.call_count, 2)
 
     @patch("app.providers.services.get_media_metadata")
+    def test_backfill_fills_blank_status_for_already_fetched_tv(
+        self,
+        mock_get_media_metadata,
+    ):
+        old_fetched_at = timezone.now() - timedelta(days=30)
+        item = Item.objects.create(
+            media_id="9999",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Blank Status Show",
+            image="https://example.com/blank-status.jpg",
+            metadata_fetched_at=old_fetched_at,
+            status="",
+        )
+
+        self.assertIn(item.id, tasks._status_items_queryset().values_list("id", flat=True))
+
+        mock_get_media_metadata.return_value = {
+            "details": {"status": "Ended"},
+        }
+
+        result = tasks.backfill_item_metadata_task(batch_size=1)
+
+        item.refresh_from_db()
+        self.assertEqual(item.status, "Ended")
+        self.assertEqual(result["success_count"], 1)
+        self.assertIn("remaining_status", result)
+        self.assertNotIn(
+            item.id,
+            tasks._status_items_queryset().values_list("id", flat=True),
+        )
+
+    @patch("app.providers.services.get_media_metadata")
     def test_backfill_prioritizes_never_fetched_items(self, mock_get_media_metadata):
         never_fetched = Item.objects.create(
             media_id="100",
@@ -1058,6 +1091,7 @@ class MetadataBackfillTaskTests(TestCase):
         self.assertIn(comic.id, queued_ids)
         self.assertIn(manga.id, queued_ids)
 
+    @override_settings(TVDB_API_KEY="test-tvdb-key")
     def test_genre_backfill_queryset_includes_tmdb_tv_until_current_version_marked(
         self,
     ):
@@ -1083,6 +1117,7 @@ class MetadataBackfillTaskTests(TestCase):
         queued_ids = set(tasks._genre_items_queryset().values_list("id", flat=True))
         self.assertNotIn(item.id, queued_ids)
 
+    @override_settings(TVDB_API_KEY="test-tvdb-key")
     @patch("app.tasks_genre.enqueue_genre_backfill_items")
     def test_reconcile_genre_backfill_queues_current_candidates_on_startup(
         self,
@@ -1269,6 +1304,7 @@ class MetadataBackfillTaskTests(TestCase):
         )
         self.assertEqual(result, {"selected": 1, "enqueued": 1})
 
+    @override_settings(TVDB_API_KEY="test-tvdb-key")
     @patch("app.providers.services.get_media_metadata")
     def test_populate_genre_data_for_tmdb_tv_adds_anime_from_tvdb_mapping(
         self,
@@ -1318,6 +1354,7 @@ class MetadataBackfillTaskTests(TestCase):
         self.assertEqual(result["errors"], 0)
         self.assertEqual(state.strategy_version, tasks.GENRE_BACKFILL_VERSION)
 
+    @override_settings(TVDB_API_KEY="test-tvdb-key")
     @patch("app.providers.services.get_media_metadata")
     def test_populate_genre_data_for_tmdb_tv_non_anime_marks_strategy_current(
         self,
@@ -1371,6 +1408,7 @@ class MetadataBackfillTaskTests(TestCase):
             set(tasks._genre_items_queryset().values_list("id", flat=True)),
         )
 
+    @override_settings(TVDB_API_KEY="test-tvdb-key")
     @patch("app.providers.services.get_media_metadata")
     def test_populate_genre_data_for_tmdb_tv_discovers_tvdb_mapping_from_tmdb_metadata(
         self,
@@ -1465,6 +1503,7 @@ class MetadataBackfillTaskTests(TestCase):
             item.source,
         )
 
+    @override_settings(TVDB_API_KEY="test-tvdb-key")
     @patch("app.providers.services.get_media_metadata")
     def test_populate_genre_data_for_tmdb_tv_records_failure_on_tvdb_error(
         self,

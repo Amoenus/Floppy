@@ -22,6 +22,7 @@ TODO.txt
 .env.dev
 docker-compose.dev.yml
 db-dev/
+src/local_serve.py
 
 # Local dev DB
 db/
@@ -39,3 +40,4 @@ node_modules/
 # Brand masters are kept outside the repo; only the web-sized derivatives
 # under docs/brand/ and src/static/img/ are committed.
 docs/brand/*-source.png
+.venv/

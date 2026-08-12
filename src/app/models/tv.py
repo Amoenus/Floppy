@@ -1010,22 +1010,36 @@ class Season(Media):
 
     def get_tv(self):
         """Get related TV instance for a season and create it if it doesn't exist."""
+        # Scope to the season's own bucket (anime vs. non-anime) so a season
+        # is never silently attached to a TV row from the show's other
+        # identity when both exist — see #623.
+        is_anime_bucket = self.item.library_media_type == MediaTypes.ANIME.value
+
+        def _bucket_scoped(queryset):
+            if is_anime_bucket:
+                return queryset.filter(item__library_media_type=MediaTypes.ANIME.value)
+            return queryset.exclude(item__library_media_type=MediaTypes.ANIME.value)
+
         try:
-            tv = TV.objects.get(
-                item__media_id=self.item.media_id,
-                item__media_type=MediaTypes.TV.value,
-                item__season_number=None,
-                item__source=self.item.source,
-                user=self.user,
-            )
-        except TV.MultipleObjectsReturned:
-            tv = (
+            tv = _bucket_scoped(
                 TV.objects.filter(
                     item__media_id=self.item.media_id,
                     item__media_type=MediaTypes.TV.value,
                     item__season_number=None,
                     item__source=self.item.source,
                     user=self.user,
+                ),
+            ).get()
+        except TV.MultipleObjectsReturned:
+            tv = (
+                _bucket_scoped(
+                    TV.objects.filter(
+                        item__media_id=self.item.media_id,
+                        item__media_type=MediaTypes.TV.value,
+                        item__season_number=None,
+                        item__source=self.item.source,
+                        user=self.user,
+                    ),
                 )
                 .order_by("id")
                 .first()

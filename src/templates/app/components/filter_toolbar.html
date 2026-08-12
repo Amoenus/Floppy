@@ -1,24 +1,25 @@
 {% load app_tags %}
 <div class="flex flex-col md:flex-row gap-4 mb-6">
   <div class="flex gap-1 flex-wrap md:flex-nowrap w-full items-center filter-toolbar media-filter-toolbar">
-    {% if filter_data %}
-      {{ filter_data|json_script:"media-filter-data" }}
-    {% endif %}
+    {% if filter_data %}{{ filter_data|json_script:"media-filter-data" }}{% endif %}
     {% if show_layout_toggle and column_config %}
       {{ column_config|json_script:"media-column-config-data" }}
       {{ default_column_config|json_script:"media-column-default-config-data" }}
     {% endif %}
 
     <!-- Filter Menu -->
-    <div class="relative filter-control" x-data="mediaFilterMenu()" @click.outside="open = false; view = 'root'">
+    <div class="relative filter-control"
+         x-data="mediaFilterMenu()"
+         @click.outside="open = false; view = 'root'">
       <button class="flex items-center px-2 py-2 rounded-md text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
               @click="open = !open; if (open) { view = 'root'; }"
               type="button">
-        <span class="block min-w-0 truncate max-w-[10rem] sm:max-w-[14rem]" x-text="filterLabel()"></span>
+        <span class="block min-w-0 truncate max-w-[10rem] sm:max-w-[14rem]"
+              x-text="filterLabel()"></span>
         <svg xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 20 20"
-            class="w-4 h-4 ml-2"
-            aria-hidden="true">
+             viewBox="0 0 20 20"
+             class="w-4 h-4 ml-2"
+             aria-hidden="true">
           <path d="M10 14 L4.5 7 H15.5 Z" fill="currentColor"></path>
         </svg>
       </button>
@@ -41,7 +42,8 @@
                   @click="clearFilters(); open = false"
                   type="button">
             <span>All</span>
-            <span class="ml-auto text-xs text-gray-500" x-show="filterLabel() === 'All'">Active</span>
+            <span class="ml-auto text-xs text-gray-500"
+                  x-show="filterLabel() === 'All'">Active</span>
           </button>
 
           {% if media_type == 'music' or media_type == 'comic' %}
@@ -96,7 +98,8 @@
                     @click="view = 'genre'; resetSearch()"
                     type="button">
               <span class="flex-shrink-0 mr-3">Genre</span>
-              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="genre || 'Any'"></span>
+              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
+                    x-text="genre || 'Any'"></span>
               <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
             </button>
           {% endif %}
@@ -105,7 +108,8 @@
                     @click="view = 'impliedGenre'; resetSearch()"
                     type="button">
               <span class="flex-shrink-0 mr-3">Implied Genre</span>
-              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="impliedGenre || 'Any'"></span>
+              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
+                    x-text="impliedGenre || 'Any'"></span>
               <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
             </button>
           {% endif %}
@@ -115,7 +119,8 @@
                     @click="view = 'year'; resetSearch()"
                     type="button">
               <span class="flex-shrink-0 mr-3">Year</span>
-              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="year ? (year === 'unknown' ? 'Unknown' : year) : 'Any'"></span>
+              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
+                    x-text="year ? (year === 'unknown' ? 'Unknown' : year) : 'Any'"></span>
               <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
             </button>
           {% endif %}
@@ -133,7 +138,19 @@
                     @click="view = 'source'; resetSearch()"
                     type="button">
               <span class="flex-shrink-0 mr-3">Source</span>
-              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="sourceFilter ? sourceFilter.toUpperCase() : 'Any'"></span>
+              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
+                    x-text="sourceFilter ? sourceFilter.toUpperCase() : 'Any'"></span>
+              <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
+            </button>
+          {% endif %}
+
+          {% if filter_data.media_statuses %}
+            <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                    @click="view = 'mediaStatus'; resetSearch()"
+                    type="button">
+              <span class="flex-shrink-0 mr-3">Availability</span>
+              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
+                    x-text="mediaStatus ? mediaStatus : 'Any'"></span>
               <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
             </button>
           {% endif %}
@@ -143,7 +160,8 @@
                     @click="view = 'language'; resetSearch()"
                     type="button">
               <span class="flex-shrink-0 mr-3">Language</span>
-              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="language ? (language.length <= 3 ? language.toUpperCase() : language) : 'Any'"></span>
+              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
+                    x-text="language ? (language.length <= 3 ? language.toUpperCase() : language) : 'Any'"></span>
               <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
             </button>
           {% endif %}
@@ -153,7 +171,8 @@
                     @click="view = 'country'; resetSearch()"
                     type="button">
               <span class="flex-shrink-0 mr-3">Country</span>
-              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="country ? (country.length <= 3 ? country.toUpperCase() : country) : 'Any'"></span>
+              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
+                    x-text="country ? (country.length <= 3 ? country.toUpperCase() : country) : 'Any'"></span>
               <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
             </button>
           {% endif %}
@@ -163,7 +182,8 @@
                     @click="view = 'platform'; resetSearch()"
                     type="button">
               <span class="flex-shrink-0 mr-3">Platform</span>
-              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="platform ? platform : 'Any'"></span>
+              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
+                    x-text="selectedPlatforms.length ? selectedPlatforms.join(', ') : 'Any'"></span>
               <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
             </button>
           {% endif %}
@@ -173,7 +193,8 @@
                     @click="view = 'origin'; resetSearch()"
                     type="button">
               <span class="flex-shrink-0 mr-3">Origin</span>
-              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="origin ? (origin.length <= 3 ? origin.toUpperCase() : origin) : 'Any'"></span>
+              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
+                    x-text="origin ? (origin.length <= 3 ? origin.toUpperCase() : origin) : 'Any'"></span>
               <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
             </button>
           {% endif %}
@@ -183,7 +204,8 @@
                     @click="view = 'format'; resetSearch()"
                     type="button">
               <span class="flex-shrink-0 mr-3">Format</span>
-              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="format ? (format === 'ebook' ? 'eBook' : format.charAt(0).toUpperCase() + format.slice(1)) : 'Any'"></span>
+              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
+                    x-text="format ? (format === 'ebook' ? 'eBook' : format.charAt(0).toUpperCase() + format.slice(1)) : 'Any'"></span>
               <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
             </button>
           {% endif %}
@@ -193,7 +215,8 @@
                     @click="view = 'author'; resetSearch()"
                     type="button">
               <span class="flex-shrink-0 mr-3">Author</span>
-              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="author || 'Any'"></span>
+              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
+                    x-text="author || 'Any'"></span>
               <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
             </button>
           {% endif %}
@@ -203,7 +226,8 @@
                     @click="view = 'provider'; resetSearch()"
                     type="button">
               <span class="flex-shrink-0 mr-3">Streaming Service</span>
-              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="provider || 'Any'"></span>
+              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
+                    x-text="provider || 'Any'"></span>
               <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
             </button>
           {% endif %}
@@ -214,7 +238,8 @@
                     @click="view = 'department'; resetSearch()"
                     type="button">
               <span class="flex-shrink-0 mr-3">Department</span>
-              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="department || 'Any'"></span>
+              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
+                    x-text="department || 'Any'"></span>
               <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
             </button>
           {% endif %}
@@ -225,7 +250,8 @@
                     @click="view = 'tag'; resetSearch()"
                     type="button">
               <span class="flex-shrink-0 mr-3">Tag</span>
-              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="selectedTags.length ? selectedTags.join(', ') : 'Any'"></span>
+              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
+                    x-text="selectedTags.length ? selectedTags.join(', ') : 'Any'"></span>
               <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
             </button>
           {% endif %}
@@ -235,9 +261,7 @@
           <div class="flex items-center gap-2 px-4 py-2 border-b border-gray-700">
             <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
                     @click="view = 'root'"
-                    type="button">
-              {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
-            </button>
+                    type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
             <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Media Type</div>
           </div>
           {% if media_type == 'music' %}
@@ -284,9 +308,7 @@
           <div class="flex items-center gap-2 px-2 py-1">
             <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
                     @click="view = 'root'"
-                    type="button">
-              {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
-            </button>
+                    type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
             <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Genre</div>
           </div>
           <div class="px-2 py-2">
@@ -329,9 +351,7 @@
           <div class="flex items-center gap-2 px-2 py-1">
             <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
                     @click="view = 'root'"
-                    type="button">
-              {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
-            </button>
+                    type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
             <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Implied Genre</div>
           </div>
           <div class="px-2 py-2">
@@ -374,9 +394,7 @@
           <div class="flex items-center gap-2 px-2 py-1">
             <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
                     @click="view = 'root'"
-                    type="button">
-              {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
-            </button>
+                    type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
             <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Rating</div>
           </div>
           <div class="max-h-64 overflow-y-auto">
@@ -423,9 +441,7 @@
           <div class="flex items-center gap-2 px-2 py-1">
             <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
                     @click="view = 'root'"
-                    type="button">
-              {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
-            </button>
+                    type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
             <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Collection</div>
           </div>
           <div class="max-h-64 overflow-y-auto">
@@ -473,9 +489,7 @@
             <div class="flex items-center gap-2 px-2 py-1">
               <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
                       @click="view = 'root'"
-                      type="button">
-                {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
-              </button>
+                      type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
               <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Progress</div>
             </div>
             <div class="max-h-64 overflow-y-auto">
@@ -523,9 +537,7 @@
           <div class="flex items-center gap-2 px-2 py-1">
             <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
                     @click="view = 'root'"
-                    type="button">
-              {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
-            </button>
+                    type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
             <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Year</div>
           </div>
           <div class="px-2 py-2">
@@ -568,9 +580,7 @@
           <div class="flex items-center gap-2 px-2 py-1">
             <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
                     @click="view = 'root'"
-                    type="button">
-              {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
-            </button>
+                    type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
             <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Released</div>
           </div>
           <div class="max-h-64 overflow-y-auto">
@@ -617,9 +627,7 @@
           <div class="flex items-center gap-2 px-2 py-1">
             <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
                     @click="view = 'root'"
-                    type="button">
-              {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
-            </button>
+                    type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
             <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Source</div>
           </div>
           <div class="px-2 py-2">
@@ -658,13 +666,54 @@
           </div>
         </div>
 
+        <div x-show="view === 'mediaStatus'" x-cloak class="p-2">
+          <div class="flex items-center gap-2 px-2 py-1">
+            <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
+                    @click="view = 'root'"
+                    type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
+            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Availability</div>
+          </div>
+          <div class="px-2 py-2">
+            <input type="text"
+                   x-model="mediaStatusSearch"
+                   placeholder="Filter Availability"
+                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-gray-500 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          </div>
+          <div class="max-h-64 overflow-y-auto">
+            <button hx-get="{{ filter_hx_endpoint }}"
+                    hx-target="{{ filter_hx_target }}"
+                    hx-include="#filter-form"
+                    hx-indicator="#loading-indicator"
+                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                    @click="mediaStatus = ''; open = false; view = 'root'"
+                    type="button">
+              <span>Any Availability</span>
+              <span class="ml-auto" x-show="mediaStatus === ''">
+                {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+              </span>
+            </button>
+            <template x-for="option in filteredMediaStatuses()" :key="option.value">
+              <button hx-get="{{ filter_hx_endpoint }}"
+                      hx-target="{{ filter_hx_target }}"
+                      hx-include="#filter-form"
+                      hx-indicator="#loading-indicator"
+                      class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                      @click="mediaStatus = option.value; open = false; view = 'root'"
+                      type="button">
+                <span class="block min-w-0 truncate max-w-[11rem]" x-text="option.label"></span>
+                <span class="ml-auto" x-show="mediaStatus === option.value">
+                  {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+                </span>
+              </button>
+            </template>
+          </div>
+        </div>
+
         <div x-show="view === 'language'" x-cloak class="p-2">
           <div class="flex items-center gap-2 px-2 py-1">
             <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
                     @click="view = 'root'"
-                    type="button">
-              {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
-            </button>
+                    type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
             <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Language</div>
           </div>
           <div class="px-2 py-2">
@@ -707,9 +756,7 @@
           <div class="flex items-center gap-2 px-2 py-1">
             <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
                     @click="view = 'root'"
-                    type="button">
-              {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
-            </button>
+                    type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
             <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Country</div>
           </div>
           <div class="px-2 py-2">
@@ -752,10 +799,16 @@
           <div class="flex items-center gap-2 px-2 py-1">
             <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
                     @click="view = 'root'"
-                    type="button">
-              {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
-            </button>
+                    type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
             <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Platform</div>
+            <button type="button"
+                    class="ml-auto px-2 py-0.5 rounded text-xs font-medium uppercase bg-[var(--color-surface)] border border-gray-600 text-indigo-300 hover:text-[var(--color-text)] hover:border-indigo-500 transition-colors cursor-pointer"
+                    @click.stop="cyclePlatformMode()"
+                    hx-get="{{ filter_hx_endpoint }}"
+                    hx-target="{{ filter_hx_target }}"
+                    hx-include="#filter-form"
+                    hx-indicator="#loading-indicator"
+                    x-text="platformMode.toUpperCase()"></button>
           </div>
           <div class="px-2 py-2">
             <input type="text"
@@ -769,10 +822,10 @@
                     hx-include="#filter-form"
                     hx-indicator="#loading-indicator"
                     class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
-                    @click="platform = ''; open = false; view = 'root'"
+                    @click="selectedPlatforms = []"
                     type="button">
-              <span>Any Platform</span>
-              <span class="ml-auto" x-show="platform === ''">
+              <span>Clear Platforms</span>
+              <span class="ml-auto" x-show="selectedPlatforms.length === 0">
                 {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
               </span>
             </button>
@@ -782,10 +835,10 @@
                       hx-include="#filter-form"
                       hx-indicator="#loading-indicator"
                       class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
-                      @click="platform = option.value; open = false; view = 'root'"
+                      @click="togglePlatform(option.value)"
                       type="button">
                 <span class="block min-w-0 truncate max-w-[11rem]" x-text="option.label"></span>
-                <span class="ml-auto" x-show="platform === option.value">
+                <span class="ml-auto" x-show="isPlatformSelected(option.value)">
                   {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
                 </span>
               </button>
@@ -797,9 +850,7 @@
           <div class="flex items-center gap-2 px-2 py-1">
             <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
                     @click="view = 'root'"
-                    type="button">
-              {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
-            </button>
+                    type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
             <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Origin</div>
           </div>
           <div class="px-2 py-2">
@@ -842,9 +893,7 @@
           <div class="flex items-center gap-2 px-2 py-1">
             <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
                     @click="view = 'root'"
-                    type="button">
-              {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
-            </button>
+                    type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
             <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Format</div>
           </div>
           <div class="px-2 py-2">
@@ -887,9 +936,7 @@
           <div class="flex items-center gap-2 px-2 py-1">
             <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
                     @click="view = 'root'"
-                    type="button">
-              {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
-            </button>
+                    type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
             <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Author</div>
           </div>
           <div class="px-2 py-2">
@@ -932,9 +979,7 @@
           <div class="flex items-center gap-2 px-2 py-1">
             <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
                     @click="view = 'root'"
-                    type="button">
-              {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
-            </button>
+                    type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
             <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Streaming Service</div>
           </div>
           <div class="px-2 py-2">
@@ -977,9 +1022,7 @@
           <div class="flex items-center gap-2 px-2 py-1">
             <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
                     @click="view = 'root'"
-                    type="button">
-              {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
-            </button>
+                    type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
             <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Department</div>
           </div>
           <div class="px-2 py-2">
@@ -1022,9 +1065,7 @@
           <div class="flex items-center gap-2 px-2 py-1">
             <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
                     @click="view = 'root'"
-                    type="button">
-              {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
-            </button>
+                    type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
             <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Tag</div>
             <button type="button"
                     class="ml-auto px-2 py-0.5 rounded text-xs font-medium uppercase bg-[var(--color-surface)] border border-gray-600 text-indigo-300 hover:text-[var(--color-text)] hover:border-indigo-500 transition-colors cursor-pointer"
@@ -1081,9 +1122,9 @@
                 type="button">
           <span x-text="statuses.length === 0 ? 'Status' : (statuses.length === 1 ? (statusLabels[statuses[0]] || statuses[0]) : statuses.length + ' Statuses')"></span>
           <svg xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 20 20"
-              class="w-4 h-4 ml-2"
-              aria-hidden="true">
+               viewBox="0 0 20 20"
+               class="w-4 h-4 ml-2"
+               aria-hidden="true">
             <path d="M10 14 L4.5 7 H15.5 Z" fill="currentColor"></path>
           </svg>
         </button>
@@ -1134,17 +1175,17 @@
               type="button">
         <span x-text="sortLabels[sort] || sort"></span>
         <svg xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 20 20"
-            class="w-4 h-4 ml-2"
-            x-show="direction === 'asc'"
-            aria-hidden="true">
+             viewBox="0 0 20 20"
+             class="w-4 h-4 ml-2"
+             x-show="direction === 'asc'"
+             aria-hidden="true">
           <path d="M10 5 L16 15 H4 Z" fill="currentColor"></path>
         </svg>
         <svg xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 20 20"
-            class="w-4 h-4 ml-2"
-            x-show="direction !== 'asc'"
-            aria-hidden="true">
+             viewBox="0 0 20 20"
+             class="w-4 h-4 ml-2"
+             x-show="direction !== 'asc'"
+             aria-hidden="true">
           <path d="M10 15 L4 5 H16 Z" fill="currentColor"></path>
         </svg>
       </button>
@@ -1173,7 +1214,9 @@
     </div>
 
     {% if show_layout_toggle %}
-      <div id="result-count" data-result-count class="result-count-badge result-count-desktop px-4 py-2 bg-[var(--color-surface)] rounded-md text-[var(--color-text-secondary)] text-sm font-semibold">
+      <div id="result-count"
+           data-result-count
+           class="result-count-badge result-count-desktop px-4 py-2 bg-[var(--color-surface)] rounded-md text-[var(--color-text-secondary)] text-sm font-semibold">
         {% if media_list.paginator %}
           {{ media_list.paginator.count }}
         {% else %}

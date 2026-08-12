@@ -19,6 +19,8 @@ from django.views.static import serve
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from health_check.views import MainView
 
+from users.views import CustomSignupView, CustomSocialSignupView
+
 handler400 = "app.error_views.bad_request"
 handler403 = "app.error_views.permission_denied"
 handler404 = "app.error_views.page_not_found"
@@ -61,7 +63,7 @@ account_patterns = [
     # login, logout, signup, account_inactive
     path("login/", allauth_account_views.login, name="account_login"),
     path("logout/", allauth_account_views.logout, name="account_logout"),
-    path("signup/", allauth_account_views.signup, name="account_signup"),
+    path("signup/", CustomSignupView.as_view(), name="account_signup"),
     path(
         "account_inactive/",
         allauth_account_views.account_inactive,
@@ -84,7 +86,7 @@ account_patterns = [
                 ),
                 path(
                     "signup/",
-                    allauth_social_account_views.signup,
+                    CustomSocialSignupView.as_view(),
                     name="socialaccount_signup",
                 ),
                 path(

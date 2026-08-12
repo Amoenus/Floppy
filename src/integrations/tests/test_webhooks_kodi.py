@@ -98,6 +98,7 @@ class KodiWebhookMovieTests(TestCase):
         movie = Movie.objects.get(item__media_id="603", user=self.user)
         self.assertEqual(movie.status, Status.COMPLETED.value)
 
+    @tag("network")
     def test_movie_stop_above_threshold_marks_completed(self):
         payload = {
             **MOVIE_PAYLOAD,
@@ -109,6 +110,7 @@ class KodiWebhookMovieTests(TestCase):
         movie = Movie.objects.get(item__media_id="603", user=self.user)
         self.assertEqual(movie.status, Status.COMPLETED.value)
 
+    @tag("network")
     def test_movie_stop_below_threshold_stays_in_progress(self):
         payload = {
             **MOVIE_PAYLOAD,

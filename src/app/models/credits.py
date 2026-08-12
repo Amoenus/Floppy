@@ -105,6 +105,38 @@ class MetadataProviderPreference(models.Model):
         return f"{self.user_id}:{self.item_id}->{self.provider}"
 
 
+class HardcoverEditionPreference(models.Model):
+    """Per-user Hardcover edition override for a tracked book item."""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="hardcover_edition_preferences",
+    )
+    item = models.ForeignKey(
+        Item,
+        on_delete=models.CASCADE,
+        related_name="hardcover_edition_preferences",
+    )
+    edition_id = models.CharField(max_length=32)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Model and field configuration."""
+
+        constraints = [
+            UniqueConstraint(
+                fields=["user", "item"],
+                name="%(app_label)s_%(class)s_unique_user_item",
+            ),
+        ]
+
+    def __str__(self):
+        """Return the edition preference label."""
+        return f"{self.user_id}:{self.item_id}->edition/{self.edition_id}"
+
+
 class MetadataBackfillField(models.TextChoices):
     """Fields that can be backfilled from external metadata."""
 

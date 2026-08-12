@@ -18,6 +18,17 @@ LASTFM_PARTIAL_SYNC_ERROR = (
 )
 
 
+def _mark_lastfm_history_cancelled(account) -> None:
+    """Reflect a cancelled backfill in the account's legacy status field."""
+    from integrations.models import LastFMHistoryImportStatus
+
+    account.history_import_status = LastFMHistoryImportStatus.FAILED
+    account.history_import_last_error_message = "Cancelled by user."
+    account.save(
+        update_fields=["history_import_status", "history_import_last_error_message"],
+    )
+
+
 def _refresh_lastfm_statistics(user_id: int, affected_day_keys) -> None:
     """Refresh statistics caches for a Last.fm import."""
     if not affected_day_keys:
@@ -277,6 +288,14 @@ def import_lastfm_history(user_id, reset=False, import_run_id=None):
     elif task_id and import_run.task_id != task_id:
         ImportRun.objects.filter(id=import_run.id).update(task_id=task_id)
 
+    if import_run.cancel_requested:
+        # A cancel can only take effect between chunks (see below); this
+        # covers the case where it was requested after this chunk was
+        # already queued but before it started running.
+        logger.debug("Skipping Last.fm history chunk for user %s: cancelled", user_id)
+        _mark_lastfm_history_cancelled(account)
+        return {"message": "Last.fm history import cancelled."}
+
     if reset:
         cutoff_uts = (account.last_fetch_timestamp_uts or int(time.time())) - 1
         account.reset_history_import(cutoff_uts)
@@ -463,6 +482,14 @@ def import_lastfm_history(user_id, reset=False, import_run_id=None):
                 sync_result["total_pages"] - account.history_import_next_page, 0
             ),
         )
+        # Re-check just before requeuing: a cancel may have been requested
+        # while this chunk was running, and this is the only point that can
+        # stop the chain -- once requeued, the next chunk won't run for a
+        # while and the cache lock would otherwise let it start anyway.
+        import_run.refresh_from_db(fields=["cancel_requested"])
+        if import_run.cancel_requested:
+            _mark_lastfm_history_cancelled(account)
+            return {"message": "Last.fm history import cancelled."}
         import_lastfm_history.delay(
             user_id=user_id, reset=False, import_run_id=import_run.id
         )

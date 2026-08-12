@@ -770,6 +770,64 @@ class HomeViewTests(TestCase):
         self.assertEqual(len(response.context["media_list"]["items"]), 1)
         self.assertEqual(response.context["media_list"]["total"], 15)
         self.assertContains(response, 'class="home-row-card w-44 shrink-0"', html=False)
+        self.assertEqual(response["X-Home-Row-Total"], "15")
+        self.assertEqual(response["X-Home-Row-Loaded"], "15")
+
+    def test_home_view_htmx_load_more_zero_progress(self):
+        """A load-more request past the true total returns 0 cards.
+
+        The response must still report the current real total/loaded via
+        headers, since the client relies on that to detect a stale offset
+        and stop retrying (issue #624: without this, the client would keep
+        requesting the same offset forever).
+        """
+        for i in range(6, 20):  # Create 14 more TV shows (we already have 1)
+            season_item = Item.objects.create(
+                media_id=str(i),
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.SEASON.value,
+                title=f"Test TV Show {i}",
+                image="http://example.com/image.jpg",
+                season_number=1,
+            )
+            season = Season.objects.create(
+                item=season_item,
+                user=self.user,
+                status=Status.IN_PROGRESS.value,
+            )
+
+            episode_item, _ = Item.objects.get_or_create(
+                media_id=str(i),
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.EPISODE.value,
+                season_number=1,
+                episode_number=1,
+                defaults={
+                    "title": f"Test TV Show {i}",
+                    "image": "http://example.com/image.jpg",
+                },
+            )
+            Episode.objects.create(
+                item=episode_item,
+                related_season=season,
+                end_date=timezone.now(),
+            )
+
+        initial_response = self.client.get(reverse("home"))
+        season_row = self._get_first_row(initial_response, MediaTypes.SEASON.value)
+
+        # Simulate a client holding a stale offset beyond the real total
+        # (e.g. because the underlying row shrank between requests).
+        response = self.client.get(
+            reverse("home") + f"?load_row={season_row['row_id']}&offset=999",
+            headers={"hx-request": "true"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.context["media_list"]["items"]), 0)
+        self.assertEqual(response.context["media_list"]["total"], 15)
+        self.assertEqual(response["X-Home-Row-Total"], "15")
+        self.assertEqual(response["X-Home-Row-Loaded"], "15")
 
     def test_active_playback_fragment_empty(self):
         """Fragment endpoint returns empty body when nothing is playing."""

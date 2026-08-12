@@ -41,6 +41,7 @@ class CreateMedia(TestCase):
         self.user = get_user_model().objects.create_user(**self.credentials)
         self.client.login(**self.credentials)
 
+    @tag("network")
     @override_settings(MEDIA_ROOT=("create_media"))
     def test_create_anime(self):
         """Test the creation of a TV object."""
@@ -516,6 +517,78 @@ class CreateMedia(TestCase):
             TV.objects.filter(item__media_id="388593", user=self.user).count(),
             1,
         )
+
+    def test_media_save_updates_existing_tv_identity_linked_season(self):
+        """Saving from the anime-bucket season page must update, not duplicate.
+
+        Regression test for GitHub issue #623: when a season is already
+        tracked via `related_tv` pointing at the show's TV-identity `TV` row,
+        clicking "Add to tracker" on the anime-identity season page (which has
+        no `instance_id`, because the page failed to find the existing row)
+        used to try to INSERT a second `Season` row and 500 with
+        `IntegrityError: ... app_season_unique_tv_item`.
+        """
+        tv_item = Item.objects.create(
+            media_id="79824",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Naruto Shippuden",
+            image="http://example.com/image.jpg",
+            library_media_type=MediaTypes.TV.value,
+        )
+        tv_identity = TV.objects.create(
+            item=tv_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        season_item = Item.objects.create(
+            media_id="79824",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=0,
+            title="Naruto Shippuden",
+            image="http://example.com/season.jpg",
+            library_media_type=MediaTypes.TV.value,
+        )
+        existing_season = Season.objects.create(
+            item=season_item,
+            user=self.user,
+            related_tv=tv_identity,
+            status=Status.IN_PROGRESS.value,
+            notes="pre-existing notes",
+            score=8.5,
+        )
+
+        response = self.client.post(
+            reverse("media_save"),
+            {
+                "media_id": "79824",
+                "source": Sources.TVDB.value,
+                "media_type": MediaTypes.SEASON.value,
+                "identity_media_type": MediaTypes.ANIME.value,
+                "library_media_type": MediaTypes.ANIME.value,
+                "season_number": 0,
+                "status": Status.COMPLETED.value,
+                # A real submission resubmits the modal's pre-filled fields
+                # unchanged alongside the one the user actually edited.
+                "notes": "pre-existing notes",
+                "score": 8.5,
+            },
+        )
+
+        self.assertNotEqual(response.status_code, 500)
+        self.assertEqual(
+            Season.objects.filter(
+                item__media_id="79824",
+                item__season_number=0,
+                user=self.user,
+            ).count(),
+            1,
+        )
+        existing_season.refresh_from_db()
+        self.assertEqual(existing_season.status, Status.COMPLETED.value)
+        self.assertEqual(existing_season.notes, "pre-existing notes")
+        self.assertEqual(existing_season.score, 8.5)
 
     @tag("network")
     def test_create_episodes(self):

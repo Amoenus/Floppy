@@ -136,44 +136,38 @@ def season_details(
         user_medias = []
         current_instance = None
     else:
-        if season_item_is_local_only:
-            season_qs = Season.objects.filter(
-                item__media_id=media_id,
-                item__media_type=MediaTypes.SEASON.value,
-                item__source=source,
-                item__season_number=season_number,
-                user=request.user,
-            )
-            if season_library_media_type:
-                season_qs = season_qs.filter(
-                    item__library_media_type=season_library_media_type,
-                )
-            else:
-                season_qs = season_qs.exclude(
-                    item__library_media_type=MediaTypes.ANIME.value,
-                )
+        # Resolve the tracked season across identity buckets (see #623): a
+        # season tracked via the show's TV identity must still be found from
+        # the anime-identity route, and vice versa, so read and write agree.
+        preferred_library_media_type = (
+            season_library_media_type or MediaTypes.SEASON.value
+        )
+        tracked_season = metadata_resolution.find_tracked_season(
+            request.user,
+            media_id,
+            source,
+            season_number,
+            library_media_type=preferred_library_media_type,
+        )
+        if tracked_season is None:
+            user_medias = []
+        elif season_item_is_local_only:
             user_medias = list(
-                season_qs.select_related(
-                    "item", "related_tv", "related_tv__item"
-                ).prefetch_related("episodes", "episodes__item")
+                Season.objects.filter(pk=tracked_season.pk)
+                .select_related("item", "related_tv", "related_tv__item")
+                .prefetch_related("episodes", "episodes__item")
             )
         else:
-            user_medias = BasicMedia.objects.filter_media_prefetch(
-                request.user,
-                media_id,
-                MediaTypes.SEASON.value,
-                source,
-                season_number=season_number,
+            user_medias = list(
+                BasicMedia.objects.filter_media_prefetch(
+                    request.user,
+                    media_id,
+                    MediaTypes.SEASON.value,
+                    source,
+                    season_number=season_number,
+                    library_media_type=tracked_season.item.library_media_type,
+                )
             )
-            if season_library_media_type:
-                user_medias = user_medias.filter(
-                    item__library_media_type=season_library_media_type,
-                )
-            else:
-                user_medias = user_medias.exclude(
-                    item__library_media_type=MediaTypes.ANIME.value,
-                )
-            user_medias = list(user_medias)
         current_instance = user_medias[0] if user_medias else None
 
     episodes_in_db = current_instance.episodes.all() if current_instance else []
@@ -348,6 +342,34 @@ def season_details(
             if episode_number is None:
                 continue
 
+            # Parse the episode's air date once — reused below both for the
+            # "aired but runtime unknown" heuristic and to persist
+            # release_datetime. Without this, release_datetime is never set
+            # for any episode the user hasn't individually tracked/watched
+            # (that's the only other code path that extracts it), so an
+            # episode created here from a page view stays permanently NULL
+            # even once the provider does have its air date.
+            air_date_dt = None
+            raw_air_date = episode.get("air_date")
+            if raw_air_date:
+                try:
+                    if isinstance(raw_air_date, str):
+                        date_obj = datetime.strptime(raw_air_date, "%Y-%m-%d")  # noqa: DTZ007  # date-only value; no timezone applies
+                        air_date_dt = timezone.make_aware(
+                            date_obj,
+                            timezone.get_current_timezone(),
+                        )
+                    elif hasattr(raw_air_date, "year"):
+                        air_date_dt = (
+                            raw_air_date
+                            if timezone.is_aware(raw_air_date)
+                            else timezone.make_aware(raw_air_date)
+                        )
+                except (ValueError, TypeError):
+                    air_date_dt = None
+                if air_date_dt and air_date_dt.year <= MIN_PLAUSIBLE_YEAR:
+                    air_date_dt = None
+
             # Get or create episode item — retry on race condition
             lookup = {
                 "media_id": media_id,
@@ -366,6 +388,7 @@ def season_details(
                         defaults={
                             "title": season_metadata.get("title", ""),
                             "image": settings.IMG_NONE,
+                            "release_datetime": air_date_dt,
                         },
                     )
             except IntegrityError:
@@ -377,27 +400,9 @@ def season_details(
                 runtime_minutes = (
                     int(episode["runtime"]) if episode["runtime"] > 0 else None
                 )
-            elif episode.get("air_date"):
-                # Check if episode has aired
-                try:
-                    if isinstance(episode["air_date"], str):
-                        date_obj = datetime.strptime(episode["air_date"], "%Y-%m-%d")  # noqa: DTZ007  # date-only value; no timezone applies
-                        air_date_dt = timezone.make_aware(
-                            date_obj,
-                            timezone.get_current_timezone(),
-                        )
-                    else:
-                        air_date_dt = episode["air_date"]
-
-                    if (
-                        air_date_dt
-                        and air_date_dt.year > MIN_PLAUSIBLE_YEAR
-                        and air_date_dt <= current_datetime
-                    ):
-                        # Episode has aired but no runtime - mark as unknown (use 999998)
-                        runtime_minutes = 999998
-                except (ValueError, TypeError):
-                    pass
+            elif air_date_dt and air_date_dt <= current_datetime:
+                # Episode has aired but no runtime - mark as unknown (use 999998)
+                runtime_minutes = 999998
 
             # Extract provider rating from raw episode data (already in memory, no extra API call)
             score = None
@@ -418,20 +423,34 @@ def season_details(
                 episode_item.provider_rating != score
                 or episode_item.provider_rating_count != score_count
             )
+            # Only fill in a missing date, never overwrite one that's already
+            # set — this lets an episode created before its air date was
+            # known self-heal the next time anyone views the season page,
+            # without a dedicated backfill task.
+            release_datetime_changed = (
+                air_date_dt is not None and episode_item.release_datetime is None
+            )
 
             if runtime_changed:
                 episode_item.runtime_minutes = runtime_minutes
             if rating_changed:
                 episode_item.provider_rating = score
                 episode_item.provider_rating_count = score_count
+            if release_datetime_changed:
+                episode_item.release_datetime = air_date_dt
 
-            if runtime_changed or rating_changed:
+            if runtime_changed or rating_changed or release_datetime_changed:
                 episodes_to_update.append(episode_item)
 
         if episodes_to_update:
             Item.objects.bulk_update(
                 episodes_to_update,
-                ["runtime_minutes", "provider_rating", "provider_rating_count"],
+                [
+                    "runtime_minutes",
+                    "provider_rating",
+                    "provider_rating_count",
+                    "release_datetime",
+                ],
                 batch_size=100,
             )
             # Invalidate time_left + media_list cache for all users

@@ -168,6 +168,7 @@ from app.tasks_tv_provider_migration import (  # noqa: E402
 
 RELEASE_BACKFILL_SOURCES = (
     Sources.TMDB.value,
+    Sources.TVDB.value,
     Sources.MAL.value,
     Sources.MANGAUPDATES.value,
     Sources.IGDB.value,
@@ -176,6 +177,12 @@ RELEASE_BACKFILL_SOURCES = (
     Sources.COMICVINE.value,
     Sources.BGG.value,
     Sources.MUSICBRAINZ.value,
+)
+STATUS_BACKFILL_MEDIA_TYPES = (
+    MediaTypes.MOVIE.value,
+    MediaTypes.TV.value,
+    MediaTypes.ANIME.value,
+    MediaTypes.MANGA.value,
 )
 RELEASE_BACKFILL_MEDIA_TYPES = (
     MediaTypes.MOVIE.value,
@@ -231,6 +238,18 @@ def _release_items_queryset():
 
 def count_release_backfill_items() -> int:
     return _release_items_queryset().count()
+
+
+def _status_items_queryset():
+    return Item.objects.filter(
+        status="",
+        media_type__in=STATUS_BACKFILL_MEDIA_TYPES,
+        metadata_fetched_at__isnull=False,
+    )
+
+
+def count_status_backfill_items() -> int:
+    return _status_items_queryset().count()
 
 
 def _discover_movie_metadata_items_queryset():
@@ -736,6 +755,7 @@ def backfill_item_metadata_task(
             "remaining_release": count_release_backfill_items(),
             "remaining_discover_movie_metadata": count_discover_movie_metadata_backfill_items(),
             "remaining_game_lengths": count_game_length_backfill_items(),
+            "remaining_status": count_status_backfill_items(),
             "message": "Skipped metadata backfill while an interactive request was active",
         }
 
@@ -745,6 +765,7 @@ def backfill_item_metadata_task(
     game_length_backfill_items = []
     release_backfill_items = []
     discover_backfill_items = []
+    status_backfill_items = []
 
     if remaining_slots > 0 and game_length_batch_size > 0:
         game_length_limit = min(remaining_slots, game_length_batch_size)
@@ -781,12 +802,28 @@ def backfill_item_metadata_task(
             .exclude(id__in=selected_ids)
             .order_by("metadata_fetched_at", "id")[:remaining_slots],
         )
+        remaining_slots = max(remaining_slots - len(discover_backfill_items), 0)
+
+    if remaining_slots > 0:
+        discover_item_ids_selected = [item.id for item in discover_backfill_items]
+        selected_ids = (
+            initial_item_ids
+            + [item.id for item in game_length_backfill_items]
+            + release_item_ids
+            + discover_item_ids_selected
+        )
+        status_backfill_items = list(
+            _status_items_queryset()
+            .exclude(id__in=selected_ids)
+            .order_by("metadata_fetched_at", "id")[:remaining_slots],
+        )
 
     items = (
         initial_items
         + release_backfill_items
         + discover_backfill_items
         + game_length_backfill_items
+        + status_backfill_items
     )
     if not items:
         return {
@@ -796,7 +833,11 @@ def backfill_item_metadata_task(
             "remaining_release": 0,
             "remaining_discover_movie_metadata": 0,
             "remaining_game_lengths": 0,
-            "message": "No items need metadata, release-date, Discover metadata, or game-length backfill",
+            "remaining_status": 0,
+            "message": (
+                "No items need metadata, release-date, Discover metadata, "
+                "game-length, or status backfill"
+            ),
         }
 
     success_count = 0
@@ -805,6 +846,7 @@ def backfill_item_metadata_task(
     processed_movie_discover_items: list[Item] = []
     discover_item_ids = {item.id for item in discover_backfill_items}
     game_length_item_ids = {item.id for item in game_length_backfill_items}
+    status_item_ids = {item.id for item in status_backfill_items}
     deferred_for_interactive_request = False
 
     for index, item in enumerate(items):
@@ -819,6 +861,14 @@ def backfill_item_metadata_task(
         initial_metadata_backfill = item.metadata_fetched_at is None
         discover_metadata_backfill = item.id in discover_item_ids
         game_lengths_backfill = item.id in game_length_item_ids
+        # An item can land in another bucket (e.g. release, for a blank
+        # release_datetime) before ever being selected by the status query,
+        # so also check the item's own blank status directly rather than
+        # relying solely on status_item_ids bucket membership — otherwise a
+        # same-fetch status value would be silently dropped by include_core=False.
+        status_backfill = item.id in status_item_ids or (
+            item.media_type in STATUS_BACKFILL_MEDIA_TYPES and not item.status
+        )
         try:
             if item.release_datetime is None:
                 _clear_item_metadata_cache(item)
@@ -827,7 +877,7 @@ def backfill_item_metadata_task(
 
             update_fields = []
 
-            if initial_metadata_backfill:
+            if initial_metadata_backfill or status_backfill:
                 update_fields.extend(
                     metadata_utils.apply_item_metadata(
                         item,
@@ -918,7 +968,8 @@ def backfill_item_metadata_task(
             logger.info(
                 (
                     "metadata_backfill_success item_id=%s media_type=%s "
-                    "country=%s format=%s release_datetime=%s initial=%s discover=%s game_lengths=%s"
+                    "country=%s format=%s release_datetime=%s initial=%s discover=%s "
+                    "game_lengths=%s status_backfill=%s"
                 ),
                 item.id,
                 item.media_type,
@@ -928,6 +979,7 @@ def backfill_item_metadata_task(
                 initial_metadata_backfill,
                 discover_metadata_backfill,
                 game_lengths_backfill,
+                status_backfill,
             )
 
         except Exception as e:
@@ -956,6 +1008,7 @@ def backfill_item_metadata_task(
     remaining_release = count_release_backfill_items()
     remaining_discover_movie_metadata = count_discover_movie_metadata_backfill_items()
     remaining_game_lengths = count_game_length_backfill_items()
+    remaining_status = count_status_backfill_items()
 
     if processed_movie_discover_items:
         _schedule_discover_refresh_for_movie_items(processed_movie_discover_items)
@@ -968,13 +1021,15 @@ def backfill_item_metadata_task(
         "remaining_release": remaining_release,
         "remaining_discover_movie_metadata": remaining_discover_movie_metadata,
         "remaining_game_lengths": remaining_game_lengths,
+        "remaining_status": remaining_status,
         "remaining": remaining_metadata,
         "message": (
             f"Processed {success_count + error_count} items, "
             f"{remaining_metadata} metadata items remaining, "
             f"{remaining_release} release items remaining, "
             f"{remaining_discover_movie_metadata} Discover movie items remaining, "
-            f"{remaining_game_lengths} game-length items remaining"
+            f"{remaining_game_lengths} game-length items remaining, "
+            f"{remaining_status} status items remaining"
         ),
     }
     if deferred_for_interactive_request:

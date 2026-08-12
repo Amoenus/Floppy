@@ -17,8 +17,8 @@ Docker there's nothing to install — see "Running (Docker)" below. For a
 source/non-Docker install:
 
 ```bash
-cd mcp_server
-pip install -e ".[dev]"   # add [dev] only if you want to run the tests
+cd /path/to/Floppy
+uv sync --locked
 ```
 
 Configure the server with two environment variables:
@@ -52,7 +52,7 @@ Stdio transport (for Claude Code / Claude Desktop):
 ```bash
 FLOPPY_URL=https://floppy.example.com \
 FLOPPY_TOKEN=your-token \
-python -m floppy_mcp.server
+uv run --no-sync python -m floppy_mcp.server
 ```
 
 Register it with Claude Code:
@@ -61,12 +61,13 @@ Register it with Claude Code:
 claude mcp add floppy \
   --env FLOPPY_URL=https://floppy.example.com \
   --env FLOPPY_TOKEN=your-token \
-  -- python -m floppy_mcp.server
+  -- uv run --directory /path/to/Floppy --no-sync python -m floppy_mcp.server
 ```
 
-Note this path requires you to manually re-`pip install -e .` after
-pulling changes to `mcp_server/` — the Docker exec path above stays current
-automatically.
+The source workspace is installed from the shared root lock, so changes under
+`mcp_server/` are available without a separate package install. Run
+`uv sync --locked` again when dependency metadata or `uv.lock` changes. The
+Docker exec path above stays current automatically.
 
 For streamable-HTTP transport instead of stdio, call
 `mcp.run(transport="streamable-http")` in `server.py` (see the `FastMCP`
@@ -127,8 +128,9 @@ docs) or run `uvicorn floppy_mcp.server:mcp.streamable_http_app`.
 ## Testing
 
 ```bash
-cd mcp_server
-python -m pytest tests/ -q
+cd /path/to/Floppy
+uv sync --locked --package floppy-mcp --extra dev
+uv run --package floppy-mcp --extra dev --no-sync pytest mcp_server/tests/ -q
 ```
 
 Tests mock the REST API with `respx` and assert each tool sends the

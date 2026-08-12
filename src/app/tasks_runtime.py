@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 BACKGROUND_TASK_PRIORITY = getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 9)
 
-RUNTIME_BACKFILL_SOURCES = ("tmdb", "mal", "simkl")
+RUNTIME_BACKFILL_SOURCES = ("tmdb", "tvdb", "mal", "simkl")
 RUNTIME_BACKFILL_QUEUE_TTL = 60 * 60  # 1 hour
 
 SEASON_KEY_TUPLE_LENGTH = 3  # (media_id, source, season_number)

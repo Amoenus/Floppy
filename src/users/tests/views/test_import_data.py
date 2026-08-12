@@ -67,6 +67,33 @@ class ImportDataViewTests(TestCase):
         self.assertContains(response, "Active Periodic Imports")
         self.assertContains(response, "Import History")
 
+    def test_import_data_activity_lists_media_by_import_source(self):
+        """Media tagged with an ImportRun should appear in the bulk-delete section."""
+        from app.models import Item, MediaTypes, Movie, Sources, Status
+        from integrations.models import ImportRun
+
+        run = ImportRun.objects.create(user=self.user, source="trakt")
+        item = Item.objects.create(
+            media_id="bulk-delete-movie",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Bulk Delete Movie",
+        )
+        Movie.objects.create(
+            item=item, user=self.user, status=Status.COMPLETED.value, import_run=run
+        )
+
+        response = self.client.get(
+            reverse("import_data_activity"),
+            HTTP_HX_REQUEST="true",
+        )
+
+        self.assertContains(response, "Imported Media by Source")
+        self.assertContains(
+            response,
+            reverse("bulk_delete_by_import_source", args=["movie", "trakt"]),
+        )
+
     def test_import_data_shows_lastfm_history_status_and_action(self):
         """Last.fm card should render history backfill status and rerun controls."""
         LastFMAccount.objects.create(

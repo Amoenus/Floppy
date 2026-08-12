@@ -4,12 +4,15 @@ import logging
 from io import BytesIO
 
 import apprise
+from allauth.account.views import SignupView
+from allauth.socialaccount.views import SignupView as SocialSignupView
 from django.apps import apps
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import update_session_auth_hash
 from django.contrib.auth.decorators import login_not_required, login_required
 from django.core.cache import cache
+from django.core.exceptions import ValidationError
 from django.db import IntegrityError
 from django.db.models import Q
 from django.http import HttpResponse, JsonResponse, StreamingHttpResponse
@@ -75,6 +78,38 @@ except ModuleNotFoundError:  # pragma: no cover - optional dependency guard
 
 
 logger = logging.getLogger(__name__)
+
+
+class CustomSignupView(SignupView):
+    """Local signup view that re-renders the form on a save-time username conflict."""
+
+    def form_valid(self, form):
+        """Catch a race-condition ValidationError instead of letting it 500."""
+        try:
+            return super().form_valid(form)
+        except ValidationError as exc:
+            form.add_error("username", exc)
+            return self.form_invalid(form)
+
+    def get_success_url(self):
+        """Send a newly created account into guided setup instead of Home."""
+        return reverse("onboarding_media_types")
+
+
+class CustomSocialSignupView(SocialSignupView):
+    """OIDC/social signup view with the same save-time conflict handling."""
+
+    def form_valid(self, form):
+        """Catch a race-condition ValidationError instead of letting it 500."""
+        try:
+            return super().form_valid(form)
+        except ValidationError as exc:
+            form.add_error("username", exc)
+            return self.form_invalid(form)
+
+    def get_success_url(self):
+        """Send a newly created account into guided setup instead of Home."""
+        return reverse("onboarding_media_types")
 
 
 DEFAULT_AUTO_PAUSE_WEEKS = 16
@@ -570,6 +605,49 @@ def test_notification(request):
     return redirect("notifications")
 
 
+def apply_media_type_preferences(
+    user, selected_media_types, submitted_order, media_types=None
+):
+    """Apply media-type enabled/order preferences onto ``user``.
+
+    Shared by the Sidebar settings page and the setup wizard's "choose what
+    to track" step so both persist through the exact same rules. Mutates
+    ``user`` in place and returns the list of changed field names, ready to
+    pass to ``user.save(update_fields=...)``.
+
+    ``media_types`` defaults to every sidebar-eligible type; pass a smaller
+    list (e.g. the wizard omitting TV Seasons) to leave types outside it
+    untouched rather than treating their absence from ``selected_media_types``
+    as "turn this off".
+    """
+    media_types = media_types if media_types is not None else SIDEBAR_MEDIA_TYPES
+    fields_to_update = []
+
+    for media_type in media_types:
+        enabled_field = f"{media_type}_enabled"
+        is_enabled = media_type in selected_media_types
+        current_value = getattr(user, enabled_field, False)
+        if current_value != is_enabled:
+            setattr(user, enabled_field, is_enabled)
+            fields_to_update.append(enabled_field)
+
+    sidebar_media_type_order = list(
+        dict.fromkeys(
+            media_type for media_type in submitted_order if media_type in media_types
+        ),
+    )
+    sidebar_media_type_order += [
+        media_type
+        for media_type in media_types
+        if media_type not in sidebar_media_type_order
+    ]
+    if user.sidebar_media_type_order != sidebar_media_type_order:
+        user.sidebar_media_type_order = sidebar_media_type_order
+        fields_to_update.append("sidebar_media_type_order")
+
+    return fields_to_update
+
+
 @require_http_methods(["GET", "POST"])
 def sidebar(request):
     """Render the sidebar settings page (media types visibility and UI preferences)."""
@@ -589,32 +667,12 @@ def sidebar(request):
             request.user.clickable_media_cards = clickable_media_cards
             fields_to_update.append("clickable_media_cards")
 
-        # Handle media types checkboxes
-        selected_media_types = request.POST.getlist("media_types_checkboxes")
-        for media_type in media_types:
-            enabled_field = f"{media_type}_enabled"
-            is_enabled = media_type in selected_media_types
-            current_value = getattr(request.user, enabled_field, False)
-            if current_value != is_enabled:
-                setattr(request.user, enabled_field, is_enabled)
-                fields_to_update.append(enabled_field)
-
-        submitted_order = request.POST.get("sidebar_media_type_order", "").split(",")
-        sidebar_media_type_order = list(
-            dict.fromkeys(
-                media_type
-                for media_type in submitted_order
-                if media_type in media_types
-            ),
+        # Handle media types checkboxes + order
+        fields_to_update += apply_media_type_preferences(
+            request.user,
+            request.POST.getlist("media_types_checkboxes"),
+            request.POST.get("sidebar_media_type_order", "").split(","),
         )
-        sidebar_media_type_order += [
-            media_type
-            for media_type in media_types
-            if media_type not in sidebar_media_type_order
-        ]
-        if request.user.sidebar_media_type_order != sidebar_media_type_order:
-            request.user.sidebar_media_type_order = sidebar_media_type_order
-            fields_to_update.append("sidebar_media_type_order")
 
         if fields_to_update:
             request.user.save(update_fields=fields_to_update)
@@ -1353,6 +1411,7 @@ def import_data_activity(request):
         "user": user,
         "import_tasks": user.get_import_tasks(),
         "import_runs": ImportRun.objects.filter(user=user).order_by("-started_at")[:10],
+        "import_source_media": _import_source_media_summary(user),
     }
     return render(request, "users/components/import_activity.html", context)
 
@@ -1492,16 +1551,99 @@ def about(request):
     )
 
 
+def _import_source_media_summary(user):
+    """Return media type/source/count rows the user has importer-tagged data for."""
+    summary = []
+    for media_type in MediaTypes.values:
+        if media_type == MediaTypes.EPISODE.value:
+            continue
+        model = apps.get_model(app_label="app", model_name=media_type)
+        sources = (
+            model.objects.filter(user=user, import_run__isnull=False)
+            .values_list("import_run__source", flat=True)
+            .distinct()
+        )
+        for source in sources:
+            count = model.objects.filter(
+                user=user, import_run__source=source
+            ).count()
+            summary.append(
+                {"media_type": media_type, "source": source, "count": count}
+            )
+    return summary
+
+
+@require_POST
+def bulk_delete_by_import_source(request, media_type, source):
+    """Permanently delete all of the user's media of one type from one import source.
+
+    Unlike rollback_import_run (undo one run), this is a standing cleanup
+    action across every run from that source -- e.g. "delete all Music
+    imported from Last.fm" before re-importing from Koito. Irreversible.
+    """
+    if media_type == MediaTypes.EPISODE.value or media_type not in MediaTypes.values:
+        messages.error(request, "Unknown media type.")
+        return redirect("import_data")
+
+    if not ImportRun.objects.filter(user=request.user, source=source).exists():
+        messages.error(request, "Unknown import source.")
+        return redirect("import_data")
+
+    model = apps.get_model(app_label="app", model_name=media_type)
+    deleted_count, _ = model.objects.filter(
+        user=request.user, import_run__source=source
+    ).delete()
+
+    if deleted_count:
+        messages.success(request, f"Permanently deleted {deleted_count} item(s).")
+    else:
+        messages.info(request, "Nothing to delete.")
+    return redirect("import_data")
+
+
+@require_POST
+def cancel_import_run(request, run_id):
+    """Cancel a running import.
+
+    Only covers importers that run as a single Celery task invocation
+    (revoke(terminate=True) stops it outright, deployed worker pool is
+    prefork so SIGTERM reaches the running task). Last.fm/Koito history
+    backfills self-reschedule across many task invocations with no single
+    task id to revoke against -- those are cancelled cooperatively instead
+    (see cancel_requested on ImportRun).
+    """
+    from config.celery import app as celery_app
+
+    run = get_object_or_404(ImportRun, id=run_id, user=request.user)
+
+    if run.status != ImportRun.Status.RUNNING:
+        messages.error(request, "This import is not running.")
+        return redirect("import_data")
+
+    if run.task_id:
+        celery_app.control.revoke(run.task_id, terminate=True)
+
+    ImportRun.objects.filter(id=run.id).update(
+        status=ImportRun.Status.CANCELLED,
+        cancel_requested=True,
+        finished_at=timezone.now(),
+    )
+    messages.success(request, "Import cancelled.")
+    return redirect("import_data")
+
+
 @require_POST
 def rollback_import_run(request, run_id):
-    """Delete the media rows created or touched by one import run.
+    """Undo the media rows created or touched by one import run.
 
-    Music is excluded: its rows are mutated in place (progress incremented
-    per scrobble) rather than inserted per play, so a plain delete-by-run
-    could destroy plays from other runs or manual entries sharing the same
-    row. Music rollback needs a history-based revert instead (unsupported
-    for now).
+    Most media types are insert-only for a given run, so those rows are
+    just deleted. Music is different: rows are mutated in place (progress
+    incremented per scrobble), so a plain delete-by-run could destroy
+    plays from other runs or manual entries sharing the same row -- it
+    gets a history-based revert instead (see revert_music_import_run).
     """
+    from app.services.music_scrobble import revert_music_import_run
+
     run = get_object_or_404(ImportRun, id=run_id, user=request.user)
 
     if run.status == ImportRun.Status.RUNNING:
@@ -1522,8 +1664,17 @@ def rollback_import_run(request, run_id):
         ).delete()
         total_deleted += deleted_count
 
-    if total_deleted:
-        messages.success(request, f"Removed {total_deleted} item(s) from this import.")
+    music_result = revert_music_import_run(run, request.user)
+    total_deleted += music_result["deleted"]
+    total_reverted = music_result["reverted"]
+
+    if total_deleted or total_reverted:
+        parts = []
+        if total_deleted:
+            parts.append(f"removed {total_deleted} item(s)")
+        if total_reverted:
+            parts.append(f"reverted {total_reverted} play(s)")
+        messages.success(request, f"Undo complete: {' and '.join(parts)}.")
     else:
         messages.info(request, "Nothing to remove for this import.")
     return redirect("import_data")

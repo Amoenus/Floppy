@@ -849,3 +849,84 @@ class CustomListManagerTest(TestCase):
 
         entry.delete()
         self.assertFalse(smart_list.items.filter(id=tv_item.id).exists())
+
+
+class CustomListItemDeleteRenumberTest(TestCase):
+    """CustomListItem.delete() must renumber later items without erroring.
+
+    Reported live: removing an item partway through a ~50-item real list
+    crashed with psycopg.errors.UniqueViolation on
+    lists_customlistitem_unique_list_item_id, and the resulting 500 sent the
+    browser to a dead GET on /list_item_toggle (405, since that view is
+    POST-only) — which is what actually looked like "I keep getting
+    redirected to /list_item_toggle" from the outside. Postgres checks a
+    non-deferred unique constraint per row as an UPDATE statement executes,
+    not once at the end, so the bulk `list_item_id = list_item_id - 1` shift
+    in delete() can transiently assign a value another not-yet-updated row
+    in the same statement still holds — a spurious violation even though the
+    final state is valid. Only reproduces with enough trailing items for the
+    row-processing order to matter; a 1-2 item list never hits it, which is
+    why this went unnoticed in casual testing.
+    """
+
+    def setUp(self):
+        """Create a user, a list, and enough items to force multi-row renumbering."""
+        self.user = get_user_model().objects.create_user(
+            username="test",
+            password="12345",
+        )
+        self.custom_list = CustomList.objects.create(name="Big List", owner=self.user)
+        self.items = []
+        for index in range(50):
+            item = Item.objects.create(
+                title=f"Item {index}",
+                media_id=str(1000 + index),
+                media_type=MediaTypes.MOVIE.value,
+                source=Sources.TMDB.value,
+            )
+            self.items.append(item)
+            CustomListItem.objects.create(custom_list=self.custom_list, item=item)
+
+    def test_deleting_from_the_middle_renumbers_without_error(self):
+        """Deleting an early item must cleanly renumber ~49 trailing rows."""
+        target = CustomListItem.objects.get(
+            custom_list=self.custom_list,
+            item=self.items[5],
+        )
+        removed_list_item_id = target.list_item_id
+
+        target.delete()
+
+        remaining = list(
+            CustomListItem.objects.filter(custom_list=self.custom_list).order_by(
+                "list_item_id",
+            ),
+        )
+        self.assertEqual(len(remaining), 49)
+        # Sequential with no gap left where the deleted row was.
+        self.assertEqual(
+            [entry.list_item_id for entry in remaining],
+            list(range(len(remaining))),
+        )
+        self.assertNotIn(
+            removed_list_item_id,
+            [entry.list_item_id for entry in remaining if entry.list_item_id is None],
+        )
+
+    def test_deleting_every_item_one_at_a_time_never_collides(self):
+        """Repeated single deletes from the front must never raise IntegrityError."""
+        for _ in range(len(self.items)):
+            first = (
+                CustomListItem.objects.filter(custom_list=self.custom_list)
+                .order_by("list_item_id")
+                .first()
+            )
+            try:
+                first.delete()
+            except IntegrityError as exc:  # pragma: no cover - the bug this guards
+                self.fail(f"delete() raised IntegrityError: {exc}")
+
+        self.assertEqual(
+            CustomListItem.objects.filter(custom_list=self.custom_list).count(),
+            0,
+        )

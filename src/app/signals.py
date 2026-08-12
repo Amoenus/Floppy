@@ -52,8 +52,8 @@ logger = logging.getLogger(__name__)
 
 RUNTIME_UNKNOWN_FAILED = 999999  # runtime completely unknown / failed lookup
 
-RUNTIME_BACKFILL_SOURCES = ("tmdb", "mal", "simkl")
-GENRE_BACKFILL_SOURCES = ("tmdb", "mal", "simkl", "igdb", "bgg")
+RUNTIME_BACKFILL_SOURCES = ("tmdb", "tvdb", "mal", "simkl")
+GENRE_BACKFILL_SOURCES = ("tmdb", "tvdb", "mal", "simkl", "igdb", "bgg")
 DISCOVER_PRIORITY_HISTORY_DEBOUNCE_SECONDS = 15
 DISCOVER_PRIORITY_HISTORY_COUNTDOWN = 15
 DISCOVER_PRIORITY_STATISTICS_DEBOUNCE_SECONDS = 20

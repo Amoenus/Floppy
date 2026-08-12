@@ -12,7 +12,8 @@ from simple_history.utils import bulk_update_with_history
 import app
 from app import helpers as app_helpers
 from app.models import MediaTypes, Sources, Status
-from app.providers import services
+from app.providers import services, tvdb
+from app.services import item_merge
 from integrations import import_progress
 from integrations.imports import helpers
 from integrations.imports.helpers import MediaImportError, MediaImportUnexpectedError
@@ -264,11 +265,47 @@ class TraktMetadataResolverMixin:
                     return item
             return existing[0]
 
+        preferred_provider_item = self._find_preferred_provider_item(
+            media_type,
+            tmdb_id,
+            season_number,
+            desired_bucket,
+        )
+        if preferred_provider_item is not None:
+            return preferred_provider_item
+
         return app.models.Item.objects.create(
             **item_kwargs,
             library_media_type=desired_bucket,
             **app.models.Item.title_fields_from_metadata(metadata),
             image=metadata["image"],
+        )
+
+    def _find_preferred_provider_item(
+        self,
+        media_type,
+        tmdb_id,
+        season_number,
+        desired_bucket,
+    ):
+        """Reuse an existing TVDB item instead of creating a duplicate TMDB one.
+
+        This importer only ever resolves shows/seasons via TMDB, so a
+        TVDB-preferring user who already tracks a show gets a second,
+        independent ``Item`` tree for it on every import unless we look for
+        their existing TVDB item first (#620). Scoped to users who actually
+        prefer TVDB, since the lookup costs a TMDB->TVDB id resolution call.
+        """
+        if getattr(self.user, "tv_metadata_source_default", "") != Sources.TVDB.value:
+            return None
+        if not tvdb.enabled():
+            return None
+
+        return item_merge.find_tvdb_counterpart(
+            tmdb_id,
+            media_type,
+            season_number=season_number,
+            library_media_type=desired_bucket,
         )
 
     def _get_episode_image(self, episode_number, season_metadata):

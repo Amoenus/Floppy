@@ -174,7 +174,15 @@
             Created: {{ run.created_count }} · Updated: {{ run.updated_count }} · Skipped: {{ run.skipped_count }} · Failed: {{ run.failed_count }}
             {% if run.remaining_estimate %}· Remaining: {{ run.remaining_estimate }}{% endif %}
           </div>
-          {% if run.status != "running" %}
+          {% if run.status == "running" %}
+            <form action="{% url 'cancel_import_run' run.id %}"
+                  method="post"
+                  class="mt-2"
+                  onsubmit="return confirm('Cancel this import?');">
+              {% csrf_token %}
+              <button class="text-xs text-red-400 hover:text-red-300 transition-colors cursor-pointer">Cancel import</button>
+            </form>
+          {% else %}
             <form action="{% url 'rollback_import_run' run.id %}"
                   method="post"
                   class="mt-2"
@@ -183,6 +191,35 @@
               <button class="text-xs text-red-400 hover:text-red-300 transition-colors cursor-pointer">Undo this import</button>
             </form>
           {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+{% endif %}
+
+{% if import_source_media %}
+  {# Bulk Delete by Import Source #}
+  <div class="bg-[var(--color-surface)] rounded-lg p-6">
+    <div class="flex items-center mb-4">
+      {% include "app/icons/trashcan.svg" with classes="w-6 h-6 text-indigo-400 mr-3" %}
+      <h2 class="text-xl font-semibold">Imported Media by Source</h2>
+    </div>
+    <p class="text-[var(--color-text-muted)] mb-5 text-sm">
+      Permanently delete everything of a media type imported from one source, e.g. before re-importing from a different source.
+    </p>
+    <div class="space-y-3">
+      {% for row in import_source_media %}
+        <div class="bg-[var(--color-surface-strong)] rounded-lg p-4 flex items-center justify-between gap-3">
+          <div class="flex items-center gap-3">
+            {% source_display row.source %}
+            <span class="text-sm text-[var(--color-text-secondary)]">{{ row.media_type }} · {{ row.count }} item{{ row.count|pluralize }}</span>
+          </div>
+          <form action="{% url 'bulk_delete_by_import_source' row.media_type row.source %}"
+                method="post"
+                onsubmit="return confirm('Permanently delete all {{ row.media_type }} items imported from this source? This cannot be undone.');">
+            {% csrf_token %}
+            <button class="text-xs text-red-400 hover:text-red-300 transition-colors cursor-pointer">Delete all</button>
+          </form>
         </div>
       {% endfor %}
     </div>

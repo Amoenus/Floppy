@@ -6,18 +6,16 @@ from io import StringIO
 
 from django.apps import apps
 from django.conf import settings
-from django.db.models import Field, Prefetch
+from django.db.models import Field
 
 from app import helpers
 from app.models import (
     AlbumTracker,
     ArtistTracker,
     CollectionEntry,
-    Episode,
     Item,
     ItemTag,
     MediaTypes,
-    Season,
     Sources,
 )
 from lists.models import CustomList
@@ -104,22 +102,6 @@ def generate_rows(user, media_types=None, include_lists=True, include_collection
 
     item_tags_map = _build_item_tags_map(user)
 
-    prefetch_config = {
-        MediaTypes.TV.value: Prefetch(
-            "seasons",
-            queryset=Season.objects.select_related("item").prefetch_related(
-                Prefetch(
-                    "episodes",
-                    queryset=Episode.objects.select_related("item"),
-                ),
-            ),
-        ),
-        MediaTypes.SEASON.value: Prefetch(
-            "episodes",
-            queryset=Episode.objects.select_related("item"),
-        ),
-    }
-
     types_to_export = _get_media_types_to_export(media_types)
 
     # Yield data rows
@@ -135,14 +117,27 @@ def generate_rows(user, media_types=None, include_lists=True, include_collection
             else {"user": user}
         )
 
+        # Only ``item`` is read per row below - no season/episode nesting is
+        # ever touched here, so no further select_related/prefetch_related is
+        # needed. A prior version eagerly prefetched every season and episode
+        # for each tv/season row despite never using them, tripling the
+        # episode load for large libraries and causing exports to time out
+        # partway through (issue #618).
         queryset = model.objects.filter(**filter_kwargs).select_related("item")
-
-        if media_type in prefetch_config:
-            queryset = queryset.prefetch_related(prefetch_config[media_type])
 
         logger.debug("Streaming %ss to CSV", media_type)
 
+        row_count = 0
         for media in queryset.iterator(chunk_size=500):
+            if media.item is None:
+                logger.warning(
+                    "Skipping %s id=%s for user %s: no linked item",
+                    media_type,
+                    media.pk,
+                    user.username,
+                )
+                continue
+            row_count += 1
             row = (
                 ["media"]
                 + [getattr(media.item, field, "") for field in fields["item"]]
@@ -161,7 +156,7 @@ def generate_rows(user, media_types=None, include_lists=True, include_collection
 
             yield writer.writerow(row)
 
-        logger.debug("Finished streaming %ss to CSV", media_type)
+        logger.debug("Finished streaming %d %s row(s) to CSV", row_count, media_type)
 
     if "music_artist" in types_to_export:
         logger.debug("Streaming music_artists to CSV")

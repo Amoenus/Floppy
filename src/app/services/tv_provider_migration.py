@@ -17,6 +17,7 @@ from django.utils import timezone
 
 from app.models import Item, MediaTypes, Sources
 from app.providers import tmdb, tvdb
+from app.services import item_merge
 
 logger = logging.getLogger(__name__)
 
@@ -94,25 +95,26 @@ def _structure_is_compatible(
     return True
 
 
-def _would_collide(
+def _existing_tvdb_item(
     media_id: str,
-    source: str,
     media_type: str,
+    library_media_type: str,
     *,
     season_number: int | None = None,
     episode_number: int | None = None,
     exclude_pk: int,
-) -> bool:
+) -> Item | None:
     return (
         Item.objects.filter(
             media_id=media_id,
-            source=source,
+            source=Sources.TVDB.value,
             media_type=media_type,
+            library_media_type=library_media_type,
             season_number=season_number,
             episode_number=episode_number,
         )
         .exclude(pk=exclude_pk)
-        .exists()
+        .first()
     )
 
 
@@ -128,14 +130,78 @@ def _pin(item: Item, reason: str) -> TvMigrationResult:
     return TvMigrationResult(migrated=False, reason=reason)
 
 
+def _merge_into_existing_tvdb_show(
+    item: Item,
+    existing_show: Item,
+    local_seasons: list[Item],
+    local_episodes: list[Item],
+    tvdb_id: str,
+    tvdb_payload: dict,
+) -> TvMigrationResult:
+    """Fold a duplicate TMDB show/season/episode `Item`s onto their TVDB twins.
+
+    Reached when the show already has a separate, independently-tracked
+    TVDB `Item` - e.g. created directly, or by a Trakt (TMDB-only) import
+    alongside a TVDB-preferring user (#620). The TVDB id resolved by the
+    caller is a verified identity match, not a guess, so merging is safe.
+    Seasons/episodes without an existing TVDB counterpart are re-keyed in
+    place as usual.
+    """
+    with transaction.atomic():
+        item_merge.merge_item(item, existing_show)
+
+        for season in local_seasons:
+            existing_season = _existing_tvdb_item(
+                tvdb_id,
+                MediaTypes.SEASON.value,
+                season.library_media_type,
+                season_number=season.season_number,
+                exclude_pk=season.pk,
+            )
+            if existing_season is not None:
+                item_merge.merge_item(season, existing_season)
+                continue
+            season_payload = tvdb_payload.get(f"season/{season.season_number}") or {}
+            season.media_id = tvdb_id
+            season.source = Sources.TVDB.value
+            season.image = season_payload.get("image") or season.image
+            season.save(update_fields=["media_id", "source", "image"])
+
+        for episode in local_episodes:
+            existing_episode = _existing_tvdb_item(
+                tvdb_id,
+                MediaTypes.EPISODE.value,
+                episode.library_media_type,
+                season_number=episode.season_number,
+                episode_number=episode.episode_number,
+                exclude_pk=episode.pk,
+            )
+            if existing_episode is not None:
+                item_merge.merge_item(episode, existing_episode)
+                continue
+            episode.media_id = tvdb_id
+            episode.source = Sources.TVDB.value
+            episode.save(update_fields=["media_id", "source"])
+
+    logger.info(
+        "Merged duplicate TV item %s into existing TVDB item %s (%s)",
+        item.media_id,
+        tvdb_id,
+        existing_show.title,
+    )
+    return TvMigrationResult(migrated=True)
+
+
 def migrate_tv_item_to_tvdb(item: Item) -> TvMigrationResult:
     """Migrate a TMDB-tracked, non-anime TV show `Item` to TVDB identity in place.
 
     Never raises and never partially migrates: any check that fails aborts
-    before mutating data. Structure mismatches and identity collisions pin
-    the item (best-effort, still retried for other reasons later) instead of
-    migrating, since a bad migration would silently re-identify a user's
-    watch history under the wrong show.
+    before mutating data. A structure mismatch pins the item (best-effort,
+    still retried for other reasons later) instead of migrating, since a bad
+    migration would silently re-identify a user's watch history under the
+    wrong show. An identity collision - a separate `Item` already tracks
+    this show under TVDB - merges the two instead of pinning, since the
+    resolved TVDB id is a verified match rather than a guess.
     """
     if item.source != Sources.TMDB.value or item.media_type != MediaTypes.TV.value:
         return TvMigrationResult(migrated=False, reason="not a TMDB TV item")
@@ -147,14 +213,6 @@ def migrate_tv_item_to_tvdb(item: Item) -> TvMigrationResult:
     tvdb_id = _resolve_tvdb_id(item)
     if not tvdb_id:
         return TvMigrationResult(migrated=False, reason="no TVDB id resolvable")
-
-    if _would_collide(
-        tvdb_id,
-        Sources.TVDB.value,
-        MediaTypes.TV.value,
-        exclude_pk=item.pk,
-    ):
-        return _pin(item, "a separate item already tracks this show via TVDB")
 
     local_seasons = _local_season_items(item)
     season_numbers = [season.season_number for season in local_seasons]
@@ -174,20 +232,36 @@ def migrate_tv_item_to_tvdb(item: Item) -> TvMigrationResult:
     if not _structure_is_compatible(local_seasons, local_episodes, tvdb_payload):
         return _pin(item, "season/episode structure does not match TVDB")
 
-    for season in local_seasons:
-        if _would_collide(
+    existing_show = _existing_tvdb_item(
+        tvdb_id,
+        MediaTypes.TV.value,
+        item.library_media_type,
+        exclude_pk=item.pk,
+    )
+    if existing_show is not None:
+        return _merge_into_existing_tvdb_show(
+            item,
+            existing_show,
+            local_seasons,
+            local_episodes,
             tvdb_id,
-            Sources.TVDB.value,
+            tvdb_payload,
+        )
+
+    for season in local_seasons:
+        if _existing_tvdb_item(
+            tvdb_id,
             MediaTypes.SEASON.value,
+            season.library_media_type,
             season_number=season.season_number,
             exclude_pk=season.pk,
         ):
             return _pin(item, "a separate season item already exists under TVDB")
     for episode in local_episodes:
-        if _would_collide(
+        if _existing_tvdb_item(
             tvdb_id,
-            Sources.TVDB.value,
             MediaTypes.EPISODE.value,
+            episode.library_media_type,
             season_number=episode.season_number,
             episode_number=episode.episode_number,
             exclude_pk=episode.pk,

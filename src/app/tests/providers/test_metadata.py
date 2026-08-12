@@ -30,6 +30,7 @@ mock_path = Path(__file__).resolve().parent.parent / "mock_data"
 class Metadata(TestCase):
     """Test the external API calls for media details."""
 
+    @tag("network")
     def test_anime(self):
         """Test the metadata method for anime."""
         response = mal.anime("1")
@@ -54,6 +55,7 @@ class Metadata(TestCase):
         self.assertEqual(response["details"]["episodes"], None)
         self.assertEqual(response["details"]["runtime"], None)
 
+    @tag("network")
     def test_manga(self):
         """Test the metadata method for manga."""
         response = mal.manga("1")
@@ -1835,17 +1837,20 @@ class Metadata(TestCase):
 
         self.assertIsNone(igdb_game_id)
 
+    @tag("network")
     def test_book(self):
         """Test the metadata method for books."""
         response = openlibrary.book("OL21733390M")
         self.assertEqual(response["title"], "Nineteen Eighty-Four")
         self.assertEqual(response["details"]["author"], ["George Orwell"])
 
+    @tag("network")
     def test_comic(self):
         """Test the metadata method for comics."""
         response = comicvine.comic("155969")
         self.assertEqual(response["title"], "Ultimate Spider-Man")
 
+    @tag("network")
     def test_hardcover_book(self):
         """Test the metadata method for books from Hardcover."""
         response = hardcover.book("377193")
@@ -1856,6 +1861,7 @@ class Metadata(TestCase):
         self.assertIn("Classics", response["genres"])
         self.assertAlmostEqual(response["score"], 7.4, delta=0.1)
 
+    @tag("network")
     def test_hardcover_book_unknown(self):
         """Test the metadata method for books from Hardcover with minimal data."""
         response = hardcover.book("1265528")

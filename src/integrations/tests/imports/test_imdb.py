@@ -22,6 +22,7 @@ app_mock_path = (
 )
 
 
+@tag("network")
 class ImportIMDB(TestCase):
     """Test importing media from IMDB CSV."""
 
@@ -32,7 +33,6 @@ class ImportIMDB(TestCase):
         with Path(mock_path / "import_imdb.csv").open("rb") as file:
             self.import_results = imdb.importer(file, self.user, "new")
 
-    @tag("network")
     def test_import_imdb_csv(self):
         """Test importing movies and TV shows from IMDB CSV."""
         imported_counts, warnings = self.import_results
@@ -129,7 +129,6 @@ class ImportIMDB(TestCase):
 
         self.assertIsNone(result)
 
-    @tag("network")
     def test_duplicate_handling(self):
         """Test handling of duplicate IMDB entries that map to same TMDB ID."""
         imported_counts, warnings = self.import_results

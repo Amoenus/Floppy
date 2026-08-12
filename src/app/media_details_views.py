@@ -49,6 +49,7 @@ from app.models import (
     BasicMedia,
     ComicIssue,
     CreditRoleType,
+    HardcoverEditionPreference,
     Item,
     MediaTypes,
     Sources,
@@ -961,12 +962,30 @@ def media_details(
 
     detail_item = Item.objects.filter(**detail_item_lookup).first()
 
+    hardcover_edition_id = None
+    if source == Sources.HARDCOVER.value and media_type == MediaTypes.BOOK.value:
+        # #539: let the requester preview a specific edition (query param), or
+        # fall back to their saved edition choice for an already-tracked book.
+        hardcover_edition_id = request.GET.get("edition_id") or None
+        if not hardcover_edition_id and request.user.is_authenticated and detail_item:
+            preference = HardcoverEditionPreference.objects.filter(
+                user=request.user,
+                item=detail_item,
+            ).first()
+            if preference:
+                hardcover_edition_id = preference.edition_id
+
+    metadata_kwargs = {}
+    if hardcover_edition_id:
+        metadata_kwargs["edition_id"] = hardcover_edition_id
+
     try:
         media_metadata = services.get_media_metadata(
             media_type,
             media_id,
             source,
             language=metadata_resolution.metadata_language_default(request.user),
+            **metadata_kwargs,
         )
     except services.ProviderAPIError:
         if detail_item is None:
@@ -2162,6 +2181,7 @@ def media_details(
         "grouped_preview_target": grouped_preview_target,
         "can_update_metadata_provider": can_update_metadata_provider,
         "can_migrate_grouped_anime": can_migrate_grouped_anime,
+        "hardcover_edition_id": hardcover_edition_id,
         "migrated_grouped_item": migrated_grouped_item,
         "migrated_grouped_title": migrated_grouped_title,
         "episode_load_more": episode_load_more,

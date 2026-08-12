@@ -422,6 +422,47 @@ def upsert_provider_links(
     return external_ids
 
 
+def find_tracked_season(
+    user,
+    media_id: str,
+    source: str,
+    season_number: int,
+    *,
+    library_media_type: str | None = None,
+) -> Season | None:
+    """Return the user's existing tracked Season for this show/season, if any.
+
+    A given (user, show, season) can only be tracked once in practice, even
+    though grouped-anime shows expose it under two Item buckets (anime vs.
+    TV identity) — see #623, where the anime-bucket page and the TV-identity
+    `related_tv` link disagreed and a duplicate row was inserted. This looks
+    across buckets so read and write paths agree on "the" tracked season
+    instead of missing it. Prefers `library_media_type` when given, but
+    falls back to any bucket. Never creates — see
+    `get_or_create_tracked_season_item` / `fork_services_episode.
+    resolve_or_create_season` for get-or-create semantics.
+    """
+    queryset = Season.objects.filter(
+        item__media_id=media_id,
+        item__source=source,
+        item__media_type=MediaTypes.SEASON.value,
+        item__season_number=season_number,
+        item__episode_number=None,
+        user=user,
+    ).select_related("item", "related_tv", "related_tv__item")
+
+    if library_media_type:
+        match = (
+            queryset.filter(item__library_media_type=library_media_type)
+            .order_by("id")
+            .first()
+        )
+        if match is not None:
+            return match
+
+    return queryset.order_by("id").first()
+
+
 def get_or_create_tracked_season_item(
     media_id: str,
     source: str,

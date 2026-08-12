@@ -10,7 +10,38 @@ set -e
 # Rejects a non-"ok" quick_check result even when SQLite doesn't raise an
 # exception for it (issue #593).
 if [ -z "$DB_HOST" ] && [ -f /floppy/db/db.sqlite3 ]; then
-    python -c "from config.sqlite_integrity import check_database_integrity; check_database_integrity('/floppy/db/db.sqlite3')" || exit 1
+    echo "[entrypoint] Checking SQLite integrity (PRAGMA quick_check)" >&2
+    python -c "from config.sqlite_integrity import check_database_integrity; check_database_integrity('/floppy/db/db.sqlite3')" &
+    integrity_pid=$!
+
+    # Report actual bytes read from /proc rather than a bare "still going" -
+    # cheap to read (no python instrumentation needed) and gives the user
+    # something concrete instead of a repeating, uninformative message.
+    elapsed=0
+    while kill -0 "$integrity_pid" 2>/dev/null; do
+        if [ "$elapsed" -ge 600 ]; then
+            echo "[entrypoint] WARNING: SQLite integrity check exceeded 600s (slow storage?); continuing" >&2
+            kill "$integrity_pid" 2>/dev/null
+            break
+        fi
+        sleep 30
+        elapsed=$((elapsed + 30))
+        read_mb=$(awk '/^rchar:/ {printf "%.0f", $2/1048576}' "/proc/${integrity_pid}/io" 2>/dev/null)
+        if [ -n "$read_mb" ]; then
+            echo "[entrypoint] Still checking SQLite integrity (${elapsed}s elapsed, ~${read_mb}MB read so far)" >&2
+        else
+            echo "[entrypoint] Still checking SQLite integrity (${elapsed}s elapsed)" >&2
+        fi
+    done
+
+    integrity_status=0
+    wait "$integrity_pid" || integrity_status=$?
+    if [ "$elapsed" -ge 600 ] && [ "$integrity_status" -ne 0 ]; then
+        integrity_status=124
+    fi
+    if [ "$integrity_status" -ne 0 ] && [ "$integrity_status" -ne 124 ]; then
+        exit 1
+    fi
 fi
 
 # Bounded, retrying migrate: a blocked migration must fail loudly and retry
@@ -52,6 +83,7 @@ chown abc:abc /floppy
 # Bound each recursive chown: a stalled bind mount (e.g. network storage)
 # must degrade to a warning instead of hanging the boot silently (issue #341).
 for dir in db logs staticfiles /var/log/nginx /var/lib/nginx; do
+    echo "[entrypoint] Chowning ${dir}" >&2
     timeout 600 chown -R abc:abc "$dir" || \
         echo "[entrypoint] WARNING: chown of ${dir} failed or timed out (stalled mount?); continuing" >&2
 done
@@ -73,4 +105,4 @@ export FLOPPY_START_INTERACTIVE_WORKER="${FLOPPY_START_INTERACTIVE_WORKER:-true}
 export FLOPPY_START_DISCOVER_WORKER="${FLOPPY_START_DISCOVER_WORKER:-true}"
 
 echo "[entrypoint] Starting services" >&2
-exec /usr/local/bin/supervisord -c /etc/supervisord.conf
+exec supervisord -c /etc/supervisord.conf

@@ -29,6 +29,7 @@ from app.models import (
     prefill_episode_runtime_index,
 )
 from app.release_years import prefill_display_release_years
+from app.services.item_merge import dedupe_cross_provider_items
 from app.templatetags import app_tags
 from lists import smart_rules
 from lists.models import CustomList
@@ -1968,11 +1969,12 @@ def _apply_progress_filter(
     if normalized_progress == "all" or media_type not in HOME_PROGRESS_MEDIA_TYPES:
         return entries
 
-    media_objects = [entry.media for entry in entries if entry.media]
-    if media_objects and any(
-        getattr(media, "max_progress", None) is None for media in media_objects
-    ):
-        BasicMedia.objects.annotate_max_progress(media_objects, media_type)
+    # media entries here always come from _media_lookup_for_items, which
+    # already calls annotate_max_progress on every group it builds - a media
+    # object's max_progress is None at this point because it genuinely has
+    # no progress data, not because annotation hasn't run yet. Re-annotating
+    # "just in case" was re-issuing the same events/episode bulk queries a
+    # second time for every progress-filtered row.
 
     if normalized_progress == "caught_up":
         return [
@@ -2197,7 +2199,9 @@ def sort_home_entries(
     )
 
 
-def _library_query_entries(user, row: HomeScreenRow) -> list[HomeRowEntry]:
+def _library_query_entries(
+    user, row: HomeScreenRow, collection_context_cache: dict | None = None,
+) -> list[HomeRowEntry]:
     normalized_filters = _normalized_filter_payload(row.filters or {}, row.media_type)
     if row.media_type == MediaTypes.MUSIC.value:
         subview = _canonical_music_subview(normalized_filters.get("subview"))
@@ -2225,11 +2229,16 @@ def _library_query_entries(user, row: HomeScreenRow) -> list[HomeRowEntry]:
         user,
         smart_rules.normalize_rule_payload(rule_payload, user),
         include_collection_only_untracked=True,
+        collection_context_cache=collection_context_cache,
     )
     if not item_ids:
         return []
 
     items = list(Item.objects.filter(id__in=item_ids))
+    items = dedupe_cross_provider_items(
+        items,
+        getattr(user, "tv_metadata_source_default", Sources.TMDB.value),
+    )
     media_lookup = _media_lookup_for_items(
         user,
         items,
@@ -2428,6 +2437,7 @@ def _build_row_section(
     media_type: str,
     items_limit: int,
     batch_start: int = 0,
+    collection_context_cache: dict | None = None,
 ) -> dict | None:
     """Build a single home-row section dict, or None when the row is empty."""
     if row.row_type == HomeScreenRowTypeChoices.CUSTOM_LIST:
@@ -2435,7 +2445,9 @@ def _build_row_section(
     elif row.row_type == HomeScreenRowTypeChoices.RECENTLY_UNRATED:
         entries = _recently_unrated_entries(user, row)
     else:
-        entries = _library_query_entries(user, row)
+        entries = _library_query_entries(
+            user, row, collection_context_cache=collection_context_cache,
+        )
 
     if not entries:
         return None
@@ -2486,6 +2498,7 @@ def _cached_row_section(
     items_limit: int,
     *,
     refresh: bool = False,
+    collection_context_cache: dict | None = None,
 ) -> dict | None:
     """Return a row section from cache, building and caching on miss.
 
@@ -2499,7 +2512,13 @@ def _cached_row_section(
     cache_key = cache_utils.build_home_row_cache_key(user.id, row.id, items_limit)
     cached = None if refresh else cache.get(cache_key)
     if cached is None:
-        section = _build_row_section(user, row, media_type, items_limit)
+        section = _build_row_section(
+            user,
+            row,
+            media_type,
+            items_limit,
+            collection_context_cache=collection_context_cache,
+        )
         cache.set(
             cache_key,
             section if section is not None else _HOME_ROW_EMPTY_SENTINEL,
@@ -2534,6 +2553,11 @@ def build_home_page_groups(
         if row.enabled and (only_row_ids is None or row.id in only_row_ids):
             rows_by_media_type[row.media_type].append(row)
 
+    # Shared across every row built in this call so the (potentially
+    # unscoped) CollectionEntry scan behind collection/collection-only-
+    # untracked filtering runs at most once per request instead of once per
+    # row/media type.
+    collection_context_cache: dict = {}
     groups = []
     for media_type in enabled_media_types:
         row_sections = []
@@ -2546,6 +2570,7 @@ def build_home_page_groups(
                     media_type,
                     items_limit,
                     batch_start=load_row_offset,
+                    collection_context_cache=collection_context_cache,
                 )
             else:
                 section = _cached_row_section(
@@ -2554,6 +2579,7 @@ def build_home_page_groups(
                     media_type,
                     items_limit,
                     refresh=refresh_row_cache,
+                    collection_context_cache=collection_context_cache,
                 )
             if section is None:
                 continue

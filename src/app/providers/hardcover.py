@@ -161,9 +161,17 @@ def search(query, page):
     return data
 
 
-def book(media_id):
-    """Get metadata for a book from Hardcover."""
+def book(media_id, edition_id=None):
+    """Get metadata for a book from Hardcover.
+
+    `edition_id` optionally overrides the title/cover/format/ISBN with a
+    specific Hardcover edition's data (see #539), while book-level fields
+    (synopsis, genres, rating, series, authors) always come from the book
+    itself, since Hardcover doesn't vary those per edition.
+    """
     cache_key = f"{Sources.HARDCOVER.value}_{MediaTypes.BOOK.value}_{media_id}"
+    if edition_id:
+        cache_key += f"_{edition_id}"
     data = cache.get(cache_key)
 
     if data is None:
@@ -236,7 +244,17 @@ def book(media_id):
                 "book",
             )
 
-        edition_details = get_edition_details(book_data.get("default_cover_edition"))
+        edition_data = book_data.get("default_cover_edition")
+        title = book_data["title"]
+        image = book_data.get("cached_image") or settings.IMG_NONE
+
+        selected_edition = _get_edition(edition_id) if edition_id else None
+        if selected_edition:
+            edition_data = selected_edition
+            title = selected_edition.get("title") or title
+            image = _extract_image_url(selected_edition.get("cached_image")) or image
+
+        edition_details = get_edition_details(edition_data)
         series_data = process_series_data(book_data.get("featured_book_series"))
 
         related = {}
@@ -254,15 +272,16 @@ def book(media_id):
             "source": Sources.HARDCOVER.value,
             "source_url": f"https://hardcover.app/books/{book_data['slug']}",
             "media_type": MediaTypes.BOOK.value,
-            "title": book_data["title"],
+            "title": title,
             "max_progress": book_data.get("pages"),
-            "image": book_data.get("cached_image") or settings.IMG_NONE,
+            "image": image,
             "synopsis": book_data.get("description") or "No synopsis available.",
             "genres": get_tags(book_data.get("cached_tags")),
             "score": get_ratings(book_data.get("rating")),
             "score_count": book_data.get("ratings_count", 0),
             "series_name": series_data.get("name"),
             "series_position": series_data.get("position"),
+            "edition_id": str(selected_edition["id"]) if selected_edition else None,
             "details": {
                 "format": edition_details.get("format"),
                 "number_of_pages": book_data.get("pages"),
@@ -275,6 +294,127 @@ def book(media_id):
             "authors_full": authors_full,
             "related": related,
         }
+
+        cache.set(cache_key, data)
+
+    return data
+
+
+def _get_edition(edition_id):
+    """Fetch a single Hardcover edition's display fields by id."""
+    edition_query = """
+    query GetEdition($edition_id: Int!) {
+      editions_by_pk(id: $edition_id) {
+        id
+        title
+        cached_image(path: "url")
+        edition_format
+        isbn_13
+        isbn_10
+        release_date
+        publisher {
+          name
+        }
+      }
+    }
+    """
+
+    try:
+        response = services.api_request(
+            Sources.HARDCOVER.value,
+            "POST",
+            base_url,
+            params={
+                "query": edition_query,
+                "variables": {"edition_id": int(edition_id)},
+            },
+            headers={"Authorization": _authorization_header()},
+        )
+    except requests.exceptions.HTTPError as error:
+        handle_error(error)
+        return None
+
+    if "errors" in response:
+        logger.warning(
+            "GraphQL errors from Hardcover API fetching edition %s: %s",
+            edition_id,
+            [err.get("message", "Unknown error") for err in response.get("errors", [])],
+        )
+
+    edition_data = (response.get("data") or {}).get("editions_by_pk")
+    if not edition_data:
+        logger.warning("Hardcover edition %s not found", edition_id)
+        return None
+
+    return edition_data
+
+
+def editions(media_id):
+    """List available Hardcover editions for a book, for the edition picker."""
+    cache_key = f"{Sources.HARDCOVER.value}_editions_{media_id}"
+    data = cache.get(cache_key)
+
+    if data is None:
+        editions_query = """
+        query GetBookEditions($book_id: Int!) {
+          books_by_pk(id: $book_id) {
+            editions {
+              id
+              title
+              cached_image(path: "url")
+              edition_format
+              isbn_13
+              isbn_10
+              release_date
+              publisher {
+                name
+              }
+              language {
+                language
+              }
+            }
+          }
+        }
+        """
+
+        try:
+            response = services.api_request(
+                Sources.HARDCOVER.value,
+                "POST",
+                base_url,
+                params={
+                    "query": editions_query,
+                    "variables": {"book_id": int(media_id)},
+                },
+                headers={"Authorization": _authorization_header()},
+            )
+        except requests.exceptions.HTTPError as error:
+            handle_error(error)
+
+        if "errors" in response:
+            logger.warning(
+                "GraphQL errors from Hardcover API listing editions for %s: %s",
+                media_id,
+                [err.get("message", "Unknown error") for err in response.get("errors", [])],
+            )
+
+        book_data = (response.get("data") or {}).get("books_by_pk") or {}
+        raw_editions = book_data.get("editions") or []
+
+        data = [
+            {
+                "id": str(edition["id"]),
+                "title": edition.get("title"),
+                "image": _extract_image_url(edition.get("cached_image"))
+                or settings.IMG_NONE,
+                "format": edition.get("edition_format") or "Unknown",
+                "language": (edition.get("language") or {}).get("language"),
+                "publisher": (edition.get("publisher") or {}).get("name"),
+                "release_date": edition.get("release_date"),
+            }
+            for edition in raw_editions
+            if edition.get("id")
+        ]
 
         cache.set(cache_key, data)
 

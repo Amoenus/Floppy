@@ -5162,6 +5162,155 @@ class MediaDetailsViewTests(TestCase):
 
     @patch("app.providers.services.get_media_metadata")
     @patch("app.providers.tmdb.process_episodes")
+    def test_anime_season_details_finds_season_tracked_via_tv_identity(
+        self,
+        mock_process_episodes,
+        mock_get_metadata,
+    ):
+        """The anime-bucket season page must find a season tracked via TV identity.
+
+        Regression test for GitHub issue #623: a TVDB show tracked both as
+        anime and with its seasons tracked via `Season.related_tv` pointing
+        at the TV-identity `TV` row used to always show "Add to tracker" on
+        the anime-identity season page, even though the season was already
+        tracked.
+        """
+        tv_item = Item.objects.create(
+            media_id="79824",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Naruto Shippuden",
+            image="http://example.com/image.jpg",
+            library_media_type=MediaTypes.TV.value,
+        )
+        tv_identity = TV.objects.create(
+            item=tv_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        season_item = Item.objects.create(
+            media_id="79824",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=0,
+            title="Naruto Shippuden",
+            image="http://example.com/season.jpg",
+            library_media_type=MediaTypes.TV.value,
+        )
+        season = Season.objects.create(
+            item=season_item,
+            user=self.user,
+            related_tv=tv_identity,
+            status=Status.COMPLETED.value,
+        )
+
+        mock_get_metadata.side_effect = lambda *_args, **_kwargs: {
+            "title": "Naruto Shippuden",
+            "media_id": "79824",
+            "source": Sources.TVDB.value,
+            "media_type": MediaTypes.TV.value,
+            "image": "http://example.com/image.jpg",
+            "season/0": {
+                "title": "Specials",
+                "season_title": "Specials",
+                "media_id": "79824",
+                "media_type": MediaTypes.SEASON.value,
+                "source": Sources.TVDB.value,
+                "image": "http://example.com/season.jpg",
+                "episodes": [],
+            },
+        }
+        mock_process_episodes.return_value = []
+
+        response = self.client.get(
+            reverse(
+                "anime_season_details",
+                kwargs={
+                    "source": Sources.TVDB.value,
+                    "media_id": "79824",
+                    "title": "naruto-shippuden",
+                    "season_number": 0,
+                },
+            ),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["current_instance"], season)
+        self.assertNotContains(response, "Add to tracker")
+
+    @patch("app.providers.services.get_media_metadata")
+    @patch("app.providers.tmdb.process_episodes")
+    def test_anime_season_details_numbered_season_via_tv_identity(
+        self,
+        mock_process_episodes,
+        mock_get_metadata,
+    ):
+        """Same as season 0 above, but for a normal numbered season."""
+        tv_item = Item.objects.create(
+            media_id="79824",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Naruto Shippuden",
+            image="http://example.com/image.jpg",
+            library_media_type=MediaTypes.TV.value,
+        )
+        tv_identity = TV.objects.create(
+            item=tv_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        season_item = Item.objects.create(
+            media_id="79824",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=1,
+            title="Naruto Shippuden",
+            image="http://example.com/season.jpg",
+            library_media_type=MediaTypes.TV.value,
+        )
+        season = Season.objects.create(
+            item=season_item,
+            user=self.user,
+            related_tv=tv_identity,
+            status=Status.IN_PROGRESS.value,
+        )
+
+        mock_get_metadata.side_effect = lambda *_args, **_kwargs: {
+            "title": "Naruto Shippuden",
+            "media_id": "79824",
+            "source": Sources.TVDB.value,
+            "media_type": MediaTypes.TV.value,
+            "image": "http://example.com/image.jpg",
+            "season/1": {
+                "title": "Season 1",
+                "season_title": "Season 1",
+                "media_id": "79824",
+                "media_type": MediaTypes.SEASON.value,
+                "source": Sources.TVDB.value,
+                "image": "http://example.com/season.jpg",
+                "episodes": [],
+            },
+        }
+        mock_process_episodes.return_value = []
+
+        response = self.client.get(
+            reverse(
+                "anime_season_details",
+                kwargs={
+                    "source": Sources.TVDB.value,
+                    "media_id": "79824",
+                    "title": "naruto-shippuden",
+                    "season_number": 1,
+                },
+            ),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["current_instance"], season)
+        self.assertNotContains(response, "Add to tracker")
+
+    @patch("app.providers.services.get_media_metadata")
+    @patch("app.providers.tmdb.process_episodes")
     def test_episode_details_view_anonymous_public(
         self,
         mock_process_episodes,
@@ -5271,6 +5420,154 @@ class MediaDetailsViewTests(TestCase):
             html=False,
         )
         mock_process_episodes.assert_called_once()
+
+    @patch("app.providers.services.get_media_metadata")
+    @patch("app.providers.tmdb.process_episodes")
+    def test_season_details_persists_and_self_heals_episode_release_datetime(
+        self,
+        mock_process_episodes,
+        mock_get_metadata,
+    ):
+        """Viewing a season page must persist release_datetime for every episode.
+
+        Regression test: episode Items created while browsing a season page
+        (as opposed to individually tracking/watching one) previously only
+        picked up runtime/rating from the live provider payload and silently
+        dropped release_datetime, leaving it NULL forever unless that exact
+        episode was later tracked or a manual metadata sync ran. This left
+        "not caught up" categorization permanently wrong for any unwatched
+        episode created this way.
+        """
+        tv_item = Item.objects.create(
+            media_id="1668",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Test TV Show",
+            image="http://example.com/show.jpg",
+        )
+        related_tv = TV.objects.create(
+            item=tv_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        season_item = Item.objects.create(
+            media_id="1668",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Test TV Show",
+            image="http://example.com/show.jpg",
+            season_number=1,
+        )
+        Season.objects.create(
+            item=season_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+            related_tv=related_tv,
+        )
+
+        # Episode 1 already has a trusted release_datetime — must not be
+        # clobbered by a differing value from the live payload.
+        already_dated_episode = Item.objects.create(
+            media_id="1668",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="No Shortcuts",
+            image=settings.IMG_NONE,
+            season_number=1,
+            episode_number=1,
+            release_datetime=timezone.make_aware(datetime(2023, 1, 1)),
+        )
+        # Episode 2 exists (e.g. created by an earlier page view before its
+        # air date was known) but was never given a release_datetime.
+        stale_episode = Item.objects.create(
+            media_id="1668",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="Test TV Show",
+            image=settings.IMG_NONE,
+            season_number=1,
+            episode_number=2,
+            release_datetime=None,
+        )
+
+        mock_get_metadata.side_effect = lambda *_args, **_kwargs: {
+            "title": "Test TV Show",
+            "media_id": "1668",
+            "source": Sources.TMDB.value,
+            "media_type": MediaTypes.TV.value,
+            "image": "http://example.com/image.jpg",
+            "season/1": {
+                "title": "Test TV Show",
+                "season_title": "Season 1",
+                "media_id": "1668",
+                "media_type": MediaTypes.SEASON.value,
+                "source": Sources.TMDB.value,
+                "image": "http://example.com/season.jpg",
+                "episodes": [
+                    {
+                        "episode_number": 1,
+                        "name": "No Shortcuts",
+                        "air_date": "2023-06-01",  # differs from the stored date
+                        "runtime": 48,
+                    },
+                    {
+                        "episode_number": 2,
+                        "name": "Episode 2",
+                        "air_date": "2023-01-08",
+                        "runtime": 42,
+                    },
+                    {
+                        "episode_number": 3,
+                        "name": "Episode 3",
+                        "air_date": "2023-01-15",
+                        "runtime": 44,
+                    },
+                ],
+            },
+        }
+        mock_process_episodes.return_value = []
+
+        response = self.client.get(
+            reverse(
+                "season_details",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_id": "1668",
+                    "title": "test-tv-show",
+                    "season_number": 1,
+                },
+            ),
+            {"fragment": "secondary"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        already_dated_episode.refresh_from_db()
+        self.assertEqual(
+            already_dated_episode.release_datetime,
+            timezone.make_aware(datetime(2023, 1, 1)),
+            "an already-set release_datetime must not be overwritten",
+        )
+
+        stale_episode.refresh_from_db()
+        self.assertEqual(
+            stale_episode.release_datetime,
+            timezone.make_aware(datetime(2023, 1, 8)),
+            "a NULL release_datetime must self-heal from the live payload",
+        )
+
+        new_episode = Item.objects.get(
+            media_id="1668",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=1,
+            episode_number=3,
+        )
+        self.assertEqual(
+            new_episode.release_datetime,
+            timezone.make_aware(datetime(2023, 1, 15)),
+            "a newly created episode must get release_datetime from the same payload",
+        )
 
     @patch("app.views.trakt_popularity_service.refresh_trakt_popularity")
     @patch("app.providers.tmdb.get_tvdb_episode_image_map")

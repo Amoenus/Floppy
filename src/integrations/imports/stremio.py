@@ -24,6 +24,8 @@ from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
 import app
+import app.providers.mal
+import app.providers.trakt
 from app.models import MediaTypes, Sources, Status
 from app.providers import services
 from integrations import import_progress
@@ -39,6 +41,26 @@ CINEMETA_VIDEO_IDS_URL = (
 )
 CINEMETA_BATCH_SIZE = 100
 BITFIELD_MIN_COMPONENTS = 3
+
+KITSU_API_BASE_URL = "https://kitsu.app/api/edge"
+ANILIST_GRAPHQL_URL = "https://graphql.anilist.co"
+
+# Stremio library ids are namespaced as "<provider>:<id>", except plain IMDb
+# ids which have no namespace prefix (e.g. "tt1234567"). These are the
+# provider namespaces the Stremio addon ecosystem is known to emit that this
+# importer can resolve into TMDB (movies/TV) or MAL (anime) media.
+ANIME_ID_NAMESPACES = frozenset({"kitsu", "mal", "anilist"})
+MOVIE_TV_ID_NAMESPACES = frozenset({"tmdb", "tvdb", "trakt"})
+
+
+def classify_stremio_id(entry_id):
+    """Split a Stremio library id into (namespace, raw_id), or None if unsupported."""
+    namespace, sep, raw = entry_id.partition(":")
+    if not sep:
+        return ("imdb", entry_id) if entry_id.startswith("tt") else None
+    if namespace in MOVIE_TV_ID_NAMESPACES or namespace in ANIME_ID_NAMESPACES:
+        return (namespace, raw)
+    return None
 
 # Forward-only status ranking used to decide whether the recurring sync may
 # advance an already-tracked Movie/TV/Season's status (see #580: the sync
@@ -205,13 +227,21 @@ class StremioImporter:
             self._mark_broken(str(error))
             raise
 
-        movies, series = self._partition_items(items)
+        movies, series, anime = self._partition_items(items)
 
+        # Cinemeta only indexes IMDb ids, so only imdb-namespaced series can
+        # get an ordered per-episode video list from it. Series resolved via
+        # tmdb:/tvdb:/trakt: fall back to last-watched-episode-only import
+        # (see _watched_videos), same as when Cinemeta itself is unreachable.
         cinemeta_videos = self._fetch_cinemeta_videos(
-            [entry["_id"] for entry in series],
+            [
+                entry["_id"]
+                for entry in series
+                if entry["_id"].startswith("tt")
+            ],
         )
 
-        total = len(movies) + len(series)
+        total = len(movies) + len(series) + len(anime)
         current = 0
 
         for entry in movies:
@@ -228,6 +258,15 @@ class StremioImporter:
             import_progress.report(current, total, "Stremio")
             try:
                 self._process_series(entry, cinemeta_videos.get(entry["_id"]))
+            except Exception as error:
+                msg = f"Error processing entry: {entry}"
+                raise MediaImportUnexpectedError(msg) from error
+
+        for entry in anime:
+            current += 1
+            import_progress.report(current, total, "Stremio")
+            try:
+                self._process_anime(entry)
             except Exception as error:
                 msg = f"Error processing entry: {entry}"
                 raise MediaImportUnexpectedError(msg) from error
@@ -265,9 +304,10 @@ class StremioImporter:
         )
 
     def _partition_items(self, items):
-        """Split library items into importable movies and series."""
+        """Split library items into importable movies, series, and anime."""
         movies = []
         series = []
+        anime = []
 
         for entry in items:
             entry_type = entry.get("type")
@@ -280,19 +320,23 @@ class StremioImporter:
             if not has_signal and (entry.get("removed") or entry.get("temp")):
                 continue
 
-            if not entry_id.startswith("tt"):
+            classified = classify_stremio_id(entry_id)
+            if classified is None:
                 name = entry.get("name", entry_id)
                 self.warnings.append(
                     f"{name}: unsupported Stremio id '{entry_id}' - skipped",
                 )
                 continue
 
-            if entry_type == "movie":
+            namespace, _raw_id = classified
+            if namespace in ANIME_ID_NAMESPACES:
+                anime.append(entry)
+            elif entry_type == "movie":
                 movies.append(entry)
             else:
                 series.append(entry)
 
-        return movies, series
+        return movies, series, anime
 
     def _has_watch_signal(self, entry):
         """Return True when the item carries any watch state."""
@@ -359,18 +403,18 @@ class StremioImporter:
 
     def _process_movie(self, entry):
         """Process a single Stremio movie entry."""
-        imdb_id = entry["_id"]
-        name = entry.get("name", imdb_id)
+        entry_id = entry["_id"]
+        name = entry.get("name", entry_id)
         state = entry.get("state") or {}
 
-        tmdb_data = self._lookup_in_tmdb(imdb_id, MediaTypes.MOVIE.value)
-        if not tmdb_data:
+        tmdb_id = self._resolve_tmdb_id(entry_id, MediaTypes.MOVIE.value)
+        if tmdb_id is None:
             self.warnings.append(
                 f"{name}: couldn't find a match in {Sources.TMDB.label}",
             )
             return
 
-        media_id = str(tmdb_data["media_id"])
+        media_id = str(tmdb_id)
         status, watched = self._movie_status(state)
         last_watched = self._parse_date(state.get("lastWatched"))
 
@@ -399,13 +443,23 @@ class StremioImporter:
         ):
             return
 
+        try:
+            movie_metadata = app.providers.tmdb.movie(tmdb_id)
+        except services.ProviderAPIError as error:
+            if error.status_code == requests.codes.not_found:
+                self.warnings.append(
+                    f"{name}: not found in {Sources.TMDB.label} with ID {tmdb_id}.",
+                )
+                return
+            raise
+
         movie_item, _ = app.models.Item.objects.get_or_create(
-            media_id=tmdb_data["media_id"],
+            media_id=tmdb_id,
             source=Sources.TMDB.value,
             media_type=MediaTypes.MOVIE.value,
             defaults={
-                "title": tmdb_data["title"],
-                "image": tmdb_data["image"],
+                **app.models.Item.title_fields_from_metadata(movie_metadata),
+                "image": movie_metadata["image"],
             },
         )
 
@@ -422,18 +476,17 @@ class StremioImporter:
 
     def _process_series(self, entry, video_ids):
         """Process a single Stremio series entry."""
-        imdb_id = entry["_id"]
-        name = entry.get("name", imdb_id)
+        entry_id = entry["_id"]
+        name = entry.get("name", entry_id)
         state = entry.get("state") or {}
 
-        tmdb_data = self._lookup_in_tmdb(imdb_id, MediaTypes.TV.value)
-        if not tmdb_data:
+        tmdb_id = self._resolve_tmdb_id(entry_id, MediaTypes.TV.value)
+        if tmdb_id is None:
             self.warnings.append(
                 f"{name}: couldn't find a match in {Sources.TMDB.label}",
             )
             return
 
-        tmdb_id = tmdb_data["media_id"]
         media_id = str(tmdb_id)
 
         watched_videos = self._watched_videos(entry, video_ids, name)
@@ -697,31 +750,189 @@ class StremioImporter:
                 return settings.IMG_NONE
         return settings.IMG_NONE
 
-    def _lookup_in_tmdb(self, imdb_id, media_type):
-        """Look up media in TMDB using the IMDB ID."""
+    def _resolve_tmdb_id(self, entry_id, media_type):
+        """Resolve a Stremio movie/series id to a bare TMDB id, or None."""
+        classified = classify_stremio_id(entry_id)
+        if classified is None:
+            return None
+        namespace, raw = classified
+
+        if namespace == "imdb":
+            return self._tmdb_id_via_find(raw, "imdb_id", media_type)
+        if namespace == "tmdb":
+            return int(raw) if raw.isdigit() else None
+        if namespace == "tvdb":
+            return self._tmdb_id_via_find(raw, "tvdb_id", media_type)
+        if namespace == "trakt":
+            return self._tmdb_id_via_trakt(raw, media_type)
+        return None
+
+    def _tmdb_id_via_find(self, external_id, external_source, media_type):
+        """Resolve an external id to a TMDB id via TMDB's /find endpoint."""
+        if not external_id:
+            return None
         try:
-            response = app.providers.tmdb.find(imdb_id, "imdb_id")
+            response = app.providers.tmdb.find(external_id, external_source)
         except services.ProviderAPIError as error:
-            logger.warning("Error looking up IMDB ID %s in TMDB: %s", imdb_id, error)
+            logger.warning(
+                "Error looking up %s %s in TMDB: %s",
+                external_source,
+                external_id,
+                error,
+            )
             return None
 
-        if media_type == MediaTypes.MOVIE.value and response.get("movie_results"):
-            movie = response["movie_results"][0]
-            return {
-                "media_id": movie["id"],
-                "title": movie["title"],
-                "image": app.providers.tmdb.get_image_url(movie["poster_path"]),
-            }
+        key = "movie_results" if media_type == MediaTypes.MOVIE.value else "tv_results"
+        results = response.get(key) or []
+        return results[0]["id"] if results else None
 
-        if media_type == MediaTypes.TV.value and response.get("tv_results"):
-            tv_show = response["tv_results"][0]
-            return {
-                "media_id": tv_show["id"],
-                "title": tv_show["name"],
-                "image": app.providers.tmdb.get_image_url(tv_show["poster_path"]),
-            }
+    def _tmdb_id_via_trakt(self, trakt_id, media_type):
+        """Resolve a Trakt id to a TMDB id via Trakt's external-id search."""
+        if not app.providers.trakt.is_configured():
+            return None
+        try:
+            result = app.providers.trakt.lookup_by_external_id(
+                "trakt",
+                trakt_id,
+                media_type=media_type,
+            )
+        except services.ProviderAPIError as error:
+            logger.warning("Error looking up Trakt ID %s: %s", trakt_id, error)
+            return None
+        if not result:
+            return None
+        return (result.get("external_ids") or {}).get("tmdb")
 
+    def _resolve_mal_id(self, entry_id):
+        """Resolve a Stremio anime id (kitsu:/mal:/anilist:) to a MAL id, or None."""
+        classified = classify_stremio_id(entry_id)
+        if classified is None:
+            return None
+        namespace, raw = classified
+
+        if namespace == "mal":
+            return int(raw) if raw.isdigit() else None
+        if namespace == "kitsu":
+            return self._mal_id_via_kitsu(raw)
+        if namespace == "anilist":
+            return self._mal_id_via_anilist(raw)
         return None
+
+    def _mal_id_via_kitsu(self, kitsu_id):
+        """Resolve a Kitsu anime id to a MAL id via Kitsu's mappings."""
+        if not kitsu_id:
+            return None
+        params = {
+            "include": "mappings",
+            "fields[mappings]": "externalSite,externalId",
+        }
+        try:
+            response = services.api_request(
+                "KITSU",
+                "GET",
+                f"{KITSU_API_BASE_URL}/anime/{kitsu_id}",
+                params=params,
+            )
+        except services.ProviderAPIError as error:
+            logger.warning("Error looking up Kitsu ID %s: %s", kitsu_id, error)
+            return None
+
+        mappings = {
+            mapping["attributes"]["externalSite"]: mapping["attributes"]["externalId"]
+            for mapping in response.get("included", [])
+            if mapping.get("type") == "mappings"
+        }
+        return helpers.mal_id_from_kitsu_mappings(mappings, MediaTypes.ANIME.value)
+
+    def _mal_id_via_anilist(self, anilist_id):
+        """Resolve an AniList media id to a MAL id via AniList's public GraphQL API."""
+        if not anilist_id:
+            return None
+        query = "query ($id: Int) { Media(id: $id) { idMal } }"
+        try:
+            response = services.api_request(
+                "ANILIST",
+                "POST",
+                ANILIST_GRAPHQL_URL,
+                params={"query": query, "variables": {"id": int(anilist_id)}},
+            )
+        except (services.ProviderAPIError, ValueError) as error:
+            logger.warning("Error looking up AniList ID %s: %s", anilist_id, error)
+            return None
+
+        mal_id = (response.get("data") or {}).get("Media", {}).get("idMal")
+        return int(mal_id) if mal_id else None
+
+    def _process_anime(self, entry):
+        """Process a single Stremio anime entry (kitsu:/mal:/anilist: ids)."""
+        entry_id = entry["_id"]
+        name = entry.get("name", entry_id)
+        state = entry.get("state") or {}
+
+        mal_id = self._resolve_mal_id(entry_id)
+        if mal_id is None:
+            self.warnings.append(
+                f"{name}: couldn't find a match in {Sources.MAL.label}",
+            )
+            return
+
+        media_id = str(mal_id)
+        status, watched = self._movie_status(state)
+        last_watched = self._parse_date(state.get("lastWatched"))
+
+        existing_anime = self.existing_media[MediaTypes.ANIME.value][
+            Sources.MAL.value
+        ].get(media_id)
+        if existing_anime is not None and self.mode == "new":
+            self._advance_status_in_place(
+                existing_anime,
+                status,
+                progress=1 if status == Status.COMPLETED.value else existing_anime.progress,
+                start_date=last_watched
+                if status != Status.PLANNING.value
+                else existing_anime.start_date,
+                end_date=last_watched if watched else existing_anime.end_date,
+            )
+            return
+
+        if not helpers.should_process_media(
+            self.existing_media,
+            self.to_delete,
+            MediaTypes.ANIME.value,
+            Sources.MAL.value,
+            media_id,
+            self.mode,
+        ):
+            return
+
+        try:
+            anime_metadata = app.providers.mal.anime(mal_id)
+        except services.ProviderAPIError as error:
+            self.warnings.append(
+                f"{name}: couldn't fetch MyAnimeList details ({error})",
+            )
+            return
+
+        anime_item, _ = app.models.Item.objects.get_or_create(
+            media_id=mal_id,
+            source=Sources.MAL.value,
+            media_type=MediaTypes.ANIME.value,
+            defaults={
+                **app.models.Item.title_fields_from_metadata(anime_metadata),
+                "image": anime_metadata["image"],
+            },
+        )
+
+        anime_instance = app.models.Anime(
+            item=anime_item,
+            user=self.user,
+            status=status,
+            progress=1 if status == Status.COMPLETED.value else 0,
+            start_date=last_watched if status != Status.PLANNING.value else None,
+            end_date=last_watched if watched else None,
+        )
+        anime_instance._history_date = self._get_history_date(entry)
+        self.bulk_media[MediaTypes.ANIME.value].append(anime_instance)
 
     def _parse_date(self, date_str):
         """Convert a Stremio ISO timestamp to a datetime, or None."""

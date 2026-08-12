@@ -176,9 +176,11 @@ from app.metadata_sync_views import (
     _get_local_show_item,
     _resolve_current_display_metadata_payload,
     _save_provider_metadata_status,
+    list_hardcover_editions,
     migrate_grouped_anime,
     remap_metadata_provider,
     search_remap_candidates,
+    set_hardcover_edition,
     sync_metadata,
     update_item_image,
     update_manual_item_metadata,
@@ -347,8 +349,10 @@ from app.tag_views import (
     _render_tag_modal_response,
     _resolve_detail_tag_genres,
     _user_tags_for_item,
+    tag_bulk_toggle,
     tag_create,
     tag_delete,
+    tag_index,
     tag_item_toggle,
     tags_modal,
 )
@@ -422,7 +426,7 @@ def home(request):
             )
             if target_row is None:
                 return HttpResponse("")
-            return render(
+            response = render(
                 request,
                 "app/components/home_grid.html",
                 {
@@ -432,6 +436,13 @@ def home(request):
                     "IMG_NONE": settings.IMG_NONE,
                 },
             )
+            # The client's data-total-count is frozen at the initial page
+            # render (home_grid.html carries no total/loaded data), so
+            # report the freshly computed values on every load-more
+            # response to keep it in sync.
+            response["X-Home-Row-Total"] = str(target_row["total"])
+            response["X-Home-Row-Loaded"] = str(target_row["loaded_count"])
+            return response
 
         context = {
             "user": request.user,
@@ -1845,6 +1856,7 @@ def date_range_script(request):
         )
 
 
+@login_not_required
 @require_GET
 def service_worker(request):
     """Serve the service worker file from static files."""
@@ -2081,6 +2093,7 @@ __all__ = [
     "history",
     "history_genres",
     "igdb",
+    "list_hardcover_editions",
     "login_not_required",
     "mangaupdates",
     "manual",
@@ -2124,6 +2137,7 @@ __all__ = [
     "search_suggestions",
     "season_details",
     "select_featured_person",
+    "set_hardcover_edition",
     "slugify",
     "song_save",
     "static",
@@ -2136,8 +2150,10 @@ __all__ = [
     "sync_artist_discography_view",
     "sync_metadata",
     "sync_services",
+    "tag_bulk_toggle",
     "tag_create",
     "tag_delete",
+    "tag_index",
     "tag_item_toggle",
     "tags_modal",
     "time",

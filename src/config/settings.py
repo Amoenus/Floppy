@@ -245,6 +245,7 @@ MIDDLEWARE = [
     "app.middleware.NoStoreHtmlMiddleware",
     "app.middleware.RequestPerformanceLoggingMiddleware",
     "app.middleware.DatabaseRetryMiddleware",
+    "app.middleware.SessionInterruptedMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -1535,6 +1536,9 @@ ACCOUNT_USER_MODEL_EMAIL_FIELD = None
 ACCOUNT_FORMS = {
     "login": "users.forms.CustomLoginForm",
     "signup": "users.forms.CustomSignupForm",
+}
+SOCIALACCOUNT_FORMS = {
+    "signup": "users.forms.CustomSocialSignupForm",
 }
 
 if BASE_URL:
