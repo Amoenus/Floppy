@@ -172,6 +172,8 @@ class XboxImporter:
             raise
 
         self.existing_media = helpers.get_existing_media(user)
+        # Track media the user explicitly deleted, so it isn't recreated
+        self.deleted_media = helpers.get_deleted_media(user)
         self.to_update = []
         self.to_update_meta = []
         self.bulk_media = defaultdict(list)
@@ -374,6 +376,18 @@ class XboxImporter:
 
         last_played = self._last_time_played(title)
         media_id = str(igdb_game["media_id"])
+
+        if media_id in self.deleted_media[MediaTypes.GAME.value][Sources.IGDB.value]:
+            # Xbox keeps reporting a title forever once it has been launched,
+            # so without this every scheduled sync resurrects a game the user
+            # deleted here on purpose.
+            logger.debug(
+                "Skipping deleted Xbox game: %s (%s) - deleted locally",
+                name,
+                media_id,
+            )
+            return
+
         existing = self.existing_media[MediaTypes.GAME.value][Sources.IGDB.value].get(
             media_id,
         )

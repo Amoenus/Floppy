@@ -11,7 +11,7 @@ from requests import Response
 from requests.exceptions import ConnectionError as RequestsConnectionError
 from requests.exceptions import HTTPError
 
-from app.models import Game, Item, MediaTypes, Sources, Status
+from app.models import DeletedMedia, Game, Item, MediaTypes, Sources, Status
 from app.providers import services
 from integrations.imports import helpers, xbox
 from integrations.models import XboxAccount
@@ -268,6 +268,102 @@ class ImportXbox(TestCase):
         game = Game.objects.get(user=self.user, item=item)
         self.assertEqual(game.status, Status.COMPLETED.value)
         self.assertEqual(game.progress, 1250)
+
+    def tombstone(self, media_id):
+        """Record that the user deleted this IGDB game locally."""
+        return DeletedMedia.objects.create(
+            user=self.user,
+            media_type=MediaTypes.GAME.value,
+            source=Sources.IGDB.value,
+            media_id=media_id,
+        )
+
+    def test_deleted_game_is_not_recreated(self):
+        """Xbox reports a title forever, but a locally deleted game stays gone."""
+        self.tombstone("1")
+        self.titles_response = {
+            "titles": [title("1777860928", "Halo Infinite")],
+        }
+
+        with (
+            patch(
+                "integrations.xbox_api.services.api_request",
+                side_effect=self.api_stub(minutes={"1777860928": 1250}),
+            ),
+            patch(
+                "integrations.imports.xbox.services.search",
+                side_effect=self.search_stub(media_id="1"),
+            ),
+        ):
+            imported_counts, _ = xbox.importer(None, self.user, "new")
+
+        self.assertEqual(imported_counts.get(MediaTypes.GAME.value, 0), 0)
+        self.assertFalse(Game.objects.filter(user=self.user).exists())
+
+        self.account.refresh_from_db()
+        self.assertIsNotNone(self.account.last_sync_at)
+        self.assertFalse(self.account.connection_broken)
+
+    def test_deleted_game_does_not_block_the_rest_of_the_library(self):
+        """Only the tombstoned title is skipped; the others still import."""
+        self.tombstone("1")
+        self.titles_response = {
+            "titles": [
+                title("1777860928", "Halo Infinite"),
+                title("1810924247", "Forza Horizon 5"),
+            ],
+        }
+
+        def search_by_name(_media_type, query, _page, source=None):
+            return {
+                "results": [
+                    {
+                        "media_id": "1" if "Halo" in query else "2",
+                        "title": query,
+                        "image": "http://example.com/i.jpg",
+                    },
+                ],
+            }
+
+        with (
+            patch(
+                "integrations.xbox_api.services.api_request",
+                side_effect=self.api_stub(minutes={}),
+            ),
+            patch(
+                "integrations.imports.xbox.services.search",
+                side_effect=search_by_name,
+            ),
+        ):
+            imported_counts, _ = xbox.importer(None, self.user, "new")
+
+        self.assertEqual(imported_counts[MediaTypes.GAME.value], 1)
+        self.assertEqual(
+            list(Game.objects.filter(user=self.user).values_list("item__media_id", flat=True)),
+            ["2"],
+        )
+
+    def test_deleted_game_is_skipped_in_overwrite_mode(self):
+        """Overwrite re-syncs the library, and must not resurrect it either."""
+        self.tombstone("1")
+        self.titles_response = {
+            "titles": [title("1777860928", "Halo Infinite")],
+        }
+
+        with (
+            patch(
+                "integrations.xbox_api.services.api_request",
+                side_effect=self.api_stub(minutes={"1777860928": 1250}),
+            ),
+            patch(
+                "integrations.imports.xbox.services.search",
+                side_effect=self.search_stub(media_id="1"),
+            ),
+        ):
+            imported_counts, _ = xbox.importer(None, self.user, "overwrite")
+
+        self.assertEqual(imported_counts.get(MediaTypes.GAME.value, 0), 0)
+        self.assertFalse(Game.objects.filter(user=self.user).exists())
 
     @patch("integrations.imports.xbox.services.search")
     @patch("integrations.xbox_api.services.api_request")
