@@ -1086,6 +1086,18 @@ class CustomListItem(models.Model):
             models.UniqueConstraint(
                 fields=["custom_list", "list_item_id"],
                 name="%(app_label)s_customlistitem_unique_list_item_id",
+                # Deferred: delete() below renumbers every following item in
+                # one bulk UPDATE (shifting list_item_id down by 1) to close
+                # the gap left by the deleted row. Postgres checks a
+                # non-deferred unique constraint per row as the UPDATE
+                # executes, not once at the end — so on lists with more than
+                # a couple of trailing items, the row-processing order can
+                # transiently assign a value another not-yet-updated row
+                # still holds, raising a spurious UniqueViolation even though
+                # the final state is valid. Deferring lets Postgres check
+                # once the whole UPDATE (and the transaction.atomic() block
+                # it runs in) has finished.
+                deferrable=models.Deferrable.DEFERRED,
             ),
         ]
 
