@@ -33,6 +33,12 @@ PROVIDER = "OpenXBL"
 MINUTES_PLAYED_STAT = "MinutesPlayed"
 STATS_BATCH_SIZE = 100
 
+# Both title endpoints list everything the account has launched, media apps
+# (Netflix, Twitch, the Store) included. Apps have no IGDB counterpart, and an
+# IGDB name search for one happily matches an unrelated game -- "Twitch" and
+# "Plex" are both game titles there -- so they are dropped before any lookup.
+GAME_TITLE_TYPES = {"game"}
+
 
 def _headers(api_key):
     """Return the auth headers for an OpenXBL request."""
@@ -117,13 +123,25 @@ def get_account(api_key):
     return profile.get("id", ""), settings_by_id.get("Gamertag", "")
 
 
+def is_game(title):
+    """Return whether a title payload describes a game rather than an app.
+
+    A title that reports no type at all is kept: an unexpected payload shape
+    should degrade to the old behaviour, not silently empty a library.
+    """
+    title_type = str(title.get("type") or "").strip().lower()
+    return not title_type or title_type in GAME_TITLE_TYPES
+
+
 def get_played_titles(api_key, xuid):
-    """Return every title the account has played, keyed by title ID.
+    """Return every game the account has played, keyed by title ID.
 
     Merges ``titleHistory`` (recent, and the only source of ``lastTimePlayed``)
-    with the per-player achievement list, which reaches further back.
+    with the per-player achievement list, which reaches further back. Non-game
+    titles are dropped; see :data:`GAME_TITLE_TYPES`.
     """
     titles = {}
+    games = set()
 
     for path in (
         f"/achievements/player/{xuid}",
@@ -144,8 +162,28 @@ def get_played_titles(api_key, xuid):
             if not title_id:
                 continue
             titles[title_id] = {**titles.get(title_id, {}), **title}
+            # Merged payloads can disagree; one endpoint calling it a game is
+            # enough, and the other endpoint's fields are still worth keeping.
+            if is_game(title):
+                games.add(title_id)
 
-    logger.info("Found %d played Xbox titles for xuid %s", len(titles), xuid)
+    skipped = [
+        title.get("name") or title_id
+        for title_id, title in titles.items()
+        if title_id not in games
+    ]
+    if skipped:
+        logger.info(
+            "Skipping %d non-game Xbox titles for xuid %s: %s",
+            len(skipped),
+            xuid,
+            ", ".join(sorted(skipped)),
+        )
+
+    titles = {
+        title_id: title for title_id, title in titles.items() if title_id in games
+    }
+    logger.info("Found %d played Xbox games for xuid %s", len(titles), xuid)
     return titles
 
 

@@ -49,6 +49,7 @@ def title(
     last_played=None,
     pfn="Publisher.Game_6h0y724g59e1w",
     devices=None,
+    title_type="Game",
 ):
     """Build a minimal OpenXBL title payload.
 
@@ -58,7 +59,7 @@ def title(
     payload = {
         "titleId": title_id,
         "name": name,
-        "type": "Game",
+        "type": title_type,
         "pfn": pfn,
         "detail": None,
         "modernTitleId": title_id,
@@ -664,6 +665,106 @@ class ImportXbox(TestCase):
 
         self.assertIn("3", str(result))
         self.assertEqual(Game.objects.filter(user=self.user).count(), 3)
+
+    @patch("integrations.imports.xbox.external_game", return_value=None)
+    @patch("integrations.imports.xbox.services.search")
+    @patch("integrations.xbox_api.services.api_request")
+    def test_apps_are_never_imported_as_games(
+        self,
+        mock_api_request,
+        mock_search,
+        _mock_external_game,
+    ):
+        """Media apps are dropped before IGDB sees them, not matched by name."""
+        self.titles_response = {
+            "titles": [
+                title("1777860928", "Halo Infinite"),
+                title("1016567257", "Netflix", title_type="App"),
+                title("750323071", "Twitch", title_type="App"),
+            ],
+        }
+        mock_api_request.side_effect = self.api_stub(minutes={"1777860928": 60})
+        mock_search.side_effect = self.search_stub(media_id="1")
+
+        imported_counts, warnings = xbox.importer(None, self.user, "new")
+
+        self.assertEqual(imported_counts[MediaTypes.GAME.value], 1)
+        self.assertEqual(warnings, "")
+        self.assertEqual(
+            [call.args[1] for call in mock_search.call_args_list],
+            ["Halo Infinite"],
+        )
+        titles = Game.objects.filter(user=self.user).values_list(
+            "item__title",
+            flat=True,
+        )
+        self.assertEqual(list(titles), ["Halo Infinite"])
+
+    @patch("integrations.imports.xbox.services.search")
+    @patch("integrations.xbox_api.services.api_request")
+    def test_title_without_a_type_is_still_imported(
+        self,
+        mock_api_request,
+        mock_search,
+    ):
+        """An untyped payload is kept: unknown shape must not empty a library."""
+        self.titles_response = {
+            "titles": [title("1777860928", "Halo Infinite", title_type=None)],
+        }
+        mock_api_request.side_effect = self.api_stub(minutes={"1777860928": 60})
+        mock_search.side_effect = self.search_stub(media_id="1")
+
+        imported_counts, _ = xbox.importer(None, self.user, "new")
+
+        self.assertEqual(imported_counts[MediaTypes.GAME.value], 1)
+
+    def test_is_game_classifies_title_types(self):
+        """Only game titles pass; an absent or blank type is treated as unknown."""
+        from integrations import xbox_api
+
+        for title_type in ("Game", "game", " GAME ", None, ""):
+            self.assertTrue(xbox_api.is_game({"type": title_type}), title_type)
+        self.assertTrue(xbox_api.is_game({}))
+
+        for title_type in ("App", "app", "Application"):
+            self.assertFalse(xbox_api.is_game({"type": title_type}), title_type)
+
+    def test_game_from_either_endpoint_survives_the_merge(self):
+        """A title typed Game by one endpoint is kept, and keeps both payloads."""
+        from integrations import xbox_api
+
+        def side_effect(_provider, _method, url, **_kwargs):
+            if "/achievements/player/" in url:
+                return envelope(
+                    {"titles": [title("1777860928", "Halo Infinite")]},
+                )
+            return envelope(
+                {
+                    "titles": [
+                        # Same title, typed App here: the merge must not drop it.
+                        title(
+                            "1777860928",
+                            "Halo Infinite",
+                            "2024-01-01T00:00:00Z",
+                            title_type="App",
+                        ),
+                        title("1016567257", "Netflix", title_type="App"),
+                    ],
+                },
+            )
+
+        with patch(
+            "integrations.xbox_api.services.api_request",
+            side_effect=side_effect,
+        ):
+            titles = xbox_api.get_played_titles("some-key", "2535473210914202")
+
+        self.assertEqual(list(titles), ["1777860928"])
+        # The conflicting payload still merged in, so lastTimePlayed survives.
+        self.assertEqual(
+            titles["1777860928"]["titleHistory"]["lastTimePlayed"],
+            "2024-01-01T00:00:00Z",
+        )
 
     def test_parse_stats_ignores_unreported_titles(self):
         """Only titles present in the stats response get a minutes value."""
