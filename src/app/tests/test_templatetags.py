@@ -880,6 +880,26 @@ class AppTagsTests(TestCase):
             expected_tv_modal,
         )
 
+        # TMDB includes season_number=0 on top-level anime metadata. It is not
+        # a season route and must not become /lists_modal/.../<id>/0.
+        anime_dict = {
+            "source": Sources.TMDB.value,
+            "media_type": MediaTypes.ANIME.value,
+            "media_id": "83611",
+            "season_number": 0,
+        }
+        self.assertEqual(
+            app_tags.media_view_url("lists_modal", anime_dict),
+            reverse(
+                "lists_modal",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.ANIME.value,
+                    "media_id": "83611",
+                },
+            ),
+        )
+
     def test_unicode_icon(self):
         """Test the unicode_icon tag for all media types."""
         # Test all media types from MediaTypes
