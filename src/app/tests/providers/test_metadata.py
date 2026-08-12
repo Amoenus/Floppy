@@ -1844,6 +1844,93 @@ class Metadata(TestCase):
         self.assertEqual(response["title"], "Nineteen Eighty-Four")
         self.assertEqual(response["details"]["author"], ["George Orwell"])
 
+    @patch("app.providers.openlibrary.services.api_request")
+    def test_openlibrary_search_sends_floppy_user_agent(self, mock_api_request):
+        openlibrary.cache.delete("search_openlibrary_book_identity_1")
+        mock_api_request.return_value = {"docs": [], "numFound": 0}
+
+        openlibrary.search("identity", 1)
+
+        self.assertEqual(
+            mock_api_request.call_args.kwargs["headers"],
+            openlibrary.REQUEST_HEADERS,
+        )
+
+    @patch("app.providers.openlibrary.get_ratings", return_value=(None, None))
+    @patch("app.providers.openlibrary.get_editions", return_value=[])
+    @patch("app.providers.openlibrary.get_authors_full", return_value=[])
+    @patch("app.providers.openlibrary.services.api_request")
+    def test_openlibrary_book_and_work_send_floppy_user_agent(
+        self,
+        mock_api_request,
+        _mock_authors,
+        _mock_editions,
+        _mock_ratings,
+    ):
+        openlibrary.cache.delete("openlibrary_book_OL1M")
+        mock_api_request.side_effect = [
+            {"key": "/books/OL1M", "title": "Book", "works": [{"key": "/works/OL1W"}]},
+            {"key": "/works/OL1W"},
+        ]
+
+        asyncio.run(openlibrary.async_book("OL1M"))
+
+        self.assertEqual(mock_api_request.call_count, 2)
+        for request_call in mock_api_request.call_args_list:
+            self.assertEqual(
+                request_call.kwargs["headers"],
+                openlibrary.REQUEST_HEADERS,
+            )
+
+    @patch("app.providers.openlibrary.aiohttp.ClientSession")
+    def test_openlibrary_async_sessions_send_floppy_user_agent(self, mock_session):
+        session = mock_session.return_value.__aenter__.return_value
+        response_context = MagicMock()
+        session.get = MagicMock(return_value=response_context)
+        response = response_context.__aenter__.return_value
+        response.status = requests.codes.service_unavailable
+
+        asyncio.run(openlibrary.get_authors_full({}))
+        asyncio.run(openlibrary.get_editions({"key": "/books/OL1M"}, {"key": "/works/OL1W"}))
+        asyncio.run(openlibrary.get_ratings({"key": "/works/OL1W"}))
+
+        self.assertEqual(mock_session.call_count, 3)
+        for session_call in mock_session.call_args_list:
+            self.assertEqual(
+                session_call.kwargs["headers"],
+                openlibrary.REQUEST_HEADERS,
+            )
+
+    def test_openlibrary_retry_preserves_user_agent(self):
+        rate_limited = MagicMock(
+            status_code=requests.codes.too_many_requests,
+            headers={"Retry-After": "0"},
+        )
+        rate_limited.raise_for_status.side_effect = requests.HTTPError(
+            response=rate_limited,
+        )
+        ok = MagicMock(status_code=requests.codes.ok)
+        ok.raise_for_status.return_value = None
+        ok.json.return_value = {"ok": True}
+
+        with (
+            patch.object(services.session, "get", side_effect=[rate_limited, ok]) as get,
+            patch.object(services.time, "sleep"),
+        ):
+            services.api_request(
+                Sources.OPENLIBRARY.value,
+                "GET",
+                "https://openlibrary.org/test.json",
+                headers=openlibrary.REQUEST_HEADERS,
+            )
+
+        self.assertEqual(get.call_count, 2)
+        for request_call in get.call_args_list:
+            self.assertEqual(
+                request_call.kwargs["headers"],
+                openlibrary.REQUEST_HEADERS,
+            )
+
     @tag("network")
     def test_comic(self):
         """Test the metadata method for comics."""
@@ -1965,6 +2052,7 @@ class Metadata(TestCase):
         openlibrary.cache.delete(f"{Sources.OPENLIBRARY.value}_person_OL1A")
 
         def _mock_api_request(_source, _method, url, params=None, **kwargs):
+            self.assertEqual(kwargs["headers"], openlibrary.REQUEST_HEADERS)
             if url.endswith("/authors/OL1A.json"):
                 return {
                     "name": "Open Author",
