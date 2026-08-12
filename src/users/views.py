@@ -1,6 +1,7 @@
 import base64
 import json
 import logging
+import re
 from io import BytesIO
 
 import apprise
@@ -1680,6 +1681,24 @@ def rollback_import_run(request, run_id):
     return redirect("import_data")
 
 
+def _task_belongs_to_user(task, user):
+    """Return whether a periodic task's kwargs name exactly this user.
+
+    A plain substring test reads `"user_id": 1` out of `"user_id": 11`, so
+    the id has to be anchored on the delimiter that follows it. Quoting and
+    spacing vary with how the kwargs were written.
+    """
+    if not task.kwargs:
+        return False
+
+    return bool(
+        re.search(
+            rf"""['"]user_id['"]:\s*{user.id}\s*[,}}]""",
+            task.kwargs,
+        ),
+    )
+
+
 @require_POST
 def delete_import_schedule(request):
     """Delete an import schedule."""
@@ -1699,7 +1718,7 @@ def delete_import_schedule(request):
         messages.info(request, "Disconnected Last.fm.")
         return redirect("import_data")
 
-    if not task.kwargs or f'"user_id": {request.user.id}' not in task.kwargs:
+    if not _task_belongs_to_user(task, request.user):
         messages.error(request, "Import schedule not found.")
         return redirect("import_data")
 
