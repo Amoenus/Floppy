@@ -31,16 +31,27 @@ UNKNOWN_UNRELEASED_DATETIME = datetime(
 )
 LEGACY_UNKNOWN_RELEASED_DATETIME = datetime.min.replace(tzinfo=UTC)
 LEGACY_UNKNOWN_UNRELEASED_DATETIME = datetime.max.replace(tzinfo=UTC)
+LEGACY_END_OF_DAY_UNKNOWN_UNRELEASED_DATETIME = datetime(
+    9999,
+    12,
+    31,
+    23,
+    59,
+    59,
+    tzinfo=UTC,
+)
 UNKNOWN_EVENT_DATETIMES = (
     UNKNOWN_RELEASED_DATETIME,
     UNKNOWN_UNRELEASED_DATETIME,
     LEGACY_UNKNOWN_RELEASED_DATETIME,
     LEGACY_UNKNOWN_UNRELEASED_DATETIME,
+    LEGACY_END_OF_DAY_UNKNOWN_UNRELEASED_DATETIME,
 )
 UNKNOWN_UNRELEASED_QUERY = Q(
     datetime__in=(
         UNKNOWN_UNRELEASED_DATETIME,
         LEGACY_UNKNOWN_UNRELEASED_DATETIME,
+        LEGACY_END_OF_DAY_UNKNOWN_UNRELEASED_DATETIME,
     ),
 ) | Q(
     item__media_type=MediaTypes.SEASON.value,
@@ -331,6 +342,7 @@ class Event(models.Model):
         return self.datetime in (
             UNKNOWN_UNRELEASED_DATETIME,
             LEGACY_UNKNOWN_UNRELEASED_DATETIME,
+            LEGACY_END_OF_DAY_UNKNOWN_UNRELEASED_DATETIME,
         ) or (
             self.datetime == LEGACY_UNKNOWN_RELEASED_DATETIME
             and self.item.media_type == MediaTypes.SEASON.value

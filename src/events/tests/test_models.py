@@ -21,6 +21,7 @@ from app.models import (
 )
 from events.admin import EventAdmin
 from events.models import (
+    LEGACY_END_OF_DAY_UNKNOWN_UNRELEASED_DATETIME,
     LEGACY_UNKNOWN_RELEASED_DATETIME,
     LEGACY_UNKNOWN_UNRELEASED_DATETIME,
     UNKNOWN_RELEASED_DATETIME,
@@ -212,6 +213,10 @@ class EventModelTests(TestCase):
             item=self.season_item,
             datetime=LEGACY_UNKNOWN_UNRELEASED_DATETIME,
         )
+        legacy_end_of_day_max = Event(
+            item=self.season_item,
+            datetime=LEGACY_END_OF_DAY_UNKNOWN_UNRELEASED_DATETIME,
+        )
         real_boundary_date = Event(
             item=self.season_item,
             datetime=datetime.datetime(1, 2, 3, 4, 5, tzinfo=datetime.UTC),
@@ -223,6 +228,8 @@ class EventModelTests(TestCase):
         self.assertTrue(legacy_tv_unreleased.is_unknown_unreleased)
         self.assertTrue(legacy_max.is_unknown_unreleased)
         self.assertTrue(legacy_max.is_max_datetime)
+        self.assertTrue(legacy_end_of_day_max.is_unknown_unreleased)
+        self.assertTrue(legacy_end_of_day_max.is_max_datetime)
         self.assertFalse(legacy_tv_unreleased.is_unknown_released)
         self.assertFalse(real_boundary_date.is_unknown_released)
         self.assertFalse(real_boundary_date.is_unknown_unreleased)
@@ -254,19 +261,27 @@ class EventModelTests(TestCase):
         self.user.is_superuser = True
         self.user.save(update_fields=["is_staff", "is_superuser"])
         self.client.force_login(self.user)
-        event = Event.objects.create(
-            item=self.season_item,
-            content_number=2,
-            datetime=LEGACY_UNKNOWN_UNRELEASED_DATETIME,
-        )
+        for content_number, sentinel in enumerate(
+            (
+                LEGACY_UNKNOWN_UNRELEASED_DATETIME,
+                LEGACY_END_OF_DAY_UNKNOWN_UNRELEASED_DATETIME,
+            ),
+            start=2,
+        ):
+            with self.subTest(sentinel=sentinel):
+                event = Event.objects.create(
+                    item=self.season_item,
+                    content_number=content_number,
+                    datetime=sentinel,
+                )
 
-        with timezone.override(ZoneInfo("Pacific/Kiritimati")):
-            response = self.client.get(
-                reverse("admin:events_event_change", args=[event.pk]),
-            )
+                with timezone.override(ZoneInfo("Pacific/Kiritimati")):
+                    response = self.client.get(
+                        reverse("admin:events_event_change", args=[event.pk]),
+                    )
 
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Unknown (unreleased)")
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, "Unknown (unreleased)")
 
 
 class EventManagerTests(TestCase):
@@ -471,6 +486,11 @@ class EventManagerTests(TestCase):
                 item=self.season_item,
                 content_number=11,
                 datetime=LEGACY_UNKNOWN_UNRELEASED_DATETIME,
+            ),
+            Event.objects.create(
+                item=self.season_item,
+                content_number=12,
+                datetime=LEGACY_END_OF_DAY_UNKNOWN_UNRELEASED_DATETIME,
             ),
         ]
 
