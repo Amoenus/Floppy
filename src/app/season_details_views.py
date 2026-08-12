@@ -4,7 +4,6 @@ import time
 
 from django.conf import settings
 from django.contrib.auth.decorators import login_not_required
-from django.db import IntegrityError, transaction
 from django.shortcuts import render
 from django.utils import timezone
 from django.views.decorators.http import require_GET
@@ -336,7 +335,24 @@ def season_details(
         raw_episodes = season_metadata["episodes"]
         current_datetime = timezone.now()
         episodes_to_update = []
+        episode_library_media_type = (
+            parent_media_type
+            if parent_media_type == MediaTypes.ANIME.value
+            else MediaTypes.EPISODE.value
+        )
 
+        # Parse every episode's air date up front and resolve/create the
+        # backing Item rows in bulk (one SELECT + at most one bulk_create),
+        # instead of one get_or_create() per episode. A per-episode
+        # get_or_create() fires an independent Item post_save signal
+        # (schedule_runtime_backfill_on_item_save) on every INSERT, and that
+        # signal re-runs several season-scoped DB queries (backfill-state
+        # cleanup, episode-runtime-backfill eligibility, cache-invalidation
+        # tracking-user lookup) that are identical for every episode in the
+        # same season — an N+1 that only shows up on a season's first view,
+        # when every episode is being created for the first time.
+        parsed_episodes = []
+        episode_numbers = []
         for episode in raw_episodes:
             episode_number = episode.get("episode_number")
             if episode_number is None:
@@ -370,29 +386,66 @@ def season_details(
                 if air_date_dt and air_date_dt.year <= MIN_PLAUSIBLE_YEAR:
                     air_date_dt = None
 
-            # Get or create episode item — retry on race condition
-            lookup = {
-                "media_id": media_id,
-                "source": source,
-                "media_type": MediaTypes.EPISODE.value,
-                "library_media_type": parent_media_type
-                if parent_media_type == MediaTypes.ANIME.value
-                else MediaTypes.EPISODE.value,
-                "season_number": season_number,
-                "episode_number": episode_number,
+            parsed_episodes.append((episode, episode_number, air_date_dt))
+            episode_numbers.append(episode_number)
+
+        def _fetch_episode_items(numbers):
+            return {
+                item.episode_number: item
+                for item in Item.objects.filter(
+                    media_id=media_id,
+                    source=source,
+                    media_type=MediaTypes.EPISODE.value,
+                    library_media_type=episode_library_media_type,
+                    season_number=season_number,
+                    episode_number__in=numbers,
+                )
             }
-            try:
-                with transaction.atomic():
-                    episode_item, _ = Item.objects.get_or_create(
-                        **lookup,
-                        defaults={
-                            "title": season_metadata.get("title", ""),
-                            "image": settings.IMG_NONE,
-                            "release_datetime": air_date_dt,
-                        },
+
+        episode_items_by_number = (
+            _fetch_episode_items(episode_numbers) if episode_numbers else {}
+        )
+
+        missing_numbers = [
+            number
+            for number in episode_numbers
+            if number not in episode_items_by_number
+        ]
+        created_any_episode = False
+        if missing_numbers:
+            air_date_by_number = {
+                number: air_date_dt
+                for _episode, number, air_date_dt in parsed_episodes
+            }
+            Item.objects.bulk_create(
+                [
+                    Item(
+                        media_id=media_id,
+                        source=source,
+                        media_type=MediaTypes.EPISODE.value,
+                        library_media_type=episode_library_media_type,
+                        season_number=season_number,
+                        episode_number=number,
+                        title=season_metadata.get("title", ""),
+                        image=settings.IMG_NONE,
+                        release_datetime=air_date_by_number.get(number),
                     )
-            except IntegrityError:
-                episode_item = Item.objects.get(**lookup)
+                    for number in missing_numbers
+                ],
+                ignore_conflicts=True,
+            )
+            # Re-fetch rather than trust the objects we just built: this picks
+            # up both our own new rows and any row a concurrent request won
+            # the race to create (ignore_conflicts silently drops ours then).
+            episode_items_by_number.update(_fetch_episode_items(missing_numbers))
+            created_any_episode = True
+
+        for episode, episode_number, air_date_dt in parsed_episodes:
+            episode_item = episode_items_by_number.get(episode_number)
+            if episode_item is None:
+                # Defensive: should always be populated by the bulk fetch/create
+                # above, but don't let a race or provider oddity crash the page.
+                continue
 
             # Extract runtime from raw episode data (TMDB returns integer minutes)
             runtime_minutes = None
@@ -472,6 +525,16 @@ def season_details(
             for user_id in tracking_users:
                 clear_time_left_cache_for_user(user_id)
                 clear_media_list_cache_for_user(user_id)
+
+        # bulk_create() above doesn't fire Item's post_save signal, so
+        # explicitly (and only once for the whole season, not once per
+        # episode) request the same episode-runtime-backfill eligibility
+        # check that schedule_runtime_backfill_on_item_save would otherwise
+        # have queued redundantly for every newly created episode.
+        if created_any_episode and not settings.TESTING:
+            from app.tasks_runtime import enqueue_episode_runtime_backfill
+
+            enqueue_episode_runtime_backfill([(media_id, source, season_number)])
 
         # Trigger background Trakt episode ratings fetch if not yet populated
         from app.providers import trakt as _trakt_provider

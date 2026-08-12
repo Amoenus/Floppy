@@ -10,6 +10,7 @@ Run with: python src/manage.py test app.tests.test_query_counts -v 2
 
 import logging
 from datetime import UTC, datetime, timedelta
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
@@ -73,6 +74,8 @@ MANGA_LIST_NO_STATUS_MAX_QUERIES = 18
 GAME_LIST_DEFAULT_SORT_MAX_QUERIES = 18
 HOME_ROW_FRAGMENT_MAX_QUERIES = 122  # +2 from the Tags column Prefetch (#457)
 CUSTOM_LIST_DETAIL_MAX_QUERIES = 30
+SEASON_PAGE_FIRST_VIEW_EPISODE_COUNT = 18
+SEASON_PAGE_FIRST_VIEW_MAX_QUERIES = 45  # pinned after batching the per-episode create/signal N+1 (was 180)
 
 
 def seed_tv_library(
@@ -413,4 +416,81 @@ class QueryCountTests(TestCase):
             reverse("list_detail", args=[self.custom_list.public_reference]),
             CUSTOM_LIST_DETAIL_MAX_QUERIES,
             "custom list detail",
+        )
+
+    @patch("app.providers.trakt.is_configured", return_value=False)
+    @patch("app.providers.tmdb.process_episodes")
+    @patch("app.providers.services.get_media_metadata")
+    def test_season_page_first_view_query_budget(
+        self,
+        mock_get_metadata,
+        mock_process_episodes,
+        mock_trakt_configured,
+    ):
+        """First-ever view of a season with many untracked episodes stays within budget.
+
+        Regression pin: creating N never-before-seen episode Items used to fire
+        N independent Item post_save signals (schedule_runtime_backfill_on_item_save),
+        each re-running the same season-scoped backfill/cache-invalidation queries
+        that are identical across every episode in the season — an N+1 that only
+        shows up on a season's first view, when every episode is freshly created.
+        """
+        media_id = "qc_season_first_view"
+        season_number = 2
+        air_date = datetime(1998, 4, 1, tzinfo=UTC)
+        episodes = [
+            {
+                "episode_number": n,
+                "name": f"Episode {n}",
+                "air_date": (air_date + timedelta(days=n * 7)).strftime("%Y-%m-%d"),
+                "runtime": 23,
+                "vote_average": 7.5,
+                "vote_count": 100,
+            }
+            for n in range(1, SEASON_PAGE_FIRST_VIEW_EPISODE_COUNT + 1)
+        ]
+        mock_get_metadata.return_value = {
+            "title": "Query Count Season Show",
+            "media_id": media_id,
+            "source": Sources.TMDB.value,
+            "media_type": MediaTypes.TV.value,
+            "image": "https://example.com/show.jpg",
+            f"season/{season_number}": {
+                "title": "Query Count Season Show",
+                "season_title": f"Season {season_number}",
+                "media_id": media_id,
+                "media_type": MediaTypes.SEASON.value,
+                "source": Sources.TMDB.value,
+                "season_number": season_number,
+                "image": "https://example.com/season.jpg",
+                "episodes": episodes,
+            },
+        }
+        mock_process_episodes.return_value = [
+            {
+                "media_id": media_id,
+                "source": Sources.TMDB.value,
+                "media_type": MediaTypes.EPISODE.value,
+                "season_number": season_number,
+                "episode_number": ep["episode_number"],
+                "title": ep["name"],
+                "air_date": ep["air_date"],
+                "actions_enabled": False,
+            }
+            for ep in episodes
+        ]
+
+        url = reverse(
+            "season_details",
+            kwargs={
+                "source": Sources.TMDB.value,
+                "media_id": media_id,
+                "title": "query-count-season-show",
+                "season_number": season_number,
+            },
+        )
+        self._assert_query_budget_with_kwargs(
+            f"{url}?fragment=secondary",
+            SEASON_PAGE_FIRST_VIEW_MAX_QUERIES,
+            "season page first view with many new episodes",
         )
