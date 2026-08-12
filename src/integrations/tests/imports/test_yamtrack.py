@@ -86,6 +86,12 @@ class ImportYamtrack(TestCase):
             datetime(2024, 2, 9, 12, 0, 0, tzinfo=UTC),
         )
 
+        episode = Episode.objects.filter(related_season__user=self.user).first()
+        self.assertEqual(
+            episode.history.first().history_date,
+            datetime(2024, 2, 9, 12, 0, 0, tzinfo=UTC),
+        )
+
     @tag("network")
     def test_missing_metadata_handling(self):
         """Test _handle_missing_metadata method directly."""
@@ -137,6 +143,33 @@ class ImportYamtrack(TestCase):
 
             self.assertNotEqual(row["title"], original_row["title"])
             self.assertNotEqual(row["image"], original_row["image"])
+
+
+class ImportYamtrackEpisodeHistoryDate(TestCase):
+    """Test episode history dates from Yamtrack CSV exports."""
+
+    def setUp(self):
+        """Create an importing user."""
+        self.user = get_user_model().objects.create_user(
+            username="test",
+            password="12345",
+        )
+
+    def test_episode_history_date_falls_back_to_end_date(self):
+        """A blank progressed_at uses the episode watch date."""
+        csv_data = """media_id,source,media_type,title,image,season_number,episode_number,score,progress,status,start_date,end_date,notes,progressed_at
+1668,tmdb,tv,Friends,https://image.url,,,,1,In progress,,,,2025-11-20T10:00:00+00:00
+1668,tmdb,season,Friends,https://image.url,1,,,1,In progress,,,,2025-11-20T10:00:00+00:00
+1668,tmdb,episode,Friends,https://image.url,1,1,,,,,2025-11-19T19:00:05+00:00,,
+"""
+
+        yamtrack.importer(BytesIO(csv_data.encode()), self.user, "new")
+
+        episode = Episode.objects.get(related_season__user=self.user)
+        self.assertEqual(
+            episode.history.get().history_date,
+            datetime(2025, 11, 19, 19, 0, 5, tzinfo=UTC),
+        )
 
 
 @tag("network")
