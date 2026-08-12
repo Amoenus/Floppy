@@ -54,6 +54,7 @@ def search(media_type, query, page):
             "q": query,
             "fields": "media_type,start_date,alternative_titles",
             "limit": settings.PER_PAGE,
+            "offset": (page - 1) * settings.PER_PAGE,
         }
         if settings.MAL_NSFW:
             params["nsfw"] = "true"
@@ -69,7 +70,8 @@ def search(media_type, query, page):
         except requests.exceptions.HTTPError as error:
             response = handle_error(error)
 
-        response = response["data"]
+        response_data = response["data"]
+        has_next_page = bool(response.get("paging", {}).get("next"))
         results = [
             {
                 "media_id": media["node"]["id"],
@@ -82,15 +84,16 @@ def search(media_type, query, page):
                 "image": get_image_url(media["node"]),
                 "year": get_start_year(media["node"]),
             }
-            for media in response
+            for media in response_data
         ]
 
         data = helpers.format_search_response(
             page,
-            100,
-            len(results),
+            settings.PER_PAGE,
+            (page - 1) * settings.PER_PAGE + len(results) + int(has_next_page),
             results,
         )
+        data["total_pages"] = page + int(has_next_page)
 
         cache.set(cache_key, data)
 
