@@ -388,6 +388,26 @@ class UserGetImportTasksTests(TestCase):
         self.assertEqual(import_tasks["results"][0]["source"], "myanimelist")
         self.assertEqual(import_tasks["results"][0]["status"], "FAILURE")
 
+    def test_get_import_tasks_renders_a_cancelled_task(self):
+        """A revoked task is history like any other, not a 500 on every poll."""
+        TaskResult.objects.create(
+            task_id="revoked-task",
+            task_name="Import from Trakt",
+            task_kwargs=f"{{'user_id': {self.user.id}, 'username': 'testuser'}}",
+            status="REVOKED",
+            date_done=timezone.now(),
+            result="{}",
+        )
+
+        import_tasks = self.user.get_import_tasks()
+
+        self.assertEqual(len(import_tasks["results"]), 1)
+        self.assertEqual(import_tasks["results"][0]["status"], "REVOKED")
+        self.assertEqual(
+            import_tasks["results"][0]["summary"],
+            "This task was cancelled before it finished.",
+        )
+
     @patch("users.helpers.process_task_result")
     def test_get_import_tasks_results_includes_grouvee(self, mock_process_task_result):
         """Test get_import_tasks surfaces Grouvee task results."""
