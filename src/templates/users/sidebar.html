@@ -53,33 +53,7 @@
           Drag cards by their handles to set their sidebar order.
         </p>
 
-        <input type="hidden" name="sidebar_media_type_order" value="{{ media_types|join:',' }}" data-sidebar-order-input>
-        <div class="grid gap-3 md:grid-cols-3" data-sidebar-order-list>
-          {% for media_type in media_types %}
-            <div class="flex items-center justify-between p-3 bg-[var(--color-surface-strong)] rounded-md" data-sidebar-media-type="{{ media_type }}">
-              <div class="flex items-center text-[var(--color-text-muted)]">
-                <button type="button"
-                        class="sidebar-drag-handle cursor-grab touch-none mr-2 text-gray-500 hover:text-[var(--color-text-secondary)]"
-                        aria-label="Reorder {{ media_type|media_type_readable_plural }}">
-                  {% include "app/icons/drag-handle.svg" with classes="w-4 h-4" %}
-                </button>
-                {% icon media_type is_active=False %}
-                <span class="text-[var(--color-text-secondary)] text-sm ml-2">{{ media_type|media_type_readable_plural }}</span>
-              </div>
-              <label class="relative inline-flex items-center cursor-pointer">
-                {% with enabled_field=media_type|add:"_enabled" %}
-                  <input class="sr-only peer"
-                         type="checkbox"
-                         name="media_types_checkboxes"
-                         value="{{ media_type }}"
-                         {% if user|get_attr:enabled_field %}checked{% endif %}>
-                {% endwith %}
-                <div class="w-9 h-5 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-px after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4.5 after:w-4.5 after:transition-all peer-checked:bg-indigo-600">
-                </div>
-              </label>
-            </div>
-          {% endfor %}
-        </div>
+        {% include "users/components/media_type_picker.html" %}
       </div>
 
       <div class="mt-5 pt-4 border-gray-600">
@@ -94,36 +68,5 @@
 {% endblock settings_content %}
 
 {% block js %}
-  <script>
-    (() => {
-      const list = document.querySelector('[data-sidebar-order-list]');
-      const orderInput = document.querySelector('[data-sidebar-order-input]');
-      if (!list || !orderInput) return;
-
-      const updateOrder = () => {
-        orderInput.value = Array.from(list.querySelectorAll('[data-sidebar-media-type]'))
-          .map(card => card.dataset.sidebarMediaType)
-          .join(',');
-      };
-
-      const initialize = () => {
-        if (typeof Sortable === 'undefined') return;
-        Sortable.create(list, {
-          animation: 150,
-          handle: '.sidebar-drag-handle',
-          onEnd: updateOrder
-        });
-      };
-
-      if (typeof Sortable !== 'undefined') {
-        initialize();
-        return;
-      }
-
-      const script = document.createElement('script');
-      script.src = 'https://cdn.jsdelivr.net/npm/sortablejs@1.15.3/Sortable.min.js';
-      script.addEventListener('load', initialize, { once: true });
-      document.head.appendChild(script);
-    })();
-  </script>
+  {% include "users/components/_media_type_order_js.html" %}
 {% endblock js %}
