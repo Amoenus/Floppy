@@ -266,8 +266,8 @@ MEDIA_COLUMNS: list[ColumnDef] = [
     ColumnDef(
         key="genres",
         label="Genres",
-        th_classes="p-2",
-        td_classes="p-2",
+        th_classes="p-2 max-w-[16rem]",
+        td_classes="p-2 max-w-[16rem]",
         cell_template="app/components/cells/media_genres_cell.html",
         table_types=("media",),
         default_order=78,
@@ -275,8 +275,8 @@ MEDIA_COLUMNS: list[ColumnDef] = [
     ColumnDef(
         key="tags",
         label="Tags",
-        th_classes="p-2",
-        td_classes="p-2",
+        th_classes="p-2 max-w-[16rem]",
+        td_classes="p-2 max-w-[16rem]",
         cell_template="app/components/cells/media_tags_cell.html",
         table_types=("media",),
         default_order=79,
