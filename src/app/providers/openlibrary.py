@@ -17,6 +17,9 @@ logger = logging.getLogger(__name__)
 
 base_url = "https://openlibrary.org/api"
 search_url = "https://openlibrary.org/search.json"
+REQUEST_HEADERS = {
+    "User-Agent": "Floppy/1.0 (+https://github.com/dannyvfilms/Floppy)",
+}
 
 
 def handle_error(error):
@@ -48,6 +51,7 @@ def search(query, page):
                 "GET",
                 search_url,
                 params=params,
+                headers=REQUEST_HEADERS,
             )
         except requests.RequestException as e:
             handle_error(e)
@@ -136,6 +140,7 @@ async def async_book(media_id):
                 Sources.OPENLIBRARY.value,
                 "GET",
                 book_url,
+                headers=REQUEST_HEADERS,
             )
         except requests.RequestException as e:
             handle_error(e)
@@ -151,6 +156,7 @@ async def async_book(media_id):
                     Sources.OPENLIBRARY.value,
                     "GET",
                     work_url,
+                    headers=REQUEST_HEADERS,
                 )
             except requests.RequestException as e:
                 handle_error(e)
@@ -299,7 +305,10 @@ async def get_authors_full(response):
     author_entries = response.get("authors", [])
 
     timeout = aiohttp.ClientTimeout(total=settings.REQUEST_TIMEOUT)
-    async with aiohttp.ClientSession(timeout=timeout) as session:
+    async with aiohttp.ClientSession(
+        timeout=timeout,
+        headers=REQUEST_HEADERS,
+    ) as session:
         tasks = []
         for index, author in enumerate(author_entries):
             if isinstance(author, dict) and "author" in author:
@@ -376,7 +385,7 @@ async def get_editions(response_book, response_work):
 
     timeout = aiohttp.ClientTimeout(total=settings.REQUEST_TIMEOUT)
     async with (
-        aiohttp.ClientSession(timeout=timeout) as session,
+        aiohttp.ClientSession(timeout=timeout, headers=REQUEST_HEADERS) as session,
         session.get(url) as response,
     ):
         if response.status == requests.codes.ok:
@@ -409,7 +418,7 @@ async def get_ratings(response_work):
 
     timeout = aiohttp.ClientTimeout(total=settings.REQUEST_TIMEOUT)
     async with (
-        aiohttp.ClientSession(timeout=timeout) as session,
+        aiohttp.ClientSession(timeout=timeout, headers=REQUEST_HEADERS) as session,
         session.get(url) as response,
     ):
         if response.status == requests.codes.ok:
@@ -443,6 +452,7 @@ def _resolve_edition_id_from_work_id(work_id):
             "GET",
             editions_url,
             params={"limit": 1},
+            headers=REQUEST_HEADERS,
         )
     except requests.RequestException as error:
         logger.debug("Failed to resolve work editions for %s: %s", work_id, error)
@@ -471,12 +481,14 @@ def author_profile(author_id):
             Sources.OPENLIBRARY.value,
             "GET",
             author_url,
+            headers=REQUEST_HEADERS,
         )
         works_data = services.api_request(
             Sources.OPENLIBRARY.value,
             "GET",
             works_url,
             params={"limit": 100},
+            headers=REQUEST_HEADERS,
         )
     except requests.RequestException as error:
         handle_error(error)
