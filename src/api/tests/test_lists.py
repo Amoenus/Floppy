@@ -138,6 +138,120 @@ class ListsTests(FloppyApiTestCase):
         new_list = CustomList.objects.get(name="Collab List")
         self.assertTrue(new_list.collaborators.filter(id=self.user2.id).exists())
 
+    def test_lists_post_with_is_public_creates_public_list(self):
+        """POST lists with is_public=True should create a public list."""
+        response = self.call_api(
+            "post",
+            "api_lists",
+            payload={"name": "Public List", "is_public": True},
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(response.json()["is_public"])
+        new_list = CustomList.objects.get(name="Public List")
+        self.assertEqual(new_list.visibility, "public")
+
+    def test_lists_post_with_public_slug_sets_slug(self):
+        """POST lists with public_slug should normalize and save it."""
+        response = self.call_api(
+            "post",
+            "api_lists",
+            payload={"name": "Slug List", "public_slug": "My Cool List!"},
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["public_slug"], "my-cool-list")
+        new_list = CustomList.objects.get(name="Slug List")
+        self.assertEqual(new_list.public_slug, "my-cool-list")
+
+    def test_lists_post_with_numeric_public_slug_returns_bad_request(self):
+        """POST lists with a numeric-only public_slug should fail with 400."""
+        response = self.call_api(
+            "post",
+            "api_lists",
+            payload={"name": "New List", "public_slug": "12345"},
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("numbers", response.json().get("detail", "").lower())
+
+    def test_lists_post_with_reserved_public_slug_returns_bad_request(self):
+        """POST lists with a reserved public_slug should fail with 400."""
+        response = self.call_api(
+            "post",
+            "api_lists",
+            payload={"name": "New List", "public_slug": "create"},
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("reserved", response.json().get("detail", "").lower())
+
+    def test_lists_post_with_duplicate_public_slug_returns_bad_request(self):
+        """POST lists with an already-used public_slug should fail with 400."""
+        self.call_api(
+            "post",
+            "api_lists",
+            payload={"name": "List A", "public_slug": "foo"},
+            headers=self.auth_headers,
+        )
+        response = self.call_api(
+            "post",
+            "api_lists",
+            payload={"name": "List B", "public_slug": "foo"},
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("already in use", response.json().get("detail", "").lower())
+
+    def test_lists_post_allow_recommendations_forced_false_when_private(self):
+        """POST lists with allow_recommendations=True but is_public=False forces it off."""
+        response = self.call_api(
+            "post",
+            "api_lists",
+            payload={
+                "name": "New List",
+                "is_public": False,
+                "allow_recommendations": True,
+            },
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertFalse(response.json()["allow_recommendations"])
+
+    def test_lists_post_allow_recommendations_true_when_public(self):
+        """POST lists with is_public=True and allow_recommendations=True keeps it on."""
+        response = self.call_api(
+            "post",
+            "api_lists",
+            payload={
+                "name": "New List",
+                "is_public": True,
+                "allow_recommendations": True,
+            },
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(response.json()["allow_recommendations"])
+
+    def test_lists_post_with_invalid_is_public_type_returns_bad_request(self):
+        """POST lists with non-boolean is_public should fail with 400."""
+        response = self.call_api(
+            "post",
+            "api_lists",
+            payload={"name": "New List", "is_public": "yes"},
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("is_public", response.json().get("detail", "").lower())
+
     def test_list_detail_delete_removes_list(self):
         """List delete should remove the owned list and return 204."""
         custom_list = self.lists_by_name["favorites"]
@@ -339,6 +453,118 @@ class ListsTests(FloppyApiTestCase):
             "api_list_detail",
             args=(custom_list.id,),
             payload={"collaborators": [99999]},
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_list_detail_patch_is_public(self):
+        """List PATCH should update visibility and return 200."""
+        custom_list = self.lists_by_name["favorites"]
+        response = self.call_api(
+            "patch",
+            "api_list_detail",
+            args=(custom_list.id,),
+            payload={"is_public": True},
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        custom_list.refresh_from_db()
+        self.assertEqual(custom_list.visibility, "public")
+
+    def test_list_detail_patch_public_slug(self):
+        """List PATCH should update public_slug and return 200."""
+        custom_list = self.lists_by_name["favorites"]
+        response = self.call_api(
+            "patch",
+            "api_list_detail",
+            args=(custom_list.id,),
+            payload={"public_slug": "new-slug"},
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        custom_list.refresh_from_db()
+        self.assertEqual(custom_list.public_slug, "new-slug")
+
+    def test_list_detail_patch_public_slug_uniqueness_excludes_self(self):
+        """PATCH re-submitting a list's own slug should succeed, not 400."""
+        custom_list = self.lists_by_name["favorites"]
+        custom_list.public_slug = "existing-slug"
+        custom_list.save()
+        response = self.call_api(
+            "patch",
+            "api_list_detail",
+            args=(custom_list.id,),
+            payload={"public_slug": "existing-slug"},
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+    def test_list_detail_patch_public_slug_conflict_returns_400(self):
+        """PATCH with a slug already used by another list should return 400."""
+        other_list = self.lists_by_name["shared"]
+        other_list.public_slug = "taken-slug"
+        other_list.save()
+        custom_list = self.lists_by_name["favorites"]
+        response = self.call_api(
+            "patch",
+            "api_list_detail",
+            args=(custom_list.id,),
+            payload={"public_slug": "taken-slug"},
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("already in use", response.json().get("detail", "").lower())
+
+    def test_list_detail_patch_allow_recommendations_forced_false_when_set_private(
+        self,
+    ):
+        """PATCH setting is_public=False should force allow_recommendations off."""
+        custom_list = self.lists_by_name["favorites"]
+        custom_list.visibility = "public"
+        custom_list.allow_recommendations = True
+        custom_list.save()
+        response = self.call_api(
+            "patch",
+            "api_list_detail",
+            args=(custom_list.id,),
+            payload={"is_public": False},
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()["allow_recommendations"])
+        custom_list.refresh_from_db()
+        self.assertFalse(custom_list.allow_recommendations)
+
+    def test_list_detail_patch_allow_recommendations_alone_forced_false_on_private_list(
+        self,
+    ):
+        """PATCH allow_recommendations alone on a private list stays False."""
+        custom_list = self.lists_by_name["favorites"]
+        response = self.call_api(
+            "patch",
+            "api_list_detail",
+            args=(custom_list.id,),
+            payload={"allow_recommendations": True},
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()["allow_recommendations"])
+
+    def test_list_detail_patch_invalid_public_slug_returns_400(self):
+        """List PATCH with a numeric-only public_slug should return 400."""
+        custom_list = self.lists_by_name["favorites"]
+        response = self.call_api(
+            "patch",
+            "api_list_detail",
+            args=(custom_list.id,),
+            payload={"public_slug": "12345"},
             headers=self.auth_headers,
         )
 
