@@ -2448,8 +2448,7 @@
             {% endif %}
           </div>
           {% if xbox_account %}
-            {# Server-rendered text matches the initial importFrequency so the
-               copy is right before Alpine binds, and survives if it never does. #}
+            {# Server-rendered text matches the initial importFrequency so the copy is right before Alpine binds, and survives if it never does. #}
             <p class="text-sm text-[var(--color-text-muted)]"
                x-text="importFrequency === 'once' ? 'Sync played games and hours played from your Xbox account now.' : 'Sync played games and hours played from your Xbox account on a schedule.'">
               {% if user.import_frequency == "once" %}
