@@ -28,6 +28,11 @@ logger = logging.getLogger(__name__)
 IMPORT_NOTE = "Imported from Xbox"
 RECENTLY_PLAYED_DAYS = 14
 
+# Xbox reports a played library, so only the two library-sync modes mean
+# anything here; "watchlist" and "update_collection" have nothing to act on and
+# would otherwise be silently treated as "new".
+SUPPORTED_MODES = frozenset({"new", "overwrite"})
+
 # 360-era marketplace product GUIDs are this prefix plus the title ID in hex;
 # IGDB indexes them as its Xbox Marketplace external-game source.
 XBOX_MARKETPLACE_GUID_PREFIX = "66acd000-77fe-1000-9115-d802"
@@ -125,6 +130,13 @@ class XboxImporter:
 
     def __init__(self, user, mode):
         """Initialize the importer and validate account access."""
+        if mode not in SUPPORTED_MODES:
+            msg = (
+                f"Unsupported Xbox import mode {mode!r}. "
+                f"Choose one of: {', '.join(sorted(SUPPORTED_MODES))}."
+            )
+            raise MediaImportError(msg)
+
         self.user = user
         self.mode = mode
         self.warnings = []
@@ -164,7 +176,7 @@ class XboxImporter:
     def import_data(self):
         """Import the account's played Xbox titles."""
         try:
-            xuid = self.account.xuid or xbox_api.get_account(self.api_key)[0]
+            xuid = self._resolve_xuid()
             titles = xbox_api.get_played_titles(self.api_key, xuid)
             minutes_by_title = xbox_api.get_minutes_played(
                 self.api_key,
@@ -241,6 +253,23 @@ class XboxImporter:
             imported_counts,
         )
         return imported_counts, "\n".join(dict.fromkeys(self.warnings))
+
+    def _resolve_xuid(self):
+        """Return the account's XUID, refusing to import without one.
+
+        Every title endpoint is keyed by XUID, and an empty one silently
+        requests a truncated path instead of failing, so it must be caught here.
+        """
+        xuid = str(self.account.xuid or "").strip()
+        if not xuid:
+            xuid = str(xbox_api.get_account(self.api_key)[0] or "").strip()
+        if not xuid:
+            msg = (
+                "OpenXBL returned no XUID for this API key. "
+                "Reconnect your Xbox account."
+            )
+            raise MediaImportError(msg)
+        return xuid
 
     def _mark_synced(self):
         """Record a successful sync on the account row."""

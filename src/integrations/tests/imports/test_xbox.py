@@ -410,6 +410,56 @@ class ImportXbox(TestCase):
 
         self.assertIn("Connect Xbox before importing", str(context.exception))
 
+    @patch("integrations.xbox_api.services.api_request")
+    def test_blank_xuid_falls_back_to_the_account_lookup(self, mock_api_request):
+        """A stored XUID that is blank is refetched rather than used as-is."""
+        self.account.xuid = "   "
+        self.account.save(update_fields=["xuid"])
+        mock_api_request.side_effect = self.api_stub()
+
+        with patch(
+            "integrations.imports.xbox.services.search",
+            side_effect=self.search_stub(),
+        ):
+            xbox.importer(None, self.user, "new")
+
+        requested = [call.args[2] for call in mock_api_request.call_args_list]
+        self.assertIn(
+            "https://xbl.io/api/v2/achievements/player/2535473210914202",
+            requested,
+        )
+
+    @patch("integrations.xbox_api.services.api_request")
+    def test_missing_xuid_aborts_before_requesting_titles(self, mock_api_request):
+        """Without an XUID from either source the import stops and flags the account."""
+        self.account.xuid = ""
+        self.account.save(update_fields=["xuid"])
+        mock_api_request.return_value = envelope({"profileUsers": [{"settings": []}]})
+
+        with self.assertRaises(helpers.MediaImportError) as context:
+            xbox.importer(None, self.user, "new")
+
+        self.assertIn("no XUID", str(context.exception))
+        # The title endpoints are keyed by XUID; none should have been called.
+        requested = [call.args[2] for call in mock_api_request.call_args_list]
+        self.assertEqual(requested, ["https://xbl.io/api/v2/account"])
+        self.account.refresh_from_db()
+        self.assertTrue(self.account.connection_broken)
+
+    @patch("integrations.xbox_api.services.api_request")
+    def test_unsupported_mode_is_rejected(self, mock_api_request):
+        """Modes Xbox cannot act on fail loudly instead of behaving like "new"."""
+        for mode in ("watchlist", "update_collection", "", None):
+            with self.assertRaises(helpers.MediaImportError) as context:
+                xbox.importer(None, self.user, mode)
+
+            self.assertIn("Unsupported Xbox import mode", str(context.exception))
+
+        self.assertFalse(mock_api_request.called)
+        # A bad mode is a caller error, not a broken connection.
+        self.account.refresh_from_db()
+        self.assertFalse(self.account.connection_broken)
+
     def test_determine_game_status_logic(self):
         """Status is derived from minutes played and last played date."""
         importer_instance = xbox.XboxImporter(self.user, "new")
