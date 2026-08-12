@@ -243,7 +243,7 @@
               
               <a href="{% if media.album %}{{ media.album|music_album_url }}{% elif media.artist %}{{ media.artist|music_artist_url }}{% elif use_podcast_show|default:False and podcast_show %}{% url 'media_details' source='pocketcasts' media_type='podcast' media_id=podcast_show.podcast_uuid title=podcast_show.slug|default:podcast_show.title|default:podcast_show.podcast_uuid|slug %}{% else %}{{ item|media_url }}{% endif %}" class="absolute inset-0 z-0"></a>
 
-              <div class="relative z-10 flex items-center justify-center space-x-2.5"
+              <div class="relative z-10 flex items-center justify-center {% if item.media_type == MediaTypes.EPISODE.value %}gap-1{% else %}space-x-2.5{% endif %}"
                    {% if list_ordering_enabled|default:False %}
                      x-show="!isOrderEditing"
                    {% endif %}>
@@ -277,14 +277,50 @@
                     {% include "app/icons/list-add.svg" with classes="w-4 h-4" %}
                   </button>
                 {% elif item.media_type == MediaTypes.EPISODE.value %}
-                  <button @click="trackOpen = true"
-                          class="p-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full hover:scale-110 hover:shadow-[0_0_15px_rgba(99,102,241,0.5)] transition-all duration-200 cursor-pointer">
-                    {% if media %}
-                      {% include "app/icons/eye.svg" with classes="w-4 h-4" %}
-                    {% else %}
-                      {% include "app/icons/eye-closed.svg" with classes="w-4 h-4" %}
-                    {% endif %}
+                  {% comment %}
+                    track_modal's URL doesn't accept episode_number in the path
+                    (media_view_url strips it for this view name), so build the
+                    URL directly here and pass episode_number via hx-vals —
+                    mirrors detail_episode_hero_track_button.html, the working
+                    equivalent of this button on the episode's own page. Without
+                    hx-get this button had no way to load modal content: it set
+                    trackOpen but nothing ever populated the target, so it opened
+                    an empty overlay.
+                  {% endcomment %}
+                  <button type="button"
+                          class="p-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full hover:scale-110 hover:shadow-[0_0_15px_rgba(99,102,241,0.5)] transition-all duration-200 cursor-pointer"
+                          title="{% if media %}Watched{% else %}Mark watched{% endif %}"
+                          aria-label="{% if media %}Edit watched entry{% else %}Mark watched{% endif %}"
+                          hx-get="{% url 'track_modal' source=item.source media_type='episode' media_id=item.media_id season_number=item.season_number %}"
+                          hx-vals='{"return_url": "{{ request.get_full_path|urlencode }}", "episode_number": "{{ item.episode_number }}"{% if media %}, "instance_id": "{{ media.id }}"{% else %}, "is_create": "1"{% endif %}}'
+                          hx-target="#{% component_id 'track' item media.id %}"
+                          hx-trigger="click once"
+                          @click="trackOpen = true">
+                    {% include "app/icons/edit.svg" with classes="w-4 h-4" %}
                   </button>
+                  {% comment %}
+                    Lists Button — episode cards need this too so items added to
+                    a custom list (e.g. a "watch together" list of specific
+                    episodes) can be managed from any grid, not just the
+                    episode's own page.
+                  {% endcomment %}
+                  <button type="button"
+                          class="p-2 bg-emerald-600 text-white rounded-full hover:bg-emerald-500 hover:scale-110 hover:shadow-[0_0_15px_rgba(16,185,129,0.5)] transition-all duration-200 cursor-pointer"
+                          title="Add to custom lists"
+                          hx-get="{% media_view_url 'lists_modal' item %}"
+                          hx-vals='{"return_url": "{{ request.get_full_path|urlencode }}"}'
+                          hx-target="#{% component_id 'lists' item %}"
+                          hx-trigger="click once"
+                          @click="listsOpen = true">
+                    {% include "app/icons/list-add.svg" with classes="w-4 h-4" %}
+                  </button>
+
+                  {# History Button #}
+                  <a class="p-2 bg-amber-600 text-white rounded-full hover:bg-amber-500 hover:scale-110 hover:shadow-[0_0_15px_rgba(245,158,11,0.5)] transition-all duration-200 cursor-pointer"
+                     title="View your activity history"
+                     href="{% url 'history' %}?media_type={{ MediaTypes.TV.value }}&media_id={{ item.media_id|urlencode }}&source={{ item.source|urlencode }}{% if item.season_number is not None %}&season_number={{ item.season_number }}{% endif %}">
+                    {% include "app/icons/history.svg" with classes="w-4 h-4" %}
+                  </a>
                 {% else %}
                   {# Track Button #}
                   {% if use_podcast_show|default:False and podcast_show %}
