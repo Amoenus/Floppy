@@ -2448,8 +2448,8 @@
             {% endif %}
           </div>
           {% if xbox_account %}
-            <p class="text-sm text-[var(--color-text-muted)]">
-              Sync played games and hours played from your Xbox account daily.
+            <p class="text-sm text-[var(--color-text-muted)]"
+               x-text="importFrequency === 'once' ? 'Sync played games and hours played from your Xbox account now.' : 'Sync played games and hours played from your Xbox account on a schedule.'">
             </p>
             {% if xbox_account.gamertag %}
               <div class="text-sm text-[var(--color-text-muted)]">Gamertag: {{ xbox_account.gamertag }}</div>
@@ -2465,10 +2465,12 @@
             <div class="flex gap-2">
               <form method="post" action="{% url 'import_xbox' %}">
                 {% csrf_token %}
+                <input type="hidden" name="frequency" x-model="importFrequency">
+                <input type="hidden" name="time" x-model="importTime">
                 <input type="hidden" name="mode" x-model="importMode">
                 <button type="submit"
-                        class="px-4 py-2 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer">
-                  Sync Now
+                        class="px-4 py-2 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer"
+                        x-text="importFrequency === 'once' ? 'Sync Now' : 'Schedule Sync'">
                 </button>
               </form>
               <form method="post" action="{% url 'xbox_disconnect' %}">
@@ -2490,6 +2492,9 @@
             </p>
             <form method="post" action="{% url 'xbox_connect' %}" class="space-y-3">
               {% csrf_token %}
+              <input type="hidden" name="frequency" x-model="importFrequency">
+              <input type="hidden" name="time" x-model="importTime">
+              <input type="hidden" name="mode" x-model="importMode">
               <input name="api_key"
                      placeholder="OpenXBL API key"
                      class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"

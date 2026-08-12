@@ -6,11 +6,13 @@ import logging
 import re
 import secrets
 import zipfile
+import zoneinfo
 from datetime import datetime, timedelta
 from http import HTTPStatus
 from io import BytesIO
 from urllib.parse import unquote
 
+import croniter
 import requests
 from django.conf import settings
 from django.contrib import messages
@@ -1755,40 +1757,79 @@ def import_stremio(request):
 
 
 XBOX_RECURRING_TASK_NAME = "Import from Xbox (Recurring)"
+XBOX_RECURRING_FREQUENCIES = {"daily": "*", "2days": "*/2"}
+XBOX_DEFAULT_IMPORT_TIME = "04:00"
 
 
-def _ensure_xbox_schedule(user, mode="new"):
-    """Create or update the recurring Xbox import schedule."""
+def _next_crontab_run(crontab):
+    """Return the next fire time for a crontab schedule.
+
+    New periodic tasks are created with this as their `start_time`; beat
+    treats a task whose `start_time` has already passed as due immediately,
+    which would run the import once on creation and again on schedule.
+    """
+    schedule_timezone = zoneinfo.ZoneInfo(str(crontab.timezone))
+    cron_expression = (
+        f"{crontab.minute} {crontab.hour} {crontab.day_of_month} "
+        f"{crontab.month_of_year} {crontab.day_of_week}"
+    )
+    now = timezone.now().astimezone(schedule_timezone)
+    return croniter.croniter(cron_expression, now).get_next(datetime)
+
+
+def _create_xbox_schedule(request, mode, frequency, import_time):
+    """Create a recurring Xbox import schedule for the chosen time."""
     from django_celery_beat.models import CrontabSchedule, PeriodicTask
 
-    desired_kwargs = json.dumps({"user_id": user.id, "mode": mode})
-    existing_task = PeriodicTask.objects.filter(
-        _periodic_task_filter_for_user(user.id),
-        task=XBOX_RECURRING_TASK_NAME,
-        enabled=True,
-    ).first()
-    if existing_task:
-        if existing_task.kwargs != desired_kwargs:
-            existing_task.kwargs = desired_kwargs
-            existing_task.save(update_fields=["kwargs"])
+    try:
+        parsed_time = datetime.strptime(import_time, "%H:%M").time()  # noqa: DTZ007  # wall-clock value; the crontab carries the timezone
+    except (TypeError, ValueError):
+        messages.error(request, "Invalid import time.")
         return
 
     crontab, _ = CrontabSchedule.objects.get_or_create(
-        minute=0,
-        hour="4",
-        day_of_week="*",
+        minute=parsed_time.minute,
+        hour=parsed_time.hour,
+        day_of_week=XBOX_RECURRING_FREQUENCIES[frequency],
         day_of_month="*",
         month_of_year="*",
         timezone=timezone.get_default_timezone(),
     )
+
+    task_name = (
+        f"Import from Xbox for {request.user.username} at {parsed_time} {frequency}"
+    )
+    if PeriodicTask.objects.filter(name=task_name).exists():
+        messages.error(request, "The same import task is already scheduled.")
+        return
+
     PeriodicTask.objects.create(
-        name=f"Import from Xbox for {user.username} (daily)",
+        name=task_name,
         task=XBOX_RECURRING_TASK_NAME,
         crontab=crontab,
-        kwargs=desired_kwargs,
-        start_time=timezone.now(),
+        kwargs=json.dumps({"user_id": request.user.id, "mode": mode}),
+        start_time=_next_crontab_run(crontab),
         enabled=True,
     )
+    messages.success(request, "Xbox import task scheduled.")
+
+
+def _start_xbox_import(request):
+    """Queue a one-off Xbox import, or schedule a recurring one.
+
+    A scheduled import only runs on its schedule; a one time import runs
+    straight away and creates no periodic task.
+    """
+    mode = request.POST.get("mode") or "new"
+    frequency = request.POST.get("frequency") or "once"
+    import_time = request.POST.get("time") or XBOX_DEFAULT_IMPORT_TIME
+
+    if frequency not in XBOX_RECURRING_FREQUENCIES:
+        tasks.import_xbox.delay(user_id=request.user.id, mode=mode)
+        messages.info(request, "The task to import media from Xbox has been queued.")
+        return
+
+    _create_xbox_schedule(request, mode, frequency, import_time)
 
 
 @require_POST
@@ -1819,13 +1860,8 @@ def xbox_connect(request):
             "last_error_message": "",
         },
     )
-    tasks.import_xbox.delay(user_id=request.user.id, mode="new")
-    _ensure_xbox_schedule(request.user)
-    messages.success(
-        request,
-        f"Connected to Xbox as {gamertag or xuid}. "
-        "Initial import queued; your games will sync daily.",
-    )
+    messages.success(request, f"Connected to Xbox as {gamertag or xuid}.")
+    _start_xbox_import(request)
     return redirect("import_data")
 
 
@@ -1845,16 +1881,13 @@ def xbox_disconnect(request):
 
 @require_POST
 def import_xbox(request):
-    """Queue an Xbox import and ensure the recurring schedule exists."""
+    """Queue a one-off Xbox import or schedule a recurring one."""
     account = getattr(request.user, "xbox_account", None)
     if not account:
         messages.error(request, "Connect Xbox before importing.")
         return redirect("import_data")
 
-    mode = request.POST.get("mode", "new")
-    tasks.import_xbox.delay(user_id=request.user.id, mode=mode)
-    _ensure_xbox_schedule(request.user, mode)
-    messages.info(request, "Xbox import queued.")
+    _start_xbox_import(request)
     return redirect("import_data")
 
 

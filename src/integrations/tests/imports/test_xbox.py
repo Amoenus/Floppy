@@ -1,3 +1,4 @@
+import json
 from datetime import timedelta
 from unittest.mock import patch
 
@@ -861,15 +862,15 @@ class XboxViewTests(TestCase):
         "integrations.views.xbox_api.get_account",
         return_value=("2535473210914202", "TestGamer"),
     )
-    def test_connect_stores_key_and_schedules_recurring(
+    def test_connect_stores_key_and_imports_once(
         self,
         mock_get_account,
         mock_delay,
     ):
-        """Connecting validates the key, encrypts it and creates the schedule."""
+        """A one time connect validates the key, stores it and imports now."""
         response = self.client.post(
             reverse("xbox_connect"),
-            {"api_key": "openxbl-key"},
+            {"api_key": "openxbl-key", "frequency": "once", "mode": "new"},
         )
 
         self.assertRedirects(response, reverse("import_data"))
@@ -882,12 +883,36 @@ class XboxViewTests(TestCase):
         self.assertEqual(account.gamertag, "TestGamer")
         self.assertTrue(account.is_connected)
 
-        self.assertTrue(
-            PeriodicTask.objects.filter(
-                task=XBOX_RECURRING_TASK_NAME,
-                kwargs__contains=f'"user_id": {self.user.id}',
-            ).exists(),
+        self.assertFalse(
+            PeriodicTask.objects.filter(task=XBOX_RECURRING_TASK_NAME).exists(),
         )
+
+    @patch("integrations.views.tasks.import_xbox.delay")
+    @patch(
+        "integrations.views.xbox_api.get_account",
+        return_value=("2535473210914202", "TestGamer"),
+    )
+    def test_connect_with_frequency_only_schedules(
+        self,
+        _mock_get_account,
+        mock_delay,
+    ):
+        """A recurring connect schedules the import instead of running it."""
+        self.client.post(
+            reverse("xbox_connect"),
+            {
+                "api_key": "openxbl-key",
+                "frequency": "daily",
+                "time": "05:30",
+                "mode": "new",
+            },
+        )
+
+        mock_delay.assert_not_called()
+        task = PeriodicTask.objects.get(task=XBOX_RECURRING_TASK_NAME)
+        self.assertEqual(task.crontab.hour, "5")
+        self.assertEqual(task.crontab.minute, "30")
+        self.assertEqual(task.crontab.day_of_week, "*")
 
     @patch("integrations.views.xbox_api.get_account")
     def test_connect_requires_api_key(self, mock_get_account):
@@ -920,7 +945,13 @@ class XboxViewTests(TestCase):
     )
     def test_disconnect_removes_account_and_schedule(self, _mock_account, _mock_delay):
         """Disconnecting deletes both the account row and its periodic task."""
-        self.client.post(reverse("xbox_connect"), {"api_key": "openxbl-key"})
+        self.client.post(
+            reverse("xbox_connect"),
+            {"api_key": "openxbl-key", "frequency": "daily", "time": "04:00"},
+        )
+        self.assertTrue(
+            PeriodicTask.objects.filter(task=XBOX_RECURRING_TASK_NAME).exists(),
+        )
 
         response = self.client.post(reverse("xbox_disconnect"))
 
@@ -940,3 +971,98 @@ class XboxViewTests(TestCase):
 
         self.assertContains(response, "Connect Xbox before importing.")
         mock_delay.assert_not_called()
+
+    def _connect_account(self):
+        """Attach a connected Xbox account to the logged in user."""
+        return XboxAccount.objects.create(
+            user=self.user,
+            api_key=helpers.encrypt("openxbl-key"),
+            xuid="2535473210914202",
+            gamertag="TestGamer",
+        )
+
+    @patch("integrations.views.tasks.import_xbox.delay")
+    def test_one_time_import_runs_now_without_scheduling(self, mock_delay):
+        """A one time import runs straight away and schedules nothing."""
+        self._connect_account()
+
+        self.client.post(
+            reverse("import_xbox"),
+            {"frequency": "once", "mode": "overwrite", "time": "04:00"},
+        )
+
+        mock_delay.assert_called_once_with(user_id=self.user.id, mode="overwrite")
+        self.assertFalse(
+            PeriodicTask.objects.filter(task=XBOX_RECURRING_TASK_NAME).exists(),
+        )
+
+    @patch("integrations.views.tasks.import_xbox.delay")
+    def test_scheduled_import_does_not_run_immediately(self, mock_delay):
+        """A scheduled import only runs on schedule, never on creation."""
+        self._connect_account()
+
+        self.client.post(
+            reverse("import_xbox"),
+            {"frequency": "2days", "mode": "new", "time": "23:15"},
+        )
+
+        mock_delay.assert_not_called()
+        task = PeriodicTask.objects.get(task=XBOX_RECURRING_TASK_NAME)
+        self.assertEqual(task.crontab.hour, "23")
+        self.assertEqual(task.crontab.minute, "15")
+        self.assertEqual(task.crontab.day_of_week, "*/2")
+        self.assertEqual(json.loads(task.kwargs)["mode"], "new")
+        # A start_time in the past makes celery beat fire the task immediately.
+        self.assertGreater(task.start_time, timezone.now())
+
+    @patch("integrations.views.tasks.import_xbox.delay")
+    def test_new_schedule_keeps_existing_ones(self, _mock_delay):
+        """Adding a schedule leaves earlier Xbox schedules untouched."""
+        self._connect_account()
+
+        self.client.post(
+            reverse("import_xbox"),
+            {"frequency": "daily", "mode": "new", "time": "04:00"},
+        )
+        self.client.post(
+            reverse("import_xbox"),
+            {"frequency": "daily", "mode": "overwrite", "time": "20:00"},
+        )
+
+        tasks_by_time = {
+            task.crontab.hour: json.loads(task.kwargs)["mode"]
+            for task in PeriodicTask.objects.filter(task=XBOX_RECURRING_TASK_NAME)
+        }
+        self.assertEqual(tasks_by_time, {"4": "new", "20": "overwrite"})
+
+    @patch("integrations.views.tasks.import_xbox.delay")
+    def test_duplicate_schedule_is_rejected(self, _mock_delay):
+        """The same time and frequency cannot be scheduled twice."""
+        self._connect_account()
+
+        payload = {"frequency": "daily", "mode": "new", "time": "04:00"}
+        self.client.post(reverse("import_xbox"), payload)
+        response = self.client.post(reverse("import_xbox"), payload, follow=True)
+
+        self.assertContains(response, "The same import task is already scheduled.")
+        self.assertEqual(
+            PeriodicTask.objects.filter(task=XBOX_RECURRING_TASK_NAME).count(),
+            1,
+        )
+
+    @patch("integrations.views.tasks.import_xbox.delay")
+    def test_invalid_import_time_is_rejected(self, mock_delay):
+        """A malformed time schedules nothing rather than falling back."""
+        self._connect_account()
+
+        response = self.client.post(
+            reverse("import_xbox"),
+            {"frequency": "daily", "mode": "new", "time": "not-a-time"},
+            follow=True,
+        )
+
+        self.assertContains(response, "Invalid import time.")
+        mock_delay.assert_not_called()
+        self.assertFalse(
+            PeriodicTask.objects.filter(task=XBOX_RECURRING_TASK_NAME).exists(),
+        )
