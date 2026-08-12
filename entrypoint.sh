@@ -26,7 +26,7 @@ if [ -z "$DB_HOST" ] && [ -f /floppy/db/db.sqlite3 ]; then
         fi
         sleep 30
         elapsed=$((elapsed + 30))
-        read_mb=$(awk '/^rchar:/ {printf "%.0f", $2/1048576}' "/proc/${integrity_pid}/io" 2>/dev/null)
+        read_mb=$(awk '/^rchar:/ {printf "%.0f", $2/1048576}' "/proc/${integrity_pid}/io" 2>/dev/null) || read_mb=""
         if [ -n "$read_mb" ]; then
             echo "[entrypoint] Still checking SQLite integrity (${elapsed}s elapsed, ~${read_mb}MB read so far)" >&2
         else
