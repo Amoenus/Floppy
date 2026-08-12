@@ -5569,6 +5569,104 @@ class MediaDetailsViewTests(TestCase):
             "a newly created episode must get release_datetime from the same payload",
         )
 
+    @override_settings(TIME_ZONE="Europe/Berlin")
+    @patch("app.providers.services.get_media_metadata")
+    @patch("app.providers.tmdb.process_episodes")
+    def test_season_details_persists_date_only_air_date_as_utc_regardless_of_server_timezone(
+        self,
+        mock_process_episodes,
+        mock_get_metadata,
+    ):
+        """A date-only air_date must not shift with the server's TIME_ZONE.
+
+        Regression test: the per-episode self-heal loop used to interpret a
+        "YYYY-MM-DD" air_date as midnight in the server's configured
+        TIME_ZONE rather than UTC. Under a positive-offset zone like
+        Europe/Berlin (+2h in summer), that shifted the stored
+        release_datetime into the previous UTC day - e.g. an episode airing
+        2026-07-15 got stored as 2026-07-14 22:00 UTC.
+        """
+        tv_item = Item.objects.create(
+            media_id="1668",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Test TV Show",
+            image="http://example.com/show.jpg",
+        )
+        related_tv = TV.objects.create(
+            item=tv_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        season_item = Item.objects.create(
+            media_id="1668",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Test TV Show",
+            image="http://example.com/show.jpg",
+            season_number=1,
+        )
+        Season.objects.create(
+            item=season_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+            related_tv=related_tv,
+        )
+
+        mock_get_metadata.side_effect = lambda *_args, **_kwargs: {
+            "title": "Test TV Show",
+            "media_id": "1668",
+            "source": Sources.TMDB.value,
+            "media_type": MediaTypes.TV.value,
+            "image": "http://example.com/image.jpg",
+            "season/1": {
+                "title": "Test TV Show",
+                "season_title": "Season 1",
+                "media_id": "1668",
+                "media_type": MediaTypes.SEASON.value,
+                "source": Sources.TMDB.value,
+                "image": "http://example.com/season.jpg",
+                "episodes": [
+                    {
+                        "episode_number": 1,
+                        "name": "No Shortcuts",
+                        "air_date": "2026-07-15",
+                        "runtime": 48,
+                    },
+                ],
+            },
+        }
+        mock_process_episodes.return_value = []
+
+        response = self.client.get(
+            reverse(
+                "season_details",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_id": "1668",
+                    "title": "test-tv-show",
+                    "season_number": 1,
+                },
+            ),
+            {"fragment": "secondary"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        new_episode = Item.objects.get(
+            media_id="1668",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=1,
+            episode_number=1,
+        )
+        self.assertEqual(
+            new_episode.release_datetime,
+            datetime(2026, 7, 15, 0, 0, tzinfo=UTC),
+            "a date-only air_date must be stored as UTC midnight, "
+            "regardless of the server's configured TIME_ZONE",
+        )
+
     @patch("app.views.trakt_popularity_service.refresh_trakt_popularity")
     @patch("app.providers.tmdb.get_tvdb_episode_image_map")
     @patch("app.helpers.get_tmdb_backdrop_image")
