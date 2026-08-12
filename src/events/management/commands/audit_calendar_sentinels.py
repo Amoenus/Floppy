@@ -8,6 +8,7 @@ from django.db.models import Count, Q
 
 from app.models import Item
 from events.models import (
+    LEGACY_END_OF_DAY_UNKNOWN_UNRELEASED_DATETIME,
     LEGACY_UNKNOWN_RELEASED_DATETIME,
     LEGACY_UNKNOWN_UNRELEASED_DATETIME,
     UNKNOWN_RELEASED_DATETIME,
@@ -53,6 +54,7 @@ class Command(BaseCommand):
         known_unreleased = (
             UNKNOWN_UNRELEASED_DATETIME,
             LEGACY_UNKNOWN_UNRELEASED_DATETIME,
+            LEGACY_END_OF_DAY_UNKNOWN_UNRELEASED_DATETIME,
             UPSTREAM_UNKNOWN_UNRELEASED_DATETIME,
         )
         targets = (
@@ -107,7 +109,14 @@ class Command(BaseCommand):
                 ),
                 (
                     "legacy_max",
-                    Q(**{field: LEGACY_UNKNOWN_UNRELEASED_DATETIME}),
+                    Q(
+                        **{
+                            f"{field}__in": (
+                                LEGACY_UNKNOWN_UNRELEASED_DATETIME,
+                                LEGACY_END_OF_DAY_UNKNOWN_UNRELEASED_DATETIME,
+                            ),
+                        },
+                    ),
                 ),
                 (
                     "ambiguous_year_9999",

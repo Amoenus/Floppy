@@ -10,6 +10,7 @@ from django.test import TestCase
 
 from app.models import Item, MediaTypes, Sources
 from events.models import (
+    LEGACY_END_OF_DAY_UNKNOWN_UNRELEASED_DATETIME,
     LEGACY_UNKNOWN_RELEASED_DATETIME,
     LEGACY_UNKNOWN_UNRELEASED_DATETIME,
     UNKNOWN_RELEASED_DATETIME,
@@ -180,6 +181,54 @@ class AuditCalendarSentinelsTests(TestCase):
         )
         self.assertNotIn("PRIVATE TITLE", output)
         self.assertNotIn("PRIVATE-ID", output)
+
+    def test_groups_both_exact_legacy_max_shapes(self):
+        """Both historical encodings are known, not ambiguous year-9999 dates."""
+        rows = [
+            self._add_event(
+                LEGACY_UNKNOWN_UNRELEASED_DATETIME,
+                LEGACY_UNKNOWN_UNRELEASED_DATETIME,
+                MediaTypes.COMIC.value,
+                1,
+            ),
+            self._add_event(
+                LEGACY_END_OF_DAY_UNKNOWN_UNRELEASED_DATETIME,
+                LEGACY_END_OF_DAY_UNKNOWN_UNRELEASED_DATETIME,
+                MediaTypes.COMIC.value,
+                2,
+            ),
+            self._add_event(
+                datetime(9999, 12, 31, 23, 59, 58, tzinfo=UTC),
+                datetime(9999, 12, 31, 23, 59, 58, tzinfo=UTC),
+                MediaTypes.COMIC.value,
+                3,
+            ),
+        ]
+
+        output = self._run()
+
+        event_pks = [event.pk for _item, event in rows]
+        item_pks = [item.pk for item, _event in rows]
+        self.assertIn(
+            "record=event field=datetime category=legacy_max total=2 "
+            f"media_types=comic:2 sample_pks={event_pks[0]},{event_pks[1]}",
+            output,
+        )
+        self.assertIn(
+            "record=item field=release_datetime category=legacy_max total=2 "
+            f"media_types=comic:2 sample_pks={item_pks[0]},{item_pks[1]}",
+            output,
+        )
+        self.assertIn(
+            "record=event field=datetime category=ambiguous_year_9999 total=1 "
+            f"media_types=comic:1 sample_pks={event_pks[2]}",
+            output,
+        )
+        self.assertIn(
+            "record=item field=release_datetime category=ambiguous_year_9999 "
+            f"total=1 media_types=comic:1 sample_pks={item_pks[2]}",
+            output,
+        )
 
     def test_findings_exit_zero_without_mutating_rows(self):
         """A populated audit succeeds and leaves event and item dates unchanged."""
