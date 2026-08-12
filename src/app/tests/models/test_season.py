@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from app.models import (
@@ -978,6 +978,38 @@ class SeasonEpisodeItemModelTests(TestCase):
             item=season_item,
             user=self.user,
             status=Status.IN_PROGRESS.value,
+        )
+
+    @override_settings(TIME_ZONE="Europe/Berlin")
+    def test_get_episode_item_anchors_date_only_air_date_to_utc(self):
+        """A date-only air_date must not shift with the server's TIME_ZONE.
+
+        Regression test: get_episode_item() used to interpret a "YYYY-MM-DD"
+        air_date as midnight in the server's configured TIME_ZONE rather
+        than UTC. Under a positive-offset zone like Europe/Berlin (+2h in
+        summer), that shifted the stored release_datetime into the previous
+        UTC day - e.g. an episode that airs 2026-07-15 got stored as
+        2026-07-14 22:00 UTC, so any page or comparison that reads the date
+        component in UTC showed the wrong calendar day.
+        """
+        item = self.season.get_episode_item(
+            5,
+            {
+                "episodes": [
+                    {
+                        "episode_number": 5,
+                        "name": "No Shortcuts",
+                        "air_date": "2026-07-15",
+                    },
+                ],
+            },
+        )
+
+        self.assertEqual(
+            item.release_datetime,
+            datetime(2026, 7, 15, 0, 0, tzinfo=UTC),
+            "a date-only air_date must be stored as UTC midnight, "
+            "regardless of the server's configured TIME_ZONE",
         )
 
     def test_get_episode_item_updates_existing_item_with_episode_title(self):
