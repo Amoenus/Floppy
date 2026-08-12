@@ -23,21 +23,21 @@ COMMON=(--parallel --buffer)
 case "${1:-}" in
   --full)
     shift
-    exec python src/manage.py test "${APPS[@]}" "${COMMON[@]}" "$@"
+    exec uv run --no-sync python src/manage.py test "${APPS[@]}" "${COMMON[@]}" "$@"
     ;;
   --slow)
     shift
-    exec python src/manage.py test "${APPS[@]}" "${COMMON[@]}" "$@" --tag slow
+    exec uv run --no-sync python src/manage.py test "${APPS[@]}" "${COMMON[@]}" "$@" --tag slow
     ;;
   --network)
     shift
-    exec python src/manage.py test "${APPS[@]}" "${COMMON[@]}" "$@" --tag network
+    exec uv run --no-sync python src/manage.py test "${APPS[@]}" "${COMMON[@]}" "$@" --tag network
     ;;
   "")
-    exec python src/manage.py test "${APPS[@]}" "${COMMON[@]}" \
+    exec uv run --no-sync python src/manage.py test "${APPS[@]}" "${COMMON[@]}" \
       --exclude-tag slow --exclude-tag network
     ;;
   *)
-    exec python src/manage.py test "${COMMON[@]}" "$@"
+    exec uv run --no-sync python src/manage.py test "${COMMON[@]}" "$@"
     ;;
 esac

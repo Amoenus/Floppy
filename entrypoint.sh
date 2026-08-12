@@ -73,4 +73,4 @@ export FLOPPY_START_INTERACTIVE_WORKER="${FLOPPY_START_INTERACTIVE_WORKER:-true}
 export FLOPPY_START_DISCOVER_WORKER="${FLOPPY_START_DISCOVER_WORKER:-true}"
 
 echo "[entrypoint] Starting services" >&2
-exec /usr/local/bin/supervisord -c /etc/supervisord.conf
+exec supervisord -c /etc/supervisord.conf
