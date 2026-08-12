@@ -611,6 +611,25 @@ class ImportXbox(TestCase):
 
     @patch("integrations.imports.xbox.services.search")
     @patch("integrations.xbox_api.services.api_request")
+    def test_total_non_provider_failure_does_not_blame_igdb(
+        self,
+        mock_api_request,
+        mock_search,
+    ):
+        """Every title failing on our own bug must not read as IGDB being down."""
+        mock_api_request.side_effect = self.api_stub()
+        mock_search.side_effect = TypeError("unhashable type: 'dict'")
+
+        with self.assertRaises(helpers.MediaImportError) as context:
+            xbox.importer(None, self.user, "new")
+
+        message = str(context.exception)
+        self.assertNotIn("Could not reach", message)
+        self.assertIn("unhashable type", message)
+        self.assertEqual(Game.objects.filter(user=self.user).count(), 0)
+
+    @patch("integrations.imports.xbox.services.search")
+    @patch("integrations.xbox_api.services.api_request")
     def test_non_provider_exception_is_contained(self, mock_api_request, mock_search):
         """An unexpected error (e.g. bad IGDB credentials) is contained per title."""
         mock_api_request.side_effect = self.api_stub()

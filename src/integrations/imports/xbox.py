@@ -150,6 +150,10 @@ class XboxImporter:
         self.to_update_meta = []
         self.bulk_media = defaultdict(list)
         self.lookup_failures = 0
+        # Provider errors point at IGDB; anything else is a bug on our side and
+        # must not be reported as an unreachable provider.
+        self.provider_failures = 0
+        self.first_failure = ""
 
         logger.info(
             "Initialized Xbox importer for user %s with mode %s",
@@ -183,18 +187,26 @@ class XboxImporter:
 
         matched = len(self.bulk_media[MediaTypes.GAME.value]) + len(self.to_update)
         logger.info(
-            "Xbox: %d titles, %d matched, %d lookup failures",
+            "Xbox: %d titles, %d matched, %d lookup failures (%d provider errors)",
             total,
             matched,
             self.lookup_failures,
+            self.provider_failures,
         )
 
         if not matched and self.lookup_failures:
-            msg = (
-                f"Could not reach {Sources.IGDB.label}: all {self.lookup_failures} "
-                f"of {total} Xbox titles failed to look up. Check the "
-                f"{Sources.IGDB.label} credentials on this instance."
-            )
+            if self.provider_failures == self.lookup_failures:
+                msg = (
+                    f"Could not reach {Sources.IGDB.label}: all "
+                    f"{self.lookup_failures} of {total} Xbox titles failed to "
+                    f"look up. Check the {Sources.IGDB.label} credentials on "
+                    f"this instance."
+                )
+            else:
+                msg = (
+                    f"All {self.lookup_failures} of {total} Xbox titles failed "
+                    f"to import. First error: {self.first_failure}"
+                )
             self._mark_broken(msg)
             raise MediaImportError(msg)
 
@@ -252,6 +264,12 @@ class XboxImporter:
             update_fields=["connection_broken", "last_error_message", "updated_at"],
         )
 
+    def _record_failure(self, detail):
+        """Count a title that couldn't be processed, keeping the first reason."""
+        self.lookup_failures += 1
+        if not self.first_failure:
+            self.first_failure = detail
+
     def _process_title(self, title_id, title, minutes):
         """Process a single Xbox title from the played-titles list."""
         name = title.get("name") or f"Unknown Game {title_id}"
@@ -261,12 +279,13 @@ class XboxImporter:
         except services.ProviderAPIError as e:
             logger.warning("IGDB lookup failed for Xbox title %s: %s", name, e)
             self.warnings.append(f"{name} ({title_id}): {Sources.IGDB.label} error: {e}")
-            self.lookup_failures += 1
+            self._record_failure(f"{name}: {Sources.IGDB.label} error: {e}")
+            self.provider_failures += 1
             return
         except Exception as e:
             logger.warning("Failed to process Xbox title %s (%s): %s", name, title_id, e)
             self.warnings.append(f"{name} ({title_id}): {e!s}")
-            self.lookup_failures += 1
+            self._record_failure(f"{name}: {e!s}")
             return
 
         if not igdb_game:
