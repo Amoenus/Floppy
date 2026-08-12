@@ -1,27 +1,34 @@
 """First-run setup wizard: choose media types, choose services, connect them.
 
-Every step here composes existing settings surfaces rather than
+Most steps here compose existing settings surfaces rather than
 reimplementing them:
 - media type selection reuses ``apply_media_type_preferences`` (the same
   logic backing Settings > Sidebar) and the
   ``users/components/media_type_picker.html`` partial.
-- connecting a service reuses the existing Settings > Import page and its
-  per-source connect/import forms unchanged, via a ``?open=<slug>`` deep
-  link (see ``import_data.html``).
-- import progress reuses ``users/components/import_activity.html`` and
-  ``integrations.import_progress``.
+- connecting a service renders one of a small set of generic connect forms
+  inline (``users/onboarding/components/connect_*.html``), posting straight
+  to the same per-source connect/import views Settings > Import uses, with
+  a ``next`` field bringing the user back here on success. A source with
+  ``inline_supported=False`` (currently just Storyteller's device-code
+  flow) instead falls back to the old ``?open=<slug>`` deep link into
+  Settings > Import.
+- import progress shows a compact status chip per source connected this
+  session (from ``ImportRun``), not the full account-wide Settings > Import
+  activity panel.
 - for a connected source with a separate realtime integration (currently
-  just Plex's webhook), one more step deep-links into Settings >
-  Integrations the same way; sources without one never show this step.
+  just Plex's webhook), one more step renders that integration's setup
+  instructions inline the same way (``users/onboarding/components/
+  integration_*.html``); sources without one never show this step.
 
 Wizard state lives on a handful of ``User`` fields
 (``onboarding_status``/``onboarding_step``/``onboarding_selected_sources``/
-``onboarding_skipped_sources``/``onboarding_skipped_integrations``); see
-``users/models.py``.
+``onboarding_skipped_sources``/``onboarding_connected_sources``/
+``onboarding_skipped_integrations``); see ``users/models.py``.
 """
 
 from __future__ import annotations
 
+from django.conf import settings
 from django.contrib import messages
 from django.shortcuts import redirect, render
 from django.urls import reverse
@@ -30,11 +37,7 @@ from django.views.decorators.http import require_GET, require_http_methods
 from app.models import MediaTypes
 from integrations.models import ImportRun
 from integrations.onboarding import get_source, sources_for_media_type
-from users.views import (
-    SIDEBAR_MEDIA_TYPES,
-    _import_source_media_summary,
-    apply_media_type_preferences,
-)
+from users.views import SIDEBAR_MEDIA_TYPES, apply_media_type_preferences
 
 STEP_URL_NAMES = {
     "media_types": "onboarding_media_types",
@@ -57,8 +60,8 @@ STEP_LABELS = [
     ("services", "Services"),
     ("services_summary", "Summary"),
     ("service_setup", "Connect"),
-    ("import_status", "Import"),
     ("integration_setup", "Scrobbling"),
+    ("import_status", "Import"),
 ]
 
 
@@ -227,12 +230,13 @@ def onboarding_services_summary(request):
 def _remaining_sources(user):
     """Return selected sources that still need a connect/import pass."""
     skipped = set(user.onboarding_skipped_sources)
+    connected = set(user.onboarding_connected_sources)
     remaining = []
     for slug in user.onboarding_selected_sources:
         source = get_source(slug)
         if not source or slug in skipped:
             continue
-        if source.is_connected(user):
+        if source.is_connected(user) or slug in connected:
             continue
         remaining.append(source)
     return remaining
@@ -253,7 +257,7 @@ def onboarding_service_setup(request):
 
     remaining = _remaining_sources(request.user)
     if not remaining:
-        return _advance(request.user, request, "import_status")
+        return _advance(request.user, request, "integration_setup")
 
     current = remaining[0]
     return render(
@@ -262,6 +266,7 @@ def onboarding_service_setup(request):
         {
             "current_source": current,
             "remaining_count": len(remaining),
+            "trakt_configured": bool(settings.TRAKT_API and settings.TRAKT_API_SECRET),
             **_wizard_progress("service_setup"),
         },
     )
@@ -283,29 +288,41 @@ def onboarding_skip_service(request, slug):
 
 @require_http_methods(["GET", "POST"])
 def onboarding_import_status(request):
-    """Step 5: show import progress/history for connected services, then continue."""
+    """Step 6: show import progress/history for connected services, then continue."""
     blocked = _blocked_for_demo(request)
     if blocked:
         return blocked
 
     if request.method == "POST":
-        return _advance(request.user, request, "integration_setup")
+        return _finish(request.user)
 
+    connected_slugs = set(request.user.onboarding_connected_sources)
     connected_sources = [
         source
         for slug in request.user.onboarding_selected_sources
-        if (source := get_source(slug)) and source.is_connected(request.user)
+        if (source := get_source(slug))
+        and (source.is_connected(request.user) or slug in connected_slugs)
     ]
+
+    latest_run_by_source = {}
+    if connected_sources:
+        runs = ImportRun.objects.filter(
+            user=request.user,
+            source__in=[source.slug for source in connected_sources],
+        ).order_by("source", "-started_at")
+        for run in runs:
+            latest_run_by_source.setdefault(run.source, run)
+
+    connected_sources_with_status = [
+        {"source": source, "run": latest_run_by_source.get(source.slug)}
+        for source in connected_sources
+    ]
+
     return render(
         request,
         "users/onboarding/import_status.html",
         {
-            "connected_sources": connected_sources,
-            "import_tasks": request.user.get_import_tasks(),
-            "import_runs": ImportRun.objects.filter(user=request.user).order_by(
-                "-started_at"
-            )[:10],
-            "import_source_media": _import_source_media_summary(request.user),
+            "connected_sources": connected_sources_with_status,
             **_wizard_progress("import_status"),
         },
     )
@@ -332,12 +349,12 @@ def _remaining_integrations(user):
 
 @require_GET
 def onboarding_integration_setup(request):
-    """Step 6: for connected services with a realtime integration, set it up too.
+    """Step 5: for connected services with a realtime integration, set it up too.
 
     Recomputes the remaining queue on every visit, same as
     ``onboarding_service_setup``: an empty queue (the common case, since
     most sources have no separate integration) advances straight through
-    without the user ever seeing this step.
+    to the import status step without the user ever seeing this one.
     """
     blocked = _blocked_for_demo(request)
     if blocked:
@@ -345,7 +362,7 @@ def onboarding_integration_setup(request):
 
     remaining = _remaining_integrations(request.user)
     if not remaining:
-        return _finish(request.user)
+        return _advance(request.user, request, "import_status")
 
     current = remaining[0]
     return render(
@@ -383,6 +400,13 @@ def onboarding_resume(request):
     step = request.user.onboarding_step
     if step not in STEP_URL_NAMES:
         step = "media_types"
+    elif step == "import_status":
+        # Scrobbling (integration_setup) used to come after Import; a step
+        # persisted before that reorder would otherwise resume past it
+        # entirely. integration_setup re-validates its own queue and
+        # advances straight through if there's nothing pending, so this is
+        # safe even for users who never had anything to configure there.
+        step = "integration_setup"
     return _step_redirect(step)
 
 

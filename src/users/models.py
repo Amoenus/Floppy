@@ -1003,6 +1003,11 @@ class User(AbstractUser):
         blank=True,
         help_text="Source slugs explicitly skipped during the setup wizard.",
     )
+    onboarding_connected_sources = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Source slugs successfully connected during the setup wizard.",
+    )
     onboarding_skipped_integrations = models.JSONField(
         default=list,
         blank=True,

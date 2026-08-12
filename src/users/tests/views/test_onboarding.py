@@ -134,36 +134,36 @@ class OnboardingWizardTests(TestCase):
         setup_response = self.client.get(reverse("onboarding_service_setup"))
         self.assertContains(setup_response, "radarr")
 
-    def test_service_setup_empty_queue_advances_to_import_status(self):
-        """An empty remaining queue moves straight to the import status step."""
+    def test_service_setup_empty_queue_advances_to_integration_setup(self):
+        """An empty remaining queue moves straight to the (usually auto-skipped) integration step."""
         self.user.onboarding_selected_sources = []
         self.user.save(update_fields=["onboarding_selected_sources"])
 
         response = self.client.get(reverse("onboarding_service_setup"))
-        self.assertRedirects(response, reverse("onboarding_import_status"))
-
-    def test_import_status_post_advances_to_integration_setup(self):
-        """Finishing imports moves to the (usually auto-skipped) integration step."""
-        response = self.client.post(reverse("onboarding_import_status"))
-
         self.assertRedirects(
             response,
             reverse("onboarding_integration_setup"),
             fetch_redirect_response=False,
         )
-        self.user.refresh_from_db()
-        self.assertEqual(self.user.onboarding_step, "integration_setup")
 
-    def test_integration_setup_auto_finishes_when_nothing_to_configure(self):
+    def test_import_status_post_finishes_onboarding(self):
+        """Finishing imports, the last step, completes onboarding."""
+        response = self.client.post(reverse("onboarding_import_status"))
+
+        self.assertRedirects(response, reverse("home"), fetch_redirect_response=False)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.onboarding_status, "completed")
+
+    def test_integration_setup_auto_advances_to_import_status(self):
         """No connected source has a pending integration -> the step is invisible."""
         self.user.onboarding_step = "integration_setup"
         self.user.save(update_fields=["onboarding_step"])
 
         response = self.client.get(reverse("onboarding_integration_setup"))
 
-        self.assertRedirects(response, reverse("home"))
+        self.assertRedirects(response, reverse("onboarding_import_status"))
         self.user.refresh_from_db()
-        self.assertEqual(self.user.onboarding_status, "completed")
+        self.assertEqual(self.user.onboarding_step, "import_status")
 
     def test_integration_setup_shown_for_connected_plex_without_webhook(self):
         """A connected Plex account with no webhook activity yet gets the extra step."""
@@ -177,10 +177,11 @@ class OnboardingWizardTests(TestCase):
         response = self.client.get(reverse("onboarding_integration_setup"))
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Set up webhook")
+        self.assertContains(response, "Setup Instructions")
+        self.assertContains(response, "webhook/plex/")
 
-    def test_skip_integration_advances_to_finish(self):
-        """Skipping the only pending integration completes onboarding."""
+    def test_skip_integration_advances_to_import_status(self):
+        """Skipping the only pending integration moves on to the import status step."""
         PlexAccount.objects.create(
             user=self.user, plex_token="token", plex_username="u"
         )
@@ -198,9 +199,9 @@ class OnboardingWizardTests(TestCase):
         )
 
         follow_up = self.client.get(reverse("onboarding_integration_setup"))
-        self.assertRedirects(follow_up, reverse("home"))
+        self.assertRedirects(follow_up, reverse("onboarding_import_status"))
         self.user.refresh_from_db()
-        self.assertEqual(self.user.onboarding_status, "completed")
+        self.assertEqual(self.user.onboarding_step, "import_status")
 
     def test_integrations_open_query_param_deep_links_a_section(self):
         """The wizard's integration step opens the right section on Settings > Integrations."""
@@ -229,6 +230,19 @@ class OnboardingWizardTests(TestCase):
 
         response = self.client.get(reverse("onboarding_resume"))
         self.assertRedirects(response, reverse("onboarding_service_setup"))
+
+    def test_resume_from_stale_import_status_step_lands_on_integration_setup(self):
+        """A step persisted before Scrobbling moved earlier doesn't skip it."""
+        self.user.onboarding_status = "in_progress"
+        self.user.onboarding_step = "import_status"
+        self.user.save(update_fields=["onboarding_status", "onboarding_step"])
+
+        response = self.client.get(reverse("onboarding_resume"))
+        self.assertRedirects(
+            response,
+            reverse("onboarding_integration_setup"),
+            fetch_redirect_response=False,
+        )
 
     def test_restart_reopens_completed_onboarding(self):
         """'Run guided setup' from Settings works even after completion."""

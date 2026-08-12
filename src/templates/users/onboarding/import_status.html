@@ -14,12 +14,23 @@
 {% block step_options %}
   {% if connected_sources %}
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
-      {% for source in connected_sources %}
+      {% for item in connected_sources %}
         <div class="flex items-center gap-3 p-3 bg-[var(--color-surface-strong)] rounded-lg">
-          {% source_display source.slug %}
-          <span class="ml-auto flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" title="Connected">
-            {% include "app/icons/checkmark.svg" with classes="w-3 h-3" %}
-          </span>
+          {% source_display item.source.slug %}
+          {% with run=item.run %}
+            <span class="ml-auto px-2 py-1 rounded text-xs font-medium whitespace-nowrap
+              {% if not run %}text-gray-400 bg-gray-400/10
+              {% elif run.status == "completed" %}text-green-400 bg-green-400/10
+              {% elif run.status == "running" %}text-blue-400 bg-blue-400/10
+              {% elif run.status == "failed" %}text-red-400 bg-red-400/10
+              {% else %}text-gray-400 bg-gray-400/10{% endif %}">
+              {% if not run %}Queued
+              {% elif run.status == "completed" %}Done
+              {% elif run.status == "running" %}Importing…
+              {% elif run.status == "failed" %}Failed
+              {% else %}Cancelled{% endif %}
+            </span>
+          {% endwith %}
         </div>
       {% endfor %}
     </div>
@@ -29,8 +40,7 @@
       Settings &gt; Import.
     </p>
   {% endif %}
-  {% include "users/components/import_activity.html" %}
-  <form method="post" class="mt-6 flex justify-end">
+  <form method="post" class="flex justify-end">
     {% csrf_token %}
     <button type="submit"
             class="px-4 py-2 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer">
