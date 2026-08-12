@@ -1308,6 +1308,22 @@ def import_data(request):
     sonarr_account = getattr(user, "sonarr_account", None)
     stremio_account = getattr(user, "stremio_account", None)
 
+    audiobookshelf_poll_interval = getattr(
+        settings, "AUDIOBOOKSHELF_POLL_INTERVAL_MINUTES", 15
+    )
+    if audiobookshelf_account:
+        from django_celery_beat.models import PeriodicTask
+
+        audiobookshelf_periodic_task = PeriodicTask.objects.filter(
+            task="Import from Audiobookshelf (Recurring)",
+            kwargs__contains=f'"user_id": {user.id}',
+            enabled=True,
+        ).first()
+        if audiobookshelf_periodic_task and audiobookshelf_periodic_task.interval:
+            audiobookshelf_poll_interval = (
+                audiobookshelf_periodic_task.interval.every
+            )
+
     # Get Last.fm periodic task status
     lastfm_periodic_task = None
     lastfm_poll_interval = getattr(settings, "LASTFM_POLL_INTERVAL_MINUTES", 15)
@@ -1349,6 +1365,7 @@ def import_data(request):
         "plex_sections": plex_sections,
         "plex_sections_json": json.dumps(plex_sections),
         "audiobookshelf_account": audiobookshelf_account,
+        "audiobookshelf_poll_interval": audiobookshelf_poll_interval,
         "storyteller_account": storyteller_account,
         "storyteller_pending": storyteller_pending,
         "pocketcasts_account": pocketcasts_account,

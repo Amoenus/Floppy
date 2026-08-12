@@ -1051,7 +1051,7 @@
           </div>
 
           {% if audiobookshelf_account %}
-            <p class="text-sm text-[var(--color-text-muted)]">Sync Audiobook progress from Audiobookshelf every 2 hours.</p>
+            <p class="text-sm text-[var(--color-text-muted)]">Sync Audiobook progress from Audiobookshelf every {{ audiobookshelf_poll_interval }} minutes.</p>
             <div class="flex items-center gap-2 text-sm text-[var(--color-text-muted)]">
               <span>{{ audiobookshelf_account.base_url }}</span>
               {% if audiobookshelf_account.last_sync_at %}

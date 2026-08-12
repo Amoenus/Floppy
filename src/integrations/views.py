@@ -1378,6 +1378,54 @@ def jellyfin_push_now(request):
     return redirect("integrations")
 
 
+def _ensure_audiobookshelf_schedule(user):
+    """Create or update the recurring Audiobookshelf import schedule for a user."""
+    from django_celery_beat.models import IntervalSchedule, PeriodicTask
+
+    poll_interval_minutes = getattr(
+        settings, "AUDIOBOOKSHELF_POLL_INTERVAL_MINUTES", 15
+    )
+    interval, _ = IntervalSchedule.objects.get_or_create(
+        every=poll_interval_minutes,
+        period=IntervalSchedule.MINUTES,
+    )
+    task_name = (
+        f"Import from Audiobookshelf for {user.username} "
+        f"(every {poll_interval_minutes} minutes)"
+    )
+    existing_task = PeriodicTask.objects.filter(
+        task="Import from Audiobookshelf (Recurring)",
+        kwargs__contains=f'"user_id": {user.id}',
+    ).first()
+
+    if existing_task:
+        updated_fields = []
+        if existing_task.name != task_name:
+            existing_task.name = task_name
+            updated_fields.append("name")
+        if existing_task.interval_id != interval.id:
+            existing_task.interval = interval
+            updated_fields.append("interval")
+        if existing_task.crontab_id is not None:
+            existing_task.crontab = None
+            updated_fields.append("crontab")
+        if not existing_task.enabled:
+            existing_task.enabled = True
+            updated_fields.append("enabled")
+        if updated_fields:
+            existing_task.save(update_fields=updated_fields)
+        return existing_task
+
+    return PeriodicTask.objects.create(
+        name=task_name,
+        task="Import from Audiobookshelf (Recurring)",
+        interval=interval,
+        kwargs=json.dumps({"user_id": user.id}),
+        start_time=timezone.now(),
+        enabled=True,
+    )
+
+
 @require_POST
 def audiobookshelf_connect(request):
     """Connect Audiobookshelf account using base URL + API token."""
@@ -1408,6 +1456,7 @@ def audiobookshelf_connect(request):
         },
     )
 
+    _ensure_audiobookshelf_schedule(request.user)
     tasks.import_audiobookshelf.delay(user_id=request.user.id, mode="new")
     messages.success(request, "Connected Audiobookshelf. Initial import queued.")
     return _integration_redirect(request, connected_slug="audiobookshelf")
@@ -1430,38 +1479,13 @@ def audiobookshelf_disconnect(request):
 @require_POST
 def import_audiobookshelf(request):
     """Queue Audiobookshelf import and ensure recurring schedule exists."""
-    from django_celery_beat.models import CrontabSchedule, PeriodicTask
-
     account = getattr(request.user, "audiobookshelf_account", None)
     if not account:
         messages.error(request, "Connect Audiobookshelf before importing.")
         return redirect("import_data")
 
     tasks.import_audiobookshelf.delay(user_id=request.user.id, mode="new")
-
-    existing_task = PeriodicTask.objects.filter(
-        task="Import from Audiobookshelf (Recurring)",
-        kwargs__contains=f'"user_id": {request.user.id}',
-        enabled=True,
-    ).first()
-
-    if not existing_task:
-        crontab, _ = CrontabSchedule.objects.get_or_create(
-            minute=0,
-            hour="*/2",
-            day_of_week="*",
-            day_of_month="*",
-            month_of_year="*",
-            timezone=timezone.get_default_timezone(),
-        )
-        PeriodicTask.objects.create(
-            name=f"Import from Audiobookshelf for {request.user.username} (every 2 hours)",
-            task="Import from Audiobookshelf (Recurring)",
-            crontab=crontab,
-            kwargs=json.dumps({"user_id": request.user.id}),
-            start_time=timezone.now(),
-            enabled=True,
-        )
+    _ensure_audiobookshelf_schedule(request.user)
 
     messages.info(request, "Audiobookshelf import queued.")
     return redirect("import_data")
