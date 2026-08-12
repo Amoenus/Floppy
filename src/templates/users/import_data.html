@@ -2448,8 +2448,15 @@
             {% endif %}
           </div>
           {% if xbox_account %}
+            {# Server-rendered text matches the initial importFrequency so the
+               copy is right before Alpine binds, and survives if it never does. #}
             <p class="text-sm text-[var(--color-text-muted)]"
                x-text="importFrequency === 'once' ? 'Sync played games and hours played from your Xbox account now.' : 'Sync played games and hours played from your Xbox account on a schedule.'">
+              {% if user.import_frequency == "once" %}
+                Sync played games and hours played from your Xbox account now.
+              {% else %}
+                Sync played games and hours played from your Xbox account on a schedule.
+              {% endif %}
             </p>
             {% if xbox_account.gamertag %}
               <div class="text-sm text-[var(--color-text-muted)]">Gamertag: {{ xbox_account.gamertag }}</div>
@@ -2471,6 +2478,7 @@
                 <button type="submit"
                         class="px-4 py-2 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer"
                         x-text="importFrequency === 'once' ? 'Sync Now' : 'Schedule Sync'">
+                  {% if user.import_frequency == "once" %}Sync Now{% else %}Schedule Sync{% endif %}
                 </button>
               </form>
               <form method="post" action="{% url 'xbox_disconnect' %}">
