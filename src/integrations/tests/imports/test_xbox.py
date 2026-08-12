@@ -6,7 +6,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
-from django_celery_beat.models import PeriodicTask
+from django_celery_beat.models import CrontabSchedule, PeriodicTask
 from requests import Response
 from requests.exceptions import ConnectionError as RequestsConnectionError
 from requests.exceptions import HTTPError
@@ -1147,6 +1147,151 @@ class XboxViewTests(TestCase):
         self.assertEqual(
             PeriodicTask.objects.filter(task=XBOX_RECURRING_TASK_NAME).count(),
             1,
+        )
+
+    @patch("integrations.views.tasks.import_xbox.delay")
+    def test_another_users_schedule_does_not_block_this_one(self, _mock_delay):
+        """A task named for a recycled username belongs to whoever holds it."""
+        self._connect_account()
+        payload = {"frequency": "daily", "mode": "new", "time": "04:00"}
+        self.client.post(reverse("import_xbox"), payload)
+
+        # The first user renames, and a new account takes the freed username.
+        self.user.username = "renamed"
+        self.user.save(update_fields=["username"])
+        other_credentials = {"username": "test", "password": "12345"}
+        other_user = get_user_model().objects.create_user(**other_credentials)
+        XboxAccount.objects.create(
+            user=other_user,
+            api_key=helpers.encrypt("openxbl-key"),
+            xuid="2535473210914203",
+            gamertag="OtherGamer",
+        )
+        self.client.login(**other_credentials)
+
+        response = self.client.post(reverse("import_xbox"), payload, follow=True)
+
+        self.assertContains(response, "Xbox import task scheduled.")
+        tasks_by_user = {
+            json.loads(task.kwargs)["user_id"]: task.name
+            for task in PeriodicTask.objects.filter(task=XBOX_RECURRING_TASK_NAME)
+        }
+        self.assertEqual(set(tasks_by_user), {self.user.id, other_user.id})
+        # The name the first user left behind is repaired, not handed over.
+        self.assertIn("for renamed at", tasks_by_user[self.user.id])
+        self.assertIn("for test at", tasks_by_user[other_user.id])
+
+    @patch("integrations.views.tasks.import_xbox.delay")
+    def test_schedule_left_by_a_deleted_user_is_cleaned_up(self, _mock_delay):
+        """A name held by a task whose user is gone is reclaimed, not a 500."""
+        departed_user = get_user_model().objects.create_user(
+            username="departed",
+            password="12345",
+        )
+        PeriodicTask.objects.create(
+            name="Import from Xbox for test at 04:00:00 daily",
+            task=XBOX_RECURRING_TASK_NAME,
+            crontab=CrontabSchedule.objects.create(
+                minute="0",
+                hour="4",
+                day_of_week="*",
+                day_of_month="*",
+                month_of_year="*",
+            ),
+            kwargs=json.dumps({"user_id": departed_user.id, "mode": "new"}),
+            enabled=True,
+        )
+        departed_user.delete()
+
+        self._connect_account()
+        response = self.client.post(
+            reverse("import_xbox"),
+            {"frequency": "daily", "mode": "new", "time": "04:00"},
+            follow=True,
+        )
+
+        self.assertContains(response, "Xbox import task scheduled.")
+        task = PeriodicTask.objects.get(task=XBOX_RECURRING_TASK_NAME)
+        self.assertEqual(json.loads(task.kwargs)["user_id"], self.user.id)
+
+    @patch("integrations.views.tasks.import_xbox.delay")
+    def test_duplicate_schedule_survives_a_username_change(self, _mock_delay):
+        """Renaming does not hand the same user a second copy of a schedule."""
+        self._connect_account()
+        payload = {"frequency": "daily", "mode": "new", "time": "04:00"}
+        self.client.post(reverse("import_xbox"), payload)
+
+        self.user.username = "renamed"
+        self.user.save(update_fields=["username"])
+        response = self.client.post(reverse("import_xbox"), payload, follow=True)
+
+        self.assertContains(response, "The same import task is already scheduled.")
+        self.assertEqual(
+            PeriodicTask.objects.filter(task=XBOX_RECURRING_TASK_NAME).count(),
+            1,
+        )
+
+    @patch("integrations.views.tasks.import_xbox.delay")
+    def test_disabled_schedule_is_re_enabled(self, _mock_delay):
+        """Rescheduling revives a disabled task rather than rejecting it."""
+        self._connect_account()
+        self.client.post(
+            reverse("import_xbox"),
+            {"frequency": "daily", "mode": "new", "time": "04:00"},
+        )
+        task = PeriodicTask.objects.get(task=XBOX_RECURRING_TASK_NAME)
+        task.enabled = False
+        task.start_time = timezone.now() - timedelta(days=1)
+        task.save(update_fields=["enabled", "start_time"])
+
+        response = self.client.post(
+            reverse("import_xbox"),
+            {"frequency": "daily", "mode": "overwrite", "time": "04:00"},
+            follow=True,
+        )
+
+        self.assertContains(response, "Xbox import task re-enabled.")
+        self.assertEqual(
+            PeriodicTask.objects.filter(task=XBOX_RECURRING_TASK_NAME).count(),
+            1,
+        )
+        task.refresh_from_db()
+        self.assertTrue(task.enabled)
+        self.assertEqual(json.loads(task.kwargs)["mode"], "overwrite")
+        # A start_time in the past makes celery beat fire the task immediately.
+        self.assertGreater(task.start_time, timezone.now())
+
+    @patch("integrations.views.tasks.import_xbox.delay")
+    def test_another_users_disabled_schedule_is_left_alone(self, _mock_delay):
+        """Reviving a schedule never touches one belonging to someone else."""
+        other_user = get_user_model().objects.create_user(
+            username="other",
+            password="12345",
+        )
+        self.client.force_login(other_user)
+        XboxAccount.objects.create(
+            user=other_user,
+            api_key=helpers.encrypt("openxbl-key"),
+            xuid="2535473210914203",
+            gamertag="OtherGamer",
+        )
+        payload = {"frequency": "daily", "mode": "new", "time": "04:00"}
+        self.client.post(reverse("import_xbox"), payload)
+        other_task = PeriodicTask.objects.get(task=XBOX_RECURRING_TASK_NAME)
+        other_task.enabled = False
+        other_task.save(update_fields=["enabled"])
+
+        self._connect_account()
+        self.client.login(**self.credentials)
+        response = self.client.post(reverse("import_xbox"), payload, follow=True)
+
+        self.assertContains(response, "Xbox import task scheduled.")
+        other_task.refresh_from_db()
+        self.assertFalse(other_task.enabled)
+        self.assertEqual(json.loads(other_task.kwargs)["user_id"], other_user.id)
+        self.assertEqual(
+            PeriodicTask.objects.filter(task=XBOX_RECURRING_TASK_NAME).count(),
+            2,
         )
 
     @patch("integrations.views.tasks.import_xbox.delay")

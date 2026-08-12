@@ -18,6 +18,7 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_not_required
 from django.core.exceptions import ObjectDoesNotExist
+from django.db import IntegrityError
 from django.db.models import Q
 from django.http import HttpResponse, JsonResponse, StreamingHttpResponse
 from django.shortcuts import redirect
@@ -1777,6 +1778,50 @@ def _next_crontab_run(crontab):
     return croniter.croniter(cron_expression, now).get_next(datetime)
 
 
+def _xbox_schedule_name(user, parsed_time, frequency):
+    """Name a user's Xbox schedule for the beat admin and the schedule list."""
+    return f"Import from Xbox for {user.username} at {parsed_time} {frequency}"
+
+
+def _reclaim_xbox_schedule_name(task_name, parsed_time, frequency):
+    """Free a schedule name whose holder no longer answers to it.
+
+    `PeriodicTask.name` is unique and these names are built from the
+    username, which can be changed and freed for someone else to take — so
+    a name outlives its owner's claim to it. The kwargs `user_id` is the
+    real owner: rename the holder to match whoever that is now, or drop it
+    if that user is gone. Returns whether the name is ours to take.
+    """
+    from django_celery_beat.models import PeriodicTask
+
+    holder = PeriodicTask.objects.filter(name=task_name).first()
+    if holder is None:
+        return True
+
+    try:
+        holder_user_id = json.loads(holder.kwargs or "{}").get("user_id")
+    except (TypeError, ValueError):
+        holder_user_id = None
+
+    holder_user = (
+        users.models.User.objects.filter(id=holder_user_id).first()
+        if holder_user_id
+        else None
+    )
+    if holder_user is None:
+        holder.delete()
+        return True
+
+    current_name = _xbox_schedule_name(holder_user, parsed_time, frequency)
+    if current_name == task_name:
+        # The holder is entitled to the name; it just isn't ours.
+        return False
+
+    holder.name = current_name
+    holder.save(update_fields=["name"])
+    return True
+
+
 def _create_xbox_schedule(request, mode, frequency, import_time):
     """Create a recurring Xbox import schedule for the chosen time."""
     from django_celery_beat.models import CrontabSchedule, PeriodicTask
@@ -1796,21 +1841,52 @@ def _create_xbox_schedule(request, mode, frequency, import_time):
         timezone=timezone.get_default_timezone(),
     )
 
-    task_name = (
-        f"Import from Xbox for {request.user.username} at {parsed_time} {frequency}"
+    task_name = _xbox_schedule_name(request.user, parsed_time, frequency)
+    desired_kwargs = json.dumps({"user_id": request.user.id, "mode": mode})
+    existing_task = (
+        PeriodicTask.objects.filter(
+            _periodic_task_filter_for_user(request.user.id),
+            task=XBOX_RECURRING_TASK_NAME,
+            crontab=crontab,
+        )
+        .order_by("-enabled", "id")
+        .first()
     )
-    if PeriodicTask.objects.filter(name=task_name).exists():
+    if existing_task:
+        if existing_task.enabled:
+            messages.error(request, "The same import task is already scheduled.")
+            return
+
+        # A disabled task still owns its unique name, so revive it instead of
+        # creating a second one that would collide.
+        existing_task.name = task_name
+        existing_task.kwargs = desired_kwargs
+        existing_task.start_time = _next_crontab_run(crontab)
+        existing_task.enabled = True
+        existing_task.save(
+            update_fields=["name", "kwargs", "start_time", "enabled"],
+        )
+        messages.success(request, "Xbox import task re-enabled.")
+        return
+
+    if not _reclaim_xbox_schedule_name(task_name, parsed_time, frequency):
         messages.error(request, "The same import task is already scheduled.")
         return
 
-    PeriodicTask.objects.create(
-        name=task_name,
-        task=XBOX_RECURRING_TASK_NAME,
-        crontab=crontab,
-        kwargs=json.dumps({"user_id": request.user.id, "mode": mode}),
-        start_time=_next_crontab_run(crontab),
-        enabled=True,
-    )
+    try:
+        PeriodicTask.objects.create(
+            name=task_name,
+            task=XBOX_RECURRING_TASK_NAME,
+            crontab=crontab,
+            kwargs=desired_kwargs,
+            start_time=_next_crontab_run(crontab),
+            enabled=True,
+        )
+    except IntegrityError:
+        logger.exception("Xbox schedule %s could not be created", task_name)
+        messages.error(request, "The same import task is already scheduled.")
+        return
+
     messages.success(request, "Xbox import task scheduled.")
 
 
