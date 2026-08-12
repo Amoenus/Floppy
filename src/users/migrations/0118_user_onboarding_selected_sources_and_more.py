@@ -3,6 +3,35 @@
 from django.db import migrations, models
 
 
+def _column_exists(schema_editor, table_name, column_name):
+    """Return True when a database column already exists."""
+    connection = schema_editor.connection
+    if connection.vendor == "postgresql":
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT 1 FROM information_schema.columns "
+                "WHERE table_schema = current_schema() "
+                "AND table_name = %s AND column_name = %s",
+                [table_name, column_name],
+            )
+            return cursor.fetchone() is not None
+    with connection.cursor() as cursor:
+        description = connection.introspection.get_table_description(cursor, table_name)
+        columns = {getattr(column, "name", column[0]) for column in description}
+        return column_name in columns
+
+
+class AddFieldIfNotExists(migrations.AddField):
+    """Add a field only when the backing column doesn't already exist."""
+
+    def database_forwards(self, app_label, schema_editor, from_state, to_state):
+        to_model = to_state.apps.get_model(app_label, self.model_name)
+        field = to_model._meta.get_field(self.name)
+        if _column_exists(schema_editor, to_model._meta.db_table, field.column):
+            return
+        super().database_forwards(app_label, schema_editor, from_state, to_state)
+
+
 def backfill_existing_users_as_onboarded(apps, schema_editor):
     """Mark every user that already exists as having completed onboarding.
 
@@ -25,7 +54,7 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.AddField(
+        AddFieldIfNotExists(
             model_name="user",
             name="onboarding_selected_sources",
             field=models.JSONField(
@@ -34,7 +63,7 @@ class Migration(migrations.Migration):
                 help_text="Source slugs chosen to connect during the setup wizard.",
             ),
         ),
-        migrations.AddField(
+        AddFieldIfNotExists(
             model_name="user",
             name="onboarding_skipped_sources",
             field=models.JSONField(
@@ -43,7 +72,7 @@ class Migration(migrations.Migration):
                 help_text="Source slugs explicitly skipped during the setup wizard.",
             ),
         ),
-        migrations.AddField(
+        AddFieldIfNotExists(
             model_name="user",
             name="onboarding_status",
             field=models.CharField(
@@ -57,7 +86,7 @@ class Migration(migrations.Migration):
                 max_length=20,
             ),
         ),
-        migrations.AddField(
+        AddFieldIfNotExists(
             model_name="user",
             name="onboarding_step",
             field=models.CharField(
