@@ -1,4 +1,7 @@
-FROM python:3.12-alpine3.21 AS repo_meta
+ARG PYTHON_VERSION=3.12
+ARG ALPINE_VERSION=3.21
+
+FROM python:${PYTHON_VERSION}-alpine${ALPINE_VERSION} AS repo_meta
 
 WORKDIR /repo
 COPY . .
@@ -39,10 +42,27 @@ if config_path.exists():
 Path("/repo_owner").write_text(owner)
 PY
 
-FROM python:3.12-alpine3.21
+FROM python:${PYTHON_VERSION}-alpine${ALPINE_VERSION} AS builder
+
+COPY --from=ghcr.io/astral-sh/uv:0.12.3 /uv /uvx /bin/
+ENV UV_LINK_MODE=copy
+
+WORKDIR /floppy
+
+COPY ./pyproject.toml ./uv.lock ./
+COPY ./mcp_server/pyproject.toml ./mcp_server/pyproject.toml
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --locked --no-default-groups --no-install-workspace
+
+COPY ./mcp_server ./mcp_server
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --locked --no-default-groups --no-editable
+
+FROM python:${PYTHON_VERSION}-alpine${ALPINE_VERSION}
 
 # https://stackoverflow.com/questions/58701233/docker-logs-erroneously-appears-empty-until-container-stops
 ENV PYTHONUNBUFFERED=1
+ENV PATH="/floppy/.venv/bin:$PATH"
 
 # Define build argument with default value
 ARG VERSION=dev
@@ -63,7 +83,6 @@ ENV FLOPPY_CELERY_QUEUES=celery
 ENV FLOPPY_START_INTERACTIVE_WORKER=true
 ENV FLOPPY_START_DISCOVER_WORKER=true
 
-COPY ./requirements.txt /requirements.txt
 COPY ./entrypoint.sh /entrypoint.sh
 COPY ./supervisord.conf /etc/supervisord.conf
 COPY ./nginx.conf /etc/nginx/nginx.conf
@@ -78,10 +97,6 @@ WORKDIR /floppy
 RUN ln -s /floppy /yamtrack
 
 RUN apk add --no-cache nginx shadow \
-    && pip install --no-cache-dir -r /requirements.txt \
-    && pip install --no-cache-dir supervisor==4.3.0 \
-    && rm -rf /root/.cache /tmp/* \
-    && find /usr/local -type d -name __pycache__ -exec rm -rf {} + \
     && chmod +x /entrypoint.sh \
     # create user abc for later PUID/PGID mapping
     && useradd -U -M -s /bin/sh abc \
@@ -90,6 +105,7 @@ RUN apk add --no-cache nginx shadow \
     && mkdir -p /var/lib/nginx/body
 
 COPY --from=repo_meta /repo_owner /etc/floppy/fork_owner
+COPY --from=builder /floppy/.venv /floppy/.venv
 
 # Django app
 COPY src ./
@@ -99,8 +115,6 @@ RUN SECRET=build-time-placeholder python manage.py collectstatic --noinput
 # version shipped with this image, instead of a user's local checkout that
 # can silently drift from the app version.
 COPY mcp_server ./mcp_server
-RUN pip install --no-cache-dir ./mcp_server \
-    && rm -rf /root/.cache
 
 EXPOSE 8000
 

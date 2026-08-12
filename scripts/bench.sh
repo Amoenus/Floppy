@@ -73,19 +73,19 @@ cmd_up() {
   bench_env
   redis-cli -n 3 flushdb >/dev/null
   cd "$REPO/src"
-  python manage.py migrate >/dev/null
-  celery --app config worker --queues celery --hostname "bench-celery@%h" \
+  uv run --project "$REPO" --no-sync python manage.py migrate >/dev/null
+  uv run --project "$REPO" --no-sync celery --app config worker --queues celery --hostname "bench-celery@%h" \
     --loglevel INFO --without-mingle --without-gossip \
     >"$BENCH_DIR/celery-background.log" 2>&1 &
-  FLOPPY_PROCESS_ROLE=interactive celery --app config worker --queues interactive \
+  FLOPPY_PROCESS_ROLE=interactive uv run --project "$REPO" --no-sync celery --app config worker --queues interactive \
     --hostname "bench-interactive@%h" --loglevel INFO --without-mingle --without-gossip \
     >"$BENCH_DIR/celery-interactive.log" 2>&1 &
-  celery --app config worker --queues discover --hostname "bench-discover@%h" \
+  uv run --project "$REPO" --no-sync celery --app config worker --queues discover --hostname "bench-discover@%h" \
     --loglevel INFO --without-mingle --without-gossip \
     >"$BENCH_DIR/celery-discover.log" 2>&1 &
   echo "Bench up on $BASE (logs in $BENCH_DIR). Ctrl-C to stop."
   export FLOPPY_PROCESS_ROLE=web
-  exec gunicorn --bind "localhost:$BENCH_PORT" \
+  exec uv run --project "$REPO" --no-sync gunicorn --bind "localhost:$BENCH_PORT" \
     --config python:config.gunicorn config.wsgi:application
 }
 
