@@ -8,7 +8,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('integrations', '0020_koitoaccount'),
+        ('integrations', '0021_importrun'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
