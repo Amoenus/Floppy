@@ -103,6 +103,9 @@ urlpatterns = [
         "import/stremio/disconnect", views.stremio_disconnect, name="stremio_disconnect"
     ),
     path("import/stremio", views.import_stremio, name="import_stremio"),
+    path("import/xbox/connect", views.xbox_connect, name="xbox_connect"),
+    path("import/xbox/disconnect", views.xbox_disconnect, name="xbox_disconnect"),
+    path("import/xbox", views.import_xbox, name="import_xbox"),
     path(
         "import/pocketcasts/connect",
         views.pocketcasts_connect,

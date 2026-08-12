@@ -765,6 +765,39 @@ class StremioAccount(models.Model):
         return bool(self.auth_key) and not self.connection_broken
 
 
+class XboxAccount(models.Model):
+    """Store OpenXBL credentials and sync state for a user's Xbox account."""
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="xbox_account",
+    )
+    api_key = models.TextField(help_text="Encrypted OpenXBL API key")
+    xuid = models.CharField(max_length=32, blank=True, default="")
+    gamertag = models.CharField(max_length=64, blank=True, default="")
+    last_sync_at = models.DateTimeField(null=True, blank=True)
+    connection_broken = models.BooleanField(default=False)
+    last_error_message = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Model options."""
+
+        verbose_name = "Xbox account"
+        verbose_name_plural = "Xbox accounts"
+
+    def __str__(self):
+        """Readable representation."""
+        return f"XboxAccount({self.user.username})"
+
+    @property
+    def is_connected(self):
+        """Return True when the account appears connected."""
+        return bool(self.api_key) and not self.connection_broken
+
+
 class TraktAccount(models.Model):
     """Store Trakt API client credentials for a user."""
 

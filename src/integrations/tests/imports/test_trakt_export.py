@@ -5,6 +5,7 @@ from unittest.mock import Mock, patch
 
 import requests
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, tag
 from django.urls import reverse
@@ -195,6 +196,11 @@ class ImportTraktExport(TestCase):
 
     def setUp(self):
         """Create user for the tests."""
+        # A stale cached TMDB movie payload for the shared test id (67890)
+        # from another test class run earlier in the same worker process
+        # would make test_watchlist_movie_tmdb_401_raises_clean_import_error
+        # skip the mocked API call entirely.
+        cache.clear()
         credentials = {"username": "test", "password": "12345"}
         self.user = get_user_model().objects.create_user(**credentials)
 

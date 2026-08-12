@@ -757,6 +757,13 @@ _DETAIL_LINK_BRANDS = {
         "accent_classes": "text-slate-100",
         "fallback_text": "STM",
     },
+    "xbox": {
+        "logo_src": static("img/xbox-logo.svg"),
+        "chip_classes": "border-green-400/18 bg-green-500/[0.07]",
+        "badge_classes": "border-green-400/28 bg-green-500/14",
+        "accent_classes": "text-green-100",
+        "fallback_text": "XBX",
+    },
     "plex": {
         "logo_src": static("img/plex-logo.svg"),
         "chip_classes": "border-amber-400/18 bg-amber-500/[0.07]",

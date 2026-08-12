@@ -48,7 +48,12 @@ Two ways out, and which you pick depends on what you're checking:
   behave differently in prod mode.
 - **Override `IS_PROD = False`** in a settings module (below). Simpler, and it
   also fixes static files. `scripts/bench.sh` in this repo does exactly this, so
-  it's an established pattern here. Use this for ordinary UI checks.
+  it's an established pattern here. Use this for ordinary UI checks. Note:
+  `ALLAUTH_TRUSTED_CLIENT_IP_HEADER` is set inside `if IS_PROD:` at
+  `config/settings.py` *import time*, so re-assigning `IS_PROD = False`
+  afterward doesn't undo it — the override module must also clear that
+  setting explicitly (see the `local_serve.py` snippet below), or login
+  still 403s with `Unable to determine client IP address`.
 
 ### 2. Pages render unstyled
 
@@ -62,9 +67,11 @@ Create `src/local_serve.py`:
 """Local settings: no nginx, so let Django serve /static/."""
 from config.settings import *  # noqa: F403
 
-# Gates ALLAUTH_TRUSTED_CLIENT_IP_HEADER (nginx sets X-Real-IP) and Django's
-# static serving. Same override scripts/bench.sh uses.
+# Gates Django's static serving. Same override scripts/bench.sh uses.
 IS_PROD = False
+# config.settings sets this inside `if IS_PROD:` at import time, before this
+# override runs, so it survives IS_PROD = False above unless cleared here too.
+ALLAUTH_TRUSTED_CLIENT_IP_HEADER = None
 ```
 
 Then run the collectstatic command through uv:
