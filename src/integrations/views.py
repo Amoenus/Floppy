@@ -1763,8 +1763,8 @@ def _ensure_xbox_schedule(user, mode="new"):
 
     desired_kwargs = json.dumps({"user_id": user.id, "mode": mode})
     existing_task = PeriodicTask.objects.filter(
+        _periodic_task_filter_for_user(user.id),
         task=XBOX_RECURRING_TASK_NAME,
-        kwargs__contains=f'"user_id": {user.id}',
         enabled=True,
     ).first()
     if existing_task:
@@ -1835,8 +1835,8 @@ def xbox_disconnect(request):
     from django_celery_beat.models import PeriodicTask
 
     PeriodicTask.objects.filter(
+        _periodic_task_filter_for_user(request.user.id),
         task=XBOX_RECURRING_TASK_NAME,
-        kwargs__contains=f'"user_id": {request.user.id}',
     ).delete()
     XboxAccount.objects.filter(user=request.user).delete()
     messages.info(request, "Disconnected Xbox.")
