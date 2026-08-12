@@ -30,7 +30,7 @@ This playbook is the hard-gate process for implementing an accepted Yamtrack mig
 5. Implement runtime semantics before schema enforcement when application code must tolerate old and new rows during rollout.
 6. Create the Floppy migration from the current graph with `makemigrations`; review every generated operation and write only the required data transform.
 7. Run migration hygiene:
-   - `cd src && python manage.py check_migration_hygiene --strict`
+   - `uv run --no-sync python src/manage.py check_migration_hygiene --strict`
 8. Replay representative upgrades on both databases, including drift scenarios:
    - `scripts/replay_upgrade_matrix.sh --from-tag <previous_release_tag> --to-ref <branch> --db sqlite,postgres --with-drift-scenarios`
 9. Run targeted migration/model/import tests, then the full relevant application suite through `scripts/test.sh`.

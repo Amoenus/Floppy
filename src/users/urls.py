@@ -1,8 +1,46 @@
 from django.urls import path
 
-from users import views
+from users import onboarding_views, views
 
 urlpatterns = [
+    path("setup/", onboarding_views.onboarding_media_types, name="onboarding_media_types"),
+    path(
+        "setup/services/<int:index>/",
+        onboarding_views.onboarding_services,
+        name="onboarding_services",
+    ),
+    path(
+        "setup/services/summary/",
+        onboarding_views.onboarding_services_summary,
+        name="onboarding_services_summary",
+    ),
+    path(
+        "setup/connect/",
+        onboarding_views.onboarding_service_setup,
+        name="onboarding_service_setup",
+    ),
+    path(
+        "setup/connect/<slug:slug>/skip/",
+        onboarding_views.onboarding_skip_service,
+        name="onboarding_skip_service",
+    ),
+    path(
+        "setup/import-status/",
+        onboarding_views.onboarding_import_status,
+        name="onboarding_import_status",
+    ),
+    path(
+        "setup/integrations/",
+        onboarding_views.onboarding_integration_setup,
+        name="onboarding_integration_setup",
+    ),
+    path(
+        "setup/integrations/<slug:slug>/skip/",
+        onboarding_views.onboarding_skip_integration,
+        name="onboarding_skip_integration",
+    ),
+    path("setup/resume/", onboarding_views.onboarding_resume, name="onboarding_resume"),
+    path("setup/restart/", onboarding_views.onboarding_restart, name="onboarding_restart"),
     path("accounts/password/recover/", views.password_recover, name="password_recover"),
     path("settings/account", views.account, name="account"),
     path("settings/notifications", views.notifications, name="notifications"),

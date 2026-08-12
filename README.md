@@ -508,7 +508,7 @@ host-derived worker settings and database/Redis fork-safety hooks are active:
 
 ```bash
 cd /path/to/floppy/src
-gunicorn --config python:config.gunicorn config.wsgi:application
+uv run --no-sync gunicorn --config python:config.gunicorn config.wsgi:application
 ```
 
 Do not start the service with bare `gunicorn config.wsgi:application`; that
@@ -599,30 +599,36 @@ For contributing or customizing locally:
 git clone https://github.com/dannyvfilms/Floppy.git
 cd Floppy
 docker run -d --name redis -p 6379:6379 --restart unless-stopped redis:8-alpine
-python -m pip install -U -r requirements-dev.txt
+uv sync --locked
 ```
 
 Create a `.env` with at least `SECRET`, `DEBUG=True`, and whichever API keys you need (same names as the Docker list above), then:
 
 ```bash
-cd src
-python manage.py migrate
-python manage.py createsuperuser
-python manage.py runserver
+uv run --no-sync python src/manage.py migrate
+uv run --no-sync python src/manage.py createsuperuser
+uv run --no-sync python src/manage.py runserver
 ```
 
 Celery and Tailwind run in separate terminals:
 
 ```bash
-celery -A config worker --queues interactive --hostname celery-interactive@%h --loglevel DEBUG
-celery -A config worker --queues celery --beat --scheduler django --hostname celery@%h --loglevel DEBUG
+PYTHONPATH=src uv run --no-sync celery -A config worker --queues interactive --hostname celery-interactive@%h --loglevel DEBUG
+PYTHONPATH=src uv run --no-sync celery -A config worker --queues celery --beat --scheduler django --hostname celery@%h --loglevel DEBUG
 ```
 
 ```bash
-npx @tailwindcss/cli -i ./static/css/input.css -o ./static/css/main.css --watch
+npx @tailwindcss/cli -i ./src/static/css/input.css -o ./src/static/css/main.css --watch
 ```
 
 Visit `http://localhost:8000`. A `demo` / `demodemo` account is provisioned after migrations; set `DEMO_ACCOUNT_ENABLED=False` to disable it. See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
+
+`pyproject.toml` and `uv.lock` are the dependency source of truth for the app
+and bundled MCP workspace. Use uv 0.12.3 and keep the lockfile in sync; the
+removed requirements files are not maintained in parallel. The MCP package's
+`setuptools>=68` isolated build-backend range is the only build-time resolver
+exception to the runtime lock and is intentionally not pinned as an application
+dependency.
 
 ## Support the project
 

@@ -97,6 +97,22 @@ def _read_uploaded_file(file):
     return file.read()
 
 
+def _integration_redirect(request, *, connected_slug=None, next_url=None):
+    """Redirect back to `next` (e.g. the onboarding wizard) if present.
+
+    Falls back to `import_data`, the normal Settings destination. When
+    `connected_slug` is given, records it on the user's onboarding progress
+    so the setup wizard's queue drops that source on the next request.
+    """
+    if connected_slug:
+        user = request.user
+        if connected_slug not in user.onboarding_connected_sources:
+            user.onboarding_connected_sources = [*user.onboarding_connected_sources, connected_slug]
+            user.save(update_fields=["onboarding_connected_sources"])
+    destination = next_url or request.POST.get("next") or request.GET.get("next")
+    return redirect(destination or "import_data")
+
+
 def _save_plex_usernames(user, raw_usernames):
     """Persist de-duplicated Plex usernames for webhook filtering."""
     if raw_usernames is None:
@@ -435,6 +451,7 @@ def trakt_oauth(request):
         "frequency": request.POST["frequency"],
         "time": request.POST["time"],
         "redirect_uri": redirect_uri,
+        "return_to": request.POST.get("next"),
     }
     state_token = secrets.token_urlsafe(32)
     request.session[state_token] = state
@@ -454,6 +471,7 @@ def import_trakt_private(request):
     frequency = request.session[state_token]["frequency"]
     mode = request.session[state_token]["mode"]
     import_time = request.session[state_token]["time"]
+    return_to = request.session[state_token].get("return_to")
 
     if frequency == "once":
         tasks.import_trakt.delay(
@@ -473,7 +491,7 @@ def import_trakt_private(request):
             "Trakt",
             token=enc_token,
         )
-    return redirect("import_data")
+    return _integration_redirect(request, connected_slug="trakt", next_url=return_to)
 
 
 @require_POST
@@ -482,7 +500,7 @@ def import_trakt_public(request):
     username = request.POST.get("user")
     if not username:
         messages.error(request, "Trakt username is required.")
-        return redirect("import_data")
+        return _integration_redirect(request)
 
     mode = request.POST["mode"]
     frequency = request.POST["frequency"]
@@ -504,7 +522,7 @@ def import_trakt_public(request):
             import_time=import_time,
             source="Trakt",
         )
-    return redirect("import_data")
+    return _integration_redirect(request, connected_slug="trakt")
 
 
 @require_POST
@@ -524,7 +542,7 @@ def import_mdblist(request):
                 request,
                 "Could not validate the MDBList API key. Check it and try again.",
             )
-            return redirect("import_data")
+            return _integration_redirect(request)
         account, _ = MDBListAccount.objects.update_or_create(
             user=request.user,
             defaults={
@@ -535,7 +553,7 @@ def import_mdblist(request):
         )
     elif account is None:
         messages.error(request, "An MDBList API key is required.")
-        return redirect("import_data")
+        return _integration_redirect(request)
 
     if frequency == "once":
         tasks.import_mdblist.delay(user_id=request.user.id, mode=mode)
@@ -549,7 +567,7 @@ def import_mdblist(request):
             import_time=import_time,
             source="MDBList",
         )
-    return redirect("import_data")
+    return _integration_redirect(request, connected_slug="mdblist")
 
 
 @require_POST
@@ -562,14 +580,15 @@ def plex_connect(request):
         pin = plex_api.create_pin()
     except plex_api.PlexClientError as exc:
         messages.error(request, f"Could not start Plex connection: {exc}")
-        return redirect("import_data")
+        return _integration_redirect(request)
     except Exception as exc:  # pragma: no cover - defensive
         messages.error(request, f"Unexpected Plex error: {exc}")
-        return redirect("import_data")
+        return _integration_redirect(request)
 
     request.session[state_token] = {
         "plex_pin_id": pin["id"],
         "plex_pin_code": pin["code"],
+        "return_to": request.POST.get("next"),
     }
 
     auth_url = plex_api.build_auth_url(
@@ -586,32 +605,34 @@ def plex_callback(request):
 
     if not state_data:
         messages.error(request, "Invalid or expired Plex authorization request.")
-        return redirect("import_data")
+        return _integration_redirect(request)
+
+    return_to = state_data.get("return_to")
 
     pin_id = state_data.get("plex_pin_id")
     try:
         plex_token = plex_api.poll_pin(pin_id)
     except plex_api.PlexAuthError as exc:
         messages.error(request, f"Plex authorization failed: {exc}")
-        return redirect("import_data")
+        return _integration_redirect(request, next_url=return_to)
     except plex_api.PlexClientError as exc:  # pragma: no cover - defensive
         messages.error(request, f"Could not complete Plex authorization: {exc}")
-        return redirect("import_data")
+        return _integration_redirect(request, next_url=return_to)
     except Exception as exc:  # pragma: no cover - defensive
         messages.error(request, f"Unexpected Plex response: {exc}")
-        return redirect("import_data")
+        return _integration_redirect(request, next_url=return_to)
 
     try:
         account = plex_api.fetch_account(plex_token)
     except plex_api.PlexAuthError as exc:
         messages.error(request, f"Plex rejected the token: {exc}")
-        return redirect("import_data")
+        return _integration_redirect(request, next_url=return_to)
     except plex_api.PlexClientError as exc:  # pragma: no cover - defensive
         messages.error(request, f"Could not read Plex account details: {exc}")
-        return redirect("import_data")
+        return _integration_redirect(request, next_url=return_to)
     except Exception as exc:  # pragma: no cover - defensive
         messages.error(request, f"Unexpected Plex account response: {exc}")
-        return redirect("import_data")
+        return _integration_redirect(request, next_url=return_to)
 
     sections: list[dict] = []
     try:
@@ -657,7 +678,13 @@ def plex_callback(request):
 
     account_username = account.get("username") or "your Plex account"
     messages.success(request, f"Connected to Plex as {account_username}.")
-    return redirect("import_data")
+
+    if return_to:
+        # Arrived from the setup wizard: queue a sensible default import
+        # rather than requiring a second visit to pick a library/mode.
+        tasks.import_plex.delay(user_id=request.user.id, mode="new", library="all")
+
+    return _integration_redirect(request, connected_slug="plex", next_url=return_to)
 
 
 @require_POST
@@ -772,6 +799,7 @@ def simkl_oauth(request):
         "time": request.POST["time"],
         "anime_destination": request.POST.get("anime_destination", "anime"),
         "redirect_uri": redirect_uri,
+        "return_to": request.POST.get("next"),
     }
     state_token = secrets.token_urlsafe(32)
     request.session[state_token] = state
@@ -793,6 +821,7 @@ def import_simkl_private(request):
     mode = request.session[state_token]["mode"]
     import_time = request.session[state_token]["time"]
     anime_destination = request.session[state_token].get("anime_destination", "anime")
+    return_to = request.session[state_token].get("return_to")
 
     if frequency == "once":
         tasks.import_simkl.delay(
@@ -814,7 +843,7 @@ def import_simkl_private(request):
             extra_kwargs={"anime_destination": anime_destination},
         )
 
-    return redirect("import_data")
+    return _integration_redirect(request, connected_slug="simkl", next_url=return_to)
 
 
 @require_POST
@@ -823,7 +852,7 @@ def import_mal(request):
     username = request.POST.get("user")
     if not username:
         messages.error(request, "MyAnimeList username is required.")
-        return redirect("import_data")
+        return _integration_redirect(request)
 
     mode = request.POST["mode"]
     frequency = request.POST["frequency"]
@@ -844,7 +873,7 @@ def import_mal(request):
             import_time,
             "MyAnimeList",
         )
-    return redirect("import_data")
+    return _integration_redirect(request, connected_slug="myanimelist")
 
 
 @require_POST
@@ -860,6 +889,7 @@ def anilist_oauth(request):
         "frequency": request.POST["frequency"],
         "time": request.POST["time"],
         "redirect_uri": redirect_uri,
+        "return_to": request.POST.get("next"),
     }
 
     state_token = secrets.token_urlsafe(32)
@@ -878,10 +908,11 @@ def import_anilist_private(request):
     oauth_callback = anilist.get_token(request, redirect_uri=redirect_uri)
     enc_token = helpers.encrypt(oauth_callback["access_token"])
     username = oauth_callback["username"]
+    return_to = request.session[state_token].get("return_to")
 
     if not username:
         messages.error(request, "AniList username is required.")
-        return redirect("import_data")
+        return _integration_redirect(request, next_url=return_to)
 
     frequency = request.session[state_token]["frequency"]
     mode = request.session[state_token]["mode"]
@@ -905,7 +936,7 @@ def import_anilist_private(request):
             source="AniList",
             token=enc_token,
         )
-    return redirect("import_data")
+    return _integration_redirect(request, connected_slug="anilist", next_url=return_to)
 
 
 @require_POST
@@ -945,7 +976,7 @@ def import_kitsu(request):
     kitsu_id = request.POST.get("user")
     if not kitsu_id:
         messages.error(request, "Kitsu user ID is required.")
-        return redirect("import_data")
+        return _integration_redirect(request)
 
     mode = request.POST["mode"]
     frequency = request.POST["frequency"]
@@ -963,7 +994,7 @@ def import_kitsu(request):
             import_time,
             "Kitsu",
         )
-    return redirect("import_data")
+    return _integration_redirect(request, connected_slug="kitsu")
 
 
 @require_POST
@@ -973,7 +1004,7 @@ def import_yamtrack(request):
 
     if not file:
         messages.error(request, "A CSV file is required.")
-        return redirect("import_data")
+        return _integration_redirect(request)
 
     mode = request.POST["mode"]
     tasks.import_yamtrack.delay(
@@ -985,7 +1016,7 @@ def import_yamtrack(request):
         request,
         "The task to import media from the CSV file has been queued.",
     )
-    return redirect("import_data")
+    return _integration_redirect(request, connected_slug="yamtrack")
 
 
 @require_POST
@@ -1002,7 +1033,7 @@ def import_trakt_export_file(request):
 
     if not uploads:
         messages.error(request, "A Trakt export file is required.")
-        return redirect("import_data")
+        return _integration_redirect(request)
 
     total_size = sum(upload.size for upload in uploads)
     if total_size > TRAKT_EXPORT_MAX_UPLOAD_BYTES:
@@ -1011,7 +1042,7 @@ def import_trakt_export_file(request):
             "That Trakt export is too large to import "
             f"(limit {TRAKT_EXPORT_MAX_UPLOAD_BYTES // (1024 * 1024)} MB).",
         )
-        return redirect("import_data")
+        return _integration_redirect(request)
 
     mode = request.POST["mode"]
     payloads = [(upload.name, _read_uploaded_file(upload)) for upload in uploads]
@@ -1027,7 +1058,7 @@ def import_trakt_export_file(request):
             "The task to import collection data from the Trakt CSV file has been "
             "queued.",
         )
-        return redirect("import_data")
+        return _integration_redirect(request, connected_slug="trakt")
 
     tasks.import_trakt_export.delay(
         user_id=request.user.id,
@@ -1038,7 +1069,7 @@ def import_trakt_export_file(request):
         request,
         "The task to import your Trakt data export has been queued.",
     )
-    return redirect("import_data")
+    return _integration_redirect(request, connected_slug="trakt")
 
 
 def _is_trakt_export_payload(name, content):
@@ -1065,7 +1096,7 @@ def import_hltb(request):
 
     if not file:
         messages.error(request, "HowLongToBeat CSV file is required.")
-        return redirect("import_data")
+        return _integration_redirect(request)
 
     mode = request.POST["mode"]
     tasks.import_hltb.delay(
@@ -1077,7 +1108,7 @@ def import_hltb(request):
         request,
         "The task to import media from HowLongToBeat CSV file has been queued.",
     )
-    return redirect("import_data")
+    return _integration_redirect(request, connected_slug="hltb")
 
 
 @require_POST
@@ -1087,7 +1118,7 @@ def import_grouvee(request):
 
     if not file:
         messages.error(request, "Grouvee JSON file is required.")
-        return redirect("import_data")
+        return _integration_redirect(request)
 
     mode = request.POST["mode"]
     tasks.import_grouvee.delay(
@@ -1099,7 +1130,7 @@ def import_grouvee(request):
         request,
         "The task to import media from Grouvee JSON file has been queued.",
     )
-    return redirect("import_data")
+    return _integration_redirect(request, connected_slug="grouvee")
 
 
 @require_POST
@@ -1108,7 +1139,7 @@ def import_steam(request):
     steam_id = request.POST.get("user")
     if not steam_id:
         messages.error(request, "Steam ID is required.")
-        return redirect("import_data")
+        return _integration_redirect(request)
 
     mode = request.POST["mode"]
     frequency = request.POST["frequency"]
@@ -1126,7 +1157,7 @@ def import_steam(request):
             import_time,
             "Steam",
         )
-    return redirect("import_data")
+    return _integration_redirect(request, connected_slug="steam")
 
 
 @require_POST
@@ -1136,13 +1167,13 @@ def radarr_connect(request):
     api_key = request.POST.get("api_key", "").strip()
     if not base_url or not api_key:
         messages.error(request, "Radarr base URL and API key are required.")
-        return redirect("import_data")
+        return _integration_redirect(request)
 
     try:
         RadarrClient(base_url, api_key).healthcheck()
     except (helpers.MediaImportError, requests.RequestException) as exc:
         messages.error(request, f"Failed to connect to Radarr: {exc}")
-        return redirect("import_data")
+        return _integration_redirect(request)
 
     RadarrAccount.objects.update_or_create(
         user=request.user,
@@ -1159,7 +1190,7 @@ def radarr_connect(request):
         request,
         "Connected Radarr. Initial import queued and recurring sync enabled.",
     )
-    return redirect("import_data")
+    return _integration_redirect(request, connected_slug="radarr")
 
 
 @require_POST
@@ -1197,13 +1228,13 @@ def sonarr_connect(request):
     api_key = request.POST.get("api_key", "").strip()
     if not base_url or not api_key:
         messages.error(request, "Sonarr base URL and API key are required.")
-        return redirect("import_data")
+        return _integration_redirect(request)
 
     try:
         SonarrClient(base_url, api_key).healthcheck()
     except (helpers.MediaImportError, requests.RequestException) as exc:
         messages.error(request, f"Failed to connect to Sonarr: {exc}")
-        return redirect("import_data")
+        return _integration_redirect(request)
 
     SonarrAccount.objects.update_or_create(
         user=request.user,
@@ -1220,7 +1251,7 @@ def sonarr_connect(request):
         request,
         "Connected Sonarr. Initial import queued and recurring sync enabled.",
     )
-    return redirect("import_data")
+    return _integration_redirect(request, connected_slug="sonarr")
 
 
 @require_POST
@@ -1355,17 +1386,17 @@ def audiobookshelf_connect(request):
 
     if not base_url or not api_token:
         messages.error(request, "Audiobookshelf base URL and API token are required.")
-        return redirect("import_data")
+        return _integration_redirect(request)
 
     try:
         client = AudiobookshelfClient(base_url, api_token)
         client.get_me()
     except AudiobookshelfAuthError as exc:
         messages.error(request, str(exc))
-        return redirect("import_data")
+        return _integration_redirect(request)
     except Exception as exc:
         messages.error(request, f"Failed to connect to Audiobookshelf: {exc}")
-        return redirect("import_data")
+        return _integration_redirect(request)
 
     AudiobookshelfAccount.objects.update_or_create(
         user=request.user,
@@ -1379,7 +1410,7 @@ def audiobookshelf_connect(request):
 
     tasks.import_audiobookshelf.delay(user_id=request.user.id, mode="new")
     messages.success(request, "Connected Audiobookshelf. Initial import queued.")
-    return redirect("import_data")
+    return _integration_redirect(request, connected_slug="audiobookshelf")
 
 
 @require_POST
@@ -1490,21 +1521,21 @@ def storyteller_connect(request):
     server_url = request.POST.get("server_url", "").strip().rstrip("/")
     if not server_url:
         messages.error(request, "Storyteller server URL is required.")
-        return redirect("import_data")
+        return _integration_redirect(request)
 
     try:
         data = StorytellerClient(server_url).start_device_auth()
     except StorytellerClientError as exc:
         messages.error(request, str(exc))
-        return redirect("import_data")
+        return _integration_redirect(request)
     except Exception as exc:
         messages.error(request, f"Failed to reach Storyteller: {exc}")
-        return redirect("import_data")
+        return _integration_redirect(request)
 
     device_code = data.get("device_code")
     if not device_code:
         messages.error(request, "Storyteller did not return a device code.")
-        return redirect("import_data")
+        return _integration_redirect(request)
 
     expires_in = int(data.get("expires_in") or 600)
     request.session[STORYTELLER_PENDING_SESSION_KEY] = {
@@ -1653,7 +1684,7 @@ def stremio_connect(request):
         messages.error(
             request, "Enter your Stremio email and password, or an auth key."
         )
-        return redirect("import_data")
+        return _integration_redirect(request)
 
     try:
         if not auth_key:
@@ -1669,11 +1700,11 @@ def stremio_connect(request):
             "via Facebook login, paste an auth key instead or set a password first. "
             f"({error})",
         )
-        return redirect("import_data")
+        return _integration_redirect(request)
     except Exception as error:
         logger.exception("Failed to connect to Stremio")
         messages.error(request, f"Failed to connect to Stremio: {error}")
-        return redirect("import_data")
+        return _integration_redirect(request)
 
     StremioAccount.objects.update_or_create(
         user=request.user,
@@ -1690,7 +1721,7 @@ def stremio_connect(request):
         request,
         "Connected to Stremio. Initial import queued; your library will sync every 2 hours.",
     )
-    return redirect("import_data")
+    return _integration_redirect(request, connected_slug="stremio")
 
 
 @require_POST
@@ -1729,11 +1760,11 @@ def pocketcasts_connect(request):
 
     if not email:
         messages.error(request, "Email is required.")
-        return redirect("import_data")
+        return _integration_redirect(request)
 
     if not password:
         messages.error(request, "Password is required.")
-        return redirect("import_data")
+        return _integration_redirect(request)
 
     # Attempt to login with credentials
     try:
@@ -1752,11 +1783,11 @@ def pocketcasts_connect(request):
             "Invalid email or password. For accounts created via 'Sign in with Apple' or 'Sign in with Google', "
             "please set a password first using Pocket Casts' 'Forgot Password' feature, then enter your email and new password here.",
         )
-        return redirect("import_data")
+        return _integration_redirect(request)
     except Exception as e:
         logger.exception("Failed to login to Pocket Casts")
         messages.error(request, f"Failed to connect to Pocket Casts: {e}")
-        return redirect("import_data")
+        return _integration_redirect(request)
 
     # Encrypt and store credentials and tokens
     try:
@@ -1830,8 +1861,9 @@ def pocketcasts_connect(request):
     except Exception as e:
         logger.exception("Failed to store Pocket Casts credentials")
         messages.error(request, f"Failed to store credentials: {e}")
+        return _integration_redirect(request)
 
-    return redirect("import_data")
+    return _integration_redirect(request, connected_slug="pocketcasts")
 
 
 @require_POST
@@ -1861,11 +1893,11 @@ def gpodder_connect(request):
 
     if not username:
         messages.error(request, "Username is required.")
-        return redirect("import_data")
+        return _integration_redirect(request)
 
     if not password:
         messages.error(request, "Password is required.")
-        return redirect("import_data")
+        return _integration_redirect(request)
 
     credentials = gpodder_api.GPodderCredentials(
         server_url=server_url,
@@ -1876,10 +1908,10 @@ def gpodder_connect(request):
         gpodder_api.verify_login(credentials)
     except GPodderAuthError:
         messages.error(request, "Invalid GPodder username or password.")
-        return redirect("import_data")
+        return _integration_redirect(request)
     except GPodderClientError as exc:
         messages.error(request, f"Failed to connect to GPodder: {exc}")
-        return redirect("import_data")
+        return _integration_redirect(request)
 
     # Device id stays "yamtrack-<id>": it is registered on the remote
     # GPodder server, and a new id would start a fresh sync from scratch.
@@ -1933,8 +1965,9 @@ def gpodder_connect(request):
     except Exception as exc:
         logger.exception("Failed to store GPodder credentials")
         messages.error(request, f"Failed to save GPodder connection: {exc}")
+        return _integration_redirect(request)
 
-    return redirect("import_data")
+    return _integration_redirect(request, connected_slug="gpodder")
 
 
 @require_POST
@@ -1958,7 +1991,7 @@ def lastfm_connect(request):
 
     if not username:
         messages.error(request, "Last.fm username is required.")
-        return redirect("import_data")
+        return _integration_redirect(request)
 
     # Validate username by making a test API call
     try:
@@ -1972,22 +2005,22 @@ def lastfm_connect(request):
             request,
             "Invalid Last.fm username or user not found. Please check your username and ensure your scrobbles are public.",
         )
-        return redirect("import_data")
+        return _integration_redirect(request)
     except LastFMRateLimitError:
         logger.exception("Last.fm rate limit during validation")
         messages.error(
             request,
             "Last.fm API rate limit exceeded. Please try again in a few moments.",
         )
-        return redirect("import_data")
+        return _integration_redirect(request)
     except LastFMAPIError as e:
         logger.exception("Last.fm API error during validation")
         messages.error(request, f"Failed to connect to Last.fm: {e}")
-        return redirect("import_data")
+        return _integration_redirect(request)
     except Exception as e:
         logger.exception("Unexpected error validating Last.fm username")
         messages.error(request, f"Failed to connect to Last.fm: {e}")
-        return redirect("import_data")
+        return _integration_redirect(request)
 
     # Store username and initialize sync state
     try:
@@ -2023,8 +2056,9 @@ def lastfm_connect(request):
     except Exception as e:
         logger.exception("Failed to store Last.fm connection")
         messages.error(request, f"Failed to save Last.fm connection: {e}")
+        return _integration_redirect(request)
 
-    return redirect("import_data")
+    return _integration_redirect(request, connected_slug="lastfm")
 
 
 @require_POST
@@ -2132,16 +2166,16 @@ def koito_connect(request):
 
     if not base_url or not api_key:
         messages.error(request, "Koito server URL and API key are required.")
-        return redirect("import_data")
+        return _integration_redirect(request)
 
     try:
         koito_api.validate_connection(base_url, api_key)
     except koito_api.KoitoAuthError as exc:
         messages.error(request, str(exc))
-        return redirect("import_data")
+        return _integration_redirect(request)
     except Exception as exc:
         messages.error(request, f"Failed to connect to Koito: {exc}")
-        return redirect("import_data")
+        return _integration_redirect(request)
 
     KoitoAccount.objects.update_or_create(
         user=request.user,
@@ -2160,7 +2194,7 @@ def koito_connect(request):
     tasks.poll_koito_for_user.delay(user_id=request.user.id)
     tasks.import_koito_history.delay(user_id=request.user.id, reset=True)
     messages.success(request, "Connected Koito. Full history import queued.")
-    return redirect("import_data")
+    return _integration_redirect(request, connected_slug="koito")
 
 
 @require_POST
@@ -2351,7 +2385,7 @@ def import_imdb(request):
 
     if not file:
         messages.error(request, "IMDB CSV file is required.")
-        return redirect("import_data")
+        return _integration_redirect(request)
 
     mode = request.POST["mode"]
     tasks.import_imdb.delay(
@@ -2363,7 +2397,7 @@ def import_imdb(request):
         request,
         "The task to import media from IMDB CSV file has been queued.",
     )
-    return redirect("import_data")
+    return _integration_redirect(request, connected_slug="imdb")
 
 
 @require_POST
@@ -2373,7 +2407,7 @@ def import_goodreads(request):
 
     if not file:
         messages.error(request, "Goodreads CSV file is required.")
-        return redirect("import_data")
+        return _integration_redirect(request)
 
     mode = request.POST["mode"]
     tasks.import_goodreads.delay(
@@ -2385,7 +2419,7 @@ def import_goodreads(request):
         request,
         "The task to import media from Goodreads CSV file has been queued.",
     )
-    return redirect("import_data")
+    return _integration_redirect(request, connected_slug="goodreads")
 
 
 @require_POST
@@ -2395,7 +2429,7 @@ def import_hardcover(request):
 
     if not file:
         messages.error(request, "Hardcover CSV file is required.")
-        return redirect("import_data")
+        return _integration_redirect(request)
 
     mode = request.POST["mode"]
     tasks.import_hardcover.delay(
@@ -2407,7 +2441,7 @@ def import_hardcover(request):
         request,
         "The task to import media from Hardcover CSV file has been queued.",
     )
-    return redirect("import_data")
+    return _integration_redirect(request, connected_slug="hardcover")
 
 
 @require_POST
@@ -2417,7 +2451,7 @@ def import_storygraph(request):
 
     if not file:
         messages.error(request, "StoryGraph CSV file is required.")
-        return redirect("import_data")
+        return _integration_redirect(request)
 
     mode = request.POST["mode"]
     tasks.import_storygraph.delay(
@@ -2429,7 +2463,7 @@ def import_storygraph(request):
         request,
         "The task to import media from StoryGraph CSV file has been queued.",
     )
-    return redirect("import_data")
+    return _integration_redirect(request, connected_slug="storygraph")
 
 
 @require_GET

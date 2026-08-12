@@ -41,7 +41,7 @@ SOURCES_CONFIG = {
     # CSV format is shared with upstream Yamtrack.
     "yamtrack": {
         "name": "Floppy",
-        "logo": static("img/floppy-icon.png"),
+        "logo": static("favicon/apple-touch-icon.png"),
     },
     # Display-only entry: same "yamtrack" import backend/CSV format as above,
     # shown as a separate source tile for users importing a Yamtrack export.
@@ -71,7 +71,7 @@ SOURCES_CONFIG = {
     },
     "mdblist": {
         "name": "MDBList",
-        "logo": static("favicon/apple-touch-icon.png"),
+        "logo": static("img/mdblist-logo.png"),
     },
     "plex": {
         "name": "Plex",
@@ -122,6 +122,13 @@ SOURCES_CONFIG = {
         "logo": static("img/plex-logo.svg"),
     },
 }
+
+
+@register.filter
+def source_name(slug):
+    """Return a source's display name (e.g. "plex" -> "Plex") for plain-text use."""
+    info = SOURCES_CONFIG.get(slug)
+    return info["name"] if info else slug
 
 
 @register.simple_tag

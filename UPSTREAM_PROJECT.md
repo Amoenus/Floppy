@@ -29,6 +29,11 @@ Issue #645 stays open for the full programme. Runtime packages do not begin befo
 | [#645](https://github.com/dannyvfilms/Floppy/issues/645) | Parent programme issue | Authoritative operational index | Remains open until the full programme is complete |
 | [#646](https://github.com/dannyvfilms/Floppy/issues/646) | Sub-issue of #645 | Built-image smoke gate | Starts after Phase 0; blocks dependent platform and data packages |
 | [#647](https://github.com/dannyvfilms/Floppy/issues/647) | Sub-issue of #645 | uv, lockfile, CI, lint, and Docker | Blocked by #646; no dependency upgrades during conversion |
+| [#658](https://github.com/dannyvfilms/Floppy/issues/658) | Sub-issue of #647 | uv dependency source and lock foundation | Blocked by #646; supplies the base for #659 |
+| [#659](https://github.com/dannyvfilms/Floppy/issues/659) | Sub-issue of #647 | Locked App Tests and standalone lint workflow | Blocked by #658; supplies the base for #660 |
+| [#660](https://github.com/dannyvfilms/Floppy/issues/660) | Sub-issue of #647 | Docker, local tooling, and repository-documentation cutover | Blocked by #659 and #670; completes the no-upgrade codebase conversion |
+| [#669](https://github.com/dannyvfilms/Floppy/issues/669) | Sub-issue of #647 | Publish the matching GitHub Wiki commands | Blocked by #660; #647 remains open until this separately authorized follow-up is published |
+| [#670](https://github.com/dannyvfilms/Floppy/issues/670) | Sub-issue of #647 | Resolve the fail-closed aiohttp security audit | Blocks #660; keep all three advisories unsuppressed and review the dependency change independently |
 | [#648](https://github.com/dannyvfilms/Floppy/issues/648) | Sub-issue of #645 | Datetime/calendar integrity and import-date fixes | Blocked by #646; final runtime semantics precede audit and migrations |
 | [#649](https://github.com/dannyvfilms/Floppy/issues/649) | Sub-issue of #645 | MAL, AniList, and Open Library correctness | Blocked by #646; AniList unknown dates coordinate with #648 |
 | [#650](https://github.com/dannyvfilms/Floppy/issues/650) | Sub-issue of #645 | Identity audit, repair, and constraints | Blocked by #646 and relevant #648 semantics |
@@ -46,6 +51,9 @@ Closed issues remain evidence rather than active children. Relevant examples inc
 | [#651](https://github.com/dannyvfilms/Floppy/pull/651) | Phase 0 ledger and governance; linked to #645 and required for the Phase 0 exit |
 | [#653](https://github.com/dannyvfilms/Floppy/pull/653) | Independent first-run query-budget repair; narrow Phase 0 exception recorded on #645 |
 | [#654](https://github.com/dannyvfilms/Floppy/pull/654) | Independent CI pull request; linked to #645 and related to #390, with no code dependency on #651 or #653 |
+| [#656](https://github.com/dannyvfilms/Floppy/pull/656) | Built-image smoke gate; bottom layer of the #647 delivery stack |
+| [#663](https://github.com/dannyvfilms/Floppy/pull/663) | uv dependency and lock foundation; stacked on #656 |
+| [#665](https://github.com/dannyvfilms/Floppy/pull/665) | Locked CI and lint workflows; stacked on #663 |
 | [#638](https://github.com/dannyvfilms/Floppy/pull/638) | Superseded merge/cherry-pick strategy; close with a link to the semantic-resolution ledger |
 
 1. Give each active work-package issue exactly one `priority: P0` through `priority: P3` label and the applicable `area:*` labels. Add `bug`, `technical debt`, or `documentation` only when it describes the work.
@@ -63,6 +71,7 @@ Use GitHub's native [stacked pull requests](https://docs.github.com/en/pull-requ
 - Keep every stack in the Floppy repository. The bottom pull request targets `latest`; each higher pull request targets the branch immediately below it. Every layer must satisfy the same branch rules and CI gates.
 - Merge bottom-up, either one layer at a time or as a contiguous group starting at the lowest unmerged layer. Use the supported cascading rebase and automatic retargeting when lower layers change or merge.
 - Keep stacks short and reviewable: the default maximum is three layers unless a documented dependency requires more.
+- The #656 → #663 → #665 → #660 delivery is the recorded temporary four-layer exception: the repository's workflow guard requires CI-only changes to remain separate while each later layer genuinely consumes the earlier uv foundation.
 - PRs [#651](https://github.com/dannyvfilms/Floppy/pull/651), [#653](https://github.com/dannyvfilms/Floppy/pull/653), and [#654](https://github.com/dannyvfilms/Floppy/pull/654) remain independent because none has a code dependency on another.
 - Candidate stacks are #646 smoke gate -> the dependent #647 uv/Docker adaptation; #648 runtime semantics -> read-only audit -> migrations; and #650 audit -> repair -> constraint. MAL and Open Library fixes remain independent; AniList may stack on the #648 unknown-date layer when it depends on those semantics.
 - Each layer still requires the user's separate merge authorization. Never use a stack to merge Yamtrack history, and never merge a contiguous group unless every included layer has been authorized.
@@ -72,7 +81,7 @@ Use GitHub's native [stacked pull requests](https://docs.github.com/en/pull-requ
 1. Merge #651, verify the Phase 0 issue relationships and labels, and close #638 as superseded; keep #645 open.
 2. Review #653 and #654 independently under their own authorization and validation gates.
 3. Complete #646.
-4. Complete #647 without dependency upgrades.
+4. Complete #647 in order: #658 lock foundation, #659 locked CI, independently resolve the unsuppressed #670 security blocker, complete the no-upgrade #660 Docker/tooling/repository-documentation cutover, then publish the separately authorized #669 Wiki update. Keep #647 open until #669 is published.
 5. Land isolated correctness fixes within #648 and #649, then their larger staged packages.
 6. Complete the audit/repair/constraint sequence in #650.
 7. Create focused issues for deferred product work only when its ledger trigger fires.
