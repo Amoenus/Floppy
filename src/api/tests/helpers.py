@@ -59,6 +59,9 @@ def check_complete_lists_structure(test_case, item, *, include_items=False):
     test_case.assertIn("collaborators", item)
     test_case.assertIn("items_count", item)
     test_case.assertIn("latest_update", item)
+    test_case.assertIn("is_public", item)
+    test_case.assertIn("public_slug", item)
+    test_case.assertIn("allow_recommendations", item)
     if include_items:
         test_case.assertIn("items", item)
         test_case.assertIn("pagination", item["items"])

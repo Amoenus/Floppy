@@ -33,6 +33,7 @@ from integrations.imports import (
     trakt,
     trakt_collection,
     trakt_export,
+    xbox,
     yamtrack,
 )
 from integrations.jellyfin_sync import (
@@ -265,6 +266,18 @@ def import_trakt_export(file, user_id, mode):
 def import_steam(username, user_id, mode):
     """Celery task for importing game data from Steam."""
     return import_media(steam.importer, username, user_id, mode)
+
+
+@shared_task(name="Import from Xbox")
+def import_xbox(user_id, mode="new"):
+    """Celery task for importing game data from a connected Xbox account."""
+    return import_media(xbox.importer, None, user_id, mode)
+
+
+@shared_task(name="Import from Xbox (Recurring)")
+def import_xbox_recurring(user_id, mode="new"):
+    """Recurring import task for Xbox."""
+    return import_media(xbox.importer, None, user_id, mode)
 
 
 @shared_task(name="Import from IMDB")

@@ -1026,6 +1026,7 @@ function initStatisticsCharts() {
   const timeWorldsCanvas = document.getElementById("timeWorldsChart");
   const timeWorldsLegendEl = document.getElementById("timeWorldsLegend");
   const timeWorldsCenterEl = document.getElementById("timeWorldsCenter");
+  const timeWorldsInfoEl = document.getElementById("timeWorldsInfo");
   const distEl = document.getElementById("media_type_distribution");
 
   if (timeWorldsCanvas && distEl) {
@@ -1081,6 +1082,19 @@ function initStatisticsCharts() {
         const el = document.getElementById(slug + "_top_genres");
         return el ? JSON.parse(el.textContent || "[]") : [];
       } catch (_) { return []; }
+    }
+
+    // Actual (non-overlapping) total hours for a media type, mirroring the
+    // fallback used by date-range.js's currentTypeSummary getter. Genre
+    // buckets attribute full hours to every genre a title has, so they can't
+    // be summed for a "total" — this reads the real total instead.
+    function loadTypeTotalHours(slug) {
+      try {
+        const el = document.getElementById("summary_stats_by_type");
+        const all = el ? JSON.parse(el.textContent || "{}") : {};
+        const s = all[slug] || all.all || {};
+        return (s.total_minutes || 0) / 60;
+      } catch (_) { return 0; }
     }
     const GENRE_TYPES = { tv: 1, movie: 1, anime: 1, music: 1, game: 1 };
 
@@ -1209,10 +1223,11 @@ function initStatisticsCharts() {
         const labels = genres.map(function (g) { return g.name; });
         const data = genres.map(function (g) { return +(g.minutes / 60).toFixed(2); });
         const colors = genres.map(function (_, i) { return GENRE_PALETTE[i % GENRE_PALETTE.length]; });
-        const totalHours = data.reduce(function (a, b) { return a + b; }, 0);
+        const totalHours = loadTypeTotalHours(mediaType);
 
         if (timeWorldsTitleEl) timeWorldsTitleEl.textContent = "Top Genres";
         if (timeWorldsSubtitleEl) timeWorldsSubtitleEl.textContent = "Where your " + mediaType + " hours go.";
+        if (timeWorldsInfoEl) timeWorldsInfoEl.classList.remove("hidden");
 
         if (timeWorldsCenterEl) {
           timeWorldsCenterEl.innerHTML =
@@ -1229,6 +1244,7 @@ function initStatisticsCharts() {
       // ── Type distribution mode (all, or filtered type with no genre data) ─
       if (timeWorldsTitleEl) timeWorldsTitleEl.textContent = "Hours by Media Type";
       if (timeWorldsSubtitleEl) timeWorldsSubtitleEl.textContent = "Where your hours go.";
+      if (timeWorldsInfoEl) timeWorldsInfoEl.classList.add("hidden");
 
       // Build the filtered view of the distribution data.
       let labels, data, colors;
