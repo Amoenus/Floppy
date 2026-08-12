@@ -1028,6 +1028,7 @@ def _build_and_cache_row(
     started = timezone.now()
     build_activity_version = tab_cache.get_activity_version(user.id, media_type)
     row_meta: dict | None = None
+    source_state = "live"
     if media_type in {
         MediaTypes.MOVIE.value,
         MediaTypes.TV.value,
@@ -1055,6 +1056,15 @@ def _build_and_cache_row(
             user, media_type, row_definition, profile_payload
         )
 
+    if not candidates and row_definition.source == "trakt":
+        fallback_candidates = _trakt_row_provider_fallback_candidates(
+            media_type,
+            row_definition.key,
+        )
+        if fallback_candidates:
+            candidates = fallback_candidates
+            source_state = "fallback"
+
     row_meta = dict(row_meta or {})
     required_schema_version = _required_row_cache_schema_version(
         media_type, row_definition.key
@@ -1071,7 +1081,7 @@ def _build_and_cache_row(
         candidates,
         defer_artwork=defer_artwork,
         show_more=show_more,
-        source_state="live",
+        source_state=source_state,
     )
 
     cache_payload = row.to_dict()
