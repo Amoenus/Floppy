@@ -46,6 +46,14 @@ class IntegrationTest(StaticLiveServerTestCase):
             title="Breaking Bad",
             episode_count=1,
         )
+        episode = {
+            "title": "Breaking Bad",
+            "season_title": "Season 1",
+            "episode_title": "Episode 1",
+            "image": "https://example.com/episode.jpg",
+            "cast": [],
+            "crew": [],
+        }
         search = {
             "page": 1,
             "total_pages": 1,
@@ -69,7 +77,14 @@ class IntegrationTest(StaticLiveServerTestCase):
                 "app.providers.tmdb.tv_with_seasons",
                 side_effect=lambda *a, **k: copy.deepcopy(show),
             ),
+            patch(
+                "app.providers.tmdb.episode",
+                side_effect=lambda *a, **k: copy.deepcopy(episode),
+            ),
             patch("app.providers.tmdb.get_tvdb_episode_image_map", return_value={}),
+            patch(
+                "app.tasks_trakt.populate_trakt_episode_ratings_for_season.delay",
+            ),
         ):
             provider_patch.start()
             self.addCleanup(provider_patch.stop)
