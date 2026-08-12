@@ -133,6 +133,27 @@ class TaskResultOnCompletionTests(TestCase):
 
 
 class ItemSignalTests(TestCase):
+    @override_settings(TESTING=False)
+    @patch("app.tasks.enqueue_runtime_backfill_items", return_value=1)
+    @patch("app.tasks.enqueue_genre_backfill_items", return_value=1)
+    def test_tvdb_item_save_enqueues_runtime_and_genre_backfills(
+        self,
+        mock_enqueue_genre_backfill_items,
+        mock_enqueue_runtime_backfill_items,
+    ):
+        item = Item.objects.create(
+            media_id="tvdb-signal-show",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.TV.value,
+            title="TVDB Signal Show",
+            image="https://example.com/tvdb-signal-show.jpg",
+            runtime_minutes=None,
+            genres=[],
+        )
+
+        mock_enqueue_runtime_backfill_items.assert_called_once_with([item.id])
+        mock_enqueue_genre_backfill_items.assert_called_once_with([item.id])
+
     def test_item_save_does_not_delete_current_genre_state_on_unrelated_update(self):
         item = Item.objects.create(
             media_id="3001",

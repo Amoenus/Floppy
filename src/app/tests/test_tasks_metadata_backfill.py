@@ -44,6 +44,22 @@ class MetadataBackfillTaskTests(TestCase):
         cache.delete(INTERACTIVE_REQUEST_CACHE_KEY)
         super().setUp()
 
+    def test_tvdb_tv_is_eligible_for_metadata_quality_backfills(self):
+        item = Item.objects.create(
+            media_id="tvdb-metadata-quality",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.TV.value,
+            title="TVDB Show",
+            image="https://example.com/tvdb-show.jpg",
+            release_datetime=None,
+            runtime_minutes=None,
+            genres=[],
+        )
+
+        self.assertIn(item, tasks._release_items_queryset())
+        self.assertIn(item, tasks._runtime_items_queryset())
+        self.assertIn(item, tasks._genre_items_queryset())
+
     def tearDown(self):
         cache.delete(INTERACTIVE_REQUEST_CACHE_KEY)
         super().tearDown()
