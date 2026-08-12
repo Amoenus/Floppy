@@ -30,6 +30,7 @@ from app.discover.service import (
     _apply_comfort_confidence,
     _apply_top_picks_source_quotas,
     _apply_wildcard_novelty,
+    _build_and_cache_row,
     _build_comfort_debug_payload,
     _clear_out_next_candidates,
     _comfort_candidates,
@@ -85,6 +86,65 @@ class DiscoverServiceTests(TestCase):
             summary["current_top_titles"],
             payload,
         )
+
+    @patch("app.discover.providers.trakt_adapter.services.api_request")
+    @patch(
+        "app.discover.providers.trakt_adapter.trakt_provider.is_configured",
+        return_value=False,
+    )
+    @patch("app.discover.service.TMDB_ADAPTER.current_cycle")
+    def test_unconfigured_trakt_rows_fall_back_to_tmdb_for_movies_and_tv(
+        self,
+        mock_current_cycle,
+        _mock_trakt_configured,
+        mock_trakt_request,
+    ):
+        row_definition = RowDefinition(
+            key="trending_right_now",
+            title="Trending Right Now",
+            mission="Cultural Moment",
+            why="What everyone has been watching this week.",
+            source="trakt",
+        )
+
+        for media_type in (MediaTypes.MOVIE.value, MediaTypes.TV.value):
+            with self.subTest(media_type=media_type):
+                mock_current_cycle.return_value = [
+                    CandidateItem(
+                        media_type=media_type,
+                        source=Sources.TMDB.value,
+                        media_id=f"fallback-{media_type}",
+                        title=f"Fallback {media_type}",
+                        image="https://example.com/poster.jpg",
+                    ),
+                ]
+
+                row = _build_and_cache_row(
+                    self.user,
+                    media_type,
+                    row_definition,
+                    {},
+                    defer_artwork=True,
+                )
+
+                self.assertEqual(row.source_state, "fallback")
+                self.assertEqual(
+                    [item.media_id for item in row.items],
+                    [f"fallback-{media_type}"],
+                )
+                mock_current_cycle.assert_called_with(media_type, limit=100)
+                cached_payload, _ = cache_repo.get_row_cache(
+                    self.user.id,
+                    media_type,
+                    row_definition.key,
+                )
+                self.assertEqual(cached_payload["source_state"], "fallback")
+                self.assertEqual(
+                    [item["media_id"] for item in cached_payload["items"]],
+                    [f"fallback-{media_type}"],
+                )
+
+        mock_trakt_request.assert_not_called()
 
     @patch("app.discover.service._build_and_cache_row")
     @patch("app.discover.service.get_rows")
