@@ -1,3 +1,4 @@
+{% load app_tags %}
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -160,12 +161,19 @@
       </section>
       <section id="first-request" aria-labelledby="first-request-heading">
         <h2 id="first-request-heading">First request</h2>
+        <h3>Check the connection</h3>
+        <p>This public connectivity check needs no API token.</p>
+        {% url 'api_info' as info_path %}
+        {% absolute_app_url app_base_url|add:info_path|add:"/" as info_url %}
+        <pre><code id="connection-command">curl --request GET "{{ info_url }}"</code></pre>
+        <h3>Authenticated request</h3>
         <p>
-          Create an API key in
-          <a href="{% url 'integrations' %}">Settings -&gt; Integrations</a>.
-          Replace <code>YOUR_API_KEY</code> in this command.
+          Copy your API Token in <a href="{% url 'integrations' %}">Settings -&gt; Integrations</a>.
         </p>
-        <pre><code>curl --request GET --header "X-API-Key: YOUR_API_KEY" "{{ request.scheme }}://{{ request.get_host }}/api/v1/info/"</code></pre>
+        <p>This read-only request returns your preferences.</p>
+        {% url 'api_user_preferences' as preferences_path %}
+        {% absolute_app_url app_base_url|add:preferences_path|add:"/" as preferences_url %}
+        <pre><code id="authenticated-command">curl --request GET --header "X-API-Key: YOUR_API_TOKEN" "{{ preferences_url }}"</code></pre>
       </section>
       <section id="domain-model" aria-labelledby="domain-model-heading">
         <h2 id="domain-model-heading">Domain model</h2>
@@ -193,7 +201,7 @@
           <h3>
             <a href="{% url 'openapi-contract' %}">Verified API subset</a>
           </h3>
-          <p>The reviewed, committed, versioned subset covers supported integrations and MCP grounding.</p>
+          <p>The reviewed, committed, versioned subset contains 41 operations for supported integrations and MCP grounding.</p>
         </article>
       </section>
     </main>

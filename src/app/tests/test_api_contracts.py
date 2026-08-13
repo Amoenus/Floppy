@@ -44,6 +44,17 @@ class OfflineAPIDocsTests(SimpleTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "api/docs.html")
 
+    def test_docs_support_head_without_rendering_a_response_body(self):
+        get_response = self.client.get(reverse("swagger-ui"))
+        response = self.client.head(reverse("swagger-ui"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, b"")
+        if response.has_header("Content-Length"):
+            self.assertEqual(
+                int(response.headers["Content-Length"]), len(get_response.content)
+            )
+
     def test_docs_have_clear_landmarks_and_heading_order(self):
         _, soup = self.get_docs()
 
@@ -76,17 +87,58 @@ class OfflineAPIDocsTests(SimpleTestCase):
         )
         self.assertEqual(len(task_links), 4)
 
-    def test_first_request_has_exact_command_and_settings_guidance(self):
+    def test_first_request_has_public_and_authenticated_commands(self):
         _, soup = self.get_docs()
+        first_request = soup.select_one("#first-request")
 
         self.assertEqual(
-            soup.select_one("#first-request pre code").get_text(),
-            'curl --request GET --header "X-API-Key: YOUR_API_KEY" '
-            '"http://testserver/api/v1/info/"',
+            [heading.get_text(" ", strip=True) for heading in first_request.find_all("h3")],
+            ["Check the connection", "Authenticated request"],
+        )
+        public_command = soup.select_one("#connection-command").get_text()
+        authenticated_command = soup.select_one("#authenticated-command").get_text()
+        self.assertEqual(
+            public_command,
+            f'curl --request GET "http://testserver{reverse("api_info")}/"',
+        )
+        self.assertNotIn("X-API-Key", public_command)
+        self.assertIn("needs no API token", first_request.get_text(" ", strip=True))
+        self.assertEqual(
+            authenticated_command,
+            'curl --request GET --header "X-API-Key: YOUR_API_TOKEN" '
+            f'"http://testserver{reverse("api_user_preferences")}/"',
         )
         settings_link = soup.find("a", string="Settings -> Integrations")
         self.assertIsNotNone(settings_link)
         self.assertEqual(settings_link.get("href"), reverse("integrations"))
+        self.assertEqual(
+            settings_link.parent.get_text().strip(),
+            "Copy your API Token in Settings -> Integrations.",
+        )
+
+    @override_settings(
+        URLS=["https://floppy.example.test"],
+        BASE_URL="/floppy",
+        FORCE_SCRIPT_NAME="/floppy",
+        ALLOWED_HOSTS=["attacker.example.test"],
+    )
+    def test_commands_use_configured_origin_and_app_prefix_not_request_host(self):
+        response = self.client.get(
+            reverse("swagger-ui"), HTTP_HOST="attacker.example.test"
+        )
+        soup = BeautifulSoup(response.content, "html.parser")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            soup.select_one("#connection-command").get_text(),
+            'curl --request GET "https://floppy.example.test/floppy/api/v1/info/"',
+        )
+        self.assertEqual(
+            soup.select_one("#authenticated-command").get_text(),
+            'curl --request GET --header "X-API-Key: YOUR_API_TOKEN" '
+            '"https://floppy.example.test/floppy/api/v1/user/preferences/"',
+        )
+        self.assertNotIn("attacker.example.test", response.content.decode())
 
     def test_docs_render_the_approved_domain_glossary(self):
         response, soup = self.get_docs()
@@ -119,6 +171,7 @@ class OfflineAPIDocsTests(SimpleTestCase):
         self.assertIn("versioned subset", committed.get_text(" ", strip=True).lower())
         self.assertIn("supported integrations", committed.get_text(" ", strip=True).lower())
         self.assertIn("mcp grounding", committed.get_text(" ", strip=True).lower())
+        self.assertIn("41 operations", committed.get_text(" ", strip=True).lower())
         self.assertEqual(
             committed.find("a").get("href"), reverse("openapi-contract")
         )

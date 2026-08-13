@@ -6,7 +6,7 @@ from django.contrib.auth.decorators import login_not_required
 from django.http import FileResponse
 from django.shortcuts import render
 from django.views.decorators.cache import cache_control
-from django.views.decorators.http import condition, require_GET, require_safe
+from django.views.decorators.http import condition, require_safe
 
 from app.domain_vocabulary import render_glossary_rows
 
@@ -19,13 +19,16 @@ def _contract_etag(_request):
 
 
 @login_not_required
-@require_GET
+@require_safe
 def api_docs(request):
     """Render the public, offline API reference index."""
     return render(
         request,
         "api/docs.html",
-        {"glossary_terms": render_glossary_rows()},
+        {
+            "app_base_url": settings.BASE_URL or "",
+            "glossary_terms": render_glossary_rows(),
+        },
     )
 
 
