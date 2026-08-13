@@ -4,8 +4,11 @@ import contextlib
 import hashlib
 import json
 import os
+import secrets
+import stat
 import subprocess
 import sys
+import tempfile
 import warnings
 import zoneinfo
 from pathlib import Path
@@ -21,6 +24,7 @@ from decouple import (
     undefined,
 )
 from django.core.cache import CacheKeyWarning
+from django.core.exceptions import ImproperlyConfigured
 from django.db.backends.signals import connection_created
 
 from config.runtime_profile import (
@@ -47,6 +51,14 @@ REDIS_PREFIX = config("REDIS_PREFIX", default=None)
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+_data_dir_override = config("FLOPPY_DATA_DIR", default=None)
+FLOPPY_DATA_DIR = Path(_data_dir_override) if _data_dir_override else BASE_DIR / "db"
+_database_path_override = config("FLOPPY_DB_PATH", default=None)
+FLOPPY_DB_PATH = (
+    Path(_database_path_override)
+    if _database_path_override
+    else FLOPPY_DATA_DIR / "db.sqlite3"
+)
 DOCKER_SECRETS_DIR = Path("/run/secrets")
 
 
@@ -79,6 +91,66 @@ def secret(key, default=undefined, **kwargs):
     return secret_value
 
 
+def _read_docker_secret(path):
+    secret_fd = os.open(
+        path,
+        os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+    )
+    try:
+        if not stat.S_ISREG(os.fstat(secret_fd).st_mode):
+            raise OSError(path)
+        os.fchmod(secret_fd, 0o600)
+        with os.fdopen(secret_fd, "r", encoding="utf-8") as secret_file:
+            secret_fd = None
+            value = secret_file.read().strip()
+        if not value:
+            raise OSError(path)
+        return value
+    finally:
+        if secret_fd is not None:
+            os.close(secret_fd)
+
+
+def _load_or_create_docker_secret(path):
+    temp_fd = None
+    temp_path = None
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            return _read_docker_secret(path), False
+        except FileNotFoundError:
+            pass
+
+        value = secrets.token_urlsafe(50)
+        temp_fd, temp_path = tempfile.mkstemp(
+            prefix=f".{path.name}.",
+            dir=path.parent,
+        )
+        with os.fdopen(temp_fd, "w", encoding="utf-8") as secret_file:
+            temp_fd = None
+            secret_file.write(value)
+            secret_file.flush()
+            os.fsync(secret_file.fileno())
+
+        try:
+            os.link(temp_path, path, follow_symlinks=False)
+        except FileExistsError:
+            return _read_docker_secret(path), False
+        else:
+            return value, True
+    except (OSError, UnicodeError) as err:
+        msg = (
+            f"Cannot create or read the generated secret key at {path}. "
+            "Make FLOPPY_DATA_DIR writable or set SECRET."
+        )
+        raise ImproperlyConfigured(msg) from err
+    finally:
+        if temp_fd is not None:
+            os.close(temp_fd)
+        if temp_path is not None:
+            Path(temp_path).unlink(missing_ok=True)
+
+
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/stable/howto/deployment/checklist/
 
@@ -96,16 +168,9 @@ if not SECRET_KEY:
     if Path("/.dockerenv").exists():
         # Docker container: auto-generate and persist to the db volume so the
         # key survives container restarts without user intervention.
-        import secrets as _secrets
-        import warnings
-
-        _secret_file = BASE_DIR / "db" / "secret_key"
-        if _secret_file.exists():
-            SECRET_KEY = _secret_file.read_text().strip()
-        else:
-            SECRET_KEY = _secrets.token_urlsafe(50)
-            _secret_file.parent.mkdir(parents=True, exist_ok=True)
-            _secret_file.write_text(SECRET_KEY)
+        _secret_file = FLOPPY_DATA_DIR / "secret_key"
+        SECRET_KEY, secret_created = _load_or_create_docker_secret(_secret_file)
+        if secret_created:
             warnings.warn(
                 "SECRET env var is not set. A random key has been generated and "
                 f"saved to {_secret_file}. For production, set SECRET explicitly "
@@ -113,8 +178,6 @@ if not SECRET_KEY:
                 stacklevel=2,
             )
     else:
-        from django.core.exceptions import ImproperlyConfigured
-
         msg = (
             "SECRET env var is not set. To fix, run:\n\n"
             '  python -c "'
@@ -309,9 +372,6 @@ WSGI_APPLICATION = "config.wsgi.application"
 # Database
 # https://docs.djangoproject.com/en/stable/ref/settings/#databases
 
-# create db folder if it doesn't exist
-Path(BASE_DIR / "db").mkdir(parents=True, exist_ok=True)
-
 DB_HOST = config("DB_HOST", default=None)
 USING_SQLITE_DATABASE = not bool(DB_HOST)
 
@@ -361,6 +421,7 @@ if DB_HOST:
         DATABASES["default"]["OPTIONS"]["sslcertmode"] = sslcertmode
 
 else:
+    FLOPPY_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     SQLITE_BUSY_TIMEOUT_SECONDS = config(
         "SQLITE_BUSY_TIMEOUT_SECONDS",
         default=30,
@@ -372,7 +433,7 @@ else:
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.sqlite3",
-            "NAME": BASE_DIR / "db" / "db.sqlite3",
+            "NAME": FLOPPY_DB_PATH,
             "OPTIONS": {
                 "timeout": SQLITE_BUSY_TIMEOUT_SECONDS,
             },
