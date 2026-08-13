@@ -5,8 +5,10 @@ import hashlib
 import json
 import os
 import secrets
+import stat
 import subprocess
 import sys
+import tempfile
 import warnings
 import zoneinfo
 from pathlib import Path
@@ -89,27 +91,51 @@ def secret(key, default=undefined, **kwargs):
     return secret_value
 
 
-def _load_or_create_docker_secret(path):
+def _read_docker_secret(path):
+    secret_fd = os.open(
+        path,
+        os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+    )
     try:
-        if path.exists():
-            path.chmod(0o600)
-            return path.read_text(encoding="utf-8").strip(), False
+        if not stat.S_ISREG(os.fstat(secret_fd).st_mode):
+            raise OSError(path)
+        os.fchmod(secret_fd, 0o600)
+        with os.fdopen(secret_fd, "r", encoding="utf-8") as secret_file:
+            secret_fd = None
+            value = secret_file.read().strip()
+        if not value:
+            raise OSError(path)
+        return value
+    finally:
+        if secret_fd is not None:
+            os.close(secret_fd)
 
+
+def _load_or_create_docker_secret(path):
+    temp_fd = None
+    temp_path = None
+    try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        value = secrets.token_urlsafe(50)
         try:
-            secret_fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-        except FileExistsError:
-            path.chmod(0o600)
-            return path.read_text(encoding="utf-8").strip(), False
+            return _read_docker_secret(path), False
+        except FileNotFoundError:
+            pass
+
+        value = secrets.token_urlsafe(50)
+        temp_fd, temp_path = tempfile.mkstemp(
+            prefix=f".{path.name}.",
+            dir=path.parent,
+        )
+        with os.fdopen(temp_fd, "w", encoding="utf-8") as secret_file:
+            temp_fd = None
+            secret_file.write(value)
+            secret_file.flush()
+            os.fsync(secret_file.fileno())
 
         try:
-            with os.fdopen(secret_fd, "w", encoding="utf-8") as secret_file:
-                secret_file.write(value)
-            path.chmod(0o600)
-        except OSError:
-            path.unlink(missing_ok=True)
-            raise
+            os.link(temp_path, path, follow_symlinks=False)
+        except FileExistsError:
+            return _read_docker_secret(path), False
         else:
             return value, True
     except (OSError, UnicodeError) as err:
@@ -118,6 +144,11 @@ def _load_or_create_docker_secret(path):
             "Make FLOPPY_DATA_DIR writable or set SECRET."
         )
         raise ImproperlyConfigured(msg) from err
+    finally:
+        if temp_fd is not None:
+            os.close(temp_fd)
+        if temp_path is not None:
+            Path(temp_path).unlink(missing_ok=True)
 
 
 # Quick-start development settings - unsuitable for production

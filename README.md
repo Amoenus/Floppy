@@ -221,9 +221,10 @@ services:
 ```
 
 Use a dedicated parent directory when `FLOPPY_DB_PATH` is outside
-`FLOPPY_DATA_DIR`. At startup, Floppy can change ownership recursively inside
-`FLOPPY_DATA_DIR`. It changes only the external database parent and the
-SQLite files when the database is outside that directory.
+`FLOPPY_DATA_DIR`. At startup, Floppy changes ownership only on the selected
+data, database, and log directory entries and on Floppy's generated key,
+SQLite files, and current log file. It does not change unrelated files inside
+those directories.
 
 Use local storage or block storage for SQLite. Do not use NFS, SMB/CIFS, or
 another network filesystem.
@@ -246,7 +247,9 @@ is missing, existing sessions and signed data can become invalid.
 
 ### PostgreSQL
 
-Floppy uses PostgreSQL only when `DB_HOST` is set. Without it, it uses SQLite at `/floppy/db/db.sqlite3`. `DATABASE_URL` is not supported — set the individual `DB_*` variables.
+Floppy uses PostgreSQL only when `DB_HOST` is set. Without it, it uses
+`FLOPPY_DB_PATH`; the container default is `/floppy/db/db.sqlite3`.
+`DATABASE_URL` is not supported — set the individual `DB_*` variables.
 
 ```yaml
 services:

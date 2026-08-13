@@ -2,23 +2,31 @@
 
 set -e
 
+reject_unsafe_managed_directory() {
+    managed_name=$1
+    managed_dir=$2
+    case "$managed_dir" in
+        /|/bin|/boot|/dev|/etc|/home|/lib|/lib32|/lib64|/libx32|/media|/mnt|/opt|/proc|/root|/run|/sbin|/srv|/sys|/tmp|/usr|/var|/usr/bin|/usr/include|/usr/lib|/usr/lib32|/usr/lib64|/usr/libx32|/usr/local|/usr/sbin|/usr/share|/usr/src|/var/backups|/var/cache|/var/lib|/var/local|/var/lock|/var/log|/var/mail|/var/opt|/var/spool|/var/tmp)
+            echo "[entrypoint] ${managed_name} must resolve to a dedicated directory, not system directory ${managed_dir}." >&2
+            exit 1
+            ;;
+    esac
+}
+
 DATA_DIR_INPUT=${FLOPPY_DATA_DIR:-/floppy/db}
 DATA_DIR=$(python -c 'from pathlib import Path; import sys; print(Path(sys.argv[1]).resolve())' "$DATA_DIR_INPUT")
+LOG_DIR_INPUT=${LOG_DIR:-/floppy/logs}
+LOG_DIR_PATH=$(python -c 'from pathlib import Path; import sys; print(Path(sys.argv[1]).resolve())' "$LOG_DIR_INPUT")
 
-if [ "$DATA_DIR" = / ]; then
-    echo "[entrypoint] FLOPPY_DATA_DIR must resolve to a directory below /." >&2
-    exit 1
-fi
+reject_unsafe_managed_directory FLOPPY_DATA_DIR "$DATA_DIR"
+reject_unsafe_managed_directory LOG_DIR "$LOG_DIR_PATH"
 
 if [ -z "$DB_HOST" ]; then
     DB_FILE_INPUT=${FLOPPY_DB_PATH:-"${DATA_DIR_INPUT}/db.sqlite3"}
     DB_FILE=$(python -c 'from pathlib import Path; import sys; print(Path(sys.argv[1]).resolve())' "$DB_FILE_INPUT")
     DB_PARENT=$(python -c 'from pathlib import Path; import sys; print(Path(sys.argv[1]).parent)' "$DB_FILE")
 
-    if [ "$DB_PARENT" = / ]; then
-        echo "[entrypoint] FLOPPY_DB_PATH must use a database directory below /." >&2
-        exit 1
-    fi
+    reject_unsafe_managed_directory FLOPPY_DB_PATH "$DB_PARENT"
 
     # Fail fast with a clear message if the SQLite file is already corrupt.
     # This avoids repeated migration failures (issues #508 and #593).
@@ -86,23 +94,30 @@ usermod -o -u "$PUID" abc
 
 chown abc:abc -- /floppy
 
-if [ -e "$DATA_DIR" ] && ! timeout 600 chown -R abc:abc -- "$DATA_DIR"; then
+if [ -e "$DATA_DIR" ] && ! timeout 600 chown abc:abc -- "$DATA_DIR"; then
     echo "[entrypoint] Cannot set ownership for FLOPPY_DATA_DIR ${DATA_DIR} with PUID=${PUID} and PGID=${PGID}. Fix the mount permissions or the IDs." >&2
     exit 1
 fi
 
+SECRET_FILE="${DATA_DIR}/secret_key"
+if { [ -e "$SECRET_FILE" ] || [ -L "$SECRET_FILE" ]; } && \
+   ! timeout 600 chown -h abc:abc -- "$SECRET_FILE"; then
+    echo "[entrypoint] Cannot set ownership for generated secret ${SECRET_FILE} with PUID=${PUID} and PGID=${PGID}. Fix the mount permissions or the IDs." >&2
+    exit 1
+fi
+
 if [ -z "$DB_HOST" ]; then
-    case "${DB_PARENT}/" in
-        "${DATA_DIR}/"*) ;;
-        *)
-            for path in "$DB_PARENT" "$DB_FILE" "$DB_FILE-wal" "$DB_FILE-shm"; do
-                if [ -e "$path" ] && ! timeout 600 chown abc:abc -- "$path"; then
-                    echo "[entrypoint] Cannot set ownership for FLOPPY_DB_PATH parent ${DB_PARENT} with PUID=${PUID} and PGID=${PGID}. Fix the mount permissions or the IDs." >&2
-                    exit 1
-                fi
-            done
-            ;;
-    esac
+    if [ -e "$DB_PARENT" ] && ! timeout 600 chown abc:abc -- "$DB_PARENT"; then
+        echo "[entrypoint] Cannot set ownership for FLOPPY_DB_PATH parent ${DB_PARENT} with PUID=${PUID} and PGID=${PGID}. Fix the mount permissions or the IDs." >&2
+        exit 1
+    fi
+    for path in "$DB_FILE" "$DB_FILE-wal" "$DB_FILE-shm"; do
+        if { [ -e "$path" ] || [ -L "$path" ]; } && \
+           ! timeout 600 chown -h abc:abc -- "$path"; then
+            echo "[entrypoint] Cannot set ownership for SQLite file ${path} with PUID=${PUID} and PGID=${PGID}. Fix the mount permissions or the IDs." >&2
+            exit 1
+        fi
+    done
 fi
 
 # "logs" holds the rotating file handler every process configures at import time
@@ -111,9 +126,20 @@ fi
 # process then dies with "Unable to configure handler 'file'" -- taking gunicorn
 # with it, so the container serves 502s while reporting healthy.
 #
-# Bound each recursive chown: a stalled bind mount (e.g. network storage)
-# must degrade to a warning instead of hanging the boot silently (issue #341).
-for dir in "${LOG_DIR:-/floppy/logs}" /floppy/staticfiles /var/log/nginx /var/lib/nginx; do
+# The log directory can be an operator-selected mount. Change only that
+# directory entry and Floppy's current log file, never unrelated content.
+if [ -e "$LOG_DIR_PATH" ] && ! timeout 600 chown abc:abc -- "$LOG_DIR_PATH"; then
+    echo "[entrypoint] WARNING: chown of ${LOG_DIR_PATH} failed or timed out (stalled mount?); continuing" >&2
+fi
+LOG_FILE="${LOG_DIR_PATH}/floppy.log"
+if { [ -e "$LOG_FILE" ] || [ -L "$LOG_FILE" ]; } && \
+   ! timeout 600 chown -h abc:abc -- "$LOG_FILE"; then
+    echo "[entrypoint] WARNING: chown of ${LOG_FILE} failed or timed out (stalled mount?); continuing" >&2
+fi
+
+# Bound recursive ownership fixes for the image-managed service directories: a
+# stalled bind mount must degrade to a warning instead of hanging boot (#341).
+for dir in /floppy/staticfiles /var/log/nginx /var/lib/nginx; do
     echo "[entrypoint] Chowning ${dir}" >&2
     timeout 600 chown -R abc:abc -- "$dir" || \
         echo "[entrypoint] WARNING: chown of ${dir} failed or timed out (stalled mount?); continuing" >&2

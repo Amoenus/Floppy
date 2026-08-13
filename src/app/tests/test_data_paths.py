@@ -5,7 +5,10 @@ import stat
 import subprocess
 import sys
 import tempfile
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from unittest import mock
 
 from django.core.exceptions import ImproperlyConfigured
 from django.test import SimpleTestCase
@@ -225,6 +228,71 @@ class DataPathSettingsTests(SimpleTestCase):
 
             self.assertEqual(blocked_parent.read_text(encoding="utf-8"), "keep")
 
+    def test_generated_secret_rejects_symlink_without_touching_its_target(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / "operator-secret"
+            target.write_text("do-not-read", encoding="utf-8")
+            target.chmod(0o644)
+            secret_path = root / "data" / "secret_key"
+            secret_path.parent.mkdir()
+            secret_path.symlink_to(target)
+
+            with self.assertRaisesRegex(ImproperlyConfigured, rf"{secret_path}"):
+                project_settings._load_or_create_docker_secret(secret_path)
+
+            self.assertEqual(target.read_text(encoding="utf-8"), "do-not-read")
+            self.assertEqual(stat.S_IMODE(target.stat().st_mode), 0o644)
+
+    def test_generated_secret_rejects_non_regular_and_empty_files(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            for name, create in (
+                ("directory", lambda path: path.mkdir()),
+                ("empty", lambda path: path.touch()),
+            ):
+                with self.subTest(name=name):
+                    secret_path = root / name
+                    create(secret_path)
+                    with self.assertRaisesRegex(
+                        ImproperlyConfigured,
+                        rf"{secret_path}",
+                    ):
+                        project_settings._load_or_create_docker_secret(secret_path)
+
+    def test_generated_secret_is_published_complete_under_concurrency(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            secret_path = Path(temp_dir) / "data" / "secret_key"
+            barrier = threading.Barrier(2)
+            real_link = os.link
+
+            def synchronized_link(*args, **kwargs):
+                barrier.wait(timeout=5)
+                return real_link(*args, **kwargs)
+
+            with (
+                mock.patch.object(
+                    project_settings.os,
+                    "link",
+                    side_effect=synchronized_link,
+                ),
+                ThreadPoolExecutor(max_workers=2) as executor,
+            ):
+                results = list(
+                    executor.map(
+                        project_settings._load_or_create_docker_secret,
+                        (secret_path, secret_path),
+                    )
+                )
+
+            values = {value for value, _created in results}
+            self.assertEqual(len(values), 1)
+            self.assertNotEqual(values, {""})
+            self.assertEqual(
+                sorted(created for _value, created in results), [False, True]
+            )
+            self.assertEqual(secret_path.read_text(encoding="utf-8"), values.pop())
+
 
 class EntrypointDataPathTests(SimpleTestCase):
     def run_entrypoint(self, root, **overrides):
@@ -317,7 +385,18 @@ fi
             data_dir.mkdir()
             database_parent.mkdir()
             database_path.touch()
+            database_wal_path = Path(f"{database_path}-wal")
+            database_wal_path.touch()
+            database_shm_path = Path(f"{database_path}-shm")
+            database_shm_path.touch()
             (database_parent / "unrelated").mkdir()
+            secret_path = data_dir / "secret_key"
+            secret_path.touch()
+            log_dir = root / "logs"
+            log_dir.mkdir()
+            log_file = log_dir / "floppy.log"
+            log_file.touch()
+            (log_dir / "unrelated.log").touch()
 
             result, commands = self.run_entrypoint(
                 root,
@@ -329,25 +408,47 @@ fi
             self.assertIn(
                 f"Checking SQLite integrity for {database_path}", result.stderr
             )
-            self.assertIn(f"chown <-R> <abc:abc> <--> <{data_dir}>", commands)
+            self.assertIn(f"chown <abc:abc> <--> <{data_dir}>", commands)
+            self.assertIn(f"chown <-h> <abc:abc> <--> <{secret_path}>", commands)
             self.assertIn(f"chown <abc:abc> <--> <{database_parent}>", commands)
+            self.assertIn(f"chown <-h> <abc:abc> <--> <{database_path}>", commands)
+            self.assertIn(f"chown <-h> <abc:abc> <--> <{database_wal_path}>", commands)
+            self.assertIn(f"chown <-h> <abc:abc> <--> <{database_shm_path}>", commands)
+            self.assertIn(f"chown <abc:abc> <--> <{log_dir}>", commands)
+            self.assertIn(f"chown <-h> <abc:abc> <--> <{log_file}>", commands)
+            self.assertNotIn(f"chown <-R> <abc:abc> <--> <{data_dir}>", commands)
+            self.assertNotIn(f"chown <-R> <abc:abc> <--> <{log_dir}>", commands)
             self.assertNotIn(str(database_parent / "unrelated"), commands)
+            self.assertNotIn(str(log_dir / "unrelated.log"), commands)
 
-    def test_root_and_root_symlink_paths_are_rejected(self):
+    def test_system_root_and_symlink_paths_are_rejected(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             root_link = root / "root-link"
             root_link.symlink_to("/")
+            system_link = root / "system-link"
+            system_link.symlink_to("/etc")
             safe_data = root / "data"
             safe_data.mkdir()
 
             cases = (
                 ({"FLOPPY_DATA_DIR": "/"}, "FLOPPY_DATA_DIR"),
                 ({"FLOPPY_DATA_DIR": str(root_link)}, "FLOPPY_DATA_DIR"),
+                ({"FLOPPY_DATA_DIR": "/etc"}, "FLOPPY_DATA_DIR"),
+                ({"LOG_DIR": "/"}, "LOG_DIR"),
+                ({"LOG_DIR": str(root_link)}, "LOG_DIR"),
+                ({"LOG_DIR": str(system_link)}, "LOG_DIR"),
                 (
                     {
                         "FLOPPY_DATA_DIR": str(safe_data),
                         "FLOPPY_DB_PATH": "/db.sqlite3",
+                    },
+                    "FLOPPY_DB_PATH",
+                ),
+                (
+                    {
+                        "FLOPPY_DATA_DIR": str(safe_data),
+                        "FLOPPY_DB_PATH": "/etc/db.sqlite3",
                     },
                     "FLOPPY_DB_PATH",
                 ),
@@ -359,6 +460,18 @@ fi
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn(setting_name, result.stderr)
                 self.assertNotIn("supervisord", commands)
+
+    def test_dedicated_directory_below_system_root_is_allowed(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            result, commands = self.run_entrypoint(
+                Path(temp_dir),
+                FLOPPY_DATA_DIR="/var/lib/floppy",
+                FLOPPY_DB_PATH="/var/lib/floppy/db.sqlite3",
+                LOG_DIR="/var/log/floppy",
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("supervisord", commands)
 
     def test_external_database_parent_ownership_failure_stops_startup(self):
         with tempfile.TemporaryDirectory() as temp_dir:
