@@ -41,3 +41,18 @@ node_modules/
 # under docs/brand/ and src/static/img/ are committed.
 docs/brand/*-source.png
 .venv/
+
+# Worktrees
+.worktrees/
+worktrees/
+
+# Antigravity Superpowers Docs
+docs/superpowers/
+
+# Local dev
+.env.web-dev
+.flatpak-builder/
+.gstack/
+.worktrees/
+desktop/
+dump.rdb

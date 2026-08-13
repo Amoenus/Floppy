@@ -55,6 +55,7 @@ from app.models import (
     Sources,
     Status,
 )
+from app.models.episode_runtimes import build_season_runtime_index
 from app.providers import services, tmdb
 from app.services import metadata_resolution
 from app.tag_views import (
@@ -163,14 +164,15 @@ def _get_tv_runtime_display_fallback(detail_item, media_metadata):
         max_seasons = 5
     max_seasons = max(1, min(max_seasons, 20))
 
-    for season_num in range(1, max_seasons + 1):
-        cached_season_data = cache.get(
-            f"tmdb_season_{detail_item.media_id}_{season_num}"
-        )
-        runtime_str = ((cached_season_data or {}).get("details") or {}).get("runtime")
-        runtime_minutes = stats.parse_runtime_to_minutes(runtime_str)
-        if runtime_minutes and runtime_minutes > 0:
-            return tmdb.get_readable_duration(runtime_minutes)
+    # Read every candidate season in one grouped request. One request for each
+    # season made a detail page wait for up to 20 cache round trips, one after
+    # another (#725).
+    runtime_minutes = build_season_runtime_index(
+        [detail_item.media_id],
+        season_numbers=range(1, max_seasons + 1),
+    ).get(detail_item.media_id)
+    if runtime_minutes:
+        return tmdb.get_readable_duration(runtime_minutes)
 
     return None
 

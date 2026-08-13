@@ -1,13 +1,20 @@
 import logging
 
-from django.core.cache import cache
-
 from app.models import Item, MediaTypes, Status
-from app.statistics import parse_runtime_to_minutes
+from app.models.episode_runtimes import (
+    build_season_runtime_index,
+    default_runtime_minutes,
+)
 
 logger = logging.getLogger(__name__)
 
 RUNTIME_UNKNOWN_AIRED = 999998  # aired but runtime unknown
+
+
+def _has_local_runtime(item):
+    """Return whether the item carries a real runtime rather than a marker."""
+    runtime_minutes = getattr(item, "runtime_minutes", None)
+    return bool(runtime_minutes) and runtime_minutes < RUNTIME_UNKNOWN_AIRED
 
 
 def _sort_tv_media_by_time_left(media_list, direction="asc"):
@@ -52,6 +59,19 @@ def _sort_tv_media_by_time_left(media_list, direction="asc"):
             _episode_runtime_index.setdefault(show_key, {}).setdefault(
                 row["season_number"], {}
             )[row["episode_number"]] = row["runtime_minutes"]
+
+    # Read cached season metadata for every show that needs it, before the
+    # sort starts. Only shows with no stored runtime and no episode runtimes
+    # reach that metadata, so this is usually a small part of the library.
+    # Reading it inside the sort instead cost up to five cache round trips per
+    # show, one after another (#725).
+    _season_runtime_index = build_season_runtime_index(
+        media.item.media_id
+        for media in media_list
+        if getattr(media, "item", None) is not None
+        and not _has_local_runtime(media.item)
+        and not _episode_runtime_index.get((media.item.media_id, media.item.source))
+    )
 
     def _calc_unwatched_runtime_total(
         media,
@@ -121,7 +141,7 @@ def _sort_tv_media_by_time_left(media_list, direction="asc"):
         # FIRST: Check locally stored runtime (but exclude fallback markers)
         if hasattr(media, "item") and media.item.runtime_minutes:
             # Exclude fallback values: 999998 (aired but runtime unknown) and 999999 (unknown runtime)
-            if media.item.runtime_minutes < RUNTIME_UNKNOWN_AIRED:
+            if _has_local_runtime(media.item):
                 runtime_minutes = media.item.runtime_minutes
                 logger.debug(
                     "Using stored runtime for %s: %smin",
@@ -153,47 +173,19 @@ def _sort_tv_media_by_time_left(media_list, direction="asc"):
                 )
 
         if not runtime_minutes:
-            # THIRD: Check cached season data (avg_runtime field from season metadata)
-            season_cache_key = f"tmdb_season_{media.item.media_id}_1"
-            cached_season_data = cache.get(season_cache_key)
-            if cached_season_data and cached_season_data.get("details", {}).get(
-                "runtime"
-            ):
-                runtime_str = cached_season_data["details"]["runtime"]
-                runtime_minutes = parse_runtime_to_minutes(runtime_str)
-                if runtime_minutes and runtime_minutes > 0:
-                    logger.debug(
-                        "Using cached season avg runtime for %s: %smin",
-                        media.item.title,
-                        runtime_minutes,
-                    )
-            # Try other seasons if season 1 didn't work
-            if not runtime_minutes:
-                for season_num in [2, 3, 4, 5]:
-                    season_cache_key = f"tmdb_season_{media.item.media_id}_{season_num}"
-                    cached_season_data = cache.get(season_cache_key)
-                    if cached_season_data and cached_season_data.get("details", {}).get(
-                        "runtime"
-                    ):
-                        runtime_str = cached_season_data["details"]["runtime"]
-                        runtime_minutes = parse_runtime_to_minutes(runtime_str)
-                        if runtime_minutes and runtime_minutes > 0:
-                            logger.debug(
-                                "Using cached season %s avg runtime for %s: %smin",
-                                season_num,
-                                media.item.title,
-                                runtime_minutes,
-                            )
-                            break
+            # THIRD: Check cached season data (avg_runtime field from season
+            # metadata), read for the whole page before the sort started.
+            runtime_minutes = _season_runtime_index.get(media.item.media_id)
+            if runtime_minutes:
+                logger.debug(
+                    "Using cached season avg runtime for %s: %smin",
+                    media.item.title,
+                    runtime_minutes,
+                )
 
         # FOURTH: Use industry standard fallback
         if not runtime_minutes or runtime_minutes <= 0:
-            if media.item.source == "tmdb":
-                runtime_minutes = 30
-            elif media.item.source == "mal":
-                runtime_minutes = 23
-            else:
-                runtime_minutes = 30
+            runtime_minutes = default_runtime_minutes(media.item.source)
             logger.debug(
                 "Using fallback runtime for %s: %smin",
                 media.item.title,

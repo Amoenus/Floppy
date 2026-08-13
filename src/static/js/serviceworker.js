@@ -1,4 +1,4 @@
-const CACHE_NAME = "floppy-v1";
+const CACHE_NAME = "floppy-v2";
 const urlsToCache = [
   "/static/css/main.css",
   "/static/favicon/android-chrome-192x192.png",
@@ -27,13 +27,18 @@ self.addEventListener("fetch", (event) => {
   const isHtmxRequest = request.headers.get("HX-Request") === "true";
 
   // Keep app routes and HTMX requests on network to avoid stale dynamic HTML.
+  //
+  // Return before respondWith. The browser then makes the request on its own
+  // network path. Calling respondWith(fetch(request)) here made the worker
+  // repeat a request that the browser can do without help. It also replaced
+  // the browser offline page with a failed promise, and it stopped navigation
+  // preload.
   if (
     request.method !== "GET" ||
     !isSameOrigin ||
     isHtmxRequest ||
     !url.pathname.startsWith("/static/")
   ) {
-    event.respondWith(fetch(request));
     return;
   }
 
@@ -44,13 +49,28 @@ self.addEventListener("fetch", (event) => {
         return response;
       }
 
-      return fetch(request).then((networkResponse) => {
-        if (networkResponse.ok) {
-          const responseClone = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, responseClone));
-        }
-        return networkResponse;
-      });
+      return fetch(request)
+        .then((networkResponse) => {
+          if (networkResponse.ok) {
+            const responseClone = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, responseClone));
+          }
+          return networkResponse;
+        })
+        .catch(async (error) => {
+          // The network is not available. Static URLs contain a file
+          // modification time (main.css?1786502224). An exact match fails
+          // after each rebuild, because the time changes. Give the previous
+          // version instead. A previous version is better than a page that
+          // cannot load.
+          const previousVersion = await caches.match(request, {
+            ignoreSearch: true,
+          });
+          if (previousVersion) {
+            return previousVersion;
+          }
+          throw error;
+        });
     }),
   );
 });
