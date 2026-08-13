@@ -368,6 +368,93 @@ class ImportTraktExport(TestCase):
             Status.PLANNING.value,
         )
 
+    @tag("network")
+    @patch("integrations.imports.trakt.TraktImporter._get_metadata")
+    def test_notes_become_notes(self, mock_get_metadata):
+        """A private Trakt note (distinct from a comment) becomes item notes."""
+        mock_get_metadata.side_effect = _metadata_side_effect
+
+        export = _zip_bytes(
+            {
+                "notes-movies.json": [
+                    {
+                        "type": "movie",
+                        "movie": _movie(),
+                        "note": {
+                            "notes": "Private note.",
+                            "spoiler": False,
+                            "updated_at": "2023-05-01T00:00:00.000Z",
+                        },
+                    },
+                ],
+            },
+        )
+
+        importer(export, self.user, "new")
+
+        movie = Movie.objects.get(user=self.user, item__media_id="67890")
+        self.assertEqual(movie.notes, "Private note.")
+
+    @tag("network")
+    @patch("integrations.imports.trakt.TraktImporter._get_metadata")
+    def test_comment_wins_over_note_for_same_item(self, mock_get_metadata):
+        """Notes import before comments, so a comment overwrites a note's text."""
+        mock_get_metadata.side_effect = _metadata_side_effect
+
+        export = _zip_bytes(
+            {
+                "notes-movies.json": [
+                    {
+                        "type": "movie",
+                        "movie": _movie(),
+                        "note": {
+                            "notes": "Private note.",
+                            "updated_at": "2023-05-01T00:00:00.000Z",
+                        },
+                    },
+                ],
+                "comments-movies.json": [
+                    {
+                        "type": "movie",
+                        "movie": _movie(),
+                        "comment": {
+                            "comment": "Great film.",
+                            "updated_at": "2023-04-01T00:00:00.000Z",
+                        },
+                    },
+                ],
+            },
+        )
+
+        importer(export, self.user, "new")
+
+        movie = Movie.objects.get(user=self.user, item__media_id="67890")
+        self.assertEqual(movie.notes, "Great film.")
+
+    @tag("network")
+    @patch("integrations.imports.trakt.TraktImporter._get_metadata")
+    def test_note_missing_text_is_skipped(self, mock_get_metadata):
+        """A malformed note entry without note text is skipped, not fatal."""
+        mock_get_metadata.side_effect = _metadata_side_effect
+
+        export = _zip_bytes(
+            {
+                "notes-movies.json": [
+                    {
+                        "type": "movie",
+                        "movie": _movie(),
+                        "note": {"updated_at": "2023-05-01T00:00:00.000Z"},
+                    },
+                ],
+            },
+        )
+
+        importer(export, self.user, "new")
+
+        self.assertFalse(
+            Movie.objects.filter(user=self.user, item__media_id="67890").exists(),
+        )
+
     @patch("integrations.imports.trakt.TraktImporter._get_metadata")
     def test_collection_shows_create_collection_entries(self, mock_get_metadata):
         """The nested collection-shows payload creates CollectionEntry rows."""

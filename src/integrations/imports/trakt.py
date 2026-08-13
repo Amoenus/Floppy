@@ -431,6 +431,7 @@ class TraktImporter(TraktMetadataResolverMixin):
         self.process_history()
         self.process_watchlist()
         self.process_ratings()
+        self.process_notes()
         self.process_comments()
         self.process_collection()
 
@@ -891,6 +892,27 @@ class TraktImporter(TraktMetadataResolverMixin):
                 msg = f"Error processing rating entry: {entry}"
                 raise MediaImportUnexpectedError(msg) from e
 
+    def process_notes(self):
+        """Process private notes from Trakt."""
+        logger.info("Importing notes for user %s", self.username)
+        notes_endpoint = f"{self.user_base_url}/notes"
+        full_notes = self._get_paginated_data(notes_endpoint, "notes")
+
+        total = len(full_notes)
+        for i, entry in enumerate(full_notes, start=1):
+            import_progress.report(i, total, "Trakt: notes")
+            note_text = entry.get("note", {}).get("notes")
+            if not note_text:
+                continue
+            try:
+                self._process_generic_entry(entry, "note", {"notes": note_text})
+            except MediaImportError:
+                # Fatal, importer-level problems (auth, etc.) must still abort.
+                raise
+            except Exception as e:
+                msg = f"Error processing note entry: {entry}"
+                raise MediaImportUnexpectedError(msg) from e
+
     def process_comments(self):
         """Process comments from Trakt."""
         logger.info("Importing comments for user %s", self.username)
@@ -1233,13 +1255,13 @@ class TraktImporter(TraktMetadataResolverMixin):
         updated_at = parse_datetime(
             entry.get("listed_at")
             or entry.get("rated_at")
-            or entry["comment"].get("updated_at"),
+            or (entry.get("comment") or entry.get("note") or {}).get("updated_at"),
         )
 
-        # A rating or a comment says nothing about whether the user tracks the
-        # media. When it isn't already tracked from history or the watchlist,
-        # store the score without a status rather than inventing one.
-        rates_without_tracking = entry_type in {"rating", "comment"}
+        # A rating, a comment, or a note says nothing about whether the user
+        # tracks the media. When it isn't already tracked from history or the
+        # watchlist, store the score without a status rather than inventing one.
+        rates_without_tracking = entry_type in {"rating", "comment", "note"}
 
         if media_type == MediaTypes.SEASON.value:
             tv_obj = self._get_tv_obj(

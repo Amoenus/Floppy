@@ -38,6 +38,12 @@ ENDPOINT_FILES = {
         "comments-seasons",
         "comments-episodes",
     ),
+    "/notes": (
+        "notes-movies",
+        "notes-shows",
+        "notes-seasons",
+        "notes-episodes",
+    ),
     "/collection/movies": ("collection-movies",),
     "/collection/shows": ("collection-shows",),
     "/hidden/progress_watched": ("hidden-progress-watched",),
