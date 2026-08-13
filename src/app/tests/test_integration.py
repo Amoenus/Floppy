@@ -147,7 +147,7 @@ class IntegrationTest(StaticLiveServerTestCase):
         ).first.get_attribute("href")
         self.page.goto(f"{self.live_server_url}{season_href}")
         expect(self.page.get_by_role("main")).to_contain_text("Breaking Bad")
-        self.page.get_by_title("Track Episode").first.click(force=True)
+        self.page.locator('button[title="Track Episode"]:visible').first.click()
         datetime_format = "%Y-%m-%d"
 
         # Episode 1 air date is 2008-01-20
@@ -164,7 +164,7 @@ class IntegrationTest(StaticLiveServerTestCase):
         )
 
         today = timezone.localtime().strftime(datetime_format)
-        self.page.get_by_title("Track Episode").first.click(force=True)
+        self.page.locator('button[title="Track Episode"]:visible').first.click()
         modal = self.page.locator("[data-track-modal-root]:visible").first
         self.set_date_input(modal.locator('input[name="end_date"]'), f"{today}T12:00")
         self.page.get_by_role("button", name="Add", exact=True).click()
