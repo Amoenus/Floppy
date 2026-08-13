@@ -46,6 +46,14 @@ class IntegrationTest(StaticLiveServerTestCase):
             title="Breaking Bad",
             episode_count=1,
         )
+        episode = {
+            "title": "Breaking Bad",
+            "season_title": "Season 1",
+            "episode_title": "Episode 1",
+            "image": "https://example.com/episode.jpg",
+            "cast": [],
+            "crew": [],
+        }
         search = {
             "page": 1,
             "total_pages": 1,
@@ -69,7 +77,14 @@ class IntegrationTest(StaticLiveServerTestCase):
                 "app.providers.tmdb.tv_with_seasons",
                 side_effect=lambda *a, **k: copy.deepcopy(show),
             ),
+            patch(
+                "app.providers.tmdb.episode",
+                side_effect=lambda *a, **k: copy.deepcopy(episode),
+            ),
             patch("app.providers.tmdb.get_tvdb_episode_image_map", return_value={}),
+            patch(
+                "app.tasks_trakt.populate_trakt_episode_ratings_for_season.delay",
+            ),
         ):
             provider_patch.start()
             self.addCleanup(provider_patch.stop)
@@ -337,12 +352,17 @@ class IntegrationTest(StaticLiveServerTestCase):
         expect(create_modal).to_be_visible()
 
         end_date_input = create_modal.locator('input[name="end_date"]')
-        end_date_before = end_date_input.input_value()
-        self.assertIn("T", end_date_before)
-        end_time_segment = end_date_before.split("T", 1)[1]
+        end_time_segment = "14:25"
         start_date_input = create_modal.locator('input[name="start_date"]')
 
         create_modal.get_by_role("button", name="End date picker").click()
+        end_date_picker = create_modal.get_by_role(
+            "dialog",
+            name="End date picker",
+        )
+        time_selects = end_date_picker.locator("select")
+        time_selects.nth(0).select_option("14")
+        time_selects.nth(1).select_option("25")
         create_modal.get_by_role("button", name="Release date").click()
         expect(end_date_input).to_have_value(f"2019-11-08T{end_time_segment}")
         end_hour, end_minute = [int(segment) for segment in end_time_segment.split(":")]
