@@ -6,9 +6,9 @@ from urllib.parse import urljoin
 import yaml
 from bs4 import BeautifulSoup
 from django.conf import settings
-from django.test import SimpleTestCase
+from django.test import RequestFactory, SimpleTestCase
 from django.test.utils import override_settings
-from django.urls import reverse
+from django.urls import get_script_prefix, reverse, set_script_prefix
 from drf_spectacular.renderers import OpenApiYamlRenderer
 from floppy_mcp import server as mcp_server
 from floppy_mcp.http_manifest import (
@@ -17,6 +17,7 @@ from floppy_mcp.http_manifest import (
     canonical_openapi_path,
 )
 
+from api.contract_views import api_docs
 from api.helpers import MEDIA_TYPE_VALID_LIST
 from api.schema_contract import (
     EXPECTED_SCHEMA_ERRORS,
@@ -43,6 +44,7 @@ class OfflineAPIDocsTests(SimpleTestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "api/docs.html")
+        self.assertNotIn("app_base_url", response.context)
 
     def test_docs_support_head_without_rendering_a_response_body(self):
         get_response = self.client.get(reverse("swagger-ui"))
@@ -99,14 +101,14 @@ class OfflineAPIDocsTests(SimpleTestCase):
         authenticated_command = soup.select_one("#authenticated-command").get_text()
         self.assertEqual(
             public_command,
-            f'curl --request GET "http://testserver{reverse("api_info")}/"',
+            f'curl --request GET "https://YOUR_FLOPPY_HOST{reverse("api_info")}/"',
         )
         self.assertNotIn("X-API-Key", public_command)
         self.assertIn("needs no API token", first_request.get_text(" ", strip=True))
         self.assertEqual(
             authenticated_command,
             'curl --request GET --header "X-API-Key: YOUR_API_TOKEN" '
-            f'"http://testserver{reverse("api_user_preferences")}/"',
+            f'"https://YOUR_FLOPPY_HOST{reverse("api_user_preferences")}/"',
         )
         settings_link = soup.find("a", string="Settings -> Integrations")
         self.assertIsNotNone(settings_link)
@@ -118,16 +120,20 @@ class OfflineAPIDocsTests(SimpleTestCase):
 
     @override_settings(
         URLS=["https://floppy.example.test"],
-        BASE_URL="/floppy",
-        FORCE_SCRIPT_NAME="/floppy",
         ALLOWED_HOSTS=["attacker.example.test"],
     )
-    def test_commands_use_configured_origin_and_app_prefix_not_request_host(self):
-        response = self.client.get(
-            reverse("swagger-ui"), HTTP_HOST="attacker.example.test"
-        )
-        soup = BeautifulSoup(response.content, "html.parser")
+    def test_commands_use_startup_script_prefix_once(self):
+        original_prefix = get_script_prefix()
+        try:
+            set_script_prefix("/floppy/")
+            request = RequestFactory().get(
+                "/floppy/api/docs/", HTTP_HOST="attacker.example.test"
+            )
+            response = api_docs(request)
+        finally:
+            set_script_prefix(original_prefix)
 
+        soup = BeautifulSoup(response.content, "html.parser")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
             soup.select_one("#connection-command").get_text(),
@@ -138,7 +144,47 @@ class OfflineAPIDocsTests(SimpleTestCase):
             'curl --request GET --header "X-API-Key: YOUR_API_TOKEN" '
             '"https://floppy.example.test/floppy/api/v1/user/preferences/"',
         )
+        self.assertNotIn("/floppy/floppy/", response.content.decode())
         self.assertNotIn("attacker.example.test", response.content.decode())
+
+    @override_settings(URLS=[], BASE_URL=None, ALLOWED_HOSTS=["attacker.example.test"])
+    def test_commands_never_fall_back_to_request_host(self):
+        response = self.client.get(
+            reverse("swagger-ui"), HTTP_HOST="attacker.example.test"
+        )
+        soup = BeautifulSoup(response.content, "html.parser")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            soup.select_one("#connection-command").get_text(),
+            f'curl --request GET "https://YOUR_FLOPPY_HOST{reverse("api_info")}/"',
+        )
+        self.assertEqual(
+            soup.select_one("#authenticated-command").get_text(),
+            'curl --request GET --header "X-API-Key: YOUR_API_TOKEN" '
+            f'"https://YOUR_FLOPPY_HOST{reverse("api_user_preferences")}/"',
+        )
+        self.assertNotIn("attacker.example.test", response.content.decode())
+
+    @override_settings(
+        URLS=[],
+        BASE_URL="https://floppy.example.test",
+        ALLOWED_HOSTS=["attacker.example.test"],
+    )
+    def test_commands_use_absolute_base_url_not_request_host(self):
+        response = self.client.get(
+            reverse("swagger-ui"), HTTP_HOST="attacker.example.test"
+        )
+
+        content = response.content.decode()
+        self.assertIn(
+            f'"https://floppy.example.test{reverse("api_info")}/"', content
+        )
+        self.assertIn(
+            f'"https://floppy.example.test{reverse("api_user_preferences")}/"',
+            content,
+        )
+        self.assertNotIn("attacker.example.test", content)
 
     def test_docs_render_the_approved_domain_glossary(self):
         response, soup = self.get_docs()
