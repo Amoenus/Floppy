@@ -22,7 +22,9 @@ async def test_missing_url_raises(monkeypatch):
         "ftp://floppy.test",
         "https:///floppy",
         "https://floppy.test?x=1",
+        "https://floppy.test?",
         "https://floppy.test#frag",
+        "https://floppy.test#",
     ],
 )
 async def test_invalid_url_raises(monkeypatch, url):

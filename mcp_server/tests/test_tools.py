@@ -105,6 +105,40 @@ async def test_track_media_stops_after_lookup_connection_error(api_base_url):
         assert not create_route.called
 
 
+async def test_track_media_stops_after_lookup_api_error(api_base_url):
+    with respx.mock:
+        respx.get(f"{api_base_url}/media/movie/tmdb/1").mock(
+            return_value=Response(401, json={"detail": "Unauthorized"}),
+        )
+        create_route = respx.post(f"{api_base_url}/media/movie").mock(
+            return_value=Response(201, json={"ok": True}),
+        )
+
+        result = await server.track_media("movie", "tmdb", "1")
+
+        assert result == {
+            "error": True,
+            "status_code": 401,
+            "detail": {"detail": "Unauthorized"},
+        }
+        assert not create_route.called
+
+
+async def test_track_media_manual_source_creates_after_lookup_500(api_base_url):
+    with respx.mock:
+        respx.get(f"{api_base_url}/media/movie/manual/1").mock(
+            return_value=Response(500, json={"detail": "Provider error"}),
+        )
+        create_route = respx.post(f"{api_base_url}/media/movie").mock(
+            return_value=Response(201, json={"ok": True}),
+        )
+
+        result = await server.track_media("movie", "manual", "1")
+
+        assert result == {"ok": True}
+        assert create_route.called
+
+
 async def test_track_media_invalid_status_rejected():
     result = await server.track_media("movie", "tmdb", "1", status="Watching")
     assert result["error"] is True

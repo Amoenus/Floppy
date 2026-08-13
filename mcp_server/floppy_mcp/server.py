@@ -201,7 +201,13 @@ async def track_media(
     if (
         isinstance(existing, dict)
         and existing.get("error")
-        and "status_code" not in existing
+        and not (
+            existing.get("status_code") == httpx.codes.NOT_FOUND
+            or (
+                source == "manual"
+                and existing.get("status_code") == httpx.codes.INTERNAL_SERVER_ERROR
+            )
+        )
     ):
         return existing
     if (

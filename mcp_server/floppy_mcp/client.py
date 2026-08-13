@@ -50,8 +50,8 @@ def _base_url() -> str:
     if (
         not parsed_url.is_absolute_url
         or parsed_url.scheme not in {"http", "https"}
-        or parsed_url.query
-        or parsed_url.fragment
+        or "?" in url
+        or "#" in url
     ):
         raise FloppyConfigError(msg)
     return url.rstrip("/")
