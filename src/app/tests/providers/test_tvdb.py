@@ -261,6 +261,7 @@ class TVDBProviderTests(TestCase):
                 },
             },
             {"data": {}},
+            {"data": {"episodes": []}, "links": {"next": None}},
         ]
 
         result = tvdb.tv_with_seasons("81189", [0])
@@ -333,9 +334,15 @@ class TVDBProviderTests(TestCase):
             {"data": {}},
             {
                 "data": {
-                    "name": "To You, in 2000 Years",
-                    "overview": "English episode overview.",
-                }
+                    "episodes": [
+                        {
+                            "id": 7001,
+                            "name": "To You, in 2000 Years",
+                            "overview": "English episode overview.",
+                        },
+                    ],
+                },
+                "links": {"next": None},
             },
         ]
 
@@ -346,6 +353,112 @@ class TVDBProviderTests(TestCase):
         self.assertEqual(
             result["season/1"]["episodes"][0]["name"],
             "To You, in 2000 Years",
+        )
+
+    @patch("app.providers.tvdb.tv")
+    @patch("app.providers.tvdb._request")
+    def test_tv_with_seasons_batches_episode_translations_in_one_request(
+        self,
+        mock_request,
+        mock_tv,
+    ):
+        """Episode translations for a whole season should cost one HTTP call.
+
+        Previously, `_normalize_episode_rows` called `_with_preferred_translation`
+        per episode, which meant one uncached `episodes/{id}/translations/{lang}`
+        request per episode (an N+1). TVDB v4's `series/{id}/episodes/default/{lang}`
+        bulk endpoint returns every episode's translated name/overview in one
+        (paginated) request, so a season with any number of episodes should only
+        need a single extra request for translations, not one per episode.
+        """
+        mock_tv.return_value = {
+            "media_id": "330000",
+            "source": Sources.TVDB.value,
+            "media_type": MediaTypes.ANIME.value,
+            "title": "Some Show",
+            "original_title": "何かのショー",
+            "localized_title": "Some Show",
+            "image": "https://example.com/show.jpg",
+            "synopsis": "English synopsis",
+            "details": {"episodes": 3},
+            "related": {"seasons": [{"season_number": 1}]},
+            "external_links": {
+                "TVDB": "https://www.thetvdb.com/dereferrer/series/330000",
+            },
+        }
+        mock_request.side_effect = [
+            {
+                "data": {
+                    "id": 330000,
+                    "name": "何かのショー",
+                    "seasons": [
+                        {
+                            "id": 401,
+                            "number": 1,
+                            "name": "Season 1",
+                            "type": {"name": "Aired Order"},
+                        },
+                    ],
+                },
+            },
+            {"data": {}},
+            {
+                "data": {
+                    "id": 401,
+                    "seriesId": 330000,
+                    "number": 1,
+                    "name": "Season 1",
+                    "type": {"name": "Aired Order"},
+                    "episodes": [
+                        {"id": 9001, "number": 1, "name": "第一話"},
+                        {"id": 9002, "number": 2, "name": "第二話"},
+                        {"id": 9003, "number": 3, "name": "第三話"},
+                    ],
+                },
+            },
+            {"data": {}},
+            {
+                "data": {
+                    "episodes": [
+                        {
+                            "id": 9001,
+                            "name": "Episode One",
+                            "overview": "First overview.",
+                        },
+                        {
+                            "id": 9002,
+                            "name": "Episode Two",
+                            "overview": "Second overview.",
+                        },
+                        {
+                            "id": 9003,
+                            "name": "Episode Three",
+                            "overview": "Third overview.",
+                        },
+                    ],
+                },
+                "links": {"next": None},
+            },
+        ]
+
+        result = tvdb.tv_with_seasons(
+            "330000", [1], routed_media_type=MediaTypes.ANIME.value
+        )
+
+        episode_names = [episode["name"] for episode in result["season/1"]["episodes"]]
+        self.assertEqual(
+            episode_names,
+            ["Episode One", "Episode Two", "Episode Three"],
+        )
+
+        requested_paths = [call.args[0] for call in mock_request.call_args_list]
+        self.assertEqual(
+            requested_paths.count("series/330000/episodes/default/eng"),
+            1,
+        )
+        self.assertEqual(len(mock_request.call_args_list), 5)
+        self.assertFalse(
+            any(path.startswith("episodes/") for path in requested_paths),
         )
 
     @override_settings(TVDB_API_KEY="test-tvdb-key")
@@ -517,6 +630,36 @@ class TVDBProviderTests(TestCase):
 
         self.assertEqual(result, "124428")
         mock_request.assert_called_once_with("series/407407/extended")
+
+    @patch("app.providers.tvdb._request")
+    def test_series_tmdb_id_reuses_cached_series_extended_payload(
+        self,
+        mock_request,
+    ):
+        """series_tmdb_id should reuse _get_series_extended's cache, not refetch."""
+        series_payload = {
+            "data": {
+                "id": 81189,
+                "name": "Breaking Bad",
+                "seasons": [],
+                "characters": [],
+                "remoteIds": [
+                    {"sourceName": "TheMovieDB.com", "id": "1396"},
+                ],
+            },
+        }
+        mock_request.side_effect = [
+            series_payload,
+            {"data": {}},
+            series_payload,
+        ]
+
+        tvdb.tv("81189")
+        result = tvdb.series_tmdb_id("81189")
+
+        self.assertEqual(result, "1396")
+        requested_paths = [call.args[0] for call in mock_request.call_args_list]
+        self.assertEqual(requested_paths.count("series/81189/extended"), 1)
 
     @patch("app.providers.tvdb._request")
     def test_get_episode_airstamp_map_caches_precise_episode_times(self, mock_request):

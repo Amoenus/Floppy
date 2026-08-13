@@ -900,6 +900,7 @@ def fetch_and_cache_seasons(media_id, season_numbers, tv_data, language=None):
     result_data = {}
 
     for i in range(0, len(season_numbers), max_seasons_per_request):
+        is_first_batch = i == 0
         season_subset = season_numbers[i : i + max_seasons_per_request]
         append_text = ",".join(
             template.format(season=season)
@@ -907,10 +908,22 @@ def fetch_and_cache_seasons(media_id, season_numbers, tv_data, language=None):
             for template in TV_DETAIL_SEASON_APPEND_RESPONSES
         )
 
-        params = {
-            **base_params(language),
-            "append_to_response": f"{TV_DETAIL_APPEND_RESPONSES},{append_text}",
-        }
+        # The base show fields (recommendations, external_ids,
+        # aggregate_credits, alternative_titles, watch/providers) describe
+        # the show, not a season, so they can't change between batches of
+        # the same fetch. Only the first batch needs to ask TMDB for them;
+        # later batches reuse fetched_tv_data from that first response
+        # instead of paying for it again (#512).
+        if is_first_batch:
+            params = {
+                **base_params(language),
+                "append_to_response": f"{TV_DETAIL_APPEND_RESPONSES},{append_text}",
+            }
+        else:
+            params = {
+                **base_params(language),
+                "append_to_response": append_text,
+            }
 
         try:
             response = services.api_request(
@@ -922,24 +935,26 @@ def fetch_and_cache_seasons(media_id, season_numbers, tv_data, language=None):
         except requests.exceptions.HTTPError as error:
             handle_error(error)
 
-        # Always refresh the root TV payload from the same TMDB response so
-        # season fetches can pick up updated external_ids (including tvdb_id)
-        # even when the show cache already existed before this request.
-        refreshed_tv_data = process_tv(response, media_id=media_id)
-        if not refreshed_tv_data.get("tvdb_id"):
-            discovered_tvdb_id = _discover_tmdb_tvdb_id_from_search(
-                media_id,
-                tv_data=refreshed_tv_data,
-            )
-            if discovered_tvdb_id:
-                refreshed_tv_data, _ = _apply_tvdb_id_override_to_tv_data(
+        if is_first_batch:
+            # Always refresh the root TV payload from the same TMDB response
+            # so season fetches can pick up updated external_ids (including
+            # tvdb_id) even when the show cache already existed before this
+            # request.
+            refreshed_tv_data = process_tv(response, media_id=media_id)
+            if not refreshed_tv_data.get("tvdb_id"):
+                discovered_tvdb_id = _discover_tmdb_tvdb_id_from_search(
                     media_id,
-                    refreshed_tv_data,
+                    tv_data=refreshed_tv_data,
                 )
-        tv_cache_key = _tv_cache_key(media_id, language)
-        if fetched_tv_data is None or fetched_tv_data != refreshed_tv_data:
-            fetched_tv_data = refreshed_tv_data
-            cache.set(tv_cache_key, fetched_tv_data)
+                if discovered_tvdb_id:
+                    refreshed_tv_data, _ = _apply_tvdb_id_override_to_tv_data(
+                        media_id,
+                        refreshed_tv_data,
+                    )
+            tv_cache_key = _tv_cache_key(media_id, language)
+            if fetched_tv_data is None or fetched_tv_data != refreshed_tv_data:
+                fetched_tv_data = refreshed_tv_data
+                cache.set(tv_cache_key, fetched_tv_data)
 
         # Process and cache each season
         for season_number in season_subset:

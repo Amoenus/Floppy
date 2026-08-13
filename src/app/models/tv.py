@@ -1226,23 +1226,30 @@ class Season(Media):
             # Extract release_datetime from episode air_date
             air_date = matched_episode.get("air_date")
             if air_date:
-                from datetime import datetime
+                from datetime import UTC, datetime
 
                 from django.utils import timezone
 
                 try:
-                    # TMDB returns dates in YYYY-MM-DD format (string)
+                    # Providers return a date-only value (TMDB as a
+                    # "YYYY-MM-DD" string, TVDB sometimes as a naive
+                    # datetime) with no real-world timezone attached - it's
+                    # a calendar date, not a local wall-clock moment. Anchor
+                    # it to UTC rather than the server's configured
+                    # TIME_ZONE: using the server's local zone here shifted
+                    # dates by that zone's UTC offset (e.g. Europe/Berlin's
+                    # +2h in summer pushed a July 15 air date to July 14
+                    # 22:00 UTC), which can flip the calendar date shown to
+                    # users depending on deployment timezone.
                     if isinstance(air_date, str):
                         date_obj = datetime.strptime(air_date, "%Y-%m-%d")  # noqa: DTZ007  # date-only value; no timezone applies
-                        release_datetime = timezone.make_aware(
-                            date_obj, timezone.get_current_timezone()
-                        )
+                        release_datetime = date_obj.replace(tzinfo=UTC)
                     elif hasattr(air_date, "year"):
                         # Already a datetime object
                         release_datetime = (
                             air_date
                             if timezone.is_aware(air_date)
-                            else timezone.make_aware(air_date)
+                            else air_date.replace(tzinfo=UTC)
                         )
                 except (ValueError, TypeError):
                     # If parsing fails, keep release_datetime as None

@@ -27,6 +27,16 @@ TOKEN_CACHE_TIMEOUT = 60 * 60 * 12
 TVDB_METADATA_CACHE_TIMEOUT = 60 * 60 * 12
 PREFERRED_TRANSLATION_CODES = ("eng", "en", "eng-us", "en-us")
 
+# TVDB v4 paginates `series/{id}/episodes/default/{lang}` at 500 rows/page;
+# this bounds how many pages `_fetch_series_episode_translations` will follow
+# so a malformed/looping `links.next` can't turn into an unbounded fetch.
+EPISODE_TRANSLATIONS_MAX_PAGES = 50
+
+# Sentinel distinguishing "no preloaded translation was passed" (fall back to
+# the per-entity HTTP fetch) from "a preload was passed and came back empty"
+# (skip the fetch, there's nothing to apply). `None` is a valid empty preload.
+_NO_PRELOADED_TRANSLATION = object()
+
 # ISO 639-1 -> TVDB's ISO 639-2/B three-letter language codes.
 # Covers the languages TMDB_LANG is realistically set to; unmapped codes fall
 # back to English.
@@ -400,17 +410,92 @@ def _get_translation(entity_type: str, entity_id: Any, *, language: str | None =
     return payload
 
 
+def _fetch_series_episode_translations(series_id: Any, language: str) -> dict[str, dict]:
+    """Return every episode's translated name/overview for a series, id-keyed.
+
+    TVDB v4's `series/{id}/episodes/default/{lang}` bulk endpoint returns
+    every episode across all seasons already translated into `language`, up
+    to 500 episodes per page - one or two requests total even for TVDB's
+    largest shows, instead of the one-request-per-episode approach this
+    replaces. Missing translations come back as `null` name/overview (mirrors
+    a 404 from the single-episode `translations/{lang}` endpoint), so those
+    episodes are simply left out of the returned map.
+    """
+    translations: dict[str, dict] = {}
+    page = 0
+    while page < EPISODE_TRANSLATIONS_MAX_PAGES:
+        try:
+            raw_response = _request(
+                f"series/{series_id}/episodes/default/{language}",
+                params={"page": page},
+            )
+        except services.ProviderAPIError:
+            break
+
+        response = _unwrap_data(raw_response) or {}
+        rows = response.get("episodes") or []
+        for row in rows:
+            if not isinstance(row, dict) or row.get("id") is None:
+                continue
+            entry = {
+                key: value
+                for key, value in (
+                    ("name", _normalize_text_value(row.get("name"))),
+                    ("overview", _normalize_text_value(row.get("overview"))),
+                )
+                if value
+            }
+            if entry:
+                entry["language"] = language
+                translations[str(row["id"])] = entry
+
+        links = raw_response.get("links") if isinstance(raw_response, dict) else None
+        if not rows or not isinstance(links, dict) or not links.get("next"):
+            break
+        page += 1
+
+    return translations
+
+
+def _get_series_episode_translations(series_id: Any, language: str) -> dict[str, dict]:
+    """Return a cached id -> translation map for every episode in a series."""
+    if not series_id:
+        return {}
+
+    cache_key = _cache_key("series_episode_translations", series_id, language)
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    translations = _fetch_series_episode_translations(series_id, language)
+    cache.set(cache_key, translations)
+    return translations
+
+
 def _with_preferred_translation(
-    row: dict | None, entity_type: str, language: str | None = None
+    row: dict | None,
+    entity_type: str,
+    language: str | None = None,
+    *,
+    preloaded_translation=_NO_PRELOADED_TRANSLATION,
 ):
-    """Attach the preferred translation payload to a TVDB entity."""
+    """Attach the preferred translation payload to a TVDB entity.
+
+    `preloaded_translation`, when passed, is used as-is instead of fetching
+    one over HTTP. This lets bulk-translation callers (see
+    `_normalize_episode_rows`) avoid a per-entity request entirely.
+    """
     row = row or {}
     entity_id = row.get("id")
     if not entity_id:
         return row
 
     language = _preferred_language_code(language)
-    translation = _get_translation(entity_type, entity_id, language=language)
+    translation = (
+        _get_translation(entity_type, entity_id, language=language)
+        if preloaded_translation is _NO_PRELOADED_TRANSLATION
+        else preloaded_translation
+    )
     if not isinstance(translation, dict) or not translation:
         return row
 
@@ -855,13 +940,39 @@ def _build_series_metadata(series_data: dict, *, media_type: str, language: str 
     }
 
 
-def _normalize_episode_rows(season_data: dict | None, language: str | None = None):
-    """Return normalized episode rows for a season."""
+def _normalize_episode_rows(
+    season_data: dict | None, language: str | None = None, *, series_id: Any = None
+):
+    """Return normalized episode rows for a season.
+
+    Episode name/overview translations are fetched once for the whole series
+    (see `_get_series_episode_translations`) rather than once per episode -
+    the previous per-episode fetch was an N+1 that, on a cold cache, cost one
+    rate-limited HTTP round trip per episode.
+    """
+    episode_rows = _coerce_list((season_data or {}).get("episodes"))
+    resolved_language = _preferred_language_code(language)
+    translations_by_id = (
+        _get_series_episode_translations(series_id, resolved_language)
+        if series_id and episode_rows
+        else None
+    )
+
     normalized = []
-    for episode in _coerce_list((season_data or {}).get("episodes")):
+    for episode in episode_rows:
         if not isinstance(episode, dict):
             continue
-        episode = _with_preferred_translation(episode, "episodes", language)  # noqa: PLW2901  # deliberate in-loop normalisation
+        # Without a series_id we can't batch, so fall back to the (slower but
+        # correct) per-episode fetch inside `_with_preferred_translation`
+        # rather than silently dropping translations.
+        preloaded = (
+            translations_by_id.get(str(episode.get("id")))
+            if translations_by_id is not None
+            else _NO_PRELOADED_TRANSLATION
+        )
+        episode = _with_preferred_translation(  # noqa: PLW2901  # deliberate in-loop normalisation
+            episode, "episodes", language, preloaded_translation=preloaded,
+        )
         air_date = (
             _parse_date(episode.get("aired"))
             or _parse_date(episode.get("firstAired"))
@@ -896,7 +1007,9 @@ def _normalize_season_metadata(
     series_data: dict, season_data: dict, *, media_type: str, language: str | None = None
 ):
     """Return normalized season metadata."""
-    episodes = _normalize_episode_rows(season_data, language)
+    episodes = _normalize_episode_rows(
+        season_data, language, series_id=series_data.get("id")
+    )
     runtimes = [
         episode["runtime"]
         for episode in episodes
@@ -1112,18 +1225,14 @@ def series_tmdb_id(series_id):
     if series_id in (None, ""):
         return None
 
-    cache_key = _cache_key("series_tmdb_id", series_id)
-    cached = cache.get(cache_key)
-    if cached is not None:
-        return cached
-
-    series_data = _unwrap_data(_request(f"series/{series_id}/extended")) or {}
+    # Reuse _get_series_extended's own 12h cache instead of independently
+    # re-fetching and caching the same endpoint under a separate key.
+    series_data = _get_series_extended(series_id, MediaTypes.TV.value)
     tmdb_id = _get_remote_ids_map(series_data).get("tmdb_id")
     if not tmdb_id:
         logger.debug("TVDB series metadata has no TMDB ID for %s", series_id)
         return None
 
-    cache.set(cache_key, tmdb_id)
     return tmdb_id
 
 
