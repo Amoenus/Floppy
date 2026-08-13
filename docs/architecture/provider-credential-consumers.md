@@ -53,19 +53,22 @@ stripped. Last.fm is the only family below without a `_FILE` input.
 | SIMKL | `SIMKL_ID` | `SIMKL_ID_FILE` | non-empty shared client ID |
 | SIMKL | `SIMKL_SECRET` | `SIMKL_SECRET_FILE` | non-empty shared client secret |
 
-The intended order is primary environment, `_FILE` contents, then built-in
-fallback. The current expression is `config(PRIMARY,
+The current value order is explicit primary environment, `_FILE` contents, then
+built-in fallback. The expression is `config(PRIMARY,
 default=secret(FILE, fallback))`. Python evaluates `secret(...)` before calling
-`config(...)`. A configured primary value therefore does **not** protect startup
-from a configured but unreadable `_FILE`; the file read can raise first. A
-future resolver must preserve the intended order without preserving that eager
-evaluation failure.
+`config(...)`, so a configured primary value does **not** protect startup from
+a configured but unreadable `_FILE`; the file read can raise first.
+
+The future value order is **explicit environment -> `_FILE` -> app-managed ->
+built-in/default**. Compatibility also requires preserving the current eager
+startup failure exactly: initialization must read and validate a configured
+`_FILE` even when an explicit environment value will win value resolution.
 
 ## Direct consumers
 
-These are all production Python files that directly read one of the settings
-above at `de20dd2e`. Calls through one of these files are covered in the next
-section.
+These are the production Python files found by the direct settings-read scan at
+`de20dd2e`. The separate operation-boundary map below records verified indirect
+paths by category; it is not presented as a complete static call graph.
 
 | Family | Direct settings consumers |
 |---|---|
@@ -93,22 +96,36 @@ credential read above occurs inside a function, method, or instance
 initializer. A runtime-editable credential cannot take effect in that TMDB
 adapter until this module-scope capture is removed or rebuilt.
 
-### OAuth, imports, tasks, and commands
+### Verified indirect operation boundaries
 
-- Trakt, AniList, and SIMKL OAuth redirects in `src/integrations/views.py` use
-  the instance client IDs. Their token exchanges live in the matching modules
-  under `src/integrations/imports/` and use the instance client secrets.
-- MAL, Steam, Trakt, AniList, and SIMKL imports read through their importer
-  modules. Celery entry points in `src/integrations/tasks/_media_imports.py`
-  call those importers. Last.fm tasks in `src/integrations/tasks/_lastfm.py`
-  call `src/integrations/lastfm_api.py`.
-- `src/app/tasks_trakt.py` calls the Trakt provider for popularity and episode
-  rating work. `src/lists/tasks.py` calls the Trakt list importer.
-- `backfill_discover_metadata` reads TMDB directly.
-  `backfill_trakt_popularity` calls the Trakt provider, which reads the instance
-  Trakt client ID.
-- `src/users/views.py` and `src/users/onboarding_views.py` use the Trakt client
-  ID/secret pair to decide whether the private-profile import can be offered.
+This category map records the contexts that must be exercised when consumers
+move to the resolver. It names concrete verified edges without claiming that
+every possible dynamic provider call is statically enumerable.
+
+| Context | Verified indirect consumers and behavior |
+|---|---|
+| Interactive routing | `src/app/providers/services.py` dispatches search and metadata work to TMDB, TVDB, MAL, IGDB, BGG, Hardcover, and Comic Vine. `src/app/services/metadata_resolution.py` filters TVDB availability. Verified callers include `src/app/search_views.py`, metadata/detail/people views, `src/api/views.py`, `src/lists/views_recommendations.py`, and `src/lists/views_add_reorder.py`. |
+| Discover and statistics | `src/app/discover/provider_candidates.py` and the TMDB/Trakt adapters fetch credentialed rows. `src/app/statistics_views.py` calls `tvdb.enabled()` for its page contexts. |
+| TVDB background work | `src/app/tasks_genre.py` gates genre backfill on `tvdb.enabled()` and calls TVDB lookup/genre helpers. `src/app/tasks_metadata_cache.py` derives TVDB metadata cache keys. `src/app/tasks_tv_provider_migration.py` and `src/app/services/tv_provider_migration.py` gate and fetch TVDB migration data. |
+| Other background work | `src/app/tasks_trakt.py` calls the Trakt provider for popularity and episode ratings. `src/app/tasks_providers.py`, `src/app/tasks_episode.py`, and `src/app/tasks_metadata_cache.py` fetch through provider services. Calendar modules under `src/events/calendar/` use provider services and direct TMDB, TVDB, MAL, and Comic Vine modules. Last.fm tasks in `src/integrations/tasks/_lastfm.py` call `src/integrations/lastfm_api.py`. |
+| OAuth and imports | Trakt, AniList, and SIMKL redirects in `src/integrations/views.py` use instance client IDs; matching modules under `src/integrations/imports/` exchange tokens with instance secrets. MAL, Steam, Trakt, AniList, and SIMKL Celery entry points in `src/integrations/tasks/_media_imports.py` call their importers. Plex, SIMKL, and Trakt importers also call TVDB where source mapping requires it. |
+| Webhooks and API ingestion | `src/integrations/webhooks/base.py` uses TVDB for anime/source resolution. `src/integrations/webhooks/plex.py`, `src/integrations/webhooks/stremio.py`, `src/api/fork_views_playback.py`, and `src/api/fork_views_scrobble.py` call TMDB directly or through provider services. |
+| Cache and migration operations | `src/app/metadata_sync_views.py` derives TVDB invalidation keys. `src/app/management/commands/merge_duplicate_provider_items.py` checks TVDB availability before provider-item work. |
+| Management backfills | `backfill_discover_metadata` reads TMDB directly. `backfill_trakt_popularity` calls the Trakt provider, which reads the instance Trakt client ID. |
+
+Configuration inference is also observable UI behavior:
+
+- `src/users/views.py` computes `tvdb_enabled` through metadata resolution for
+  `src/templates/users/preferences.html`.
+- `src/app/statistics_views.py` computes `tvdb_enabled` through
+  `tvdb.enabled()` for `src/templates/app/statistics.html`.
+- `src/users/views.py` and `src/users/onboarding_views.py` compute
+  `trakt_configured` from the instance Trakt pair for
+  `src/templates/users/import_data.html` and
+  `src/templates/users/onboarding/components/connect_trakt.html`.
+- `src/lists/views_list_browse.py` computes `trakt_has_credentials` from the
+  per-user `TraktAccount` for `src/templates/lists/custom_lists.html`. This is
+  the per-user exception below, not instance resolver state.
 
 ### Existing per-user Trakt exception
 
@@ -124,6 +141,8 @@ not replace, migrate, or reinterpret `TraktAccount` ciphertext.
 
 ## Cache and token invalidation boundaries
 
+Current behavior uses static bearer-token keys:
+
 - IGDB caches its client-credentials bearer token under
   `igdb_access_token`. It deletes that key after an unauthorized response and
   otherwise retains it until the provider-reported expiry minus 60 seconds.
@@ -134,12 +153,19 @@ not replace, migrate, or reinterpret `TraktAccount` ciphertext.
 - Other provider response caches are not credential stores. Changing a
   credential should not imply a global cache clear.
 
-Since PR #735, these keys live in Django's default cache at
+Since PR #735, these static keys live in Django's default cache at
 `REDIS_CACHE_URL` (falling back to `REDIS_URL`). Celery queue state uses
 `CELERY_BROKER_URL`, and Celery results use `CELERY_RESULT_BACKEND`, each
-falling back to `REDIS_URL`. Credential invalidation must target the Django
-cache alias and the exact IGDB/TVDB token key; it must not flush a Redis server
-or assume cache, broker, and result storage share a URL.
+falling back to `REDIS_URL`. Cache, broker, and result storage cannot be assumed
+to share a URL.
+
+Future IGDB and TVDB bearer caches must be namespaced by the resolver's
+`configuration_version`; the current static key names are not the future
+contract. A successful credential change captures the old
+`configuration_version`, commits the new configuration, invalidates only the
+old version's affected bearer-token namespace, and invalidates non-secret
+resolver state across workers so they observe the new version. It must never
+globally clear Django's cache or flush Redis.
 
 ## Current Settings boundary
 
@@ -194,15 +220,20 @@ The reviewed domain label is **Metadata & provider tokens**.
 Implement one provider-credential resolver used by every consumer in this
 inventory. It must:
 
-1. resolve the stored instance value first, then primary environment, then
-   `_FILE`, then the current built-in fallback;
-2. preserve environment names, `_FILE` behavior, and built-in fallbacks for
-   existing installations;
-3. expose a narrow, reviewed allowlist for the few settings accesses that must
-   remain direct; every other direct read above moves behind the resolver;
-4. remove module-scope credential capture;
-5. invalidate only the affected IGDB or TVDB bearer-token cache key after a
-   successful change; and
+1. resolve values in this order: explicit environment, `_FILE`, app-managed,
+   built-in/default;
+2. preserve the eager configured-`_FILE` startup read/failure, environment
+   names, `_FILE` path behavior, and built-in fallbacks;
+3. allow direct credential access only during `src/config/settings.py`
+   initialization and inside resolver internals. There are no current
+   operator-only runtime consumer exceptions. Any future operator-only
+   exception must be named by exact module, symbol, and setting in this
+   document and in the direct-access contract test before it is allowed;
+4. move every current runtime direct read behind the resolver and remove
+   module-scope credential capture;
+5. use `configuration_version`-namespaced IGDB/TVDB bearer caches, invalidate
+   the captured old version's affected namespace, and invalidate non-secret
+   resolver state across workers without a global cache clear; and
 6. leave existing ciphertext and persisted data unchanged, including
    `TraktAccount` and encrypted OAuth/task values. No data rewrite is part of
    this contract.
