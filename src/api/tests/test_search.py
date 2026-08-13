@@ -45,8 +45,22 @@ class SearchTests(FloppyApiTestCase):
     def test_search_returns_paginated_payload(self, mock_search):
         """Search endpoint should return paginated response with provider data."""
         mock_search.return_value = {
-            "results": [{"id": 1, "title": "Example"}],
-            "total_results": 1,
+            "results": [
+                {
+                    "media_id": 1,
+                    "media_type": "movie",
+                    "title": "Integer ID",
+                    "image": None,
+                    "provider_extension": "preserved",
+                },
+                {
+                    "media_id": "tt0133093",
+                    "media_type": "movie",
+                    "title": "String ID",
+                    "image": "https://example.test/poster.jpg",
+                },
+            ],
+            "total_results": 2,
             "total_pages": 1,
         }
 
@@ -62,6 +76,9 @@ class SearchTests(FloppyApiTestCase):
         self.assertIn("pagination", payload)
         self.assertIn("results", payload)
         check_pagination_structure(self, payload["pagination"])
+        self.assertIsInstance(payload["results"][0]["media_id"], int)
+        self.assertIsInstance(payload["results"][1]["media_id"], str)
+        self.assertEqual(payload["results"][0]["provider_extension"], "preserved")
 
     @patch("api.views.services.search")
     def test_search_passes_query_params_to_provider(self, mock_search):

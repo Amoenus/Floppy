@@ -138,6 +138,14 @@ class MediaEpisodeTests(FloppyApiTestCase):
         self.assertEqual(payload["source"], tv_item.source)
         self.assertIn("consumptions", payload)
         self.assertIn("lists", payload)
+        self.assertEqual(
+            payload["details"]["season_number"], season_item.season_number
+        )
+        self.assertEqual(
+            payload["details"]["episode_number"], episode_item.episode_number
+        )
+        self.assertNotIn("season_number", payload)
+        self.assertNotIn("episode_number", payload)
 
     @patch("api.views.services.get_media_metadata")
     def test_episode_detail_patch_with_invalid_field_returns_400(self, mock_metadata):

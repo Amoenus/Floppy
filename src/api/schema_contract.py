@@ -1,12 +1,343 @@
 import ast
 import re
 from collections.abc import Iterable
+from functools import wraps
 from typing import Any, NamedTuple
+
+from floppy_mcp.http_manifest import MCP_HTTP_MANIFEST
+
+from api.contract_serializers import InfoResponseSerializer
 
 SCHEMA_REGENERATION_COMMAND = (
     "SECRET=<value> uv run --no-sync python src/manage.py spectacular "
-    "--validate --file src/api/contracts/openapi.yaml"
+    "--custom-settings api.schema_contract.STATIC_SPECTACULAR_SETTINGS "
+    "--fail-on-warn --validate --file src/api/contracts/openapi.yaml"
 )
+
+VERIFIED_OPERATIONS = frozenset(
+    {(route.path, route.method.upper()) for route in MCP_HTTP_MANIFEST}
+    | {
+        ("/api/v1/info/", "GET"),
+        ("/apis/listenbrainz/1/submit-listens/", "POST"),
+        ("/apis/listenbrainz/1/validate-token/", "GET"),
+    }
+)
+
+STATIC_SPECTACULAR_SETTINGS = {
+    "TITLE": "Floppy verified MCP and grounding API",
+    "DESCRIPTION": (
+        "Verified consumer subset covering MCP HTTP operations, public grounding "
+        "information, and ListenBrainz-compatible authentication. The full "
+        "diagnostic API schema remains available at /api/schema/."
+    ),
+    "VERSION": "1.0.0",
+    "COMPONENT_SPLIT_PATCH": False,
+    "SERVERS": [{"url": "../"}],
+    "PREPROCESSING_HOOKS": ["api.schema_contract.filter_verified_endpoints"],
+    "POSTPROCESSING_HOOKS": [
+        "drf_spectacular.hooks.postprocess_schema_enums",
+        "api.schema_contract.label_verified_schema",
+    ],
+}
+
+_OBJECT_SCHEMA = {"type": "object", "additionalProperties": True}
+_ARRAY_SCHEMA = {"type": "array", "items": _OBJECT_SCHEMA}
+_TRACKED_MEDIA_REF = {"$ref": "#/components/schemas/TrackedMediaResponse"}
+_TRACKED_MEDIA_ENVELOPE_REF = {
+    "$ref": "#/components/schemas/TrackedMediaEnvelope"
+}
+_TAG_SCHEMA = {
+    "type": "object",
+    "required": ["id", "name", "created_at"],
+    "properties": {
+        "id": {"type": "integer"},
+        "name": {"type": "string"},
+        "created_at": {"type": "string", "format": "date-time"},
+        "item_count": {"type": "integer"},
+    },
+}
+_TAG_RESULTS_SCHEMA = {
+    "type": "object",
+    "required": ["results"],
+    "properties": {"results": {"type": "array", "items": _TAG_SCHEMA}},
+}
+_PAGINATED_SCHEMA = {
+    "type": "object",
+    "required": ["pagination", "results"],
+    "properties": {
+        "pagination": {
+            "type": "object",
+            "required": ["total", "limit", "offset", "next", "previous"],
+            "properties": {
+                "total": {"type": "integer"},
+                "limit": {"type": "integer"},
+                "offset": {"type": "integer"},
+                "next": {"type": "string", "nullable": True},
+                "previous": {"type": "string", "nullable": True},
+            },
+        },
+        "results": _ARRAY_SCHEMA,
+    },
+}
+_LIST_SCHEMA = {
+    "type": "object",
+    "required": [
+        "id",
+        "name",
+        "description",
+        "image",
+        "owner",
+        "collaborators",
+        "items_count",
+        "latest_update",
+        "is_public",
+        "public_slug",
+        "allow_recommendations",
+    ],
+    "properties": {
+        "id": {"type": "integer"},
+        "name": {"type": "string"},
+        "description": {"type": "string"},
+        "image": {"type": "string", "nullable": True},
+        "owner": {"type": "object", "additionalProperties": True},
+        "collaborators": _ARRAY_SCHEMA,
+        "items_count": {"type": "integer"},
+        "latest_update": {"type": "string", "format": "date-time"},
+        "is_public": {"type": "boolean"},
+        "public_slug": {"type": "string", "nullable": True},
+        "allow_recommendations": {"type": "boolean"},
+        "items": {"oneOf": [_ARRAY_SCHEMA, _PAGINATED_SCHEMA]},
+    },
+}
+_LIST_PAGINATED_SCHEMA = {
+    **_PAGINATED_SCHEMA,
+    "properties": {
+        **_PAGINATED_SCHEMA["properties"],
+        "results": {"type": "array", "items": _LIST_SCHEMA},
+    },
+}
+_MINIMIZED_LIST_ARRAY_SCHEMA = {
+    "type": "array",
+    "items": {
+        "type": "object",
+        "required": ["list_id", "list_item_id"],
+        "properties": {
+            "list_id": {"type": "integer"},
+            "list_item_id": {"type": "integer", "nullable": True},
+        },
+    },
+}
+
+_STATIC_OPERATION_OVERRIDES = {
+    ("/api/v1/info/", "GET"): {
+        "operation_id": "getPublicInfo",
+        "responses": {200: InfoResponseSerializer},
+    },
+    ("/api/v1/lists/", "GET"): {"responses": {200: _LIST_PAGINATED_SCHEMA}},
+    ("/api/v1/lists/", "POST"): {"responses": {201: _LIST_SCHEMA}},
+    ("/api/v1/lists/{list_id}/", "PATCH"): {"responses": {200: _LIST_SCHEMA}},
+    ("/api/v1/lists/{list_id}/", "DELETE"): {"responses": {204: None}},
+    ("/api/v1/lists/{list_id}/items/", "GET"): {
+        "responses": {200: _TRACKED_MEDIA_ENVELOPE_REF}
+    },
+    ("/api/v1/media/{media_type}/{source}/{media_id}/lists/{list_id}/", "PUT"): {
+        "responses": {200: _MINIMIZED_LIST_ARRAY_SCHEMA}
+    },
+    (
+        "/api/v1/media/{media_type}/{source}/{media_id}/lists/{list_id}/",
+        "DELETE",
+    ): {"responses": {204: None}},
+    ("/api/v1/media/{media_type}/{source}/{media_id}/tags/", "GET"): {
+        "responses": {200: _TAG_RESULTS_SCHEMA}
+    },
+    ("/api/v1/media/{media_type}/{source}/{media_id}/tags/", "PUT"): {
+        "responses": {200: _TAG_RESULTS_SCHEMA}
+    },
+    ("/api/v1/history/", "GET"): {"responses": {200: _PAGINATED_SCHEMA}},
+    ("/api/v1/tags/", "GET"): {"responses": {200: _TAG_RESULTS_SCHEMA}},
+    ("/api/v1/tags/", "POST"): {"responses": {201: _TAG_SCHEMA}},
+    ("/api/v1/tags/{tag_id}/", "PATCH"): {"responses": {200: _TAG_SCHEMA}},
+    ("/api/v1/tags/{tag_id}/", "DELETE"): {"responses": {204: None}},
+    ("/api/v1/tasks/{task_id}/", "GET"): {
+        "responses": {
+            200: {
+                "type": "object",
+                "required": ["task_id", "status"],
+                "properties": {
+                    "task_id": {"type": "string"},
+                    "task_name": {"type": "string", "nullable": True},
+                    "status": {"type": "string"},
+                    "date_created": {
+                        "type": "string",
+                        "format": "date-time",
+                        "nullable": True,
+                    },
+                    "date_done": {
+                        "type": "string",
+                        "format": "date-time",
+                        "nullable": True,
+                    },
+                    "result": {"type": "string", "nullable": True},
+                },
+            }
+        }
+    },
+    ("/api/v1/discover/", "GET"): {
+        "responses": {
+            200: {
+                "type": "object",
+                "required": ["media_type", "show_more", "rows"],
+                "properties": {
+                    "media_type": {"type": "string"},
+                    "show_more": {"type": "boolean"},
+                    "rows": _ARRAY_SCHEMA,
+                },
+            }
+        }
+    },
+    ("/api/v1/home/", "GET"): {
+        "responses": {
+            200: {
+                "type": "object",
+                "required": ["groups"],
+                "properties": {"groups": _ARRAY_SCHEMA},
+            }
+        }
+    },
+    ("/api/v1/user/preferences/", "GET"): {
+        "responses": {
+            200: {
+                "type": "object",
+                "required": ["preferences", "choices"],
+                "properties": {
+                    "preferences": _OBJECT_SCHEMA,
+                    "choices": _OBJECT_SCHEMA,
+                },
+            }
+        }
+    },
+    ("/api/v1/user/preferences/", "PATCH"): {
+        "responses": {
+            200: {
+                "type": "object",
+                "required": ["preferences", "updated_fields"],
+                "properties": {
+                    "preferences": _OBJECT_SCHEMA,
+                    "updated_fields": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                    },
+                },
+            }
+        }
+    },
+    ("/api/v1/imports/{service}/", "POST"): {
+        "responses": {
+            202: {
+                "type": "object",
+                "required": ["task_id"],
+                "properties": {"task_id": {"type": "string"}},
+            }
+        }
+    },
+    ("/api/v1/statistics/overview/", "GET"): {
+        "responses": {
+            200: {
+                "type": "object",
+                "required": ["range", "statistics"],
+                "properties": {
+                    "range": _OBJECT_SCHEMA,
+                    "statistics": _OBJECT_SCHEMA,
+                },
+            }
+        }
+    },
+    (
+        "/api/v1/media/{media_type}/{source}/{media_id}/progress/",
+        "POST",
+    ): {"responses": {200: _TRACKED_MEDIA_REF}},
+    (
+        "/api/v1/media/{media_type}/{source}/{media_id}/{season_number}/progress/",
+        "POST",
+    ): {"responses": {200: _TRACKED_MEDIA_REF}},
+    (
+        "/api/v1/media/{media_type}/{source}/{media_id}/{season_number}/"
+        "episodes/{episode_number}/watch/",
+        "POST",
+    ): {"responses": {201: _TRACKED_MEDIA_REF}},
+    ("/api/v1/music/songs/plays/", "POST"): {
+        "responses": {201: _TRACKED_MEDIA_REF}
+    },
+    ("/api/v1/podcasts/episodes/plays/", "POST"): {
+        "responses": {200: _TRACKED_MEDIA_REF, 201: _TRACKED_MEDIA_REF}
+    },
+}
+
+_STATIC_OPERATION_IDS = {
+    ("/api/v1/media/{media_type}/{source}/{media_id}/", "DELETE"): "deleteMedia",
+    (
+        "/api/v1/media/{media_type}/{source}/{media_id}/{season_number}/",
+        "DELETE",
+    ): "deleteMediaSeason",
+    (
+        "/api/v1/media/{media_type}/{source}/{media_id}/{season_number}/"
+        "{episode_number}/",
+        "DELETE",
+    ): "deleteMediaEpisode",
+    (
+        "/api/v1/media/{media_type}/{source}/{media_id}/progress/",
+        "POST",
+    ): "updateMediaProgress",
+    (
+        "/api/v1/media/{media_type}/{source}/{media_id}/{season_number}/progress/",
+        "POST",
+    ): "updateMediaSeasonProgress",
+}
+
+
+def _annotate_static_callback(endpoint):
+    """Clone one callback so static-only overrides cannot alter `/api/schema/`."""
+    from drf_spectacular.utils import extend_schema
+
+    path, path_regex, method, callback = endpoint
+    overrides = dict(_STATIC_OPERATION_OVERRIDES.get((path, method), {}))
+    if operation_id := _STATIC_OPERATION_IDS.get((path, method)):
+        overrides["operation_id"] = operation_id
+    if not overrides:
+        return endpoint
+    if method not in {"GET", "DELETE"} and "request" not in overrides:
+        overrides["request"] = {"application/json": _OBJECT_SCHEMA}
+
+    original = getattr(callback.cls, method.lower())
+
+    @wraps(original)
+    def annotated(*args, **kwargs):
+        return original(*args, **kwargs)
+
+    if hasattr(annotated, "kwargs"):
+        annotated.kwargs = dict(annotated.kwargs)
+    scoped_method = extend_schema(**overrides)(annotated)
+    scoped_class = type(
+        f"Static{callback.cls.__name__}",
+        (callback.cls,),
+        {"__module__": callback.cls.__module__, method.lower(): scoped_method},
+    )
+    return path, path_regex, method, scoped_class.as_view(**callback.initkwargs)
+
+
+def filter_verified_endpoints(endpoints):
+    """Keep only the manifest-owned and explicit grounding operations."""
+    return [
+        _annotate_static_callback(endpoint)
+        for endpoint in endpoints
+        if (endpoint[0], endpoint[2].upper()) in VERIFIED_OPERATIONS
+    ]
+
+
+def label_verified_schema(result, **_kwargs):
+    """Make the committed artifact's deliberately limited scope machine-readable."""
+    result["x-floppy-scope"] = "verified-mcp-and-grounding-subset"
+    return result
 
 type SchemaFinding = tuple[str, str]
 
@@ -352,13 +683,6 @@ _EXPECTED_OPERATION_ID_COLLISIONS = (
         ),
     ),
     (
-        "api_v1_media_retrieve",
-        (
-            ("/api/v1/media/", "get"),
-            ("/api/v1/media/{media_type}/", "get"),
-        ),
-    ),
-    (
         "api_v1_media_sync_create",
         (
             ("/api/v1/media/{media_type}/{source}/{media_id}/sync/", "post"),
@@ -398,18 +722,6 @@ _EXPECTED_OPERATION_ID_COLLISIONS = (
 
 EXPECTED_SCHEMA_WARNINGS: frozenset[SchemaFinding] = frozenset(
     {
-        (
-            "api.listenbrainz_views.SubmitListensView"
-            "[authenticator=api.authentication.ListenBrainzTokenAuthentication]",
-            "authentication-unresolved",
-        ),
-        (
-            "api.listenbrainz_views.ValidateTokenView"
-            "[authenticator=api.authentication.ListenBrainzTokenAuthentication]",
-            "authentication-unresolved",
-        ),
-    }
-    | {
         (f"operation-id.{operation_id}{members!r}", "operation-id-collision")
         for operation_id, members in _EXPECTED_OPERATION_ID_COLLISIONS
     }
@@ -472,6 +784,22 @@ def generate_schema_contract() -> SchemaContract:
 
     reset_generator_stats()
     with GENERATOR_STATS.silence():
+        schema = SchemaGenerator().get_schema(public=True)
+    return SchemaContract(
+        schema=schema,
+        errors=normalize_schema_findings(GENERATOR_STATS._error_cache),
+        warnings=normalize_schema_findings(GENERATOR_STATS._warn_cache),
+    )
+
+
+def generate_static_schema_contract() -> SchemaContract:
+    """Generate the filtered, consumer-facing contract in memory."""
+    from drf_spectacular.drainage import GENERATOR_STATS, reset_generator_stats
+    from drf_spectacular.generators import SchemaGenerator
+    from drf_spectacular.settings import patched_settings
+
+    reset_generator_stats()
+    with patched_settings(STATIC_SPECTACULAR_SETTINGS), GENERATOR_STATS.silence():
         schema = SchemaGenerator().get_schema(public=True)
     return SchemaContract(
         schema=schema,

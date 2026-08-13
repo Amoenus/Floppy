@@ -238,54 +238,6 @@ SPECTACULAR_SETTINGS = {
         "url": "https://www.gnu.org/licenses/agpl-3.0.html",
     },
     "SERVE_PERMISSIONS": ["rest_framework.permissions.AllowAny"],
-    "APPEND_COMPONENTS": {
-        "schemas": {
-            "Consumption": {
-                "type": "object",
-                "properties": {
-                    "consumption_id": {"type": "integer"},
-                    "status": {"type": "integer", "nullable": True},
-                    "progress": {"type": "number", "nullable": True},
-                },
-            },
-            "Item": {
-                "type": "object",
-                "properties": {
-                    "media_id": {"type": "string"},
-                    "source": {"type": "string"},
-                    "media_type": {"type": "string"},
-                    "title": {"type": "string"},
-                    "consumptions": {
-                        "type": "array",
-                        "items": {"$ref": "#/components/schemas/Consumption"},
-                    },
-                },
-            },
-            "Season": {
-                "allOf": [
-                    {"$ref": "#/components/schemas/Item"},
-                    {
-                        "type": "object",
-                        "properties": {
-                            "season_number": {"type": "integer"},
-                        },
-                    },
-                ],
-            },
-            "Episode": {
-                "allOf": [
-                    {"$ref": "#/components/schemas/Item"},
-                    {
-                        "type": "object",
-                        "properties": {
-                            "season_number": {"type": "integer"},
-                            "episode_number": {"type": "integer"},
-                        },
-                    },
-                ],
-            },
-        },
-    },
 }
 
 if ENABLE_DEBUG_TOOLBAR:

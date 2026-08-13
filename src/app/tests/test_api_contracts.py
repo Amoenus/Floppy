@@ -1,5 +1,6 @@
 import ast
 import inspect
+from urllib.parse import urljoin
 
 import yaml
 from django.conf import settings
@@ -17,8 +18,10 @@ from api.schema_contract import (
     EXPECTED_SCHEMA_ERRORS,
     EXPECTED_SCHEMA_WARNINGS,
     SCHEMA_REGENERATION_COMMAND,
+    VERIFIED_OPERATIONS,
     assert_schema_findings,
     generate_schema_contract,
+    generate_static_schema_contract,
     normalize_schema_findings,
 )
 
@@ -26,6 +29,15 @@ OPENAPI_CONTRACT_PATH = settings.BASE_DIR / "api" / "contracts" / "openapi.yaml"
 
 
 class OpenAPIArtifactTests(SimpleTestCase):
+    @staticmethod
+    def _operations(schema):
+        return {
+            (path, method.upper())
+            for path, path_item in schema["paths"].items()
+            for method in path_item
+            if method in {"get", "post", "put", "patch", "delete"}
+        }
+
     def test_settings_publish_stable_project_metadata(self):
         self.assertEqual(
             settings.SPECTACULAR_SETTINGS,
@@ -41,51 +53,180 @@ class OpenAPIArtifactTests(SimpleTestCase):
                     "url": "https://www.gnu.org/licenses/agpl-3.0.html",
                 },
                 "SERVE_PERMISSIONS": ["rest_framework.permissions.AllowAny"],
-                "APPEND_COMPONENTS": settings.SPECTACULAR_SETTINGS[
-                    "APPEND_COMPONENTS"
-                ],
             },
         )
 
-    def test_committed_contract_is_parseable_and_matches_generation(self):
+    def test_committed_contract_is_exact_verified_generation(self):
         committed = OPENAPI_CONTRACT_PATH.read_bytes()
         parsed = yaml.safe_load(committed)
+        generated = generate_static_schema_contract()
 
         self.assertEqual(parsed["openapi"], "3.0.3")
-        self.assertEqual(
-            committed,
-            OpenApiYamlRenderer().render(generate_schema_contract().schema),
-        )
+        self.assertEqual(generated.errors, frozenset())
+        self.assertEqual(generated.warnings, frozenset())
+        self.assertEqual(self._operations(parsed), VERIFIED_OPERATIONS)
+        self.assertEqual(committed, OpenApiYamlRenderer().render(generated.schema))
 
     @override_settings(VERSION="application-version-must-not-leak")
-    def test_contract_version_is_independent_of_application_version(self):
-        generated = generate_schema_contract().schema
+    def test_contract_is_deterministic_and_independent_of_application_version(self):
+        first = OpenApiYamlRenderer().render(generate_static_schema_contract().schema)
+        second = OpenApiYamlRenderer().render(generate_static_schema_contract().schema)
 
-        self.assertEqual(generated["info"]["version"], "1.0.0")
-        self.assertEqual(
-            OpenApiYamlRenderer().render(generated),
-            OPENAPI_CONTRACT_PATH.read_bytes(),
+        self.assertEqual(first, second)
+        self.assertEqual(first, OPENAPI_CONTRACT_PATH.read_bytes())
+        self.assertEqual(yaml.safe_load(first)["info"]["version"], "1.0.0")
+
+    def test_contract_is_clearly_scoped_and_subpath_safe(self):
+        schema = generate_static_schema_contract().schema
+
+        self.assertIn(
+            "verified consumer subset", schema["info"]["description"].lower()
         )
+        self.assertEqual(
+            schema["x-floppy-scope"], "verified-mcp-and-grounding-subset"
+        )
+        self.assertEqual(schema["servers"], [{"url": "../"}])
 
-    def test_contract_has_useful_canonical_components_and_auth_schemes(self):
-        components = generate_schema_contract().schema["components"]
+        with override_settings(BASE_URL="/floppy"):
+            self.assertEqual(
+                urljoin(
+                    "https://example.test/floppy/api/openapi.yaml",
+                    schema["servers"][0]["url"],
+                ),
+                "https://example.test/floppy/",
+            )
+
+    def test_contract_has_truthful_wire_components_and_auth_schemes(self):
+        components = generate_static_schema_contract().schema["components"]
         schemas = components["schemas"]
 
-        self.assertTrue(
-            {"media_id", "media_type", "title", "consumptions"}
-            <= schemas["Item"]["properties"].keys()
-        )
-        self.assertTrue(
-            {"consumption_id", "status", "progress"}
-            <= schemas["Consumption"]["properties"].keys()
+        self.assertEqual(
+            set(schemas["SearchResult"]["required"]),
+            {"media_id", "media_type", "title", "image"},
         )
         self.assertEqual(
-            schemas["Season"]["allOf"][0]["$ref"],
-            "#/components/schemas/Item",
+            schemas["SearchResult"]["properties"]["media_id"]["oneOf"],
+            [{"type": "string"}, {"type": "integer"}],
         )
         self.assertEqual(
-            schemas["Episode"]["allOf"][0]["$ref"],
-            "#/components/schemas/Item",
+            set(schemas["SearchEnvelope"]["required"]), {"pagination", "results"}
+        )
+        self.assertEqual(
+            set(schemas["TrackMediaRequest"]["properties"]),
+            {
+                "source",
+                "media_id",
+                "title",
+                "image",
+                "image_url",
+                "season_number",
+                "episode_number",
+                "parent_tv",
+                "parent_season",
+                "library_media_type",
+                "score",
+                "status",
+                "progress",
+                "start_date",
+                "end_date",
+                "notes",
+            },
+        )
+        self.assertEqual(
+            set(schemas["MediaUpdateRequest"]["properties"]),
+            {
+                "score",
+                "status",
+                "progress",
+                "start_date",
+                "end_date",
+                "notes",
+                "dropped",
+            },
+        )
+        self.assertEqual(
+            set(schemas["TrackedMediaResponse"]["properties"]),
+            {
+                "id",
+                "consumption_id",
+                "item",
+                "item_id",
+                "parent_id",
+                "tracked",
+                "created_at",
+                "score",
+                "status",
+                "progress",
+                "progressed_at",
+                "start_date",
+                "end_date",
+                "notes",
+                "lists",
+            },
+        )
+        self.assertEqual(
+            set(schemas["ConsumptionResponse"]["properties"]),
+            {
+                "consumption_id",
+                "created",
+                "score",
+                "progress",
+                "progressed_at",
+                "status",
+                "start_date",
+                "end_date",
+                "notes",
+            },
+        )
+        complete_keys = {
+            "id",
+            "media_id",
+            "source",
+            "source_url",
+            "media_type",
+            "title",
+            "max_progress",
+            "image",
+            "synopsis",
+            "genres",
+            "score",
+            "score_count",
+            "details",
+            "related",
+            "item_id",
+            "parent_id",
+            "tracked",
+            "consumptions_number",
+            "consumptions",
+            "lists",
+        }
+        self.assertEqual(
+            set(schemas["CompleteMediaResponse"]["properties"]), complete_keys
+        )
+        self.assertEqual(
+            set(schemas["CompleteEpisodeResponse"]["properties"]), complete_keys
+        )
+        self.assertNotIn(
+            "season_number", schemas["CompleteEpisodeResponse"]["properties"]
+        )
+        self.assertNotIn(
+            "episode_number", schemas["CompleteEpisodeResponse"]["properties"]
+        )
+        self.assertTrue(
+            {"season_number", "episode_number"}
+            <= set(schemas["EpisodeDetails"]["properties"])
+        )
+        self.assertEqual(
+            set(schemas["InfoResponse"]["properties"]),
+            {
+                "version",
+                "debug",
+                "frontend_url",
+                "language",
+                "timezone",
+                "admin_enabled",
+                "track_time",
+            },
         )
         self.assertEqual(
             components["securitySchemes"],
@@ -96,55 +237,130 @@ class OpenAPIArtifactTests(SimpleTestCase):
                     "name": "X-API-Key",
                 },
                 "bearerAuth": {"type": "http", "scheme": "bearer"},
+                "listenBrainzToken": {
+                    "type": "apiKey",
+                    "in": "header",
+                    "name": "Authorization",
+                    "description": "ListenBrainz token in the form `Token <token>`.",
+                },
             },
         )
 
-    def test_critical_operations_use_canonical_components_and_unique_ids(self):
-        paths = generate_schema_contract().schema["paths"]
+    def test_critical_operations_use_exact_requests_responses_and_statuses(self):
+        paths = generate_static_schema_contract().schema["paths"]
         expected = {
-            ("/api/v1/search/{media_type}/", "get"): ("searchMedia", "Item"),
+            ("/api/v1/search/{media_type}/", "get"): (
+                "searchMedia",
+                "SearchEnvelope",
+                {"200", "400", "403", "500"},
+                None,
+            ),
             ("/api/v1/media/{media_type}/", "post"): (
                 "trackMedia",
-                "Consumption",
+                "TrackedMediaResponse",
+                {"201", "400", "403", "404", "409", "500"},
+                "TrackMediaRequest",
             ),
             ("/api/v1/media/{media_type}/{source}/{media_id}/", "get"): (
                 "retrieveMediaItem",
-                "Item",
+                "CompleteMediaResponse",
+                {"200", "400", "403", "404", "500"},
+                None,
             ),
             ("/api/v1/media/{media_type}/{source}/{media_id}/", "patch"): (
                 "updateMediaItem",
-                "Item",
+                "CompleteMediaResponse",
+                {"200", "400", "403", "404", "500"},
+                "MediaUpdateRequest",
             ),
             (
                 "/api/v1/media/{media_type}/{source}/{media_id}/history/"
                 "{consumption_id}/",
                 "patch",
-            ): ("updateMediaConsumption", "Consumption"),
+            ): (
+                "updateMediaConsumption",
+                "ConsumptionResponse",
+                {"200", "400", "403", "404", "500"},
+                "MediaUpdateRequest",
+            ),
             (
                 "/api/v1/media/{media_type}/{source}/{media_id}/{season_number}/",
                 "get",
-            ): ("retrieveMediaSeason", "Season"),
+            ): (
+                "retrieveMediaSeason",
+                "CompleteMediaResponse",
+                {"200", "400", "403", "404", "500"},
+                None,
+            ),
             (
                 "/api/v1/media/{media_type}/{source}/{media_id}/{season_number}/"
                 "{episode_number}/",
                 "get",
-            ): ("retrieveMediaEpisode", "Episode"),
+            ): (
+                "retrieveMediaEpisode",
+                "CompleteEpisodeResponse",
+                {"200", "400", "403", "404", "500"},
+                None,
+            ),
         }
 
-        for (path, method), (operation_id, component) in expected.items():
+        for (path, method), (
+            operation_id,
+            component,
+            statuses,
+            request_component,
+        ) in expected.items():
             with self.subTest(path=path, method=method):
                 operation = paths[path][method]
                 self.assertEqual(operation["operationId"], operation_id)
-                response = operation["responses"]["201" if method == "post" else "200"]
+                self.assertEqual(set(operation["responses"]), statuses)
+                success = "201" if method == "post" else "200"
+                response = operation["responses"][success]
                 schema = response["content"]["application/json"]["schema"]
-                if operation_id == "searchMedia":
-                    schema = schema["properties"]["results"]["items"]
                 self.assertEqual(schema["$ref"], f"#/components/schemas/{component}")
+                if request_component:
+                    request_schema = operation["requestBody"]["content"][
+                        "application/json"
+                    ]["schema"]
+                    self.assertEqual(
+                        request_schema["$ref"],
+                        f"#/components/schemas/{request_component}",
+                    )
                 self.assertEqual(
                     operation["security"],
                     [{"bearerAuth": []}, {"ApiKeyAuth": []}],
                 )
 
+    def test_listenbrainz_and_info_operations_are_exact(self):
+        paths = generate_static_schema_contract().schema["paths"]
+        for path, method, operation_id, statuses in (
+            (
+                "/apis/listenbrainz/1/submit-listens/",
+                "post",
+                "submitListenBrainzListens",
+                {"200", "400", "401", "403"},
+            ),
+            (
+                "/apis/listenbrainz/1/validate-token/",
+                "get",
+                "validateListenBrainzToken",
+                {"200", "401"},
+            ),
+        ):
+            operation = paths[path][method]
+            self.assertEqual(operation["operationId"], operation_id)
+            self.assertEqual(operation["security"], [{"listenBrainzToken": []}])
+            self.assertEqual(set(operation["responses"]), statuses)
+
+        info = paths["/api/v1/info/"]["get"]
+        self.assertEqual(info.get("security"), None)
+        self.assertEqual(
+            info["responses"]["200"]["content"]["application/json"]["schema"],
+            {"$ref": "#/components/schemas/InfoResponse"},
+        )
+
+    def test_all_successful_scoped_operations_have_truthful_body_presence(self):
+        paths = generate_static_schema_contract().schema["paths"]
         operation_ids = [
             operation["operationId"]
             for path_item in paths.values()
@@ -152,6 +368,15 @@ class OpenAPIArtifactTests(SimpleTestCase):
             if method in {"get", "post", "put", "patch", "delete"}
         ]
         self.assertEqual(len(operation_ids), len(set(operation_ids)))
+
+        for path, path_item in paths.items():
+            for method, operation in path_item.items():
+                if method not in {"get", "post", "put", "patch", "delete"}:
+                    continue
+                for status, response in operation["responses"].items():
+                    if method != "delete" and status.startswith("2"):
+                        with self.subTest(path=path, method=method, status=status):
+                            self.assertIn("schema", response["content"]["application/json"])
 
 
 class SchemaFindingContractTests(SimpleTestCase):
@@ -244,12 +469,24 @@ class SchemaFindingContractTests(SimpleTestCase):
 
     def test_reviewed_baseline_has_expected_unique_counts(self):
         self.assertEqual(len(EXPECTED_SCHEMA_ERRORS), 83)
-        self.assertEqual(len(EXPECTED_SCHEMA_WARNINGS), 21)
+        self.assertEqual(len(EXPECTED_SCHEMA_WARNINGS), 18)
 
     def test_generated_schema_findings_match_reviewed_baseline(self):
         contract = generate_schema_contract()
 
         assert_schema_findings(contract.errors, contract.warnings)
+
+    def test_static_schema_has_no_findings_and_full_schema_is_a_superset(self):
+        static = generate_static_schema_contract()
+        dynamic = generate_schema_contract()
+
+        self.assertEqual(static.errors, frozenset())
+        self.assertEqual(static.warnings, frozenset())
+        assert_schema_findings(dynamic.errors, dynamic.warnings)
+        self.assertTrue(
+            OpenAPIArtifactTests._operations(static.schema)
+            <= OpenAPIArtifactTests._operations(dynamic.schema)
+        )
 
 
 class MCPHTTPManifestTests(SimpleTestCase):
@@ -392,8 +629,8 @@ async def exact_template():
             <= {route.tool for route in routes}
         )
 
-    def test_every_manifest_route_exists_in_generated_openapi(self):
-        paths = generate_schema_contract().schema["paths"]
+    def test_every_manifest_route_exists_in_committed_openapi(self):
+        paths = yaml.safe_load(OPENAPI_CONTRACT_PATH.read_bytes())["paths"]
 
         missing = [
             entry
