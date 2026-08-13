@@ -687,6 +687,18 @@ class MediaSerializer(serializers.ModelSerializer):
             else None,
             "status": StatusField().to_representation(instance),
             "progress": instance.progress if hasattr(instance, "progress") else None,
+            # `progress` is always this single entry's own value (this play,
+            # session, or re-watch), never a sum across a user's entries for the
+            # item; `progress_unit` names what it counts so clients don't have to
+            # infer it from media_type (e.g. minutes for games, episodes for TV,
+            # plays for boardgame/music, percentage/pages/chapters for
+            # book/manga/comic depending on preference and format).
+            "progress_scope": "entry"
+            if getattr(instance, "progress", None) is not None
+            else None,
+            "progress_unit": instance.progress_unit
+            if hasattr(instance, "progress_unit")
+            else None,
             "progressed_at": instance.progressed_at
             if hasattr(instance, "progressed_at")
             else None,
@@ -744,6 +756,8 @@ class UntrackedMediaSerializer(serializers.Serializer):
             "score": None,
             "status": None,
             "progress": None,
+            "progress_scope": None,
+            "progress_unit": None,
             "progressed_at": None,
             "start_date": None,
             "end_date": None,
