@@ -7,40 +7,26 @@
 {% endblock title %}
 
 {% block settings_content %}
-  <div class="bg-[var(--color-surface)] rounded-lg p-6">
-    <div class="flex items-center mb-4">
-      <svg xmlns="http://www.w3.org/2000/svg"
-           width="24"
-           height="24"
-           viewBox="0 0 24 24"
-           fill="none"
-           stroke="currentColor"
-           stroke-width="2"
-           stroke-linecap="round"
-           stroke-linejoin="round"
-           class="w-6 h-6 text-indigo-400 mr-3">
-        <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z">
-        </path>
-        <circle cx="12" cy="12" r="3"></circle>
-      </svg>
-      <h2 class="text-xl font-semibold">User Preferences</h2>
-    </div>
-    <p class="text-[var(--color-text-muted)] mb-5 text-sm">
-      Customize your Floppy experience with these preference settings.
-    </p>
-
+  <div class="preferences-page">
     <form method="post">
       {% csrf_token %}
 
       <!-- Display & Layout Section -->
-      <div class="mb-6">
-        <h3 class="text-lg font-medium text-[var(--color-text-secondary)] mb-3">Display & Layout</h3>
+      <section id="display-layout" class="preferences-section">
+        <div class="preferences-section-header">
+          <div class="preferences-section-icon">{% include "app/icons/settings.svg" with classes="w-5 h-5" %}</div>
+          <div>
+            <h3>Display &amp; Layout</h3>
+            <p>Control content display.</p>
+          </div>
+        </div>
+        <div class="preferences-grid preferences-display-grid">
 
         <!-- Theme -->
         <div class="p-3 bg-[var(--color-surface-strong)] rounded-md mb-4">
           <div class="flex items-center justify-between mb-2">
             <label class="text-[var(--color-text-secondary)] text-sm font-medium">Theme</label>
-            <span class="text-[var(--color-text-muted)] text-xs">Choose the app's color theme.</span>
+            <span class="text-[var(--color-text-muted)] text-xs">App color theme.</span>
           </div>
           <div class="relative"
                x-data="{ open: false, selectedValue: '{{ user.theme }}', selectedLabel: '{{ user.theme|theme_display }}' }">
@@ -94,7 +80,7 @@
         <div class="p-3 bg-[var(--color-surface-strong)] rounded-md mb-4">
           <div class="flex items-center justify-between mb-2">
             <label class="text-[var(--color-text-secondary)] text-sm font-medium">Date Format</label>
-            <span class="text-[var(--color-text-muted)] text-xs">Choose how dates are displayed throughout the application.</span>
+            <span class="text-[var(--color-text-muted)] text-xs">How dates appear.</span>
           </div>
           <div class="relative"
                x-data="{ open: false, selectedValue: '{{ user.date_format }}', selectedLabel: '{{ user.date_format|date_format_display }}' }">
@@ -173,7 +159,7 @@
         <div class="p-3 bg-[var(--color-surface-strong)] rounded-md mb-4">
           <div class="flex items-center justify-between mb-2">
             <label class="text-[var(--color-text-secondary)] text-sm font-medium">Time Format</label>
-            <span class="text-[var(--color-text-muted)] text-xs">Choose how times are displayed throughout the application.</span>
+            <span class="text-[var(--color-text-muted)] text-xs">How times appear.</span>
           </div>
           <div class="relative"
                x-data="{ open: false, selectedValue: '{{ user.time_format }}', selectedLabel: '{{ user.time_format|time_format_display }}' }">
@@ -236,8 +222,8 @@
         <!-- Mobile Grid Layout -->
         <div class="p-3 bg-[var(--color-surface-strong)] rounded-md">
           <div class="flex items-center justify-between mb-2">
-            <label class="text-[var(--color-text-secondary)] text-sm font-medium">Mobile Grid Layout</label>
-            <span class="text-[var(--color-text-muted)] text-xs">Choose how many columns to show on mobile layouts only.</span>
+            <label class="text-[var(--color-text-secondary)] text-sm font-medium">Mobile Grid</label>
+            <span class="text-[var(--color-text-muted)] text-xs">Mobile column count.</span>
           </div>
           <div class="relative"
                x-data="{ open: false, selectedValue: '{{ user.mobile_grid_layout|default:'compact' }}', selectedLabel: '{{ user.mobile_grid_layout|default:'compact' }}' }">
@@ -285,8 +271,8 @@
         <!-- Media Card Subtitle Display -->
         <div class="p-3 bg-[var(--color-surface-strong)] rounded-md mt-4">
           <div class="flex items-center justify-between mb-2">
-            <label class="text-[var(--color-text-secondary)] text-sm font-medium">Media Card Subtitle</label>
-            <span class="text-[var(--color-text-muted)] text-xs">Control when subtitles (year, progress, watched time) are shown on media cards.</span>
+            <label class="text-[var(--color-text-secondary)] text-sm font-medium">Card Subtitles</label>
+            <span class="text-[var(--color-text-muted)] text-xs">When subtitles appear.</span>
           </div>
           <div class="relative"
                x-data="{ open: false, selectedValue: '{{ user.media_card_subtitle_display|default:'hover' }}', selectedLabel: '' }"
@@ -338,8 +324,8 @@
         <div class="p-3 bg-[var(--color-surface-strong)] rounded-md mt-4">
           <div class="flex items-center justify-between">
             <div>
-              <label class="text-[var(--color-text-secondary)] text-sm font-medium">Media Card Progress Bar</label>
-              <p class="text-[var(--color-text-muted)] text-xs mt-1">Show a progress bar on in-progress and paused media cards.</p>
+              <label class="text-[var(--color-text-secondary)] text-sm font-medium">Progress Bar</label>
+              <p class="text-[var(--color-text-muted)] text-xs mt-1">Show progress on cards.</p>
             </div>
             <label class="relative inline-flex items-center cursor-pointer">
               <input type="hidden" name="progress_bar" value="0">
@@ -357,8 +343,8 @@
         <!-- Title Display Preference -->
         <div class="p-3 bg-[var(--color-surface-strong)] rounded-md mt-4">
           <div class="flex items-center justify-between mb-2">
-            <label class="text-[var(--color-text-secondary)] text-sm font-medium">Title Display Preference</label>
-            <span class="text-[var(--color-text-muted)] text-xs">Choose whether cards show localized titles, original titles, or automatic fallback.</span>
+            <label class="text-[var(--color-text-secondary)] text-sm font-medium">Title Display</label>
+            <span class="text-[var(--color-text-muted)] text-xs">Card title style.</span>
           </div>
           <div class="relative"
                x-data="{ open: false, selectedValue: '{{ user.title_display_preference|default:'localized' }}', selectedLabel: '' }"
@@ -414,8 +400,8 @@
         <!-- Top Talent Sort -->
         <div class="p-3 bg-[var(--color-surface-strong)] rounded-md mt-4">
           <div class="flex items-center justify-between mb-2">
-            <label class="text-[var(--color-text-secondary)] text-sm font-medium">Top Talent Sort</label>
-            <span class="text-[var(--color-text-muted)] text-xs">Choose how Cast &amp; Crew cards rank on Statistics.</span>
+            <label class="text-[var(--color-text-secondary)] text-sm font-medium">Talent Sort</label>
+            <span class="text-[var(--color-text-muted)] text-xs">Statistics sort order.</span>
           </div>
           <div class="relative"
                x-data="{ open: false, selectedValue: '{{ user.top_talent_sort_by|default:'plays' }}', selectedLabel: '' }"
@@ -465,16 +451,28 @@
             <input type="hidden" name="top_talent_sort_by" x-bind:value="selectedValue">
           </div>
         </div>
-      </div>
+        </div>
+      </section>
+
+      <!-- Language & Metadata Section -->
+      <section id="language-metadata" class="preferences-section">
+        <div class="preferences-section-header">
+          <div class="preferences-section-icon">{% include "app/icons/globe.svg" with classes="w-5 h-5" %}</div>
+          <div>
+            <h3>Language &amp; Metadata</h3>
+            <p>Manage languages and providers.</p>
+          </div>
+        </div>
+        <div class="preferences-grid preferences-metadata-grid">
 
       {# Watch Provider Region #}
       <div class="p-3 bg-[var(--color-surface-strong)] rounded-md mt-4">
         <div class="flex items-center justify-between mb-2">
           <label class="text-[var(--color-text-secondary)] text-sm font-medium flex items-center gap-2">
             {% include "app/icons/globe.svg" with classes="w-4 h-4" %}
-            Watch Provider Region
+            Provider Region
           </label>
-          <span class="text-[var(--color-text-muted)] text-xs">Choose the region to show watch providers for. Disable to hide the section entirely.</span>
+          <span class="text-[var(--color-text-muted)] text-xs">Provider region.</span>
         </div>
         <div class="relative" x-data="{ open: false, selectedValue: '{{ user.watch_provider_region|default:'UNSET' }}', selectedLabel: '', options: [
           {% for choice in watch_provider_choices %}
@@ -530,7 +528,7 @@
             {% include "app/icons/globe.svg" with classes="w-4 h-4" %}
             Metadata Language
           </label>
-          <span class="text-[var(--color-text-muted)] text-xs">Preferred language for titles, synopses, and cover art.</span>
+          <span class="text-[var(--color-text-muted)] text-xs">Metadata language.</span>
         </div>
         <div class="relative"
              x-data="{
@@ -588,7 +586,7 @@
           <div>
             <label class="text-[var(--color-text-secondary)] text-sm font-medium">Metadata Providers</label>
             <p class="text-[var(--color-text-muted)] text-xs mt-1">
-              Choose the default display provider for TV and Anime. Tracking stays on the original provider until you migrate a title.
+              TV and Anime providers.
             </p>
           </div>
           {% if not tvdb_enabled %}
@@ -598,7 +596,7 @@
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
-            <label class="block text-[var(--color-text-secondary)] text-xs font-medium mb-2">TV Metadata Provider</label>
+            <label class="block text-[var(--color-text-secondary)] text-xs font-medium mb-2">TV Provider</label>
             <div class="relative" x-data="{ open: false, selectedValue: '{{ user.tv_metadata_source_default }}', selectedLabel: '', options: [
               {% for choice in tv_metadata_source_choices %}
                 { value: '{{ choice.0 }}', label: '{{ choice.1|escapejs }}' }
@@ -647,7 +645,7 @@
           </div>
 
           <div>
-            <label class="block text-[var(--color-text-secondary)] text-xs font-medium mb-2">Anime Metadata Provider</label>
+            <label class="block text-[var(--color-text-secondary)] text-xs font-medium mb-2">Anime Provider</label>
             <div class="relative" x-data="{ open: false, selectedValue: '{{ user.anime_metadata_source_default }}', selectedLabel: '', options: [
               {% for choice in anime_metadata_source_choices %}
                 { value: '{{ choice.0 }}', label: '{{ choice.1|escapejs }}' }
@@ -696,7 +694,7 @@
           </div>
 
           <div>
-            <label class="block text-[var(--color-text-secondary)] text-xs font-medium mb-2">Grouped Anime Library</label>
+            <label class="block text-[var(--color-text-secondary)] text-xs font-medium mb-2">Anime Library</label>
             <div class="relative" x-data="{ open: false, selectedValue: '{{ user.anime_library_mode }}', selectedLabel: '', options: [
               {% for choice in anime_library_mode_choices %}
                 { value: '{{ choice.0 }}', label: '{{ choice.1|escapejs }}' }
@@ -742,19 +740,25 @@
             </div>
           </div>
         </div>
-      </div>
-
-      <div class="border-t border-gray-600 my-5"></div>
+        </div>
+      </section>
 
       <!-- Tracking & Interaction Section -->
-      <div class="mb-6">
-        <h3 class="text-lg font-medium text-[var(--color-text-secondary)] mb-3">Tracking & Interaction</h3>
+      <section id="tracking-interaction" class="preferences-section">
+        <div class="preferences-section-header">
+          <div class="preferences-section-icon">{% include "app/icons/pulse.svg" with classes="w-5 h-5" %}</div>
+          <div>
+            <h3>Tracking &amp; Interaction</h3>
+            <p>Control how Floppy tracks and interacts with your activity.</p>
+          </div>
+        </div>
+        <div class="preferences-grid preferences-tracking-grid">
 
         <!-- Hide Completed Recommendations -->
         <div class="p-3 bg-[var(--color-surface-strong)] rounded-md mb-4">
           <div class="flex items-center justify-between mb-2">
-            <label class="text-[var(--color-text-secondary)] text-sm font-medium">Hide Completed Recommendations</label>
-            <span class="text-[var(--color-text-muted)] text-xs">Hide already completed items from recommendation sections.</span>
+            <label class="text-[var(--color-text-secondary)] text-sm font-medium">Hide Completed</label>
+            <span class="text-[var(--color-text-muted)] text-xs">Hide completed items.</span>
           </div>
           <div class="relative w-full"
                x-data="{ open: false, selectedValue: '{{ user.hide_completed_recommendations|yesno:'1,0' }}', selectedLabel: '', options: [ { value: '1', label: 'Enabled - hide completed items' }, { value: '0', label: 'Disabled - show completed items' } ], init() { const match = this.options.find(o => o.value === this.selectedValue); this.selectedLabel = match ? match.label : this.options[1]?.label ?? ''; } }"
@@ -805,7 +809,7 @@
           <div class="flex items-center justify-between">
             <div>
               <label class="text-[var(--color-text-secondary)] text-sm font-medium">Hide Zero Ratings</label>
-              <p class="text-[var(--color-text-muted)] text-xs mt-1">Hide score badges when the rating value is zero.</p>
+              <p class="text-[var(--color-text-muted)] text-xs mt-1">Hide zero-value ratings.</p>
             </div>
             <label class="relative inline-flex items-center cursor-pointer">
               <input type="hidden" name="hide_zero_rating" value="0">
@@ -823,8 +827,8 @@
         <!-- Quick Season Updates -->
         <div class="p-3 bg-[var(--color-surface-strong)] rounded-md mb-4">
           <div class="flex items-center justify-between mb-2">
-            <label class="text-[var(--color-text-secondary)] text-sm font-medium">Home Screen Card Buttons</label>
-            <span class="text-[var(--color-text-muted)] text-xs">Quick season update buttons and/or the next episode pill on home screen cards.</span>
+            <label class="text-[var(--color-text-secondary)] text-sm font-medium">Home Buttons</label>
+            <span class="text-[var(--color-text-muted)] text-xs">Home card actions.</span>
           </div>
             <div class="relative" x-data="{ open: false, selectedValue: '{{ user.quick_season_update_mobile|default:'none' }}', selectedLabel: '{{ user.get_quick_season_update_mobile_display }}' }">
               <button type="button"
@@ -883,8 +887,8 @@
         <!-- Game Logging Style -->
         <div class="p-3 bg-[var(--color-surface-strong)] rounded-md mt-4">
           <div class="flex items-center justify-between mb-2">
-            <label class="text-[var(--color-text-secondary)] text-sm font-medium">Game &amp; Board Game Logging Style</label>
-            <span class="text-[var(--color-text-muted)] text-xs">Choose how game and board game entries are displayed on the History page.</span>
+            <label class="text-[var(--color-text-secondary)] text-sm font-medium">Game Logging</label>
+            <span class="text-[var(--color-text-muted)] text-xs">Game history style.</span>
           </div>
           <div class="relative"
                x-data="{ open: false, selectedValue: '{{ user.game_logging_style|default:'repeats' }}', selectedLabel: '{{ user.game_logging_style|default:'repeats' }}' }">
@@ -932,8 +936,8 @@
         <!-- Book, Comic & Manga Progress Format -->
         <div class="p-3 bg-[var(--color-surface-strong)] rounded-md mt-4">
           <div class="flex items-center justify-between mb-2">
-            <label class="text-[var(--color-text-secondary)] text-sm font-medium">Book, Comic &amp; Manga Progress Format</label>
-            <span class="text-[var(--color-text-muted)] text-xs">Choose whether to track progress as percentage (0-100) or pages/issues/chapters.</span>
+            <label class="text-[var(--color-text-secondary)] text-sm font-medium">Progress Format</label>
+            <span class="text-[var(--color-text-muted)] text-xs">Percent or pages.</span>
           </div>
           <div class="relative"
                x-data="{ open: false, selectedValue: '{{ user.book_comic_manga_progress_percentage|yesno:'percentage,pages_issues_chapters' }}', selectedLabel: '{{ user.book_comic_manga_progress_percentage|yesno:'Percentage,Pages/Issues/Chapters' }}' }">
@@ -984,7 +988,7 @@
         <div class="p-3 bg-[var(--color-surface-strong)] rounded-md mt-4">
           <div class="flex items-center justify-between mb-2">
             <label class="text-[var(--color-text-secondary)] text-sm font-medium">Session Duration</label>
-            <span class="text-[var(--color-text-muted)] text-xs">How long you stay logged in before needing to sign in again.</span>
+            <span class="text-[var(--color-text-muted)] text-xs">Sign-in timeout.</span>
           </div>
           <div class="relative" x-data="{ open: false, selectedValue: '{{ user.session_duration }}', selectedLabel: '{{ user.get_session_duration_display }}', options: [
             {% for choice in session_duration_choices %}
@@ -1028,18 +1032,23 @@
             <input type="hidden" name="session_duration" x-bind:value="selectedValue">
           </div>
         </div>
-      </div>
-
-      <div class="border-t border-gray-600 my-5"></div>
+        </div>
+      </section>
 
       <!-- Automation Section -->
-      <div class="mb-6"
+      <section id="automation" class="preferences-section"
            x-data="{ enabled: {{ auto_pause_enabled|yesno:'true,false' }}, rules: JSON.parse('{{ auto_pause_rules_json|escapejs }}') || [], defaultLibrary: 'all', libraryLabels: JSON.parse('{{ library_labels_json|escapejs }}'), init() { this.enabled = this.rules.length > 0; }, addRule() { const library = this.defaultLibrary || 'all'; this.rules.push({ library, weeks: 16 }); this.enabled = this.rules.length > 0; }, removeRule(index) { this.rules.splice(index, 1); this.enabled = this.rules.length > 0; }, primaryButtonLabel() { return this.rules.length ? 'Enabled. Click to add additional rule.' : 'Disabled. Click to add rule.'; }, handlePrimaryAction() { this.addRule(); } }">
-        <h3 class="text-lg font-medium text-[var(--color-text-secondary)] mb-3">Automation</h3>
+        <div class="preferences-section-header">
+          <div class="preferences-section-icon">{% include "app/icons/signal.svg" with classes="w-5 h-5" %}</div>
+          <div>
+            <h3>Automation</h3>
+            <p>Manage automated rules.</p>
+          </div>
+        </div>
         <div class="p-4 bg-[var(--color-surface-strong)] rounded-md border border-gray-700">
           <div class="flex items-start justify-between mb-3 space-x-4">
             <label class="text-[var(--color-text-secondary)] text-sm font-medium">Library Management</label>
-            <span class="text-[var(--color-text-muted)] text-xs text-right">Change “In Progress” items to "Paused" after a set time.</span>
+            <span class="text-[var(--color-text-muted)] text-xs text-right">Pause in-progress items.</span>
           </div>
 
           <button type="button"
@@ -1133,12 +1142,15 @@
             </div>
           </div>
         </div>
-      </div>
-
-      <div class="border-t border-gray-600 my-5"></div>
+      </section>
 
       <!-- Save Button -->
-      <div class="mt-5 pt-4 border-gray-600">
+      <div class="preferences-actions">
+        <div>
+          <p class="preferences-actions-title">Unsaved changes</p>
+          <p class="preferences-actions-copy">You have made changes to your preferences.</p>
+        </div>
+        <div class="flex items-center gap-3">
         <button type="submit"
                 class="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm cursor-pointer">
           <svg xmlns="http://www.w3.org/2000/svg"
@@ -1157,6 +1169,7 @@
           </svg>
           Save Preferences
         </button>
+        </div>
       </div>
     </form>
   </div>
