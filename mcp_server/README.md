@@ -23,8 +23,11 @@ uv sync --locked
 
 Configure the server with two environment variables:
 
-- `FLOPPY_URL` — base URL of the Floppy instance, e.g.
-  `https://floppy.example.com` (no trailing slash needed).
+- `FLOPPY_URL` — the Floppy origin plus any configured base prefix. The client
+  appends `/api/v1/`. Use `https://floppy.example.com` for a root install or
+  `https://floppy.example.com/floppy` for a `/floppy` prefix. Do not include
+  `/api/v1`. The URL must use HTTP or HTTPS, include a host, and have no query
+  or fragment. A trailing slash is optional.
 - `FLOPPY_TOKEN` — the user's `API Token`, found under
   Settings → Integrations in the web UI. It grants full authenticated API
   access and also authenticates webhooks and iCal. Never put it in commits,
@@ -62,7 +65,8 @@ FLOPPY_URL=https://floppy.example.com \
 uv run --no-sync python -m floppy_mcp.server
 ```
 
-Register it with Claude Code:
+Register a root install with Claude Code as shown below. For an instance under
+the `/floppy` prefix, set `FLOPPY_URL=https://floppy.example.com/floppy` instead.
 
 ```bash
 claude mcp add floppy \
