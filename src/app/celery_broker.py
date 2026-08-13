@@ -49,7 +49,11 @@ def repair_celery_redis_bindings() -> dict[str, int]:
 
     global_keyprefix = transport_options.get("global_keyprefix", "") or ""
     binding_match = f"{global_keyprefix}{KOMBU_REDIS_BINDING_KEY_PATTERN % '*'}"
-    client = redis.Redis.from_url(broker_url)
+    client = redis.Redis.from_url(
+        broker_url,
+        socket_timeout=transport_options.get("socket_timeout", 30),
+        socket_connect_timeout=transport_options.get("socket_connect_timeout", 10),
+    )
     summary = {"keys": 0, "members": 0, "repaired": 0, "removed": 0}
 
     for raw_key in client.scan_iter(match=binding_match):

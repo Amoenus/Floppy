@@ -353,3 +353,24 @@ class AppStartupTests(TestCase):
         self.assertNotIn(unsafe_error, rendered)
         self.assertNotIn("admin:password", rendered)
         self.assertNotIn("refused", rendered)
+
+    def test_celery_binding_repair_error_is_safe(self):
+        """Repair warnings must identify the error without exposing credentials."""
+        config = FloppyAppConfig("app", import_module("app"))
+        unsafe_error = "redis://broker:password@redis.example:6379/0 refused"
+
+        with (
+            patch(
+                "app.celery_broker.repair_celery_redis_bindings",
+                side_effect=RuntimeError(unsafe_error),
+            ),
+            self.assertLogs("app.apps", level="WARNING") as logs,
+        ):
+            config._repair_celery_redis_bindings()
+
+        rendered = " ".join(logs.output)
+        self.assertIn("Failed to normalize Kombu Redis bindings", rendered)
+        self.assertIn("RuntimeError", rendered)
+        self.assertNotIn(unsafe_error, rendered)
+        self.assertNotIn("broker:password", rendered)
+        self.assertNotIn("refused", rendered)

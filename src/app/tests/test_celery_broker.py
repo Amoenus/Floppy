@@ -124,9 +124,7 @@ class CeleryPriorityDrainOrderTests(SimpleTestCase):
             "interactive",
         )
 
-        priority_steps = settings.CELERY_BROKER_TRANSPORT_OPTIONS[
-            "priority_steps"
-        ]
+        priority_steps = settings.CELERY_BROKER_TRANSPORT_OPTIONS["priority_steps"]
         keys_by_ascending_priority = [priority_key(p) for p in priority_steps]
 
         first = client.brpop(keys_by_ascending_priority, timeout=1)
@@ -193,6 +191,31 @@ class CeleryBrokerRepairTests(SimpleTestCase):
         self.assertEqual(
             fake_client.data[key],
             {"reply.celery.pidbox::celery@worker.celery.pidbox"},
+        )
+        mock_from_url.assert_called_once_with(
+            "redis://example:6379/0",
+            socket_timeout=30,
+            socket_connect_timeout=10,
+        )
+
+    @override_settings(
+        CELERY_BROKER_URL="redis://example:6379/0",
+        CELERY_BROKER_TRANSPORT_OPTIONS={
+            "sep": ":",
+            "socket_timeout": 7,
+            "socket_connect_timeout": 3,
+        },
+    )
+    @patch("app.celery_broker.redis.Redis.from_url")
+    def test_repair_uses_bounded_broker_timeouts(self, mock_from_url):
+        mock_from_url.return_value.scan_iter.return_value = []
+
+        celery_broker.repair_celery_redis_bindings()
+
+        mock_from_url.assert_called_once_with(
+            "redis://example:6379/0",
+            socket_timeout=7,
+            socket_connect_timeout=3,
         )
 
     @override_settings(

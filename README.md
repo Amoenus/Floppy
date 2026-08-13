@@ -355,7 +355,8 @@ automatic tuning when `REDIS_ADMIN_URL` uses another scheme. Set
 Redis `CONFIG` changes the complete Redis server. A database number in a Redis
 URL does not isolate this change. `REDIS_ADMIN_URL` must normally select the
 cache Redis server. Grant `CONFIG` access only when you want Floppy to manage
-the memory limit. You can also configure the Redis server directly.
+the memory limit and change `appendfsync=always` to `everysec`. You can also
+configure the Redis server directly.
 
 Plan a service change before you select new URLs:
 
@@ -363,8 +364,8 @@ Plan a service change before you select new URLs:
    does not receive queued or unacknowledged work from the old broker.
 2. Preserve results that you still need before you change
    `CELERY_RESULT_BACKEND`. The new backend does not contain old results.
-3. Expect the new cache to start empty. This can invalidate cached sessions,
-   but it does not delete accounts from the database.
+3. Expect the new cache to start empty. Floppy reloads sessions from its
+   database after a cache miss. Accounts and active sessions remain present.
 4. Restart the web, worker, and beat processes together. This makes all
    processes use the same configuration.
 
