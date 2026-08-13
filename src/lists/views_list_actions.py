@@ -13,6 +13,7 @@ import logging
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_not_required, login_required
+from django.db import transaction
 from django.db.models import Q
 from django.http import Http404, HttpResponse, HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -425,43 +426,38 @@ def list_item_toggle(request):
         return HttpResponse(status=403)
 
     try:
-        if custom_list.items.filter(id=item.id).exists():
-            # Instance-level delete so CustomListItem.delete() renumbers the
-            # per-list list_item_id sequence (queryset delete would bypass it).
+        with transaction.atomic():
+            CustomListItem.objects.lock_custom_lists([custom_list.id])
             custom_list_item = CustomListItem.objects.filter(
                 custom_list=custom_list,
                 item=item,
             ).first()
             if custom_list_item is not None:
+                # Instance-level delete renumbers the per-list sequence.
                 custom_list_item.delete()
-            logger.info("%s removed from %s.", item, custom_list)
-            has_item = False
+                has_item = False
+                activity_type = ListActivityType.ITEM_REMOVED
+                log_action = "removed from"
+            else:
+                CustomListItem.objects.create(
+                    custom_list=custom_list,
+                    item=item,
+                    added_by=request.user,
+                )
+                has_item = True
+                activity_type = ListActivityType.ITEM_ADDED
+                log_action = "added to"
+
             ListActivity.objects.create(
                 custom_list=custom_list,
                 user=request.user,
-                activity_type=ListActivityType.ITEM_REMOVED,
+                activity_type=activity_type,
                 item=item,
             )
-        else:
-            CustomListItem.objects.create(
-                custom_list=custom_list,
-                item=item,
-                added_by=request.user,
-            )
-            logger.info("%s added to %s.", item, custom_list)
-            has_item = True
-            ListActivity.objects.create(
-                custom_list=custom_list,
-                user=request.user,
-                activity_type=ListActivityType.ITEM_ADDED,
-                item=item,
-            )
+        logger.info("%s %s %s.", item, log_action, custom_list)
     except Exception:
-        # Broad on purpose: whatever goes wrong here (a constraint violation,
-        # a transient DB error, anything unanticipated), the user is staring
-        # at a button that just silently failed unless we tell them.
-        # log_safety.py already scrubs anything sensitive request-side, so
-        # this is safe to log at full detail.
+        # Keep the last committed button state and surface every failed toggle.
+        # The structured context contains database IDs only.
         logger.exception(
             "Failed to toggle list membership (item_id=%s, custom_list_id=%s, "
             "user_id=%s)",
