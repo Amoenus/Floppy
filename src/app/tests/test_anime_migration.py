@@ -3,11 +3,14 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.urls import reverse
 from django.utils import timezone
 
+from app import history_cache
 from app.models import (
     TV,
     Anime,
+    BasicMedia,
     Episode,
     Item,
     ItemProviderLink,
@@ -167,6 +170,204 @@ class AnimeMigrationTests(TestCase):
                 episode_offset=0,
             ).exists(),
         )
+
+    @patch("app.services.anime_migration.anime_mapping.find_entries_for_mal_id")
+    @patch("app.services.anime_migration.anime_mapping.resolve_provider_series_id")
+    @patch("app.services.anime_migration.services.get_media_metadata")
+    @patch("app.services.anime_migration.ensure_item_metadata")
+    def test_grouped_anime_progress_appears_in_warm_history_immediately(
+        self,
+        mock_ensure_item_metadata,
+        mock_get_media_metadata,
+        mock_resolve_provider_series_id,
+        mock_find_entries_for_mal_id,
+    ):
+        """A grouped anime progress update should appear in warm History immediately."""
+        Anime.all_objects.filter(id=self.flat_entry.id).update(progress=1)
+        self.flat_entry.refresh_from_db()
+        original_data = (
+            self.flat_entry.progress,
+            self.flat_entry.status,
+            self.flat_entry.score,
+            self.flat_entry.notes,
+            self.flat_entry.start_date,
+            self.flat_entry.end_date,
+        )
+        episodes = [
+            {"episode_number": 1, "air_date": "2023-09-29", "runtime": 24},
+            {"episode_number": 2, "air_date": "2023-10-06", "runtime": 24},
+            {"episode_number": 3, "air_date": "2023-10-13", "runtime": 24},
+        ]
+        mock_resolve_provider_series_id.return_value = "9350138"
+        mock_find_entries_for_mal_id.return_value = [
+            {
+                "mal_id": "52991",
+                "tvdb_id": "9350138",
+                "tvdb_season": 1,
+                "tvdb_epoffset": 0,
+            },
+        ]
+        mock_ensure_item_metadata.return_value = HydratedItemResult(
+            item=self.grouped_item,
+            metadata={
+                "media_id": "9350138",
+                "source": Sources.TVDB.value,
+                "media_type": MediaTypes.ANIME.value,
+                "identity_media_type": MediaTypes.TV.value,
+                "library_media_type": MediaTypes.ANIME.value,
+                "title": "Frieren: Beyond Journey's End",
+                "image": "https://example.com/grouped.jpg",
+                "related": {"seasons": [{"season_number": 1}]},
+            },
+            created=False,
+        )
+
+        def media_metadata(media_type, *_args, **_kwargs):
+            if media_type == MediaTypes.SEASON.value:
+                return {
+                    "season_number": 1,
+                    "episodes": episodes,
+                    "max_progress": 3,
+                }
+            if media_type == MediaTypes.TV.value:
+                return {
+                    "max_progress": 3,
+                    "related": {"seasons": [{"season_number": 1}]},
+                }
+            return {
+                "related": {"seasons": [{"season_number": 1}]},
+                "season/1": {
+                    "title": "Frieren: Beyond Journey's End",
+                    "image": "https://example.com/season1.jpg",
+                    "season_number": 1,
+                    "episodes": episodes,
+                },
+            }
+
+        mock_get_media_metadata.side_effect = media_metadata
+        result = anime_migration.migrate_flat_anime_to_grouped(
+            self.user,
+            self.flat_item,
+            Sources.TVDB.value,
+        )
+
+        grouped_tv = result.grouped_tv
+        grouped_season = Season.objects.get(related_tv=grouped_tv)
+        archived_anime = Anime.all_objects.get(id=self.flat_entry.id)
+        self.assertFalse(Anime.objects.filter(id=archived_anime.id).exists())
+        self.assertEqual(
+            (
+                archived_anime.progress,
+                archived_anime.status,
+                archived_anime.score,
+                archived_anime.notes,
+                archived_anime.start_date,
+                archived_anime.end_date,
+            ),
+            original_data,
+        )
+        self.assertEqual(archived_anime.migrated_to_item, self.grouped_item)
+        self.assertIsNotNone(archived_anime.migrated_at)
+        self.assertEqual(grouped_tv.item.source, Sources.TVDB.value)
+        self.assertEqual(grouped_tv.item.media_type, MediaTypes.TV.value)
+        self.assertEqual(
+            grouped_tv.item.library_media_type,
+            MediaTypes.ANIME.value,
+        )
+        self.assertEqual(
+            BasicMedia.objects.get_media(
+                self.user,
+                MediaTypes.ANIME.value,
+                grouped_tv.id,
+            ),
+            grouped_tv,
+        )
+        self.assertEqual(
+            BasicMedia.objects.get_media_prefetch(
+                self.user,
+                MediaTypes.ANIME.value,
+                grouped_tv.id,
+            ),
+            grouped_tv,
+        )
+        self.assertTrue(
+            ItemProviderLink.objects.filter(
+                item=self.flat_item,
+                provider=Sources.TVDB.value,
+                provider_media_id="9350138",
+                provider_media_type=MediaTypes.TV.value,
+                season_number=1,
+                episode_offset=0,
+            ).exists(),
+        )
+
+        self.client.force_login(self.user)
+        logging_style = "repeats"
+        history_cache.refresh_history_cache(
+            self.user.id,
+            logging_style=logging_style,
+        )
+        progress_url = reverse(
+            "progress_edit",
+            kwargs={
+                "media_type": MediaTypes.TV.value,
+                "instance_id": grouped_tv.id,
+            },
+        )
+
+        with patch(
+            "app.history_cache_lifecycle.schedule_history_refresh",
+            return_value=True,
+        ):
+            response = self.client.post(progress_url, {"operation": "increase"})
+
+        self.assertEqual(response.status_code, 200)
+        watched_episodes = Episode.objects.filter(
+            related_season=grouped_season,
+        ).order_by("item__episode_number")
+        self.assertEqual(watched_episodes.count(), 2)
+        episode_two = watched_episodes.get(item__episode_number=2)
+        day_key = history_cache.history_day_key(episode_two.end_date)
+        direct_day = history_cache.build_history_day(
+            self.user,
+            day_key,
+            logging_style_override=logging_style,
+        )
+        self.assertIn(
+            episode_two.id,
+            [entry["instance_id"] for entry in direct_day["entries"]],
+        )
+
+        month_days, _ = history_cache.get_month_history(
+            self.user,
+            episode_two.end_date.year,
+            episode_two.end_date.month,
+            logging_style_override=logging_style,
+        )
+        self.assertIn(
+            episode_two.id,
+            [
+                entry["instance_id"]
+                for day in month_days
+                for entry in day["entries"]
+            ],
+            "Warm History should include the episode added by progress_edit.",
+        )
+
+        response = self.client.post(progress_url, {"operation": "increase"})
+        self.assertEqual(response.status_code, 200)
+        watched_episodes = Episode.objects.filter(
+            related_season=grouped_season,
+        ).order_by("item__episode_number")
+        self.assertEqual(watched_episodes.count(), 3)
+        self.assertEqual(
+            list(watched_episodes.values_list("item__episode_number", flat=True)),
+            [1, 2, 3],
+        )
+        grouped_season.refresh_from_db()
+        grouped_tv.refresh_from_db()
+        self.assertEqual(grouped_season.status, Status.COMPLETED.value)
+        self.assertEqual(grouped_tv.status, Status.COMPLETED.value)
 
     @patch("app.services.anime_migration.anime_mapping.find_entries_for_mal_id")
     @patch("app.services.anime_migration.anime_mapping.resolve_provider_series_id")
