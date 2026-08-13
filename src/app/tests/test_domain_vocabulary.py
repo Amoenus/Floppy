@@ -1,0 +1,106 @@
+from dataclasses import FrozenInstanceError, replace
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from unittest.mock import patch
+
+from django.test import SimpleTestCase
+
+from app import domain_vocabulary
+
+
+class DomainVocabularyTests(SimpleTestCase):
+    def test_registry_is_frozen_and_contains_the_required_terms(self):
+        self.assertIsInstance(domain_vocabulary.DOMAIN_TERMS, tuple)
+        self.assertEqual(
+            tuple(term.term for term in domain_vocabulary.DOMAIN_TERMS),
+            ("Item", "Consumption", "Media type", "Celery queue"),
+        )
+
+        with self.assertRaises(FrozenInstanceError):
+            domain_vocabulary.DOMAIN_TERMS[0].term = "Changed"
+
+    def test_definitions_record_the_grounding_facts(self):
+        terms = {term.key: term for term in domain_vocabulary.DOMAIN_TERMS}
+
+        self.assertIn("shared work", terms["item"].definition)
+        self.assertIn(
+            "one user's tracking record for an Item",
+            terms["consumption"].definition,
+        )
+        self.assertIn("nested under `tv`", terms["media_type"].definition)
+        self.assertIn(
+            "not top-level media types",
+            terms["media_type"].definition,
+        )
+        for queue in ("`celery`", "`interactive`", "`discover`"):
+            self.assertIn(queue, terms["celery_queue"].definition)
+        self.assertIn("Reload calendar", terms["celery_queue"].definition)
+        self.assertIn("background priority", terms["celery_queue"].definition)
+
+    def test_validator_rejects_duplicate_keys_terms_and_aliases(self):
+        item = domain_vocabulary.DOMAIN_TERMS[0]
+        consumption = domain_vocabulary.DOMAIN_TERMS[1]
+        cases = (
+            replace(consumption, key=item.key),
+            replace(consumption, term=item.term.lower()),
+            replace(consumption, aliases=(item.aliases[0].upper(),)),
+        )
+
+        for invalid_term in cases:
+            with self.subTest(invalid_term=invalid_term):
+                with self.assertRaises(ValueError):
+                    domain_vocabulary.validate_terms((item, invalid_term))
+
+    def test_validator_rejects_alias_term_collisions(self):
+        item = domain_vocabulary.DOMAIN_TERMS[0]
+        consumption = replace(
+            domain_vocabulary.DOMAIN_TERMS[1],
+            aliases=(item.term.lower(),),
+        )
+
+        with self.assertRaises(ValueError):
+            domain_vocabulary.validate_terms((item, consumption))
+
+    def test_validator_requires_relationship_targets_to_resolve(self):
+        item = replace(
+            domain_vocabulary.DOMAIN_TERMS[0],
+            relationships=(("tracks", "missing"),),
+        )
+
+        with self.assertRaises(ValueError):
+            domain_vocabulary.validate_terms((item,))
+
+    def test_glossary_renderer_returns_template_rows(self):
+        self.assertEqual(
+            domain_vocabulary.render_glossary_rows(),
+            tuple(
+                {
+                    "key": term.key,
+                    "term": term.term,
+                    "definition": term.definition,
+                }
+                for term in domain_vocabulary.DOMAIN_TERMS
+            ),
+        )
+
+    def test_generated_guide_matches_the_renderer(self):
+        rendered = domain_vocabulary.render_domain_guide()
+
+        self.assertTrue(rendered.startswith("<!-- GENERATED FILE. DO NOT EDIT."))
+        self.assertEqual(
+            domain_vocabulary.GUIDE_PATH.read_text(encoding="utf-8"),
+            rendered,
+        )
+
+    def test_module_entry_point_writes_and_checks_the_guide(self):
+        with TemporaryDirectory() as directory:
+            guide_path = Path(directory) / "domain_model.md"
+            with patch.object(domain_vocabulary, "GUIDE_PATH", guide_path):
+                self.assertEqual(domain_vocabulary.main(["--check"]), 1)
+                self.assertEqual(domain_vocabulary.main([]), 0)
+                self.assertEqual(
+                    guide_path.read_text(encoding="utf-8"),
+                    domain_vocabulary.render_domain_guide(),
+                )
+                guide_path.write_text("drift\n", encoding="utf-8")
+                self.assertEqual(domain_vocabulary.main(["--check"]), 1)
