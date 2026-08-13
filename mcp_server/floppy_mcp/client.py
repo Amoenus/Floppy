@@ -39,14 +39,20 @@ def _base_url() -> str:
         msg = "FLOPPY_URL environment variable is required."
         raise FloppyConfigError(msg)
     msg = (
-        "Set FLOPPY_URL to an absolute HTTP or HTTPS URL with a host. "
+        "Set FLOPPY_URL to an absolute HTTP or HTTPS URL with a host and no "
+        "query or fragment. "
         "Example: https://floppy.example.com"
     )
     try:
         parsed_url = httpx.URL(url)
     except httpx.InvalidURL as exc:
         raise FloppyConfigError(msg) from exc
-    if not parsed_url.is_absolute_url or parsed_url.scheme not in {"http", "https"}:
+    if (
+        not parsed_url.is_absolute_url
+        or parsed_url.scheme not in {"http", "https"}
+        or parsed_url.query
+        or parsed_url.fragment
+    ):
         raise FloppyConfigError(msg)
     return url.rstrip("/")
 

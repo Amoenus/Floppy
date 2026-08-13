@@ -17,7 +17,13 @@ async def test_missing_url_raises(monkeypatch):
 
 @pytest.mark.parametrize(
     "url",
-    ["/floppy", "ftp://floppy.test", "https:///floppy"],
+    [
+        "/floppy",
+        "ftp://floppy.test",
+        "https:///floppy",
+        "https://floppy.test?x=1",
+        "https://floppy.test#frag",
+    ],
 )
 async def test_invalid_url_raises(monkeypatch, url):
     monkeypatch.setenv("FLOPPY_URL", url)
