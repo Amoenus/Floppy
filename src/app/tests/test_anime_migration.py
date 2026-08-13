@@ -2,6 +2,7 @@ from datetime import timedelta
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -183,16 +184,37 @@ class AnimeMigrationTests(TestCase):
         mock_find_entries_for_mal_id,
     ):
         """A grouped anime progress update should appear in warm History immediately."""
+        cache.clear()
+        self.addCleanup(cache.clear)
+        self.enterContext(
+            patch(
+                "app.history_cache_lifecycle.schedule_history_refresh",
+                return_value=True,
+            ),
+        )
+        self.enterContext(
+            patch("app.history_cache.schedule_history_refresh", return_value=True),
+        )
+        self.enterContext(
+            patch("app.signals.statistics_cache.schedule_all_ranges_refresh"),
+        )
         Anime.all_objects.filter(id=self.flat_entry.id).update(progress=1)
         self.flat_entry.refresh_from_db()
-        original_data = (
-            self.flat_entry.progress,
-            self.flat_entry.status,
-            self.flat_entry.score,
-            self.flat_entry.notes,
-            self.flat_entry.start_date,
-            self.flat_entry.end_date,
-        )
+        original_data = {
+            field: getattr(self.flat_entry, field)
+            for field in (
+                "item_id",
+                "user_id",
+                "progressed_at",
+                "import_run_id",
+                "progress",
+                "status",
+                "score",
+                "notes",
+                "start_date",
+                "end_date",
+            )
+        }
         episodes = [
             {"episode_number": 1, "air_date": "2023-09-29", "runtime": 24},
             {"episode_number": 2, "air_date": "2023-10-06", "runtime": 24},
@@ -234,15 +256,17 @@ class AnimeMigrationTests(TestCase):
                     "max_progress": 3,
                     "related": {"seasons": [{"season_number": 1}]},
                 }
-            return {
-                "related": {"seasons": [{"season_number": 1}]},
-                "season/1": {
-                    "title": "Frieren: Beyond Journey's End",
-                    "image": "https://example.com/season1.jpg",
-                    "season_number": 1,
-                    "episodes": episodes,
-                },
-            }
+            if media_type == "tv_with_seasons":
+                return {
+                    "related": {"seasons": [{"season_number": 1}]},
+                    "season/1": {
+                        "title": "Frieren: Beyond Journey's End",
+                        "image": "https://example.com/season1.jpg",
+                        "season_number": 1,
+                        "episodes": episodes,
+                    },
+                }
+            raise AssertionError(f"Unexpected media type: {media_type}")
 
         mock_get_media_metadata.side_effect = media_metadata
         result = anime_migration.migrate_flat_anime_to_grouped(
@@ -256,14 +280,7 @@ class AnimeMigrationTests(TestCase):
         archived_anime = Anime.all_objects.get(id=self.flat_entry.id)
         self.assertFalse(Anime.objects.filter(id=archived_anime.id).exists())
         self.assertEqual(
-            (
-                archived_anime.progress,
-                archived_anime.status,
-                archived_anime.score,
-                archived_anime.notes,
-                archived_anime.start_date,
-                archived_anime.end_date,
-            ),
+            {field: getattr(archived_anime, field) for field in original_data},
             original_data,
         )
         self.assertEqual(archived_anime.migrated_to_item, self.grouped_item)
@@ -315,11 +332,7 @@ class AnimeMigrationTests(TestCase):
             },
         )
 
-        with patch(
-            "app.history_cache_lifecycle.schedule_history_refresh",
-            return_value=True,
-        ):
-            response = self.client.post(progress_url, {"operation": "increase"})
+        response = self.client.post(progress_url, {"operation": "increase"})
 
         self.assertEqual(response.status_code, 200)
         watched_episodes = Episode.objects.filter(
@@ -327,7 +340,11 @@ class AnimeMigrationTests(TestCase):
         ).order_by("item__episode_number")
         self.assertEqual(watched_episodes.count(), 2)
         episode_two = watched_episodes.get(item__episode_number=2)
-        day_key = history_cache.history_day_key(episode_two.end_date)
+        episode_one = watched_episodes.get(item__episode_number=1)
+        migrated_episode_one_end_date = episode_one.end_date
+        self.assertEqual(migrated_episode_one_end_date, original_data["end_date"])
+        activity_date = timezone.localtime(episode_two.end_date)
+        day_key = history_cache.history_day_key(activity_date)
         direct_day = history_cache.build_history_day(
             self.user,
             day_key,
@@ -340,17 +357,19 @@ class AnimeMigrationTests(TestCase):
 
         month_days, _ = history_cache.get_month_history(
             self.user,
-            episode_two.end_date.year,
-            episode_two.end_date.month,
+            activity_date.year,
+            activity_date.month,
             logging_style_override=logging_style,
         )
+        warm_episode_ids = {
+            entry["instance_id"]
+            for day in month_days
+            for entry in day["entries"]
+            if entry["media_type"] == MediaTypes.EPISODE.value
+        }
         self.assertIn(
             episode_two.id,
-            [
-                entry["instance_id"]
-                for day in month_days
-                for entry in day["entries"]
-            ],
+            warm_episode_ids,
             "Warm History should include the episode added by progress_edit.",
         )
 
@@ -364,6 +383,27 @@ class AnimeMigrationTests(TestCase):
             list(watched_episodes.values_list("item__episode_number", flat=True)),
             [1, 2, 3],
         )
+        episode_three = watched_episodes.get(item__episode_number=3)
+        final_activity_date = timezone.localtime(episode_three.end_date)
+        final_month_days, _ = history_cache.get_month_history(
+            self.user,
+            final_activity_date.year,
+            final_activity_date.month,
+            logging_style_override=logging_style,
+        )
+        final_warm_episode_ids = {
+            entry["instance_id"]
+            for day in final_month_days
+            for entry in day["entries"]
+            if entry["media_type"] == MediaTypes.EPISODE.value
+        }
+        self.assertEqual(
+            final_warm_episode_ids - warm_episode_ids,
+            {episode_three.id},
+            "Final progress should add only episode 3 to warm History.",
+        )
+        episode_one.refresh_from_db()
+        self.assertEqual(episode_one.end_date, migrated_episode_one_end_date)
         grouped_season.refresh_from_db()
         grouped_tv.refresh_from_db()
         self.assertEqual(grouped_season.status, Status.COMPLETED.value)
