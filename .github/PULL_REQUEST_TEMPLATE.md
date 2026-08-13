@@ -7,6 +7,11 @@
 ## Validation
 - List commands run and outcomes.
 
+## Contract Handoff
+- Domain guide regeneration/check outcome: <!-- result or not applicable -->
+- Verified OpenAPI regeneration outcome: <!-- result or not applicable -->
+- Contract-test outcome: <!-- result or not applicable -->
+
 ## Human Review
 - [ ] Pending human review.
 - [ ] Completed — reviewer/evidence: <!-- link or concise evidence -->

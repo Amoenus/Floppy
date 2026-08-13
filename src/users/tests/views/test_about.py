@@ -1,0 +1,34 @@
+from bs4 import BeautifulSoup
+from django.contrib.auth import get_user_model
+from django.test import TestCase
+from django.urls import reverse
+
+
+class AboutViewTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="testuser",
+            password="testpass123",
+        )
+        self.client.force_login(self.user)
+
+    def test_about_links_to_shipped_api_references(self):
+        response = self.client.get(reverse("about"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "users/about.html")
+        soup = BeautifulSoup(response.content, "html.parser")
+        expected_links = {
+            "API Reference": reverse("swagger-ui"),
+            "OpenAPI Schema": reverse("openapi-contract"),
+            "Full API Schema": reverse("schema"),
+        }
+        api_links = [
+            (link.get_text(" ", strip=True), link.get("href"))
+            for link in soup.find_all("a")
+            if link.get_text(" ", strip=True) in expected_links
+        ]
+
+        self.assertEqual(api_links, list(expected_links.items()))
+        self.assertNotContains(response, "JSON-LD")
+        self.assertNotContains(response, "AsyncAPI")

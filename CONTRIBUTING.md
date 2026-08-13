@@ -91,6 +91,8 @@ If an agent submitted the PR directly (no human author), the agent must:
 
 Match validation to risk. See `AGENTS.md` for the full matrix. Short version:
 
+Non-Docker source commands require `SECRET` in the environment or `.env`.
+
 | Change type | Minimum check |
 |---|---|
 | Copy, labels, static content | None required |
@@ -101,6 +103,17 @@ Match validation to risk. See `AGENTS.md` for the full matrix. Short version:
 | `upstream` → `latest` upstream sync | Full migration sync gate (see PR template) |
 
 Never skip validation for migrations, models, auth, permissions, webhooks, Celery tasks, or cache behavior.
+
+When domain or API contract facts change, run the contract tests and regenerate the reviewed artifacts:
+
+```bash
+SECRET=test-only scripts/test.sh app.tests.test_api_contracts app.tests.test_domain_vocabulary
+PYTHONPATH=src uv run --no-sync python -m app.domain_vocabulary
+PYTHONPATH=src uv run --no-sync python -m app.domain_vocabulary --check
+SECRET=<value> uv run --no-sync python src/manage.py spectacular --custom-settings api.schema_contract.STATIC_SPECTACULAR_SETTINGS --fail-on-warn --validate --file src/api/contracts/openapi.yaml
+```
+
+Review and commit generated artifact changes. If regeneration makes no change, report that result in the pull request.
 
 ---
 

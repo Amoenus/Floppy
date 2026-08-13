@@ -25,9 +25,15 @@ Configure the server with two environment variables:
 
 - `FLOPPY_URL` — base URL of the Floppy instance, e.g.
   `https://floppy.example.com` (no trailing slash needed).
-- `FLOPPY_TOKEN` — the user's API token, found under
+- `FLOPPY_TOKEN` — the user's `API Token`, found under
   Settings → Integrations in the web UI (the same token used for webhooks and
   the iCal feed). Sent as an `X-API-Key` header.
+
+The Floppy host also publishes these API references:
+
+- `/api/docs/` — offline, read-only API index.
+- `/api/openapi.yaml` — reviewed, committed 41-operation subset for supported integrations and MCP.
+- `/api/schema/` — full dynamic diagnostic schema.
 
 ## Running (Docker)
 
@@ -114,9 +120,9 @@ docs) or run `uvicorn floppy_mcp.server:mcp.streamable_http_app`.
 - **`manage_list`**'s `add_item`/`remove_item` actions operate on already
   *tracked* media (`media_type`/`source`/`media_id`), not on raw list-row
   ids — track the item first with `track_media` if it isn't tracked yet.
-- Tools never raise on API errors; they return
-  `{"error": true, "status_code": ..., "detail": ...}` so the agent can see
-  and react to failures instead of the call blowing up.
+- Tools return structured errors instead of raising. API errors include
+  `{"error": true, "status_code": ..., "detail": ...}`. Invalid configuration
+  and network failures return `{"error": true, "detail": ...}`.
 - **Known upstream quirk**: `GET` on a `source=manual` media item that
   doesn't exist returns HTTP 500 instead of 404 (the generic media-detail
   view can't distinguish "not found" from other metadata-provider errors

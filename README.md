@@ -165,9 +165,24 @@ Floppy retains Yamtrack's core tracking, import, and self-hosting workflows, wit
 
 Floppy exposes a REST API at `/api/v1` and ships an [MCP server](mcp_server/). Integrations meant for Floppy should target **this repository** and the `ghcr.io/dannyvfilms/floppy` image — upstream Yamtrack does not carry Floppy's API surface, media types, or integration workflows, so "compatible with Yamtrack" and "compatible with Floppy" are not interchangeable claims.
 
-- Interactive docs: `/api/docs/` on any instance · raw schema: `/api/schema/`
-- Auth: `Authorization: Bearer <token>` or `X-API-Key: <token>`, from Settings → Advanced
+- `/api/docs/` is the offline, read-only API index.
+- `/api/openapi.yaml` is the reviewed, committed 41-operation subset for supported integrations and MCP.
+- `/api/schema/` is the full dynamic diagnostic schema.
+- [Domain model guide](docs/agents/domain_model.md) lists the local vocabulary used by the API.
+- Copy your `API Token` from **Settings → Integrations**. Send it as `Authorization: Bearer YOUR_API_TOKEN` or `X-API-Key: YOUR_API_TOKEN`.
 - Full reference: [API and MCP Server](https://github.com/dannyvfilms/Floppy/wiki/7.-API-and-MCP-Server)
+
+Check a Floppy instance with the public info endpoint. This request needs no token:
+
+```bash
+curl --request GET "https://YOUR_FLOPPY_HOST/api/v1/info/"
+```
+
+Then make a harmless authenticated request:
+
+```bash
+curl --request GET --header "X-API-Key: YOUR_API_TOKEN" "https://YOUR_FLOPPY_HOST/api/v1/user/preferences/"
+```
 
 ## Configuration and deployment
 
@@ -477,7 +492,7 @@ docker run -d --name redis -p 6379:6379 --restart unless-stopped redis:8-alpine
 uv sync --locked
 ```
 
-Create a `.env` with at least `SECRET`, `DEBUG=True`, and whichever API keys you need (same names as the Docker list above), then:
+Non-Docker source runs require `SECRET`. Create a `.env` with at least `SECRET`, `DEBUG=True`, and whichever metadata API keys you need (same names as the Docker list above), then:
 
 ```bash
 uv run --no-sync python src/manage.py migrate
