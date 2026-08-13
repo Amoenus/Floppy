@@ -120,12 +120,17 @@ async def get_media(
     season_number and episode_number. media_type/source/media_id always
     describe the parent show for seasons/episodes.
     """
-    path = f"media/{media_type}/{source}/{media_id}"
-    if season_number is not None:
-        path += f"/{season_number}"
-        if episode_number is not None:
-            path += f"/{episode_number}"
-    return await _call("get", path)
+    if season_number is None:
+        return await _call("get", f"media/{media_type}/{source}/{media_id}")
+    if episode_number is None:
+        return await _call(
+            "get",
+            f"media/{media_type}/{source}/{media_id}/{season_number}",
+        )
+    return await _call(
+        "get",
+        f"media/{media_type}/{source}/{media_id}/{season_number}/{episode_number}",
+    )
 
 
 @mcp.tool()
@@ -219,10 +224,10 @@ async def track_media(
         if status_code == _STATUS_CODES["Completed"]:
             for consumption in existing.get("consumptions") or []:
                 if consumption.get("status") in {"Planning", "In progress", 0, 1}:
+                    consumption_id = consumption["consumption_id"]
                     return await _call(
                         "patch",
-                        f"media/{media_type}/{source}/{media_id}/history/"
-                        f"{consumption['consumption_id']}",
+                        f"media/{media_type}/{source}/{media_id}/history/{consumption_id}",
                         json=body,
                     )
         return await _call(
@@ -243,12 +248,17 @@ async def untrack_media(
     episode_number: int | None = None,
 ) -> Any:
     """Remove a tracked media item (or a specific season/episode) from the library."""
-    path = f"media/{media_type}/{source}/{media_id}"
-    if season_number is not None:
-        path += f"/{season_number}"
-        if episode_number is not None:
-            path += f"/{episode_number}"
-    return await _call("delete", path)
+    if season_number is None:
+        return await _call("delete", f"media/{media_type}/{source}/{media_id}")
+    if episode_number is None:
+        return await _call(
+            "delete",
+            f"media/{media_type}/{source}/{media_id}/{season_number}",
+        )
+    return await _call(
+        "delete",
+        f"media/{media_type}/{source}/{media_id}/{season_number}/{episode_number}",
+    )
 
 
 @mcp.tool()
@@ -264,10 +274,17 @@ async def update_progress(
     For TV shows, pass season_number to advance/rewind that season's next
     episode; omit it for movies, games, books, etc.
     """
-    path = f"media/{media_type}/{source}/{media_id}"
     if season_number is not None:
-        path += f"/{season_number}"
-    return await _call("post", f"{path}/progress", json={"operation": operation})
+        return await _call(
+            "post",
+            f"media/{media_type}/{source}/{media_id}/{season_number}/progress",
+            json={"operation": operation},
+        )
+    return await _call(
+        "post",
+        f"media/{media_type}/{source}/{media_id}/progress",
+        json={"operation": operation},
+    )
 
 
 @mcp.tool()
@@ -279,9 +296,10 @@ async def log_episode_play(
     end_date: str | None = None,
 ) -> Any:
     """Record a watch of a TV episode (creates the show/season if needed)."""
+    media_type = "tv"
     return await _call(
         "post",
-        f"media/tv/{source}/{media_id}/{season_number}/episodes/{episode_number}/watch",
+        f"media/{media_type}/{source}/{media_id}/{season_number}/episodes/{episode_number}/watch",
         json={"end_date": end_date} if end_date else {},
     )
 

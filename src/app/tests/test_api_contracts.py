@@ -1,5 +1,5 @@
-import asyncio
-from unittest.mock import AsyncMock, patch
+import ast
+import inspect
 
 from django.test import SimpleTestCase
 from floppy_mcp import server as mcp_server
@@ -122,201 +122,139 @@ class MCPHTTPManifestTests(SimpleTestCase):
         self.assertEqual(canonical_openapi_path("media/{media_type}"), "/api/v1/media/{media_type}/")
         self.assertEqual(canonical_openapi_path("/media/"), "/api/v1/media/")
 
-    def test_grounding_critical_tools_are_explicit(self):
-        critical = {
-            entry for entry in MCP_HTTP_MANIFEST if entry.tool in {"search_media", "get_media", "track_media"}
+    @staticmethod
+    def _routes_from_source(source):
+        routes = []
+
+        def is_mcp_tool(node):
+            return any(
+                isinstance(decorator, ast.Call)
+                and isinstance(decorator.func, ast.Attribute)
+                and isinstance(decorator.func.value, ast.Name)
+                and decorator.func.value.id == "mcp"
+                and decorator.func.attr == "tool"
+                for decorator in node.decorator_list
+            )
+
+        def path_template(node, line):
+            if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                return node.value
+            if isinstance(node, ast.JoinedStr):
+                parts = []
+                for value in node.values:
+                    if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                        parts.append(value.value)
+                    elif (
+                        isinstance(value, ast.FormattedValue)
+                        and isinstance(value.value, ast.Name)
+                        and value.conversion == -1
+                        and value.format_spec is None
+                    ):
+                        parts.append(f"{{{value.value.id}}}")
+                    else:
+                        raise AssertionError(
+                            f"Unsupported MCP path expression at line {line}"
+                        )
+                return "".join(parts)
+            raise AssertionError(f"Unsupported MCP path expression at line {line}")
+
+        for node in ast.parse(source).body:
+            if not isinstance(node, ast.AsyncFunctionDef) or not is_mcp_tool(node):
+                continue
+            for call in ast.walk(node):
+                if not (
+                    isinstance(call, ast.Call)
+                    and isinstance(call.func, ast.Name)
+                    and call.func.id == "_call"
+                ):
+                    continue
+                if len(call.args) < 2:
+                    raise AssertionError(f"Invalid _call at line {call.lineno}")
+                method = call.args[0]
+                if not (
+                    isinstance(method, ast.Constant)
+                    and isinstance(method.value, str)
+                    and method.value == method.value.lower()
+                ):
+                    raise AssertionError(
+                        f"MCP method must be a lowercase string literal at line {call.lineno}"
+                    )
+                routes.append(
+                    HTTPRoute(
+                        node.name,
+                        method.value,
+                        canonical_openapi_path(
+                            path_template(call.args[1], call.lineno)
+                        ),
+                    )
+                )
+        return routes
+
+    def test_source_extractor_rejects_computed_paths(self):
+        source = """
+@mcp.tool()
+async def computed_path():
+    path = "home"
+    return await _call("get", path)
+"""
+        with self.assertRaisesRegex(
+            AssertionError, "Unsupported MCP path expression at line 5"
+        ):
+            self._routes_from_source(source)
+
+    def test_source_extractor_requires_literal_lowercase_methods(self):
+        for method in ("method", '"GET"'):
+            with self.subTest(method=method), self.assertRaisesRegex(
+                AssertionError,
+                "MCP method must be a lowercase string literal at line 4",
+            ):
+                self._routes_from_source(
+                    f"""
+@mcp.tool()
+async def invalid_method():
+    return await _call({method}, "home")
+"""
+                )
+
+    def test_source_extractor_preserves_exact_templates(self):
+        source = """\
+@mcp.tool()
+async def exact_template():
+    await _call("get", f"media/{media_type}/{source}/{media_id}")
+    await _call("post", "unexercised")
+"""
+        expected = {
+            HTTPRoute(
+                "exact_template",
+                "get",
+                "/api/v1/media/{media_type}/{source}/{media_id}/",
+            ),
+            HTTPRoute("exact_template", "post", "/api/v1/unexercised/"),
         }
 
-        self.assertEqual(
-            critical,
-            {
-                HTTPRoute("search_media", "get", "/api/v1/search/{media_type}/"),
-                HTTPRoute(
-                    "get_media",
-                    "get",
-                    "/api/v1/media/{media_type}/{source}/{media_id}/",
-                ),
-                HTTPRoute(
-                    "get_media",
-                    "get",
-                    "/api/v1/media/{media_type}/{source}/{media_id}/{season_number}/",
-                ),
-                HTTPRoute(
-                    "get_media",
-                    "get",
-                    "/api/v1/media/{media_type}/{source}/{media_id}/{season_number}/{episode_number}/",
-                ),
-                HTTPRoute(
-                    "track_media",
-                    "get",
-                    "/api/v1/media/{media_type}/{source}/{media_id}/",
-                ),
-                HTTPRoute(
-                    "track_media",
-                    "patch",
-                    "/api/v1/media/{media_type}/{source}/{media_id}/history/{consumption_id}/",
-                ),
-                HTTPRoute(
-                    "track_media",
-                    "patch",
-                    "/api/v1/media/{media_type}/{source}/{media_id}/",
-                ),
-                HTTPRoute(
-                    "track_media",
-                    "post",
-                    "/api/v1/media/{media_type}/",
-                ),
-            },
+        self.assertEqual(set(self._routes_from_source(source)), expected)
+        self.assertNotEqual(
+            set(
+                self._routes_from_source(
+                    source.replace("{media_type}/{source}", "{source}/{media_type}")
+                )
+            ),
+            expected,
+        )
+        self.assertIn(
+            HTTPRoute("exact_template", "post", "/api/v1/unexercised/"),
+            self._routes_from_source(source),
         )
 
     def test_manifest_covers_all_current_http_branches(self):
-        observed = set()
+        routes = self._routes_from_source(inspect.getsource(mcp_server))
 
-        async def exercise_all_branches(mock_call):
-            async def capture(tool, coroutine, results=None):
-                mock_call.reset_mock()
-                mock_call.return_value = {}
-                mock_call.side_effect = results
-                await coroutine
-                observed.update(
-                    (
-                        tool,
-                        call.args[0],
-                        canonical_openapi_path(call.args[1]),
-                    )
-                    for call in mock_call.await_args_list
-                )
-                mock_call.side_effect = None
-
-            await capture("search_media", mcp_server.search_media("movie", "query"))
-            await capture(
-                "search_tracked_media", mcp_server.search_tracked_media("query")
-            )
-            await capture("get_discover", mcp_server.get_discover("movie"))
-            await capture("get_home", mcp_server.get_home())
-            await capture("get_media", mcp_server.get_media("tv", "tmdb", "1"))
-            await capture(
-                "get_media", mcp_server.get_media("tv", "tmdb", "1", 2)
-            )
-            await capture(
-                "get_media", mcp_server.get_media("tv", "tmdb", "1", 2, 3)
-            )
-            await capture("list_tracked_media", mcp_server.list_tracked_media())
-            await capture(
-                "list_tracked_media", mcp_server.list_tracked_media("movie")
-            )
-            await capture(
-                "track_media",
-                mcp_server.track_media("movie", "tmdb", "1"),
-                [{"tracked": False}, {}],
-            )
-            await capture(
-                "track_media",
-                mcp_server.track_media("movie", "tmdb", "1"),
-                [{"tracked": True, "consumptions": []}, {}],
-            )
-            await capture(
-                "track_media",
-                mcp_server.track_media("movie", "tmdb", "1", status="Completed"),
-                [
-                    {
-                        "tracked": True,
-                        "consumptions": [
-                            {"consumption_id": 42, "status": "Planning"}
-                        ],
-                    },
-                    {},
-                ],
-            )
-            await capture(
-                "untrack_media", mcp_server.untrack_media("movie", "tmdb", "1")
-            )
-            await capture(
-                "untrack_media", mcp_server.untrack_media("tv", "tmdb", "1", 2)
-            )
-            await capture(
-                "untrack_media", mcp_server.untrack_media("tv", "tmdb", "1", 2, 3)
-            )
-            await capture(
-                "update_progress",
-                mcp_server.update_progress("movie", "tmdb", "1", "increase"),
-            )
-            await capture(
-                "update_progress",
-                mcp_server.update_progress("tv", "tmdb", "1", "increase", 2),
-            )
-            await capture(
-                "log_episode_play", mcp_server.log_episode_play("tmdb", "1", 2, 3)
-            )
-            await capture("log_song_play", mcp_server.log_song_play(1))
-            await capture("log_podcast_play", mcp_server.log_podcast_play(1))
-            await capture("list_custom_lists", mcp_server.list_custom_lists())
-            await capture("manage_list", mcp_server.manage_list("create", name="x"))
-            await capture("manage_list", mcp_server.manage_list("rename", 1, "x"))
-            await capture("manage_list", mcp_server.manage_list("delete", 1))
-            await capture("manage_list", mcp_server.manage_list("list_items", 1))
-            await capture(
-                "manage_list",
-                mcp_server.manage_list("add_item", 1, media_type="movie", source="tmdb", media_id="1"),
-            )
-            await capture(
-                "manage_list",
-                mcp_server.manage_list("remove_item", 1, media_type="movie", source="tmdb", media_id="1"),
-            )
-            await capture("manage_tags", mcp_server.manage_tags("list"))
-            await capture("manage_tags", mcp_server.manage_tags("create", name="x"))
-            await capture("manage_tags", mcp_server.manage_tags("rename", 1, "x"))
-            await capture("manage_tags", mcp_server.manage_tags("delete", 1))
-            await capture(
-                "manage_tags",
-                mcp_server.manage_tags(
-                    "get_for_item", media_type="movie", source="tmdb", media_id="1"
-                ),
-            )
-            await capture(
-                "manage_tags",
-                mcp_server.manage_tags(
-                    "set_for_item", media_type="movie", source="tmdb", media_id="1"
-                ),
-            )
-            await capture("get_history", mcp_server.get_history())
-            await capture("get_statistics", mcp_server.get_statistics())
-            await capture("run_import", mcp_server.run_import("mal"))
-            await capture("get_task_status", mcp_server.get_task_status("task-1"))
-            await capture("manage_settings", mcp_server.manage_settings("get"))
-            await capture("manage_settings", mcp_server.manage_settings("update"))
-
-        with patch("floppy_mcp.server._call", new_callable=AsyncMock) as mock_call:
-            asyncio.run(exercise_all_branches(mock_call))
-
-        def matches(entry, observed_route):
-            tool, method, path = observed_route
-            template_parts = entry.path.strip("/").split("/")
-            path_parts = path.strip("/").split("/")
-            return (
-                entry.tool == tool
-                and entry.method == method
-                and len(template_parts) == len(path_parts)
-                and all(
-                    template == actual
-                    or (template.startswith("{") and template.endswith("}"))
-                    for template, actual in zip(template_parts, path_parts, strict=True)
-                )
-            )
-
-        unmatched = {
-            route
-            for route in observed
-            if not any(matches(entry, route) for entry in MCP_HTTP_MANIFEST)
-        }
-        unobserved = {
-            entry
-            for entry in MCP_HTTP_MANIFEST
-            if not any(matches(entry, route) for route in observed)
-        }
-
-        self.assertEqual(unmatched, set())
-        self.assertEqual(unobserved, set())
+        self.assertEqual(len(MCP_HTTP_MANIFEST), len(set(MCP_HTTP_MANIFEST)))
+        self.assertEqual(set(routes), set(MCP_HTTP_MANIFEST))
+        self.assertTrue(
+            {"search_media", "get_media", "track_media"}
+            <= {route.tool for route in routes}
+        )
 
     def test_every_manifest_route_exists_in_generated_openapi(self):
         paths = generate_schema_contract().schema["paths"]
