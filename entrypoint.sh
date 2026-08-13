@@ -2,45 +2,57 @@
 
 set -e
 
-# Fail fast with a clear message if the SQLite file is already corrupt,
-# instead of burning through the migrate retry loop below to arrive at an
-# opaque "file is not a database" traceback (issue #508). Corruption here
-# often means the db directory sits on a network filesystem that doesn't
-# support SQLite's WAL locking - see README's SQLite persistence note.
-# Rejects a non-"ok" quick_check result even when SQLite doesn't raise an
-# exception for it (issue #593).
-if [ -z "$DB_HOST" ] && [ -f /floppy/db/db.sqlite3 ]; then
-    echo "[entrypoint] Checking SQLite integrity (PRAGMA quick_check)" >&2
-    python -c "from config.sqlite_integrity import check_database_integrity; check_database_integrity('/floppy/db/db.sqlite3')" &
-    integrity_pid=$!
+DATA_DIR_INPUT=${FLOPPY_DATA_DIR:-/floppy/db}
+DATA_DIR=$(python -c 'from pathlib import Path; import sys; print(Path(sys.argv[1]).resolve())' "$DATA_DIR_INPUT")
 
-    # Report actual bytes read from /proc rather than a bare "still going" -
-    # cheap to read (no python instrumentation needed) and gives the user
-    # something concrete instead of a repeating, uninformative message.
-    elapsed=0
-    while kill -0 "$integrity_pid" 2>/dev/null; do
-        if [ "$elapsed" -ge 600 ]; then
-            echo "[entrypoint] WARNING: SQLite integrity check exceeded 600s (slow storage?); continuing" >&2
-            kill "$integrity_pid" 2>/dev/null
-            break
-        fi
-        sleep 30
-        elapsed=$((elapsed + 30))
-        read_mb=$(awk '/^rchar:/ {printf "%.0f", $2/1048576}' "/proc/${integrity_pid}/io" 2>/dev/null) || read_mb=""
-        if [ -n "$read_mb" ]; then
-            echo "[entrypoint] Still checking SQLite integrity (${elapsed}s elapsed, ~${read_mb}MB read so far)" >&2
-        else
-            echo "[entrypoint] Still checking SQLite integrity (${elapsed}s elapsed)" >&2
-        fi
-    done
+if [ "$DATA_DIR" = / ]; then
+    echo "[entrypoint] FLOPPY_DATA_DIR must resolve to a directory below /." >&2
+    exit 1
+fi
 
-    integrity_status=0
-    wait "$integrity_pid" || integrity_status=$?
-    if [ "$elapsed" -ge 600 ] && [ "$integrity_status" -ne 0 ]; then
-        integrity_status=124
-    fi
-    if [ "$integrity_status" -ne 0 ] && [ "$integrity_status" -ne 124 ]; then
+if [ -z "$DB_HOST" ]; then
+    DB_FILE_INPUT=${FLOPPY_DB_PATH:-"${DATA_DIR_INPUT}/db.sqlite3"}
+    DB_FILE=$(python -c 'from pathlib import Path; import sys; print(Path(sys.argv[1]).resolve())' "$DB_FILE_INPUT")
+    DB_PARENT=$(python -c 'from pathlib import Path; import sys; print(Path(sys.argv[1]).parent)' "$DB_FILE")
+
+    if [ "$DB_PARENT" = / ]; then
+        echo "[entrypoint] FLOPPY_DB_PATH must use a database directory below /." >&2
         exit 1
+    fi
+
+    # Fail fast with a clear message if the SQLite file is already corrupt.
+    # This avoids repeated migration failures (issues #508 and #593).
+    if [ -f "$DB_FILE" ]; then
+        echo "[entrypoint] Checking SQLite integrity for ${DB_FILE} (PRAGMA quick_check)" >&2
+        python -c 'from config.sqlite_integrity import check_database_integrity; import sys; check_database_integrity(sys.argv[1])' "$DB_FILE" &
+        integrity_pid=$!
+
+        # Report bytes read so large databases show visible progress.
+        elapsed=0
+        while kill -0 "$integrity_pid" 2>/dev/null; do
+            if [ "$elapsed" -ge 600 ]; then
+                echo "[entrypoint] WARNING: SQLite integrity check exceeded 600s (slow storage?); continuing" >&2
+                kill "$integrity_pid" 2>/dev/null
+                break
+            fi
+            sleep 30
+            elapsed=$((elapsed + 30))
+            read_mb=$(awk '/^rchar:/ {printf "%.0f", $2/1048576}' "/proc/${integrity_pid}/io" 2>/dev/null) || read_mb=""
+            if [ -n "$read_mb" ]; then
+                echo "[entrypoint] Still checking SQLite integrity (${elapsed}s elapsed, ~${read_mb}MB read so far)" >&2
+            else
+                echo "[entrypoint] Still checking SQLite integrity (${elapsed}s elapsed)" >&2
+            fi
+        done
+
+        integrity_status=0
+        wait "$integrity_pid" || integrity_status=$?
+        if [ "$elapsed" -ge 600 ] && [ "$integrity_status" -ne 0 ]; then
+            integrity_status=124
+        fi
+        if [ "$integrity_status" -ne 0 ] && [ "$integrity_status" -ne 124 ]; then
+            exit 1
+        fi
     fi
 fi
 
@@ -72,7 +84,26 @@ echo "[entrypoint] Fixing file ownership (PUID=${PUID} PGID=${PGID})" >&2
 groupmod -o -g "$PGID" abc
 usermod -o -u "$PUID" abc
 
-chown abc:abc /floppy
+chown abc:abc -- /floppy
+
+if [ -e "$DATA_DIR" ] && ! timeout 600 chown -R abc:abc -- "$DATA_DIR"; then
+    echo "[entrypoint] Cannot set ownership for FLOPPY_DATA_DIR ${DATA_DIR} with PUID=${PUID} and PGID=${PGID}. Fix the mount permissions or the IDs." >&2
+    exit 1
+fi
+
+if [ -z "$DB_HOST" ]; then
+    case "${DB_PARENT}/" in
+        "${DATA_DIR}/"*) ;;
+        *)
+            for path in "$DB_PARENT" "$DB_FILE" "$DB_FILE-wal" "$DB_FILE-shm"; do
+                if [ -e "$path" ] && ! timeout 600 chown abc:abc -- "$path"; then
+                    echo "[entrypoint] Cannot set ownership for FLOPPY_DB_PATH parent ${DB_PARENT} with PUID=${PUID} and PGID=${PGID}. Fix the mount permissions or the IDs." >&2
+                    exit 1
+                fi
+            done
+            ;;
+    esac
+fi
 
 # "logs" holds the rotating file handler every process configures at import time
 # (settings.LOG_FILE). settings.py creates the directory, so whichever process
@@ -82,9 +113,9 @@ chown abc:abc /floppy
 #
 # Bound each recursive chown: a stalled bind mount (e.g. network storage)
 # must degrade to a warning instead of hanging the boot silently (issue #341).
-for dir in db logs staticfiles /var/log/nginx /var/lib/nginx; do
+for dir in "${LOG_DIR:-/floppy/logs}" /floppy/staticfiles /var/log/nginx /var/lib/nginx; do
     echo "[entrypoint] Chowning ${dir}" >&2
-    timeout 600 chown -R abc:abc "$dir" || \
+    timeout 600 chown -R abc:abc -- "$dir" || \
         echo "[entrypoint] WARNING: chown of ${dir} failed or timed out (stalled mount?); continuing" >&2
 done
 
