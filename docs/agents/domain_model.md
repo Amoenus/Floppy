@@ -42,7 +42,7 @@ Relationships:
 
 ## Celery queue
 
-A Celery queue sends a task to a worker. Floppy uses the `celery`, `interactive`, and `discover` queue names. `celery` handles background work. `interactive` handles user-triggered work. `discover` handles Discover cache rebuilds. The Reload calendar task has no queue override, so Celery routes it to `celery` at background priority.
+A Celery queue sends a task to a worker. Floppy uses the `celery`, `interactive`, and `discover` queue names. `celery` handles background work. `interactive` handles user-triggered work. `discover` handles Discover cache rebuilds. The Reload calendar task has no queue override, so it uses `celery` with background priority `9`.
 
 Bounded context: `config`.
 

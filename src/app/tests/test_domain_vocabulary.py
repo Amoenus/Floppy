@@ -34,8 +34,11 @@ class DomainVocabularyTests(SimpleTestCase):
         )
         for queue in ("`celery`", "`interactive`", "`discover`"):
             self.assertIn(queue, terms["celery_queue"].definition)
-        self.assertIn("Reload calendar", terms["celery_queue"].definition)
-        self.assertIn("background priority", terms["celery_queue"].definition)
+        self.assertIn(
+            "The Reload calendar task has no queue override, so it uses `celery` "
+            "with background priority `9`.",
+            terms["celery_queue"].definition,
+        )
 
     def test_validator_rejects_duplicate_keys_terms_and_aliases(self):
         item = domain_vocabulary.DOMAIN_TERMS[0]
