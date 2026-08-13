@@ -102,7 +102,11 @@ _LIST_SCHEMA = {
         "owner": {"type": "object", "additionalProperties": True},
         "collaborators": _ARRAY_SCHEMA,
         "items_count": {"type": "integer"},
-        "latest_update": {"type": "string", "format": "date-time"},
+        "latest_update": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": True,
+        },
         "is_public": {"type": "boolean"},
         "public_slug": {"type": "string", "nullable": True},
         "allow_recommendations": {"type": "boolean"},

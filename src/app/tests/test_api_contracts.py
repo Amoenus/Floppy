@@ -14,6 +14,7 @@ from floppy_mcp.http_manifest import (
     canonical_openapi_path,
 )
 
+from api.helpers import MEDIA_TYPE_VALID_LIST
 from api.schema_contract import (
     EXPECTED_SCHEMA_ERRORS,
     EXPECTED_SCHEMA_WARNINGS,
@@ -330,6 +331,32 @@ class OpenAPIArtifactTests(SimpleTestCase):
                     operation["security"],
                     [{"bearerAuth": []}, {"ApiKeyAuth": []}],
                 )
+
+    def test_search_media_type_enum_matches_supported_provider_types(self):
+        operation = generate_static_schema_contract().schema["paths"][
+            "/api/v1/search/{media_type}/"
+        ]["get"]
+        media_type = next(
+            parameter
+            for parameter in operation["parameters"]
+            if parameter["in"] == "path" and parameter["name"] == "media_type"
+        )
+
+        self.assertEqual(media_type["schema"]["enum"], sorted(MEDIA_TYPE_VALID_LIST))
+        self.assertNotIn("season", media_type["schema"]["enum"])
+        self.assertNotIn("episode", media_type["schema"]["enum"])
+
+    def test_list_latest_update_allows_empty_list_null(self):
+        paths = generate_static_schema_contract().schema["paths"]
+        post_schema = paths["/api/v1/lists/"]["post"]["responses"]["201"][
+            "content"
+        ]["application/json"]["schema"]
+        get_schema = paths["/api/v1/lists/"]["get"]["responses"]["200"][
+            "content"
+        ]["application/json"]["schema"]["properties"]["results"]["items"]
+
+        self.assertTrue(post_schema["properties"]["latest_update"]["nullable"])
+        self.assertTrue(get_schema["properties"]["latest_update"]["nullable"])
 
     def test_listenbrainz_and_info_operations_are_exact(self):
         paths = generate_static_schema_contract().schema["paths"]

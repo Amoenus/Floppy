@@ -4327,7 +4327,7 @@ class SearchProviderView(drf_views.APIView):
     @extend_schema(
         operation_id="searchMedia",
         parameters=[
-            MEDIA_TYPE_COMPLETE_PARAM,
+            MEDIA_TYPE_PARAM,
             OpenApiParameter(
                 name="search",
                 type=str,

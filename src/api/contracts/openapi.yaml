@@ -237,6 +237,7 @@ paths:
                         latest_update:
                           type: string
                           format: date-time
+                          nullable: true
                         is_public:
                           type: boolean
                         public_slug:
@@ -337,6 +338,7 @@ paths:
                   latest_update:
                     type: string
                     format: date-time
+                    nullable: true
                   is_public:
                     type: boolean
                   public_slug:
@@ -445,6 +447,7 @@ paths:
                   latest_update:
                     type: string
                     format: date-time
+                    nullable: true
                   is_public:
                     type: boolean
                   public_slug:
@@ -1702,17 +1705,14 @@ paths:
           - book
           - comic
           - comicissue
-          - episode
           - game
           - manga
           - movie
           - music
           - podcast
-          - season
           - tv
-        description: Media type, including `season` and `episode`. POST to a media-type
-          collection creates a new consumption; omitted status defaults to Planning.
-          Use the history/{consumption_id} route to update one specific existing consumption.
+        description: Media type. Does not include `season`/`episode` — those are addressed
+          via separate path segments under `tv`.
         required: true
       - in: query
         name: offset
