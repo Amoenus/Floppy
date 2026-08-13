@@ -33,6 +33,7 @@ from app.models import (
     Sources,
     Status,
 )
+from app.tv_sort import RUNTIME_UNKNOWN_AIRED
 from lists.models import CustomList, CustomListItem
 from users.home_screen import ensure_home_screen_rows
 from users.models import HomeScreenRowTypeChoices
@@ -494,3 +495,153 @@ class QueryCountTests(TestCase):
             SEASON_PAGE_FIRST_VIEW_MAX_QUERIES,
             "season page first view with many new episodes",
         )
+
+
+class SeasonRuntimeCacheReadBudgetTests(TestCase):
+    """Pin cache round trips for the TV time-left sort.
+
+    CaptureQueriesContext counts SQL only, so a cache round trip is invisible
+    to every budget above. The time-left sort used to read up to five season
+    keys for each show, one request after another, which made an interactive
+    page wait for N x 5 round trips on a large library (#725).
+
+    The shared seed gives every episode a real runtime, so the season metadata
+    is never reached. This seed uses the "aired, runtime unknown" marker
+    instead, which is what a library with incomplete metadata looks like.
+    """
+
+    SHOW_COUNT = 12
+
+    @classmethod
+    def setUpTestData(cls):
+        """Seed shows whose episodes have no usable runtime."""
+        cls.user = get_user_model().objects.create_user(
+            username="seasonruntimebudget",
+            password="12345",
+        )
+        cls.user.tv_enabled = True
+        cls.user.tv_sort = "time_left"
+        cls.user.save()
+
+        air_date = datetime(2020, 1, 1, tzinfo=UTC)
+        for show_index in range(cls.SHOW_COUNT):
+            media_id = f"srb_show_{show_index}"
+            tv_item = Item.objects.create(
+                media_id=media_id,
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.TV.value,
+                title=f"Season Runtime Show {show_index}",
+                image="https://example.com/show.jpg",
+                release_datetime=air_date,
+                # No usable show runtime, so the season metadata is reached.
+                runtime_minutes=RUNTIME_UNKNOWN_AIRED,
+            )
+            tv = TV.objects.create(
+                item=tv_item,
+                user=cls.user,
+                status=Status.IN_PROGRESS.value,
+            )
+            season_item = Item.objects.create(
+                media_id=media_id,
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.SEASON.value,
+                season_number=1,
+                title=f"Season Runtime Show {show_index}",
+                image="https://example.com/season.jpg",
+                release_datetime=air_date,
+            )
+            season = Season.objects.create(
+                item=season_item,
+                related_tv=tv,
+                user=cls.user,
+                status=Status.IN_PROGRESS.value,
+            )
+            # Six aired episodes, only two watched. The show must have
+            # episodes left, or the sort never asks for its runtime.
+            episode_items = []
+            for episode_number in range(1, 7):
+                episode_items.append(
+                    Item.objects.create(
+                        media_id=media_id,
+                        source=Sources.TMDB.value,
+                        media_type=MediaTypes.EPISODE.value,
+                        season_number=1,
+                        episode_number=episode_number,
+                        title=f"Season Runtime Show {show_index}",
+                        image="https://example.com/episode.jpg",
+                        release_datetime=air_date + timedelta(days=episode_number),
+                        # Aired, runtime unknown. Excluded from the episode index.
+                        runtime_minutes=RUNTIME_UNKNOWN_AIRED,
+                    ),
+                )
+            Episode.objects.bulk_create(
+                [
+                    Episode(
+                        item=episode_item,
+                        related_season=season,
+                        end_date=air_date,
+                    )
+                    for episode_item in episode_items[:2]
+                ],
+            )
+
+    def setUp(self):
+        cache.clear()
+        self.client.force_login(self.user)
+
+    def _count_season_cache_reads(self, url):
+        """Return (single reads, grouped reads) of season keys for one request."""
+        single_reads = []
+        grouped_reads = []
+        real_get = cache.get
+        real_get_many = cache.get_many
+
+        def counting_get(key, *args, **kwargs):
+            if isinstance(key, str) and key.startswith("tmdb_season_"):
+                single_reads.append(key)
+            return real_get(key, *args, **kwargs)
+
+        def counting_get_many(keys, *args, **kwargs):
+            keys = list(keys)
+            if any(str(key).startswith("tmdb_season_") for key in keys):
+                grouped_reads.append(keys)
+            return real_get_many(keys, *args, **kwargs)
+
+        with (
+            patch.object(cache, "get", counting_get),
+            patch.object(cache, "get_many", counting_get_many),
+        ):
+            response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        return single_reads, grouped_reads
+
+    def test_time_left_sort_reads_season_runtimes_in_groups(self):
+        """The sort must not read one season key at a time for each show."""
+        single_reads, grouped_reads = self._count_season_cache_reads(
+            "/medialist/tv?sort=time_left",
+        )
+
+        self.assertEqual(
+            single_reads,
+            [],
+            f"time_left sort read {len(single_reads)} season keys one at a "
+            f"time; they must be read in groups. Sample: {single_reads[:5]}",
+        )
+        self.assertLessEqual(
+            len(grouped_reads),
+            2,
+            f"time_left sort issued {len(grouped_reads)} grouped season reads; "
+            "one page must need at most one group per chunk.",
+        )
+
+    def test_time_left_sort_survives_an_unavailable_cache(self):
+        """A broken cache must degrade to the default runtime, not an error."""
+
+        def raise_on_get_many(*_args, **_kwargs):
+            message = "redis is down"
+            raise RuntimeError(message)
+
+        with patch.object(cache, "get_many", raise_on_get_many):
+            response = self.client.get("/medialist/tv?sort=time_left")
+
+        self.assertEqual(response.status_code, 200)

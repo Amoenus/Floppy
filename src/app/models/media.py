@@ -572,9 +572,10 @@ class Media(models.Model):
 
     def _get_fallback_runtime_minutes(self):
         """Get average runtime for fallback calculation."""
-        from django.core.cache import cache
-
-        from app.statistics import parse_runtime_to_minutes
+        from app.models.episode_runtimes import (
+            build_season_runtime_index,
+            default_runtime_minutes,
+        )
 
         runtime_minutes = None
 
@@ -585,35 +586,15 @@ class Media(models.Model):
             runtime_minutes = self.item.runtime_minutes
 
         if not runtime_minutes:
-            # Try to get from season cache
-            season_cache_key = f"tmdb_season_{self.item.media_id}_1"
-            cached_season_data = cache.get(season_cache_key)
-
-            if cached_season_data and cached_season_data.get("details", {}).get(
-                "runtime"
-            ):
-                runtime_str = cached_season_data["details"]["runtime"]
-                runtime_minutes = parse_runtime_to_minutes(runtime_str)
-            else:
-                # Try other seasons
-                for season_num in [2, 3, 4, 5]:
-                    season_cache_key = f"tmdb_season_{self.item.media_id}_{season_num}"
-                    cached_season_data = cache.get(season_cache_key)
-                    if cached_season_data and cached_season_data.get("details", {}).get(
-                        "runtime"
-                    ):
-                        runtime_str = cached_season_data["details"]["runtime"]
-                        runtime_minutes = parse_runtime_to_minutes(runtime_str)
-                        break
+            # Then use the cached season metadata. The seasons are read in one
+            # grouped request instead of one request for each season.
+            runtime_minutes = build_season_runtime_index([self.item.media_id]).get(
+                self.item.media_id,
+            )
 
         # Use fallback values if nothing found
         if runtime_minutes is None:
-            if self.item.source == "tmdb":
-                runtime_minutes = 30
-            elif self.item.source == "mal":
-                runtime_minutes = 23
-            else:
-                runtime_minutes = 30
+            runtime_minutes = default_runtime_minutes(self.item.source)
 
         return runtime_minutes
 
