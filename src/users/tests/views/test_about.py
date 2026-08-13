@@ -20,8 +20,8 @@ class AboutViewTests(TestCase):
         soup = BeautifulSoup(response.content, "html.parser")
         expected_links = {
             "API Reference": reverse("swagger-ui"),
-            "OpenAPI Schema": reverse("openapi-contract"),
-            "Full API Schema": reverse("schema"),
+            "Verified API Schema": reverse("openapi-contract"),
+            "Full Diagnostic API Schema": reverse("schema"),
         }
         api_links = [
             (link.get_text(" ", strip=True), link.get("href"))
@@ -30,5 +30,15 @@ class AboutViewTests(TestCase):
         ]
 
         self.assertEqual(api_links, list(expected_links.items()))
+        for label in expected_links:
+            with self.subTest(label=label):
+                link = next(
+                    link
+                    for link in soup.find_all("a")
+                    if link.get_text(" ", strip=True) == label
+                )
+                icon = link.find("svg")
+                self.assertEqual(icon.get("aria-hidden"), "true")
+                self.assertEqual(icon.get("focusable"), "false")
         self.assertNotContains(response, "JSON-LD")
         self.assertNotContains(response, "AsyncAPI")

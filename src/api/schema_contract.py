@@ -9,7 +9,7 @@ from floppy_mcp.http_manifest import MCP_HTTP_MANIFEST
 from api.contract_serializers import InfoResponseSerializer
 
 SCHEMA_REGENERATION_COMMAND = (
-    "SECRET=<value> uv run --no-sync python src/manage.py spectacular "
+    "SECRET=test-only uv run --no-sync python src/manage.py spectacular "
     "--custom-settings api.schema_contract.STATIC_SPECTACULAR_SETTINGS "
     "--fail-on-warn --validate --file src/api/contracts/openapi.yaml"
 )

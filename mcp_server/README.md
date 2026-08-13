@@ -26,8 +26,10 @@ Configure the server with two environment variables:
 - `FLOPPY_URL` — base URL of the Floppy instance, e.g.
   `https://floppy.example.com` (no trailing slash needed).
 - `FLOPPY_TOKEN` — the user's `API Token`, found under
-  Settings → Integrations in the web UI (the same token used for webhooks and
-  the iCal feed). Sent as an `X-API-Key` header.
+  Settings → Integrations in the web UI. It grants full authenticated API
+  access and also authenticates webhooks and iCal. Never put it in commits,
+  logs, screenshots, or shared shell history. If it is exposed, regenerate it
+  in Settings → Integrations. Sent as an `X-API-Key` header.
 
 The Floppy host also publishes these API references:
 
@@ -44,7 +46,7 @@ drift between the app and the tool code:
 
 ```bash
 claude mcp add floppy \
-  --env FLOPPY_TOKEN=your-token \
+  --env FLOPPY_TOKEN="$FLOPPY_TOKEN" \
   -- docker exec -i -e FLOPPY_TOKEN floppy python -m floppy_mcp.server
 ```
 
@@ -57,7 +59,6 @@ Stdio transport (for Claude Code / Claude Desktop):
 
 ```bash
 FLOPPY_URL=https://floppy.example.com \
-FLOPPY_TOKEN=your-token \
 uv run --no-sync python -m floppy_mcp.server
 ```
 
@@ -66,7 +67,7 @@ Register it with Claude Code:
 ```bash
 claude mcp add floppy \
   --env FLOPPY_URL=https://floppy.example.com \
-  --env FLOPPY_TOKEN=your-token \
+  --env FLOPPY_TOKEN="$FLOPPY_TOKEN" \
   -- uv run --directory /path/to/Floppy --no-sync python -m floppy_mcp.server
 ```
 
