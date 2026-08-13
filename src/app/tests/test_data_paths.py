@@ -406,7 +406,8 @@ fi
 
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn(
-                f"Checking SQLite integrity for {database_path}", result.stderr
+                f"Checking SQLite storage and relationships for {database_path}",
+                result.stderr,
             )
             self.assertIn(f"chown <abc:abc> <--> <{data_dir}>", commands)
             self.assertIn(f"chown <-h> <abc:abc> <--> <{secret_path}>", commands)
