@@ -1,16 +1,17 @@
 # Metadata & provider tokens: current architecture inventory
 
-This inventory is the reviewed starting point for moving instance provider
-credentials into Settings. It describes current code only. It does not define a
-model, resolver implementation, form, or migration.
+This document has one responsibility: inventory the current instance-provider
+credential loading and consumer boundaries, then record the compatibility
+contract a future resolver must satisfy. It does not define a model, resolver
+implementation, form, or migration.
 
 ## Reviewed base
 
 | Item | Reviewed value |
 |---|---|
 | Earlier planning baseline | `80844026` |
-| Current base | `de20dd2e` (`origin/latest` when reviewed) |
-| Delta | 22 commits |
+| Current base | `414c6530` (`origin/latest` when reviewed) |
+| Delta | 30 commits |
 
 The credential declarations and their defaults did not change in that delta.
 The relevant changes were:
@@ -26,6 +27,15 @@ The relevant changes were:
 - PR #737 and its stack added configurable data paths and hardened generated
   `SECRET` handling. The provider `secret()` helper and provider declarations
   were not changed.
+- PR #685 isolated browser/date-picker and CSV export tests from live provider
+  behavior and wall-clock timing. It changed tests only.
+- PR #738 normalized provider episode calendar dates to UTC midnight, leaves
+  invalid years `<=1900` and `9999` null, and conditionally fills only a null
+  stored date so an existing or concurrently written trusted date survives.
+
+PRs #685 and #738 did not change provider credential declarations, Django
+settings behavior, or migrations. The Settings route/view/template files named
+above remain byte-unchanged from `80844026`.
 
 ## Credential declarations and precedence
 
@@ -66,24 +76,30 @@ startup failure exactly: initialization must read and validate a configured
 
 ## Direct consumers
 
-These are the production Python files found by the direct settings-read scan at
-`de20dd2e`. The separate operation-boundary map below records verified indirect
-paths by category; it is not presented as a complete static call graph.
+These are the production symbols found by the current direct-read scan,
+including `getattr(settings, ...)` reads. Each field is independent; paired
+fields may resolve from different sources. The operation column is the boundary
+the later resolver and direct-read contract test must preserve.
 
-| Family | Direct settings consumers |
-|---|---|
-| TMDB | `src/app/providers/tmdb.py`; `src/app/discover/providers/tmdb_adapter.py`; `src/app/management/commands/backfill_discover_metadata.py` |
-| TVDB | `src/app/providers/tvdb.py`; `src/app/services/metadata_resolution.py` |
-| MyAnimeList | `src/app/providers/mal.py`; `src/app/discover/provider_candidates.py`; `src/integrations/imports/mal.py` |
-| IGDB | `src/app/providers/igdb.py`; `src/app/discover/provider_candidates.py`; `src/app/services/game_lengths.py`; `src/lists/models.py` |
-| Steam | `src/integrations/imports/steam.py` |
-| BoardGameGeek | `src/app/providers/bgg.py`; `src/app/discover/provider_candidates.py` |
-| Hardcover | `src/app/providers/hardcover.py` |
-| Comic Vine | `src/app/providers/comicvine.py`; `src/app/discover/provider_candidates.py` |
-| Last.fm | `src/integrations/lastfm_api.py`; `src/app/discover/provider_candidates.py` |
-| Trakt | `src/app/providers/trakt.py`; `src/app/discover/providers/trakt_adapter.py`; `src/integrations/imports/trakt.py`; `src/integrations/views.py`; `src/lists/imports/trakt.py`; `src/users/views.py`; `src/users/onboarding_views.py` |
-| AniList | `src/integrations/imports/anilist.py`; `src/integrations/views.py` |
-| SIMKL | `src/integrations/imports/simkl.py`; `src/integrations/views.py` |
+| Field | Exact direct symbols | Operation boundary |
+|---|---|---|
+| `TMDB_API` | `app.providers.tmdb.base_params`; `app.discover.providers.tmdb_adapter.TMDB_BASE_PARAMS` (module scope); `app.management.commands.backfill_discover_metadata.Command._tmdb_fetch` | TMDB request parameters for normal metadata/search, Discover, and the backfill command |
+| `TVDB_API_KEY` | `app.providers.tvdb.enabled`; `app.providers.tvdb._get_token`; `app.services.metadata_resolution.provider_is_enabled` | configured-state inference and TVDB login `apikey` |
+| `TVDB_PIN` | `app.providers.tvdb._get_token` | optional TVDB login `pin` only; it does not determine `enabled()` |
+| `MAL_API` | `app.providers.mal.search`, `.anime`, `.manga`; `app.discover.provider_candidates._mal_manga_ranking_candidates.fetcher`; `integrations.imports.mal.MyAnimeListImporter._get_whole_response` | MAL client-ID header for metadata, Discover, and imports |
+| `IGDB_ID` | `app.providers.igdb.get_access_token`, `.external_game`, `.search`, `.game`, `.company_profile`, `._fetch_games_by_ids`; `app.discover.provider_candidates._igdb_games_candidates.fetcher`; `app.services.game_lengths.fetch_igdb_time_to_beat`; `lists.models.CustomList._get_igdb_backdrop` | Twitch token client ID and IGDB `Client-ID` request header |
+| `IGDB_SECRET` | `app.providers.igdb.get_access_token` | Twitch client-credentials token acquisition only |
+| `STEAM_API_KEY` | `integrations.imports.steam.SteamImporter.__init__` | Steam importer API key captured per importer instance |
+| `BGG_API_TOKEN` | `app.providers.bgg.search`, `._fetch_thumbnails`, `.boardgame`; `app.discover.provider_candidates._bgg_hot_candidates` | BGG bearer header for metadata and Discover |
+| `HARDCOVER_API` | `app.providers.hardcover._authorization_header` | normalized Hardcover authorization header used by provider calls |
+| `COMICVINE_API` | `app.providers.comicvine.search`, `.comic`, `.get_volume_issues`, `.get_publisher_comics`, `.search_issues`, `.comic_issue`, `.issue`, `.person_profile`; `app.discover.provider_candidates._comicvine_volume_candidates`, `._comicvine_coming_soon_volume_candidates` | Comic Vine API parameter for metadata, people, issue, and Discover requests |
+| `LASTFM_API_KEY` | `integrations.lastfm_api._make_api_request`; `app.discover.provider_candidates._lastfm_top_tracks_candidates` | Last.fm integration calls and Discover top tracks; configured-state check is part of each symbol |
+| `TRAKT_API` | `app.providers.trakt.is_configured`, `._headers`; `app.discover.providers.trakt_adapter.TraktDiscoverAdapter._cache_request`; `integrations.views.trakt_oauth`; `integrations.imports.trakt.handle_oauth_callback`, `.get_username_from_oauth`, `.get_access_token`, `.TraktImporter._make_api_request`; `lists.imports.trakt._make_trakt_request`; `users.views.import_data`; `users.onboarding_views.onboarding_service_setup` | instance Trakt configured state, metadata/Discover headers, OAuth start/exchange/refresh, profile/list imports, and UI inference |
+| `TRAKT_API_SECRET` | `integrations.imports.trakt.handle_oauth_callback`, `.get_access_token`; `users.views.import_data`; `users.onboarding_views.onboarding_service_setup` | instance OAuth code/refresh exchange and paired configured-state inference; no metadata header use |
+| `ANILIST_ID` | `integrations.views.anilist_oauth`; `integrations.imports.anilist.get_token` | OAuth authorization redirect and token exchange client ID |
+| `ANILIST_SECRET` | `integrations.imports.anilist.get_token` | OAuth token exchange client secret only |
+| `SIMKL_ID` | `integrations.views.simkl_oauth`; `integrations.imports.simkl.get_token`, `.get_username`, `.SimklImporter._get_user_list` | OAuth redirect/exchange and SIMKL API-key headers |
+| `SIMKL_SECRET` | `integrations.imports.simkl.get_token` | OAuth token exchange client secret only |
 
 `src/config/test_settings.py` supplies test-only Steam and Trakt overrides; it
 is not a production source.
@@ -215,25 +231,26 @@ The reviewed domain label is **Metadata & provider tokens**.
 | `docs/agents/dev_release_diff_report.md` | Temporary release/wiki staging document contains provider configuration references; reconcile it only if it remains active when the feature lands. |
 | Project wiki | The local `wiki/` checkout is empty here. The README links external configuration and API pages; update the separate wiki repository during release work. |
 
-## Future contract
+## Future resolver contract
 
-Implement one provider-credential resolver used by every consumer in this
-inventory. It must:
+One provider-credential resolver must serve every instance consumer above. Its
+observable invariants are:
 
-1. resolve values in this order: explicit environment, `_FILE`, app-managed,
-   built-in/default;
-2. preserve the eager configured-`_FILE` startup read/failure, environment
-   names, `_FILE` path behavior, and built-in fallbacks;
-3. allow direct credential access only during `src/config/settings.py`
-   initialization and inside resolver internals. There are no current
-   operator-only runtime consumer exceptions. Any future operator-only
-   exception must be named by exact module, symbol, and setting in this
-   document and in the direct-access contract test before it is allowed;
-4. move every current runtime direct read behind the resolver and remove
-   module-scope credential capture;
-5. use `configuration_version`-namespaced IGDB/TVDB bearer caches, invalidate
-   the captured old version's affected namespace, and invalidate non-secret
-   resolver state across workers without a global cache clear; and
-6. leave existing ciphertext and persisted data unchanged, including
-   `TraktAccount` and encrypted OAuth/task values. No data rewrite is part of
-   this contract.
+| Concern | Required invariant |
+|---|---|
+| Field independence | Resolve each of the 17 fields independently. A pair may be mixed-source: for example `IGDB_ID` may come from environment while `IGDB_SECRET` is app-managed. Do not choose one source for an entire family. |
+| Value precedence | For each field: explicit environment -> `_FILE` -> app-managed -> built-in/default. Preserve every current environment name, `_FILE` path rule, whitespace handling, and built-in/default value. |
+| Eager file compatibility | During settings initialization, read and validate every configured `_FILE` before selecting the effective value. A bad configured file must keep failing startup even when explicit environment wins. |
+| Startup snapshot | Settings initialization captures only non-secret source-presence booleans for every field, not process values. Resolver/status requests use that snapshot and do not reread `os.environ`, Decouple, or secret files. Environment or `_FILE` changes require process restart; app-managed version changes do not. |
+| Resolver purity | Resolution performs zero provider/network calls. An explicit **Test** action may call a provider after resolution; ordinary status, render, and save paths may not. Saving must not mutate Django settings or process environment. |
+| Query boundary | Normal operator/provider hot paths perform zero credential-table queries when their version-bound consumer state is warm. An explicit operator status read may make one bounded query for all app-managed field states, never one query per field or family. |
+| Non-secret shared state | Cross-worker/Django cache may contain only `configured`, effective `source`, `configuration_version`, and `editability` per field. It must contain no plaintext credential and no ciphertext. Source/editability status comes from the startup snapshot plus bounded database state, not by rereading process values. |
+| Decryption | Decrypt an app-managed value only on a credential consumer's version-bound process-local miss or an explicit **Test** action. Never decrypt to render source/configured/editability status. Plaintext and ciphertext must never enter shared cache, logs, templates, API output, Celery arguments, or persisted status snapshots. |
+| Concurrent change | A consumer cheaply rechecks non-secret source/version before using resolved material. If it changed during resolution or token acquisition, discard the stale result and retry a bounded number of times; do not loop without limit. |
+| Bearer tokens | IGDB and TVDB bearer keys are namespaced by the captured `configuration_version`. After a successful change, invalidate only the captured old version's affected namespace and non-secret resolver state across workers. Never globally clear Django cache or flush Redis. |
+| Direct reads | Direct credential access is allowed only during `src/config/settings.py` initialization and inside resolver internals. There are no current operator-only runtime exceptions. Any future exception must be recorded here by exact module, symbol, and field and added to the direct-read contract test before merge. |
+| Existing data | Do not rewrite existing ciphertext or persisted data, including `TraktAccount` and encrypted OAuth/task values. Do not mutate environment/settings to simulate a write. |
+
+The direct-read contract test must cover the exact field/symbol inventory above,
+including `getattr(settings, ...)` and module-scope reads, and fail on an
+unlisted runtime read.
