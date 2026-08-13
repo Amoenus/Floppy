@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import httpx
 from mcp.server.fastmcp import FastMCP
 
 from .client import FloppyAPIError, FloppyConfigError, get_client
@@ -37,7 +38,7 @@ def _error_payload(exc: Exception) -> dict[str, Any]:
 async def _call(method: str, path: str, **kwargs: Any) -> Any:
     try:
         return await get_client().request(method, path, **kwargs)
-    except (FloppyAPIError, FloppyConfigError) as exc:
+    except (FloppyAPIError, FloppyConfigError, httpx.RequestError) as exc:
         return _error_payload(exc)
 
 

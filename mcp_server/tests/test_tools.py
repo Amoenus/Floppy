@@ -1,6 +1,7 @@
 """Verify each MCP tool issues the correct HTTP request against the API."""
 import json
 
+import httpx
 import respx
 from httpx import Response
 
@@ -16,7 +17,7 @@ async def test_search_media(api_base_url):
         route = respx.get(f"{api_base_url}/search/movie").mock(return_value=ok())
         await server.search_media("movie", "matrix", page=2)
         req = route.calls.last.request
-        assert req.url.params["q"] == "matrix"
+        assert req.url.params["search"] == "matrix"
         assert req.url.params["page"] == "2"
 
 
@@ -365,3 +366,12 @@ async def test_error_from_api_is_surfaced_not_raised(api_base_url):
         result = await server.get_media("movie", "tmdb", "999")
         assert result["error"] is True
         assert result["status_code"] == 404
+
+
+async def test_connection_error_is_surfaced_not_raised(api_base_url):
+    with respx.mock:
+        respx.get(f"{api_base_url}/home").mock(
+            side_effect=httpx.ConnectError("Connection failed"),
+        )
+        result = await server.get_home()
+        assert result == {"error": True, "detail": "Connection failed"}
