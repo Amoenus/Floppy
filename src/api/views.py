@@ -913,7 +913,11 @@ class MediaTypeListView(drf_views.APIView):
         paginated_data["results"] = serialized_data
         return Response(paginated_data, status=HTTP.OK)
 
-    @extend_schema(parameters=[MEDIA_TYPE_COMPLETE_PARAM])
+    @extend_schema(
+        parameters=[MEDIA_TYPE_COMPLETE_PARAM],
+        operation_id="trackMedia",
+        responses={201: {"$ref": "#/components/schemas/Consumption"}},
+    )
     def post(self, request, media_type):
         """Create a new consumption for a media item.
 
@@ -1138,7 +1142,11 @@ class MediaDetailView(drf_views.APIView):
             status=HTTP.NO_CONTENT,
         )
 
-    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
+    @extend_schema(
+        parameters=[MEDIA_TYPE_PARAM],
+        operation_id="retrieveMediaItem",
+        responses={200: {"$ref": "#/components/schemas/Item"}},
+    )
     def get(self, request, media_type, source, media_id):
         """Retrieve details of a specific media for the authenticated user."""
         user = request.user
@@ -1241,7 +1249,11 @@ class MediaDetailView(drf_views.APIView):
         )
         return Response(serialized, status=HTTP.OK)
 
-    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
+    @extend_schema(
+        parameters=[MEDIA_TYPE_PARAM],
+        operation_id="updateMediaItem",
+        responses={200: {"$ref": "#/components/schemas/Item"}},
+    )
     def patch(self, request, media_type, source, media_id):
         """Update the convenience/default tracked row for a media item.
 
@@ -1601,7 +1613,11 @@ class MediaConsumptionEntryDetailView(drf_views.APIView):
         )
         return Response(serialized_data, status=HTTP.OK)
 
-    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
+    @extend_schema(
+        parameters=[MEDIA_TYPE_PARAM],
+        operation_id="updateMediaConsumption",
+        responses={200: {"$ref": "#/components/schemas/Consumption"}},
+    )
     def patch(self, request, media_type, source, media_id, consumption_id):
         """Update one exact consumption history entry for a media item."""
         if not check_valid_type(media_type):
@@ -2232,7 +2248,11 @@ class MediaSeasonDetailView(drf_views.APIView):
             status=HTTP.NO_CONTENT,
         )
 
-    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
+    @extend_schema(
+        parameters=[MEDIA_TYPE_PARAM],
+        operation_id="retrieveMediaSeason",
+        responses={200: {"$ref": "#/components/schemas/Season"}},
+    )
     def get(self, request, media_type, source, media_id, season_number):
         """Retrieve details of a specific season for the authenticated user."""
         user = request.user
@@ -3363,7 +3383,11 @@ class MediaEpisodeDetailView(drf_views.APIView):
             status=HTTP.NO_CONTENT,
         )
 
-    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
+    @extend_schema(
+        parameters=[MEDIA_TYPE_PARAM],
+        operation_id="retrieveMediaEpisode",
+        responses={200: {"$ref": "#/components/schemas/Episode"}},
+    )
     def get(self, request, media_type, source, media_id, season_number, episode_number):
         """Retrieve details of a specific episode for the authenticated user."""
         user = request.user
@@ -4242,6 +4266,7 @@ class SearchProviderView(drf_views.APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     @extend_schema(
+        operation_id="searchMedia",
         parameters=[
             MEDIA_TYPE_COMPLETE_PARAM,
             OpenApiParameter(
@@ -4297,7 +4322,7 @@ class SearchProviderView(drf_views.APIView):
                     },
                     "results": {
                         "type": "array",
-                        "items": {"type": "object"},
+                        "items": {"$ref": "#/components/schemas/Item"},
                     },
                 },
             },

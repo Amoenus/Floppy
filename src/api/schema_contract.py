@@ -230,11 +230,6 @@ _EXPECTED_OPERATION_ID_COLLISIONS = (
         "api_v1_media_history_partial_update",
         (
             (
-                "/api/v1/media/{media_type}/{source}/{media_id}/history/"
-                "{consumption_id}/",
-                "patch",
-            ),
-            (
                 "/api/v1/media/{media_type}/{source}/{media_id}/{season_number}/"
                 "history/{consumption_id}/",
                 "patch",
@@ -334,7 +329,6 @@ _EXPECTED_OPERATION_ID_COLLISIONS = (
     (
         "api_v1_media_partial_update",
         (
-            ("/api/v1/media/{media_type}/{source}/{media_id}/", "patch"),
             (
                 "/api/v1/media/{media_type}/{source}/{media_id}/{season_number}/",
                 "patch",
@@ -362,16 +356,6 @@ _EXPECTED_OPERATION_ID_COLLISIONS = (
         (
             ("/api/v1/media/", "get"),
             ("/api/v1/media/{media_type}/", "get"),
-            ("/api/v1/media/{media_type}/{source}/{media_id}/", "get"),
-            (
-                "/api/v1/media/{media_type}/{source}/{media_id}/{season_number}/",
-                "get",
-            ),
-            (
-                "/api/v1/media/{media_type}/{source}/{media_id}/"
-                "{season_number}/{episode_number}/",
-                "get",
-            ),
         ),
     ),
     (

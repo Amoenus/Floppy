@@ -1,7 +1,11 @@
 import ast
 import inspect
 
+import yaml
+from django.conf import settings
 from django.test import SimpleTestCase
+from django.test.utils import override_settings
+from drf_spectacular.renderers import OpenApiYamlRenderer
 from floppy_mcp import server as mcp_server
 from floppy_mcp.http_manifest import (
     MCP_HTTP_MANIFEST,
@@ -17,6 +21,137 @@ from api.schema_contract import (
     generate_schema_contract,
     normalize_schema_findings,
 )
+
+OPENAPI_CONTRACT_PATH = settings.BASE_DIR / "api" / "contracts" / "openapi.yaml"
+
+
+class OpenAPIArtifactTests(SimpleTestCase):
+    def test_settings_publish_stable_project_metadata(self):
+        self.assertEqual(
+            settings.SPECTACULAR_SETTINGS,
+            {
+                "TITLE": "Floppy",
+                "DESCRIPTION": "A self-hosted media tracker.",
+                "VERSION": "1.0.0",
+                "CONTACT": {
+                    "url": "https://github.com/dannyvfilms/Floppy/issues",
+                },
+                "LICENSE": {
+                    "name": "AGPL-3.0",
+                    "url": "https://www.gnu.org/licenses/agpl-3.0.html",
+                },
+                "SERVE_PERMISSIONS": ["rest_framework.permissions.AllowAny"],
+                "APPEND_COMPONENTS": settings.SPECTACULAR_SETTINGS[
+                    "APPEND_COMPONENTS"
+                ],
+            },
+        )
+
+    def test_committed_contract_is_parseable_and_matches_generation(self):
+        committed = OPENAPI_CONTRACT_PATH.read_bytes()
+        parsed = yaml.safe_load(committed)
+
+        self.assertEqual(parsed["openapi"], "3.0.3")
+        self.assertEqual(
+            committed,
+            OpenApiYamlRenderer().render(generate_schema_contract().schema),
+        )
+
+    @override_settings(VERSION="application-version-must-not-leak")
+    def test_contract_version_is_independent_of_application_version(self):
+        generated = generate_schema_contract().schema
+
+        self.assertEqual(generated["info"]["version"], "1.0.0")
+        self.assertEqual(
+            OpenApiYamlRenderer().render(generated),
+            OPENAPI_CONTRACT_PATH.read_bytes(),
+        )
+
+    def test_contract_has_useful_canonical_components_and_auth_schemes(self):
+        components = generate_schema_contract().schema["components"]
+        schemas = components["schemas"]
+
+        self.assertTrue(
+            {"media_id", "media_type", "title", "consumptions"}
+            <= schemas["Item"]["properties"].keys()
+        )
+        self.assertTrue(
+            {"consumption_id", "status", "progress"}
+            <= schemas["Consumption"]["properties"].keys()
+        )
+        self.assertEqual(
+            schemas["Season"]["allOf"][0]["$ref"],
+            "#/components/schemas/Item",
+        )
+        self.assertEqual(
+            schemas["Episode"]["allOf"][0]["$ref"],
+            "#/components/schemas/Item",
+        )
+        self.assertEqual(
+            components["securitySchemes"],
+            {
+                "ApiKeyAuth": {
+                    "type": "apiKey",
+                    "in": "header",
+                    "name": "X-API-Key",
+                },
+                "bearerAuth": {"type": "http", "scheme": "bearer"},
+            },
+        )
+
+    def test_critical_operations_use_canonical_components_and_unique_ids(self):
+        paths = generate_schema_contract().schema["paths"]
+        expected = {
+            ("/api/v1/search/{media_type}/", "get"): ("searchMedia", "Item"),
+            ("/api/v1/media/{media_type}/", "post"): (
+                "trackMedia",
+                "Consumption",
+            ),
+            ("/api/v1/media/{media_type}/{source}/{media_id}/", "get"): (
+                "retrieveMediaItem",
+                "Item",
+            ),
+            ("/api/v1/media/{media_type}/{source}/{media_id}/", "patch"): (
+                "updateMediaItem",
+                "Item",
+            ),
+            (
+                "/api/v1/media/{media_type}/{source}/{media_id}/history/"
+                "{consumption_id}/",
+                "patch",
+            ): ("updateMediaConsumption", "Consumption"),
+            (
+                "/api/v1/media/{media_type}/{source}/{media_id}/{season_number}/",
+                "get",
+            ): ("retrieveMediaSeason", "Season"),
+            (
+                "/api/v1/media/{media_type}/{source}/{media_id}/{season_number}/"
+                "{episode_number}/",
+                "get",
+            ): ("retrieveMediaEpisode", "Episode"),
+        }
+
+        for (path, method), (operation_id, component) in expected.items():
+            with self.subTest(path=path, method=method):
+                operation = paths[path][method]
+                self.assertEqual(operation["operationId"], operation_id)
+                response = operation["responses"]["201" if method == "post" else "200"]
+                schema = response["content"]["application/json"]["schema"]
+                if operation_id == "searchMedia":
+                    schema = schema["properties"]["results"]["items"]
+                self.assertEqual(schema["$ref"], f"#/components/schemas/{component}")
+                self.assertEqual(
+                    operation["security"],
+                    [{"bearerAuth": []}, {"ApiKeyAuth": []}],
+                )
+
+        operation_ids = [
+            operation["operationId"]
+            for path_item in paths.values()
+            for method, operation in path_item.items()
+            if method in {"get", "post", "put", "patch", "delete"}
+        ]
+        self.assertEqual(len(operation_ids), len(set(operation_ids)))
 
 
 class SchemaFindingContractTests(SimpleTestCase):
@@ -249,6 +384,7 @@ async def exact_template():
     def test_manifest_covers_all_current_http_branches(self):
         routes = self._routes_from_source(inspect.getsource(mcp_server))
 
+        self.assertEqual(len(MCP_HTTP_MANIFEST), 40)
         self.assertEqual(len(MCP_HTTP_MANIFEST), len(set(MCP_HTTP_MANIFEST)))
         self.assertEqual(set(routes), set(MCP_HTTP_MANIFEST))
         self.assertTrue(

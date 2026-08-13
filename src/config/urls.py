@@ -19,6 +19,7 @@ from django.views.static import serve
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from health_check.views import MainView
 
+from api.contract_views import openapi_contract
 from users.views import CustomSignupView, CustomSocialSignupView
 
 handler400 = "app.error_views.bad_request"
@@ -31,6 +32,7 @@ urlpatterns = [
     # ListenBrainz-compatible ingest lives at the root path clients expect.
     path("apis/listenbrainz/1/", include("api.listenbrainz_urls")),
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
+    path("api/openapi.yaml", openapi_contract, name="openapi-contract"),
     path(
         "api/docs/",
         SpectacularSwaggerView.as_view(url_name="schema"),

@@ -1,0 +1,5013 @@
+openapi: 3.0.3
+info:
+  title: Floppy
+  version: 1.0.0
+  description: A self-hosted media tracker.
+  contact:
+    url: https://github.com/dannyvfilms/Floppy/issues
+  license:
+    name: AGPL-3.0
+    url: https://www.gnu.org/licenses/agpl-3.0.html
+paths:
+  /api/schema/:
+    get:
+      operationId: api_schema_retrieve
+      description: |-
+        OpenApi3 schema for this API. Format can be selected via content negotiation.
+
+        - YAML: application/vnd.oai.openapi
+        - JSON: application/vnd.oai.openapi+json
+      parameters:
+      - in: query
+        name: format
+        schema:
+          type: string
+          enum:
+          - json
+          - yaml
+      - in: query
+        name: lang
+        schema:
+          type: string
+          enum:
+          - af
+          - ar
+          - ar-dz
+          - ast
+          - az
+          - be
+          - bg
+          - bn
+          - br
+          - bs
+          - ca
+          - ckb
+          - cs
+          - cy
+          - da
+          - de
+          - dsb
+          - el
+          - en
+          - en-au
+          - en-gb
+          - eo
+          - es
+          - es-ar
+          - es-co
+          - es-mx
+          - es-ni
+          - es-ve
+          - et
+          - eu
+          - fa
+          - fi
+          - fr
+          - fy
+          - ga
+          - gd
+          - gl
+          - he
+          - hi
+          - hr
+          - hsb
+          - hu
+          - hy
+          - ia
+          - id
+          - ig
+          - io
+          - is
+          - it
+          - ja
+          - ka
+          - kab
+          - kk
+          - km
+          - kn
+          - ko
+          - ky
+          - lb
+          - lt
+          - lv
+          - mk
+          - ml
+          - mn
+          - mr
+          - ms
+          - my
+          - nb
+          - ne
+          - nl
+          - nn
+          - os
+          - pa
+          - pl
+          - pt
+          - pt-br
+          - ro
+          - ru
+          - sk
+          - sl
+          - sq
+          - sr
+          - sr-latn
+          - sv
+          - sw
+          - ta
+          - te
+          - tg
+          - th
+          - tk
+          - tr
+          - tt
+          - udm
+          - ug
+          - uk
+          - ur
+          - uz
+          - vi
+          - zh-hans
+          - zh-hant
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/vnd.oai.openapi:
+              schema:
+                type: object
+                additionalProperties: {}
+            application/yaml:
+              schema:
+                type: object
+                additionalProperties: {}
+            application/vnd.oai.openapi+json:
+              schema:
+                type: object
+                additionalProperties: {}
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/calendar/:
+    get:
+      operationId: api_v1_calendar_retrieve
+      description: Retrieve calendar events for the authenticated user.
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/calendar/update/:
+    post:
+      operationId: api_v1_calendar_update_create
+      description: Trigger calendar events update for the authenticated user.
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/changes_history/{media_type}/{history_id}/:
+    get:
+      operationId: api_v1_changes_history_retrieve
+      description: Retrieve the changes history record for a specific media.
+      parameters:
+      - in: path
+        name: history_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - anime
+          - boardgame
+          - book
+          - comic
+          - comicissue
+          - episode
+          - game
+          - manga
+          - movie
+          - music
+          - podcast
+          - season
+          - tv
+        description: Media type, including `season` and `episode`. POST to a media-type
+          collection creates a new consumption; omitted status defaults to Planning.
+          Use the history/{consumption_id} route to update one specific existing consumption.
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+    delete:
+      operationId: api_v1_changes_history_destroy
+      description: Delete the changes history record for a specific media.
+      parameters:
+      - in: path
+        name: history_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - anime
+          - boardgame
+          - book
+          - comic
+          - comicissue
+          - episode
+          - game
+          - manga
+          - movie
+          - music
+          - podcast
+          - season
+          - tv
+        description: Media type, including `season` and `episode`. POST to a media-type
+          collection creates a new consumption; omitted status defaults to Planning.
+          Use the history/{consumption_id} route to update one specific existing consumption.
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/collection/:
+    get:
+      operationId: api_v1_collection_retrieve
+      description: List the user's collection entries.
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+    post:
+      operationId: api_v1_collection_create
+      description: Add an item to the collection (mirrors collection_add).
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/collection/{entry_id}/:
+    get:
+      operationId: api_v1_collection_retrieve_2
+      description: Return a single collection entry.
+      parameters:
+      - in: path
+        name: entry_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+    patch:
+      operationId: api_v1_collection_partial_update
+      description: Update collection entry metadata (mirrors collection_update).
+      parameters:
+      - in: path
+        name: entry_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+    delete:
+      operationId: api_v1_collection_destroy
+      description: Remove an entry from the collection (mirrors collection_remove).
+      parameters:
+      - in: path
+        name: entry_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/collection/seasons/{season_item_id}/:
+    delete:
+      operationId: api_v1_collection_seasons_destroy
+      description: Delete the season's collected episode entries (mirrors web view).
+      parameters:
+      - in: path
+        name: season_item_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/collection/status/{item_id}/:
+    get:
+      operationId: api_v1_collection_status_retrieve
+      description: Return has_collection_data for the item.
+      parameters:
+      - in: path
+        name: item_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/discover/:
+    get:
+      operationId: api_v1_discover_retrieve
+      description: Return the cached Discover rows for the media type.
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/discover/hidden/:
+    get:
+      operationId: api_v1_discover_hidden_retrieve
+      description: Return the user's hidden Discover entries.
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+    post:
+      operationId: api_v1_discover_hidden_create
+      description: Hide or unhide an item (mirrors discover_toggle_hidden).
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/discover/refresh/:
+    post:
+      operationId: api_v1_discover_refresh_create
+      description: Queue a background rebuild for the media type's Discover tab.
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/export/csv/:
+    get:
+      operationId: api_v1_export_csv_retrieve
+      description: |-
+        Stream the CSV backup.
+
+        Query params: media_types (repeatable) to restrict types,
+        include_lists=0 to skip custom lists, include_collection=0 to skip
+        collection entries, only=collection for a collection-only export.
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/export/template/:
+    get:
+      operationId: api_v1_export_template_retrieve
+      description: Return the template CSV content.
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/health/:
+    get:
+      operationId: api_v1_health_retrieve
+      description: Check API health status.
+      tags:
+      - api
+      responses:
+        '200':
+          description: No response body
+  /api/v1/history/:
+    get:
+      operationId: api_v1_history_retrieve
+      description: Return the user's history grouped by day, newest first.
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/history/{media_type}/{history_id}/:
+    delete:
+      operationId: api_v1_history_destroy
+      description: Delete the record; play-per-instance types delete the play itself.
+      parameters:
+      - in: path
+        name: history_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - anime
+          - boardgame
+          - book
+          - comic
+          - comicissue
+          - game
+          - manga
+          - movie
+          - music
+          - podcast
+          - tv
+        description: Media type. Does not include `season`/`episode` — those are addressed
+          via separate path segments under `tv`.
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/home/:
+    get:
+      operationId: api_v1_home_retrieve
+      description: Return home groups with serialized row items.
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/imports/{service}/:
+    post:
+      operationId: api_v1_imports_create
+      description: Dispatch the import task for the service.
+      parameters:
+      - in: path
+        name: service
+        schema:
+          type: string
+          pattern: ^[\w-]+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/imports/activity/:
+    get:
+      operationId: api_v1_imports_activity_retrieve
+      description: Return the user's recent import task results and schedules.
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/info/:
+    get:
+      operationId: api_v1_info_retrieve
+      description: Get application information.
+      tags:
+      - api
+      responses:
+        '200':
+          description: No response body
+  /api/v1/lists/:
+    get:
+      operationId: api_v1_lists_retrieve
+      description: Retrieve the lists for the authenticated user.
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+    post:
+      operationId: api_v1_lists_create
+      description: Create a new custom list for the authenticated user.
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/lists/{list_id}/:
+    get:
+      operationId: api_v1_lists_retrieve_2
+      description: Retrieve details and paginated items of a specific list.
+      parameters:
+      - in: path
+        name: list_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+    patch:
+      operationId: api_v1_lists_partial_update
+      description: Update a specific custom list.
+      parameters:
+      - in: path
+        name: list_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+    delete:
+      operationId: api_v1_lists_destroy
+      description: Delete a specific custom list.
+      parameters:
+      - in: path
+        name: list_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/lists/{list_id}/activity/:
+    get:
+      operationId: api_v1_lists_activity_retrieve
+      description: Return the 100 most recent activity entries.
+      parameters:
+      - in: path
+        name: list_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/lists/{list_id}/collaborators/:
+    get:
+      operationId: api_v1_lists_collaborators_retrieve
+      description: Return collaborator usernames.
+      parameters:
+      - in: path
+        name: list_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+    put:
+      operationId: api_v1_lists_collaborators_update
+      description: Replace the collaborator set with the given usernames.
+      parameters:
+      - in: path
+        name: list_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/lists/{list_id}/items/:
+    get:
+      operationId: api_v1_lists_items_retrieve
+      description: Get items of a list.
+      parameters:
+      - in: path
+        name: list_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/lists/{list_id}/items/{item_id}/:
+    get:
+      operationId: api_v1_lists_items_retrieve_2
+      description: Get details of a list item.
+      parameters:
+      - in: path
+        name: item_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: list_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+    delete:
+      operationId: api_v1_lists_items_destroy
+      description: Delete an item from a list.
+      parameters:
+      - in: path
+        name: item_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: list_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/lists/{list_id}/items/order/:
+    put:
+      operationId: api_v1_lists_items_order_update
+      description: Apply the full order (mirrors reorder_list_items_all).
+      parameters:
+      - in: path
+        name: list_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/lists/{list_id}/items/reorder/:
+    post:
+      operationId: api_v1_lists_items_reorder_create
+      description: Apply a first/back/next/last move (mirrors reorder_list_item).
+      parameters:
+      - in: path
+        name: list_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/lists/{list_id}/recommendations/:
+    get:
+      operationId: api_v1_lists_recommendations_retrieve
+      description: Return pending recommendations (owner/collaborators only).
+      parameters:
+      - in: path
+        name: list_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+    post:
+      operationId: api_v1_lists_recommendations_create
+      description: Submit a recommendation (mirrors submit_recommendation, auth only).
+      parameters:
+      - in: path
+        name: list_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/lists/{list_id}/recommendations/{recommendation_id}/{decision}/:
+    post:
+      operationId: api_v1_lists_recommendations_create_2
+      description: Apply the decision; approval adds the item to the list.
+      parameters:
+      - in: path
+        name: decision
+        schema:
+          type: string
+          pattern: ^approve|deny$
+        required: true
+      - in: path
+        name: list_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: recommendation_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/lists/{list_id}/smart-rules/:
+    get:
+      operationId: api_v1_lists_smart_rules_retrieve
+      description: Return the list's smart configuration.
+      parameters:
+      - in: path
+        name: list_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+    put:
+      operationId: api_v1_lists_smart_rules_update
+      description: Replace the smart rules and re-sync membership.
+      parameters:
+      - in: path
+        name: list_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/lists/{list_id}/smart-sync/:
+    post:
+      operationId: api_v1_lists_smart_sync_create
+      description: Run sync_smart_items and return the resulting count.
+      parameters:
+      - in: path
+        name: list_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/media/:
+    get:
+      operationId: api_v1_media_retrieve
+      description: Retrieve the list of media for the authenticated user.
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Media'
+          description: ''
+  /api/v1/media/{media_type}/:
+    get:
+      operationId: api_v1_media_retrieve_2
+      description: Retrieve the list of media of a specific media type.
+      parameters:
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - anime
+          - boardgame
+          - book
+          - comic
+          - comicissue
+          - episode
+          - game
+          - manga
+          - movie
+          - music
+          - podcast
+          - season
+          - tv
+        description: Media type, including `season` and `episode`. POST to a media-type
+          collection creates a new consumption; omitted status defaults to Planning.
+          Use the history/{consumption_id} route to update one specific existing consumption.
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Media'
+          description: ''
+    post:
+      operationId: trackMedia
+      description: |-
+        Create a new consumption for a media item.
+
+        This append-oriented endpoint keeps its historical default: omitted
+        status means Planning. Clients updating an existing play should first
+        read its consumption_id and use the exact history route instead.
+      parameters:
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - anime
+          - boardgame
+          - book
+          - comic
+          - comicissue
+          - episode
+          - game
+          - manga
+          - movie
+          - music
+          - podcast
+          - season
+          - tv
+        description: Media type, including `season` and `episode`. POST to a media-type
+          collection creates a new consumption; omitted status defaults to Planning.
+          Use the history/{consumption_id} route to update one specific existing consumption.
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Media'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Media'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Media'
+        required: true
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Consumption'
+          description: ''
+  /api/v1/media/{media_type}/{source}/{media_id}/:
+    get:
+      operationId: retrieveMediaItem
+      description: Retrieve details of a specific media for the authenticated user.
+      parameters:
+      - in: path
+        name: media_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - anime
+          - boardgame
+          - book
+          - comic
+          - comicissue
+          - game
+          - manga
+          - movie
+          - music
+          - podcast
+          - tv
+        description: Media type. Does not include `season`/`episode` — those are addressed
+          via separate path segments under `tv`.
+        required: true
+      - in: path
+        name: source
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Item'
+          description: ''
+    patch:
+      operationId: updateMediaItem
+      description: |-
+        Update the convenience/default tracked row for a media item.
+
+        Use the history endpoint when the caller needs to target one exact
+        consumption entry.
+      parameters:
+      - in: path
+        name: media_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - anime
+          - boardgame
+          - book
+          - comic
+          - comicissue
+          - game
+          - manga
+          - movie
+          - music
+          - podcast
+          - tv
+        description: Media type. Does not include `season`/`episode` — those are addressed
+          via separate path segments under `tv`.
+        required: true
+      - in: path
+        name: source
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedMedia'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedMedia'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedMedia'
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Item'
+          description: ''
+    delete:
+      operationId: api_v1_media_destroy
+      description: Delete a tracked media item and all its consumptions.
+      parameters:
+      - in: path
+        name: media_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - anime
+          - boardgame
+          - book
+          - comic
+          - comicissue
+          - game
+          - manga
+          - movie
+          - music
+          - podcast
+          - tv
+        description: Media type. Does not include `season`/`episode` — those are addressed
+          via separate path segments under `tv`.
+        required: true
+      - in: path
+        name: source
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/media/{media_type}/{source}/{media_id}/{season_number}/:
+    get:
+      operationId: retrieveMediaSeason
+      description: Retrieve details of a specific season for the authenticated user.
+      parameters:
+      - in: path
+        name: media_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - anime
+          - boardgame
+          - book
+          - comic
+          - comicissue
+          - game
+          - manga
+          - movie
+          - music
+          - podcast
+          - tv
+        description: Media type. Does not include `season`/`episode` — those are addressed
+          via separate path segments under `tv`.
+        required: true
+      - in: path
+        name: season_number
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: source
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Season'
+          description: ''
+    patch:
+      operationId: api_v1_media_partial_update
+      description: Update a tracked season item.
+      parameters:
+      - in: path
+        name: media_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - anime
+          - boardgame
+          - book
+          - comic
+          - comicissue
+          - game
+          - manga
+          - movie
+          - music
+          - podcast
+          - tv
+        description: Media type. Does not include `season`/`episode` — those are addressed
+          via separate path segments under `tv`.
+        required: true
+      - in: path
+        name: season_number
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: source
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedMedia'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedMedia'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedMedia'
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Media'
+          description: ''
+    delete:
+      operationId: api_v1_media_destroy_2
+      description: Delete a tracked season item for the authenticated user.
+      parameters:
+      - in: path
+        name: media_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - anime
+          - boardgame
+          - book
+          - comic
+          - comicissue
+          - game
+          - manga
+          - movie
+          - music
+          - podcast
+          - tv
+        description: Media type. Does not include `season`/`episode` — those are addressed
+          via separate path segments under `tv`.
+        required: true
+      - in: path
+        name: season_number
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: source
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/media/{media_type}/{source}/{media_id}/{season_number}/{episode_number}/:
+    get:
+      operationId: retrieveMediaEpisode
+      description: Retrieve details of a specific episode for the authenticated user.
+      parameters:
+      - in: path
+        name: episode_number
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: media_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - anime
+          - boardgame
+          - book
+          - comic
+          - comicissue
+          - game
+          - manga
+          - movie
+          - music
+          - podcast
+          - tv
+        description: Media type. Does not include `season`/`episode` — those are addressed
+          via separate path segments under `tv`.
+        required: true
+      - in: path
+        name: season_number
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: source
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Episode'
+          description: ''
+    patch:
+      operationId: api_v1_media_partial_update_2
+      description: Update a tracked episode item.
+      parameters:
+      - in: path
+        name: episode_number
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: media_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - anime
+          - boardgame
+          - book
+          - comic
+          - comicissue
+          - game
+          - manga
+          - movie
+          - music
+          - podcast
+          - tv
+        description: Media type. Does not include `season`/`episode` — those are addressed
+          via separate path segments under `tv`.
+        required: true
+      - in: path
+        name: season_number
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: source
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedMedia'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedMedia'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedMedia'
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Media'
+          description: ''
+    delete:
+      operationId: api_v1_media_destroy_3
+      description: Delete a tracked episode item for the authenticated user.
+      parameters:
+      - in: path
+        name: episode_number
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: media_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - anime
+          - boardgame
+          - book
+          - comic
+          - comicissue
+          - game
+          - manga
+          - movie
+          - music
+          - podcast
+          - tv
+        description: Media type. Does not include `season`/`episode` — those are addressed
+          via separate path segments under `tv`.
+        required: true
+      - in: path
+        name: season_number
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: source
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/media/{media_type}/{source}/{media_id}/{season_number}/{episode_number}/changes_history/:
+    get:
+      operationId: api_v1_media_changes_history_retrieve_3
+      description: Retrieve changes history timeline entries for a specific episode.
+      parameters:
+      - in: path
+        name: episode_number
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: media_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - anime
+          - boardgame
+          - book
+          - comic
+          - comicissue
+          - game
+          - manga
+          - movie
+          - music
+          - podcast
+          - tv
+        description: Media type. Does not include `season`/`episode` — those are addressed
+          via separate path segments under `tv`.
+        required: true
+      - in: path
+        name: season_number
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: source
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/media/{media_type}/{source}/{media_id}/{season_number}/{episode_number}/history/:
+    get:
+      operationId: api_v1_media_history_retrieve_5
+      description: Retrieve the history timeline for a specific episode of a tv serie.
+      parameters:
+      - in: path
+        name: episode_number
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: media_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - anime
+          - boardgame
+          - book
+          - comic
+          - comicissue
+          - game
+          - manga
+          - movie
+          - music
+          - podcast
+          - tv
+        description: Media type. Does not include `season`/`episode` — those are addressed
+          via separate path segments under `tv`.
+        required: true
+      - in: path
+        name: season_number
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: source
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/media/{media_type}/{source}/{media_id}/{season_number}/{episode_number}/history/{consumption_id}/:
+    get:
+      operationId: api_v1_media_history_retrieve_6
+      description: Retrieve a specific consumption history entry for a specific episode.
+      parameters:
+      - in: path
+        name: consumption_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: episode_number
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: media_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - anime
+          - boardgame
+          - book
+          - comic
+          - comicissue
+          - game
+          - manga
+          - movie
+          - music
+          - podcast
+          - tv
+        description: Media type. Does not include `season`/`episode` — those are addressed
+          via separate path segments under `tv`.
+        required: true
+      - in: path
+        name: season_number
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: source
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+    patch:
+      operationId: api_v1_media_history_partial_update_2
+      description: Update a specific consumption history entry for a specific episode.
+      parameters:
+      - in: path
+        name: consumption_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: episode_number
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: media_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - anime
+          - boardgame
+          - book
+          - comic
+          - comicissue
+          - game
+          - manga
+          - movie
+          - music
+          - podcast
+          - tv
+        description: Media type. Does not include `season`/`episode` — those are addressed
+          via separate path segments under `tv`.
+        required: true
+      - in: path
+        name: season_number
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: source
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+    delete:
+      operationId: api_v1_media_history_destroy_3
+      description: Delete a specific consumption history entry for a specific episode.
+      parameters:
+      - in: path
+        name: consumption_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: episode_number
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: media_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - anime
+          - boardgame
+          - book
+          - comic
+          - comicissue
+          - game
+          - manga
+          - movie
+          - music
+          - podcast
+          - tv
+        description: Media type. Does not include `season`/`episode` — those are addressed
+          via separate path segments under `tv`.
+        required: true
+      - in: path
+        name: season_number
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: source
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/media/{media_type}/{source}/{media_id}/{season_number}/{episode_number}/lists/:
+    get:
+      operationId: api_v1_media_lists_retrieve_3
+      description: Retrieve the lists that a specific season is in.
+      parameters:
+      - in: path
+        name: episode_number
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: media_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - anime
+          - boardgame
+          - book
+          - comic
+          - comicissue
+          - game
+          - manga
+          - movie
+          - music
+          - podcast
+          - tv
+        description: Media type. Does not include `season`/`episode` — those are addressed
+          via separate path segments under `tv`.
+        required: true
+      - in: path
+        name: season_number
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: source
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/media/{media_type}/{source}/{media_id}/{season_number}/{episode_number}/lists/{list_id}/:
+    put:
+      operationId: api_v1_media_lists_update_3
+      description: Add a specific episode to a specific list.
+      parameters:
+      - in: path
+        name: episode_number
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: list_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: media_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - anime
+          - boardgame
+          - book
+          - comic
+          - comicissue
+          - game
+          - manga
+          - movie
+          - music
+          - podcast
+          - tv
+        description: Media type. Does not include `season`/`episode` — those are addressed
+          via separate path segments under `tv`.
+        required: true
+      - in: path
+        name: season_number
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: source
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+    delete:
+      operationId: api_v1_media_lists_destroy_3
+      description: Remove a specific episode from a specific list.
+      parameters:
+      - in: path
+        name: episode_number
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: list_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: media_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - anime
+          - boardgame
+          - book
+          - comic
+          - comicissue
+          - game
+          - manga
+          - movie
+          - music
+          - podcast
+          - tv
+        description: Media type. Does not include `season`/`episode` — those are addressed
+          via separate path segments under `tv`.
+        required: true
+      - in: path
+        name: season_number
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: source
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/media/{media_type}/{source}/{media_id}/{season_number}/{episode_number}/sync/:
+    post:
+      operationId: api_v1_media_sync_create_3
+      description: Redirect episode sync to season sync.
+      parameters:
+      - in: path
+        name: episode_number
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: media_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - anime
+          - boardgame
+          - book
+          - comic
+          - comicissue
+          - game
+          - manga
+          - movie
+          - music
+          - podcast
+          - tv
+        description: Media type. Does not include `season`/`episode` — those are addressed
+          via separate path segments under `tv`.
+        required: true
+      - in: path
+        name: season_number
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: source
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/media/{media_type}/{source}/{media_id}/{season_number}/changes_history/:
+    get:
+      operationId: api_v1_media_changes_history_retrieve_2
+      description: Retrieve changes history timeline entries for a season.
+      parameters:
+      - in: path
+        name: media_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - anime
+          - boardgame
+          - book
+          - comic
+          - comicissue
+          - game
+          - manga
+          - movie
+          - music
+          - podcast
+          - tv
+        description: Media type. Does not include `season`/`episode` — those are addressed
+          via separate path segments under `tv`.
+        required: true
+      - in: path
+        name: season_number
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: source
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/media/{media_type}/{source}/{media_id}/{season_number}/episodes/:
+    get:
+      operationId: api_v1_media_episodes_retrieve
+      description: Retrieve the episodes for a specific season of a tv serie.
+      parameters:
+      - in: path
+        name: media_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - anime
+          - boardgame
+          - book
+          - comic
+          - comicissue
+          - game
+          - manga
+          - movie
+          - music
+          - podcast
+          - tv
+        description: Media type. Does not include `season`/`episode` — those are addressed
+          via separate path segments under `tv`.
+        required: true
+      - in: path
+        name: season_number
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: source
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/media/{media_type}/{source}/{media_id}/{season_number}/episodes/{episode_number}/drop/:
+    post:
+      operationId: api_v1_media_episodes_drop_create
+      description: Record a drop for the episode (mirrors web episode_drop).
+      parameters:
+      - in: path
+        name: episode_number
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: media_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - tv
+        description: Episode-level operations are only supported for `tv` media.
+        required: true
+      - in: path
+        name: season_number
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: source
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/media/{media_type}/{source}/{media_id}/{season_number}/episodes/{episode_number}/score/:
+    patch:
+      operationId: api_v1_media_episodes_score_partial_update
+      description: |-
+        Update the episode score (mirrors web update_episode_score).
+
+        Body: {"score": 8.5} or {"score": null} to clear. Scores use the raw
+        0-10 storage scale like the other media score fields in this API.
+      parameters:
+      - in: path
+        name: episode_number
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: media_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - tv
+        description: Episode-level operations are only supported for `tv` media.
+        required: true
+      - in: path
+        name: season_number
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: source
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/media/{media_type}/{source}/{media_id}/{season_number}/episodes/{episode_number}/watch/:
+    post:
+      operationId: api_v1_media_episodes_watch_create
+      description: Record a watch for the episode.
+      parameters:
+      - in: path
+        name: episode_number
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: media_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - tv
+        description: Episode-level operations are only supported for `tv` media.
+        required: true
+      - in: path
+        name: season_number
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: source
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+    delete:
+      operationId: api_v1_media_episodes_watch_destroy
+      description: Remove the most recent watch of the episode.
+      parameters:
+      - in: path
+        name: episode_number
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: media_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - tv
+        description: Episode-level operations are only supported for `tv` media.
+        required: true
+      - in: path
+        name: season_number
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: source
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/media/{media_type}/{source}/{media_id}/{season_number}/history/:
+    get:
+      operationId: api_v1_media_history_retrieve_3
+      description: Retrieve the history timeline for a specific season of a tv serie.
+      parameters:
+      - in: path
+        name: media_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - anime
+          - boardgame
+          - book
+          - comic
+          - comicissue
+          - game
+          - manga
+          - movie
+          - music
+          - podcast
+          - tv
+        description: Media type. Does not include `season`/`episode` — those are addressed
+          via separate path segments under `tv`.
+        required: true
+      - in: path
+        name: season_number
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: source
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/media/{media_type}/{source}/{media_id}/{season_number}/history/{consumption_id}/:
+    get:
+      operationId: api_v1_media_history_retrieve_4
+      description: Retrieve a specific consumption history entry for a specific season.
+      parameters:
+      - in: path
+        name: consumption_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: media_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - anime
+          - boardgame
+          - book
+          - comic
+          - comicissue
+          - game
+          - manga
+          - movie
+          - music
+          - podcast
+          - tv
+        description: Media type. Does not include `season`/`episode` — those are addressed
+          via separate path segments under `tv`.
+        required: true
+      - in: path
+        name: season_number
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: source
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+    patch:
+      operationId: api_v1_media_history_partial_update
+      description: Update a specific consumption history entry for a specific season.
+      parameters:
+      - in: path
+        name: consumption_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: media_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - anime
+          - boardgame
+          - book
+          - comic
+          - comicissue
+          - game
+          - manga
+          - movie
+          - music
+          - podcast
+          - tv
+        description: Media type. Does not include `season`/`episode` — those are addressed
+          via separate path segments under `tv`.
+        required: true
+      - in: path
+        name: season_number
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: source
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+    delete:
+      operationId: api_v1_media_history_destroy_2
+      description: Delete a specific consumption history entry for a specific season.
+      parameters:
+      - in: path
+        name: consumption_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: media_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - anime
+          - boardgame
+          - book
+          - comic
+          - comicissue
+          - game
+          - manga
+          - movie
+          - music
+          - podcast
+          - tv
+        description: Media type. Does not include `season`/`episode` — those are addressed
+          via separate path segments under `tv`.
+        required: true
+      - in: path
+        name: season_number
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: source
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/media/{media_type}/{source}/{media_id}/{season_number}/lists/:
+    get:
+      operationId: api_v1_media_lists_retrieve_2
+      description: Retrieve the lists that a specific season is in.
+      parameters:
+      - in: path
+        name: media_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - anime
+          - boardgame
+          - book
+          - comic
+          - comicissue
+          - game
+          - manga
+          - movie
+          - music
+          - podcast
+          - tv
+        description: Media type. Does not include `season`/`episode` — those are addressed
+          via separate path segments under `tv`.
+        required: true
+      - in: path
+        name: season_number
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: source
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/media/{media_type}/{source}/{media_id}/{season_number}/lists/{list_id}/:
+    put:
+      operationId: api_v1_media_lists_update_2
+      description: Add a specific season to a specific list.
+      parameters:
+      - in: path
+        name: list_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: media_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - anime
+          - boardgame
+          - book
+          - comic
+          - comicissue
+          - game
+          - manga
+          - movie
+          - music
+          - podcast
+          - tv
+        description: Media type. Does not include `season`/`episode` — those are addressed
+          via separate path segments under `tv`.
+        required: true
+      - in: path
+        name: season_number
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: source
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+    delete:
+      operationId: api_v1_media_lists_destroy_2
+      description: Remove a specific season from a specific list.
+      parameters:
+      - in: path
+        name: list_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: media_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - anime
+          - boardgame
+          - book
+          - comic
+          - comicissue
+          - game
+          - manga
+          - movie
+          - music
+          - podcast
+          - tv
+        description: Media type. Does not include `season`/`episode` — those are addressed
+          via separate path segments under `tv`.
+        required: true
+      - in: path
+        name: season_number
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: source
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/media/{media_type}/{source}/{media_id}/{season_number}/progress/:
+    post:
+      operationId: api_v1_media_progress_create_2
+      description: Apply an increase/decrease operation to the tracked media.
+      parameters:
+      - in: path
+        name: media_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: season_number
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: source
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/media/{media_type}/{source}/{media_id}/{season_number}/sync/:
+    post:
+      operationId: api_v1_media_sync_create_2
+      description: Trigger sync of metadata from provider (non-manual sources only).
+      parameters:
+      - in: path
+        name: media_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - anime
+          - boardgame
+          - book
+          - comic
+          - comicissue
+          - game
+          - manga
+          - movie
+          - music
+          - podcast
+          - tv
+        description: Media type. Does not include `season`/`episode` — those are addressed
+          via separate path segments under `tv`.
+        required: true
+      - in: path
+        name: season_number
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: source
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/media/{media_type}/{source}/{media_id}/changes_history/:
+    get:
+      operationId: api_v1_media_changes_history_retrieve
+      description: Retrieve changes history timeline entries for a specific media.
+      parameters:
+      - in: path
+        name: media_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - anime
+          - boardgame
+          - book
+          - comic
+          - comicissue
+          - game
+          - manga
+          - movie
+          - music
+          - podcast
+          - tv
+        description: Media type. Does not include `season`/`episode` — those are addressed
+          via separate path segments under `tv`.
+        required: true
+      - in: path
+        name: source
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/media/{media_type}/{source}/{media_id}/episodes/bulk/:
+    post:
+      operationId: api_v1_media_episodes_bulk_create
+      description: Queue the bulk play range for the media.
+      parameters:
+      - in: path
+        name: media_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - tv
+        description: Episode-level operations are only supported for `tv` media.
+        required: true
+      - in: path
+        name: source
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/media/{media_type}/{source}/{media_id}/history/:
+    get:
+      operationId: api_v1_media_history_retrieve
+      description: Retrieve the history timeline for a specific media.
+      parameters:
+      - in: path
+        name: media_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - anime
+          - boardgame
+          - book
+          - comic
+          - comicissue
+          - game
+          - manga
+          - movie
+          - music
+          - podcast
+          - tv
+        description: Media type. Does not include `season`/`episode` — those are addressed
+          via separate path segments under `tv`.
+        required: true
+      - in: path
+        name: source
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/media/{media_type}/{source}/{media_id}/history/{consumption_id}/:
+    get:
+      operationId: api_v1_media_history_retrieve_2
+      description: Retrieve a specific consumption history entry for a specific media.
+      parameters:
+      - in: path
+        name: consumption_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: media_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - anime
+          - boardgame
+          - book
+          - comic
+          - comicissue
+          - game
+          - manga
+          - movie
+          - music
+          - podcast
+          - tv
+        description: Media type. Does not include `season`/`episode` — those are addressed
+          via separate path segments under `tv`.
+        required: true
+      - in: path
+        name: source
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+    patch:
+      operationId: updateMediaConsumption
+      description: Update one exact consumption history entry for a media item.
+      parameters:
+      - in: path
+        name: consumption_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: media_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - anime
+          - boardgame
+          - book
+          - comic
+          - comicissue
+          - game
+          - manga
+          - movie
+          - music
+          - podcast
+          - tv
+        description: Media type. Does not include `season`/`episode` — those are addressed
+          via separate path segments under `tv`.
+        required: true
+      - in: path
+        name: source
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Consumption'
+          description: ''
+    delete:
+      operationId: api_v1_media_history_destroy
+      description: Delete a specific consumption history entry for a specific media.
+      parameters:
+      - in: path
+        name: consumption_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: media_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - anime
+          - boardgame
+          - book
+          - comic
+          - comicissue
+          - game
+          - manga
+          - movie
+          - music
+          - podcast
+          - tv
+        description: Media type. Does not include `season`/`episode` — those are addressed
+          via separate path segments under `tv`.
+        required: true
+      - in: path
+        name: source
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/media/{media_type}/{source}/{media_id}/lists/:
+    get:
+      operationId: api_v1_media_lists_retrieve
+      description: Retrieve the lists that a specific media is in.
+      parameters:
+      - in: path
+        name: media_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - anime
+          - boardgame
+          - book
+          - comic
+          - comicissue
+          - game
+          - manga
+          - movie
+          - music
+          - podcast
+          - tv
+        description: Media type. Does not include `season`/`episode` — those are addressed
+          via separate path segments under `tv`.
+        required: true
+      - in: path
+        name: source
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/media/{media_type}/{source}/{media_id}/lists/{list_id}/:
+    put:
+      operationId: api_v1_media_lists_update
+      description: Add a specific media to a specific list.
+      parameters:
+      - in: path
+        name: list_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: media_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - anime
+          - boardgame
+          - book
+          - comic
+          - comicissue
+          - game
+          - manga
+          - movie
+          - music
+          - podcast
+          - tv
+        description: Media type. Does not include `season`/`episode` — those are addressed
+          via separate path segments under `tv`.
+        required: true
+      - in: path
+        name: source
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+    delete:
+      operationId: api_v1_media_lists_destroy
+      description: Remove a specific media from a specific list.
+      parameters:
+      - in: path
+        name: list_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: media_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - anime
+          - boardgame
+          - book
+          - comic
+          - comicissue
+          - game
+          - manga
+          - movie
+          - music
+          - podcast
+          - tv
+        description: Media type. Does not include `season`/`episode` — those are addressed
+          via separate path segments under `tv`.
+        required: true
+      - in: path
+        name: source
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/media/{media_type}/{source}/{media_id}/progress/:
+    post:
+      operationId: api_v1_media_progress_create
+      description: Apply an increase/decrease operation to the tracked media.
+      parameters:
+      - in: path
+        name: media_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: source
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/media/{media_type}/{source}/{media_id}/provider-preference/:
+    get:
+      operationId: api_v1_media_provider_preference_retrieve
+      description: Return the current provider preference and available options.
+      parameters:
+      - in: path
+        name: media_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - anime
+          - boardgame
+          - book
+          - comic
+          - comicissue
+          - game
+          - manga
+          - movie
+          - music
+          - podcast
+          - tv
+        description: Media type. Does not include `season`/`episode` — those are addressed
+          via separate path segments under `tv`.
+        required: true
+      - in: path
+        name: source
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+    put:
+      operationId: api_v1_media_provider_preference_update
+      description: Set the provider override (mirrors update_metadata_provider_preference).
+      parameters:
+      - in: path
+        name: media_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - anime
+          - boardgame
+          - book
+          - comic
+          - comicissue
+          - game
+          - manga
+          - movie
+          - music
+          - podcast
+          - tv
+        description: Media type. Does not include `season`/`episode` — those are addressed
+          via separate path segments under `tv`.
+        required: true
+      - in: path
+        name: source
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/media/{media_type}/{source}/{media_id}/recommendations/:
+    get:
+      operationId: api_v1_media_recommendations_retrieve
+      description: Retrieve recommendations for a specific media.
+      parameters:
+      - in: path
+        name: media_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - anime
+          - boardgame
+          - book
+          - comic
+          - comicissue
+          - game
+          - manga
+          - movie
+          - music
+          - podcast
+          - tv
+        description: Media type. Does not include `season`/`episode` — those are addressed
+          via separate path segments under `tv`.
+        required: true
+      - in: path
+        name: source
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Media'
+          description: ''
+  /api/v1/media/{media_type}/{source}/{media_id}/seasons/:
+    get:
+      operationId: api_v1_media_seasons_retrieve
+      description: Retrieve the history timeline for a specific media.
+      parameters:
+      - in: path
+        name: media_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - anime
+          - boardgame
+          - book
+          - comic
+          - comicissue
+          - game
+          - manga
+          - movie
+          - music
+          - podcast
+          - tv
+        description: Media type. Does not include `season`/`episode` — those are addressed
+          via separate path segments under `tv`.
+        required: true
+      - in: path
+        name: source
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/media/{media_type}/{source}/{media_id}/sync/:
+    post:
+      operationId: api_v1_media_sync_create
+      description: Trigger sync of metadata from provider (non-manual sources only).
+      parameters:
+      - in: path
+        name: media_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - anime
+          - boardgame
+          - book
+          - comic
+          - comicissue
+          - game
+          - manga
+          - movie
+          - music
+          - podcast
+          - tv
+        description: Media type. Does not include `season`/`episode` — those are addressed
+          via separate path segments under `tv`.
+        required: true
+      - in: path
+        name: source
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/media/{media_type}/{source}/{media_id}/tags/:
+    get:
+      operationId: api_v1_media_tags_retrieve
+      description: Return the user's tags applied to this item.
+      parameters:
+      - in: path
+        name: media_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - anime
+          - boardgame
+          - book
+          - comic
+          - comicissue
+          - game
+          - manga
+          - movie
+          - music
+          - podcast
+          - tv
+        description: Media type. Does not include `season`/`episode` — those are addressed
+          via separate path segments under `tv`.
+        required: true
+      - in: path
+        name: source
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+    put:
+      operationId: api_v1_media_tags_update
+      description: Replace the user's tags on this item with the given tag ids.
+      parameters:
+      - in: path
+        name: media_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - anime
+          - boardgame
+          - book
+          - comic
+          - comicissue
+          - game
+          - manga
+          - movie
+          - music
+          - podcast
+          - tv
+        description: Media type. Does not include `season`/`episode` — those are addressed
+          via separate path segments under `tv`.
+        required: true
+      - in: path
+        name: source
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/media/{media_type}/{source}/{media_id}/watch/:
+    post:
+      operationId: api_v1_media_watch_create
+      description: Record a watch (play) for the movie.
+      parameters:
+      - in: path
+        name: media_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - anime
+          - boardgame
+          - book
+          - comic
+          - comicissue
+          - game
+          - manga
+          - movie
+          - music
+          - podcast
+          - tv
+        description: Media type. Does not include `season`/`episode` — those are addressed
+          via separate path segments under `tv`.
+        required: true
+      - in: path
+        name: source
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+    delete:
+      operationId: api_v1_media_watch_destroy
+      description: |-
+        Remove a watch (play) of the movie.
+
+        Removes the most recent play by default, or the play matching an
+        `external_id` query parameter if provided.
+      parameters:
+      - in: path
+        name: media_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - anime
+          - boardgame
+          - book
+          - comic
+          - comicissue
+          - game
+          - manga
+          - movie
+          - music
+          - podcast
+          - tv
+        description: Media type. Does not include `season`/`episode` — those are addressed
+          via separate path segments under `tv`.
+        required: true
+      - in: path
+        name: source
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/metadata/items/{item_id}/:
+    patch:
+      operationId: api_v1_metadata_items_partial_update
+      description: Apply custom-metadata overrides (mirrors update_manual_item_metadata).
+      parameters:
+      - in: path
+        name: item_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/metadata/items/{item_id}/image/:
+    patch:
+      operationId: api_v1_metadata_items_image_partial_update
+      description: Set the item's image URL (mirrors web update_item_image).
+      parameters:
+      - in: path
+        name: item_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/music/albums/:
+    get:
+      operationId: api_v1_music_albums_retrieve
+      description: Return the caller's album trackers.
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+    post:
+      operationId: api_v1_music_albums_create
+      description: Track an album by album_id (mirrors album_save).
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/music/albums/{album_id}/:
+    get:
+      operationId: api_v1_music_albums_retrieve_2
+      description: Return the album and the caller's tracker.
+      parameters:
+      - in: path
+        name: album_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+    patch:
+      operationId: api_v1_music_albums_partial_update
+      description: Update the caller's tracker (creates one if missing).
+      parameters:
+      - in: path
+        name: album_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+    delete:
+      operationId: api_v1_music_albums_destroy
+      description: Remove the caller's tracker (mirrors album_delete).
+      parameters:
+      - in: path
+        name: album_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/music/albums/{album_id}/plays/:
+    delete:
+      operationId: api_v1_music_albums_plays_destroy
+      description: Remove every Music play for the album.
+      parameters:
+      - in: path
+        name: album_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/music/albums/{album_id}/tracks/:
+    get:
+      operationId: api_v1_music_albums_tracks_retrieve
+      description: Return catalog tracks plus the user's Music entry per track.
+      parameters:
+      - in: path
+        name: album_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/music/artists/:
+    get:
+      operationId: api_v1_music_artists_retrieve
+      description: Return the caller's artist trackers.
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+    post:
+      operationId: api_v1_music_artists_create
+      description: Track an artist by artist_id or musicbrainz_id (mirrors artist_save).
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/music/artists/{artist_id}/:
+    get:
+      operationId: api_v1_music_artists_retrieve_2
+      description: Return the artist, tracker, and album summaries.
+      parameters:
+      - in: path
+        name: artist_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+    patch:
+      operationId: api_v1_music_artists_partial_update
+      description: Update the caller's tracker (creates one if missing).
+      parameters:
+      - in: path
+        name: artist_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+    delete:
+      operationId: api_v1_music_artists_destroy
+      description: Remove the caller's tracker (mirrors artist_delete).
+      parameters:
+      - in: path
+        name: artist_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/music/artists/{artist_id}/plays/:
+    delete:
+      operationId: api_v1_music_artists_plays_destroy
+      description: Remove every Music play for the artist's albums.
+      parameters:
+      - in: path
+        name: artist_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/music/artists/{artist_id}/sync-discography/:
+    post:
+      operationId: api_v1_music_artists_sync_discography_create
+      description: Sync albums from MusicBrainz; returns the synced album count.
+      parameters:
+      - in: path
+        name: artist_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/music/bulk-plays/:
+    post:
+      operationId: api_v1_music_bulk_plays_create
+      description: Queue bulk plays for an artist or album context.
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/music/songs/plays/:
+    post:
+      operationId: api_v1_music_songs_plays_create
+      description: Add a play for a track on an album.
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/music/tracks/{music_id}/score/:
+    patch:
+      operationId: api_v1_music_tracks_score_partial_update
+      description: Update the score (raw 0-10 scale; null clears).
+      parameters:
+      - in: path
+        name: music_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/playback/progress/:
+    get:
+      operationId: api_v1_playback_progress_retrieve
+      description: List saved resume positions, newest first. Supports ?updated_since=
+        for delta sync, ?media_type= (comma separated) and ?completed=true|false,
+        plus the standard limit/offset.
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pagination:
+                    type: object
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        media_type:
+                          type: string
+                          enum:
+                          - movie
+                          - episode
+                          - podcast
+                        source:
+                          type: string
+                          nullable: true
+                        media_id:
+                          type: string
+                          nullable: true
+                        season_number:
+                          type: integer
+                          nullable: true
+                        episode_number:
+                          type: integer
+                          nullable: true
+                        ids:
+                          type: object
+                        title:
+                          type: string
+                          nullable: true
+                        series_title:
+                          type: string
+                          nullable: true
+                        position_seconds:
+                          type: integer
+                          nullable: true
+                        duration_seconds:
+                          type: integer
+                          nullable: true
+                        completed:
+                          type: boolean
+                        updated_at:
+                          type: string
+                          format: date-time
+                          nullable: true
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+          description: ''
+    put:
+      operationId: api_v1_playback_progress_update
+      description: 'Set an absolute resume position. Sending "position_seconds": null
+        clears it, for clients that cannot send a DELETE body. Movies/episodes create
+        the metadata item if it isn''t known yet, without creating a watch record;
+        podcasts require an already-tracked episode.'
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - media_type
+              - ids
+              properties:
+                media_type:
+                  type: string
+                  enum:
+                  - movie
+                  - episode
+                  - podcast
+                ids:
+                  type: object
+                  description: 'Movies/episodes: at least one of tmdb/imdb/tvdb. Podcasts:
+                    episode_uuid (Pocket Casts UUID or RSS GUID).'
+                  properties:
+                    tmdb:
+                      type: string
+                      nullable: true
+                    imdb:
+                      type: string
+                      nullable: true
+                    tvdb:
+                      type: string
+                      nullable: true
+                    episode_uuid:
+                      type: string
+                      nullable: true
+                season_number:
+                  type: integer
+                  nullable: true
+                  description: Required for media_type 'episode'.
+                episode_number:
+                  type: integer
+                  nullable: true
+                  description: Required for media_type 'episode'.
+                position_seconds:
+                  type: integer
+                  nullable: true
+                  description: Absolute resume position. null clears it.
+                duration_seconds:
+                  type: integer
+                  nullable: true
+                completed:
+                  type: boolean
+                  nullable: true
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  media_type:
+                    type: string
+                    enum:
+                    - movie
+                    - episode
+                    - podcast
+                  source:
+                    type: string
+                    nullable: true
+                  media_id:
+                    type: string
+                    nullable: true
+                  season_number:
+                    type: integer
+                    nullable: true
+                  episode_number:
+                    type: integer
+                    nullable: true
+                  ids:
+                    type: object
+                  title:
+                    type: string
+                    nullable: true
+                  series_title:
+                    type: string
+                    nullable: true
+                  position_seconds:
+                    type: integer
+                    nullable: true
+                  duration_seconds:
+                    type: integer
+                    nullable: true
+                  completed:
+                    type: boolean
+                  updated_at:
+                    type: string
+                    format: date-time
+                    nullable: true
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+          description: ''
+    delete:
+      operationId: api_v1_playback_progress_destroy
+      description: Clear a saved resume position.
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '204':
+          description: No response body
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+          description: ''
+  /api/v1/podcasts/episodes/plays/:
+    post:
+      operationId: api_v1_podcasts_episodes_plays_create
+      description: Add a play; duplicates within five minutes are reported as 200.
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/podcasts/shows/:
+    get:
+      operationId: api_v1_podcasts_shows_retrieve
+      description: Return the caller's show trackers.
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+    post:
+      operationId: api_v1_podcasts_shows_create
+      description: Track a show by show_id (mirrors podcast_show_save).
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/podcasts/shows/{show_id}/:
+    get:
+      operationId: api_v1_podcasts_shows_retrieve_2
+      description: Return the show and the caller's tracker.
+      parameters:
+      - in: path
+        name: show_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+    patch:
+      operationId: api_v1_podcasts_shows_partial_update
+      description: Update the caller's tracker (creates one if missing).
+      parameters:
+      - in: path
+        name: show_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+    delete:
+      operationId: api_v1_podcasts_shows_destroy
+      description: Remove the caller's tracker (mirrors podcast_show_delete).
+      parameters:
+      - in: path
+        name: show_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/podcasts/shows/{show_id}/episodes/:
+    get:
+      operationId: api_v1_podcasts_shows_episodes_retrieve
+      description: Return catalog episodes with play state (page/page_size params).
+      parameters:
+      - in: path
+        name: show_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/podcasts/shows/{show_id}/mark-all-played/:
+    post:
+      operationId: api_v1_podcasts_shows_mark_all_played_create
+      description: Mark all episodes played; returns the number marked.
+      parameters:
+      - in: path
+        name: show_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/scrobble/:
+    post:
+      operationId: api_v1_scrobble_create
+      description: Record a playback start/pause/stop event from a third-party client.
+        Movies are identified by tmdb/imdb id; episodes additionally require season_number/episode_number.
+        'start'/'pause' only update the live Now Playing card; 'stop' persists a durable
+        watch/progress update.
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - action
+              - media_type
+              - ids
+              properties:
+                action:
+                  type: string
+                  enum:
+                  - start
+                  - pause
+                  - stop
+                media_type:
+                  type: string
+                  enum:
+                  - movie
+                  - episode
+                ids:
+                  type: object
+                  description: At least one of tmdb/imdb/tvdb is required.
+                  properties:
+                    tmdb:
+                      type: string
+                      nullable: true
+                    imdb:
+                      type: string
+                      nullable: true
+                    tvdb:
+                      type: string
+                      nullable: true
+                title:
+                  type: string
+                  nullable: true
+                series_title:
+                  type: string
+                  nullable: true
+                  description: Required (in effect) for media_type 'episode' to power
+                    live-card display and title search fallback.
+                season_number:
+                  type: integer
+                  nullable: true
+                  description: Required for media_type 'episode'.
+                episode_number:
+                  type: integer
+                  nullable: true
+                  description: Required for media_type 'episode'.
+                position_seconds:
+                  type: integer
+                  nullable: true
+                duration_seconds:
+                  type: integer
+                  nullable: true
+                completed:
+                  type: boolean
+                  nullable: true
+                  description: Only used by 'stop'. Overrides the position/duration
+                    completion heuristic when given.
+                played_at:
+                  type: string
+                  format: date-time
+                  nullable: true
+                  description: Only used by 'stop'. Defaults to now.
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+                  errors:
+                    type: string
+          description: ''
+  /api/v1/search/{media_type}/:
+    get:
+      operationId: searchMedia
+      description: Search for media using the specified provider.
+      parameters:
+      - in: query
+        name: limit
+        schema:
+          type: integer
+        description: 'Maximum number of results to return (default: 20).'
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - anime
+          - boardgame
+          - book
+          - comic
+          - comicissue
+          - episode
+          - game
+          - manga
+          - movie
+          - music
+          - podcast
+          - season
+          - tv
+        description: Media type, including `season` and `episode`. POST to a media-type
+          collection creates a new consumption; omitted status defaults to Planning.
+          Use the history/{consumption_id} route to update one specific existing consumption.
+        required: true
+      - in: query
+        name: offset
+        schema:
+          type: integer
+        description: 'Offset for pagination (default: 0).'
+      - in: query
+        name: search
+        schema:
+          type: string
+        description: Search query passed to the provider.
+      - in: query
+        name: source
+        schema:
+          type: string
+        description: Provider to search (e.g. `tmdb`, `igdb`). Defaults to the media
+          type's default provider when omitted.
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pagination:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      limit:
+                        type: integer
+                      offset:
+                        type: integer
+                      next:
+                        type: string
+                        format: uri
+                        nullable: true
+                      previous:
+                        type: string
+                        format: uri
+                        nullable: true
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Item'
+          description: ''
+  /api/v1/statistics/:
+    get:
+      operationId: api_v1_statistics_retrieve
+      description: Retrieve statistics for the authenticated user.
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/statistics/overview/:
+    get:
+      operationId: api_v1_statistics_overview_retrieve
+      description: 'Return statistics for the date range (default: user''s preference).'
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/statistics/refresh/:
+    post:
+      operationId: api_v1_statistics_refresh_create
+      description: Invalidate and rebuild the given predefined range.
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/tags/:
+    get:
+      operationId: api_v1_tags_retrieve
+      description: Return all tags for the user with item counts.
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+    post:
+      operationId: api_v1_tags_create
+      description: Create a tag (names are unique per user, case-insensitive).
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/tags/{tag_id}/:
+    patch:
+      operationId: api_v1_tags_partial_update
+      description: Rename the tag.
+      parameters:
+      - in: path
+        name: tag_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+    delete:
+      operationId: api_v1_tags_destroy
+      description: Delete the tag and its item associations.
+      parameters:
+      - in: path
+        name: tag_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/tasks/{task_id}/:
+    get:
+      operationId: api_v1_tasks_retrieve
+      description: Return the current state of the task.
+      parameters:
+      - in: path
+        name: task_id
+        schema:
+          type: string
+          pattern: ^[\w-]+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/user/notifications/:
+    get:
+      operationId: api_v1_user_notifications_retrieve
+      description: Return notification settings and excluded items.
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+    patch:
+      operationId: api_v1_user_notifications_partial_update
+      description: Update notification settings via the web form's validation.
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/user/notifications/exclusions/:
+    get:
+      operationId: api_v1_user_notifications_exclusions_retrieve
+      description: Return excluded items.
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+    post:
+      operationId: api_v1_user_notifications_exclusions_create
+      description: Exclude an item from notifications.
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+    delete:
+      operationId: api_v1_user_notifications_exclusions_destroy
+      description: Remove an item from the exclusion list.
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/user/notifications/test/:
+    post:
+      operationId: api_v1_user_notifications_test_create
+      description: Send the test message to all configured Apprise URLs.
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/user/preferences/:
+    get:
+      operationId: api_v1_user_preferences_retrieve
+      description: Return the current preference values and valid choices.
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+    patch:
+      operationId: api_v1_user_preferences_partial_update
+      description: Update the provided preference fields.
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/user/sidebar/:
+    get:
+      operationId: api_v1_user_sidebar_retrieve
+      description: Return the enabled state per media type.
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+    put:
+      operationId: api_v1_user_sidebar_update
+      description: Set the enabled state for the provided media types.
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/user/token/regenerate/:
+    post:
+      operationId: api_v1_user_token_regenerate_create
+      description: Regenerate and return the new token once.
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: No response body
+  /apis/listenbrainz/1/submit-listens/:
+    post:
+      operationId: apis_listenbrainz_1_submit_listens_create
+      description: 'Accepts scrobbles from any ListenBrainz-compatible client. Authenticate
+        with `Authorization: Token <your API token>`. `playing_now` submissions are
+        accepted but not recorded.'
+      summary: Submit listens (ListenBrainz-compatible)
+      tags:
+      - apis
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                listen_type:
+                  type: string
+                  enum:
+                  - single
+                  - import
+                  - playing_now
+                payload:
+                  type: array
+                  items:
+                    type: object
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                  error:
+                    type: string
+          description: ''
+  /apis/listenbrainz/1/validate-token/:
+    get:
+      operationId: apis_listenbrainz_1_validate_token_retrieve
+      description: Reports whether the supplied token is valid. ListenBrainz clients
+        call this on startup to confirm the connection.
+      summary: Validate token (ListenBrainz-compatible)
+      tags:
+      - apis
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                  message:
+                    type: string
+                  valid:
+                    type: boolean
+                  user_name:
+                    type: string
+          description: ''
+components:
+  schemas:
+    Consumption:
+      type: object
+      properties:
+        consumption_id:
+          type: integer
+        status:
+          type: integer
+          nullable: true
+        progress:
+          type: number
+          nullable: true
+    Episode:
+      allOf:
+      - $ref: '#/components/schemas/Item'
+      - type: object
+        properties:
+          season_number:
+            type: integer
+          episode_number:
+            type: integer
+    Item:
+      type: object
+      properties:
+        media_id:
+          type: string
+        source:
+          type: string
+        media_type:
+          type: string
+        title:
+          type: string
+        consumptions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Consumption'
+    Media:
+      type: object
+      description: Serializer used for media items.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/StatusEnum'
+          x-enumNames:
+          - Planning
+          - In progress
+          - Paused
+          - Completed
+          - Dropped
+          description: |-
+            Responses always return the integer code. Requests (POST/PATCH) may alternatively send the status label as a case-insensitive string (e.g. "completed", "In Progress") instead of the integer code.
+
+            Integer mapping: 0 = Planning, 1 = In progress, 2 = Paused, 3 = Completed, 4 = Dropped
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        score:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,2}(?:\.\d{0,1})?$
+          nullable: true
+        progress:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+        progressed_at:
+          type: string
+          format: date-time
+        start_date:
+          type: string
+          format: date-time
+          nullable: true
+        end_date:
+          type: string
+          format: date-time
+          nullable: true
+        notes:
+          type: string
+        item:
+          type: integer
+        import_run:
+          type: integer
+          nullable: true
+          description: The import run that created or last touched this row, if any.
+      required:
+      - created_at
+      - id
+      - item
+      - status
+    PatchedMedia:
+      type: object
+      description: Serializer used for media items.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/StatusEnum'
+          x-enumNames:
+          - Planning
+          - In progress
+          - Paused
+          - Completed
+          - Dropped
+          description: |-
+            Responses always return the integer code. Requests (POST/PATCH) may alternatively send the status label as a case-insensitive string (e.g. "completed", "In Progress") instead of the integer code.
+
+            Integer mapping: 0 = Planning, 1 = In progress, 2 = Paused, 3 = Completed, 4 = Dropped
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        score:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,2}(?:\.\d{0,1})?$
+          nullable: true
+        progress:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+        progressed_at:
+          type: string
+          format: date-time
+        start_date:
+          type: string
+          format: date-time
+          nullable: true
+        end_date:
+          type: string
+          format: date-time
+          nullable: true
+        notes:
+          type: string
+        item:
+          type: integer
+        import_run:
+          type: integer
+          nullable: true
+          description: The import run that created or last touched this row, if any.
+    Season:
+      allOf:
+      - $ref: '#/components/schemas/Item'
+      - type: object
+        properties:
+          season_number:
+            type: integer
+    StatusEnum:
+      type: integer
+      enum:
+      - 0
+      - 1
+      - 2
+      - 3
+      - 4
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+    bearerAuth:
+      type: http
+      scheme: bearer
