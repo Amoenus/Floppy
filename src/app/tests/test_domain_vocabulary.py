@@ -84,13 +84,24 @@ class DomainVocabularyTests(SimpleTestCase):
         )
 
     def test_generated_guide_matches_the_renderer(self):
-        rendered = domain_vocabulary.render_domain_guide()
+        rendered = domain_vocabulary.render_agent_guide().encode("utf-8")
 
-        self.assertTrue(rendered.startswith("<!-- GENERATED FILE. DO NOT EDIT."))
+        self.assertTrue(rendered.startswith(b"<!-- GENERATED FILE. DO NOT EDIT."))
         self.assertEqual(
-            domain_vocabulary.GUIDE_PATH.read_text(encoding="utf-8"),
+            domain_vocabulary.GUIDE_PATH.read_bytes(),
             rendered,
         )
+
+    def test_check_rejects_crlf_guide_bytes(self):
+        rendered = domain_vocabulary.render_agent_guide().encode("utf-8")
+        crlf_bytes = rendered.replace(b"\n", b"\r\n")
+        self.assertNotEqual(crlf_bytes, rendered)
+
+        with TemporaryDirectory() as directory:
+            guide_path = Path(directory) / "domain_model.md"
+            guide_path.write_bytes(crlf_bytes)
+            with patch.object(domain_vocabulary, "GUIDE_PATH", guide_path):
+                self.assertEqual(domain_vocabulary.main(["--check"]), 1)
 
     def test_module_entry_point_writes_and_checks_the_guide(self):
         with TemporaryDirectory() as directory:
@@ -99,8 +110,8 @@ class DomainVocabularyTests(SimpleTestCase):
                 self.assertEqual(domain_vocabulary.main(["--check"]), 1)
                 self.assertEqual(domain_vocabulary.main([]), 0)
                 self.assertEqual(
-                    guide_path.read_text(encoding="utf-8"),
-                    domain_vocabulary.render_domain_guide(),
+                    guide_path.read_bytes(),
+                    domain_vocabulary.render_agent_guide().encode("utf-8"),
                 )
-                guide_path.write_text("drift\n", encoding="utf-8")
+                guide_path.write_bytes(b"drift\n")
                 self.assertEqual(domain_vocabulary.main(["--check"]), 1)

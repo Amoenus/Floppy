@@ -120,7 +120,7 @@ def render_glossary_rows() -> tuple[dict[str, str], ...]:
     )
 
 
-def render_domain_guide() -> str:
+def render_agent_guide() -> str:
     """Render the generated agent domain guide."""
     term_names = {term.key: term.term for term in DOMAIN_TERMS}
     lines = [
@@ -161,14 +161,14 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args(argv)
-    rendered = render_domain_guide()
+    rendered = render_agent_guide().encode("utf-8")
 
     if args.check:
         if not GUIDE_PATH.exists():
             return 1
-        return int(GUIDE_PATH.read_text(encoding="utf-8") != rendered)
+        return int(GUIDE_PATH.read_bytes() != rendered)
 
-    GUIDE_PATH.write_text(rendered, encoding="utf-8")
+    GUIDE_PATH.write_bytes(rendered)
     return 0
 
 
