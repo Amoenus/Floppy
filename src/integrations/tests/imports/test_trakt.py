@@ -646,6 +646,7 @@ class ImportTrakt(TestCase):
             ],  # history
             [],  # watchlist — empty
             [],  # ratings — empty
+            [],  # notes — empty
             [],  # comments — empty
             [],  # collection movies — empty
             [],  # collection shows — empty
@@ -685,6 +686,7 @@ class ImportTrakt(TestCase):
             ],  # history
             [],  # watchlist — empty
             [],  # ratings — empty
+            [],  # notes — empty
             [],  # comments — empty
             [],  # collection movies — empty
             [],  # collection shows — empty
@@ -828,9 +830,11 @@ class ImportTrakt(TestCase):
             [],  # comments
             [],  # collection movies
             [],  # collection shows
+            [],  # notes
             [episode_entry],  # history (2nd import)
             [],  # watchlist
             [],  # ratings
+            [],  # notes
             [],  # comments
             [],  # collection movies
             [],  # collection shows
@@ -1353,6 +1357,7 @@ class ImportTrakt(TestCase):
                     "rating": 8,
                 }
             ],
+            [],  # notes — empty
             [],  # comments — empty
             [],  # collection movies — empty
             [],  # collection shows — empty
@@ -1432,6 +1437,7 @@ class ImportTrakt(TestCase):
             [episode_entry],  # history
             [],  # watchlist — empty
             [rating_entry],  # ratings — one episode entry
+            [],  # notes
             [],  # comments
             [],  # collection movies — empty
             [],  # collection shows — empty
@@ -1542,6 +1548,7 @@ class ImportTrakt(TestCase):
             [episode_entry],  # process_history
             [],  # process_watchlist
             [],  # process_ratings
+            [],  # process_notes
             [],  # process_comments
             [],  # collection movies — empty
             [],  # collection shows — empty
@@ -1627,6 +1634,7 @@ class ImportTrakt(TestCase):
             [episode_entry],  # process_history
             [],  # process_watchlist
             [],  # process_ratings
+            [],  # process_notes
             [],  # process_comments
             [],  # collection movies — empty
             [],  # collection shows — empty
@@ -1708,6 +1716,7 @@ class ImportTrakt(TestCase):
             [episode_entry],  # process_history
             [],  # process_watchlist
             [],  # process_ratings
+            [],  # process_notes
             [],  # process_comments
             [],  # collection movies — empty
             [],  # collection shows — empty

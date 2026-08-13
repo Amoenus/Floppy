@@ -226,9 +226,10 @@ class DatabaseRetryMiddleware:
 
 
 class SessionInterruptedMiddleware:
-    """Recover from a session row being deleted mid-request (e.g. a stale
-    tab's OAuth callback racing session cycling from a login in another
-    tab) instead of surfacing Django's default 400 page (#622).
+    """Recover from a session row deleted mid-request.
+
+    A stale tab's OAuth callback can race session cycling from another login
+    tab; recover instead of surfacing Django's default 400 page (#622).
     """
 
     def __init__(self, get_response):
