@@ -500,6 +500,26 @@ upgrades matter.
 - Redis stores sessions and background-task state; resetting Redis can log users out, but it should not delete accounts if the database is persisted.
 - Do not assume `DATABASE_URL` enables PostgreSQL. Floppy uses Postgres only when `DB_HOST` is set.
 
+### SQLite startup recovery
+
+Floppy checks SQLite storage and relationships before it runs migrations.
+If the check finds an album artist credit whose album or artist no longer
+exists, Floppy removes only that invalid credit and checks the database again.
+The startup log gives the number of rows that it removed.
+
+Floppy does not repair other relationship errors. It stops before migrations
+and lists each table, row, and missing parent. Use this procedure:
+
+1. Stop all Floppy processes that use the database.
+2. Back up the SQLite file and its `-wal` and `-shm` files, if they exist.
+3. Read each relationship error in the startup log.
+4. Restore a known-good backup or correct the named rows with a SQLite tool.
+5. Start Floppy and confirm that the relationship check passes.
+
+If the log says that the database is busy, another process still holds a
+write lock. Stop that process, then restart Floppy. Do not delete the database
+or its lock files to resolve this conflict.
+
 ### Trakt private profile import (OAuth)
 
 If you import from a private Trakt profile, configure OAuth first:
