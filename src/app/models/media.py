@@ -262,6 +262,11 @@ class Media(models.Model):
         return False
 
     @property
+    def progress_unit(self):
+        """Return the unit `progress` is measured in, or None if not well-defined."""
+        return None
+
+    @property
     def formatted_aggregated_progress(self):
         """Return formatted aggregated progress string."""
         if (
@@ -688,6 +693,11 @@ class Manga(Media):
         """Return whether formatted_progress is rendering a percentage."""
         return _percentage_progress_text(self) is not None
 
+    @property
+    def progress_unit(self):
+        """Return the unit `progress` is measured in."""
+        return "percentage" if self.progress_is_percentage else "chapters"
+
     def increase_progress(self):
         """Increase progress, respecting the percentage tracking preference."""
         _percentage_increase_progress(self)
@@ -820,6 +830,11 @@ class Anime(Media):
                 )
                 return
 
+    @property
+    def progress_unit(self):
+        """Return the unit `progress` is measured in."""
+        return "episodes"
+
 
 class Movie(Media):
     """Model for movies."""
@@ -908,6 +923,11 @@ class Game(Media):
         """Return progress in hours:minutes format."""
         return app.helpers.minutes_to_hhmm(self.progress)
 
+    @property
+    def progress_unit(self):
+        """Return the unit `progress` is measured in."""
+        return "minutes"
+
     def increase_progress(self):
         """Increase the progress of the media by 30 minutes."""
         self.progress += 30
@@ -939,6 +959,11 @@ class BoardGame(Media):
         value = plays if plays is not None else self.progress
         return f"{value} play{'s' if value != 1 else ''}"
 
+    @property
+    def progress_unit(self):
+        """Return the unit `progress` is measured in."""
+        return "plays"
+
 
 class Book(Media):
     """Model for books."""
@@ -959,6 +984,15 @@ class Book(Media):
     def progress_is_percentage(self):
         """Return whether formatted_progress is rendering a percentage."""
         return _percentage_progress_text(self) is not None
+
+    @property
+    def progress_unit(self):
+        """Return the unit `progress` is measured in."""
+        if self.progress_is_percentage:
+            return "percentage"
+        if getattr(self, "item", None) and self.item.format == "audiobook":
+            return "minutes"
+        return "pages"
 
     def increase_progress(self):
         """Increase progress, respecting the percentage tracking preference."""
@@ -984,6 +1018,11 @@ class Comic(Media):
         """Return whether formatted_progress is rendering a percentage."""
         return _percentage_progress_text(self) is not None
 
+    @property
+    def progress_unit(self):
+        """Return the unit `progress` is measured in."""
+        return "percentage" if self.progress_is_percentage else "issues"
+
     def increase_progress(self):
         """Increase progress, respecting the percentage tracking preference."""
         _percentage_increase_progress(self)
@@ -997,3 +1036,8 @@ class ComicIssue(Media):
     """Model for individual comic issues."""
 
     tracker = FieldTracker()
+
+    @property
+    def progress_unit(self):
+        """Return the unit `progress` is measured in."""
+        return "pages"
