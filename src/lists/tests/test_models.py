@@ -3,7 +3,7 @@ from datetime import timedelta
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from django.test import TestCase
 from django.utils import timezone
 
@@ -852,22 +852,7 @@ class CustomListManagerTest(TestCase):
 
 
 class CustomListItemDeleteRenumberTest(TestCase):
-    """CustomListItem.delete() must renumber later items without erroring.
-
-    Reported live: removing an item partway through a ~50-item real list
-    crashed with psycopg.errors.UniqueViolation on
-    lists_customlistitem_unique_list_item_id, and the resulting 500 sent the
-    browser to a dead GET on /list_item_toggle (405, since that view is
-    POST-only) — which is what actually looked like "I keep getting
-    redirected to /list_item_toggle" from the outside. Postgres checks a
-    non-deferred unique constraint per row as an UPDATE statement executes,
-    not once at the end, so the bulk `list_item_id = list_item_id - 1` shift
-    in delete() can transiently assign a value another not-yet-updated row
-    in the same statement still holds — a spurious violation even though the
-    final state is valid. Only reproduces with enough trailing items for the
-    row-processing order to matter; a 1-2 item list never hits it, which is
-    why this went unnoticed in casual testing.
-    """
+    """CustomListItem.delete() must safely renumber later list positions."""
 
     def setUp(self):
         """Create a user, a list, and enough items to force multi-row renumbering."""
@@ -893,7 +878,6 @@ class CustomListItemDeleteRenumberTest(TestCase):
             custom_list=self.custom_list,
             item=self.items[5],
         )
-        removed_list_item_id = target.list_item_id
 
         target.delete()
 
@@ -908,10 +892,7 @@ class CustomListItemDeleteRenumberTest(TestCase):
             [entry.list_item_id for entry in remaining],
             list(range(len(remaining))),
         )
-        self.assertNotIn(
-            removed_list_item_id,
-            [entry.list_item_id for entry in remaining if entry.list_item_id is None],
-        )
+        self.assertFalse(any(entry.list_item_id is None for entry in remaining))
 
     def test_deleting_every_item_one_at_a_time_never_collides(self):
         """Repeated single deletes from the front must never raise IntegrityError."""
@@ -930,3 +911,45 @@ class CustomListItemDeleteRenumberTest(TestCase):
             CustomListItem.objects.filter(custom_list=self.custom_list).count(),
             0,
         )
+
+    def test_delete_refreshes_a_stale_position_after_locking_the_list(self):
+        """A delete must not close the gap using a pre-lock position snapshot."""
+        stale_target = CustomListItem.objects.get(
+            custom_list=self.custom_list,
+            item=self.items[3],
+        )
+        CustomListItem.objects.get(
+            custom_list=self.custom_list,
+            item=self.items[0],
+        ).delete()
+
+        # The first delete renumbered this row in the database, while the
+        # already-loaded instance still carries its original position.
+        stale_target.delete()
+
+        positions = list(
+            CustomListItem.objects.filter(custom_list=self.custom_list)
+            .order_by("list_item_id")
+            .values_list("list_item_id", flat=True),
+        )
+        self.assertEqual(positions, list(range(len(positions))))
+
+    def test_list_item_id_uniqueness_remains_enforced(self):
+        """Every supported database must reject duplicate list positions."""
+        first = CustomListItem.objects.get(
+            custom_list=self.custom_list,
+            item=self.items[0],
+        )
+        duplicate = CustomListItem(
+            custom_list=self.custom_list,
+            item=Item.objects.create(
+                title="Duplicate position",
+                media_id="duplicate-position",
+                media_type=MediaTypes.MOVIE.value,
+                source=Sources.TMDB.value,
+            ),
+            list_item_id=first.list_item_id,
+        )
+
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            duplicate.save(force_insert=True)
