@@ -200,6 +200,12 @@ async def track_media(
     existing = await _call("get", f"media/{media_type}/{source}/{media_id}")
     if (
         isinstance(existing, dict)
+        and existing.get("error")
+        and "status_code" not in existing
+    ):
+        return existing
+    if (
+        isinstance(existing, dict)
         and not existing.get("error")
         and existing.get("tracked")
         and not new_play

@@ -90,6 +90,21 @@ async def test_track_media_creates_when_untracked(api_base_url):
         assert payload["score"] == 9
 
 
+async def test_track_media_stops_after_lookup_connection_error(api_base_url):
+    with respx.mock:
+        respx.get(f"{api_base_url}/media/movie/tmdb/1").mock(
+            side_effect=httpx.ConnectError("Connection failed"),
+        )
+        create_route = respx.post(f"{api_base_url}/media/movie").mock(
+            return_value=Response(201, json={"ok": True}),
+        )
+
+        result = await server.track_media("movie", "tmdb", "1")
+
+        assert result == {"error": True, "detail": "Connection failed"}
+        assert not create_route.called
+
+
 async def test_track_media_invalid_status_rejected():
     result = await server.track_media("movie", "tmdb", "1", status="Watching")
     assert result["error"] is True
