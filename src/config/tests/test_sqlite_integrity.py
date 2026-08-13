@@ -11,6 +11,77 @@ from config.sqlite_integrity import check_database_integrity
 
 
 class SqliteIntegrityTests(SimpleTestCase):
+    def test_orphaned_album_artist_credit_is_removed(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = str(Path(tmp_dir) / "db.sqlite3")
+            conn = sqlite3.connect(db_path)
+            conn.executescript(
+                """
+                PRAGMA foreign_keys=ON;
+                CREATE TABLE app_album (id INTEGER PRIMARY KEY);
+                CREATE TABLE app_artist (id INTEGER PRIMARY KEY);
+                CREATE TABLE app_albumartist (
+                    id INTEGER PRIMARY KEY,
+                    album_id INTEGER NOT NULL REFERENCES app_album(id),
+                    artist_id INTEGER NOT NULL REFERENCES app_artist(id)
+                );
+                INSERT INTO app_album VALUES (345);
+                INSERT INTO app_artist VALUES (12);
+                INSERT INTO app_albumartist VALUES (1, 345, 12);
+                """
+            )
+            conn.commit()
+            conn.execute("PRAGMA foreign_keys=OFF")
+            conn.execute("DELETE FROM app_album WHERE id = 345")
+            conn.commit()
+            conn.close()
+
+            with mock.patch("sys.stderr"):
+                check_database_integrity(db_path)
+
+            conn = sqlite3.connect(db_path)
+            self.assertEqual(
+                conn.execute("SELECT COUNT(*) FROM app_albumartist").fetchone()[0],
+                0,
+            )
+            self.assertEqual(conn.execute("PRAGMA foreign_key_check").fetchall(), [])
+            conn.close()
+
+    def test_unknown_foreign_key_violation_stops_startup(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = str(Path(tmp_dir) / "db.sqlite3")
+            conn = sqlite3.connect(db_path)
+            conn.executescript(
+                """
+                PRAGMA foreign_keys=ON;
+                CREATE TABLE parent (id INTEGER PRIMARY KEY);
+                CREATE TABLE child (
+                    id INTEGER PRIMARY KEY,
+                    parent_id INTEGER NOT NULL REFERENCES parent(id)
+                );
+                INSERT INTO parent VALUES (1);
+                INSERT INTO child VALUES (1, 1);
+                """
+            )
+            conn.commit()
+            conn.execute("PRAGMA foreign_keys=OFF")
+            conn.execute("DELETE FROM parent WHERE id = 1")
+            conn.commit()
+            conn.close()
+
+            with (
+                self.assertRaises(SystemExit) as ctx,
+                mock.patch("sys.stderr"),
+            ):
+                check_database_integrity(db_path)
+
+            self.assertEqual(ctx.exception.code, 1)
+            conn = sqlite3.connect(db_path)
+            self.assertEqual(
+                conn.execute("SELECT COUNT(*) FROM child").fetchone()[0], 1
+            )
+            conn.close()
+
     def test_healthy_database_passes(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = str(Path(tmp_dir) / "db.sqlite3")
