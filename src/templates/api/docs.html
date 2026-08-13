@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Floppy API setup and schema reference.">
+    <meta name="keywords" content="Floppy, API, OpenAPI">
+    <title>Floppy API</title>
+    <style>
+            :root {
+                color-scheme: light dark;
+                --background: #fff;
+                --surface: #f4f4f5;
+                --text: #18181b;
+                --muted: #3f3f46;
+                --link: #1d4ed8;
+                --border: #a1a1aa;
+            }
+
+            * {
+                box-sizing: border-box;
+            }
+
+            html {
+                background: var(--background);
+                color: var(--text);
+            }
+
+            body {
+                max-width: 70ch;
+                margin: 0 auto;
+                padding: 1rem;
+                font-family: system-ui, sans-serif;
+                line-height: 1.55;
+                overflow-wrap: anywhere;
+            }
+
+            header,
+            main,
+            footer {
+                display: block;
+            }
+
+            header,
+            section,
+            footer {
+                margin-block: 2rem;
+            }
+
+            h1,
+            h2,
+            h3 {
+                line-height: 1.2;
+            }
+
+            a {
+                color: var(--link);
+                text-underline-offset: 0.18em;
+            }
+
+            a:focus-visible {
+                outline: 3px solid var(--link);
+                outline-offset: 3px;
+            }
+
+            .skip-link {
+                position: absolute;
+                inset-inline-start: 0.5rem;
+                top: -5rem;
+                padding: 0.5rem;
+                background: var(--background);
+            }
+
+            .skip-link:focus {
+                top: 0.5rem;
+            }
+
+            nav ul {
+                padding-inline-start: 1.25rem;
+            }
+
+            pre {
+                max-width: 100%;
+                padding: 1rem;
+                overflow-x: auto;
+                background: var(--surface);
+                border: 1px solid var(--border);
+            }
+
+            code {
+                font-family: ui-monospace, monospace;
+            }
+
+            dl {
+                margin: 0;
+            }
+
+            .glossary-row,
+            .schema-entry {
+                padding-block: 1rem;
+                border-block-start: 1px solid var(--border);
+            }
+
+            dt {
+                font-weight: 700;
+            }
+
+            dd {
+                margin-inline-start: 0;
+            }
+
+            footer {
+                color: var(--muted);
+                border-block-start: 1px solid var(--border);
+            }
+
+            @media (max-width: 30rem) {
+                body {
+                    padding: 0.75rem;
+                }
+            }
+
+            @media (prefers-color-scheme: dark) {
+                :root {
+                    --background: #18181b;
+                    --surface: #27272a;
+                    --text: #fafafa;
+                    --muted: #d4d4d8;
+                    --link: #93c5fd;
+                    --border: #71717a;
+                }
+            }
+    </style>
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">Skip to content</a>
+    <header>
+      <h1>Floppy API</h1>
+      <p>A read-only index for API setup and schema review.</p>
+    </header>
+    <main id="main-content">
+      <section aria-labelledby="tasks-heading">
+        <h2 id="tasks-heading">Start with a task</h2>
+        <nav aria-label="API tasks">
+          <ul>
+            <li>
+              <a href="#domain-model">Understand the domain model</a>
+            </li>
+            <li>
+              <a href="#first-request">Make the first request</a>
+            </li>
+            <li>
+              <a href="{% url 'schema' %}">Open the full diagnostic schema</a>
+            </li>
+            <li>
+              <a href="{% url 'openapi-contract' %}">Download the verified API subset</a>
+            </li>
+          </ul>
+        </nav>
+      </section>
+      <section id="first-request" aria-labelledby="first-request-heading">
+        <h2 id="first-request-heading">First request</h2>
+        <p>
+          Create an API key in
+          <a href="{% url 'integrations' %}">Settings -&gt; Integrations</a>.
+          Replace <code>YOUR_API_KEY</code> in this command.
+        </p>
+        <pre><code>curl --request GET --header "X-API-Key: YOUR_API_KEY" "{{ request.scheme }}://{{ request.get_host }}/api/v1/info/"</code></pre>
+      </section>
+      <section id="domain-model" aria-labelledby="domain-model-heading">
+        <h2 id="domain-model-heading">Domain model</h2>
+        <p>Use these terms when you read schema names and API responses.</p>
+        <dl>
+          {% for row in glossary_terms %}
+            <div id="term-{{ row.key }}" class="glossary-row">
+              <dt>{{ row.term }}</dt>
+              <dd>
+                {{ row.definition }}
+              </dd>
+            </div>
+          {% endfor %}
+        </dl>
+      </section>
+      <section aria-labelledby="schemas-heading">
+        <h2 id="schemas-heading">API schemas</h2>
+        <article id="dynamic-schema" class="schema-entry">
+          <h3>
+            <a href="{% url 'schema' %}">Full diagnostic schema</a>
+          </h3>
+          <p>The full schema is generated dynamically from this running Floppy instance. Use it for diagnostics.</p>
+        </article>
+        <article id="committed-schema" class="schema-entry">
+          <h3>
+            <a href="{% url 'openapi-contract' %}">Verified API subset</a>
+          </h3>
+          <p>The reviewed, committed, versioned subset covers supported integrations and MCP grounding.</p>
+        </article>
+      </section>
+    </main>
+    <footer>
+      <p>Floppy API reference.</p>
+    </footer>
+  </body>
+</html>

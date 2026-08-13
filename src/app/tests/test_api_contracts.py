@@ -1,11 +1,14 @@
 import ast
 import inspect
+from unittest.mock import patch
 from urllib.parse import urljoin
 
 import yaml
+from bs4 import BeautifulSoup
 from django.conf import settings
 from django.test import SimpleTestCase
 from django.test.utils import override_settings
+from django.urls import reverse
 from drf_spectacular.renderers import OpenApiYamlRenderer
 from floppy_mcp import server as mcp_server
 from floppy_mcp.http_manifest import (
@@ -25,8 +28,137 @@ from api.schema_contract import (
     generate_static_schema_contract,
     normalize_schema_findings,
 )
+from app.domain_vocabulary import render_glossary_rows
 
 OPENAPI_CONTRACT_PATH = settings.BASE_DIR / "api" / "contracts" / "openapi.yaml"
+
+
+class OfflineAPIDocsTests(SimpleTestCase):
+    def get_docs(self):
+        response = self.client.get(reverse("swagger-ui"))
+        return response, BeautifulSoup(response.content, "html.parser")
+
+    def test_docs_are_public_and_use_the_offline_template(self):
+        response, _ = self.get_docs()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "api/docs.html")
+
+    def test_docs_have_clear_landmarks_and_heading_order(self):
+        _, soup = self.get_docs()
+
+        self.assertIsNotNone(soup.find("header"))
+        self.assertIsNotNone(soup.find("nav", attrs={"aria-label": "API tasks"}))
+        main = soup.find("main", id="main-content")
+        self.assertIsNotNone(main)
+        self.assertIsNotNone(soup.find("footer"))
+        self.assertEqual(len(soup.find_all("h1")), 1)
+        self.assertEqual(
+            [heading.get_text(" ", strip=True) for heading in main.find_all("h2")],
+            ["Start with a task", "First request", "Domain model", "API schemas"],
+        )
+        skip_link = soup.find("a", href="#main-content")
+        self.assertIsNotNone(skip_link)
+        self.assertEqual(skip_link.get_text(" ", strip=True), "Skip to content")
+
+    def test_task_navigation_has_four_ordered_single_task_links(self):
+        _, soup = self.get_docs()
+        task_links = soup.find("nav", attrs={"aria-label": "API tasks"}).find_all("a")
+
+        self.assertEqual(
+            [link.get("href") for link in task_links],
+            [
+                "#domain-model",
+                "#first-request",
+                reverse("schema"),
+                reverse("openapi-contract"),
+            ],
+        )
+        self.assertEqual(len(task_links), 4)
+
+    def test_first_request_has_exact_command_and_settings_guidance(self):
+        _, soup = self.get_docs()
+
+        self.assertEqual(
+            soup.select_one("#first-request pre code").get_text(),
+            'curl --request GET --header "X-API-Key: YOUR_API_KEY" '
+            '"http://testserver/api/v1/info/"',
+        )
+        settings_link = soup.find("a", string="Settings -> Integrations")
+        self.assertIsNotNone(settings_link)
+        self.assertEqual(settings_link.get("href"), reverse("integrations"))
+
+    def test_docs_render_the_approved_domain_glossary(self):
+        response, soup = self.get_docs()
+        expected = render_glossary_rows()
+
+        self.assertEqual(response.context["glossary_terms"], expected)
+        self.assertEqual(
+            tuple(
+                {
+                    "key": row["id"].removeprefix("term-"),
+                    "term": row.find("dt").get_text(" ", strip=True),
+                    "definition": row.find("dd").get_text(" ", strip=True),
+                }
+                for row in soup.select("#domain-model .glossary-row")
+            ),
+            expected,
+        )
+
+    def test_docs_distinguish_the_dynamic_and_committed_schemas(self):
+        _, soup = self.get_docs()
+        dynamic = soup.select_one("#dynamic-schema")
+        committed = soup.select_one("#committed-schema")
+
+        self.assertIn("full schema", dynamic.get_text(" ", strip=True).lower())
+        self.assertIn("generated dynamically", dynamic.get_text(" ", strip=True).lower())
+        self.assertIn("diagnostics", dynamic.get_text(" ", strip=True).lower())
+        self.assertEqual(dynamic.find("a").get("href"), reverse("schema"))
+        self.assertIn("reviewed", committed.get_text(" ", strip=True).lower())
+        self.assertIn("committed", committed.get_text(" ", strip=True).lower())
+        self.assertIn("versioned subset", committed.get_text(" ", strip=True).lower())
+        self.assertIn("supported integrations", committed.get_text(" ", strip=True).lower())
+        self.assertIn("mcp grounding", committed.get_text(" ", strip=True).lower())
+        self.assertEqual(
+            committed.find("a").get("href"), reverse("openapi-contract")
+        )
+
+    def test_docs_have_no_swagger_or_executable_request_ui(self):
+        response, soup = self.get_docs()
+        html = response.content.decode().lower()
+
+        self.assertNotIn("swagger", html)
+        self.assertEqual(soup.find_all("script"), [])
+        self.assertEqual(soup.select("[src], link[rel~='stylesheet']"), [])
+        self.assertEqual(
+            soup.find_all(["form", "button", "input", "select", "textarea"]), []
+        )
+
+    def test_inline_css_supports_focus_reflow_and_dark_colors_without_motion(self):
+        _, soup = self.get_docs()
+        css = soup.find("style").get_text().lower()
+
+        self.assertIn(":focus-visible", css)
+        self.assertIn("max-width: 70ch", css)
+        self.assertIn("overflow-wrap: anywhere", css)
+        self.assertIn("overflow-x: auto", css)
+        self.assertIn("color-scheme: light dark", css)
+        self.assertIn("@media (prefers-color-scheme: dark)", css)
+        self.assertIsNotNone(soup.find("meta", attrs={"name": "viewport"}))
+        for forbidden in (
+            "animation",
+            "transition",
+            "scroll-behavior",
+            "min-width",
+        ):
+            self.assertNotIn(forbidden, css)
+
+    @patch("drf_spectacular.generators.SchemaGenerator.get_schema")
+    def test_docs_do_not_generate_a_schema(self, get_schema):
+        response, _ = self.get_docs()
+
+        self.assertEqual(response.status_code, 200)
+        get_schema.assert_not_called()
 
 
 class OpenAPIArtifactTests(SimpleTestCase):

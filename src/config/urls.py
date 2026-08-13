@@ -16,10 +16,10 @@ from django.contrib.auth.decorators import login_not_required
 from django.http import JsonResponse
 from django.urls import include, path, re_path
 from django.views.static import serve
-from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
+from drf_spectacular.views import SpectacularAPIView
 from health_check.views import MainView
 
-from api.contract_views import openapi_contract
+from api.contract_views import api_docs, openapi_contract
 from users.views import CustomSignupView, CustomSocialSignupView
 
 handler400 = "app.error_views.bad_request"
@@ -33,11 +33,7 @@ urlpatterns = [
     path("apis/listenbrainz/1/", include("api.listenbrainz_urls")),
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
     path("api/openapi.yaml", openapi_contract, name="openapi-contract"),
-    path(
-        "api/docs/",
-        SpectacularSwaggerView.as_view(url_name="schema"),
-        name="swagger-ui",
-    ),
+    path("api/docs/", api_docs, name="swagger-ui"),
     path("", include("app.urls")),
     path("", include("integrations.urls")),
     path("", include("users.urls")),
