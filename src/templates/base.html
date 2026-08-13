@@ -154,6 +154,22 @@
 
   <body data-mobile-grid="{% if user.is_authenticated %}{{ user.mobile_grid_layout }}{% else %}compact{% endif %}"
         data-quick-season-mobile="{% if user.is_authenticated %}{% if user.quick_season_update_mobile == 'season_update' or user.quick_season_update_mobile == 'both' %}true{% else %}false{% endif %}{% else %}false{% endif %}">
+    {% comment %}
+      Navigation progress. Boosted links replace the page with a background
+      request, so the browser shows no spinner and no stop button. Without
+      this bar a slow page looks like a click that did nothing (see #725).
+      hx-preserve keeps these two elements across the swap. A boosted link
+      replaces the whole body, which would otherwise throw away the bar that
+      is reporting the very request doing the replacing.
+    {% endcomment %}
+    <div id="nav-progress" class="nav-progress" aria-hidden="true" hx-preserve="true">
+      <div class="nav-progress-bar"></div>
+    </div>
+    <p id="nav-progress-status"
+       class="nav-progress-status"
+       role="status"
+       aria-live="polite"
+       hx-preserve="true"></p>
     {% block body %}
       {# Main container for the layout #}
       <div class="flex min-h-screen bg-[var(--color-page-bg)] text-[var(--color-text)]"
@@ -635,6 +651,97 @@
           btn.classList.add('progress-btn-flash');
           setTimeout(() => btn.classList.remove('progress-btn-flash'), 600);
         });
+      }
+    </script>
+
+    <script>
+      // Navigation progress for boosted links.
+      //
+      // Bind once. These handlers sit on the body, which stays in place
+      // across a boosted swap, so a second copy would run twice.
+      if (!window.__floppyNavProgressBound) {
+        window.__floppyNavProgressBound = true;
+
+        // Wait this long before the bar appears. A fast page then causes no
+        // flash of movement, which keeps the interface calm.
+        const SHOW_DELAY_MS = 120;
+        // Keep the finished bar on screen long enough to be seen.
+        const HIDE_DELAY_MS = 180;
+
+        let activeRequest = null;
+        let showTimer = null;
+        let hideTimer = null;
+
+        const root = () => document.getElementById("nav-progress");
+        const status = () => document.getElementById("nav-progress-status");
+
+        function isBoosted(evt) {
+          const detail = evt.detail || {};
+          return Boolean(
+            detail.boosted
+              || (detail.requestConfig && detail.requestConfig.boosted),
+          );
+        }
+
+        function show() {
+          const element = root();
+          if (!element) return;
+          clearTimeout(hideTimer);
+          element.classList.remove("is-complete");
+          element.classList.add("is-active");
+          const live = status();
+          if (live) live.textContent = "Loading page";
+        }
+
+        function hide() {
+          const element = root();
+          if (!element) return;
+          element.classList.add("is-complete");
+          const live = status();
+          if (live) live.textContent = "";
+          hideTimer = setTimeout(() => {
+            element.classList.remove("is-active", "is-complete");
+          }, HIDE_DELAY_MS);
+        }
+
+        document.body.addEventListener("htmx:beforeRequest", (evt) => {
+          if (!isBoosted(evt)) return;
+
+          // Latest navigation wins. A user who clicks three links while the
+          // first is still loading must land on the third, and the two
+          // abandoned requests must stop.
+          if (activeRequest && activeRequest !== evt.detail.xhr) {
+            try {
+              activeRequest.abort();
+            } catch (error) {
+              /* already settled */
+            }
+          }
+          activeRequest = evt.detail.xhr;
+
+          clearTimeout(showTimer);
+          showTimer = setTimeout(show, SHOW_DELAY_MS);
+        });
+
+        function settle(evt) {
+          if (!isBoosted(evt)) return;
+          // Ignore a request that a newer navigation replaced; the newer one
+          // owns the bar now.
+          if (activeRequest && evt.detail.xhr && evt.detail.xhr !== activeRequest) {
+            return;
+          }
+          activeRequest = null;
+          clearTimeout(showTimer);
+          const element = root();
+          if (element && element.classList.contains("is-active")) {
+            hide();
+          }
+        }
+
+        document.body.addEventListener("htmx:afterRequest", settle);
+        document.body.addEventListener("htmx:responseError", settle);
+        document.body.addEventListener("htmx:sendError", settle);
+        document.body.addEventListener("htmx:timeout", settle);
       }
     </script>
 
