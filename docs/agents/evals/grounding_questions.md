@@ -73,12 +73,14 @@ A run is invalid if the evaluator makes a tool or network call, the access log r
 2. Resolve `origin/latest` and the implemented branch tip to full 40-character commit SHAs. Record the implemented branch name outside evaluator and scorer packets.
 3. Confirm both commit objects are available locally.
 4. Extract each allowlisted blob only from its pinned SHA. Fail if a listed blob is absent. Do not read the working tree when building a bundle.
-5. Prefix every blob line with its one-based line number. Preserve the complete blob content after the prefix and preserve the file order defined by the allowlist.
-6. Substitute the opaque arm alias and the complete line-numbered blobs into the exact prompt below.
-7. Store the exact UTF-8 prompt bytes and their SHA-256 hash before delivery.
-8. Disable evaluator tools and network. Deliver the prompt as embedded context. Do not give the evaluator a repository checkout, file tool, browser, shell, retrieval service, MCP resource, or network access.
-9. Retain the runner access log and evaluator declaration.
-10. After all answers return, resolve both named ref tips again. The run is invalid if either ref no longer equals its recorded SHA. Confirm the delivered prompt hash still matches the retained bytes.
+5. Assign each file a mechanical opaque ID in allowlist order: `F01`, `F02`, and so on. Retain the ID-to-path mapping outside scorer packets.
+6. Normalize each source blob by replacing CRLF and CR with LF, removing all trailing LF bytes, and adding exactly one trailing LF. Then render it exactly as `FILE <opaque-id>\n`, each source line as `<line-number>\t<content>\n`, and `END FILE <opaque-id>\n`. Do not add blank separators. Concatenate framed files in allowlist order.
+7. Render the evaluator-only mapping in allowlist order as `<opaque-id>\t<path>\n`. This mapping lets the evaluator emit path citations. Keep it separate from the framed evidence and outside scorer packets. After citation validation, replace paths with their opaque IDs before building scorer packets.
+8. Substitute the opaque arm alias, evaluator ID-to-path mapping, and canonical framed evidence into the exact prompt below.
+9. Store the exact UTF-8 prompt bytes and their SHA-256 hash before delivery.
+10. Disable evaluator tools and network. Deliver the prompt as embedded context. Do not give the evaluator a repository checkout, file tool, browser, shell, retrieval service, MCP resource, or network access.
+11. Retain the runner access log and evaluator declaration.
+12. After all answers return, resolve both named ref tips again. The run is invalid if either ref no longer equals its recorded SHA. Confirm the delivered prompt hash still matches the retained bytes.
 
 Use an equivalent byte-preserving implementation when the runner does not use Git CLI. The invariant is that each delivered line comes from an allowlisted blob at the recorded full SHA.
 
@@ -98,12 +100,15 @@ Start a fresh clean context for every evaluator-arm delivery. Do not carry the f
 
 ## Exact evaluator system prompt
 
-Replace only `{{ARM_ALIAS}}` and `{{LINE_NUMBERED_ALLOWED_FILES}}`. Preserve all other text exactly. Do not add a user prompt with facts, hints, ref names, prior answers, or mappings.
+Replace only `{{ARM_ALIAS}}`, `{{EVALUATOR_ID_PATH_MAPPING}}`, and `{{CANONICAL_FRAMED_EVIDENCE}}`. Preserve all other text exactly. Do not add a user prompt with facts, hints, ref names, or prior answers.
 
 ```text
 You are evaluating repository grounding for Floppy.
 
 Opaque arm: {{ARM_ALIAS}}
+
+Evaluator file mapping:
+{{EVALUATOR_ID_PATH_MAPPING}}
 
 All permitted repository evidence is embedded below. Use only that evidence. Do not use outside knowledge, assumptions, inference, prior answers, or any other repository content. Do not call a tool or network service.
 
@@ -119,7 +124,7 @@ Questions:
 After the three answers, write exactly: Evaluator declaration: I used only the embedded allowed context and made no tool or network calls.
 
 Embedded allowed context:
-{{LINE_NUMBERED_ALLOWED_FILES}}
+{{CANONICAL_FRAMED_EVIDENCE}}
 ```
 
 ## Required fact checklist
@@ -150,6 +155,8 @@ The checklist is an answer key derived from the current treatment artifacts. It 
 
 Use `A:path:line` or `B:path:line`, matching the delivered opaque alias. Use one citation for every factual statement. Use multiple citations when no one line supports the whole statement.
 
+After validating each returned path citation, render its scorer-packet form as `A:<opaque-id>:line` or `B:<opaque-id>:line`. The scorer receives only this opaque form and the matching opaque framed evidence.
+
 A citation is invalid when any of these conditions applies:
 
 - Its alias does not match the delivered arm.
@@ -161,24 +168,26 @@ A citation is invalid when any of these conditions applies:
 
 Any outside or disallowed evidence disqualifies the complete question answer. Do not repair an answer or its citations during scoring.
 
-## Independent blinded scoring
+## Independent metadata-blinded scoring
 
 Use three independent scorers. Do not allow an answer evaluator to score its own output.
 
-1. Assign every raw answer block a random scoring-packet ID.
+Scoring is metadata-blinded, not fully treatment-blinded. Scorers do not receive treatment allocation, evaluator identity, delivery order, real paths, refs, or SHAs. The answer and evidence content can still reveal the arm. Each scorer must record whether content caused suspected or actual residual unblinding and explain why.
+
+1. Assign every question span within a complete raw response a random scoring-packet ID.
 2. Remove evaluator identity, delivery position, run sequence, ref names, SHAs, and the base/treatment mapping from scorer packets.
-3. Give each scorer the opaque answer block and the exact retained bundle for that alias. Shuffle packet order independently for every scorer.
+3. Validate returned path citations against the evaluator mapping, then replace each path with its opaque file ID. Give each scorer the opaque question span and canonical framed evidence that uses only opaque file IDs. Do not include the ID-to-path mapping. Shuffle packet order independently for every scorer.
 4. For every fact, have each scorer record `correct: yes/no` and `citation valid: yes/no` separately. The fact counts only when both are `yes`.
-5. Have each scorer record whether the answer contains a contradiction, an uncited factual statement, or disallowed evidence.
+5. Have each scorer record `unsupported or invalidly cited factual statement: yes/no` plus detail. Also record whether the answer contains a contradiction or disallowed evidence.
 6. Have each scorer assign the question score below and record a short reason.
-7. Take the majority of the three scorer decisions for each fact and each disqualifier. Derive the consensus question score from those majority decisions. This deterministic derivation resolves a three-way question-score split.
-8. If evidence applicability itself remains disputed, hold a blinded scorer consensus review. Record the final decision and rationale. If the three scorers cannot agree, use a named independent adjudicator and retain that decision.
+7. Take the majority of the three scorer decisions for each fact, each disqualifier, and the unsupported-or-invalidly-cited field. A majority `yes` for that field forces the consensus question score to `0`. Derive the remaining consensus question score from the majority decisions. This deterministic derivation resolves a three-way question-score split.
+8. If evidence applicability itself remains disputed, hold a metadata-blinded scorer consensus review. Record the final decision and rationale. If the three scorers cannot agree, use a named independent adjudicator and retain that decision.
 
 Score each question on this exact scale:
 
-- `2`: Every required fact counts. There is no contradiction, uncited factual statement, unsupported claim, or disallowed evidence.
-- `1`: At least one but not every required fact counts. There is no contradiction, uncited factual statement, or disallowed evidence.
-- `0`: No required fact counts, or the answer contains a contradiction, an uncited factual statement, missing citations for a stated fact, or disallowed evidence. `Unknown from the allowed context.` also scores `0`.
+- `2`: Every required fact counts. There is no contradiction, unsupported or invalidly cited factual statement, or disallowed evidence.
+- `1`: At least one but not every required fact counts. There is no contradiction, unsupported or invalidly cited factual statement, or disallowed evidence.
+- `0`: No required fact counts, or the answer contains a contradiction, an unsupported or invalidly cited factual statement, or disallowed evidence. `Unknown from the allowed context.` also scores `0`.
 
 Omitting a required fact permits `1` when at least one other fact counts. Stating a fact without a valid citation produces `0`, even when another fact counts.
 
@@ -186,7 +195,7 @@ Omitting a required fact permits `1` when at least one other fact counts. Statin
 
 1. Use three fresh evaluators, E1 through E3. Each evaluator answers all three questions for both arms in its assigned order.
 2. Preserve each raw response exactly. Do not share responses between evaluator contexts.
-3. Build blinded, shuffled scorer packets and complete independent scoring.
+3. Build metadata-blinded, shuffled scorer packets and complete independent scoring.
 4. For each evaluator and question, calculate `treatment score - base score` after restoring the restricted arm mapping.
 5. Calculate the median of the three evaluator scores for every question and arm. Do not average scores across questions.
 6. Report every paired delta, question median, and gate outcome without filling missing results.
@@ -199,203 +208,71 @@ The main qualitative pass succeeds only when all of these conditions hold:
 
 This three-evaluator comparison is qualitative. It does not establish statistical confidence.
 
-## Raw answer records
+## Raw response records
 
-Retain exactly one fenced block for every evaluator, arm, and question. Do not place raw answers in a Markdown table; multiline text and pipe characters must remain byte-for-byte readable. Complete the adjacent references after the run.
+Retain exactly one fenced block for every evaluator-arm delivery. Paste the complete response, including all three answers and the evaluator declaration, byte-for-byte into that block. Do not split, normalize, or place raw responses in a Markdown table. Complete the adjacent references after the run.
 
-### E1 / Arm A / Question 1
+### E1 / Arm A complete response
 
+- Response record: `<ID>`
 - Run record: `<ID>`
 - Delivery bundle: `<SHA-256>`
-- Citations returned: `<ordered citations>`
-- Score records: `<three scorer record IDs and consensus record ID>`
+- Access log: `<ID or retained log path>`
 
 ```text
 
 ```
 
-### E1 / Arm A / Question 2
+### E1 / Arm B complete response
 
+- Response record: `<ID>`
 - Run record: `<ID>`
 - Delivery bundle: `<SHA-256>`
-- Citations returned: `<ordered citations>`
-- Score records: `<three scorer record IDs and consensus record ID>`
+- Access log: `<ID or retained log path>`
 
 ```text
 
 ```
 
-### E1 / Arm A / Question 3
+### E2 / Arm A complete response
 
+- Response record: `<ID>`
 - Run record: `<ID>`
 - Delivery bundle: `<SHA-256>`
-- Citations returned: `<ordered citations>`
-- Score records: `<three scorer record IDs and consensus record ID>`
+- Access log: `<ID or retained log path>`
 
 ```text
 
 ```
 
-### E1 / Arm B / Question 1
+### E2 / Arm B complete response
 
+- Response record: `<ID>`
 - Run record: `<ID>`
 - Delivery bundle: `<SHA-256>`
-- Citations returned: `<ordered citations>`
-- Score records: `<three scorer record IDs and consensus record ID>`
+- Access log: `<ID or retained log path>`
 
 ```text
 
 ```
 
-### E1 / Arm B / Question 2
+### E3 / Arm A complete response
 
+- Response record: `<ID>`
 - Run record: `<ID>`
 - Delivery bundle: `<SHA-256>`
-- Citations returned: `<ordered citations>`
-- Score records: `<three scorer record IDs and consensus record ID>`
+- Access log: `<ID or retained log path>`
 
 ```text
 
 ```
 
-### E1 / Arm B / Question 3
+### E3 / Arm B complete response
 
+- Response record: `<ID>`
 - Run record: `<ID>`
 - Delivery bundle: `<SHA-256>`
-- Citations returned: `<ordered citations>`
-- Score records: `<three scorer record IDs and consensus record ID>`
-
-```text
-
-```
-
-### E2 / Arm A / Question 1
-
-- Run record: `<ID>`
-- Delivery bundle: `<SHA-256>`
-- Citations returned: `<ordered citations>`
-- Score records: `<three scorer record IDs and consensus record ID>`
-
-```text
-
-```
-
-### E2 / Arm A / Question 2
-
-- Run record: `<ID>`
-- Delivery bundle: `<SHA-256>`
-- Citations returned: `<ordered citations>`
-- Score records: `<three scorer record IDs and consensus record ID>`
-
-```text
-
-```
-
-### E2 / Arm A / Question 3
-
-- Run record: `<ID>`
-- Delivery bundle: `<SHA-256>`
-- Citations returned: `<ordered citations>`
-- Score records: `<three scorer record IDs and consensus record ID>`
-
-```text
-
-```
-
-### E2 / Arm B / Question 1
-
-- Run record: `<ID>`
-- Delivery bundle: `<SHA-256>`
-- Citations returned: `<ordered citations>`
-- Score records: `<three scorer record IDs and consensus record ID>`
-
-```text
-
-```
-
-### E2 / Arm B / Question 2
-
-- Run record: `<ID>`
-- Delivery bundle: `<SHA-256>`
-- Citations returned: `<ordered citations>`
-- Score records: `<three scorer record IDs and consensus record ID>`
-
-```text
-
-```
-
-### E2 / Arm B / Question 3
-
-- Run record: `<ID>`
-- Delivery bundle: `<SHA-256>`
-- Citations returned: `<ordered citations>`
-- Score records: `<three scorer record IDs and consensus record ID>`
-
-```text
-
-```
-
-### E3 / Arm A / Question 1
-
-- Run record: `<ID>`
-- Delivery bundle: `<SHA-256>`
-- Citations returned: `<ordered citations>`
-- Score records: `<three scorer record IDs and consensus record ID>`
-
-```text
-
-```
-
-### E3 / Arm A / Question 2
-
-- Run record: `<ID>`
-- Delivery bundle: `<SHA-256>`
-- Citations returned: `<ordered citations>`
-- Score records: `<three scorer record IDs and consensus record ID>`
-
-```text
-
-```
-
-### E3 / Arm A / Question 3
-
-- Run record: `<ID>`
-- Delivery bundle: `<SHA-256>`
-- Citations returned: `<ordered citations>`
-- Score records: `<three scorer record IDs and consensus record ID>`
-
-```text
-
-```
-
-### E3 / Arm B / Question 1
-
-- Run record: `<ID>`
-- Delivery bundle: `<SHA-256>`
-- Citations returned: `<ordered citations>`
-- Score records: `<three scorer record IDs and consensus record ID>`
-
-```text
-
-```
-
-### E3 / Arm B / Question 2
-
-- Run record: `<ID>`
-- Delivery bundle: `<SHA-256>`
-- Citations returned: `<ordered citations>`
-- Score records: `<three scorer record IDs and consensus record ID>`
-
-```text
-
-```
-
-### E3 / Arm B / Question 3
-
-- Run record: `<ID>`
-- Delivery bundle: `<SHA-256>`
-- Citations returned: `<ordered citations>`
-- Score records: `<three scorer record IDs and consensus record ID>`
+- Access log: `<ID or retained log path>`
 
 ```text
 
@@ -403,7 +280,20 @@ Retain exactly one fenced block for every evaluator, arm, and question. Do not p
 
 ## Score indexes
 
-Tables index scoring records only. Raw answers remain in the fenced records above.
+Tables index scoring records only. Raw responses remain in the fenced records above.
+
+### Score-packet index
+
+Measure byte spans against the exact retained UTF-8 response, using a zero-based start offset and exclusive end offset. In each question cell, record `<start:end; returned citations; citation-validation record ID; scoring-packet ID>`. The scoring packet contains that question span with validated path citations mechanically replaced by opaque file IDs.
+
+| Response record | Q1 span, citations, validation, packet | Q2 span, citations, validation, packet | Q3 span, citations, validation, packet |
+| --- | --- | --- | --- |
+| `<E1-A response ID>` | `<start:end; citations; validation ID; packet ID>` | `<start:end; citations; validation ID; packet ID>` | `<start:end; citations; validation ID; packet ID>` |
+| `<E1-B response ID>` | `<start:end; citations; validation ID; packet ID>` | `<start:end; citations; validation ID; packet ID>` | `<start:end; citations; validation ID; packet ID>` |
+| `<E2-A response ID>` | `<start:end; citations; validation ID; packet ID>` | `<start:end; citations; validation ID; packet ID>` | `<start:end; citations; validation ID; packet ID>` |
+| `<E2-B response ID>` | `<start:end; citations; validation ID; packet ID>` | `<start:end; citations; validation ID; packet ID>` | `<start:end; citations; validation ID; packet ID>` |
+| `<E3-A response ID>` | `<start:end; citations; validation ID; packet ID>` | `<start:end; citations; validation ID; packet ID>` | `<start:end; citations; validation ID; packet ID>` |
+| `<E3-B response ID>` | `<start:end; citations; validation ID; packet ID>` | `<start:end; citations; validation ID; packet ID>` | `<start:end; citations; validation ID; packet ID>` |
 
 ### Fact decisions
 
@@ -413,9 +303,9 @@ Tables index scoring records only. Raw answers remain in the fenced records abov
 
 ### Question scores
 
-| Packet ID | Scorer ID | Question | Score (`0`-`2`) | Contradiction? | Uncited fact? | Disallowed evidence? | Consensus record |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| `<packet>` | `<scorer>` | `<Q1-Q3>` | `<score>` | `<yes or no>` | `<yes or no>` | `<yes or no>` | `<ID>` |
+| Packet ID | Scorer ID | Question | Score (`0`-`2`) | Contradiction? | Unsupported or invalidly cited factual statement? | Detail | Disallowed evidence? | Residual unblinding | Consensus record |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `<packet>` | `<scorer>` | `<Q1-Q3>` | `<score>` | `<yes or no>` | `<yes or no>` | `<statement and citation detail>` | `<yes or no>` | `<none, suspected, or actual; reason>` | `<ID>` |
 
 ### Paired deltas
 
@@ -469,7 +359,7 @@ Use an independent author who does not implement the candidate artifact to write
 - Candidate optional context: a preregistered, named AsyncAPI artifact or channel registry and its access documentation.
 - Required evidence: verified event or channel facts beyond repetition of the vocabulary guide or OpenAPI artifact.
 
-For either workstream, run the control and candidate arms with the same immutable-blob delivery, exact prompt rules, arm-order balancing, three fresh evaluators, three blinded scorers, fact checklist, raw-answer retention, and consensus procedure used in the main pass. Evaluators must receive only the preregistered allowlist. Do not give a candidate arm runtime MCP or network access; evaluate the named optional access documentation as an embedded pinned blob.
+For either workstream, run the control and candidate arms with the same immutable-blob delivery, exact prompt rules, arm-order balancing, three fresh evaluators, three metadata-blinded scorers, fact checklist, raw-response retention, and consensus procedure used in the main pass. Evaluators must receive only the preregistered allowlist. Do not give a candidate arm runtime MCP or network access; evaluate the named optional access documentation as an embedded pinned blob.
 
 A future candidate may proceed only when all of these gates pass on both the exact target question and its preregistered held-out paraphrases:
 
