@@ -7,12 +7,18 @@ _CORRUPTION_HINT = (
     "[entrypoint] The SQLite file may be corrupt (see README: SQLite "
     "network filesystem caveat)"
 )
+_RELATIONSHIP_HINT = (
+    "[entrypoint] Back up the SQLite file, then inspect these relationship "
+    "errors before you restart"
+)
 _ALBUM_ARTIST_TABLE = "app_albumartist"
 
 
 def _check_foreign_keys(conn: sqlite3.Connection) -> None:
+    conn.execute("BEGIN IMMEDIATE")
     violations = list(conn.execute("PRAGMA foreign_key_check").fetchall())
     if not violations:
+        conn.commit()
         return
 
     if {violation[0] for violation in violations} == {_ALBUM_ARTIST_TABLE}:
@@ -20,28 +26,29 @@ def _check_foreign_keys(conn: sqlite3.Connection) -> None:
         if None not in row_ids:
             row_ids = sorted(row_ids)
             placeholders = ", ".join("?" for _ in row_ids)
-            with conn:
-                conn.execute(
-                    f"DELETE FROM {_ALBUM_ARTIST_TABLE} "  # noqa: S608  # fixed table name
-                    f"WHERE rowid IN ({placeholders})",
-                    row_ids,
-                )
-            print(  # noqa: T201
-                f"[entrypoint] Removed {len(row_ids)} orphaned album artist "
-                "credit row(s) before migrations",
-                file=sys.stderr,
+            conn.execute(
+                f"DELETE FROM {_ALBUM_ARTIST_TABLE} "  # noqa: S608  # fixed table name
+                f"WHERE rowid IN ({placeholders})",
+                row_ids,
             )
             violations = list(conn.execute("PRAGMA foreign_key_check").fetchall())
             if not violations:
+                conn.commit()
+                print(  # noqa: T201
+                    f"[entrypoint] Removed {len(row_ids)} orphaned album artist "
+                    "credit row(s) before migrations",
+                    file=sys.stderr,
+                )
                 return
 
-    for table, row_id, parent, _foreign_key_id in violations[:10]:
+    conn.rollback()
+    for table, row_id, parent, _foreign_key_id in violations:
         print(  # noqa: T201
             "[entrypoint] Database foreign key check failed: "
             f"table={table!r}, row={row_id!r}, parent={parent!r}",
             file=sys.stderr,
         )
-    print(_CORRUPTION_HINT, file=sys.stderr)  # noqa: T201
+    print(_RELATIONSHIP_HINT, file=sys.stderr)  # noqa: T201
     sys.exit(1)
 
 

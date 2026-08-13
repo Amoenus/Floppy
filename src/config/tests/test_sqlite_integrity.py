@@ -1,5 +1,6 @@
 """Tests for the SQLite startup integrity guard (issue #593)."""
 
+import io
 import sqlite3
 import tempfile
 from pathlib import Path
@@ -8,6 +9,8 @@ from unittest import mock
 from django.test import SimpleTestCase
 
 from config.sqlite_integrity import check_database_integrity
+
+ENTRYPOINT = Path(__file__).resolve().parents[3] / "entrypoint.sh"
 
 
 class SqliteIntegrityTests(SimpleTestCase):
@@ -60,8 +63,11 @@ class SqliteIntegrityTests(SimpleTestCase):
                     parent_id INTEGER NOT NULL REFERENCES parent(id)
                 );
                 INSERT INTO parent VALUES (1);
-                INSERT INTO child VALUES (1, 1);
                 """
+            )
+            conn.executemany(
+                "INSERT INTO child VALUES (?, 1)",
+                ((row_id,) for row_id in range(1, 13)),
             )
             conn.commit()
             conn.execute("PRAGMA foreign_keys=OFF")
@@ -71,16 +77,66 @@ class SqliteIntegrityTests(SimpleTestCase):
 
             with (
                 self.assertRaises(SystemExit) as ctx,
-                mock.patch("sys.stderr"),
+                mock.patch("sys.stderr", new_callable=io.StringIO) as stderr,
             ):
                 check_database_integrity(db_path)
 
             self.assertEqual(ctx.exception.code, 1)
+            output = stderr.getvalue()
+            self.assertEqual(output.count("foreign key check failed"), 12)
+            self.assertIn("table='child', row=12, parent='parent'", output)
+            self.assertIn("Back up the SQLite file", output)
             conn = sqlite3.connect(db_path)
             self.assertEqual(
-                conn.execute("SELECT COUNT(*) FROM child").fetchone()[0], 1
+                conn.execute("SELECT COUNT(*) FROM child").fetchone()[0], 12
             )
             conn.close()
+
+    def test_repair_holds_write_lock_from_check_through_delete(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = str(Path(tmp_dir) / "db.sqlite3")
+            setup = sqlite3.connect(db_path)
+            setup.executescript(
+                """
+                CREATE TABLE app_album (id INTEGER PRIMARY KEY);
+                CREATE TABLE app_artist (id INTEGER PRIMARY KEY);
+                CREATE TABLE app_albumartist (
+                    id INTEGER PRIMARY KEY,
+                    album_id INTEGER NOT NULL REFERENCES app_album(id),
+                    artist_id INTEGER NOT NULL REFERENCES app_artist(id)
+                );
+                INSERT INTO app_artist VALUES (12);
+                INSERT INTO app_albumartist VALUES (1, 345, 12);
+                """
+            )
+            setup.commit()
+            setup.close()
+
+            check_conn = sqlite3.connect(db_path)
+            competing_conn = sqlite3.connect(db_path, timeout=0)
+            competing_result = []
+
+            def attempt_competing_repair(statement):
+                if not statement.startswith("DELETE FROM app_albumartist"):
+                    return
+                try:
+                    competing_conn.execute("INSERT INTO app_album VALUES (345)")
+                    competing_conn.commit()
+                except sqlite3.OperationalError as error:
+                    competing_result.append(str(error))
+
+            check_conn.set_trace_callback(attempt_competing_repair)
+            with (
+                mock.patch(
+                    "config.sqlite_integrity.sqlite3.connect",
+                    return_value=check_conn,
+                ),
+                mock.patch("sys.stderr"),
+            ):
+                check_database_integrity(db_path)
+
+            self.assertEqual(competing_result, ["database is locked"])
+            competing_conn.close()
 
     def test_healthy_database_passes(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -140,3 +196,13 @@ class SqliteIntegrityTests(SimpleTestCase):
             check_database_integrity("irrelevant.sqlite3")
 
         fake_conn.close.assert_called_once()
+
+    def test_entrypoint_stops_when_integrity_check_times_out(self):
+        script = ENTRYPOINT.read_text()
+        timeout = "integrity_timed_out=1"
+        stop = (
+            'if [ "$integrity_timed_out" -eq 1 ] || [ "$integrity_status" -ne 0 ]; then'
+        )
+
+        self.assertLess(script.index(timeout), script.index(stop))
+        self.assertIn("exit 1", script[script.index(stop) : script.index(stop) + 150])

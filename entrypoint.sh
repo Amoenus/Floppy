@@ -28,18 +28,20 @@ if [ -z "$DB_HOST" ]; then
 
     reject_unsafe_managed_directory FLOPPY_DB_PATH "$DB_PARENT"
 
-    # Fail fast with a clear message if the SQLite file is already corrupt.
-    # This avoids repeated migration failures (issues #508 and #593).
+    # Fail fast when SQLite storage or relationships are invalid. Repair only
+    # the known orphaned album credit conflict (issues #508, #593, and #731).
     if [ -f "$DB_FILE" ]; then
-        echo "[entrypoint] Checking SQLite integrity for ${DB_FILE} (PRAGMA quick_check)" >&2
+        echo "[entrypoint] Checking SQLite storage and relationships for ${DB_FILE}" >&2
         python -c 'from config.sqlite_integrity import check_database_integrity; import sys; check_database_integrity(sys.argv[1])' "$DB_FILE" &
         integrity_pid=$!
 
         # Report bytes read so large databases show visible progress.
         elapsed=0
+        integrity_timed_out=0
         while kill -0 "$integrity_pid" 2>/dev/null; do
             if [ "$elapsed" -ge 600 ]; then
-                echo "[entrypoint] WARNING: SQLite integrity check exceeded 600s (slow storage?); continuing" >&2
+                echo "[entrypoint] ERROR: SQLite integrity check exceeded 600s; stopping startup" >&2
+                integrity_timed_out=1
                 kill "$integrity_pid" 2>/dev/null
                 break
             fi
@@ -55,10 +57,7 @@ if [ -z "$DB_HOST" ]; then
 
         integrity_status=0
         wait "$integrity_pid" || integrity_status=$?
-        if [ "$elapsed" -ge 600 ] && [ "$integrity_status" -ne 0 ]; then
-            integrity_status=124
-        fi
-        if [ "$integrity_status" -ne 0 ] && [ "$integrity_status" -ne 124 ]; then
+        if [ "$integrity_timed_out" -eq 1 ] || [ "$integrity_status" -ne 0 ]; then
             exit 1
         fi
     fi
