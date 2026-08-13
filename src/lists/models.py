@@ -970,6 +970,28 @@ class CustomList(models.Model):
 class CustomListItemManager(models.Manager):
     """Manager for custom list items."""
 
+    def lock_custom_lists(self, custom_list_ids):
+        """Serialize position changes for the supplied lists in stable order."""
+        list_ids = sorted(
+            {
+                custom_list_id
+                for custom_list_id in custom_list_ids
+                if custom_list_id is not None
+            },
+        )
+        if not list_ids:
+            return
+
+        # Every position-changing path locks the parent row before reading or
+        # writing positions. Stable ordering also prevents bulk operations on
+        # overlapping list sets from deadlocking each other.
+        list(
+            CustomList.objects.select_for_update()
+            .filter(id__in=list_ids)
+            .order_by("id")
+            .values_list("id", flat=True),
+        )
+
     def get_user_item_lists(self, user, item):
         """Return list membership for a single item for a user."""
         if item is None:
@@ -1038,16 +1060,15 @@ class CustomListItemManager(models.Manager):
                 pending_per_list[custom_list_id] = []
             pending_per_list[custom_list_id].append(obj)
 
-        if pending_per_list:
-            with transaction.atomic():
+        with transaction.atomic():
+            self.lock_custom_lists(obj.custom_list_id for obj in objs)
+            if pending_per_list:
                 for custom_list_id, group in pending_per_list.items():
                     base_id = self.get_next_list_item_id(custom_list_id)
                     for index, obj in enumerate(group):
                         obj.list_item_id = base_id + index
 
-                return super().bulk_create(objs, **kwargs)
-
-        return super().bulk_create(objs, **kwargs)
+            return super().bulk_create(objs, **kwargs)
 
     def get_last_added_date(self, custom_list):
         """Return the last time an item was added to a specific list."""
@@ -1086,18 +1107,6 @@ class CustomListItem(models.Model):
             models.UniqueConstraint(
                 fields=["custom_list", "list_item_id"],
                 name="%(app_label)s_customlistitem_unique_list_item_id",
-                # Deferred: delete() below renumbers every following item in
-                # one bulk UPDATE (shifting list_item_id down by 1) to close
-                # the gap left by the deleted row. Postgres checks a
-                # non-deferred unique constraint per row as the UPDATE
-                # executes, not once at the end — so on lists with more than
-                # a couple of trailing items, the row-processing order can
-                # transiently assign a value another not-yet-updated row
-                # still holds, raising a spurious UniqueViolation even though
-                # the final state is valid. Deferring lets Postgres check
-                # once the whole UPDATE (and the transaction.atomic() block
-                # it runs in) has finished.
-                deferrable=models.Deferrable.DEFERRED,
             ),
         ]
 
@@ -1107,26 +1116,48 @@ class CustomListItem(models.Model):
 
     def save(self, *args, **kwargs):
         """Save the list item assigning a sequential list-scoped id on create."""
-        if self._state.adding and self.list_item_id is None:
-            self.list_item_id = CustomListItem.objects.get_next_list_item_id(
-                self.custom_list_id,
-            )
+        with transaction.atomic():
+            CustomListItem.objects.lock_custom_lists([self.custom_list_id])
+            if self._state.adding and self.list_item_id is None:
+                self.list_item_id = CustomListItem.objects.get_next_list_item_id(
+                    self.custom_list_id,
+                )
 
-        return super().save(*args, **kwargs)
+            return super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):
         """Delete item and renumber following list items to close numbering gaps."""
         custom_list_id = self.custom_list_id
-        removed_list_item_id = self.list_item_id
 
         with transaction.atomic():
+            CustomListItem.objects.lock_custom_lists([custom_list_id])
+            # The instance may have been loaded before another transaction
+            # renumbered this list. Refresh the position only after acquiring
+            # the list lock so gap-closing never uses a stale snapshot.
+            removed_list_item_id = (
+                CustomListItem.objects.filter(pk=self.pk)
+                .values_list("list_item_id", flat=True)
+                .first()
+            )
             result = super().delete(*args, **kwargs)
 
             if removed_list_item_id is not None:
-                CustomListItem.objects.filter(
+                following_items = CustomListItem.objects.filter(
                     custom_list_id=custom_list_id,
                     list_item_id__gt=removed_list_item_id,
-                ).update(list_item_id=F("list_item_id") - 1)
+                )
+                max_list_item_id = following_items.aggregate(
+                    max_id=Max("list_item_id"),
+                )["max_id"]
+                if max_list_item_id is not None:
+                    # Move rows out of the occupied range before closing the gap.
+                    # This keeps the immediate unique constraint valid on every
+                    # supported database, including PostgreSQL and SQLite.
+                    shift = max_list_item_id + 1
+                    following_items.update(list_item_id=F("list_item_id") + shift)
+                    following_items.update(
+                        list_item_id=F("list_item_id") - (shift + 1),
+                    )
 
         return result
 

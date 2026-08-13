@@ -193,6 +193,11 @@ class Podcast(Media):
         return f"{minutes}m"
 
     @property
+    def progress_unit(self):
+        """Return the unit `progress` is measured in."""
+        return "seconds"
+
+    @property
     def progress_percentage(self):
         """Return percent listened through the current episode (0-100), or None.
 

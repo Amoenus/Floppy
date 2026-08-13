@@ -16,7 +16,7 @@ from app.providers import services
 
 logger = logging.getLogger(__name__)
 base_url = "https://api.igdb.com/v4"
-IGDB_SEARCH_CACHE_VERSION = "v4"
+IGDB_SEARCH_CACHE_VERSION = "v5"
 TOKENIZED_SEARCH_MIN_TERMS = 2
 
 
@@ -221,6 +221,7 @@ def search(query, page):
                     "title": media["name"],
                     "image": get_image_url(media),
                     "year": get_release_year(media),
+                    "platforms": get_list(media, "platforms"),
                 }
                 for media in search_results
             ]
@@ -299,7 +300,7 @@ def _build_search_multiquery(query, page, *, tokenized=False):
 
     return (
         'query games "SearchResults" {'
-        "fields name,cover.image_id;"
+        "fields name,cover.image_id,platforms.name,first_release_date;"
         "sort total_rating_count desc;"
         f"limit {settings.PER_PAGE};"
         f"offset {offset};"

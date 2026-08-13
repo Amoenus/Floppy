@@ -11,7 +11,7 @@ from django.utils.timezone import datetime, localdate, make_aware
 
 # FORK: the fork pins django-health-check 3.x (no async HealthCheckView);
 # HealthView below is implemented against the 3.x CheckMixin plugin API.
-from drf_spectacular.utils import OpenApiParameter, extend_schema
+from drf_spectacular.utils import OpenApiExample, OpenApiParameter, extend_schema
 from health_check.mixins import CheckMixin
 from rest_framework import permissions
 from rest_framework import views as drf_views
@@ -951,6 +951,14 @@ class MediaTypeListView(drf_views.APIView):
         This append-oriented endpoint keeps its historical default: omitted
         status means Planning. Clients updating an existing play should first
         read its consumption_id and use the exact history route instead.
+
+        `progress` set here (and returned by every media/history endpoint) is
+        always this one consumption's own value, never a sum across a user's
+        other entries for the same item -- the response's `progress_scope`
+        field is explicitly "entry" for this reason. Its unit varies by
+        media_type (e.g. minutes for games, episodes for tv/season/anime,
+        plays for boardgame/music) and is named in the response's
+        `progress_unit` field.
         """
         if not check_valid_type(media_type, complete=True):
             return Response(
@@ -4363,6 +4371,38 @@ class SearchProviderView(drf_views.APIView):
             403: DetailErrorSerializer,
             500: DetailErrorSerializer,
         },
+        examples=[
+            OpenApiExample(
+                "Game search result (igdb)",
+                description="Game results include `platforms` and `year` so a "
+                "client can pick the right release without a follow-up detail "
+                "fetch. If a title is ambiguous across platforms, all "
+                "candidates are returned rather than a single guess.",
+                value={
+                    "pagination": {
+                        "total": 1,
+                        "limit": 20,
+                        "offset": 0,
+                        "next": None,
+                        "previous": None,
+                    },
+                    "results": [
+                        {
+                            "media_id": "2256",
+                            "source": "igdb",
+                            "media_type": "game",
+                            "title": "Super Mario Strikers",
+                            "image": "https://images.igdb.com/igdb/image/upload/"
+                            "t_original/example.jpg",
+                            "year": 2005,
+                            "platforms": ["Nintendo GameCube"],
+                        },
+                    ],
+                },
+                response_only=True,
+                media_type="application/json",
+            ),
+        ],
     )
     def get(self, request, media_type):
         """Search for media using the specified provider."""

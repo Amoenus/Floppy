@@ -74,7 +74,11 @@ async def search_media(media_type: str, query: str, page: int = 1) -> Any:
     media_type: one of tv, movie, anime, manga, game, book, comic,
     boardgame, music, podcast, comicissue.
     Returns provider results including the source and media_id needed by
-    track_media.
+    track_media. For games, each result also includes "platforms" and
+    "year" so you can pick the right release (e.g. the GameCube version vs.
+    a remaster) without a follow-up get_media call. If a title is ambiguous
+    across platforms, prefer showing the candidates to the user over
+    guessing one.
     """
     return await _call(
         "get",
@@ -180,6 +184,15 @@ async def track_media(
     "Dropped". score is 0-10. Only pass the fields you want to set. Set
     new_play=True to append a separate consumption instead of updating an
     existing one.
+
+    progress is always the value for THIS ONE tracked entry, never a sum
+    across a user's other entries for the same item (each response also
+    carries progress_scope="entry" for clarity). Its unit depends on
+    media_type: minutes for games, episodes for tv/season/anime, plays for
+    boardgame/music, percentage/pages/chapters for book/manga/comic
+    depending on the user's preference and format, seconds for podcast.
+    Each response's progress_unit field states the unit actually in use;
+    check it rather than assuming from media_type alone.
     """
     try:
         status_code = _status_code(status)
@@ -269,10 +282,14 @@ async def update_progress(
     operation: str,
     season_number: int | None = None,
 ) -> Any:
-    """Increase or decrease progress by one unit (operation: "increase"|"decrease").
+    """Increase or decrease progress by one step (operation: "increase"|"decrease").
 
     For TV shows, pass season_number to advance/rewind that season's next
-    episode; omit it for movies, games, books, etc.
+    episode; omit it for movies, games, books, etc. The step size is not
+    always 1: games step by 30 minutes, and book/manga/comic step by one
+    percentage point when percentage tracking is on. To log an exact
+    duration or amount instead of stepping, use track_media with an
+    explicit progress value (and new_play=True for a fresh session).
     """
     if season_number is not None:
         return await _call(

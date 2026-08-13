@@ -2927,15 +2927,18 @@ class ListItemToggleTests(TestCase):
         removing Daredevil: Born Again from a Watchlist custom list via the
         hover list-icon modal never made the card disappear).
 
-        The working fix listens for htmx:afterRequest at the document level
-        instead (the same pattern already used elsewhere in this app, e.g.
-        app/media_list.html), filtered to list_item_toggle's response.
+        The working fix listens for htmx:afterRequest on the persistent body,
+        filters to list_item_toggle, and replaces its prior handler after
+        boosted navigation so revisiting a list cannot multiply refreshes.
         """
         self.client.login(**self.credentials)
         response = self.client.get(reverse("list_detail", args=[self.list.id]))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "addEventListener('htmx:afterRequest'")
         self.assertContains(response, "endsWith('/list_item_toggle')")
+        self.assertContains(response, "__floppyListToggleRefreshHandler")
+        self.assertContains(response, "removeEventListener(")
+        self.assertContains(response, "itemsView.isConnected")
 
     def test_list_item_toggle_response_no_longer_relies_on_self_swap_hx_on(self):
         """The toggle button must not re-introduce the non-firing hx-on hook.
@@ -3120,6 +3123,51 @@ class ListItemToggleTests(TestCase):
 
         # Nothing committed: the item was never added.
         self.assertNotIn(self.item, self.list.items.all())
+
+    def test_list_item_toggle_rolls_back_membership_when_activity_fails(self):
+        """Membership and its activity record must commit or roll back together."""
+        self.client.login(**self.credentials)
+
+        with (
+            patch(
+                "lists.views_list_actions.ListActivity.objects.create",
+                side_effect=RuntimeError("activity failed"),
+            ),
+            self.assertLogs("lists.views_list_actions", level="ERROR"),
+        ):
+            response = self.client.post(
+                reverse("list_item_toggle"),
+                {
+                    "item_id": self.item.id,
+                    "custom_list_id": self.list.id,
+                },
+            )
+
+        self.assertEqual(response.status_code, 500)
+        self.assertNotIn(self.item, self.list.items.all())
+
+    def test_list_item_toggle_rolls_back_removal_when_activity_fails(self):
+        """A failed removal activity must restore the deleted membership."""
+        self.client.login(**self.credentials)
+        self.list.items.add(self.item)
+
+        with (
+            patch(
+                "lists.views_list_actions.ListActivity.objects.create",
+                side_effect=RuntimeError("activity failed"),
+            ),
+            self.assertLogs("lists.views_list_actions", level="ERROR"),
+        ):
+            response = self.client.post(
+                reverse("list_item_toggle"),
+                {
+                    "item_id": self.item.id,
+                    "custom_list_id": self.list.id,
+                },
+            )
+
+        self.assertEqual(response.status_code, 500)
+        self.assertIn(self.item, self.list.items.all())
 
 
 class ListRssFeedTests(TestCase):

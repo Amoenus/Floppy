@@ -192,9 +192,85 @@ curl --request GET --header "X-API-Key: $FLOPPY_TOKEN" "$FLOPPY_URL/api/v1/user/
 
 ## Configuration and deployment
 
+### SQLite data paths
+
+Floppy uses these rules when `DB_HOST` is not set:
+
+1. `FLOPPY_DB_PATH` selects the SQLite file.
+2. If `FLOPPY_DB_PATH` is not set, Floppy uses
+   `FLOPPY_DATA_DIR/db.sqlite3`.
+3. If neither variable is set, Floppy uses
+   `/floppy/db/db.sqlite3` in the container.
+
+An empty value does not override a path. A relative path starts from the
+process working directory. Use absolute paths so that each process uses the
+same location.
+
+If `SECRET` and `SECRET_FILE` are not set, the container stores its generated
+`secret_key` in `FLOPPY_DATA_DIR`. Floppy stores logs and backups in `LOG_DIR`
+and `BACKUP_DIR`. `FLOPPY_DATA_DIR` does not change those settings.
+
+This example stores the SQLite file and the generated key in one mounted
+directory:
+
+```yaml
+services:
+  floppy:
+    image: ghcr.io/dannyvfilms/floppy:latest
+    environment:
+      FLOPPY_DATA_DIR: /data/floppy
+    volumes:
+      - ./floppy-data:/data/floppy
+    ports:
+      - "8000:8000"
+```
+
+This example stores the SQLite file in a separate mounted directory:
+
+```yaml
+services:
+  floppy:
+    image: ghcr.io/dannyvfilms/floppy:latest
+    environment:
+      FLOPPY_DATA_DIR: /data/floppy
+      FLOPPY_DB_PATH: /database/floppy/db.sqlite3
+    volumes:
+      - ./floppy-data:/data/floppy
+      - ./floppy-database:/database/floppy
+    ports:
+      - "8000:8000"
+```
+
+Use a dedicated parent directory when `FLOPPY_DB_PATH` is outside
+`FLOPPY_DATA_DIR`. At startup, Floppy changes ownership only on the selected
+data, database, and log directory entries and on Floppy's generated key,
+SQLite files, and current log file. It does not change unrelated files inside
+those directories.
+
+Use local storage or block storage for SQLite. Do not use NFS, SMB/CIFS, or
+another network filesystem.
+
+Floppy does not move existing data when you set these variables. Use this
+procedure to change a path:
+
+1. Stop the Floppy container.
+2. Back up the current SQLite file.
+3. Copy the SQLite file to the new path. Copy its `-wal` and `-shm` companion
+   files if they are present.
+4. Copy the generated `secret_key` to the new data directory. You can set
+   `SECRET` instead if you already manage the key outside the data directory.
+5. Set the new path variables and mount each selected directory.
+6. Start Floppy and confirm that the existing library is present.
+
+If the database file is missing, Floppy creates an empty database. The
+deployment can then appear to have lost its library. If the old generated key
+is missing, existing sessions and signed data can become invalid.
+
 ### PostgreSQL
 
-Floppy uses PostgreSQL only when `DB_HOST` is set. Without it, it uses SQLite at `/floppy/db/db.sqlite3`. `DATABASE_URL` is not supported — set the individual `DB_*` variables.
+Floppy uses PostgreSQL only when `DB_HOST` is set. Without it, it uses
+`FLOPPY_DB_PATH`; the container default is `/floppy/db/db.sqlite3`.
+`DATABASE_URL` is not supported — set the individual `DB_*` variables.
 
 ```yaml
 services:
@@ -319,6 +395,10 @@ The only universally required variable is `SECRET`. For Docker installs you shou
 - `WEB_CONCURRENCY` / `GUNICORN_THREADS` - optional web server concurrency overrides. Leave both unset to use the detected host profile, especially on small or swapless hosts. Total concurrent requests = workers x threads
 - `FLOPPY_RESOURCE_TIER` - `standard`, `constrained`, or `minimal`. Floppy normally detects this from the host's memory, swap and CPU and scales its process count, batch sizes and background task cadence to match, so you should not need to set it. Use it to force a tier if detection guesses wrong - for example `standard` on a host whose cgroup understates the memory actually available
 - `FLOPPY_REDIS_MAXMEMORY` - Redis memory ceiling Floppy applies at startup when Redis has none of its own, as bytes or a size like `256mb`. Set it to `0` to leave your Redis configuration completely untouched. Floppy never overrides a `maxmemory` you set yourself
+- `REDIS_CACHE_URL` - Redis service for the Django cache and cached sessions. The default is `REDIS_URL`
+- `CELERY_BROKER_URL` - Redis service for queued Celery work. The default is `REDIS_URL`
+- `CELERY_RESULT_BACKEND` - Redis service for Celery results. The default is `REDIS_URL`
+- `REDIS_ADMIN_URL` - Redis service that Floppy can tune with `CONFIG`. The default is `REDIS_CACHE_URL`, then `REDIS_URL`
 - `DEBUG` - leave unset or `False` in production; enabling it slows every request (debug toolbar, no template caching) and is only meant for troubleshooting
 - `REGISTRATION` - set to `True` to allow new signups (needed for your first account), then set to `False` afterward
 - `DEMO_ACCOUNT_ENABLED` - defaults to `True`, provisioning the built-in `demo` / `demodemo` account after migrations. The examples above set it to `False`; only turn it on if you want a shared demo login
@@ -343,6 +423,48 @@ LASTFM_API_KEY=LASTFM_API_KEY
 SECRET=SECRET
 DEBUG=False
 ```
+
+### Use separate Redis services
+
+The standard configuration needs only `REDIS_URL`. Use the role settings when
+cache data and Celery data must use separate Redis services.
+
+```bash
+REDIS_URL=redis://limiter:6379/0
+REDIS_CACHE_URL=redis://cache:6379/0
+CELERY_BROKER_URL=redis://broker:6379/0
+CELERY_RESULT_BACKEND=redis://results:6379/0
+REDIS_ADMIN_URL=redis://cache:6379/0
+```
+
+Floppy applies these rules:
+
+1. `REDIS_CACHE_URL` uses `REDIS_URL` when it is empty or not set.
+2. `CELERY_BROKER_URL` uses `REDIS_URL` when it is empty or not set.
+3. `CELERY_RESULT_BACKEND` uses `REDIS_URL` when it is empty or not set.
+4. `REDIS_ADMIN_URL` uses `REDIS_CACHE_URL`, then `REDIS_URL`.
+5. The provider rate limiter continues to use `REDIS_URL`.
+
+Use a `redis://` or `rediss://` URL for Redis administration. Floppy skips
+automatic tuning when `REDIS_ADMIN_URL` uses another scheme. Set
+`FLOPPY_REDIS_MAXMEMORY=0` to stop all automatic Redis tuning.
+
+Redis `CONFIG` changes the complete Redis server. A database number in a Redis
+URL does not isolate this change. `REDIS_ADMIN_URL` must normally select the
+cache Redis server. Grant `CONFIG` access only when you want Floppy to manage
+the memory limit and change `appendfsync=always` to `everysec`. You can also
+configure the Redis server directly.
+
+Plan a service change before you select new URLs:
+
+1. Let queued work finish before you change `CELERY_BROKER_URL`. A new broker
+   does not receive queued or unacknowledged work from the old broker.
+2. Preserve results that you still need before you change
+   `CELERY_RESULT_BACKEND`. The new backend does not contain old results.
+3. Expect the new cache to start empty. Floppy reloads sessions from its
+   database after a cache miss. Accounts and active sessions remain present.
+4. Restart the web, worker, and beat processes together. This makes all
+   processes use the same configuration.
 
 ### Running on a small host
 
@@ -433,11 +555,37 @@ upgrades matter.
 
 ### Persistence checklist
 
-- SQLite stores the app database at `/floppy/db/db.sqlite3`; persist `/floppy/db`. (Pre-rename `/yamtrack/db` mounts still resolve, so existing setups keep working.)
-- **Do not put `/floppy/db` on a network filesystem** (NFS, SMB/CIFS, or a NAS "share" mounted into Docker). Floppy's SQLite database uses WAL mode, which [SQLite's own documentation](https://sqlite.org/wal.html) warns is unsafe over network filesystems because they don't reliably support the locking it depends on - this can corrupt the database under normal concurrent use. Use local/block storage for `/floppy/db`, or set `DB_HOST` to use PostgreSQL if only network storage is available.
+- SQLite stores the app database at `/floppy/db/db.sqlite3` by default. Persist
+  `/floppy/db`, or persist each configured SQLite data path. Pre-rename
+  `/yamtrack/db` mounts still resolve, so existing setups keep working.
+- **Do not put the SQLite file on a network filesystem** such as NFS, SMB/CIFS,
+  or a NAS share that is mounted into Docker. Floppy uses SQLite WAL mode.
+  [SQLite documents](https://sqlite.org/wal.html) that WAL does not work over a
+  network filesystem. Use local storage or block storage. Set `DB_HOST` to use
+  PostgreSQL if only network storage is available.
 - PostgreSQL stores its database files at `/var/lib/postgresql/data`; persist that path on the Postgres container.
 - Redis stores sessions and background-task state; resetting Redis can log users out, but it should not delete accounts if the database is persisted.
 - Do not assume `DATABASE_URL` enables PostgreSQL. Floppy uses Postgres only when `DB_HOST` is set.
+
+### SQLite startup recovery
+
+Floppy checks SQLite storage and relationships before it runs migrations.
+If the check finds an album artist credit whose album or artist no longer
+exists, Floppy removes only that invalid credit and checks the database again.
+The startup log gives the number of rows that it removed.
+
+Floppy does not repair other relationship errors. It stops before migrations
+and lists each table, row, and missing parent. Use this procedure:
+
+1. Stop all Floppy processes that use the database.
+2. Back up the SQLite file and its `-wal` and `-shm` files, if they exist.
+3. Read each relationship error in the startup log.
+4. Restore a known-good backup or correct the named rows with a SQLite tool.
+5. Start Floppy and confirm that the relationship check passes.
+
+If the log says that the database is busy, another process still holds a
+write lock. Stop that process, then restart Floppy. Do not delete the database
+or its lock files to resolve this conflict.
 
 ### Trakt private profile import (OAuth)
 

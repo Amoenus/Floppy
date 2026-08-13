@@ -313,6 +313,11 @@ class Music(Media):
         return f"{plays} play{'s' if plays != 1 else ''}"
 
     @property
+    def progress_unit(self):
+        """Return the unit `progress` is measured in."""
+        return "plays"
+
+    @property
     def formatted_aggregated_progress(self):
         """Return aggregated progress as play count."""
         plays = getattr(self, "aggregated_progress", None)

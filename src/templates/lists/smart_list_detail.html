@@ -948,19 +948,6 @@
     window.initListSortable = initListSortable;
     window.destroyListSortable = destroyListSortable;
     window.refreshCustomListGrid = refreshCustomListGrid;
-
-    // See list_detail.html for why this listens at the document level
-    // instead of hx-on::after-request on the toggle button itself.
-    document.body.addEventListener('htmx:afterRequest', (event) => {
-      const requestPath = event.detail && event.detail.pathInfo
-        && event.detail.pathInfo.requestPath;
-      if (
-        event.detail.successful
-        && requestPath
-        && requestPath.endsWith('/list_item_toggle')
-      ) {
-        refreshCustomListGrid();
-      }
-    });
   </script>
+  {% include "lists/components/list_toggle_refresh_handler.html" %}
 {% endblock js %}
