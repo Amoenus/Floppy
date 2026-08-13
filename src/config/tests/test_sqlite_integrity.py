@@ -138,6 +138,62 @@ class SqliteIntegrityTests(SimpleTestCase):
             self.assertEqual(competing_result, ["database is locked"])
             competing_conn.close()
 
+    def test_repair_stays_below_sqlite_variable_limit(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = str(Path(tmp_dir) / "db.sqlite3")
+            setup = sqlite3.connect(db_path)
+            setup.executescript(
+                """
+                CREATE TABLE app_album (id INTEGER PRIMARY KEY);
+                CREATE TABLE app_artist (id INTEGER PRIMARY KEY);
+                CREATE TABLE app_albumartist (
+                    id INTEGER PRIMARY KEY,
+                    album_id INTEGER NOT NULL REFERENCES app_album(id),
+                    artist_id INTEGER NOT NULL REFERENCES app_artist(id)
+                );
+                INSERT INTO app_artist VALUES (12);
+                """
+            )
+            setup.executemany(
+                "INSERT INTO app_albumartist VALUES (?, ?, 12)",
+                ((row_id, row_id) for row_id in range(1, 7)),
+            )
+            setup.commit()
+            setup.close()
+
+            check_conn = sqlite3.connect(db_path)
+            check_conn.setlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER, 5)
+            with (
+                mock.patch(
+                    "config.sqlite_integrity.sqlite3.connect",
+                    return_value=check_conn,
+                ),
+                mock.patch("sys.stderr"),
+            ):
+                check_database_integrity(db_path)
+
+            verify = sqlite3.connect(db_path)
+            self.assertEqual(
+                verify.execute("SELECT COUNT(*) FROM app_albumartist").fetchone()[0],
+                0,
+            )
+            verify.close()
+
+    def test_busy_database_reports_lock_action(self):
+        error = sqlite3.OperationalError("database is locked")
+        error.sqlite_errorcode = sqlite3.SQLITE_BUSY
+
+        with (
+            mock.patch("sqlite3.connect", side_effect=error),
+            self.assertRaises(SystemExit) as ctx,
+            mock.patch("sys.stderr", new_callable=io.StringIO) as stderr,
+        ):
+            check_database_integrity("irrelevant.sqlite3")
+
+        self.assertEqual(ctx.exception.code, 1)
+        self.assertIn("Stop other Floppy processes", stderr.getvalue())
+        self.assertNotIn("corrupt", stderr.getvalue())
+
     def test_healthy_database_passes(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = str(Path(tmp_dir) / "db.sqlite3")

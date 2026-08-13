@@ -11,6 +11,10 @@ _RELATIONSHIP_HINT = (
     "[entrypoint] Back up the SQLite file, then inspect these relationship "
     "errors before you restart"
 )
+_BUSY_HINT = (
+    "[entrypoint] The SQLite database is busy. Stop other Floppy processes, "
+    "then restart"
+)
 _ALBUM_ARTIST_TABLE = "app_albumartist"
 
 
@@ -25,11 +29,10 @@ def _check_foreign_keys(conn: sqlite3.Connection) -> None:
         row_ids = {violation[1] for violation in violations}
         if None not in row_ids:
             row_ids = sorted(row_ids)
-            placeholders = ", ".join("?" for _ in row_ids)
-            conn.execute(
+            conn.executemany(
                 f"DELETE FROM {_ALBUM_ARTIST_TABLE} "  # noqa: S608  # fixed table name
-                f"WHERE rowid IN ({placeholders})",
-                row_ids,
+                "WHERE rowid = ?",
+                ((row_id,) for row_id in row_ids),
             )
             violations = list(conn.execute("PRAGMA foreign_key_check").fetchall())
             if not violations:
@@ -71,7 +74,13 @@ def check_database_integrity(db_path: str) -> None:
         _check_foreign_keys(conn)
     except sqlite3.DatabaseError as e:
         print(f"[entrypoint] Database integrity check failed: {e}", file=sys.stderr)  # noqa: T201
-        print(_CORRUPTION_HINT, file=sys.stderr)  # noqa: T201
+        hint = (
+            _BUSY_HINT
+            if getattr(e, "sqlite_errorcode", None)
+            in {sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED}
+            else _CORRUPTION_HINT
+        )
+        print(hint, file=sys.stderr)  # noqa: T201
         sys.exit(1)
     finally:
         if conn is not None:
