@@ -568,6 +568,9 @@ identifier, not an approval. There are three choices:
    `-shm` files, then restore a known-good copy or repair the named rows.
 2. **Accept:** set `FLOPPY_SQLITE_CONFLICT_ACTION=accept:<incident-token>` and
    recreate the container. Floppy starts without changing the conflicting rows.
+   Accept gets you back online on your current schema. It is not an upgrade
+   path: Django re-checks every foreign key while it applies a migration, so a
+   pending migration keeps failing until you repair or quarantine the rows.
 3. **Quarantine:** set
    `FLOPPY_SQLITE_CONFLICT_ACTION=quarantine:<incident-token>` and recreate the
    container. Floppy first writes and verifies a full backup under
