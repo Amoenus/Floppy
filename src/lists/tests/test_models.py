@@ -591,6 +591,43 @@ class CustomListManagerTest(TestCase):
         self.assertFalse(smart_rules.item_matches_rules(self.user, item, rules))
         self.assertFalse(smart_list.items.filter(id=item.id).exists())
 
+    def test_smart_list_provider_filter_matches_when_providers_backfilled(self):
+        """Provider backfill on an already-tracked item should update Smart Lists."""
+        self.user.watch_provider_region = "US"
+        self.user.save(update_fields=["watch_provider_region"])
+
+        smart_list = CustomList.objects.create(
+            name="Netflix After Backfill",
+            owner=self.user,
+            is_smart=True,
+            smart_media_types=[MediaTypes.MOVIE.value],
+            smart_filters={"provider": "Netflix"},
+        )
+
+        item = Item.objects.create(
+            title="Backfill Netflix Movie",
+            media_id="1305",
+            media_type=MediaTypes.MOVIE.value,
+            source=Sources.TMDB.value,
+            image="https://example.com/backfill-netflix.jpg",
+            watch_providers={},
+        )
+        Movie.objects.create(item=item, user=self.user, status=Status.COMPLETED.value)
+        self.assertFalse(smart_list.items.filter(id=item.id).exists())
+
+        item.watch_providers = {
+            "US": {
+                "flatrate": [
+                    {"provider_id": 8, "provider_name": "Netflix"},
+                ],
+            },
+        }
+        item.save(update_fields=["watch_providers"])
+
+        rules = smart_rules.normalize_list_rules(smart_list)
+        self.assertTrue(smart_rules.item_matches_rules(self.user, item, rules))
+        self.assertTrue(smart_list.items.filter(id=item.id).exists())
+
     def test_build_rule_filter_data_includes_providers_when_region_configured(self):
         item = Item.objects.create(
             title="Provider Data Movie",
