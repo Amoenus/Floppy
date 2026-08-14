@@ -99,6 +99,28 @@ class ListsTests(FloppyApiTestCase):
             CustomList.objects.filter(name="New List", owner=self.user1).exists()
         )
 
+    def test_empty_list_post_and_get_return_null_latest_update(self):
+        """A new list has no item update timestamp on either response path."""
+        created = self.call_api(
+            "post",
+            "api_lists",
+            payload={"name": "Empty List"},
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(created.status_code, 201)
+        self.assertIsNone(created.json()["latest_update"])
+
+        listed = self.call_api(
+            "get",
+            "api_lists",
+            params={"search": "Empty List"},
+            headers=self.auth_headers,
+        )
+        self.assertEqual(listed.status_code, 200)
+        self.assertEqual(len(listed.json()["results"]), 1)
+        self.assertIsNone(listed.json()["results"][0]["latest_update"])
+
     def test_lists_post_with_invalid_collaborators_type_returns_bad_request(self):
         """POST lists with non-array collaborators should fail with 400."""
         response = self.call_api(

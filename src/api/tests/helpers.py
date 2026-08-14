@@ -228,6 +228,8 @@ def check_media_structure(test_case, item):
     test_case.assertIn("score", item)
     test_case.assertIn("status", item)
     test_case.assertIn("progress", item)
+    test_case.assertIn("progress_scope", item)
+    test_case.assertIn("progress_unit", item)
     test_case.assertIn("progressed_at", item)
     test_case.assertIn("start_date", item)
     test_case.assertIn("end_date", item)

@@ -46,6 +46,28 @@ class MediaCoreTests(FloppyApiTestCase):
         self.assertIn("results", payload)
         for item in payload["results"]:
             check_media_structure(self, item)
+            self.assertEqual(
+                set(item),
+                {
+                    "id",
+                    "consumption_id",
+                    "item",
+                    "item_id",
+                    "parent_id",
+                    "tracked",
+                    "created_at",
+                    "score",
+                    "status",
+                    "progress",
+                    "progress_scope",
+                    "progress_unit",
+                    "progressed_at",
+                    "start_date",
+                    "end_date",
+                    "notes",
+                    "lists",
+                },
+            )
 
     def test_media_list_get_with_type_filter_returns_filtered_results(self):
         """Media list endpoint should filter results by media type."""
@@ -603,6 +625,31 @@ class MediaCoreTests(FloppyApiTestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         check_complete_media_structure(self, payload)
+        self.assertEqual(
+            set(payload),
+            {
+                "id",
+                "media_id",
+                "source",
+                "source_url",
+                "media_type",
+                "title",
+                "max_progress",
+                "image",
+                "synopsis",
+                "genres",
+                "score",
+                "score_count",
+                "details",
+                "related",
+                "item_id",
+                "parent_id",
+                "tracked",
+                "consumptions_number",
+                "consumptions",
+                "lists",
+            },
+        )
 
     def test_media_detail_get_invalid_type_returns_bad_request(self):
         """Media detail endpoint should reject unsupported media types."""
@@ -904,6 +951,20 @@ class MediaCoreTests(FloppyApiTestCase):
             "api_media_detail",
             args=(MediaTypes.MOVIE.value, movie_item.source, movie_item.media_id),
             payload={"unknown_field": "value"},
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("no valid fields", response.json().get("detail", "").lower())
+
+    def test_media_detail_patch_rejects_dropped_only(self):
+        """Media PATCH does not support the episode-only dropped field."""
+        movie_item = self.items_by_type[MediaTypes.MOVIE.value][0]
+        response = self.call_api(
+            "patch",
+            "api_media_detail",
+            args=(MediaTypes.MOVIE.value, movie_item.source, movie_item.media_id),
+            payload={"dropped": True},
             headers=self.auth_headers,
         )
 
@@ -1217,6 +1278,20 @@ class MediaCoreTests(FloppyApiTestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         check_consumption_structure(self, payload)
+        self.assertEqual(
+            set(payload),
+            {
+                "consumption_id",
+                "created",
+                "score",
+                "progress",
+                "progressed_at",
+                "status",
+                "start_date",
+                "end_date",
+                "notes",
+            },
+        )
 
     def test_media_consumption_entry_detail_get_preserves_actual_progress(self):
         """Entry-detail endpoint should return the stored non-binary progress value."""

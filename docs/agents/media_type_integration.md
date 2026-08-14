@@ -3,8 +3,8 @@
 This document explains how media types are defined and wired through the app so an agent can add a new media type safely.
 
 ## Core definitions
-- Enums: `MediaTypes` and `Sources` in `src/app/models.py` govern valid `media_type` and `source` values everywhere (converters, forms, lookups).
-- Config: `src/app/media_type_config.py` supplies per-type properties used by UI/logic (sources/default_source, sample_query/search URL, unicode/svg icons, verb, text/stats colors, date_key for releases, units, sample queries).
+- Vocabulary: `MediaTypes` in `app.models.choices` is the stable source for media type values. The generated [domain model guide](domain_model.md) defines the terms used by the app and API. `Sources` is defined beside `MediaTypes`.
+- Runtime registry: `app.config.MEDIA_TYPE_CONFIG` supplies per-type properties used by UI and logic. Use its public accessors, including `get_sources`, `get_svg_icon`, `get_stats_color`, `get_date_key`, and `get_unit`. Only media types whose flows need a date key or unit define those properties.
 - URL validation: `src/app/converters.py` regexes are built from `MediaTypes.values`/`Sources.values`.
 
 ## Models & storage
@@ -21,11 +21,11 @@ This document explains how media types are defined and wired through the app so 
 - Search selector (`src/templates/base.html`, `get_search_media_types`) excludes seasons by design; uses `user.last_search_type` unless current page type.
 
 ## UI surfaces
-- Navigation: Sidebar entries from `get_sidebar_media_types` + `app_tags.icon` (icons from `media_type_config.svg_icon`).
+- Navigation: Sidebar entries come from `get_sidebar_media_types`; `app_tags.icon` reads media type icons through `app.config.get_svg_icon`.
 - Home: `src/app/views.py:home` + `templates/app/home.html`/`components/home_grid.html`; uses `BasicMedia.get_in_progress`; Season entries show next event; units/colors from config.
 - Media list: `views.media_list` + `templates/app/media_list.html` and table/grid components. Movies hide the progress column; TV has a `time_left` sort with custom runtime logic; episodes are never routed to standalone detail pages. Generic filters (status/sort/search/layout) operate per media_type.
 - Detail pages: `media_details`/`season_details` (`templates/app/media_details.html`) render provider metadata; season view builds episodes via TMDB/manual. Sync button uses `sync_metadata`. Music uses dedicated templates: `music_artist_detail.html` (like TV show), `music_album_detail.html` (like Season).
-- Search results: `templates/app/search.html` builds source tabs from `media_type_config.sources`; layout toggle; pagination generic.
+- Search results: `templates/app/search.html` builds source tabs from configured sources exposed through `app.config.get_sources`; layout toggle and pagination are generic.
 - Custom lists: `lists`/`list_detail` views accept any `media_type`; MediaManager prefetch/annotate per type.
 - Manual create: `ManualItemForm` + `create_entry` supports all types; seasons/episodes require parent TV/Season; title auto-filled from parent.
 - Track modal/CRUD: `track_modal`, `media_save`, `media_delete`, `progress_edit`, `episode_save` all route on `media_type` string; forms in `src/app/forms.py` per type (Game uses duration field).
@@ -33,7 +33,7 @@ This document explains how media types are defined and wired through the app so 
 
 ## Statistics
 - Data assembly in `src/app/statistics.py`: iterates `user.get_active_media_types`; if `season_enabled` is false, seasons are removed from counts. TV/Season queries prefetch episodes; others filter by date window.
-- Charts: media type distribution, score/status distribution, activity heatmap, hours/plays per media type. Colors from `media_type_config.stats_color`.
+- Charts: media type distribution, score/status distribution, activity heatmap, hours/plays per media type. Colors come from `app.config.get_stats_color`.
 - Spotlight sections are hard-coded for Movies, TV, Games, Anime (top played cards); new types won’t appear there without template edits.
 - Runtime/units: Minutes per media type rely on `Item.runtime_minutes` or provider runtime; fallback 60 minutes for unknown types; movies use cached runtime; TV/anime use episode runtimes; games use progress minutes.
 - Music rollups: genres/decades/countries are derived from album→artist metadata; country codes are expanded to full names for display.
@@ -43,14 +43,14 @@ This document explains how media types are defined and wired through the app so 
   - Anime: AniList schedule via bulk query.
   - TV: pulls seasons/episodes from TMDB (+ TVMaze airstamps) and creates Season/Episode Items/events.
   - Comics: updates only if latest event within a year.
-  - Others: uses `media_type_config.date_key` and `metadata["max_progress"]` to build events; movies have `content_number=None`.
+  - Others: relevant media types use `app.config.get_date_key` and `metadata["max_progress"]` to build events; movies have `content_number=None`.
   - MangaUpdates with max_progress but no end date uses sentinel datetime.
 - `Item.fetch_releases` triggers calendar reload on status changes; seasons delegate to parent TV.
 - Notifications (`src/events/notifications.py`): filters by user-enabled media types and exclusions; formats bodies with unicode icons; Season header labeled “TV Shows,” others uppercase media type.
 
 ## Providers, search, sync
 - Routing in `src/app/providers/services.py`: tmdb(tv/movie/season/episode), mal/mangaupdates(anime/manga), igdb(game), hardcover/openlibrary(book), comicvine(comic), musicbrainz(music), manual fallback. Each returns a dict with `media_id/source/media_type/title/max_progress/image/synopsis/score/score_count/details/related` (+ runtime/episodes).
-- Search routing matches provider; sample queries/URLs from `media_type_config`.
+- Search routing matches each media type to its provider service and configured sources.
 - Music search uses `search_combined()` which returns artists, albums, and tracks from MusicBrainz. Cover art is skipped during search (`skip_cover_art=True`) for performance; art loads when viewing artist/album pages.
 - `sync_metadata` view: clears cache key, refetches metadata, updates Item title/image (season also bulk-updates episode posters), and triggers `item.fetch_releases`; blocks manual sources.
 
@@ -63,7 +63,7 @@ This document explains how media types are defined and wired through the app so 
 ## Edge cases & special rules
 - Season is auto-added to active types when TV is enabled; hiding seasons in settings removes them from stats and sidebar.
 - Search selector excludes seasons/episodes by design (`EXCLUDED_SEARCH_TYPES` in `users/models.py`).
-- Icons/colors/units/date_key must exist in `media_type_config` or templates/notifications will fail.
+- Registry entries must define the properties used by that media type's flows. Icons and colors are broadly required; units and date keys are required only where their accessors are called.
 - Runtime defaults: 30m TMDB, 23m MAL; `999999` runtime is treated as unknown/skip in time-left/stats.
 - Music has its own hierarchy: Artist → Album → Track (not managed by MediaManager). Music list shows `ArtistTracker` entries, not `Music` entries. Artist and Album pages use HTMX for async cover art loading. See `docs/agents/music_integration.md`.
 - History view:
@@ -74,7 +74,7 @@ This document explains how media types are defined and wired through the app so 
 - Calendar events for comics have 1-year look-back; manga from MangaUpdates uses sentinel datetime; unknown date_key causes release generation to fail.
 
 ## Checklist to add a new media type
-1. Enums & config: add to `MediaTypes`, add `media_type_config` entry (sources, default_source, sample_query, unicode/svg icon, verb, text/stats colors, date_key, unit, sample search URL behavior).
+1. Vocabulary and config: add the value to `app.models.choices.MediaTypes`, regenerate `docs/agents/domain_model.md` if the controlled vocabulary changes, and add the needed `app.config.MEDIA_TYPE_CONFIG` properties. Include a date key or unit only when the new type's flows call `get_date_key` or `get_unit`.
 2. Model & migration: create a `Media` subclass if needed (override progress/time formatting), add User fields (`<type>_enabled/layout/sort/status` + migration), ensure history tracking if required.
 3. Providers & search: add provider module or extend `providers/services.py` routing for metadata/search; ensure responses include `max_progress`, runtime, date fields referenced by `date_key`.
 4. UI wiring: update sidebar/search visibility rules if the type should appear; ensure templates that branch on media_type (tables, cards, spotlight sections) include the new type where desired.

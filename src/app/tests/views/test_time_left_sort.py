@@ -278,11 +278,12 @@ class TVTimeLeftCachedOrderTests(TestCase):
                 episode_number=1,
                 runtime_minutes=30,
             )
-            Episode.objects.create(
-                item=episode_item,
-                related_season=season,
-                end_date=timezone.now(),
-            )
+            with self.captureOnCommitCallbacks(execute=True):
+                Episode.objects.create(
+                    item=episode_item,
+                    related_season=season,
+                    end_date=timezone.now(),
+                )
 
     def _list_url(self, page=None):
         from django.urls import reverse

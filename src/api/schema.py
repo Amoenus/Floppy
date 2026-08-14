@@ -72,6 +72,22 @@ class ApiKeyAuthenticationScheme(OpenApiAuthenticationExtension):
         }
 
 
+class ListenBrainzAuthenticationScheme(OpenApiAuthenticationExtension):
+    """Describe the ListenBrainz-compatible token header."""
+
+    target_class = "api.authentication.ListenBrainzTokenAuthentication"
+    name = "listenBrainzToken"
+
+    def get_security_definition(self, _auto_schema):
+        """Return the protocol's ``Authorization: Token <token>`` scheme."""
+        return {
+            "type": "apiKey",
+            "in": "header",
+            "name": "Authorization",
+            "description": "ListenBrainz token in the form `Token <token>`.",
+        }
+
+
 class StatusFieldExtension(OpenApiSerializerFieldExtension):
     """Describe the real wire format of StatusField for OpenAPI generation."""
 

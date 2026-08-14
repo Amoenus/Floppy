@@ -1,6 +1,7 @@
 """Verify each MCP tool issues the correct HTTP request against the API."""
 import json
 
+import httpx
 import respx
 from httpx import Response
 
@@ -16,7 +17,7 @@ async def test_search_media(api_base_url):
         route = respx.get(f"{api_base_url}/search/movie").mock(return_value=ok())
         await server.search_media("movie", "matrix", page=2)
         req = route.calls.last.request
-        assert req.url.params["q"] == "matrix"
+        assert req.url.params["search"] == "matrix"
         assert req.url.params["page"] == "2"
 
 
@@ -87,6 +88,55 @@ async def test_track_media_creates_when_untracked(api_base_url):
         assert payload["source"] == "tmdb"
         assert payload["status"] == 3
         assert payload["score"] == 9
+
+
+async def test_track_media_stops_after_lookup_connection_error(api_base_url):
+    with respx.mock:
+        respx.get(f"{api_base_url}/media/movie/tmdb/1").mock(
+            side_effect=httpx.ConnectError("Connection failed"),
+        )
+        create_route = respx.post(f"{api_base_url}/media/movie").mock(
+            return_value=Response(201, json={"ok": True}),
+        )
+
+        result = await server.track_media("movie", "tmdb", "1")
+
+        assert result == {"error": True, "detail": "Connection failed"}
+        assert not create_route.called
+
+
+async def test_track_media_stops_after_lookup_api_error(api_base_url):
+    with respx.mock:
+        respx.get(f"{api_base_url}/media/movie/tmdb/1").mock(
+            return_value=Response(401, json={"detail": "Unauthorized"}),
+        )
+        create_route = respx.post(f"{api_base_url}/media/movie").mock(
+            return_value=Response(201, json={"ok": True}),
+        )
+
+        result = await server.track_media("movie", "tmdb", "1")
+
+        assert result == {
+            "error": True,
+            "status_code": 401,
+            "detail": {"detail": "Unauthorized"},
+        }
+        assert not create_route.called
+
+
+async def test_track_media_manual_source_creates_after_lookup_500(api_base_url):
+    with respx.mock:
+        respx.get(f"{api_base_url}/media/movie/manual/1").mock(
+            return_value=Response(500, json={"detail": "Provider error"}),
+        )
+        create_route = respx.post(f"{api_base_url}/media/movie").mock(
+            return_value=Response(201, json={"ok": True}),
+        )
+
+        result = await server.track_media("movie", "manual", "1")
+
+        assert result == {"ok": True}
+        assert create_route.called
 
 
 async def test_track_media_invalid_status_rejected():
@@ -365,3 +415,12 @@ async def test_error_from_api_is_surfaced_not_raised(api_base_url):
         result = await server.get_media("movie", "tmdb", "999")
         assert result["error"] is True
         assert result["status_code"] == 404
+
+
+async def test_connection_error_is_surfaced_not_raised(api_base_url):
+    with respx.mock:
+        respx.get(f"{api_base_url}/home").mock(
+            side_effect=httpx.ConnectError("Connection failed"),
+        )
+        result = await server.get_home()
+        assert result == {"error": True, "detail": "Connection failed"}

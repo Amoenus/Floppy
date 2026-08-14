@@ -15,6 +15,27 @@ async def test_missing_url_raises(monkeypatch):
         await get_client().request("get", "media")
 
 
+@pytest.mark.parametrize(
+    "url",
+    [
+        "/floppy",
+        "ftp://floppy.test",
+        "https:///floppy",
+        "https://floppy.test?x=1",
+        "https://floppy.test?",
+        "https://floppy.test#frag",
+        "https://floppy.test#",
+        "https://user@floppy.test",
+        "https://user:password@floppy.test",
+        "https://user%40example.test:password%3Avalue@floppy.test",
+    ],
+)
+async def test_invalid_url_raises(monkeypatch, url):
+    monkeypatch.setenv("FLOPPY_URL", url)
+    with pytest.raises(FloppyConfigError, match=r"https://floppy\.example\.com"):
+        await get_client().request("get", "media")
+
+
 async def test_missing_token_raises(monkeypatch):
     monkeypatch.delenv("FLOPPY_TOKEN", raising=False)
     with pytest.raises(FloppyConfigError):

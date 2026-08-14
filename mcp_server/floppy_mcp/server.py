@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import httpx
 from mcp.server.fastmcp import FastMCP
 
 from .client import FloppyAPIError, FloppyConfigError, get_client
@@ -37,7 +38,7 @@ def _error_payload(exc: Exception) -> dict[str, Any]:
 async def _call(method: str, path: str, **kwargs: Any) -> Any:
     try:
         return await get_client().request(method, path, **kwargs)
-    except (FloppyAPIError, FloppyConfigError) as exc:
+    except (FloppyAPIError, FloppyConfigError, httpx.RequestError) as exc:
         return _error_payload(exc)
 
 
@@ -123,12 +124,17 @@ async def get_media(
     season_number and episode_number. media_type/source/media_id always
     describe the parent show for seasons/episodes.
     """
-    path = f"media/{media_type}/{source}/{media_id}"
-    if season_number is not None:
-        path += f"/{season_number}"
-        if episode_number is not None:
-            path += f"/{episode_number}"
-    return await _call("get", path)
+    if season_number is None:
+        return await _call("get", f"media/{media_type}/{source}/{media_id}")
+    if episode_number is None:
+        return await _call(
+            "get",
+            f"media/{media_type}/{source}/{media_id}/{season_number}",
+        )
+    return await _call(
+        "get",
+        f"media/{media_type}/{source}/{media_id}/{season_number}/{episode_number}",
+    )
 
 
 @mcp.tool()
@@ -212,6 +218,18 @@ async def track_media(
     existing = await _call("get", f"media/{media_type}/{source}/{media_id}")
     if (
         isinstance(existing, dict)
+        and existing.get("error")
+        and not (
+            existing.get("status_code") == httpx.codes.NOT_FOUND
+            or (
+                source == "manual"
+                and existing.get("status_code") == httpx.codes.INTERNAL_SERVER_ERROR
+            )
+        )
+    ):
+        return existing
+    if (
+        isinstance(existing, dict)
         and not existing.get("error")
         and existing.get("tracked")
         and not new_play
@@ -219,10 +237,10 @@ async def track_media(
         if status_code == _STATUS_CODES["Completed"]:
             for consumption in existing.get("consumptions") or []:
                 if consumption.get("status") in {"Planning", "In progress", 0, 1}:
+                    consumption_id = consumption["consumption_id"]
                     return await _call(
                         "patch",
-                        f"media/{media_type}/{source}/{media_id}/history/"
-                        f"{consumption['consumption_id']}",
+                        f"media/{media_type}/{source}/{media_id}/history/{consumption_id}",
                         json=body,
                     )
         return await _call(
@@ -243,12 +261,17 @@ async def untrack_media(
     episode_number: int | None = None,
 ) -> Any:
     """Remove a tracked media item (or a specific season/episode) from the library."""
-    path = f"media/{media_type}/{source}/{media_id}"
-    if season_number is not None:
-        path += f"/{season_number}"
-        if episode_number is not None:
-            path += f"/{episode_number}"
-    return await _call("delete", path)
+    if season_number is None:
+        return await _call("delete", f"media/{media_type}/{source}/{media_id}")
+    if episode_number is None:
+        return await _call(
+            "delete",
+            f"media/{media_type}/{source}/{media_id}/{season_number}",
+        )
+    return await _call(
+        "delete",
+        f"media/{media_type}/{source}/{media_id}/{season_number}/{episode_number}",
+    )
 
 
 @mcp.tool()
@@ -268,10 +291,17 @@ async def update_progress(
     duration or amount instead of stepping, use track_media with an
     explicit progress value (and new_play=True for a fresh session).
     """
-    path = f"media/{media_type}/{source}/{media_id}"
     if season_number is not None:
-        path += f"/{season_number}"
-    return await _call("post", f"{path}/progress", json={"operation": operation})
+        return await _call(
+            "post",
+            f"media/{media_type}/{source}/{media_id}/{season_number}/progress",
+            json={"operation": operation},
+        )
+    return await _call(
+        "post",
+        f"media/{media_type}/{source}/{media_id}/progress",
+        json={"operation": operation},
+    )
 
 
 @mcp.tool()
@@ -283,9 +313,10 @@ async def log_episode_play(
     end_date: str | None = None,
 ) -> Any:
     """Record a watch of a TV episode (creates the show/season if needed)."""
+    media_type = "tv"
     return await _call(
         "post",
-        f"media/tv/{source}/{media_id}/{season_number}/episodes/{episode_number}/watch",
+        f"media/{media_type}/{source}/{media_id}/{season_number}/episodes/{episode_number}/watch",
         json={"end_date": end_date} if end_date else {},
     )
 

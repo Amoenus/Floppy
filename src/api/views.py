@@ -43,6 +43,17 @@ from .changes_history_processor import (
     get_changes_history_entries,
     get_changes_history_entry,
 )
+from .contract_serializers import (
+    CompleteEpisodeResponseSerializer,
+    CompleteMediaResponseSerializer,
+    ConsumptionResponseSerializer,
+    DetailErrorSerializer,
+    MediaUpdateRequestSerializer,
+    SearchEnvelopeSerializer,
+    TrackedMediaEnvelopeSerializer,
+    TrackedMediaResponseSerializer,
+    TrackMediaRequestSerializer,
+)
 from .helpers import (
     MEDIA_TYPE_COMPLETE_MODEL_MAP,
     apply_aggregated_sort,
@@ -769,6 +780,10 @@ class MediaListView(drf_views.APIView):
     serializer_class = MediaSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    @extend_schema(
+        operation_id="listTrackedMedia",
+        responses={200: TrackedMediaEnvelopeSerializer},
+    )
     def get(self, request):
         """Retrieve the list of media for the authenticated user."""
         # TODO: check progress sort might not be working
@@ -853,7 +868,11 @@ class MediaTypeListView(drf_views.APIView):
     serializer_class = MediaSerializer
     permission_classes = [permissions.IsAuthenticated]
 
-    @extend_schema(parameters=[MEDIA_TYPE_COMPLETE_PARAM])
+    @extend_schema(
+        parameters=[MEDIA_TYPE_COMPLETE_PARAM],
+        operation_id="listTrackedMediaByType",
+        responses={200: TrackedMediaEnvelopeSerializer},
+    )
     def get(self, request, media_type):
         """Retrieve the list of media of a specific media type."""
         user = request.user
@@ -913,7 +932,19 @@ class MediaTypeListView(drf_views.APIView):
         paginated_data["results"] = serialized_data
         return Response(paginated_data, status=HTTP.OK)
 
-    @extend_schema(parameters=[MEDIA_TYPE_COMPLETE_PARAM])
+    @extend_schema(
+        parameters=[MEDIA_TYPE_COMPLETE_PARAM],
+        operation_id="trackMedia",
+        request=TrackMediaRequestSerializer,
+        responses={
+            201: TrackedMediaResponseSerializer,
+            400: DetailErrorSerializer,
+            403: DetailErrorSerializer,
+            404: DetailErrorSerializer,
+            409: DetailErrorSerializer,
+            500: DetailErrorSerializer,
+        },
+    )
     def post(self, request, media_type):
         """Create a new consumption for a media item.
 
@@ -1146,7 +1177,17 @@ class MediaDetailView(drf_views.APIView):
             status=HTTP.NO_CONTENT,
         )
 
-    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
+    @extend_schema(
+        parameters=[MEDIA_TYPE_PARAM],
+        operation_id="retrieveMediaItem",
+        responses={
+            200: CompleteMediaResponseSerializer,
+            400: DetailErrorSerializer,
+            403: DetailErrorSerializer,
+            404: DetailErrorSerializer,
+            500: DetailErrorSerializer,
+        },
+    )
     def get(self, request, media_type, source, media_id):
         """Retrieve details of a specific media for the authenticated user."""
         user = request.user
@@ -1249,7 +1290,18 @@ class MediaDetailView(drf_views.APIView):
         )
         return Response(serialized, status=HTTP.OK)
 
-    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
+    @extend_schema(
+        parameters=[MEDIA_TYPE_PARAM],
+        operation_id="updateMediaItem",
+        request=MediaUpdateRequestSerializer,
+        responses={
+            200: CompleteMediaResponseSerializer,
+            400: DetailErrorSerializer,
+            403: DetailErrorSerializer,
+            404: DetailErrorSerializer,
+            500: DetailErrorSerializer,
+        },
+    )
     def patch(self, request, media_type, source, media_id):
         """Update the convenience/default tracked row for a media item.
 
@@ -1609,7 +1661,18 @@ class MediaConsumptionEntryDetailView(drf_views.APIView):
         )
         return Response(serialized_data, status=HTTP.OK)
 
-    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
+    @extend_schema(
+        parameters=[MEDIA_TYPE_PARAM],
+        operation_id="updateMediaConsumption",
+        request=MediaUpdateRequestSerializer,
+        responses={
+            200: ConsumptionResponseSerializer,
+            400: DetailErrorSerializer,
+            403: DetailErrorSerializer,
+            404: DetailErrorSerializer,
+            500: DetailErrorSerializer,
+        },
+    )
     def patch(self, request, media_type, source, media_id, consumption_id):
         """Update one exact consumption history entry for a media item."""
         if not check_valid_type(media_type):
@@ -2240,7 +2303,17 @@ class MediaSeasonDetailView(drf_views.APIView):
             status=HTTP.NO_CONTENT,
         )
 
-    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
+    @extend_schema(
+        parameters=[MEDIA_TYPE_PARAM],
+        operation_id="retrieveMediaSeason",
+        responses={
+            200: CompleteMediaResponseSerializer,
+            400: DetailErrorSerializer,
+            403: DetailErrorSerializer,
+            404: DetailErrorSerializer,
+            500: DetailErrorSerializer,
+        },
+    )
     def get(self, request, media_type, source, media_id, season_number):
         """Retrieve details of a specific season for the authenticated user."""
         user = request.user
@@ -3371,7 +3444,17 @@ class MediaEpisodeDetailView(drf_views.APIView):
             status=HTTP.NO_CONTENT,
         )
 
-    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
+    @extend_schema(
+        parameters=[MEDIA_TYPE_PARAM],
+        operation_id="retrieveMediaEpisode",
+        responses={
+            200: CompleteEpisodeResponseSerializer,
+            400: DetailErrorSerializer,
+            403: DetailErrorSerializer,
+            404: DetailErrorSerializer,
+            500: DetailErrorSerializer,
+        },
+    )
     def get(self, request, media_type, source, media_id, season_number, episode_number):
         """Retrieve details of a specific episode for the authenticated user."""
         user = request.user
@@ -4250,8 +4333,9 @@ class SearchProviderView(drf_views.APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     @extend_schema(
+        operation_id="searchMedia",
         parameters=[
-            MEDIA_TYPE_COMPLETE_PARAM,
+            MEDIA_TYPE_PARAM,
             OpenApiParameter(
                 name="search",
                 type=str,
@@ -4282,33 +4366,10 @@ class SearchProviderView(drf_views.APIView):
             ),
         ],
         responses={
-            200: {
-                "type": "object",
-                "properties": {
-                    "pagination": {
-                        "type": "object",
-                        "properties": {
-                            "total": {"type": "integer"},
-                            "limit": {"type": "integer"},
-                            "offset": {"type": "integer"},
-                            "next": {
-                                "type": "string",
-                                "format": "uri",
-                                "nullable": True,
-                            },
-                            "previous": {
-                                "type": "string",
-                                "format": "uri",
-                                "nullable": True,
-                            },
-                        },
-                    },
-                    "results": {
-                        "type": "array",
-                        "items": {"type": "object"},
-                    },
-                },
-            },
+            200: SearchEnvelopeSerializer,
+            400: DetailErrorSerializer,
+            403: DetailErrorSerializer,
+            500: DetailErrorSerializer,
         },
         examples=[
             OpenApiExample(

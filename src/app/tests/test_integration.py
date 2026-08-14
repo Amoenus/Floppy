@@ -153,6 +153,9 @@ class IntegrationTest(StaticLiveServerTestCase):
         # Episode 1 air date is 2008-01-20
         fixed_date = date(2008, 1, 20)
         modal = self.page.locator("[data-track-modal-root]:visible").first
+        first_watch_operation_id = modal.locator(
+            'input[name="watch_operation_id"]',
+        ).input_value()
         self.set_date_input(
             modal.locator('input[name="end_date"]'),
             f"{fixed_date.isoformat()}T12:00",
@@ -163,9 +166,20 @@ class IntegrationTest(StaticLiveServerTestCase):
             f"Ended: {fixed_date.strftime(datetime_format)}",
         )
 
+        self.page.reload()
         today = timezone.localtime().strftime(datetime_format)
-        self.page.locator('button[title="Track Episode"]:visible').first.click()
+        tracked_button = self.page.locator(
+            "button[title='Track Episode'][hx-vals*='instance_id']:visible",
+        ).first
+        expect(tracked_button).to_be_visible()
+        tracked_button.click()
         modal = self.page.locator("[data-track-modal-root]:visible").first
+        add_new_entry = modal.get_by_role("button", name="Add new entry")
+        expect(add_new_entry).to_be_visible()
+        add_new_entry.click()
+        expect(modal.locator('input[name="watch_operation_id"]')).not_to_have_value(
+            first_watch_operation_id,
+        )
         self.set_date_input(modal.locator('input[name="end_date"]'), f"{today}T12:00")
         self.page.get_by_role("button", name="Add", exact=True).click()
         expect(self.page.get_by_role("main")).to_contain_text(f"Ended: {today}")

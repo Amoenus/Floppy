@@ -380,6 +380,8 @@ class EpisodeSerializer(serializers.ModelSerializer):
                 else None,
                 "status": get_media_status(instance.status),
                 "progress": 1 if instance.end_date else 0,
+                "progress_scope": "entry",
+                "progress_unit": "episodes",
                 "progressed_at": instance.end_date,
                 "start_date": instance.start_date,
                 "end_date": instance.end_date,
@@ -439,6 +441,8 @@ class EpisodeSerializer(serializers.ModelSerializer):
             "score": None,
             "status": 3 if tracked else None,
             "progress": 1 if tracked else None,
+            "progress_scope": "entry" if tracked else None,
+            "progress_unit": "episodes" if tracked else None,
             "progressed_at": episode.end_date if hasattr(episode, "end_date") else None,
             "start_date": episode.created_at
             if hasattr(episode, "created_at")

@@ -902,11 +902,12 @@ class HomeRowCacheTests(TestCase):
                 "image": "http://example.com/image.jpg",
             },
         )
-        Episode.objects.create(
-            item=episode_item,
-            related_season=season,
-            end_date=timezone.now(),
-        )
+        with self.captureOnCommitCallbacks(execute=True):
+            Episode.objects.create(
+                item=episode_item,
+                related_season=season,
+                end_date=timezone.now(),
+            )
 
     def test_second_home_request_serves_rows_from_cache(self):
         from unittest.mock import patch

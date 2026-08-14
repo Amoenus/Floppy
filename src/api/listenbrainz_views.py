@@ -6,11 +6,17 @@
 import logging
 from http import HTTPStatus as HTTP  # noqa: N814
 
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import views as drf_views
 from rest_framework.response import Response
 
 from api.authentication import ListenBrainzTokenAuthentication
+from api.contract_serializers import (
+    DetailErrorSerializer,
+    ListenBrainzErrorSerializer,
+    ListenBrainzStatusSerializer,
+    ListenBrainzTokenSerializer,
+)
 from integrations.webhooks.listenbrainz import ListenBrainzScrobbleProcessor
 
 logger = logging.getLogger(__name__)
@@ -27,32 +33,35 @@ def _error(message, status=HTTP.BAD_REQUEST):
     return Response({"code": int(status), "error": message}, status=status)
 
 
-@extend_schema(
-    summary="Submit listens (ListenBrainz-compatible)",
-    description=(
-        "Accepts scrobbles from any ListenBrainz-compatible client. "
-        "Authenticate with `Authorization: Token <your API token>`. "
-        "`playing_now` submissions are accepted but not recorded."
-    ),
-    request={
-        "application/json": {
-            "type": "object",
-            "properties": {
-                "listen_type": {"type": "string", "enum": list(_LISTEN_TYPES)},
-                "payload": {"type": "array", "items": {"type": "object"}},
+@extend_schema_view(
+    post=extend_schema(
+        operation_id="submitListenBrainzListens",
+        summary="Submit listens (ListenBrainz-compatible)",
+        description=(
+            "Accepts scrobbles from any ListenBrainz-compatible client. "
+            "Authenticate with `Authorization: Token <your API token>`. "
+            "`playing_now` submissions are accepted but not recorded."
+        ),
+        request={
+            "application/json": {
+                "type": "object",
+                "required": ["listen_type", "payload"],
+                "properties": {
+                    "listen_type": {
+                        "type": "string",
+                        "enum": list(_LISTEN_TYPES),
+                    },
+                    "payload": {"type": "array", "items": {"type": "object"}},
+                },
             },
         },
-    },
-    responses={
-        200: {"type": "object", "properties": {"status": {"type": "string"}}},
-        400: {
-            "type": "object",
-            "properties": {
-                "code": {"type": "integer"},
-                "error": {"type": "string"},
-            },
+        responses={
+            200: ListenBrainzStatusSerializer,
+            400: ListenBrainzErrorSerializer,
+            401: DetailErrorSerializer,
+            403: ListenBrainzErrorSerializer,
         },
-    },
+    )
 )
 class SubmitListensView(drf_views.APIView):
     """ListenBrainz `submit-listens` endpoint."""
@@ -131,23 +140,16 @@ class SubmitListensView(drf_views.APIView):
             )
 
 
-@extend_schema(
-    summary="Validate token (ListenBrainz-compatible)",
-    description=(
-        "Reports whether the supplied token is valid. ListenBrainz clients call "
-        "this on startup to confirm the connection."
-    ),
-    responses={
-        200: {
-            "type": "object",
-            "properties": {
-                "code": {"type": "integer"},
-                "message": {"type": "string"},
-                "valid": {"type": "boolean"},
-                "user_name": {"type": "string"},
-            },
-        },
-    },
+@extend_schema_view(
+    get=extend_schema(
+        operation_id="validateListenBrainzToken",
+        summary="Validate token (ListenBrainz-compatible)",
+        description=(
+            "Reports whether the supplied token is valid. ListenBrainz clients call "
+            "this on startup to confirm the connection."
+        ),
+        responses={200: ListenBrainzTokenSerializer, 401: DetailErrorSerializer},
+    )
 )
 class ValidateTokenView(drf_views.APIView):
     """ListenBrainz `validate-token` endpoint."""

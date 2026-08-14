@@ -289,6 +289,20 @@ REST_FRAMEWORK = {
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
 }
 
+SPECTACULAR_SETTINGS = {
+    "TITLE": "Floppy",
+    "DESCRIPTION": "A self-hosted media tracker.",
+    "VERSION": "1.0.0",
+    "CONTACT": {
+        "url": "https://github.com/dannyvfilms/Floppy/issues",
+    },
+    "LICENSE": {
+        "name": "AGPL-3.0",
+        "url": "https://www.gnu.org/licenses/agpl-3.0.html",
+    },
+    "SERVE_PERMISSIONS": ["rest_framework.permissions.AllowAny"],
+}
+
 if ENABLE_DEBUG_TOOLBAR:
     INSTALLED_APPS.append("debug_toolbar")
 

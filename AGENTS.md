@@ -297,6 +297,7 @@ Models/migrations and divergent UI normally require manual adaptation. Provider 
 - Secondary Docker usage is for deployment or quick smoke runs; the compose files use the prebuilt `ghcr.io/dannyvfilms/floppy` image.
 
 ## Agent Docs
+- `docs/agents/domain_model.md`: generated vocabulary guide; regenerate and check it with the commands under Local Commands.
 - `docs/agents/media_type_integration.md`: playbook for adding new media types safely.
 - `docs/agents/music_integration.md`: music-specific data model and UI integration notes.
 - `docs/agents/pocketcasts_workflow.md`: Pocket Casts import/schedule workflow details.
@@ -304,8 +305,13 @@ Models/migrations and divergent UI normally require manual adaptation. Provider 
 
 ## Local Commands
 - Install locked dev dependencies: `uv sync --locked`
+- Django/manage.py commands require `SECRET` in the environment or `.env`.
 - Run migrations: `uv run --no-sync python src/manage.py migrate`
 - Run the app: `uv run --no-sync python src/manage.py runserver`
+- Run API contract tests: `SECRET=test-only scripts/test.sh users.tests.views.test_about app.tests.test_api_contracts app.tests.test_domain_vocabulary`
+- Generate the domain guide: `PYTHONPATH=src uv run --no-sync python -m app.domain_vocabulary`
+- Check the domain guide: `PYTHONPATH=src uv run --no-sync python -m app.domain_vocabulary --check`
+- Regenerate the verified OpenAPI artifact: `SECRET=test-only uv run --no-sync python src/manage.py spectacular --custom-settings api.schema_contract.STATIC_SPECTACULAR_SETTINGS --fail-on-warn --validate --file src/api/contracts/openapi.yaml`
 - Run Celery (two workers in one command, mirrors production):
   ```bash
   PYTHONPATH=src uv run --no-sync celery -A config worker --queues interactive --hostname celery-interactive@%h --loglevel DEBUG &
@@ -348,7 +354,7 @@ Notes:
 - Ruff config lives in `pyproject.toml` and excludes `migrations/`.
 - Djlint config is in `pyproject.toml`; Stylelint config is in `.stylelintrc`.
 - After model changes, keep migration files under `src/*/migrations/` and run `uv run --no-sync python src/manage.py migrate`.
-- Media type changes follow `docs/agents/media_type_integration.md` (MediaTypes enum + `media_type_config` wiring).
+- Media type changes follow `docs/agents/media_type_integration.md` (`app.models.choices.MediaTypes` vocabulary + `app.config.MEDIA_TYPE_CONFIG` wiring).
 
 ## PR / Commit Expectations
 - **Never commit unless the user explicitly asks.** Finishing a task, passing tests, or reaching a natural stopping point does not justify an automatic commit. Wait for a direct instruction such as "commit this", "commit the changes", or "make a commit".
