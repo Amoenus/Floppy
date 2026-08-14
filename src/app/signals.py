@@ -7,7 +7,8 @@ from celery import states
 from celery.signals import before_task_publish, task_failure, task_success
 from django.apps import apps
 from django.conf import settings
-from django.db.models.signals import post_delete, post_save
+from django.db import transaction
+from django.db.models.signals import post_delete, post_save, pre_save
 from django.db.utils import OperationalError
 from django.dispatch import receiver
 from django.utils import timezone
@@ -650,20 +651,72 @@ def refresh_discover_cache_on_item_person_credit_change(sender, instance, **kwar
         discover_tab_cache.invalidate_for_media_change(user_id, media_type)
 
 
-@receiver([post_save, post_delete], sender=Episode)
-def refresh_history_cache_on_episode_change(sender, instance, **kwargs):
-    """Schedule history cache refresh when episode activity changes."""
+def _invalidate_episode_history_changes(changes):
+    """Invalidate committed Episode activity days grouped by owner."""
+    for user_id, day_keys in changes.items():
+        _handle_media_cache_change(
+            user_id,
+            MediaTypes.EPISODE.value,
+            reason="episode_change",
+            history_specs=[(day_keys, ("sessions", "repeats"))],
+            statistics_day_values=day_keys,
+            force_history_days=True,
+        )
+
+
+@receiver(pre_save, sender=Episode)
+def capture_episode_history_identity(sender, instance, **kwargs):
+    """Remember the persisted Episode owner/day before an update."""
+    if kwargs.get("raw"):
+        return
+    previous = None
+    if instance.pk:
+        previous = (
+            Episode.objects.filter(pk=instance.pk)
+            .values_list("related_season__user_id", "end_date")
+            .first()
+        )
+    instance._previous_history_identity = previous
+
+
+@receiver(post_save, sender=Episode)
+def refresh_history_cache_on_episode_save(sender, instance, **kwargs):
+    """Invalidate old and new Episode days after the write commits."""
+    if kwargs.get("raw"):
+        return
+    previous = getattr(instance, "_previous_history_identity", None)
+    if hasattr(instance, "_previous_history_identity"):
+        delattr(instance, "_previous_history_identity")
+    user_id = getattr(getattr(instance, "related_season", None), "user_id", None)
+    day_key = history_cache.history_day_key(getattr(instance, "end_date", None))
+    changes = {}
+    for changed_user_id, changed_day_key in (
+        (
+            previous[0] if previous else None,
+            history_cache.history_day_key(previous[1]) if previous else None,
+        ),
+        (user_id, day_key),
+    ):
+        if changed_user_id and changed_day_key:
+            changes.setdefault(changed_user_id, set()).add(changed_day_key)
+    committed_changes = {user: sorted(days) for user, days in changes.items()}
+    transaction.on_commit(
+        lambda: _invalidate_episode_history_changes(committed_changes),
+        using=kwargs.get("using"),
+    )
+
+
+@receiver(post_delete, sender=Episode)
+def refresh_history_cache_on_episode_delete(sender, instance, **kwargs):
+    """Invalidate a deleted Episode day after the deletion commits."""
     if kwargs.get("raw"):
         return
     user_id = getattr(getattr(instance, "related_season", None), "user_id", None)
     day_key = history_cache.history_day_key(getattr(instance, "end_date", None))
-    _handle_media_cache_change(
-        user_id,
-        MediaTypes.EPISODE.value,
-        reason="episode_change",
-        history_specs=[([day_key] if day_key else [], ("sessions", "repeats"))],
-        statistics_day_values=[day_key] if day_key else [],
-        force_history_days=True,
+    changes = {user_id: [day_key]} if user_id and day_key else {}
+    transaction.on_commit(
+        lambda changes=changes: _invalidate_episode_history_changes(changes),
+        using=kwargs.get("using"),
     )
 
 

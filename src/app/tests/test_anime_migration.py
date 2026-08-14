@@ -332,7 +332,8 @@ class AnimeMigrationTests(TestCase):
             },
         )
 
-        response = self.client.post(progress_url, {"operation": "increase"})
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(progress_url, {"operation": "increase"})
 
         self.assertEqual(response.status_code, 200)
         watched_episodes = Episode.objects.filter(
@@ -373,7 +374,8 @@ class AnimeMigrationTests(TestCase):
             "Warm History should include the episode added by progress_edit.",
         )
 
-        response = self.client.post(progress_url, {"operation": "increase"})
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(progress_url, {"operation": "increase"})
         self.assertEqual(response.status_code, 200)
         watched_episodes = Episode.objects.filter(
             related_season=grouped_season,
