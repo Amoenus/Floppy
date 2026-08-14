@@ -28,37 +28,33 @@ if [ -z "$DB_HOST" ]; then
 
     reject_unsafe_managed_directory FLOPPY_DB_PATH "$DB_PARENT"
 
-    # Fail fast when SQLite storage or relationships are invalid. Repair only
-    # the known orphaned album credit conflict (issues #508, #593, and #731).
+    # Check storage before migrations. Known disposable album credits are
+    # repaired; other conflicts require an incident-scoped operator choice.
     if [ -f "$DB_FILE" ]; then
         echo "[entrypoint] Checking SQLite storage and relationships for ${DB_FILE}" >&2
-        python -c 'from config.sqlite_integrity import check_database_integrity; import sys; check_database_integrity(sys.argv[1])' "$DB_FILE" &
-        integrity_pid=$!
-
-        # Report bytes read so large databases show visible progress.
-        elapsed=0
-        integrity_timed_out=0
-        while kill -0 "$integrity_pid" 2>/dev/null; do
-            if [ "$elapsed" -ge 600 ]; then
-                echo "[entrypoint] ERROR: SQLite integrity check exceeded 600s; stopping startup" >&2
-                integrity_timed_out=1
-                kill "$integrity_pid" 2>/dev/null
-                break
-            fi
-            sleep 30
-            elapsed=$((elapsed + 30))
-            read_mb=$(awk '/^rchar:/ {printf "%.0f", $2/1048576}' "/proc/${integrity_pid}/io" 2>/dev/null) || read_mb=""
-            if [ -n "$read_mb" ]; then
-                echo "[entrypoint] Still checking SQLite integrity (${elapsed}s elapsed, ~${read_mb}MB read so far)" >&2
-            else
-                echo "[entrypoint] Still checking SQLite integrity (${elapsed}s elapsed)" >&2
-            fi
-        done
-
         integrity_status=0
+        integrity_pid=
+        trap 'kill "$integrity_pid" 2>/dev/null || :; wait "$integrity_pid" 2>/dev/null || :; exit 0' TERM INT
+        timeout 600 python -c 'from config.sqlite_integrity import check_database_integrity; import sys; check_database_integrity(sys.argv[1])' "$DB_FILE" &
+        integrity_pid=$!
         wait "$integrity_pid" || integrity_status=$?
-        if [ "$integrity_timed_out" -eq 1 ] || [ "$integrity_status" -ne 0 ]; then
-            exit 1
+        trap - TERM INT
+        if [ "$integrity_status" -ne 0 ]; then
+            case "$integrity_status" in
+                124|143)
+                    echo "[entrypoint] SQLite integrity check exceeded its 600s timeout; startup is paused before migrations and services. The container will remain unhealthy and idle." >&2
+                    ;;
+                *)
+                    echo "[entrypoint] SQLite startup is paused because the integrity check failed; migrations and services were not started. The container will remain unhealthy and idle." >&2
+                    ;;
+            esac
+            parking_pid=
+            trap 'kill "$parking_pid" 2>/dev/null || :; wait "$parking_pid" 2>/dev/null || :; exit 0' TERM INT
+            while :; do
+                sleep 86400 &
+                parking_pid=$!
+                wait "$parking_pid" || :
+            done
         fi
     fi
 fi
