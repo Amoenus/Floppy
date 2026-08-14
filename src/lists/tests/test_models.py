@@ -525,6 +525,72 @@ class CustomListManagerTest(TestCase):
         smart_list.sync_smart_items()
         self.assertFalse(smart_list.items.filter(id=item.id).exists())
 
+    def test_smart_list_provider_filter_matches_on_incremental_sync(self):
+        """Incremental sync should use the owner's watch_provider_region."""
+        self.user.watch_provider_region = "US"
+        self.user.save(update_fields=["watch_provider_region"])
+
+        smart_list = CustomList.objects.create(
+            name="Netflix Incremental",
+            owner=self.user,
+            is_smart=True,
+            smart_media_types=[MediaTypes.MOVIE.value],
+            smart_filters={"provider": "Netflix"},
+        )
+
+        item = Item.objects.create(
+            title="Incremental Netflix Movie",
+            media_id="1303",
+            media_type=MediaTypes.MOVIE.value,
+            source=Sources.TMDB.value,
+            image="https://example.com/incremental-netflix.jpg",
+            watch_providers={
+                "US": {
+                    "flatrate": [
+                        {"provider_id": 8, "provider_name": "Netflix"},
+                    ],
+                },
+            },
+        )
+        Movie.objects.create(item=item, user=self.user, status=Status.COMPLETED.value)
+
+        rules = smart_rules.normalize_list_rules(smart_list)
+        self.assertTrue(smart_rules.item_matches_rules(self.user, item, rules))
+        self.assertTrue(smart_list.items.filter(id=item.id).exists())
+
+    def test_smart_list_provider_filter_excludes_on_incremental_sync(self):
+        """Incremental sync should exclude items whose providers do not match."""
+        self.user.watch_provider_region = "US"
+        self.user.save(update_fields=["watch_provider_region"])
+
+        smart_list = CustomList.objects.create(
+            name="Netflix Incremental Exclude",
+            owner=self.user,
+            is_smart=True,
+            smart_media_types=[MediaTypes.MOVIE.value],
+            smart_filters={"provider": "Netflix"},
+        )
+
+        item = Item.objects.create(
+            title="Incremental Disney Movie",
+            media_id="1304",
+            media_type=MediaTypes.MOVIE.value,
+            source=Sources.TMDB.value,
+            image="https://example.com/incremental-disney.jpg",
+            watch_providers={
+                "US": {
+                    "flatrate": [
+                        {"provider_id": 337, "provider_name": "Disney Plus"},
+                    ],
+                },
+            },
+        )
+        Movie.objects.create(item=item, user=self.user, status=Status.COMPLETED.value)
+
+        rules = smart_rules.normalize_list_rules(smart_list)
+        self.assertFalse(smart_rules.item_matches_rules(self.user, item, rules))
+        self.assertFalse(smart_list.items.filter(id=item.id).exists())
+
     def test_build_rule_filter_data_includes_providers_when_region_configured(self):
         item = Item.objects.create(
             title="Provider Data Movie",
