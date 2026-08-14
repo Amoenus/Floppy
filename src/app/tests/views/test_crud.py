@@ -1605,13 +1605,13 @@ class DeleteMedia(TestCase):
         self,
         _handle_media_cache_change,
     ):
-        """Deleting a play must remove its cached history card before redirect."""
         logging_style = "repeats"
+        history_day_key = history_cache.history_day_key(self.episode.end_date)
         history_cache.refresh_history_cache(
             self.user.id,
             logging_style=logging_style,
+            day_keys=[history_day_key],
         )
-        history_day_key = history_cache.history_day_key(self.episode.end_date)
         cached_day = cache.get(
             history_cache._day_cache_key(
                 self.user.id,

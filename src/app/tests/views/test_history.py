@@ -343,6 +343,7 @@ class HistoryMonthViewTests(TestCase):
     """Test unfiltered history month page behavior."""
 
     def setUp(self):
+        cache.clear()
         _start_model_metadata_patches(self)
         self.credentials = {"username": "month-view", "password": "12345"}
         self.user = get_user_model().objects.create_user(**self.credentials)
@@ -405,6 +406,10 @@ class HistoryMonthViewTests(TestCase):
             related_season=season,
             end_date=now,
         )
+        cache.clear()
+
+    def tearDown(self):
+        cache.clear()
 
     def test_default_month_view_does_not_bootstrap_cache_status_poll(self):
         response = self.client.get(reverse("history"))
