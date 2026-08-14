@@ -34,15 +34,18 @@ if [ -z "$DB_HOST" ]; then
         echo "[entrypoint] Checking SQLite storage and relationships for ${DB_FILE}" >&2
         integrity_status=0
         integrity_pid=
+        # One bound, used by the command and its operator message, so the two
+        # can never drift apart.
+        integrity_timeout=600
         trap 'kill "$integrity_pid" 2>/dev/null || :; wait "$integrity_pid" 2>/dev/null || :; exit 0' TERM INT
-        timeout 600 python -c 'from config.sqlite_integrity import check_database_integrity; import sys; check_database_integrity(sys.argv[1])' "$DB_FILE" &
+        timeout "$integrity_timeout" python -c 'from config.sqlite_integrity import check_database_integrity; import sys; check_database_integrity(sys.argv[1])' "$DB_FILE" &
         integrity_pid=$!
         wait "$integrity_pid" || integrity_status=$?
         trap - TERM INT
         if [ "$integrity_status" -ne 0 ]; then
             case "$integrity_status" in
                 124|143)
-                    echo "[entrypoint] SQLite integrity check exceeded its 600s timeout; startup is paused before migrations and services. The container will remain unhealthy and idle." >&2
+                    echo "[entrypoint] SQLite integrity check exceeded its ${integrity_timeout}s timeout; startup is paused before migrations and services. The container will remain unhealthy and idle." >&2
                     ;;
                 *)
                     echo "[entrypoint] SQLite startup is paused because the integrity check failed; migrations and services were not started. The container will remain unhealthy and idle." >&2
