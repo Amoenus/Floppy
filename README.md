@@ -571,17 +571,40 @@ upgrades matter.
 
 Floppy checks SQLite storage and relationships before it runs migrations.
 If the check finds an album artist credit whose album or artist no longer
-exists, Floppy removes only that invalid credit and checks the database again.
-The startup log gives the number of rows that it removed.
+exists, Floppy creates a verified backup, removes only that invalid credit,
+and checks the database again.
 
-Floppy does not repair other relationship errors. It stops before migrations
-and lists each table, row, and missing parent. Use this procedure:
+For any other relationship conflict, Floppy writes a bounded report beside
+the database as `db.sqlite3.integrity.json`. The report counts every conflict
+but includes at most 20 row samples, so a large incident cannot fill the log.
+Startup then remains idle and unhealthy without running migrations or services;
+this prevents Docker restart policies from repeating the same failure.
 
-1. Stop all Floppy processes that use the database.
-2. Back up the SQLite file and its `-wal` and `-shm` files, if they exist.
-3. Read each relationship error in the startup log.
-4. Restore a known-good backup or correct the named rows with a SQLite tool.
-5. Start Floppy and confirm that the relationship check passes.
+The report identifies the incident with a fingerprint and issues a separate
+one-time **incident token**. The startup log prints the exact value to set, and
+the report repeats it under `actions`. Copy that token; the fingerprint is an
+identifier, not an approval. There are three choices:
+
+1. **Restore or repair:** stop Floppy, back up the database with its `-wal` and
+   `-shm` files, then restore a known-good copy or repair the named rows.
+2. **Accept:** set `FLOPPY_SQLITE_CONFLICT_ACTION=accept:<incident-token>` and
+   recreate the container. Floppy starts without changing the conflicting rows.
+   Accept gets you back online on your current schema. It is not an upgrade
+   path: Django re-checks every foreign key while it applies a migration, so a
+   pending migration keeps failing until you repair or quarantine the rows.
+3. **Quarantine:** set
+   `FLOPPY_SQLITE_CONFLICT_ACTION=quarantine:<incident-token>` and recreate the
+   container. Floppy first writes and verifies a full backup under
+   `sqlite-recovery/`, then removes the orphaned child rows and verifies all
+   relationships again. Floppy refuses to quarantine a table that has no usable
+   SQLite row ID or that carries any trigger; the log names the reason and those
+   rows must be repaired manually.
+
+A token is issued per incident and retired once that incident is resolved, so an
+old approval cannot apply to a later or changed incident. Remove
+`FLOPPY_SQLITE_CONFLICT_ACTION` after a successful start. Backups under
+`sqlite-recovery/` are kept until you remove them. Do not delete the live
+database or its `-wal` or `-shm` files.
 
 If the log says that the database is busy, another process still holds a
 write lock. Stop that process, then restart Floppy. Do not delete the database
