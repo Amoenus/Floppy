@@ -716,6 +716,16 @@ dependency.
 - Open an [issue](https://github.com/dannyvfilms/Floppy/issues) for bugs, or for feature requests and ideas.
 - Open a pull request if you want to contribute code, docs, or polish.
 
+### Contributors
+
+A huge thank you to everyone who has contributed to Floppy and its foundations!
+
+<a href="https://github.com/dannyvfilms/Floppy/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=dannyvfilms/Floppy" alt="Contributors" />
+</a>
+
+We actively welcome contributions of all kinds — bug fixes, new features, UI polish, or documentation improvements. See our [Contributing Guide](CONTRIBUTING.md) to get started.
+
 ## License
 
 AGPL-3.0.
