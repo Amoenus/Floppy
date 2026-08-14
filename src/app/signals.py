@@ -669,6 +669,11 @@ def capture_episode_history_identity(sender, instance, **kwargs):
     """Remember the persisted Episode owner/day before an update."""
     if kwargs.get("raw"):
         return
+    if (
+        media_cache_change_signals_suppressed()
+        or media_change_side_effects_suppressed()
+    ):
+        return
     previous = None
     if instance.pk:
         previous = (
@@ -683,6 +688,11 @@ def capture_episode_history_identity(sender, instance, **kwargs):
 def refresh_history_cache_on_episode_save(sender, instance, **kwargs):
     """Invalidate old and new Episode days after the write commits."""
     if kwargs.get("raw"):
+        return
+    if (
+        media_cache_change_signals_suppressed()
+        or media_change_side_effects_suppressed()
+    ):
         return
     previous = getattr(instance, "_previous_history_identity", None)
     if hasattr(instance, "_previous_history_identity"):
@@ -710,6 +720,11 @@ def refresh_history_cache_on_episode_save(sender, instance, **kwargs):
 def refresh_history_cache_on_episode_delete(sender, instance, **kwargs):
     """Invalidate a deleted Episode day after the deletion commits."""
     if kwargs.get("raw"):
+        return
+    if (
+        media_cache_change_signals_suppressed()
+        or media_change_side_effects_suppressed()
+    ):
         return
     user_id = getattr(getattr(instance, "related_season", None), "user_id", None)
     day_key = history_cache.history_day_key(getattr(instance, "end_date", None))

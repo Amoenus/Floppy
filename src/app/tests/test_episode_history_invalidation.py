@@ -7,7 +7,7 @@ from django.db import transaction
 from django.test import TransactionTestCase
 from django.utils import timezone
 
-from app import history_cache
+from app import history_cache, signals
 from app.models import TV, Episode, Item, MediaTypes, Season, Sources, Status
 
 
@@ -163,3 +163,16 @@ class EpisodeHistoryInvalidationTests(TransactionTestCase):
         self.assertIsNone(cache.get(old_key))
         self.assertIsNone(cache.get(new_key))
         self._assert_current_history()
+
+    @patch("app.signals._invalidate_episode_history_changes")
+    def test_bulk_suppression_prevents_deferred_episode_invalidation(
+        self,
+        mock_invalidate,
+    ):
+        """Bulk tracking should schedule one consolidated refresh only."""
+        with transaction.atomic(), signals.suppress_media_change_side_effects():
+            self.episode.end_date = self.new_date
+            self.episode.save(update_fields=["end_date"])
+            self.episode.delete()
+
+        mock_invalidate.assert_not_called()
