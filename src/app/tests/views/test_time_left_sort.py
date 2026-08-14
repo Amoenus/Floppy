@@ -325,11 +325,12 @@ class TVTimeLeftCachedOrderTests(TestCase):
             media_type=MediaTypes.EPISODE.value,
             media_id=season.item.media_id,
         ).first()
-        Episode.objects.create(
-            item=episode_item,
-            related_season=season,
-            end_date=timezone.now(),
-        )
+        with self.captureOnCommitCallbacks(execute=True):
+            Episode.objects.create(
+                item=episode_item,
+                related_season=season,
+                end_date=timezone.now(),
+            )
 
         with patch(
             "app.media_list_views._sort_tv_media_by_time_left",
