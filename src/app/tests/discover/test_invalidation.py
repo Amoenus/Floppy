@@ -244,6 +244,7 @@ class DiscoverInvalidationSignalTests(TestCase):
             day_keys=[expected_day_key],
             logging_styles=("sessions", "repeats"),
             reason="movie_change",
+            force=False,
             refresh_index=False,
         )
         self.assertEqual(mock_schedule_history_refresh.call_count, 2)

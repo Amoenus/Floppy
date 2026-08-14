@@ -2,6 +2,7 @@ from datetime import timedelta
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -35,6 +36,7 @@ class PersonDetailViewTests(TestCase):
     """Test cast/crew person profile pages."""
 
     def setUp(self):
+        cache.clear()
         self.credentials = {"username": "test", "password": "12345"}
         self.user = get_user_model().objects.create_user(**self.credentials)
         self.client.login(**self.credentials)
@@ -51,6 +53,9 @@ class PersonDetailViewTests(TestCase):
         ):
             patcher.start()
             self.addCleanup(patcher.stop)
+
+    def tearDown(self):
+        cache.clear()
 
     @staticmethod
     def _credit(person, role="Lead", sort_order=0):

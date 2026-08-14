@@ -698,6 +698,16 @@ def refresh_history_cache_on_episode_save(sender, instance, **kwargs):
     if hasattr(instance, "_previous_history_identity"):
         delattr(instance, "_previous_history_identity")
     user_id = getattr(getattr(instance, "related_season", None), "user_id", None)
+    if user_id:
+        from app.cache_utils import (
+            clear_home_row_cache_for_user,
+            clear_media_list_cache_for_user,
+            clear_time_left_cache_for_user,
+        )
+
+        clear_time_left_cache_for_user(user_id)
+        clear_media_list_cache_for_user(user_id)
+        clear_home_row_cache_for_user(user_id)
     day_key = history_cache.history_day_key(getattr(instance, "end_date", None))
     changes = {}
     for changed_user_id, changed_day_key in (
@@ -727,6 +737,16 @@ def refresh_history_cache_on_episode_delete(sender, instance, **kwargs):
     ):
         return
     user_id = getattr(getattr(instance, "related_season", None), "user_id", None)
+    if user_id:
+        from app.cache_utils import (
+            clear_home_row_cache_for_user,
+            clear_media_list_cache_for_user,
+            clear_time_left_cache_for_user,
+        )
+
+        clear_time_left_cache_for_user(user_id)
+        clear_media_list_cache_for_user(user_id)
+        clear_home_row_cache_for_user(user_id)
     day_key = history_cache.history_day_key(getattr(instance, "end_date", None))
     changes = {user_id: [day_key]} if user_id and day_key else {}
     transaction.on_commit(
