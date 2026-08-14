@@ -208,74 +208,168 @@ The main qualitative pass succeeds only when all of these conditions hold:
 
 This three-evaluator comparison is qualitative. It does not establish statistical confidence.
 
+## Completed main-pass run: 2026-08-14
+
+### Common metadata and integrity
+
+| Field | Recorded value |
+| --- | --- |
+| Run record ID | `grounding-20260814` |
+| Full base SHA | `dbff5843b5257b1a6db38292325594595a085de8` |
+| Full treatment SHA | `3486970e6520d5b356abbaec94134b7db5be65d2` |
+| Implemented branch at evaluation | `codex/openapi-grounding-contracts` |
+| Evaluator tool and model ID | `OpenAI Codex`; `gpt-5.6-terra` |
+| Scorer tool and model ID | `OpenAI Codex`; `gpt-5.6-sol` |
+| Model snapshot, version, or date | `not exposed` |
+| Runner version | `codex-cli 0.147.0` for evaluators and scorers |
+| Reasoning effort | `low` for evaluators and scorers |
+| Evaluator seed | `not exposed`; `not controllable` |
+| Temperature | `not exposed`; `not controllable` |
+| Delivery mode | `embedded immutable line-numbered blobs` |
+| Runner network controls | no network tool existed or was enabled |
+| Runner tool controls | CLI flags disabled shell, apps, browser, computer, image, multi-agent, plugins, skills, and memory; each run used a read-only ephemeral isolated working directory |
+| Network used | none; zero network events in all six evaluator event logs |
+| Tools used | none; zero tool events in all six evaluator event logs |
+| Ref verification | Before recording results, `origin/latest` still resolved to the full base SHA and branch `HEAD` still resolved to the full treatment SHA |
+| Prompt verification | All six retained prompt byte counts and SHA-256 hashes matched `allocation.json` |
+
+Each evaluator returned status `0`, the required declaration, and one agent-message event. Each evaluator log also contains a non-fatal runner warning that skill descriptions were shortened; it contains no repository access, tool call, or network call.
+
+### Evaluator runs
+
+The three valid scorer IDs for every run are `S1V-4b16e4`, `S2V-cd18df`, and `S3V-bf1c59`.
+
+| Run | Evaluator and execution ID | Arm | Position | Evaluated SHA | Start | End | Prompt bytes | Prompt SHA-256 | Status | Access verification |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `E1-A` | `E1`; `019ffd92-16db-7d71-92fd-f399cad3a454` | A = base | first | `dbff5843b5257b1a6db38292325594595a085de8` | `2026-08-14T01:00:37+01:00` | `2026-08-14T01:00:43+01:00` | `69391` | `e4477eae178c2ca6565b8291b48396c7198050e80ed5cfdc0a366e133701e71f` | `0` | zero tool/network events; declaration present |
+| `E1-B` | `E1`; `019ffd92-6ac5-74c2-811d-f8b0979aaa22` | B = treatment | second | `3486970e6520d5b356abbaec94134b7db5be65d2` | `2026-08-14T01:00:58+01:00` | `2026-08-14T01:01:06+01:00` | `166333` | `7ccb9ab53968217e97ce343460ab82f2fe03cb524a30f9c009c7f33c5a426055` | `0` | zero tool/network events; declaration present |
+| `E2-A` | `E2`; `019ffd92-16e1-76e3-8935-bf21709a569d` | A = treatment | first | `3486970e6520d5b356abbaec94134b7db5be65d2` | `2026-08-14T01:00:37+01:00` | `2026-08-14T01:00:44+01:00` | `166333` | `ad569706f9083d4ddba72140bb1d5272b29011bbad5606d285d8c65b0b954369` | `0` | zero tool/network events; declaration present |
+| `E2-B` | `E2`; `019ffd92-6ab9-7df3-b5fd-a5203fff1d77` | B = base | second | `dbff5843b5257b1a6db38292325594595a085de8` | `2026-08-14T01:00:58+01:00` | `2026-08-14T01:01:05+01:00` | `69391` | `4f73d9ef3488817d756fe6a64d495da81e0ea1a1638d394876cd21dfc784b356` | `0` | zero tool/network events; declaration present |
+| `E3-A` | `E3`; `019ffd92-16dd-7560-97bf-1aff2c53df16` | A = base | first | `dbff5843b5257b1a6db38292325594595a085de8` | `2026-08-14T01:00:37+01:00` | `2026-08-14T01:00:44+01:00` | `69391` | `e4477eae178c2ca6565b8291b48396c7198050e80ed5cfdc0a366e133701e71f` | `0` | zero tool/network events; declaration present |
+| `E3-B` | `E3`; `019ffd92-6ab9-7ee1-9291-b3a0e6f90955` | B = treatment | second | `3486970e6520d5b356abbaec94134b7db5be65d2` | `2026-08-14T01:00:58+01:00` | `2026-08-14T01:01:05+01:00` | `166333` | `7ccb9ab53968217e97ce343460ab82f2fe03cb524a30f9c009c7f33c5a426055` | `0` | zero tool/network events; declaration present |
+
+### Valid scoring runs
+
+| Scorer ID and execution ID | Start | End | Shuffle seed | Prompt SHA-256 | Status | Access verification |
+| --- | --- | --- | --- | --- | --- | --- |
+| `S1V-4b16e4`; `019ffd97-d38f-7210-be78-8acf0e30592c` | `2026-08-14T01:06:53+01:00` | `2026-08-14T01:08:21+01:00` | `1463324940316341645` | `c1c9f5967f0e649e7f430ebe64f1aad08cd5c2a03c7e0c3968e470a9ec438a31` | `0` | prompt hash matched; zero tool/network events |
+| `S2V-cd18df`; `019ffd97-d392-7a23-9a9b-370bf1f73152` | `2026-08-14T01:06:53+01:00` | `2026-08-14T01:08:17+01:00` | `12183961628636262223` | `0dbec0ad7fe346e730f7651c0cba204dceb92de96b118c278e399d706cddc374` | `0` | prompt hash matched; zero tool/network events |
+| `S3V-bf1c59`; `019ffd97-d38f-71d2-8d72-edb729e219fd` | `2026-08-14T01:06:53+01:00` | `2026-08-14T01:08:21+01:00` | `7081352488126536805` | `ce994c22f38b8d49d137a6807380db4f08034d9f4ce436760023f11d86c8d9d5` | `0` | prompt hash matched; zero tool/network events |
+
+### Protocol deviation and remediation
+
+The first scorer run under `scorers/` is excluded because its packets omitted the citation alias declared by each answer. None of its scores are used. The remediation rebuilt packets with the declared aliases and reran three independent scorers under `scorers-valid/`; only those three results contribute to the fact votes and consensus scores below. Evaluator prompts and raw responses did not change.
+
 ## Raw response records
 
-Retain exactly one fenced block for every evaluator-arm delivery. Paste the complete response, including all three answers and the evaluator declaration, byte-for-byte into that block. Do not split, normalize, or place raw responses in a Markdown table. Complete the adjacent references after the run.
+Retain exactly one fenced block for every evaluator-arm delivery. Paste the complete response, including all three answers and the evaluator declaration, byte-for-byte into that block. Do not split, normalize, or place raw responses in a Markdown table. The retained raw files have no trailing LF. The LF that places each closing fence on its own line is Markdown framing and is excluded from the recorded raw byte count and SHA-256.
 
 ### E1 / Arm A complete response
 
-- Response record: `<ID>`
-- Run record: `<ID>`
-- Delivery bundle: `<SHA-256>`
-- Access log: `<ID or retained log path>`
+- Response record: `R-E1-A`; `480` bytes; SHA-256 `35c224798d4a39008b311a81af9831fb083b30ca489e31d8bd925737a3acef2a`
+- Run record: `E1-A`
+- Delivery bundle: `e4477eae178c2ca6565b8291b48396c7198050e80ed5cfdc0a366e133701e71f`
+- Access log: `.gstack/evals/grounding-20260814/runs/E1-A/events.jsonl`; zero tool/network events
+- Score packets: `P-a1c0248c`, `P-2b915145`, `P-3b09f212`
 
 ```text
+1. `media_type_config` supplies per-media-type properties for UI and logic. `MediaTypes` in `src/app/models.py` owns valid canonical `media_type` values. A:docs/agents/media_type_integration.md:6 A:docs/agents/media_type_integration.md:7
 
+2. An `Item` holds shared media identity fields. A Consumption is not described in the allowed context.
+
+3. Unknown from the allowed context.
+
+Evaluator declaration: I used only the embedded allowed context and made no tool or network calls.
 ```
 
 ### E1 / Arm B complete response
 
-- Response record: `<ID>`
-- Run record: `<ID>`
-- Delivery bundle: `<SHA-256>`
-- Access log: `<ID or retained log path>`
+- Response record: `R-E1-B`; `737` bytes; SHA-256 `a2938472b3c19ddf834a4626e25852bfdc4ac16058a214fada1735d5e2fc71df`
+- Run record: `E1-B`
+- Delivery bundle: `7ccb9ab53968217e97ce343460ab82f2fe03cb524a30f9c009c7f33c5a426055`
+- Access log: `.gstack/evals/grounding-20260814/runs/E1-B/events.jsonl`; zero tool/network events
+- Score packets: `P-d1a871bd`, `P-cd894e8f`, `P-f92abd73`
 
 ```text
+1. `media_type_config` refers to the runtime registry `app.config.MEDIA_TYPE_CONFIG`, which supplies per-type properties for UI and logic. Canonical media-type values are owned by `app.models.choices.MediaTypes`. B:docs/agents/media_type_integration.md:6 B:docs/agents/media_type_integration.md:7
 
+2. An Item is a shared provider-identified work. A Consumption is one user’s tracking record for an Item, storing status, progress, score, dates, and notes. B:docs/agents/domain_model.md:9 B:docs/agents/domain_model.md:23
+
+3. The Reload calendar task uses the `celery` queue with background priority `9`. B:docs/agents/domain_model.md:45
+
+Evaluator declaration: I used only the embedded allowed context and made no tool or network calls.
 ```
 
 ### E2 / Arm A complete response
 
-- Response record: `<ID>`
-- Run record: `<ID>`
-- Delivery bundle: `<SHA-256>`
-- Access log: `<ID or retained log path>`
+- Response record: `R-E2-A`; `624` bytes; SHA-256 `178ccf82363925a55627fb66ef632515f0cbc1d7c593810dc3d36b75caec1b1c`
+- Run record: `E2-A`
+- Delivery bundle: `ad569706f9083d4ddba72140bb1d5272b29011bbad5606d285d8c65b0b954369`
+- Access log: `.gstack/evals/grounding-20260814/runs/E2-A/events.jsonl`; zero tool/network events
+- Score packets: `P-5009bbd4`, `P-0055a4e4`, `P-b6a1edd1`
 
 ```text
+1. `media_type_config` is not identified in the allowed context. Canonical media-type values come from `app.models.choices.MediaTypes`. A:docs/agents/domain_model.md:34
 
+2. An Item is a shared work identified from a media provider. A:docs/agents/domain_model.md:9 A Consumption is one user’s tracking record for that Item, storing status, progress, score, dates, and notes. A:docs/agents/domain_model.md:23
+
+3. The Reload calendar task uses the `celery` queue with background priority `9`. A:docs/agents/domain_model.md:45
+
+Evaluator declaration: I used only the embedded allowed context and made no tool or network calls.
 ```
 
 ### E2 / Arm B complete response
 
-- Response record: `<ID>`
-- Run record: `<ID>`
-- Delivery bundle: `<SHA-256>`
-- Access log: `<ID or retained log path>`
+- Response record: `R-E2-B`; `388` bytes; SHA-256 `5117b67c81d2a892f044a2f489b246a9e48621c6c722f236bf87b833f3fb5d29`
+- Run record: `E2-B`
+- Delivery bundle: `4f73d9ef3488817d756fe6a64d495da81e0ea1a1638d394876cd21dfc784b356`
+- Access log: `.gstack/evals/grounding-20260814/runs/E2-B/events.jsonl`; zero tool/network events
+- Score packets: `P-7e1f0cff`, `P-85035d93`, `P-823c8344`
 
 ```text
+1. `media_type_config` supplies per-type properties used by UI and logic. `MediaTypes` owns valid canonical `media_type` values. B:docs/agents/media_type_integration.md:6 B:docs/agents/media_type_integration.md:7
 
+2. Unknown from the allowed context.
+
+3. Unknown from the allowed context.
+
+Evaluator declaration: I used only the embedded allowed context and made no tool or network calls.
 ```
 
 ### E3 / Arm A complete response
 
-- Response record: `<ID>`
-- Run record: `<ID>`
-- Delivery bundle: `<SHA-256>`
-- Access log: `<ID or retained log path>`
+- Response record: `R-E3-A`; `735` bytes; SHA-256 `6d987d2f5c5b84dc471f737efef217cf635aa051e7bedb9521637ab0fe3432da`
+- Run record: `E3-A`
+- Delivery bundle: `e4477eae178c2ca6565b8291b48396c7198050e80ed5cfdc0a366e133701e71f`
+- Access log: `.gstack/evals/grounding-20260814/runs/E3-A/events.jsonl`; zero tool/network events
+- Score packets: `P-5e05ea3f`, `P-e447783e`, `P-b2de742f`
 
 ```text
+1. `media_type_config` is `src/app/media_type_config.py`, which supplies per-type properties for UI and logic. `MediaTypes` and `Sources` in `src/app/models.py` govern valid canonical `media_type` and `source` values. A:docs/agents/media_type_integration.md:6 A:docs/agents/media_type_integration.md:7
 
+2. An `Item` holds shared media identity fields. A `Media` tracking model holds per-user history, score, progress, status, dates, and notes. The term “Consumption” is not supported by the allowed context. A:docs/agents/media_type_integration.md:11 A:docs/agents/media_type_integration.md:12
+
+3. Unknown from the allowed context.
+
+Evaluator declaration: I used only the embedded allowed context and made no tool or network calls.
 ```
 
 ### E3 / Arm B complete response
 
-- Response record: `<ID>`
-- Run record: `<ID>`
-- Delivery bundle: `<SHA-256>`
-- Access log: `<ID or retained log path>`
+- Response record: `R-E3-B`; `772` bytes; SHA-256 `df6e0df192663eb881c7e93bbca1d037ec94fac6824c147118d649667c3db38b`
+- Run record: `E3-B`
+- Delivery bundle: `7ccb9ab53968217e97ce343460ab82f2fe03cb524a30f9c009c7f33c5a426055`
+- Access log: `.gstack/evals/grounding-20260814/runs/E3-B/events.jsonl`; zero tool/network events
+- Score packets: `P-72d99220`, `P-7ab3a7d7`, `P-f8b95247`
 
 ```text
+1. `media_type_config` refers to the runtime registry `app.config.MEDIA_TYPE_CONFIG`, which supplies per-type properties used by UI and logic. Canonical media-type values are owned by `app.models.choices.MediaTypes`. B:docs/agents/media_type_integration.md:6-7
 
+2. An Item is the shared provider-identified work; different users can track it through separate Consumption records. A Consumption is one user’s tracking record for an Item and stores status, progress, score, dates, and notes. B:docs/agents/domain_model.md:9 B:docs/agents/domain_model.md:23
+
+3. The Reload calendar task uses the `celery` queue with background priority `9`. B:docs/agents/domain_model.md:45
+
+Evaluator declaration: I used only the embedded allowed context and made no tool or network calls.
 ```
 
 ## Score indexes
@@ -288,47 +382,129 @@ Measure byte spans against the exact retained UTF-8 response, using a zero-based
 
 | Response record | Q1 span, citations, validation, packet | Q2 span, citations, validation, packet | Q3 span, citations, validation, packet |
 | --- | --- | --- | --- |
-| `<E1-A response ID>` | `<start:end; citations; validation ID; packet ID>` | `<start:end; citations; validation ID; packet ID>` | `<start:end; citations; validation ID; packet ID>` |
-| `<E1-B response ID>` | `<start:end; citations; validation ID; packet ID>` | `<start:end; citations; validation ID; packet ID>` | `<start:end; citations; validation ID; packet ID>` |
-| `<E2-A response ID>` | `<start:end; citations; validation ID; packet ID>` | `<start:end; citations; validation ID; packet ID>` | `<start:end; citations; validation ID; packet ID>` |
-| `<E2-B response ID>` | `<start:end; citations; validation ID; packet ID>` | `<start:end; citations; validation ID; packet ID>` | `<start:end; citations; validation ID; packet ID>` |
-| `<E3-A response ID>` | `<start:end; citations; validation ID; packet ID>` | `<start:end; citations; validation ID; packet ID>` | `<start:end; citations; validation ID; packet ID>` |
-| `<E3-B response ID>` | `<start:end; citations; validation ID; packet ID>` | `<start:end; citations; validation ID; packet ID>` | `<start:end; citations; validation ID; packet ID>` |
+| `R-E1-A` | `0:239`; A:docs/agents/media_type_integration.md:6<br>A:docs/agents/media_type_integration.md:7; `V-f525fe38`; `P-a1c0248c` | `239:344`; none; `V-1fe3f515`; `P-2b915145` | `344:382`; none; `V-28da33a2`; `P-3b09f212` |
+| `R-E1-B` | `0:298`; B:docs/agents/media_type_integration.md:6<br>B:docs/agents/media_type_integration.md:7; `V-57e79a17`; `P-d1a871bd` | `298:523`; B:docs/agents/domain_model.md:9<br>B:docs/agents/domain_model.md:23; `V-6151139d`; `P-cd894e8f` | `523:639`; B:docs/agents/domain_model.md:45; `V-254850f8`; `P-f92abd73` |
+| `R-E2-A` | `0:170`; A:docs/agents/domain_model.md:34; `V-425020d0`; `P-5009bbd4` | `170:410`; A:docs/agents/domain_model.md:9<br>A:docs/agents/domain_model.md:23; `V-4a27857f`; `P-0055a4e4` | `410:526`; A:docs/agents/domain_model.md:45; `V-030e72a1`; `P-b6a1edd1` |
+| `R-E2-B` | `0:214`; B:docs/agents/media_type_integration.md:6<br>B:docs/agents/media_type_integration.md:7; `V-9e8f2770`; `P-7e1f0cff` | `214:252`; none; `V-8704b764`; `P-85035d93` | `252:290`; none; `V-8fdcf6de`; `P-823c8344` |
+| `R-E3-A` | `0:303`; A:docs/agents/media_type_integration.md:6<br>A:docs/agents/media_type_integration.md:7; `V-b105a9d0`; `P-5e05ea3f` | `303:599`; A:docs/agents/media_type_integration.md:11<br>A:docs/agents/media_type_integration.md:12; `V-099b579a`; `P-e447783e` | `599:637`; none; `V-a56bb46f`; `P-b2de742f` |
+| `R-E3-B` | `0:262`; B:docs/agents/media_type_integration.md:6-7; `V-dc8db630`; `P-72d99220` | `262:558`; B:docs/agents/domain_model.md:9<br>B:docs/agents/domain_model.md:23; `V-5ee0a417`; `P-7ab3a7d7` | `558:674`; B:docs/agents/domain_model.md:45; `V-13523d19`; `P-f8b95247` |
 
 ### Fact decisions
 
-| Packet ID | Question | Fact ID | Scorer ID | Correct? | Citation valid? | Counts? | Notes |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| `<packet>` | `<Q1-Q3>` | `<fact ID>` | `<scorer>` | `<yes or no>` | `<yes or no>` | `<yes or no>` | `<brief reason>` |
+Each ratio is the number of `yes` decisions among the three valid scorers. A fact counts only when both majority decisions are `yes`.
+
+| Run | Packet | Fact | Correct majority | Citation-valid majority | Counts? |
+| --- | --- | --- | --- | --- | --- |
+| `E1-A` | `P-a1c0248c` | `Q1-F1` | no (`0/3`) | no (`1/3`) | no |
+| `E1-A` | `P-a1c0248c` | `Q1-F2` | no (`0/3`) | yes (`2/3`) | no |
+| `E1-A` | `P-2b915145` | `Q2-F1` | yes (`3/3`) | no (`0/3`) | no |
+| `E1-A` | `P-2b915145` | `Q2-F2` | no (`0/3`) | no (`0/3`) | no |
+| `E1-A` | `P-2b915145` | `Q2-F3` | no (`0/3`) | no (`0/3`) | no |
+| `E1-A` | `P-3b09f212` | `Q3-F1` | no (`0/3`) | no (`0/3`) | no |
+| `E1-A` | `P-3b09f212` | `Q3-F2` | no (`0/3`) | no (`0/3`) | no |
+| `E1-A` | `P-3b09f212` | `Q3-F3` | no (`0/3`) | no (`0/3`) | no |
+| `E1-A` | `P-3b09f212` | `Q3-F4` | no (`0/3`) | no (`0/3`) | no |
+| `E1-B` | `P-d1a871bd` | `Q1-F1` | yes (`3/3`) | yes (`3/3`) | yes |
+| `E1-B` | `P-d1a871bd` | `Q1-F2` | yes (`3/3`) | yes (`3/3`) | yes |
+| `E1-B` | `P-cd894e8f` | `Q2-F1` | yes (`3/3`) | yes (`3/3`) | yes |
+| `E1-B` | `P-cd894e8f` | `Q2-F2` | yes (`3/3`) | yes (`3/3`) | yes |
+| `E1-B` | `P-cd894e8f` | `Q2-F3` | no (`0/3`) | no (`0/3`) | no |
+| `E1-B` | `P-f92abd73` | `Q3-F1` | yes (`3/3`) | yes (`3/3`) | yes |
+| `E1-B` | `P-f92abd73` | `Q3-F2` | yes (`3/3`) | yes (`3/3`) | yes |
+| `E1-B` | `P-f92abd73` | `Q3-F3` | yes (`3/3`) | yes (`3/3`) | yes |
+| `E1-B` | `P-f92abd73` | `Q3-F4` | no (`0/3`) | no (`0/3`) | no |
+| `E2-A` | `P-5009bbd4` | `Q1-F1` | no (`0/3`) | no (`0/3`) | no |
+| `E2-A` | `P-5009bbd4` | `Q1-F2` | yes (`3/3`) | yes (`3/3`) | yes |
+| `E2-A` | `P-0055a4e4` | `Q2-F1` | yes (`3/3`) | yes (`3/3`) | yes |
+| `E2-A` | `P-0055a4e4` | `Q2-F2` | yes (`3/3`) | yes (`3/3`) | yes |
+| `E2-A` | `P-0055a4e4` | `Q2-F3` | no (`0/3`) | no (`0/3`) | no |
+| `E2-A` | `P-b6a1edd1` | `Q3-F1` | yes (`3/3`) | yes (`3/3`) | yes |
+| `E2-A` | `P-b6a1edd1` | `Q3-F2` | yes (`3/3`) | yes (`3/3`) | yes |
+| `E2-A` | `P-b6a1edd1` | `Q3-F3` | yes (`3/3`) | yes (`3/3`) | yes |
+| `E2-A` | `P-b6a1edd1` | `Q3-F4` | no (`0/3`) | no (`0/3`) | no |
+| `E2-B` | `P-7e1f0cff` | `Q1-F1` | no (`0/3`) | no (`1/3`) | no |
+| `E2-B` | `P-7e1f0cff` | `Q1-F2` | no (`1/3`) | yes (`2/3`) | no |
+| `E2-B` | `P-85035d93` | `Q2-F1` | no (`0/3`) | no (`0/3`) | no |
+| `E2-B` | `P-85035d93` | `Q2-F2` | no (`0/3`) | no (`0/3`) | no |
+| `E2-B` | `P-85035d93` | `Q2-F3` | no (`0/3`) | no (`0/3`) | no |
+| `E2-B` | `P-823c8344` | `Q3-F1` | no (`0/3`) | no (`0/3`) | no |
+| `E2-B` | `P-823c8344` | `Q3-F2` | no (`0/3`) | no (`0/3`) | no |
+| `E2-B` | `P-823c8344` | `Q3-F3` | no (`0/3`) | no (`0/3`) | no |
+| `E2-B` | `P-823c8344` | `Q3-F4` | no (`0/3`) | no (`0/3`) | no |
+| `E3-A` | `P-5e05ea3f` | `Q1-F1` | no (`0/3`) | yes (`3/3`) | no |
+| `E3-A` | `P-5e05ea3f` | `Q1-F2` | no (`0/3`) | yes (`3/3`) | no |
+| `E3-A` | `P-e447783e` | `Q2-F1` | yes (`3/3`) | yes (`3/3`) | yes |
+| `E3-A` | `P-e447783e` | `Q2-F2` | no (`0/3`) | no (`1/3`) | no |
+| `E3-A` | `P-e447783e` | `Q2-F3` | no (`0/3`) | no (`0/3`) | no |
+| `E3-A` | `P-b2de742f` | `Q3-F1` | no (`0/3`) | no (`0/3`) | no |
+| `E3-A` | `P-b2de742f` | `Q3-F2` | no (`0/3`) | no (`0/3`) | no |
+| `E3-A` | `P-b2de742f` | `Q3-F3` | no (`0/3`) | no (`0/3`) | no |
+| `E3-A` | `P-b2de742f` | `Q3-F4` | no (`0/3`) | no (`0/3`) | no |
+| `E3-B` | `P-72d99220` | `Q1-F1` | yes (`3/3`) | no (`0/3`) | no |
+| `E3-B` | `P-72d99220` | `Q1-F2` | yes (`3/3`) | no (`0/3`) | no |
+| `E3-B` | `P-7ab3a7d7` | `Q2-F1` | yes (`3/3`) | yes (`3/3`) | yes |
+| `E3-B` | `P-7ab3a7d7` | `Q2-F2` | yes (`3/3`) | yes (`3/3`) | yes |
+| `E3-B` | `P-7ab3a7d7` | `Q2-F3` | yes (`3/3`) | yes (`3/3`) | yes |
+| `E3-B` | `P-f8b95247` | `Q3-F1` | yes (`3/3`) | yes (`3/3`) | yes |
+| `E3-B` | `P-f8b95247` | `Q3-F2` | yes (`3/3`) | yes (`3/3`) | yes |
+| `E3-B` | `P-f8b95247` | `Q3-F3` | yes (`3/3`) | yes (`3/3`) | yes |
+| `E3-B` | `P-f8b95247` | `Q3-F4` | no (`0/3`) | no (`0/3`) | no |
 
 ### Question scores
 
-| Packet ID | Scorer ID | Question | Score (`0`-`2`) | Contradiction? | Unsupported or invalidly cited factual statement? | Detail | Disallowed evidence? | Residual unblinding | Consensus record |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `<packet>` | `<scorer>` | `<Q1-Q3>` | `<score>` | `<yes or no>` | `<yes or no>` | `<statement and citation detail>` | `<yes or no>` | `<none, suspected, or actual; reason>` | `<ID>` |
+All three valid scorers assigned the same score to every packet. Ratios in the disqualifier columns are `yes` votes.
+
+| Run | Packet | Question | Consensus score | Contradiction | Unsupported or invalidly cited statement | Disallowed evidence | Residual unblinding |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `E1-A` | `P-a1c0248c` | Q1 | `0` (`3/3`) | no (`1/3`) | yes (`2/3`) | no (`0/3`) | actual (`3/3`) |
+| `E1-A` | `P-2b915145` | Q2 | `0` (`3/3`) | no (`0/3`) | yes (`3/3`) | no (`0/3`) | actual (`3/3`) |
+| `E1-A` | `P-3b09f212` | Q3 | `0` (`3/3`) | no (`0/3`) | no (`0/3`) | no (`0/3`) | actual (`3/3`) |
+| `E1-B` | `P-d1a871bd` | Q1 | `2` (`3/3`) | no (`0/3`) | no (`0/3`) | no (`0/3`) | actual (`3/3`) |
+| `E1-B` | `P-cd894e8f` | Q2 | `1` (`3/3`) | no (`0/3`) | no (`0/3`) | no (`0/3`) | actual (`3/3`) |
+| `E1-B` | `P-f92abd73` | Q3 | `1` (`3/3`) | no (`0/3`) | no (`0/3`) | no (`0/3`) | actual (`3/3`) |
+| `E2-A` | `P-5009bbd4` | Q1 | `0` (`3/3`) | yes (`3/3`) | yes (`3/3`) | no (`0/3`) | actual (`3/3`) |
+| `E2-A` | `P-0055a4e4` | Q2 | `1` (`3/3`) | no (`0/3`) | no (`0/3`) | no (`0/3`) | actual (`3/3`) |
+| `E2-A` | `P-b6a1edd1` | Q3 | `1` (`3/3`) | no (`0/3`) | no (`0/3`) | no (`0/3`) | actual (`3/3`) |
+| `E2-B` | `P-7e1f0cff` | Q1 | `0` (`3/3`) | no (`0/3`) | yes (`2/3`) | no (`0/3`) | actual (`3/3`) |
+| `E2-B` | `P-85035d93` | Q2 | `0` (`3/3`) | no (`0/3`) | no (`0/3`) | no (`0/3`) | actual (`3/3`) |
+| `E2-B` | `P-823c8344` | Q3 | `0` (`3/3`) | no (`0/3`) | no (`0/3`) | no (`0/3`) | actual (`3/3`) |
+| `E3-A` | `P-5e05ea3f` | Q1 | `0` (`3/3`) | yes (`3/3`) | no (`1/3`) | no (`0/3`) | actual (`3/3`) |
+| `E3-A` | `P-e447783e` | Q2 | `0` (`3/3`) | yes (`2/3`) | yes (`2/3`) | no (`0/3`) | actual (`3/3`) |
+| `E3-A` | `P-b2de742f` | Q3 | `0` (`3/3`) | no (`0/3`) | no (`0/3`) | no (`0/3`) | actual (`3/3`) |
+| `E3-B` | `P-72d99220` | Q1 | `0` (`3/3`) | no (`0/3`) | yes (`3/3`) | no (`0/3`) | actual (`3/3`) |
+| `E3-B` | `P-7ab3a7d7` | Q2 | `2` (`3/3`) | no (`0/3`) | no (`0/3`) | no (`0/3`) | actual (`3/3`) |
+| `E3-B` | `P-f8b95247` | Q3 | `1` (`3/3`) | no (`0/3`) | no (`0/3`) | no (`0/3`) | actual (`3/3`) |
 
 ### Paired deltas
 
 | Evaluator ID | Question | Base score | Treatment score | Paired delta | Regressed? |
 | --- | --- | --- | --- | --- | --- |
-| `<E1-E3>` | `<Q1-Q3>` | `<score>` | `<score>` | `<treatment minus base>` | `<yes or no>` |
+| E1 | Q1 | `0` | `2` | `+2` | no |
+| E1 | Q2 | `0` | `1` | `+1` | no |
+| E1 | Q3 | `0` | `1` | `+1` | no |
+| E2 | Q1 | `0` | `0` | `0` | no |
+| E2 | Q2 | `0` | `1` | `+1` | no |
+| E2 | Q3 | `0` | `1` | `+1` | no |
+| E3 | Q1 | `0` | `0` | `0` | no |
+| E3 | Q2 | `0` | `2` | `+2` | no |
+| E3 | Q3 | `0` | `1` | `+1` | no |
 
 ### Question medians and gates
 
 | Question | Base median | Treatment median | Median change | Any paired regression? | Treatment median is 2? |
 | --- | --- | --- | --- | --- | --- |
-| Q1 | `<median>` | `<median>` | `<change>` | `<yes or no>` | `<yes or no>` |
-| Q2 | `<median>` | `<median>` | `<change>` | `<yes or no>` | `<yes or no>` |
-| Q3 | `<median>` | `<median>` | `<change>` | `<yes or no>` | `<yes or no>` |
+| Q1 | `0` | `0` | `0` | no | no |
+| Q2 | `0` | `1` | `+1` | no | no |
+| Q3 | `0` | `1` | `+1` | no | no |
 
 | Main-pass gate | Result |
 | --- | --- |
-| Treatment median is 2 for Q1-Q3 | `<pass or fail>` |
-| No paired evaluator-question regression | `<pass or fail>` |
-| At least two evaluators improve on at least one question | `<pass or fail>` |
-| Overall | `<pass or fail>` |
+| Treatment median is 2 for Q1-Q3 | fail; medians are Q1 `0`, Q2 `1`, Q3 `1` |
+| No paired evaluator-question regression | pass |
+| At least two evaluators improve on at least one question | pass; all three improve |
+| Overall | **fail** |
 
-Do not fill any result, score, citation, timestamp, SHA, hash, or gate field until the run completes.
+The strict evaluation fails because treatment did not reach median `2` on all questions. This is a failure of the defined retrieval-and-citation gate, not evidence that the implementation or its documented facts are incorrect.
 
 ## Current conditional-workstream decision
 
