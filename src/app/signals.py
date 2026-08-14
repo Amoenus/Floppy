@@ -337,13 +337,14 @@ def _invalidate_history_for_media_change(
     if not normalized_day_keys:
         return
 
+    invalidate_kwargs = {"force": True} if force else {}
     history_cache.invalidate_history_days(
         user_id,
         day_keys=normalized_day_keys,
         logging_styles=logging_styles,
         reason=reason,
-        force=force,
         refresh_index=not prioritized,
+        **invalidate_kwargs,
     )
     if not prioritized:
         return
@@ -374,24 +375,7 @@ def _schedule_statistics_refresh_for_media_change(
     statistics_cache.schedule_all_ranges_refresh(user_id)
 
 
-def _handle_media_cache_change(
-    user_id: int | None,
-    changed_media_type: str,
-    *,
-    reason: str,
-    history_specs=None,
-    statistics_day_values=None,
-    schedule_statistics: bool = True,
-    force_history_days: bool = False,
-) -> None:
-    if not user_id:
-        return
-    if (
-        media_cache_change_signals_suppressed()
-        or media_change_side_effects_suppressed()
-    ):
-        return
-
+def _clear_media_runtime_caches(user_id: int, changed_media_type: str) -> None:
     from app.cache_utils import (
         clear_home_row_cache_for_user,
         clear_media_list_cache_for_user,
@@ -405,9 +389,30 @@ def _handle_media_cache_change(
         MediaTypes.SEASON.value,
         MediaTypes.TV.value,
     ):
-        # The time_left sort order depends on watched episodes; keep its
-        # cache in sync with TV-family changes made outside the save views.
         clear_time_left_cache_for_user(user_id)
+
+
+def _handle_media_cache_change(
+    user_id: int | None,
+    changed_media_type: str,
+    *,
+    reason: str,
+    history_specs=None,
+    statistics_day_values=None,
+    schedule_statistics: bool = True,
+    force_history_days: bool = False,
+    clear_runtime_caches: bool = True,
+) -> None:
+    if not user_id:
+        return
+    if (
+        media_cache_change_signals_suppressed()
+        or media_change_side_effects_suppressed()
+    ):
+        return
+
+    if clear_runtime_caches:
+        _clear_media_runtime_caches(user_id, changed_media_type)
 
     active_context = discover_tab_cache.get_active_context(user_id)
     targets = discover_tab_cache.invalidate_for_media_change(
@@ -661,6 +666,7 @@ def _invalidate_episode_history_changes(changes):
             history_specs=[(day_keys, ("sessions", "repeats"))],
             statistics_day_values=day_keys,
             force_history_days=True,
+            clear_runtime_caches=False,
         )
 
 
@@ -698,6 +704,8 @@ def refresh_history_cache_on_episode_save(sender, instance, **kwargs):
     if hasattr(instance, "_previous_history_identity"):
         delattr(instance, "_previous_history_identity")
     user_id = getattr(getattr(instance, "related_season", None), "user_id", None)
+    if user_id:
+        _clear_media_runtime_caches(user_id, MediaTypes.EPISODE.value)
     day_key = history_cache.history_day_key(getattr(instance, "end_date", None))
     changes = {}
     for changed_user_id, changed_day_key in (
@@ -727,6 +735,8 @@ def refresh_history_cache_on_episode_delete(sender, instance, **kwargs):
     ):
         return
     user_id = getattr(getattr(instance, "related_season", None), "user_id", None)
+    if user_id:
+        _clear_media_runtime_caches(user_id, MediaTypes.EPISODE.value)
     day_key = history_cache.history_day_key(getattr(instance, "end_date", None))
     changes = {user_id: [day_key]} if user_id and day_key else {}
     transaction.on_commit(

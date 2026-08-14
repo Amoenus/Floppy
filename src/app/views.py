@@ -741,11 +741,12 @@ def progress_edit(request, media_type, instance_id):
 
     if operation == "increase":
         try:
-            media.increase_progress(
-                watch_operation_id=request.POST.get("watch_operation_id")
-                if media_type in {MediaTypes.TV.value, MediaTypes.SEASON.value}
-                else None,
-            )
+            increase_kwargs = {}
+            if media_type in {MediaTypes.TV.value, MediaTypes.SEASON.value}:
+                increase_kwargs["watch_operation_id"] = request.POST.get(
+                    "watch_operation_id"
+                )
+            media.increase_progress(**increase_kwargs)
         except ValidationError:
             return HttpResponseBadRequest("Invalid watch operation")
         except fork_services_episode.EpisodeWatchConflictError as error:
