@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.test import TestCase, tag
 from django.urls import reverse
 from django.utils import timezone
@@ -1339,6 +1340,7 @@ class ConsumptionStatisticsTests(TestCase):
             status=Status.COMPLETED.value,
             end_date=now - datetime.timedelta(hours=6),
         )
+        cache.clear()
 
     @tag("network")
     def test_consumption_stats_aggregation(self):

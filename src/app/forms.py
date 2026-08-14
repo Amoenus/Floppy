@@ -3,6 +3,7 @@ import re
 from datetime import datetime, timedelta
 from datetime import time as datetime_time
 from decimal import Decimal, InvalidOperation
+from uuid import uuid4
 
 from django import forms
 from django.conf import settings
@@ -608,6 +609,7 @@ class EpisodeForm(RatingScaleFormMixin, forms.ModelForm):
     media_id = forms.CharField(widget=forms.HiddenInput(), required=False)
     season_number = forms.IntegerField(widget=forms.HiddenInput(), required=False)
     episode_number = forms.IntegerField(widget=forms.HiddenInput(), required=False)
+    watch_operation_id = forms.UUIDField(widget=forms.HiddenInput(), required=False)
 
     class Meta:
         """Bind form to model."""
@@ -630,6 +632,9 @@ class EpisodeForm(RatingScaleFormMixin, forms.ModelForm):
     def __init__(self, *args, **kwargs):
         """Initialize the form."""
         super().__init__(*args, **kwargs)
+
+        if not self.is_bound and self.instance.pk is None:
+            self.initial["watch_operation_id"] = uuid4()
 
         if settings.TRACK_TIME:
             self.fields["start_date"].widget = forms.DateTimeInput(

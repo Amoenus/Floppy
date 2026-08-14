@@ -1,5 +1,6 @@
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
+from uuid import uuid4
 
 from django import template
 from django.conf import settings
@@ -17,6 +18,12 @@ from users.models import TimeFormatChoices
 from users.templatetags.user_tags import user_date_format, user_time_format
 
 register = template.Library()
+
+
+@register.simple_tag
+def watch_operation_id():
+    """Return private replay identity for one rendered first-party watch action."""
+    return str(uuid4())
 
 
 @register.simple_tag(takes_context=True)

@@ -940,11 +940,12 @@ class HomeRowCacheTests(TestCase):
                 "image": "http://example.com/image.jpg",
             },
         )
-        Episode.objects.create(
-            item=episode_item,
-            related_season=season,
-            end_date=timezone.now(),
-        )
+        with self.captureOnCommitCallbacks(execute=True):
+            Episode.objects.create(
+                item=episode_item,
+                related_season=season,
+                end_date=timezone.now(),
+            )
 
         with patch(
             "users.home_screen._library_query_entries",
