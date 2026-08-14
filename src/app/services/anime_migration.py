@@ -7,7 +7,7 @@ from enum import StrEnum
 from types import MappingProxyType
 from typing import Any
 
-from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.utils import timezone
 from simple_history.utils import bulk_create_with_history, bulk_update_with_history
@@ -28,6 +28,7 @@ from app.models import (
 )
 from app.providers import services
 from app.services.bulk_episode_tracking import distribute_timestamps
+from app.services.tracking_hydration import ensure_item_metadata
 from app.signals import suppress_media_change_side_effects
 from integrations import anime_mapping
 
@@ -209,8 +210,6 @@ def _mapped_entries(anime_entries: list[Anime], provider: str, series_id: str):
 def _completed_target(
     user_id: int,
     mapped_entries: list[tuple[Anime, dict]],
-    provider: str,
-    series_id: str,
 ) -> Item | None:
     marked = [
         anime
@@ -235,15 +234,13 @@ def _completed_target(
     target_ids = {anime.migrated_to_item_id for anime in marked}
     if len(target_ids) != 1:
         raise _migration_error(
-            AnimeMigrationState.PROVABLY_PARTIAL,
-            PARTIAL_CODE,
-            "Migration markers reference conflicting grouped targets.",
+            AnimeMigrationState.AMBIGUOUS,
+            AMBIGUOUS_CODE,
+            "Migrated source rows reference different grouped targets.",
         )
     target = Item.objects.filter(pk=target_ids.pop()).first()
     target_is_valid = target is not None and (
-        target.media_id == series_id
-        and target.source == provider
-        and target.media_type == MediaTypes.TV.value
+        target.media_type == MediaTypes.TV.value
         and target.library_media_type == MediaTypes.ANIME.value
     )
     if not target_is_valid or not TV.objects.filter(
@@ -333,8 +330,6 @@ def preflight_flat_anime_to_grouped(
     completed_target = _completed_target(
         user.id,
         mapped_entries,
-        provider,
-        provider_series_id,
     )
     if completed_target is not None:
         entries = tuple(
@@ -465,9 +460,9 @@ def _completed_result(
     target_ids = {anime.migrated_to_item_id for anime in anime_rows}
     if len(target_ids) != 1:
         raise _migration_error(
-            AnimeMigrationState.PROVABLY_PARTIAL,
-            PARTIAL_CODE,
-            "Migration markers reference conflicting grouped targets.",
+            AnimeMigrationState.AMBIGUOUS,
+            AMBIGUOUS_CODE,
+            "Migrated source rows reference different grouped targets.",
         )
     grouped_tv = (
         TV.objects.select_related("item")
@@ -475,9 +470,7 @@ def _completed_result(
         .first()
     )
     if grouped_tv is None or not (
-        grouped_tv.item.media_id == preflight.provider_series_id
-        and grouped_tv.item.source == preflight.provider
-        and grouped_tv.item.media_type == MediaTypes.TV.value
+        grouped_tv.item.media_type == MediaTypes.TV.value
         and grouped_tv.item.library_media_type == MediaTypes.ANIME.value
     ):
         raise _migration_error(
@@ -520,38 +513,30 @@ def _upsert_provider_link(
 
 def _grouped_item(preflight: AnimeMigrationPreflight) -> Item:
     metadata = _thaw(preflight.series_metadata)
-    title_fields = Item.title_fields_from_metadata(
-        metadata,
-        fallback_title=preflight.entries[0].item_title,
-    )
-    item, created = Item.objects.get_or_create(
-        media_id=preflight.provider_series_id,
-        source=preflight.provider,
-        media_type=MediaTypes.TV.value,
+    return ensure_item_metadata(
+        get_user_model().objects.get(pk=preflight.user_id),
+        MediaTypes.ANIME.value,
+        preflight.provider_series_id,
+        preflight.provider,
+        identity_media_type=MediaTypes.TV.value,
         library_media_type=MediaTypes.ANIME.value,
-        defaults={
-            **title_fields,
-            "image": metadata.get("image") or settings.IMG_NONE,
-            "metadata_fetched_at": timezone.now(),
-        },
-    )
-    if not created:
-        update_fields = []
-        for field_name, value in title_fields.items():
-            if value and getattr(item, field_name) != value:
-                setattr(item, field_name, value)
-                update_fields.append(field_name)
-        if item.image == settings.IMG_NONE and metadata.get("image"):
-            item.image = metadata["image"]
-            update_fields.append("image")
-        if update_fields:
-            item.save(update_fields=update_fields)
-    _upsert_provider_link(
-        item,
-        provider=preflight.provider,
-        series_id=preflight.provider_series_id,
-    )
-    return item
+        fallback_title=preflight.entries[0].item_title,
+        prefetched_metadata=metadata,
+        provider_link_retry_max_retries=0,
+    ).item
+
+
+def _reconcile_committed_migration(
+    user_id: int,
+    item_ids: tuple[int, ...],
+    history_days: tuple[str, ...],
+) -> None:
+    """Run skipped cache and smart-list effects once after commit."""
+    signals._clear_media_runtime_caches(user_id, MediaTypes.EPISODE.value)
+    signals._invalidate_episode_history_changes({user_id: list(history_days)})
+    owner = get_user_model().objects.filter(pk=user_id).first()
+    items = list(Item.objects.filter(pk__in=item_ids).order_by("id"))
+    signals._sync_owner_smart_lists_for_items(owner, items)
 
 
 def _season_tracker(
@@ -709,6 +694,7 @@ def _persist_preflight_once(
         latest_notes_entry = None
         created_seasons: dict[int, Season] = {}
         history_days = set()
+        smart_list_item_ids = {grouped_item.id, *(anime.item_id for anime in locked_rows)}
         for entry in preflight.entries:
             source_item = by_id[entry.anime_id].item
             _upsert_provider_link(
@@ -726,6 +712,7 @@ def _persist_preflight_once(
             if season is None:
                 season = _season_tracker(preflight, grouped_tv, entry)
                 created_seasons[entry.season_number] = season
+                smart_list_item_ids.add(season.item_id)
             created_episodes = _create_migration_episodes(season, entry)
             history_days.update(
                 day_key
@@ -807,11 +794,14 @@ def _persist_preflight_once(
             item=grouped_item,
             defaults={"provider": preflight.provider},
         )
-        committed_changes = {preflight.user_id: sorted(history_days)}
+        committed_item_ids = tuple(sorted(smart_list_item_ids))
+        committed_history_days = tuple(sorted(history_days))
         transaction.on_commit(
-            lambda changes=committed_changes: signals._invalidate_episode_history_changes(
-                changes
-            )
+            lambda: _reconcile_committed_migration(
+                preflight.user_id,
+                committed_item_ids,
+                committed_history_days,
+            ),
         )
         return AnimeMigrationResult(
             grouped_tv=grouped_tv,

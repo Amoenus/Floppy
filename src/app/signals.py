@@ -656,8 +656,11 @@ def refresh_discover_cache_on_item_person_credit_change(sender, instance, **kwar
         discover_tab_cache.invalidate_for_media_change(user_id, media_type)
 
 
-def _invalidate_episode_history_changes(changes):
-    """Invalidate committed Episode activity days grouped by owner."""
+def _invalidate_episode_history_changes(changes, runtime_user_ids=()):
+    """Invalidate committed Episode history and runtime caches by owner."""
+    for user_id in runtime_user_ids:
+        _clear_media_runtime_caches(user_id, MediaTypes.EPISODE.value)
+
     for user_id, day_keys in changes.items():
         _handle_media_cache_change(
             user_id,
@@ -704,8 +707,6 @@ def refresh_history_cache_on_episode_save(sender, instance, **kwargs):
     if hasattr(instance, "_previous_history_identity"):
         delattr(instance, "_previous_history_identity")
     user_id = getattr(getattr(instance, "related_season", None), "user_id", None)
-    if user_id:
-        _clear_media_runtime_caches(user_id, MediaTypes.EPISODE.value)
     day_key = history_cache.history_day_key(getattr(instance, "end_date", None))
     changes = {}
     for changed_user_id, changed_day_key in (
@@ -718,8 +719,18 @@ def refresh_history_cache_on_episode_save(sender, instance, **kwargs):
         if changed_user_id and changed_day_key:
             changes.setdefault(changed_user_id, set()).add(changed_day_key)
     committed_changes = {user: sorted(days) for user, days in changes.items()}
+    runtime_user_ids = sorted(
+        {
+            changed_user_id
+            for changed_user_id in (previous[0] if previous else None, user_id)
+            if changed_user_id
+        },
+    )
     transaction.on_commit(
-        lambda: _invalidate_episode_history_changes(committed_changes),
+        lambda: _invalidate_episode_history_changes(
+            committed_changes,
+            runtime_user_ids,
+        ),
         using=kwargs.get("using"),
     )
 
@@ -735,12 +746,14 @@ def refresh_history_cache_on_episode_delete(sender, instance, **kwargs):
     ):
         return
     user_id = getattr(getattr(instance, "related_season", None), "user_id", None)
-    if user_id:
-        _clear_media_runtime_caches(user_id, MediaTypes.EPISODE.value)
     day_key = history_cache.history_day_key(getattr(instance, "end_date", None))
     changes = {user_id: [day_key]} if user_id and day_key else {}
+    runtime_user_ids = [user_id] if user_id else []
     transaction.on_commit(
-        lambda changes=changes: _invalidate_episode_history_changes(changes),
+        lambda changes=changes: _invalidate_episode_history_changes(
+            changes,
+            runtime_user_ids,
+        ),
         using=kwargs.get("using"),
     )
 
@@ -1140,7 +1153,7 @@ def schedule_runtime_backfill_on_item_save(
 
     Also invalidates time_left cache when episode runtime changes.
     """
-    if kwargs.get("raw"):
+    if kwargs.get("raw") or media_change_side_effects_suppressed():
         return
 
     # Check if runtime_minutes was actually updated (not just saving the same value)

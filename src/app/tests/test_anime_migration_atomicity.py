@@ -4,17 +4,21 @@ from unittest import skipUnless
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.db import close_old_connections, connection
 from django.db.utils import OperationalError
-from django.test import TransactionTestCase
+from django.test import TransactionTestCase, override_settings
 from django.utils import timezone
 
+from app import cache_utils
 from app.models import (
     TV,
     Anime,
     Episode,
     Item,
+    ItemPersonCredit,
     ItemProviderLink,
+    ItemStudioCredit,
     MediaTypes,
     MetadataProviderPreference,
     Season,
@@ -22,12 +26,15 @@ from app.models import (
     Status,
 )
 from app.services import anime_migration
+from lists.models import CustomList
 
 
 class AnimeMigrationAtomicityTests(TransactionTestCase):
     reset_sequences = True
 
     def setUp(self):
+        cache.clear()
+        self.addCleanup(cache.clear)
         self.user = get_user_model().objects.create_user(username="atomic-migrate")
         self.flat_item = Item.objects.create(
             media_id="52991",
@@ -77,6 +84,19 @@ class AnimeMigrationAtomicityTests(TransactionTestCase):
         for provider_patch in self.provider_patches:
             provider_patch.start()
             self.addCleanup(provider_patch.stop)
+        for task_patch in (
+            patch(
+                "app.signals.discover_tab_cache.schedule_tab_refresh",
+                return_value=True,
+            ),
+            patch(
+                "app.history_cache_lifecycle.schedule_history_refresh",
+                return_value=True,
+            ),
+            patch("app.signals.statistics_cache.schedule_all_ranges_refresh"),
+        ):
+            task_patch.start()
+            self.addCleanup(task_patch.stop)
 
     def _metadata(self, media_type, *_args, **_kwargs):
         episodes = [
@@ -178,6 +198,118 @@ class AnimeMigrationAtomicityTests(TransactionTestCase):
         invalidate.assert_called_once()
         self.assertEqual(set(invalidate.call_args.args[0]), {self.user.id})
 
+    @override_settings(TESTING=False)
+    def test_item_backfills_are_not_enqueued_inside_transaction(self):
+        self.grouped_item.delete()
+        preflight = self._preflight()
+
+        with (
+            patch("app.tasks.enqueue_runtime_backfill_items") as runtime_backfill,
+            patch("app.tasks.enqueue_episode_runtime_backfill") as episode_backfill,
+            patch("app.tasks.enqueue_genre_backfill_items") as genre_backfill,
+            patch("app.tasks.enqueue_credits_backfill_items") as credits_backfill,
+        ):
+            anime_migration.persist_flat_anime_migration(preflight)
+
+        runtime_backfill.assert_not_called()
+        episode_backfill.assert_not_called()
+        genre_backfill.assert_not_called()
+        credits_backfill.assert_not_called()
+
+    def test_absent_target_preserves_metadata_external_ids_and_credits(self):
+        self.grouped_item.delete()
+        mapping = {
+            **self.mapping,
+            "tmdb_show_id": "209867",
+            "tmdb_season": 1,
+            "tmdb_epoffset": 0,
+        }
+        rich_metadata = {
+            "title": "Frieren: Beyond Journey's End",
+            "image": "https://example.com/grouped.jpg",
+            "genres": ["Animation", "Drama"],
+            "details": {
+                "runtime": "24 min",
+                "country": "JP",
+                "languages": ["ja"],
+                "studios": ["Madhouse"],
+            },
+            "provider_external_ids": {
+                "tmdb_id": "209867",
+                "tvdb_id": "9350138",
+            },
+            "cast": [
+                {
+                    "id": "1",
+                    "name": "Voice Actor",
+                    "character": "Frieren",
+                }
+            ],
+            "crew": [],
+            "studios_full": [{"id": "2", "name": "Madhouse"}],
+        }
+
+        def metadata(media_type, *_args, **_kwargs):
+            if media_type == MediaTypes.ANIME.value:
+                return rich_metadata
+            return self._metadata(media_type)
+
+        with (
+            patch(
+                "app.services.anime_migration.anime_mapping.resolve_provider_series_id",
+                return_value="209867",
+            ),
+            patch(
+                "app.services.anime_migration.anime_mapping.find_entries_for_mal_id",
+                return_value=[mapping],
+            ),
+            patch(
+                "app.services.anime_migration.services.get_media_metadata",
+                side_effect=metadata,
+            ),
+            patch(
+                "app.services.anime_migration.providers.tmdb.get_tvdb_episode_image_map",
+                return_value={},
+            ),
+        ):
+            preflight = anime_migration.preflight_flat_anime_to_grouped(
+                self.user,
+                self.flat_item,
+                Sources.TMDB.value,
+            )
+
+        with (
+            patch(
+                "app.services.anime_migration.services.get_media_metadata",
+                side_effect=AssertionError("provider call inside persistence"),
+            ),
+            patch(
+                "app.services.anime_migration.providers.tmdb.get_tvdb_episode_image_map",
+                side_effect=AssertionError("provider call inside persistence"),
+            ),
+        ):
+            result = anime_migration.persist_flat_anime_migration(preflight)
+
+        grouped_item = result.grouped_tv.item
+        self.assertEqual(grouped_item.runtime_minutes, 24)
+        self.assertEqual(grouped_item.genres, ["Animation", "Drama"])
+        self.assertEqual(grouped_item.country, "JP")
+        self.assertEqual(grouped_item.languages, ["ja"])
+        self.assertEqual(grouped_item.studios, ["Madhouse"])
+        self.assertEqual(
+            grouped_item.provider_external_ids,
+            {"tmdb_id": "209867", "tvdb_id": "9350138"},
+        )
+        self.assertTrue(
+            ItemProviderLink.objects.filter(
+                item=grouped_item,
+                provider=Sources.TVDB.value,
+                provider_media_id="9350138",
+            ).exists()
+        )
+        self.assertEqual(ItemPersonCredit.objects.filter(item=grouped_item).count(), 1)
+        self.assertEqual(ItemStudioCredit.objects.filter(item=grouped_item).count(), 1)
+
     def test_late_failure_rolls_back_every_migration_write(self):
         preflight = self._preflight()
         before = self._table_snapshot()
@@ -188,11 +320,16 @@ class AnimeMigrationAtomicityTests(TransactionTestCase):
                 "update_or_create",
                 side_effect=RuntimeError("late failure"),
             ),
+            patch.object(
+                anime_migration,
+                "_reconcile_committed_migration",
+            ) as reconcile,
             self.assertRaisesRegex(RuntimeError, "late failure"),
         ):
             anime_migration.persist_flat_anime_migration(preflight)
 
         self.assertEqual(self._table_snapshot(), before)
+        reconcile.assert_not_called()
 
     def test_retry_after_lock_uses_fresh_transaction(self):
         preflight = self._preflight()
@@ -243,6 +380,88 @@ class AnimeMigrationAtomicityTests(TransactionTestCase):
             ).state,
             anime_migration.AnimeMigrationState.COMPLETE,
         )
+
+    def test_cross_provider_retry_returns_existing_completed_target(self):
+        mapping = {
+            **self.mapping,
+            "tmdb_show_id": "209867",
+            "tmdb_season": 1,
+            "tmdb_epoffset": 0,
+        }
+
+        def resolve(_mal_id, provider):
+            return "9350138" if provider == Sources.TVDB.value else "209867"
+
+        with (
+            patch(
+                "app.services.anime_migration.anime_mapping.resolve_provider_series_id",
+                side_effect=resolve,
+            ),
+            patch(
+                "app.services.anime_migration.anime_mapping.find_entries_for_mal_id",
+                return_value=[mapping],
+            ),
+            patch(
+                "app.services.anime_migration.providers.tmdb.get_tvdb_episode_image_map",
+                return_value={},
+            ),
+        ):
+            tvdb_preflight = anime_migration.preflight_flat_anime_to_grouped(
+                self.user,
+                self.flat_item,
+                Sources.TVDB.value,
+            )
+            tmdb_preflight = anime_migration.preflight_flat_anime_to_grouped(
+                self.user,
+                self.flat_item,
+                Sources.TMDB.value,
+            )
+            tvdb_result = anime_migration.persist_flat_anime_migration(
+                tvdb_preflight
+            )
+            tmdb_result = anime_migration.persist_flat_anime_migration(
+                tmdb_preflight
+            )
+            completed = anime_migration.preflight_flat_anime_to_grouped(
+                self.user,
+                self.flat_item,
+                Sources.TMDB.value,
+            )
+
+        self.assertEqual(tmdb_result.grouped_tv.id, tvdb_result.grouped_tv.id)
+        self.assertEqual(completed.state, anime_migration.AnimeMigrationState.COMPLETE)
+        self.assertEqual(completed.completed_target_item_id, self.grouped_item.id)
+        self.assertEqual(TV.objects.count(), 1)
+        self.assertEqual(Episode.objects.count(), 2)
+
+    def test_commit_reconciles_warm_caches_and_smart_lists_once(self):
+        warm_keys = {
+            "media": "anime-migration-media-cache",
+            "home": "anime-migration-home-cache",
+            "time": "anime-migration-time-cache",
+        }
+        for key in warm_keys.values():
+            cache.set(key, {"stale": True})
+        cache_utils.register_media_list_cache_key(self.user.id, warm_keys["media"])
+        cache_utils.register_home_row_cache_key(self.user.id, warm_keys["home"])
+        cache_utils.register_time_left_cache_key(self.user.id, warm_keys["time"])
+        smart_list = CustomList.objects.create(
+            owner=self.user,
+            name="All tracked media",
+            is_smart=True,
+        )
+
+        with patch.object(
+            anime_migration,
+            "_reconcile_committed_migration",
+            wraps=anime_migration._reconcile_committed_migration,
+        ) as reconcile:
+            result = anime_migration.persist_flat_anime_migration(self._preflight())
+
+        reconcile.assert_called_once()
+        for key in warm_keys.values():
+            self.assertIsNone(cache.get(key))
+        self.assertTrue(smart_list.items.filter(pk=result.grouped_tv.item_id).exists())
 
     def test_stale_preflight_aborts_without_mutation(self):
         preflight = self._preflight()
