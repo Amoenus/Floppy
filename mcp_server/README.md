@@ -60,8 +60,12 @@ renamed it.)
 
 Stdio transport (for Claude Code / Claude Desktop):
 
+Set both variables before starting the server. `FLOPPY_URL` is the instance
+origin (or base prefix), not an `/api/v1` URL.
+
 ```bash
 FLOPPY_URL=https://floppy.example.com \
+FLOPPY_TOKEN='replace-with-your-api-token' \
 uv run --no-sync python -m floppy_mcp.server
 ```
 
