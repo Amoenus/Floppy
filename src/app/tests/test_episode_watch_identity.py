@@ -14,6 +14,7 @@ from api.serializers import EpisodeSerializer
 from app import fork_services_episode
 from app.models import TV, Episode, Item, MediaTypes, Season, Sources, Status
 from app.signals import suppress_media_change_side_effects
+from integrations.exports import get_track_fields
 
 
 def _episode_metadata(media_type, *_args, **_kwargs):
@@ -191,6 +192,7 @@ class EpisodeWatchIdentityTests(TestCase):
             "watch_operation_id",
             EpisodeSerializer(result.episode).data,
         )
+        self.assertNotIn("watch_operation_id", get_track_fields())
 
 
 class EpisodeWatchIdentityConcurrencyTests(TransactionTestCase):
