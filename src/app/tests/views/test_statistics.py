@@ -2914,6 +2914,7 @@ class StatisticsViewTests(TestCase):
             base_time=base_time,
         )
 
+        cache.clear()
         statistics_cache.invalidate_statistics_cache(self.user.id)
         response = self.client.get(
             reverse("statistics_talent_fragment") + "?start-date=all&end-date=all"

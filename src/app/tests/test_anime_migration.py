@@ -22,7 +22,6 @@ from app.models import (
     Status,
 )
 from app.services import anime_migration
-from app.services.tracking_hydration import HydratedItemResult
 
 
 class AnimeMigrationTests(TestCase):
@@ -71,10 +70,8 @@ class AnimeMigrationTests(TestCase):
     @patch("app.services.anime_migration.anime_mapping.find_entries_for_mal_id")
     @patch("app.services.anime_migration.anime_mapping.resolve_provider_series_id")
     @patch("app.services.anime_migration.services.get_media_metadata")
-    @patch("app.services.anime_migration.ensure_item_metadata")
     def test_migrate_flat_anime_to_grouped_series(
         self,
-        mock_ensure_item_metadata,
         mock_get_media_metadata,
         mock_resolve_provider_series_id,
         mock_find_entries_for_mal_id,
@@ -89,20 +86,6 @@ class AnimeMigrationTests(TestCase):
                 "tvdb_epoffset": 0,
             },
         ]
-        mock_ensure_item_metadata.return_value = HydratedItemResult(
-            item=self.grouped_item,
-            metadata={
-                "media_id": "9350138",
-                "source": Sources.TVDB.value,
-                "media_type": MediaTypes.ANIME.value,
-                "identity_media_type": MediaTypes.TV.value,
-                "library_media_type": MediaTypes.ANIME.value,
-                "title": "Frieren: Beyond Journey's End",
-                "image": "https://example.com/grouped.jpg",
-                "related": {"seasons": [{"season_number": 1}]},
-            },
-            created=False,
-        )
         mock_get_media_metadata.return_value = {
             "related": {"seasons": [{"season_number": 1}]},
             "season/1": {
@@ -175,10 +158,8 @@ class AnimeMigrationTests(TestCase):
     @patch("app.services.anime_migration.anime_mapping.find_entries_for_mal_id")
     @patch("app.services.anime_migration.anime_mapping.resolve_provider_series_id")
     @patch("app.services.anime_migration.services.get_media_metadata")
-    @patch("app.services.anime_migration.ensure_item_metadata")
     def test_grouped_anime_progress_appears_in_warm_history_immediately(
         self,
-        mock_ensure_item_metadata,
         mock_get_media_metadata,
         mock_resolve_provider_series_id,
         mock_find_entries_for_mal_id,
@@ -229,21 +210,6 @@ class AnimeMigrationTests(TestCase):
                 "tvdb_epoffset": 0,
             },
         ]
-        mock_ensure_item_metadata.return_value = HydratedItemResult(
-            item=self.grouped_item,
-            metadata={
-                "media_id": "9350138",
-                "source": Sources.TVDB.value,
-                "media_type": MediaTypes.ANIME.value,
-                "identity_media_type": MediaTypes.TV.value,
-                "library_media_type": MediaTypes.ANIME.value,
-                "title": "Frieren: Beyond Journey's End",
-                "image": "https://example.com/grouped.jpg",
-                "related": {"seasons": [{"season_number": 1}]},
-            },
-            created=False,
-        )
-
         def media_metadata(media_type, *_args, **_kwargs):
             if media_type == MediaTypes.SEASON.value:
                 return {
@@ -251,7 +217,7 @@ class AnimeMigrationTests(TestCase):
                     "episodes": episodes,
                     "max_progress": 3,
                 }
-            if media_type == MediaTypes.TV.value:
+            if media_type in {MediaTypes.ANIME.value, MediaTypes.TV.value}:
                 return {
                     "max_progress": 3,
                     "related": {"seasons": [{"season_number": 1}]},
@@ -414,10 +380,8 @@ class AnimeMigrationTests(TestCase):
     @patch("app.services.anime_migration.anime_mapping.find_entries_for_mal_id")
     @patch("app.services.anime_migration.anime_mapping.resolve_provider_series_id")
     @patch("app.services.anime_migration.services.get_media_metadata")
-    @patch("app.services.anime_migration.ensure_item_metadata")
     def test_migration_blocks_when_progress_exceeds_mapped_season(
         self,
-        mock_ensure_item_metadata,
         mock_get_media_metadata,
         mock_resolve_provider_series_id,
         mock_find_entries_for_mal_id,
@@ -434,20 +398,6 @@ class AnimeMigrationTests(TestCase):
                 "tvdb_epoffset": 0,
             },
         ]
-        mock_ensure_item_metadata.return_value = HydratedItemResult(
-            item=self.grouped_item,
-            metadata={
-                "media_id": "9350138",
-                "source": Sources.TVDB.value,
-                "media_type": MediaTypes.ANIME.value,
-                "identity_media_type": MediaTypes.TV.value,
-                "library_media_type": MediaTypes.ANIME.value,
-                "title": "Frieren: Beyond Journey's End",
-                "image": "https://example.com/grouped.jpg",
-                "related": {"seasons": [{"season_number": 1}]},
-            },
-            created=False,
-        )
         mock_get_media_metadata.return_value = {
             "related": {"seasons": [{"season_number": 1}]},
             "season/1": {

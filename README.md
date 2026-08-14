@@ -587,6 +587,19 @@ If the log says that the database is busy, another process still holds a
 write lock. Stop that process, then restart Floppy. Do not delete the database
 or its lock files to resolve this conflict.
 
+### Grouped anime migration diagnostics
+
+Grouped anime conversion validates provider data before it writes and commits
+the grouped show, seasons, episode history, provider links, preference, and old
+MAL-row markers together. A retry after a successful conversion is a no-op.
+
+If Floppy reports `ANIME-MIGRATION-STALE-001`, reload the page and try again so
+it can validate the current source row. For `ANIME-MIGRATION-PARTIAL-001` or
+`ANIME-MIGRATION-AMBIGUOUS-001`, leave the existing rows unchanged, back up the
+database, and include the code when asking for support. Floppy deliberately
+does not guess whether coexisting episode rows are migration residue or a
+legitimate rewatch.
+
 ### Trakt private profile import (OAuth)
 
 If you import from a private Trakt profile, configure OAuth first:

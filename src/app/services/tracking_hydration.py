@@ -273,16 +273,26 @@ def ensure_item_metadata(
     fallback_image: str | None = None,
     fallback_release_date: str | None = None,
     edition_id: str | None = None,
+    prefetched_metadata: dict | None = None,
+    provider_link_retry_max_retries: int | None = None,
 ) -> HydratedItemResult:
-    """Get or create an Item with the same metadata quality used for tracked saves."""
+    """Get or create an Item with the same metadata quality used for tracked saves.
+
+    ``prefetched_metadata`` lets validate-first flows persist an already fetched
+    provider response without making network calls inside their transaction.
+    """
     season_numbers = [season_number]
-    metadata = services.get_media_metadata(
-        media_type,
-        media_id,
-        source,
-        season_numbers,
-        episode_number,
-        edition_id=edition_id,
+    metadata = (
+        services.get_media_metadata(
+            media_type,
+            media_id,
+            source,
+            season_numbers,
+            episode_number,
+            edition_id=edition_id,
+        )
+        if prefetched_metadata is None
+        else dict(prefetched_metadata)
     )
     podcast_show = None
     if media_type == MediaTypes.PODCAST.value and source in {
@@ -497,6 +507,7 @@ def ensure_item_metadata(
         provider=source,
         provider_media_type=tracking_media_type,
         season_number=season_number,
+        retry_max_retries=provider_link_retry_max_retries,
     )
 
     if source == Sources.TMDB.value and tracking_media_type in (

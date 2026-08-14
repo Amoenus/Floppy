@@ -2,6 +2,7 @@ import datetime
 import json
 from types import SimpleNamespace
 from unittest.mock import patch
+from uuid import UUID, uuid4
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
@@ -693,6 +694,7 @@ class CreateMedia(TestCase):
         )
         self.assertEqual(create_response.status_code, 302)
 
+        watch_operation_id = uuid4()
         response = self.client.post(
             f"{reverse('episode_save')}?next=/details/tmdb/tv/1668/friends/season/1",
             {
@@ -701,6 +703,7 @@ class CreateMedia(TestCase):
                 "episode_number": 1,
                 "source": Sources.TMDB.value,
                 "end_date": "2023-06-02",
+                "watch_operation_id": watch_operation_id,
             },
             HTTP_HX_REQUEST="true",
         )
@@ -713,7 +716,9 @@ class CreateMedia(TestCase):
         self.assertContains(response, "season-progress-mobile-", html=False)
         self.assertContains(response, "season-progress-desktop-", html=False)
         trigger = json.loads(response["HX-Trigger"])
-        self.assertEqual(trigger["closeModal"], {})
+        returned_token = trigger["closeModal"]["watchOperationId"]
+        self.assertEqual(str(UUID(returned_token)), returned_token)
+        self.assertNotEqual(returned_token, str(watch_operation_id))
         self.assertEqual(trigger["showToast"]["type"], "success")
         self.assertIn("Added watch", trigger["showToast"]["message"])
         self.assertEqual(
@@ -1555,6 +1560,7 @@ class DeleteMedia(TestCase):
                 related_season=self.season,
                 end_date=datetime.datetime(2023, 6, 1, 0, 0, tzinfo=datetime.UTC),
             )
+        cache.clear()
 
     def test_delete_tv(self):
         """Test the deletion of a tv through views."""
