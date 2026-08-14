@@ -405,6 +405,7 @@ class HistoryMonthViewTests(TestCase):
             related_season=season,
             end_date=now,
         )
+        cache.clear()
 
     def test_default_month_view_does_not_bootstrap_cache_status_poll(self):
         response = self.client.get(reverse("history"))

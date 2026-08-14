@@ -99,7 +99,6 @@ class AnimeCompletionAutoMigrateTests(TestCase):
         # Drive the real migration (only the provider/network calls are stubbed)
         # to prove completion produces actual Episode watch records.
         from app.models import Episode
-        from app.services.tracking_hydration import HydratedItemResult
 
         anime = self._make()
 
@@ -107,6 +106,7 @@ class AnimeCompletionAutoMigrateTests(TestCase):
             media_id="275798",
             source=Sources.TVDB.value,
             media_type=MediaTypes.TV.value,
+            library_media_type=MediaTypes.ANIME.value,
             title="Fate/Zero",
         )
         season_meta = {
@@ -154,18 +154,6 @@ class AnimeCompletionAutoMigrateTests(TestCase):
                     ],
                 ),
             )
-            stack.enter_context(
-                patch(
-                    "app.services.anime_migration.ensure_item_metadata",
-                    return_value=HydratedItemResult(
-                        item=tv_item, metadata={"title": "Fate/Zero"}, created=False
-                    ),
-                ),
-            )
-            stack.enter_context(
-                patch("app.services.anime_migration.upsert_provider_links"),
-            )
-
             anime.status = Status.COMPLETED.value
             anime.save()
 

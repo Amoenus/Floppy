@@ -301,6 +301,14 @@ window.showTrackToast = function showTrackToast(detail) {
 };
 
 function trackModalHandleClose(event) {
+  const requestElement = event.detail?.elt;
+  const operationField = requestElement?.querySelector?.(
+    '[name="watch_operation_id"]',
+  );
+  if (operationField && event.detail?.watchOperationId) {
+    operationField.value = event.detail.watchOperationId;
+  }
+
   const formId = event.detail?.formId;
   if (formId) {
     const form = document.getElementById(formId);

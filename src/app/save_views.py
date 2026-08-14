@@ -639,9 +639,12 @@ def episode_save(request):
             episode_number=episode_number,
             next_path=next_path,
         )
+        next_watch_operation_id = str(uuid4())
         response["HX-Trigger"] = json.dumps(
             {
-                "closeModal": {},
+                "closeModal": {
+                    "watchOperationId": next_watch_operation_id,
+                },
                 "showToast": {
                     "message": (
                         f"Updated episode {episode_number}."

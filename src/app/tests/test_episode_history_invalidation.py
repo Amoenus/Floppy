@@ -7,7 +7,7 @@ from django.db import transaction
 from django.test import TransactionTestCase
 from django.utils import timezone
 
-from app import history_cache, signals
+from app import cache_utils, history_cache, signals
 from app.models import TV, Episode, Item, MediaTypes, Season, Sources, Status
 
 
@@ -91,6 +91,29 @@ class EpisodeHistoryInvalidationTests(TransactionTestCase):
         cache.clear()
         self.logging_style = "repeats"
 
+    def _warm_runtime_caches(self, user, payload=None):
+        payload = payload or {"owner": user.id}
+        keys = {
+            "media": f"episode-runtime-media-{user.id}",
+            "home": f"episode-runtime-home-{user.id}",
+            "time": f"episode-runtime-time-{user.id}",
+        }
+        for key in keys.values():
+            cache.set(key, payload)
+        cache_utils.register_media_list_cache_key(user.id, keys["media"])
+        cache_utils.register_home_row_cache_key(user.id, keys["home"])
+        cache_utils.register_time_left_cache_key(user.id, keys["time"])
+        return keys, payload
+
+    def _assert_runtime_cache_values(self, keys, expected):
+        for key in keys.values():
+            self.assertEqual(cache.get(key), expected)
+
+    def _assert_runtime_caches_cleared(self, *key_groups):
+        for keys in key_groups:
+            for key in keys.values():
+                self.assertIsNone(cache.get(key))
+
     def _warm_old_and_new_days(self):
         history_cache.refresh_history_cache(
             self.user.id,
@@ -163,6 +186,54 @@ class EpisodeHistoryInvalidationTests(TransactionTestCase):
         self.assertIsNone(cache.get(old_key))
         self.assertIsNone(cache.get(new_key))
         self._assert_current_history()
+
+    def test_moving_episode_clears_runtime_caches_for_old_and_new_owners(self):
+        other_user = get_user_model().objects.create_user(username="history-move-to")
+        current_season = self.episode.related_season
+        other_tv = TV.objects.create(
+            item=current_season.related_tv.item,
+            user=other_user,
+            status=Status.IN_PROGRESS.value,
+        )
+        other_season = Season.objects.create(
+            item=current_season.item,
+            user=other_user,
+            related_tv=other_tv,
+            status=Status.IN_PROGRESS.value,
+        )
+        old_owner_keys, _payload = self._warm_runtime_caches(self.user)
+        new_owner_keys, _payload = self._warm_runtime_caches(other_user)
+
+        self.episode.related_season = other_season
+        self.episode.save(update_fields=["related_season"])
+
+        self._assert_runtime_caches_cleared(old_owner_keys, new_owner_keys)
+
+    def test_outer_transaction_commit_clears_repopulated_runtime_caches(self):
+        keys, _payload = self._warm_runtime_caches(self.user)
+        repopulated = {"uncommitted": True}
+
+        with transaction.atomic():
+            self.episode.end_date = self.new_date
+            self.episode.save(update_fields=["end_date"])
+            for key in keys.values():
+                cache.set(key, repopulated)
+            self._assert_runtime_cache_values(keys, repopulated)
+
+        self._assert_runtime_caches_cleared(keys)
+
+    def test_outer_transaction_rollback_keeps_committed_runtime_cache_visible(self):
+        keys, committed_payload = self._warm_runtime_caches(self.user)
+
+        with self.assertRaises(RuntimeError), transaction.atomic():
+            self.episode.end_date = self.new_date
+            self.episode.save(update_fields=["end_date"])
+            self._assert_runtime_cache_values(keys, committed_payload)
+            raise RuntimeError("roll back episode change")
+
+        self.episode.refresh_from_db()
+        self.assertEqual(self.episode.end_date, self.old_date)
+        self._assert_runtime_cache_values(keys, committed_payload)
 
     @patch("app.signals._invalidate_episode_history_changes")
     def test_bulk_suppression_prevents_deferred_episode_invalidation(
