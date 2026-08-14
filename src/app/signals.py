@@ -330,6 +330,7 @@ def _invalidate_history_for_media_change(
     logging_styles,
     reason: str,
     prioritized: bool,
+    force: bool = False,
 ) -> None:
     normalized_day_keys = [day_key for day_key in (day_keys or []) if day_key]
     if not normalized_day_keys:
@@ -340,6 +341,7 @@ def _invalidate_history_for_media_change(
         day_keys=normalized_day_keys,
         logging_styles=logging_styles,
         reason=reason,
+        force=force,
         refresh_index=not prioritized,
     )
     if not prioritized:
@@ -379,6 +381,7 @@ def _handle_media_cache_change(
     history_specs=None,
     statistics_day_values=None,
     schedule_statistics: bool = True,
+    force_history_days: bool = False,
 ) -> None:
     if not user_id:
         return
@@ -422,6 +425,7 @@ def _handle_media_cache_change(
             logging_styles=logging_styles,
             reason=reason,
             prioritized=prioritized,
+            force=force_history_days,
         )
 
     has_history_days = any(
@@ -659,6 +663,7 @@ def refresh_history_cache_on_episode_change(sender, instance, **kwargs):
         reason="episode_change",
         history_specs=[([day_key] if day_key else [], ("sessions", "repeats"))],
         statistics_day_values=[day_key] if day_key else [],
+        force_history_days=True,
     )
 
 
