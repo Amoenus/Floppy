@@ -2486,8 +2486,6 @@ components:
         notes:
           type: string
           nullable: true
-        dropped:
-          type: boolean
     Pagination:
       type: object
       description: Stable limit/offset response metadata.
@@ -2533,6 +2531,8 @@ components:
           oneOf:
           - type: string
           - type: integer
+        source:
+          type: string
         media_type:
           type: string
         title:
@@ -2545,6 +2545,7 @@ components:
       - image
       - media_id
       - media_type
+      - source
       - title
     TrackMediaRequest:
       type: object
@@ -2649,6 +2650,12 @@ components:
           type: number
           format: double
           nullable: true
+        progress_scope:
+          type: string
+          nullable: true
+        progress_unit:
+          type: string
+          nullable: true
         progressed_at:
           type: string
           format: date-time
@@ -2680,6 +2687,8 @@ components:
       - notes
       - parent_id
       - progress
+      - progress_scope
+      - progress_unit
       - progressed_at
       - score
       - start_date

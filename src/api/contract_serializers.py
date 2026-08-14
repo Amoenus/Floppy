@@ -30,6 +30,7 @@ class SearchResultSerializer(serializers.Serializer):
     """Fields guaranteed by every provider search result."""
 
     media_id = MediaIdField()
+    source = serializers.CharField()
     media_type = serializers.CharField()
     title = serializers.CharField(allow_blank=True, allow_null=True)
     image = serializers.CharField(allow_blank=True, allow_null=True)
@@ -82,7 +83,6 @@ class MediaUpdateRequestSerializer(serializers.Serializer):
     start_date = DateOrDateTimeField(required=False, allow_null=True)
     end_date = DateOrDateTimeField(required=False, allow_null=True)
     notes = serializers.CharField(required=False, allow_blank=True, allow_null=True)
-    dropped = serializers.BooleanField(required=False)
 
 
 class TrackedMediaResponseSerializer(serializers.Serializer):
@@ -98,6 +98,8 @@ class TrackedMediaResponseSerializer(serializers.Serializer):
     score = serializers.FloatField(allow_null=True)
     status = serializers.IntegerField(allow_null=True)
     progress = serializers.FloatField(allow_null=True)
+    progress_scope = serializers.CharField(allow_null=True)
+    progress_unit = serializers.CharField(allow_null=True)
     progressed_at = serializers.DateTimeField(allow_null=True)
     start_date = serializers.DateTimeField(allow_null=True)
     end_date = serializers.DateTimeField(allow_null=True)

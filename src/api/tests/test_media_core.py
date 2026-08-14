@@ -59,6 +59,8 @@ class MediaCoreTests(FloppyApiTestCase):
                     "score",
                     "status",
                     "progress",
+                    "progress_scope",
+                    "progress_unit",
                     "progressed_at",
                     "start_date",
                     "end_date",
@@ -949,6 +951,20 @@ class MediaCoreTests(FloppyApiTestCase):
             "api_media_detail",
             args=(MediaTypes.MOVIE.value, movie_item.source, movie_item.media_id),
             payload={"unknown_field": "value"},
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("no valid fields", response.json().get("detail", "").lower())
+
+    def test_media_detail_patch_rejects_dropped_only(self):
+        """Media PATCH does not support the episode-only dropped field."""
+        movie_item = self.items_by_type[MediaTypes.MOVIE.value][0]
+        response = self.call_api(
+            "patch",
+            "api_media_detail",
+            args=(MediaTypes.MOVIE.value, movie_item.source, movie_item.media_id),
+            payload={"dropped": True},
             headers=self.auth_headers,
         )
 

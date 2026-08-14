@@ -48,6 +48,7 @@ class SearchTests(FloppyApiTestCase):
             "results": [
                 {
                     "media_id": 1,
+                    "source": "tmdb",
                     "media_type": "movie",
                     "title": "Integer ID",
                     "image": None,
@@ -55,6 +56,7 @@ class SearchTests(FloppyApiTestCase):
                 },
                 {
                     "media_id": "tt0133093",
+                    "source": "imdb",
                     "media_type": "movie",
                     "title": "String ID",
                     "image": "https://example.test/poster.jpg",
@@ -78,6 +80,7 @@ class SearchTests(FloppyApiTestCase):
         check_pagination_structure(self, payload["pagination"])
         self.assertIsInstance(payload["results"][0]["media_id"], int)
         self.assertIsInstance(payload["results"][1]["media_id"], str)
+        self.assertEqual(payload["results"][0]["source"], "tmdb")
         self.assertEqual(payload["results"][0]["provider_extension"], "preserved")
 
     @patch("api.views.services.search")

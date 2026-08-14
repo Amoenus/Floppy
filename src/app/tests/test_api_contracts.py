@@ -334,7 +334,7 @@ class OpenAPIArtifactTests(SimpleTestCase):
 
         self.assertEqual(
             set(schemas["SearchResult"]["required"]),
-            {"media_id", "media_type", "title", "image"},
+            {"media_id", "source", "media_type", "title", "image"},
         )
         self.assertEqual(
             schemas["SearchResult"]["properties"]["media_id"]["oneOf"],
@@ -373,7 +373,6 @@ class OpenAPIArtifactTests(SimpleTestCase):
                 "start_date",
                 "end_date",
                 "notes",
-                "dropped",
             },
         )
         self.assertEqual(
@@ -389,6 +388,8 @@ class OpenAPIArtifactTests(SimpleTestCase):
                 "score",
                 "status",
                 "progress",
+                "progress_scope",
+                "progress_unit",
                 "progressed_at",
                 "start_date",
                 "end_date",
