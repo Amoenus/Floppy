@@ -363,6 +363,9 @@ def ensure_item_metadata(
     if not isinstance(creators, list):
         creators = []
     runtime = _coerce_text(details.get("runtime"))
+    watch_providers = metadata.get("providers")
+    if not isinstance(watch_providers, dict):
+        watch_providers = {}
     tracking_media_type = get_tracking_media_type(
         media_type,
         source=source,
@@ -404,6 +407,7 @@ def ensure_item_metadata(
             "source_material": source_material,
             "creators": creators,
             "runtime": runtime,
+            "watch_providers": watch_providers,
             "metadata_fetched_at": timezone.now(),
         },
     )
@@ -486,6 +490,9 @@ def ensure_item_metadata(
     if not item.runtime and runtime:
         item.runtime = runtime
         update_fields.append("runtime")
+    if watch_providers and item.watch_providers != watch_providers:
+        item.watch_providers = watch_providers
+        update_fields.append("watch_providers")
     if (
         title_fields["original_title"]
         and item.original_title != title_fields["original_title"]

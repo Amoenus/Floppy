@@ -20,6 +20,7 @@ from app.models import (
     Status,
     Tag,
 )
+from app.services import tracking_hydration
 from lists import smart_rules
 from lists.models import CustomList, CustomListItem
 
@@ -627,6 +628,60 @@ class CustomListManagerTest(TestCase):
         rules = smart_rules.normalize_list_rules(smart_list)
         self.assertTrue(smart_rules.item_matches_rules(self.user, item, rules))
         self.assertTrue(smart_list.items.filter(id=item.id).exists())
+
+    def test_smart_list_provider_filter_matches_immediately_on_track(self):
+        """Tracking a show should persist providers so Smart Lists match immediately."""
+        self.user.watch_provider_region = "US"
+        self.user.save(update_fields=["watch_provider_region"])
+
+        smart_list = CustomList.objects.create(
+            name="Apple TV Planning",
+            owner=self.user,
+            is_smart=True,
+            smart_media_types=[MediaTypes.TV.value],
+            smart_filters={"provider": "Apple TV"},
+        )
+
+        hydrated = tracking_hydration.ensure_item_metadata(
+            self.user,
+            MediaTypes.TV.value,
+            "1306",
+            Sources.TMDB.value,
+            prefetched_metadata={
+                "media_id": "1306",
+                "source": Sources.TMDB.value,
+                "media_type": MediaTypes.TV.value,
+                "title": "Cape Fear",
+                "image": "https://example.com/cape-fear.jpg",
+                "details": {},
+                "related": {},
+                "providers": {
+                    "US": {
+                        "flatrate": [
+                            {"provider_id": 350, "provider_name": "Apple TV"},
+                        ],
+                    },
+                },
+            },
+        )
+        TV.objects.create(
+            item=hydrated.item,
+            user=self.user,
+            status=Status.PLANNING.value,
+        )
+
+        self.assertEqual(
+            hydrated.item.watch_providers["US"]["flatrate"][0]["provider_name"],
+            "Apple TV",
+        )
+        self.assertTrue(smart_list.items.filter(id=hydrated.item.id).exists())
+        self.assertTrue(
+            smart_rules.item_matches_rules(
+                self.user,
+                hydrated.item,
+                smart_rules.normalize_list_rules(smart_list),
+            )
+        )
 
     def test_build_rule_filter_data_includes_providers_when_region_configured(self):
         item = Item.objects.create(

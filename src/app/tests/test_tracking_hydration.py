@@ -92,3 +92,41 @@ class TrackingHydrationTests(TestCase):
             mock_get_media_metadata.call_args.args[3],
             [None],
         )
+
+    @patch("app.services.tracking_hydration.credits.sync_item_credits_from_metadata")
+    @patch("app.services.tracking_hydration.upsert_provider_links")
+    def test_ensure_item_metadata_persists_watch_providers(
+        self,
+        _mock_upsert_provider_links,
+        _mock_sync_item_credits,
+    ):
+        """TMDB provider payload should be stored on create so Smart Lists can match."""
+        result = tracking_hydration.ensure_item_metadata(
+            None,
+            MediaTypes.TV.value,
+            "125988",
+            Sources.TMDB.value,
+            prefetched_metadata={
+                "media_id": "125988",
+                "source": Sources.TMDB.value,
+                "media_type": MediaTypes.TV.value,
+                "title": "Cape Fear",
+                "image": "https://example.com/cape-fear.jpg",
+                "genres": [],
+                "details": {},
+                "related": {},
+                "providers": {
+                    "US": {
+                        "flatrate": [
+                            {"provider_id": 350, "provider_name": "Apple TV"},
+                        ],
+                    },
+                },
+            },
+        )
+
+        self.assertTrue(result.created)
+        self.assertEqual(
+            result.item.watch_providers["US"]["flatrate"][0]["provider_name"],
+            "Apple TV",
+        )
