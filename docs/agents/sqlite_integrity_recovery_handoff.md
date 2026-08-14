@@ -112,13 +112,33 @@ Latest implementer evidence:
   tokens, triggers, ambiguous row IDs, publication ordering, and prepared-report
   durability.
 
-### Deliberately not claimed complete
+### Independent QA outcome
 
-The final prepared-report restoration change has implementer test evidence but
-has not had the requested final independent spec re-review or recovery
-code-quality review. The full fast suite, container incident smoke, hosted PR
-checks, merge, and production image verification are also not complete. These
-are Claude's gates; do not infer readiness from this handoff commit alone.
+Independent review and QA ran against this branch and found three blocking
+defects, all fixed on the branch with regression tests:
+
+1. **Critical.** `sqlite_schema.tbl_name` stores the spelling used by
+   `CREATE TRIGGER`, but `PRAGMA foreign_key_check` reports the canonical table
+   name. The trigger guard compared them with `COLLATE BINARY`, so a trigger
+   declared `ON CHILD` against table `child` was not detected: quarantine was
+   advertised and performed and the trigger fired, deleting unrelated rows.
+   Now compared with `COLLATE NOCASE`.
+2. **Important.** A `prepared` report that could not be reconciled exited 1 and
+   parked a healthy, already-committed database forever, with no documented
+   remedy. Reconciliation failure is now a warning and startup continues.
+3. **Important.** Operators were told to supply the fingerprint, but the code
+   requires the separate one-time incident token, so the documented procedure
+   could never succeed. Message and README now name the token.
+
+The prepared-report restoration path was re-reviewed: the resolved report is
+published only after the commit, a publication failure restores the durable
+prepared report, and the next startup reconciles it after verifying the backup.
+
+Gates completed: focused suite 36/36, fast suite 3543 tests OK, Ruff, shell
+syntax, `git diff --check`, and container incident smoke against the real image
+(blocked, 400k-conflict bounding, accept, quarantine, timeout, TERM during check,
+TERM while parked, mismatched/retired tokens, trigger refusal). Hosted PR checks,
+merge, and published-image verification are recorded on the pull request.
 
 ## Required independent QA gates
 
