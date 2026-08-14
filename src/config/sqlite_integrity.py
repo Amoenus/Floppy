@@ -32,6 +32,11 @@ _MAX_CONFLICT_SAMPLES = 20
 _REPORT_SUFFIX = ".integrity.json"
 
 
+def _log(message: str) -> None:
+    """Write one operator line to stderr, where the entrypoint collects it."""
+    print(message, file=sys.stderr)  # noqa: T201
+
+
 class _ResolvedReportPublicationError(OSError):
     def __init__(self, message: str, *, previous_restored: bool):
         super().__init__(message)
@@ -266,51 +271,43 @@ def _write_incident_report(
 
 def _print_incident(db_path: str, incident: dict) -> None:
     shown = len(incident["samples"])
-    print(  # noqa: T201
+    _log(
         f"[entrypoint] Found {incident['total_conflicts']} foreign key conflict(s) "
         f"across {len(incident['groups'])} relationship group(s); showing {shown}",
-        file=sys.stderr,
     )
     for sample in incident["samples"]:
-        print(  # noqa: T201
+        _log(
             "[entrypoint] Database foreign key check failed: "
             f"table={sample['table']!r}, row={sample['row']!r}, "
             f"parent={sample['parent']!r}",
-            file=sys.stderr,
         )
-    print(  # noqa: T201
+    _log(
         f"[entrypoint] Incident fingerprint: {incident['fingerprint']}",
-        file=sys.stderr,
     )
-    print(  # noqa: T201
+    _log(
         f"[entrypoint] Bounded report: {_incident_report_path(db_path)}",
-        file=sys.stderr,
     )
 
 
 def _print_resolution_options(incident: dict, incident_token: str) -> None:
-    print(  # noqa: T201
+    _log(
         "[entrypoint] Resolution options (back up the database first):",
-        file=sys.stderr,
     )
-    print(  # noqa: T201
+    _log(
         "[entrypoint] - Restore a known-good SQLite backup, then restart.",
-        file=sys.stderr,
     )
-    print(  # noqa: T201
+    _log(
         "[entrypoint] - Accept without changing rows: "
         f"{_ACTION_ENV}=accept:{incident_token}",
-        file=sys.stderr,
     )
     if incident["can_quarantine"]:
-        print(  # noqa: T201
+        _log(
             "[entrypoint] - Back up and remove orphaned child rows: "
             f"{_ACTION_ENV}=quarantine:{incident_token}",
-            file=sys.stderr,
         )
     else:
         for reason in incident.get("unsafe_reasons", []):
-            print(f"[entrypoint] - Manual repair required: {reason}", file=sys.stderr)  # noqa: T201
+            _log(f"[entrypoint] - Manual repair required: {reason}")
 
 
 def _selected_action(incident: dict, incident_token: str) -> str:
@@ -320,19 +317,17 @@ def _selected_action(incident: dict, incident_token: str) -> str:
 
     action, separator, supplied_token = configured.partition(":")
     if action not in {"accept", "quarantine"} or not separator:
-        print(  # noqa: T201
+        _log(
             f"[entrypoint] Invalid {_ACTION_ENV}={configured!r}; using halt",
-            file=sys.stderr,
         )
         return "halt"
     if supplied_token != incident_token:
         # The operator must supply the one-time incident token, not the
         # fingerprint; naming the fingerprint alone sends them to the wrong
         # value and every retry halts again.
-        print(  # noqa: T201
+        _log(
             f"[entrypoint] {_ACTION_ENV} does not carry the current incident "
             f"token for fingerprint {incident['fingerprint']}; using halt",
-            file=sys.stderr,
         )
         return "halt"
     return action
@@ -571,10 +566,9 @@ def _check_foreign_keys(conn: sqlite3.Connection, db_path: str) -> None:
                 # is already committed, so refusing to start cannot protect the
                 # data; it only wedges a healthy container. Leave the report
                 # untouched so the next startup retries the reconciliation.
-                print(  # noqa: T201
+                _log(
                     "[entrypoint] SQLite recovery report could not be finalized; "
                     f"the database is healthy and startup continues: {error}",
-                    file=sys.stderr,
                 )
         return
 
@@ -585,10 +579,9 @@ def _check_foreign_keys(conn: sqlite3.Connection, db_path: str) -> None:
         and prior_report.get("fingerprint") == incident["fingerprint"]
     ):
         conn.rollback()
-        print(  # noqa: T201
+        _log(
             f"[entrypoint] Previously accepted {incident['total_conflicts']} "
             "unchanged foreign key conflict(s) without changing rows",
-            file=sys.stderr,
         )
         return
 
@@ -605,9 +598,8 @@ def _check_foreign_keys(conn: sqlite3.Connection, db_path: str) -> None:
         )
     except OSError as error:
         conn.rollback()
-        print(  # noqa: T201
+        _log(
             f"[entrypoint] Could not publish SQLite incident report: {error}",
-            file=sys.stderr,
         )
         sys.exit(1)
 
@@ -621,15 +613,13 @@ def _check_foreign_keys(conn: sqlite3.Connection, db_path: str) -> None:
                 resolution="accept",
             )
         except OSError as error:
-            print(  # noqa: T201
+            _log(
                 f"[entrypoint] Could not publish SQLite acceptance: {error}",
-                file=sys.stderr,
             )
             sys.exit(1)
-        print(  # noqa: T201
+        _log(
             f"[entrypoint] Accepted {incident['total_conflicts']} foreign key "
             "conflict(s) without changing rows",
-            file=sys.stderr,
         )
         return
 
@@ -639,10 +629,9 @@ def _check_foreign_keys(conn: sqlite3.Connection, db_path: str) -> None:
     if action == "quarantine" or only_album_artist:
         if not incident["can_quarantine"]:
             conn.rollback()
-            print(  # noqa: T201
+            _log(
                 "[entrypoint] One or more conflicts cannot be quarantined "
                 "automatically; manual repair is required",
-                file=sys.stderr,
             )
             _print_resolution_options(incident, incident_token)
             sys.exit(1)
@@ -684,10 +673,9 @@ def _check_foreign_keys(conn: sqlite3.Connection, db_path: str) -> None:
                     backup_path=backup_path,
                     incident_token=incident_token,
                 )
-            print(  # noqa: T201
+            _log(
                 f"[entrypoint] SQLite quarantine failed without changing the "
                 f"database: {error}",
-                file=sys.stderr,
             )
             _print_resolution_options(incident, incident_token)
             sys.exit(1)
@@ -696,10 +684,9 @@ def _check_foreign_keys(conn: sqlite3.Connection, db_path: str) -> None:
             conn.commit()
         except sqlite3.DatabaseError as error:
             conn.rollback()
-            print(  # noqa: T201
+            _log(
                 f"[entrypoint] SQLite quarantine commit failed; the prepared "
                 f"report and verified backup remain: {error}",
-                file=sys.stderr,
             )
             sys.exit(1)
 
@@ -727,29 +714,26 @@ def _check_foreign_keys(conn: sqlite3.Connection, db_path: str) -> None:
                     "failed; prior report restoration could not be confirmed. "
                     f"Inspect the report and verified backup before restart: {error}"
                 )
-            print(f"[entrypoint] {message}", file=sys.stderr)  # noqa: T201
+            _log(f"[entrypoint] {message}")
             sys.exit(1)
         if only_album_artist:
-            print(  # noqa: T201
+            _log(
                 f"[entrypoint] Removed {deleted} orphaned album artist credit "
                 f"row(s) after backup to {backup_path}",
-                file=sys.stderr,
             )
         else:
-            print(  # noqa: T201
+            _log(
                 f"[entrypoint] Quarantined {deleted} orphaned row(s); "
                 f"backup: {backup_path}",
-                file=sys.stderr,
             )
         return
 
     conn.rollback()
-    print(  # noqa: T201
+    _log(
         f"[entrypoint] Startup is blocked by report {report_path}",
-        file=sys.stderr,
     )
     _print_resolution_options(incident, incident_token)
-    print(_RELATIONSHIP_HINT, file=sys.stderr)  # noqa: T201
+    _log(_RELATIONSHIP_HINT)
     sys.exit(1)
 
 
@@ -761,24 +745,23 @@ def check_database_integrity(db_path: str) -> None:
         result = conn.execute("PRAGMA quick_check").fetchone()
         status = result[0] if result else None
         if status != "ok":
-            print(  # noqa: T201
+            _log(
                 "[entrypoint] Database integrity check failed: "
                 f"quick_check returned {status!r}",
-                file=sys.stderr,
             )
-            print(_CORRUPTION_HINT, file=sys.stderr)  # noqa: T201
+            _log(_CORRUPTION_HINT)
             sys.exit(1)
 
         _check_foreign_keys(conn, db_path)
     except sqlite3.DatabaseError as e:
-        print(f"[entrypoint] Database integrity check failed: {e}", file=sys.stderr)  # noqa: T201
+        _log(f"[entrypoint] Database integrity check failed: {e}")
         hint = (
             _BUSY_HINT
             if getattr(e, "sqlite_errorcode", None)
             in {sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED}
             else _CORRUPTION_HINT
         )
-        print(hint, file=sys.stderr)  # noqa: T201
+        _log(hint)
         sys.exit(1)
     finally:
         if conn is not None:
