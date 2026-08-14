@@ -21,6 +21,7 @@ from app.models import (
     HardcoverEditionPreference,
     Item,
     MediaTypes,
+    MetadataBackfillField,
     PodcastShow,
     Sources,
     Track,
@@ -30,6 +31,10 @@ from app.services.metadata_resolution import (
     get_library_media_type,
     get_tracking_media_type,
     upsert_provider_links,
+)
+from app.tasks_backfill_state import (
+    WATCH_PROVIDERS_BACKFILL_VERSION,
+    _record_backfill_pending,
 )
 
 
@@ -523,6 +528,26 @@ def ensure_item_metadata(
         MediaTypes.SEASON.value,
     ):
         credits.sync_item_credits_from_metadata(item, metadata)
+
+    if (
+        created
+        and source == Sources.TMDB.value
+        and tracking_media_type
+        in (
+            MediaTypes.MOVIE.value,
+            MediaTypes.TV.value,
+            MediaTypes.ANIME.value,
+        )
+        and not watch_providers
+    ):
+        # Keep empty titles in the retry queue so a later TMDB listing
+        # (Netflix added months after tracking) can still be picked up.
+        _record_backfill_pending(
+            item,
+            MetadataBackfillField.WATCH_PROVIDERS,
+            "empty providers",
+            strategy_version=WATCH_PROVIDERS_BACKFILL_VERSION,
+        )
 
     artist = None
     album = None
