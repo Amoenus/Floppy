@@ -1949,6 +1949,7 @@ class User(AbstractUser):
                         "schedule": schedule_info["frequency"],
                         "media_types": schedule_info["media_types"],
                         "include_lists": schedule_info["include_lists"],
+                        "include_collection": schedule_info["include_collection"],
                     },
                 )
 
