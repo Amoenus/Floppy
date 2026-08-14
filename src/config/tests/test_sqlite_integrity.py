@@ -632,6 +632,25 @@ class SqliteIntegrityTests(SimpleTestCase):
             self.assertEqual(conn.execute("SELECT COUNT(*) FROM child").fetchone()[0], 1)
             conn.close()
 
+    def test_verified_backup_survives_call_during_exception_handling(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = self.create_orphan_database(tmp_dir)
+            # Cleanup must key off this call's own outcome. A caller that is
+            # already handling an unrelated exception must still get a backup,
+            # otherwise rows are deleted against a file that was just removed.
+            try:
+                json.loads("{")
+            except ValueError:
+                backup_path = sqlite_integrity._create_verified_backup(
+                    db_path,
+                    "0" * 64,
+                )
+
+            self.assertTrue(backup_path.is_file())
+            backup = sqlite3.connect(f"file:{backup_path}?mode=ro", uri=True)
+            self.assertEqual(backup.execute("PRAGMA quick_check").fetchone(), ("ok",))
+            backup.close()
+
     def test_prepared_report_survives_resolved_report_failure_and_reconciles(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = self.create_orphan_database(tmp_dir)
@@ -1210,12 +1229,15 @@ class SqliteIntegrityTests(SimpleTestCase):
     def test_entrypoint_bounds_integrity_check_without_background_polling(self):
         script = ENTRYPOINT.read_text()
         check = (
-            "timeout 600 python -c 'from config.sqlite_integrity import "
+            'timeout "$integrity_timeout" python -c '
+            "'from config.sqlite_integrity import "
             "check_database_integrity; import sys; "
-            "check_database_integrity(sys.argv[1])' \"$DB_FILE\""
+            'check_database_integrity(sys.argv[1])\' "$DB_FILE"'
         )
 
         self.assertIn(check, script)
+        # The bound and the message it reports must come from one definition.
+        self.assertIn("integrity_timeout=600", script)
         self.assertIn('"$DB_FILE" &', script)
         self.assertNotIn("kill -0", script)
         self.assertNotIn("/proc/", script)
@@ -1233,7 +1255,8 @@ class SqliteIntegrityTests(SimpleTestCase):
         timeout_case = script.index("124|143)")
         failure_case = script.index("*)", timeout_case)
         self.assertIn(
-            "exceeded its 600s timeout", script[timeout_case:failure_case]
+            "exceeded its ${integrity_timeout}s timeout",
+            script[timeout_case:failure_case],
         )
         self.assertIn("integrity check failed", script[failure_case:])
         self.assertIn(
