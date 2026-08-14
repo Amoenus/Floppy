@@ -155,7 +155,7 @@ def _read_incident_report(db_path: str) -> dict | None:
     flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
     try:
         descriptor = os.open(report_path, flags)
-    except (FileNotFoundError, OSError):
+    except OSError:
         return None
     try:
         if not stat.S_ISREG(os.fstat(descriptor).st_mode):
@@ -382,6 +382,7 @@ def _create_verified_backup(db_path: str, fingerprint: str) -> Path:
         source = None
         destination = None
         published = False
+        succeeded = False
         try:
             source = sqlite3.connect(f"{database_path.as_uri()}?mode=ro", uri=True)
             destination = sqlite3.connect(staging_path)
@@ -425,6 +426,7 @@ def _create_verified_backup(db_path: str, fingerprint: str) -> Path:
             published = True
             os.unlink(staging_name, dir_fd=recovery_descriptor)
             os.fsync(recovery_descriptor)
+            succeeded = True
             return recovery_dir / final_name
         finally:
             if destination is not None:
@@ -433,7 +435,10 @@ def _create_verified_backup(db_path: str, fingerprint: str) -> Path:
                 source.close()
             with suppress(FileNotFoundError):
                 os.unlink(staging_name, dir_fd=recovery_descriptor)
-            if published and sys.exc_info()[0] is not None:
+            # Key the rollback off this call's own outcome. sys.exc_info() also
+            # reports an exception the caller is already handling, which would
+            # delete a good backup and leave the delete path without one.
+            if published and not succeeded:
                 with suppress(FileNotFoundError):
                     os.unlink(final_name, dir_fd=recovery_descriptor)
     finally:
