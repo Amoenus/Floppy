@@ -268,13 +268,31 @@ class TV(Media):
 
         return planning_continuation
 
-    def increase_progress(self):
+    def increase_progress(self, watch_operation_id=None):
         """Increase TV progress by advancing the active season."""
+        if watch_operation_id:
+            from app import fork_services_episode
+
+            operation_id = fork_services_episode.normalize_watch_operation_id(
+                watch_operation_id,
+            )
+            claimed = (
+                Episode.objects.filter(watch_operation_id=operation_id)
+                .select_related("related_season", "item")
+                .first()
+            )
+            if claimed is not None:
+                if claimed.related_season.related_tv_id != self.id:
+                    raise fork_services_episode.EpisodeWatchConflictError
+                return fork_services_episode.resolve_episode_watch_replay(
+                    claimed,
+                    user_id=self.user_id,
+                )
         season = self._get_quick_update_season("increase")
         if season is None:
             logger.info("No season available to increase progress for %s", self)
-            return
-        season.increase_progress()
+            return None
+        return season.increase_progress(watch_operation_id=watch_operation_id)
 
     def decrease_progress(self):
         """Decrease TV progress by rewinding the relevant season."""
@@ -852,8 +870,25 @@ class Season(Media):
         ]
         return max(dates) if dates else None
 
-    def increase_progress(self):
+    def increase_progress(self, watch_operation_id=None):
         """Watch the next episode of the season."""
+        if watch_operation_id:
+            from app import fork_services_episode
+
+            operation_id = fork_services_episode.normalize_watch_operation_id(
+                watch_operation_id,
+            )
+            claimed = (
+                Episode.objects.filter(watch_operation_id=operation_id)
+                .select_related("related_season", "item")
+                .first()
+            )
+            if claimed is not None:
+                return fork_services_episode.resolve_episode_watch_replay(
+                    claimed,
+                    user_id=self.user_id,
+                    season_id=self.id,
+                )
         season_metadata = providers.services.get_media_metadata(
             MediaTypes.SEASON.value,
             self.item.media_id,
@@ -867,25 +902,32 @@ class Season(Media):
         now = timezone.now()
 
         if next_episode_number:
-            self.watch(next_episode_number, now)
-        else:
-            logger.info("No more episodes to watch.")
+            return self.watch(
+                next_episode_number,
+                now,
+                watch_operation_id=watch_operation_id,
+            )
+        logger.info("No more episodes to watch.")
+        return None
 
-    def watch(self, episode_number, end_date):
+    def watch(self, episode_number, end_date, watch_operation_id=None, **episode_fields):
         """Create or add a repeat to an episode of the season."""
+        from app import fork_services_episode
+
         item = self.get_episode_item(episode_number)
 
-        episode = Episode.objects.create(
-            related_season=self,
-            item=item,
-            end_date=end_date,
+        result = fork_services_episode.create_episode_watch(
+            self,
+            item,
+            end_date,
+            watch_operation_id=watch_operation_id,
+            **episode_fields,
         )
-        logger.info(
-            "%s created successfully.",
-            episode,
-        )
-        cache_utils.clear_time_left_cache_for_user(self.user_id)
-        cache_utils.clear_media_list_cache_for_user(self.user_id)
+        if result.created:
+            logger.info("%s created successfully.", result.episode)
+            cache_utils.clear_time_left_cache_for_user(self.user_id)
+            cache_utils.clear_media_list_cache_for_user(self.user_id)
+        return result
 
     def decrease_progress(self):
         """Unwatch the current episode of the season."""
@@ -1344,6 +1386,7 @@ class Episode(models.Model):
             "related_season",
             "created_at",
             "score",
+            "watch_operation_id",
             # `status` stays excluded: every episode row is a watch, so its
             # status is inert noise in the timeline. `start_date` is tracked so
             # the history modal can show "Started on …" (issue #377).
@@ -1353,6 +1396,7 @@ class Episode(models.Model):
     )
 
     created_at = models.DateTimeField(auto_now_add=True)
+    watch_operation_id = models.UUIDField(null=True, unique=True, editable=False)
     item = models.ForeignKey(Item, on_delete=models.CASCADE, null=True)
     related_season = models.ForeignKey(
         Season,

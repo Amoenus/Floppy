@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
+from uuid import UUID
 
 from django.contrib.auth import get_user_model
 from django.template.loader import render_to_string
@@ -103,6 +104,14 @@ class AppTagsTests(TestCase):
             app_tags.no_underscore("no_underscores_here"),
             "no underscores here",
         )
+
+    def test_watch_operation_id_returns_fresh_uuid(self):
+        """Each rendered first-party watch control receives a fresh UUID."""
+        first = app_tags.watch_operation_id()
+        second = app_tags.watch_operation_id()
+
+        self.assertEqual(str(UUID(first)), first)
+        self.assertNotEqual(first, second)
 
     def test_slug(self):
         """Test the slug filter."""

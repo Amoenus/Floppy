@@ -20,10 +20,10 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_not_required, login_required
 from django.core.cache import cache
-from django.core.exceptions import ObjectDoesNotExist
+from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.core.paginator import EmptyPage, Paginator
 from django.db import IntegrityError
-from django.db.models import F, Max, Min, Q, prefetch_related_objects
+from django.db.models import F, Max, Min, Q
 from django.db.models.functions import ExtractDay, ExtractMonth, TruncDate
 from django.db.utils import OperationalError
 from django.http import HttpResponse, HttpResponseBadRequest, JsonResponse
@@ -45,6 +45,7 @@ from app import (
     credits,  # noqa: A004  # app.credits module, not the site builtin
     custom_metadata,
     discover,
+    fork_services_episode,
     helpers,
     history_cache,
     history_processor,
@@ -739,14 +740,26 @@ def progress_edit(request, media_type, instance_id):
     )
 
     if operation == "increase":
-        media.increase_progress()
+        try:
+            media.increase_progress(
+                watch_operation_id=request.POST.get("watch_operation_id")
+                if media_type in {MediaTypes.TV.value, MediaTypes.SEASON.value}
+                else None,
+            )
+        except ValidationError:
+            return HttpResponseBadRequest("Invalid watch operation")
+        except fork_services_episode.EpisodeWatchConflictError as error:
+            return HttpResponse(str(error), status=409)
     elif operation == "decrease":
         media.decrease_progress()
 
-    if media_type == MediaTypes.SEASON.value:
+    if media_type in {MediaTypes.TV.value, MediaTypes.SEASON.value}:
         # clear prefetch cache to get the updated episodes
-        media.refresh_from_db()
-        prefetch_related_objects([media], "episodes")
+        media = BasicMedia.objects.get_media_prefetch(
+            request.user,
+            media_type,
+            instance_id,
+        )
 
     context = {
         "media": media,

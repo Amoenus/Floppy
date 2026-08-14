@@ -476,6 +476,7 @@ def _render_standard_track_modal(
         "media_id",
         "season_number",
         "episode_number",
+        "watch_operation_id",
         "start_date_cleared",
     }
     metadata_field_names = {"image_url"}
