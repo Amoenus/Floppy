@@ -567,12 +567,14 @@ def episode_save(request):
 
     form = EpisodeForm(request.POST, instance=episode_instance, user=request.user)
     if not form.is_valid():
-        logger.error("Form validation failed: %s", form.errors)
+        logger.warning("Episode form validation failed fields=%s", sorted(form.errors))
         return HttpResponseBadRequest("Invalid form data")
 
     if episode_instance:
         related_season = episode_instance.related_season
         episode = form.save(commit=False)
+        episode.dropped = episode.status == Status.DROPPED.value
+        episode.save()
     else:
         related_season = fork_services_episode.resolve_or_create_season(
             request.user,
@@ -581,17 +583,25 @@ def episode_save(request):
             season_number,
             library_media_type=library_media_type,
         )
-        episode = form.save(commit=False)
-        episode.related_season = related_season
-        episode.item = related_season.get_episode_item(episode_number)
-
-    episode.dropped = episode.status == Status.DROPPED.value
-    episode.save()
-    if hasattr(related_season, "_episode_stats_cache"):
+        try:
+            result = related_season.watch(
+                episode_number,
+                form.cleaned_data.get("end_date"),
+                watch_operation_id=form.cleaned_data.get("watch_operation_id"),
+                score=form.cleaned_data.get("score"),
+                status=form.cleaned_data.get("status") or Status.COMPLETED.value,
+                start_date=form.cleaned_data.get("start_date"),
+                notes=form.cleaned_data.get("notes") or "",
+            )
+        except fork_services_episode.EpisodeWatchConflictError as error:
+            return HttpResponse(str(error), status=409)
+        episode = result.episode
+    if episode_instance and hasattr(related_season, "_episode_stats_cache"):
         delattr(related_season, "_episode_stats_cache")
-    related_season._sync_status_after_episode_change()
-    cache_utils.clear_time_left_cache_for_user(related_season.user_id)
-    cache_utils.clear_media_list_cache_for_user(related_season.user_id)
+    if episode_instance:
+        related_season._sync_status_after_episode_change()
+        cache_utils.clear_time_left_cache_for_user(related_season.user_id)
+        cache_utils.clear_media_list_cache_for_user(related_season.user_id)
 
     if request.headers.get("HX-Request"):
         episode_history = list(
@@ -607,7 +617,6 @@ def episode_save(request):
         if not episode_history:
             return HttpResponse("Episode not found", status=404)
 
-        episode = episode_history[0]
         episode.history = episode_history
         episode.collection_entry = (
             CollectionEntry.objects.filter(
