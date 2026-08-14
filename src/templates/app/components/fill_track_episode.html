@@ -97,6 +97,10 @@
           <input type="hidden"
                  name="episode_number"
                  value="{{ episode.episode_number }}">
+          {% watch_operation_id as episode_watch_operation_id %}
+          <input type="hidden"
+                 name="watch_operation_id"
+                 value="{{ episode_watch_operation_id }}">
 
           <label class="block text-sm font-medium text-[var(--color-text-secondary)] mb-2">Watch Date</label>
 

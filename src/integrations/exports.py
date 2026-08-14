@@ -423,7 +423,7 @@ def get_track_fields():
 
     for media_type in MediaTypes.values:
         model = apps.get_model("app", media_type)
-        for field in get_model_fields(model):
+        for field in get_model_fields(model, exclude={"watch_operation_id"}):
             if field not in all_fields:
                 all_fields.append(field)
 

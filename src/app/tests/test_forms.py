@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -10,7 +12,7 @@ from app.forms import (
     SeasonForm,
     TvForm,
 )
-from app.models import TV, Item, MediaTypes, Season, Sources, Status
+from app.models import TV, Episode, Item, MediaTypes, Season, Sources, Status
 
 
 class BasicMediaForm(TestCase):
@@ -101,6 +103,45 @@ class BasicMediaForm(TestCase):
         }
         form = EpisodeForm(data=form_data)
         self.assertTrue(form.is_valid())
+
+    def test_episode_create_form_generates_and_preserves_watch_operation_id(self):
+        """A rendered create form keeps its UUID when the bound form is retried."""
+        first_form = EpisodeForm()
+        watch_operation_id = first_form["watch_operation_id"].value()
+
+        self.assertEqual(str(UUID(str(watch_operation_id))), str(watch_operation_id))
+        bound_form = EpisodeForm(
+            data={
+                "end_date": "2023-06-01",
+                "watch_operation_id": watch_operation_id,
+            },
+        )
+        self.assertTrue(bound_form.is_valid())
+        self.assertEqual(
+            str(bound_form.cleaned_data["watch_operation_id"]),
+            str(watch_operation_id),
+        )
+        self.assertNotEqual(
+            EpisodeForm()["watch_operation_id"].value(),
+            watch_operation_id,
+        )
+
+    def test_episode_edit_form_does_not_claim_new_watch_operation_id(self):
+        """Existing Episode updates remain row-addressed."""
+        form = EpisodeForm(instance=Episode(id=123))
+
+        self.assertIsNone(form["watch_operation_id"].value())
+
+    def test_episode_form_rejects_malformed_watch_operation_id_without_echo(self):
+        """Malformed replay identity is a field error and does not echo its value."""
+        malformed = "not-a-private-token"
+        form = EpisodeForm(
+            data={"end_date": "2023-06-01", "watch_operation_id": malformed},
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertEqual(form.errors.as_data()["watch_operation_id"][0].code, "invalid")
+        self.assertNotIn(malformed, form.errors.as_text())
 
 
 class BasicGameForm(TestCase):
