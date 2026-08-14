@@ -995,6 +995,9 @@
   .w-\[168px\] {
     width: 168px;
   }
+  .w-\[158px\] {
+    width: 158px;
+  }
   .w-\[250px\] {
     width: 250px;
   }
@@ -2596,6 +2599,9 @@
   }
   .object-contain {
     object-fit: contain;
+  }
+  .object-center {
+    object-position: center;
   }
   .object-cover {
     object-fit: cover;
@@ -5657,24 +5663,27 @@ html.light .theme-toggle-icon-moon {
   grid-area: theme;
 }
 .preferences-display-grid > div:nth-child(2) {
-  grid-area: date;
+  grid-area: logo;
 }
 .preferences-display-grid > div:nth-child(3) {
-  grid-area: time;
+  grid-area: date;
 }
 .preferences-display-grid > div:nth-child(4) {
-  grid-area: mobile;
+  grid-area: time;
 }
 .preferences-display-grid > div:nth-child(5) {
-  grid-area: subtitle;
+  grid-area: mobile;
 }
 .preferences-display-grid > div:nth-child(6) {
-  grid-area: progress;
+  grid-area: subtitle;
 }
 .preferences-display-grid > div:nth-child(7) {
-  grid-area: title;
+  grid-area: progress;
 }
 .preferences-display-grid > div:nth-child(8) {
+  grid-area: title;
+}
+.preferences-display-grid > div:nth-child(9) {
   grid-area: talent;
 }
 .preferences-actions {
@@ -5711,7 +5720,7 @@ html.light .theme-toggle-icon-moon {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .preferences-display-grid {
-    grid-template-areas: "theme mobile" "date time" "title talent" "subtitle subtitle" "progress progress";
+    grid-template-areas: "theme logo" "date time" "title talent" "subtitle mobile" "progress progress";
   }
   .preferences-metadata-grid > div:nth-child(3) {
     grid-column: 1 / -1;
