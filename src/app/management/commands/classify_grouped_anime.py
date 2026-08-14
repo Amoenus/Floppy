@@ -16,6 +16,7 @@ from django.core.management.base import BaseCommand, CommandError
 import app.providers.tmdb
 from app.models import TV, MediaTypes, Sources
 from app.services import grouped_anime
+from integrations import anime_mapping
 
 
 class Command(BaseCommand):
@@ -75,6 +76,7 @@ class Command(BaseCommand):
         shows = list(queryset.order_by("item__title", "user__username"))
         mode = "APPLY" if apply_changes else "DRY RUN"
         self.stdout.write(f"{mode}: examining {len(shows)} TV tracking row(s)")
+        snapshot = anime_mapping.load_mapping_snapshot() if shows else None
 
         report = {
             "version": 1,
@@ -82,6 +84,8 @@ class Command(BaseCommand):
             "user": options["username"],
             "generated_at": datetime.now().astimezone().isoformat(),
             "mapping_source": grouped_anime.MAPPING_SOURCE,
+            "mapping_revision": snapshot.revision if snapshot else None,
+            "mapping_digest": snapshot.digest if snapshot else None,
             "summary": {
                 "examined": len(shows),
                 "move": 0,
@@ -102,7 +106,7 @@ class Command(BaseCommand):
             }
             try:
                 metadata = app.providers.tmdb.tv(item.media_id)
-                match = grouped_anime.classify_tv_metadata(metadata)
+                match = grouped_anime.classify_tv_metadata(metadata, snapshot=snapshot)
                 entry["match"] = match.as_dict()
                 if not match.is_grouped_anime:
                     report["summary"]["leave"] += 1

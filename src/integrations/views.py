@@ -33,6 +33,7 @@ from integrations import (
     koito_api,
     lastfm_api,
     pocketcasts_api,
+    stremio_queue,
     tasks,
 )
 from integrations import plex as plex_api
@@ -2701,6 +2702,10 @@ STREMIO_ADDON_MANIFEST = {
     "catalogs": [],
 }
 STREMIO_SCROBBLE_THROTTLE_SECONDS = 1800
+STREMIO_MAX_MEDIA_ID_LENGTH = 128
+STREMIO_MEDIA_ID_PATTERN = re.compile(
+    r"^tt[0-9]+(?::[1-9][0-9]*:[1-9][0-9]*)?$",
+)
 
 
 def _stremio_addon_response(payload, status=200):
@@ -2738,15 +2743,69 @@ def stremio_addon_subtitles(request, token, media_type, media_id):
         return _stremio_addon_response({"error": "Invalid token"}, status=401)
 
     media_id = unquote(media_id)
+    if (
+        media_type not in {"movie", "series"}
+        or len(media_id) > STREMIO_MAX_MEDIA_ID_LENGTH
+        or not STREMIO_MEDIA_ID_PATTERN.fullmatch(media_id)
+        or (
+            media_type == "movie"
+            and ":" in media_id
+        )
+    ):
+        logger.info(
+            "stremio_queue status=limited reason=invalid_media_id user_id=%s "
+            "media_type=%s media_id=%s",
+            user.id,
+            media_type,
+            media_id[:STREMIO_MAX_MEDIA_ID_LENGTH],
+        )
+        return _stremio_addon_response({"subtitles": []})
 
     # Stremio re-requests subtitles on seeks and quality changes; only the
     # first request per item in the window records a scrobble.
-    throttle_key = f"stremio_scrobble_{user.id}_{media_id}"
-    if cache.add(throttle_key, "1", timeout=STREMIO_SCROBBLE_THROTTLE_SECONDS):
-        tasks.process_webhook.delay(
-            "stremio",
-            {"id": media_id, "type": media_type},
+    throttle_key = f"stremio_scrobble_{user.id}_{media_type}_{media_id}"
+    throttle_added = cache.add(
+        throttle_key,
+        "1",
+        timeout=STREMIO_SCROBBLE_THROTTLE_SECONDS,
+    )
+    if throttle_added is None:
+        logger.info(
+            "stremio_queue status=unavailable reason=throttle_cache user_id=%s",
             user.id,
         )
+    elif throttle_added:
+        queue_member = stremio_queue.member(media_type, media_id)
+        queue_status = stremio_queue.reserve_pending(user.id, queue_member)
+        if queue_status == "accepted":
+            try:
+                tasks.process_stremio_webhook.delay(
+                    {"id": media_id, "type": media_type},
+                    user.id,
+                    queue_member,
+                )
+                logger.info(
+                    "stremio_queue status=queued user_id=%s media_type=%s media_id=%s",
+                    user.id,
+                    media_type,
+                    media_id,
+                )
+            except Exception:
+                stremio_queue.release_pending(user.id, queue_member)
+                logger.exception(
+                    "stremio_queue status=dispatch_failed user_id=%s media_type=%s "
+                    "media_id=%s",
+                    user.id,
+                    media_type,
+                    media_id,
+                )
+        else:
+            logger.info(
+                "stremio_queue status=%s user_id=%s media_type=%s media_id=%s",
+                queue_status,
+                user.id,
+                media_type,
+                media_id,
+            )
 
     return _stremio_addon_response({"subtitles": []})

@@ -299,8 +299,20 @@ class BaseWebhookProcessor:
         if user.anime_enabled:
             from app.services import grouped_anime
 
-            grouped_anime_match = grouped_anime.classify_tv_metadata(tv_metadata)
-            if grouped_anime_match.is_grouped_anime:
+            classifier_kwargs = {}
+            if getattr(self, "_grouped_anime_mapping_loaded", False):
+                if self._grouped_anime_snapshot is not None:
+                    classifier_kwargs["snapshot"] = self._grouped_anime_snapshot
+                else:
+                    # Mapping load failures are fail-closed for grouping.  The
+                    # normal TV webhook path still records progress below.
+                    classifier_kwargs = None
+            if classifier_kwargs is not None:
+                grouped_anime_match = grouped_anime.classify_tv_metadata(
+                    tv_metadata,
+                    **classifier_kwargs,
+                )
+            if grouped_anime_match is not None and grouped_anime_match.is_grouped_anime:
                 logger.info(
                     "Detected grouped anime via exact Anime-IDs match: TMDB %s",
                     media_id,

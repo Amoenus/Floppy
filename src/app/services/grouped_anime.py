@@ -13,19 +13,23 @@ false positive would move history into the wrong library.
 
 from __future__ import annotations
 
-from collections import defaultdict
+import logging
 from dataclasses import dataclass
 from typing import Any
 
 from django.db import transaction
 
-from app.models import Episode, Item, ItemProviderLink, MediaTypes, Season, Sources
+from app.models import Episode, Item, MediaTypes, Season, Sources
+from app.services import metadata_resolution
 from integrations import anime_mapping
 
 MAPPING_SOURCE = "Kometa Anime-IDs"
 ANIMATION_GENRE = "animation"
 GROUPED_BUCKET = MediaTypes.ANIME.value
 GROUPED_PARENT_TYPES = {Sources.TMDB.value, Sources.TVDB.value}
+CLASSIFIER_CALL_COUNT = 0
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,6 +45,10 @@ class GroupedAnimeMatch:
     matched_by: tuple[str, ...] = ()
     mapping_keys: tuple[str, ...] = ()
     mapping_source: str = MAPPING_SOURCE
+    mapping_revision: str | None = None
+    mapping_digest: str | None = None
+    mapping_group_key: str | None = None
+    candidate_group_keys: tuple[str, ...] = ()
 
     @property
     def is_grouped_anime(self) -> bool:
@@ -59,6 +67,10 @@ class GroupedAnimeMatch:
             "matched_by": list(self.matched_by),
             "mapping_keys": list(self.mapping_keys),
             "mapping_source": self.mapping_source,
+            "mapping_revision": self.mapping_revision,
+            "mapping_digest": self.mapping_digest,
+            "mapping_group_key": self.mapping_group_key,
+            "candidate_group_keys": list(self.candidate_group_keys),
         }
 
 
@@ -72,34 +84,12 @@ def _normalise_ids(value: Any) -> set[str]:
 
 def build_mapping_indexes(
     mapping_data: dict[str, Any],
-) -> dict[str, dict[str, list[dict[str, Any]]]]:
-    """Build exact reverse indexes from the Kometa Anime-IDs payload."""
-    fields = (
-        "tmdb_show_id",
-        "tmdb_id",
-        "tmdb_tv_id",
-        "tvdb_id",
-        "imdb_id",
+) -> dict[str, dict[str, tuple[dict[str, Any], ...]]]:
+    """Keep the legacy helper while delegating compilation to snapshots."""
+    indexes, _groups = anime_mapping.build_mapping_indexes(
+        mapping_data,
+        revision="inline",
     )
-    indexes: dict[str, dict[str, list[dict[str, Any]]]] = {
-        field: defaultdict(list) for field in fields
-    }
-
-    for mapping_key, raw_entry in (mapping_data or {}).items():
-        if not isinstance(raw_entry, dict):
-            continue
-        mal_ids = sorted(_normalise_ids(raw_entry.get("mal_id")))
-        if not mal_ids:
-            continue
-        entry = {
-            "mapping_key": str(mapping_key),
-            "mal_ids": mal_ids,
-        }
-        for field in fields:
-            entry[field] = sorted(_normalise_ids(raw_entry.get(field)))
-            for external_id in entry[field]:
-                indexes[field][external_id].append(entry)
-
     return indexes
 
 
@@ -111,6 +101,17 @@ def _metadata_external_ids(metadata: dict[str, Any]) -> dict[str, str]:
         external_ids.setdefault("tmdb_id", str(metadata["media_id"]))
     if metadata.get("tvdb_id") not in (None, ""):
         external_ids.setdefault("tvdb_id", str(metadata["tvdb_id"]))
+    tmdb_id = next(
+        (
+            external_ids.get(field)
+            for field in ("tmdb_show_id", "tmdb_id", "tmdb_tv_id")
+            if external_ids.get(field) not in (None, "")
+        ),
+        None,
+    )
+    if tmdb_id:
+        for field in ("tmdb_show_id", "tmdb_id", "tmdb_tv_id"):
+            external_ids.setdefault(field, tmdb_id)
 
     return {
         key: str(value).strip()
@@ -123,13 +124,22 @@ def classify_tv_metadata(
     metadata: dict[str, Any] | None,
     *,
     mapping_data: dict[str, Any] | None = None,
+    snapshot: anime_mapping.AnimeMappingSnapshot | None = None,
 ) -> GroupedAnimeMatch:
     """Classify one TMDB TV metadata payload using exact external IDs."""
     metadata = metadata or {}
     ids = _metadata_external_ids(metadata)
-    indexes = build_mapping_indexes(
-        anime_mapping.load_mapping_data() if mapping_data is None else mapping_data,
+    snapshot = snapshot or anime_mapping.load_mapping_snapshot(mapping_data)
+    global CLASSIFIER_CALL_COUNT  # noqa: PLW0603 - process-local audit counter
+
+    CLASSIFIER_CALL_COUNT += 1
+    logger.info(
+        "grouped_anime_classifier_call count=%s revision=%s digest=%s",
+        CLASSIFIER_CALL_COUNT,
+        snapshot.revision,
+        snapshot.digest,
     )
+    indexes = snapshot.indexes
 
     lookup_fields = {
         "tmdb": (
@@ -150,24 +160,23 @@ def classify_tv_metadata(
                 (provider, entry) for entry in indexes[field].get(external_id, [])
             )
 
-    mal_ids = tuple(
-        sorted(
-            {
-                mal_id
-                for _provider, entry in hits
-                for mal_id in entry["mal_ids"]
-            },
-        )
+    candidate_group_keys = tuple(
+        sorted({entry["mapping_group_key"] for _provider, entry in hits}),
     )
+    matched_entries = {
+        entry["mapping_key"]: entry for _provider, entry in hits
+    }
+    mal_ids = tuple(sorted({mal_id for entry in matched_entries.values() for mal_id in entry["mal_ids"]}))
     result_kwargs = {
         "tmdb_id": ids.get("tmdb_id"),
         "tvdb_id": ids.get("tvdb_id"),
         "imdb_id": ids.get("imdb_id"),
         "mal_ids": mal_ids,
         "matched_by": tuple(sorted({provider for provider, _entry in hits})),
-        "mapping_keys": tuple(
-            sorted({entry["mapping_key"] for _provider, entry in hits})
-        ),
+        "mapping_keys": tuple(sorted(matched_entries)),
+        "mapping_revision": snapshot.revision,
+        "mapping_digest": snapshot.digest,
+        "candidate_group_keys": candidate_group_keys,
     }
 
     if not hits:
@@ -182,6 +191,30 @@ def classify_tv_metadata(
             reason="anime_ids_match_has_no_mal_identity",
             **result_kwargs,
         )
+    if len(candidate_group_keys) > 1:
+        logger.info(
+            "grouped_anime_classifier decision=leave reason=conflicting_exact_external_ids "
+            "revision=%s digest=%s groups=%s",
+            snapshot.revision,
+            snapshot.digest,
+            ",".join(candidate_group_keys),
+        )
+        return GroupedAnimeMatch(
+            decision="leave",
+            reason="conflicting_exact_external_ids",
+            **result_kwargs,
+        )
+
+    group_key = candidate_group_keys[0]
+    group_entries = snapshot.groups[group_key]
+    result_kwargs["mapping_keys"] = tuple(
+        sorted(entry["mapping_key"] for entry in group_entries),
+    )
+    result_kwargs["mal_ids"] = tuple(
+        sorted({mal_id for entry in group_entries for mal_id in entry["mal_ids"]}),
+    )
+    result_kwargs["mapping_group_key"] = group_key
+    mal_ids = result_kwargs["mal_ids"]
 
     genres = metadata.get("genres") or []
     if not any(str(genre).casefold() == ANIMATION_GENRE for genre in genres):
@@ -194,6 +227,15 @@ def classify_tv_metadata(
     reason = "exact_external_id_and_animation_genre"
     if len(mal_ids) > 1:
         reason += "_multiple_mal_seasons"
+    logger.info(
+        "grouped_anime_classifier decision=move reason=%s revision=%s digest=%s "
+        "group=%s matched_by=%s",
+        reason,
+        snapshot.revision,
+        snapshot.digest,
+        group_key,
+        ",".join(result_kwargs["matched_by"]),
+    )
     return GroupedAnimeMatch(
         decision="move",
         reason=reason,
@@ -229,42 +271,40 @@ def _target_collision(items: list[Item]) -> str | None:
             "season_number": item.season_number,
             "episode_number": item.episode_number,
         }
-        if Item.objects.filter(**identity).exclude(pk=item.pk).exists():
+        if Item.objects.select_for_update().filter(**identity).exclude(pk=item.pk).first():
             return f"target_bucket_collision_for_item_{item.pk}"
     return None
 
 
-def _safe_upsert_link(
+def _upsert_grouped_link(
     item: Item,
     provider: str,
     provider_media_id: str | None,
-    metadata: dict[str, Any],
+    link_metadata: dict[str, Any],
 ) -> None:
-    """Add a show-level link without stealing another item's identity."""
+    """Persist a show-level link through the shared race-safe helper."""
     if not provider_media_id:
         return
-    existing = ItemProviderLink.objects.filter(
+    external_key = {
+        Sources.TMDB.value: "tmdb_id",
+        Sources.TVDB.value: "tvdb_id",
+        Sources.MAL.value: "mal_id",
+    }.get(provider)
+    metadata = {
+        "source": provider,
+        "media_id": str(provider_media_id),
+        "media_type": MediaTypes.TV.value,
+        "provider_external_ids": (
+            {external_key: str(provider_media_id)} if external_key else {}
+        ),
+    }
+    metadata_resolution.upsert_provider_links(
         item=item,
-        provider=provider,
-        provider_media_type=MediaTypes.TV.value,
-        season_number=None,
-    ).first()
-    if existing is not None:
-        return
-    claimed = ItemProviderLink.objects.filter(
-        provider=provider,
-        provider_media_type=MediaTypes.TV.value,
-        provider_media_id=str(provider_media_id),
-        season_number=None,
-    ).exclude(item=item).exists()
-    if claimed:
-        return
-    ItemProviderLink.objects.create(
-        item=item,
-        provider=provider,
-        provider_media_type=MediaTypes.TV.value,
-        provider_media_id=str(provider_media_id),
         metadata=metadata,
+        provider=provider,
+        provider_media_type=MediaTypes.TV.value,
+        extra_metadata=link_metadata,
+        persistence_mode="required",
     )
 
 
@@ -287,6 +327,13 @@ def promote_grouped_anime(
         return False
 
     items = _tree_items(tv_item)
+    item_ids = sorted({item.pk for item in items})
+    locked_items = list(
+        Item.objects.select_for_update().filter(pk__in=item_ids).order_by("pk"),
+    )
+    items_by_id = {item.pk: item for item in locked_items}
+    tv_item = items_by_id[tv_item.pk]
+    items = [items_by_id[item_id] for item_id in item_ids]
     collision = _target_collision(items)
     if collision:
         return False
@@ -320,10 +367,20 @@ def promote_grouped_anime(
     link_metadata = {
         "migration": "grouped-anime-classifier",
         "mapping_source": match.mapping_source,
+        "mapping_revision": match.mapping_revision,
+        "mapping_digest": match.mapping_digest,
+        "mapping_group_key": match.mapping_group_key,
         "mapping_keys": list(match.mapping_keys),
     }
-    _safe_upsert_link(tv_item, Sources.TMDB.value, match.tmdb_id, link_metadata)
-    _safe_upsert_link(tv_item, Sources.TVDB.value, match.tvdb_id, link_metadata)
+    _upsert_grouped_link(tv_item, Sources.TMDB.value, match.tmdb_id, link_metadata)
+    _upsert_grouped_link(tv_item, Sources.TVDB.value, match.tvdb_id, link_metadata)
     if len(match.mal_ids) == 1:
-        _safe_upsert_link(tv_item, Sources.MAL.value, match.mal_ids[0], link_metadata)
+        _upsert_grouped_link(tv_item, Sources.MAL.value, match.mal_ids[0], link_metadata)
+    logger.info(
+        "grouped_anime_promotion result=applied item=%s group=%s revision=%s digest=%s",
+        tv_item.pk,
+        match.mapping_group_key,
+        match.mapping_revision,
+        match.mapping_digest,
+    )
     return True
