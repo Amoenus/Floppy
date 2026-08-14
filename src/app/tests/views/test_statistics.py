@@ -173,12 +173,13 @@ class StatisticsViewTests(TestCase):
                     episode_number=episode_number,
                     runtime_minutes=episode_spec.get("runtime_minutes", 45),
                 )
-                Episode.objects.create(
-                    item=episode_item,
-                    related_season=season,
-                    end_date=base_time
-                    + timedelta(minutes=episode_spec.get("offset_minutes", 0)),
-                )
+                with self.captureOnCommitCallbacks(execute=True):
+                    Episode.objects.create(
+                        item=episode_item,
+                        related_season=season,
+                        end_date=base_time
+                        + timedelta(minutes=episode_spec.get("offset_minutes", 0)),
+                    )
                 episode_items[(season_number, episode_number)] = episode_item
                 for credit in episode_spec.get("credits", []):
                     ItemPersonCredit.objects.create(

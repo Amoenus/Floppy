@@ -337,13 +337,15 @@ def _invalidate_history_for_media_change(
     if not normalized_day_keys:
         return
 
+    invalidate_kwargs = {"refresh_index": not prioritized}
+    if force:
+        invalidate_kwargs["force"] = True
     history_cache.invalidate_history_days(
         user_id,
         day_keys=normalized_day_keys,
         logging_styles=logging_styles,
         reason=reason,
-        force=force,
-        refresh_index=not prioritized,
+        **invalidate_kwargs,
     )
     if not prioritized:
         return

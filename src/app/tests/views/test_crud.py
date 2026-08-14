@@ -1549,11 +1549,12 @@ class DeleteMedia(TestCase):
             season_number=1,
             episode_number=99,
         )
-        self.episode = Episode.objects.create(
-            item=self.item_ep,
-            related_season=self.season,
-            end_date=datetime.datetime(2023, 6, 1, 0, 0, tzinfo=datetime.UTC),
-        )
+        with self.captureOnCommitCallbacks(execute=True):
+            self.episode = Episode.objects.create(
+                item=self.item_ep,
+                related_season=self.season,
+                end_date=datetime.datetime(2023, 6, 1, 0, 0, tzinfo=datetime.UTC),
+            )
 
     def test_delete_tv(self):
         """Test the deletion of a tv through views."""
@@ -1621,13 +1622,14 @@ class DeleteMedia(TestCase):
         )
         self.assertTrue(cached_day["entries"])
 
-        response = self.client.post(
-            reverse("media_delete"),
-            data={
-                "instance_id": self.episode.id,
-                "media_type": MediaTypes.EPISODE.value,
-            },
-        )
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(
+                reverse("media_delete"),
+                data={
+                    "instance_id": self.episode.id,
+                    "media_type": MediaTypes.EPISODE.value,
+                },
+            )
 
         self.assertEqual(response.status_code, 302)
         history_days, _ = history_cache.get_month_history(

@@ -1314,11 +1314,12 @@ class ConsumptionStatisticsTests(TestCase):
                 title=f"Episode {index}",
                 runtime_minutes=45,
             )
-            Episode.objects.create(
-                item=episode_item,
-                related_season=self.season,
-                end_date=end_time,
-            )
+            with self.captureOnCommitCallbacks(execute=True):
+                Episode.objects.create(
+                    item=episode_item,
+                    related_season=self.season,
+                    end_date=end_time,
+                )
 
         # Create movie with runtime 120 minutes
         self.movie_item = Item.objects.create(

@@ -400,11 +400,12 @@ class HistoryMonthViewTests(TestCase):
             season_number=1,
             episode_number=1,
         )
-        Episode.objects.create(
-            item=episode_item,
-            related_season=season,
-            end_date=now,
-        )
+        with self.captureOnCommitCallbacks(execute=True):
+            Episode.objects.create(
+                item=episode_item,
+                related_season=season,
+                end_date=now,
+            )
 
     def test_default_month_view_does_not_bootstrap_cache_status_poll(self):
         response = self.client.get(reverse("history"))
