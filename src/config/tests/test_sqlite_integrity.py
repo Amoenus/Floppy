@@ -1,19 +1,65 @@
 """Tests for the SQLite startup integrity guard (issue #593)."""
 
 import io
+import json
+import os
 import sqlite3
+import subprocess
+import sys
 import tempfile
+import time
 from pathlib import Path
 from unittest import mock
 
 from django.test import SimpleTestCase
 
+from config import sqlite_integrity
 from config.sqlite_integrity import check_database_integrity
 
 ENTRYPOINT = Path(__file__).resolve().parents[3] / "entrypoint.sh"
+_ACTION_ENV = "FLOPPY_SQLITE_CONFLICT_ACTION"
 
 
 class SqliteIntegrityTests(SimpleTestCase):
+    def create_orphan_database(
+        self,
+        tmp_dir,
+        *,
+        rows=1,
+        without_rowid=False,
+        db_name="db.sqlite3",
+    ):
+        """Create a small database with missing parent relationships."""
+        db_path = str(Path(tmp_dir) / db_name)
+        conn = sqlite3.connect(db_path)
+        child_suffix = " WITHOUT ROWID" if without_rowid else ""
+        conn.executescript(
+            f"""
+            PRAGMA foreign_keys=ON;
+            CREATE TABLE parent (id INTEGER PRIMARY KEY);
+            CREATE TABLE child (
+                id INTEGER PRIMARY KEY,
+                parent_id INTEGER NOT NULL REFERENCES parent(id)
+            ){child_suffix};
+            INSERT INTO parent VALUES (1);
+            """  # noqa: S608
+        )
+        conn.executemany(
+            "INSERT INTO child VALUES (?, 1)",
+            ((row_id,) for row_id in range(1, rows + 1)),
+        )
+        conn.commit()
+        conn.execute("PRAGMA foreign_keys=OFF")
+        conn.execute("DELETE FROM parent WHERE id = 1")
+        conn.commit()
+        conn.close()
+        return db_path
+
+    @staticmethod
+    def read_incident_report(db_path):
+        """Read the bounded recovery report written beside the database."""
+        return json.loads(Path(f"{db_path}.integrity.json").read_text())
+
     def test_orphaned_album_artist_credit_is_removed(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = str(Path(tmp_dir) / "db.sqlite3")
@@ -50,30 +96,20 @@ class SqliteIntegrityTests(SimpleTestCase):
             self.assertEqual(conn.execute("PRAGMA foreign_key_check").fetchall(), [])
             conn.close()
 
-    def test_unknown_foreign_key_violation_stops_startup(self):
+            report = self.read_incident_report(db_path)
+            self.assertEqual(report["status"], "resolved")
+            self.assertEqual(report["resolution"], "automatic-album-artist")
+            backup = sqlite3.connect(report["backup_path"])
+            self.assertEqual(
+                backup.execute("SELECT COUNT(*) FROM app_albumartist").fetchone()[0],
+                1,
+            )
+            self.assertEqual(len(backup.execute("PRAGMA foreign_key_check").fetchall()), 1)
+            backup.close()
+
+    def test_unknown_foreign_key_violation_writes_bounded_report(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
-            db_path = str(Path(tmp_dir) / "db.sqlite3")
-            conn = sqlite3.connect(db_path)
-            conn.executescript(
-                """
-                PRAGMA foreign_keys=ON;
-                CREATE TABLE parent (id INTEGER PRIMARY KEY);
-                CREATE TABLE child (
-                    id INTEGER PRIMARY KEY,
-                    parent_id INTEGER NOT NULL REFERENCES parent(id)
-                );
-                INSERT INTO parent VALUES (1);
-                """
-            )
-            conn.executemany(
-                "INSERT INTO child VALUES (?, 1)",
-                ((row_id,) for row_id in range(1, 13)),
-            )
-            conn.commit()
-            conn.execute("PRAGMA foreign_keys=OFF")
-            conn.execute("DELETE FROM parent WHERE id = 1")
-            conn.commit()
-            conn.close()
+            db_path = self.create_orphan_database(tmp_dir, rows=1000)
 
             with (
                 self.assertRaises(SystemExit) as ctx,
@@ -83,14 +119,912 @@ class SqliteIntegrityTests(SimpleTestCase):
 
             self.assertEqual(ctx.exception.code, 1)
             output = stderr.getvalue()
-            self.assertEqual(output.count("foreign key check failed"), 12)
-            self.assertIn("table='child', row=12, parent='parent'", output)
-            self.assertIn("Back up the SQLite file", output)
+            self.assertEqual(output.count("foreign key check failed"), 20)
+            self.assertIn("1000 foreign key conflict(s)", output)
+            self.assertIn("FLOPPY_SQLITE_CONFLICT_ACTION=accept:", output)
+            self.assertIn("FLOPPY_SQLITE_CONFLICT_ACTION=quarantine:", output)
+
+            report = self.read_incident_report(db_path)
+            self.assertEqual(report["status"], "blocked")
+            self.assertEqual(report["total_conflicts"], 1000)
+            self.assertEqual(
+                report["groups"],
+                [
+                    {
+                        "count": 1000,
+                        "foreign_key_id": 0,
+                        "parent": "parent",
+                        "table": "child",
+                    }
+                ],
+            )
+            self.assertEqual(len(report["samples"]), 20)
+            self.assertEqual(len(report["fingerprint"]), 64)
+            self.assertEqual(len(report["incident_token"]), 32)
+
             conn = sqlite3.connect(db_path)
             self.assertEqual(
-                conn.execute("SELECT COUNT(*) FROM child").fetchone()[0], 12
+                conn.execute("SELECT COUNT(*) FROM child").fetchone()[0], 1000
             )
             conn.close()
+
+    def test_matching_accept_action_preserves_rows_and_allows_startup(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = self.create_orphan_database(tmp_dir, rows=3)
+            with self.assertRaises(SystemExit), mock.patch("sys.stderr"):
+                check_database_integrity(db_path)
+
+            incident_token = self.read_incident_report(db_path)["incident_token"]
+            with (
+                mock.patch.dict(
+                    os.environ,
+                    {
+                        "FLOPPY_SQLITE_CONFLICT_ACTION": f"accept:{incident_token}",
+                    },
+                ),
+                mock.patch("sys.stderr", new_callable=io.StringIO) as stderr,
+            ):
+                check_database_integrity(db_path)
+
+            self.assertIn("Accepted 3 foreign key conflict(s)", stderr.getvalue())
+            self.assertEqual(self.read_incident_report(db_path)["status"], "accepted")
+            conn = sqlite3.connect(db_path)
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM child").fetchone()[0], 3)
+            conn.close()
+
+    def test_mismatched_accept_token_stops_startup(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = self.create_orphan_database(tmp_dir)
+            with (
+                mock.patch.dict(
+                    os.environ,
+                    {"FLOPPY_SQLITE_CONFLICT_ACTION": "accept:wrong-incident"},
+                ),
+                self.assertRaises(SystemExit) as ctx,
+                mock.patch("sys.stderr", new_callable=io.StringIO) as stderr,
+            ):
+                check_database_integrity(db_path)
+
+            self.assertEqual(ctx.exception.code, 1)
+            output = stderr.getvalue()
+            self.assertIn("does not carry the current incident token", output)
+            # The operator must be sent to the token, never to the fingerprint.
+            report = self.read_incident_report(db_path)
+            self.assertIn(f"accept:{report['incident_token']}", output)
+            self.assertNotIn(f"accept:{report['fingerprint']}", output)
+
+    def test_quarantine_action_backs_up_then_deletes_orphans(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = self.create_orphan_database(tmp_dir, rows=3)
+            with self.assertRaises(SystemExit), mock.patch("sys.stderr"):
+                check_database_integrity(db_path)
+
+            incident_token = self.read_incident_report(db_path)["incident_token"]
+            with (
+                mock.patch.dict(
+                    os.environ,
+                    {
+                        "FLOPPY_SQLITE_CONFLICT_ACTION": f"quarantine:{incident_token}",
+                    },
+                ),
+                mock.patch("sys.stderr", new_callable=io.StringIO) as stderr,
+            ):
+                check_database_integrity(db_path)
+
+            report = self.read_incident_report(db_path)
+            self.assertEqual(report["status"], "resolved")
+            self.assertEqual(report["resolution"], "quarantine")
+            backup_path = Path(report["backup_path"])
+            self.assertTrue(backup_path.is_file())
+            self.assertIn("Quarantined 3 orphaned row(s)", stderr.getvalue())
+
+            conn = sqlite3.connect(db_path)
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM child").fetchone()[0], 0)
+            self.assertEqual(conn.execute("PRAGMA foreign_key_check").fetchall(), [])
+            conn.close()
+
+            backup = sqlite3.connect(backup_path)
+            self.assertEqual(backup.execute("SELECT COUNT(*) FROM child").fetchone()[0], 3)
+            self.assertEqual(len(backup.execute("PRAGMA foreign_key_check").fetchall()), 3)
+            backup.close()
+
+    def test_quarantine_refuses_rows_without_a_rowid(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = self.create_orphan_database(tmp_dir, without_rowid=True)
+            with self.assertRaises(SystemExit), mock.patch("sys.stderr"):
+                check_database_integrity(db_path)
+
+            report = self.read_incident_report(db_path)
+            incident_token = report["incident_token"]
+            self.assertFalse(report["can_quarantine"])
+            self.assertNotIn("quarantine", report["actions"])
+            with (
+                mock.patch.dict(
+                    os.environ,
+                    {
+                        "FLOPPY_SQLITE_CONFLICT_ACTION": f"quarantine:{incident_token}",
+                    },
+                ),
+                self.assertRaises(SystemExit) as ctx,
+                mock.patch("sys.stderr", new_callable=io.StringIO) as stderr,
+            ):
+                check_database_integrity(db_path)
+
+            self.assertEqual(ctx.exception.code, 1)
+            self.assertIn("cannot be quarantined automatically", stderr.getvalue())
+            conn = sqlite3.connect(db_path)
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM child").fetchone()[0], 1)
+            conn.close()
+
+    def test_foreign_key_groups_include_constraint_identity(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = str(Path(tmp_dir) / "db.sqlite3")
+            conn = sqlite3.connect(db_path)
+            conn.executescript(
+                """
+                CREATE TABLE parent (id INTEGER PRIMARY KEY);
+                CREATE TABLE child (
+                    id INTEGER PRIMARY KEY,
+                    left_id INTEGER REFERENCES parent(id),
+                    right_id INTEGER REFERENCES parent(id)
+                );
+                INSERT INTO child VALUES (1, 10, 20);
+                """
+            )
+            conn.commit()
+            conn.close()
+
+            with self.assertRaises(SystemExit), mock.patch("sys.stderr"):
+                check_database_integrity(db_path)
+
+            groups = self.read_incident_report(db_path)["groups"]
+            self.assertEqual(len(groups), 2)
+            self.assertEqual({group["foreign_key_id"] for group in groups}, {0, 1})
+            self.assertTrue(all(group["count"] == 1 for group in groups))
+
+    def test_blocked_incident_reuses_random_authorization_token(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = self.create_orphan_database(tmp_dir)
+            with self.assertRaises(SystemExit), mock.patch("sys.stderr"):
+                check_database_integrity(db_path)
+            first = self.read_incident_report(db_path)
+
+            with self.assertRaises(SystemExit), mock.patch("sys.stderr"):
+                check_database_integrity(db_path)
+            second = self.read_incident_report(db_path)
+
+            self.assertEqual(second["incident_token"], first["incident_token"])
+            self.assertNotEqual(second["incident_token"], second["fingerprint"])
+
+    def test_special_database_paths_backup_the_exact_live_database(self):
+        names_and_decoys = {
+            "db?real.sqlite3": "db",
+            "db#real.sqlite3": "db",
+            "db%20real.sqlite3": "db real.sqlite3",
+            "db space ☃.sqlite3": None,
+        }
+        for db_name, decoy_name in names_and_decoys.items():
+            with self.subTest(db_name=db_name), tempfile.TemporaryDirectory() as tmp_dir:
+                db_path = self.create_orphan_database(tmp_dir, db_name=db_name)
+                live = sqlite3.connect(db_path)
+                live.execute("CREATE TABLE marker (value TEXT)")
+                live.execute("INSERT INTO marker VALUES ('live')")
+                live.commit()
+                live.close()
+
+                if decoy_name:
+                    decoy_path = self.create_orphan_database(
+                        tmp_dir,
+                        db_name=decoy_name,
+                    )
+                    decoy = sqlite3.connect(decoy_path)
+                    decoy.execute("CREATE TABLE marker (value TEXT)")
+                    decoy.execute("INSERT INTO marker VALUES ('decoy')")
+                    decoy.commit()
+                    decoy.close()
+
+                with self.assertRaises(SystemExit), mock.patch("sys.stderr"):
+                    check_database_integrity(db_path)
+                token = self.read_incident_report(db_path)["incident_token"]
+                with (
+                    mock.patch.dict(
+                        os.environ,
+                        {_ACTION_ENV: f"quarantine:{token}"},
+                    ),
+                    mock.patch("sys.stderr"),
+                ):
+                    check_database_integrity(db_path)
+
+                report = self.read_incident_report(db_path)
+                backup = sqlite3.connect(report["backup_path"])
+                self.assertEqual(
+                    backup.execute("SELECT value FROM marker").fetchone()[0],
+                    "live",
+                )
+                self.assertEqual(backup.execute("SELECT COUNT(*) FROM child").fetchone()[0], 1)
+                backup.close()
+
+    def test_report_publication_does_not_follow_predictable_symlink(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = self.create_orphan_database(tmp_dir)
+            victim = Path(tmp_dir) / "victim"
+            victim.write_text("do not overwrite")
+            Path(f"{db_path}.integrity.json.tmp").symlink_to(victim)
+
+            with self.assertRaises(SystemExit), mock.patch("sys.stderr"):
+                check_database_integrity(db_path)
+
+            self.assertEqual(victim.read_text(), "do not overwrite")
+            self.assertTrue(Path(f"{db_path}.integrity.json").is_file())
+
+    def test_report_publication_replaces_destination_symlink_not_its_target(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = self.create_orphan_database(tmp_dir)
+            victim = Path(tmp_dir) / "victim"
+            victim.write_text("do not overwrite")
+            report_path = Path(f"{db_path}.integrity.json")
+            report_path.symlink_to(victim)
+
+            with self.assertRaises(SystemExit), mock.patch("sys.stderr"):
+                check_database_integrity(db_path)
+
+            self.assertEqual(victim.read_text(), "do not overwrite")
+            self.assertFalse(report_path.is_symlink())
+            self.assertEqual(json.loads(report_path.read_text())["status"], "blocked")
+
+    def test_resolved_quarantine_token_cannot_delete_a_recreated_conflict(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = self.create_orphan_database(tmp_dir)
+            with self.assertRaises(SystemExit), mock.patch("sys.stderr"):
+                check_database_integrity(db_path)
+            old_token = self.read_incident_report(db_path)["incident_token"]
+            action = f"quarantine:{old_token}"
+            with mock.patch.dict(os.environ, {_ACTION_ENV: action}), mock.patch(
+                "sys.stderr"
+            ):
+                check_database_integrity(db_path)
+
+            conn = sqlite3.connect(db_path)
+            conn.execute("INSERT INTO child VALUES (1, 1)")
+            conn.commit()
+            conn.close()
+
+            with (
+                mock.patch.dict(os.environ, {_ACTION_ENV: action}),
+                self.assertRaises(SystemExit),
+                mock.patch("sys.stderr"),
+            ):
+                check_database_integrity(db_path)
+
+            report = self.read_incident_report(db_path)
+            self.assertNotEqual(report["incident_token"], old_token)
+            conn = sqlite3.connect(db_path)
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM child").fetchone()[0], 1)
+            conn.close()
+
+    def test_quarantine_refuses_delete_triggers_before_changing_rows(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = self.create_orphan_database(tmp_dir)
+            conn = sqlite3.connect(db_path)
+            conn.executescript(
+                """
+                CREATE TABLE unrelated (id INTEGER PRIMARY KEY);
+                INSERT INTO unrelated VALUES (1);
+                CREATE TRIGGER child_cleanup AFTER DELETE ON child BEGIN
+                    DELETE FROM unrelated WHERE id = OLD.id;
+                END;
+                """
+            )
+            conn.commit()
+            conn.close()
+
+            with self.assertRaises(SystemExit), mock.patch("sys.stderr"):
+                check_database_integrity(db_path)
+            report = self.read_incident_report(db_path)
+            self.assertFalse(report["can_quarantine"])
+            self.assertNotIn("quarantine", report["actions"])
+
+            with (
+                mock.patch.dict(
+                    os.environ,
+                    {_ACTION_ENV: f"quarantine:{report['incident_token']}"},
+                ),
+                self.assertRaises(SystemExit),
+                mock.patch("sys.stderr", new_callable=io.StringIO) as stderr,
+            ):
+                check_database_integrity(db_path)
+
+            self.assertIn("DELETE trigger", stderr.getvalue())
+            conn = sqlite3.connect(db_path)
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM child").fetchone()[0], 1)
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM unrelated").fetchone()[0], 1)
+            conn.close()
+
+    def test_quarantine_refuses_commented_delete_trigger_without_collateral_deletion(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = self.create_orphan_database(tmp_dir)
+            conn = sqlite3.connect(db_path)
+            conn.executescript(
+                """
+                CREATE TABLE unrelated (id INTEGER PRIMARY KEY);
+                INSERT INTO unrelated VALUES (1);
+                CREATE TRIGGER child_cleanup AFTER DELETE /* gap */ ON child BEGIN
+                    DELETE FROM unrelated WHERE id = OLD.id;
+                END;
+                """
+            )
+            conn.commit()
+            conn.close()
+
+            with self.assertRaises(SystemExit), mock.patch("sys.stderr"):
+                check_database_integrity(db_path)
+            report = self.read_incident_report(db_path)
+
+            self.assertFalse(report["can_quarantine"])
+            self.assertNotIn("quarantine", report["actions"])
+            conn = sqlite3.connect(db_path)
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM child").fetchone()[0], 1)
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM unrelated").fetchone()[0], 1)
+            conn.close()
+
+    def test_quarantine_refuses_case_mismatched_delete_trigger(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = self.create_orphan_database(tmp_dir)
+            conn = sqlite3.connect(db_path)
+            # sqlite_schema.tbl_name keeps the spelling used by CREATE TRIGGER,
+            # but SQLite still fires the trigger for the canonical table name.
+            conn.executescript(
+                """
+                CREATE TABLE unrelated (id INTEGER PRIMARY KEY);
+                INSERT INTO unrelated VALUES (1);
+                CREATE TRIGGER child_cleanup AFTER DELETE ON CHILD BEGIN
+                    DELETE FROM unrelated;
+                END;
+                """
+            )
+            conn.commit()
+            conn.close()
+
+            with self.assertRaises(SystemExit), mock.patch("sys.stderr"):
+                check_database_integrity(db_path)
+            report = self.read_incident_report(db_path)
+            self.assertFalse(report["can_quarantine"])
+            self.assertNotIn("quarantine", report["actions"])
+
+            with (
+                mock.patch.dict(
+                    os.environ,
+                    {_ACTION_ENV: f"quarantine:{report['incident_token']}"},
+                ),
+                self.assertRaises(SystemExit),
+                mock.patch("sys.stderr", new_callable=io.StringIO) as stderr,
+            ):
+                check_database_integrity(db_path)
+
+            self.assertIn("DELETE trigger", stderr.getvalue())
+            conn = sqlite3.connect(db_path)
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM child").fetchone()[0], 1)
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM unrelated").fetchone()[0], 1)
+            conn.close()
+
+    def test_quarantine_refuses_declared_rowid_without_deleting_duplicate_values(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = str(Path(tmp_dir) / "db.sqlite3")
+            conn = sqlite3.connect(db_path)
+            conn.executescript(
+                """
+                CREATE TABLE parent (id INTEGER PRIMARY KEY);
+                INSERT INTO parent VALUES (1);
+                CREATE TABLE child (
+                    rowid INTEGER NOT NULL,
+                    parent_id INTEGER REFERENCES parent(id)
+                );
+                INSERT INTO child VALUES (1, 42);
+                INSERT INTO child VALUES (1, 1);
+                """
+            )
+            conn.commit()
+            conn.close()
+
+            with self.assertRaises(SystemExit), mock.patch("sys.stderr"):
+                check_database_integrity(db_path)
+            report = self.read_incident_report(db_path)
+
+            self.assertFalse(report["can_quarantine"])
+            self.assertNotIn("quarantine", report["actions"])
+            self.assertTrue(
+                any("shadows hidden row identity" in reason for reason in report["unsafe_reasons"])
+            )
+            conn = sqlite3.connect(db_path)
+            self.assertEqual(
+                conn.execute("SELECT rowid, parent_id FROM child ORDER BY parent_id").fetchall(),
+                [(1, 1), (1, 42)],
+            )
+            conn.close()
+
+    def test_quarantine_refuses_symlinked_recovery_directory(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = self.create_orphan_database(tmp_dir)
+            victim_dir = Path(tmp_dir) / "victim-backups"
+            victim_dir.mkdir()
+            (Path(tmp_dir) / "sqlite-recovery").symlink_to(victim_dir)
+            with self.assertRaises(SystemExit), mock.patch("sys.stderr"):
+                check_database_integrity(db_path)
+            report = self.read_incident_report(db_path)
+
+            with (
+                mock.patch.dict(
+                    os.environ,
+                    {_ACTION_ENV: f"quarantine:{report['incident_token']}"},
+                ),
+                self.assertRaises(SystemExit),
+                mock.patch("sys.stderr", new_callable=io.StringIO) as stderr,
+            ):
+                check_database_integrity(db_path)
+
+            self.assertIn("recovery directory", stderr.getvalue())
+            self.assertEqual(list(victim_dir.iterdir()), [])
+            conn = sqlite3.connect(db_path)
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM child").fetchone()[0], 1)
+            conn.close()
+
+    def test_failed_backup_verification_leaves_no_official_or_staging_file(self):
+        class BadQuickCheckConnection(sqlite3.Connection):
+            def execute(self, sql, parameters=(), /):
+                if sql.strip().upper() == "PRAGMA QUICK_CHECK":
+                    return super().execute("SELECT 'bad backup'")
+                return super().execute(sql, parameters)
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = self.create_orphan_database(tmp_dir)
+            with self.assertRaises(SystemExit), mock.patch("sys.stderr"):
+                check_database_integrity(db_path)
+            report = self.read_incident_report(db_path)
+            real_connect = sqlite3.connect
+
+            def connect(database, *args, **kwargs):
+                if str(database).endswith(".sqlite3.tmp"):
+                    kwargs["factory"] = BadQuickCheckConnection
+                return real_connect(database, *args, **kwargs)
+
+            with (
+                mock.patch(
+                    "config.sqlite_integrity.sqlite3.connect",
+                    side_effect=connect,
+                ),
+                mock.patch.dict(
+                    os.environ,
+                    {_ACTION_ENV: f"quarantine:{report['incident_token']}"},
+                ),
+                self.assertRaises(SystemExit),
+                mock.patch("sys.stderr"),
+            ):
+                check_database_integrity(db_path)
+
+            self.assertEqual(list((Path(tmp_dir) / "sqlite-recovery").iterdir()), [])
+            conn = sqlite3.connect(db_path)
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM child").fetchone()[0], 1)
+            conn.close()
+
+    def test_backup_publication_collision_fails_closed_and_cleans_staging(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = self.create_orphan_database(tmp_dir)
+            with self.assertRaises(SystemExit), mock.patch("sys.stderr"):
+                check_database_integrity(db_path)
+            report = self.read_incident_report(db_path)
+
+            with (
+                mock.patch.dict(
+                    os.environ,
+                    {_ACTION_ENV: f"quarantine:{report['incident_token']}"},
+                ),
+                mock.patch(
+                    "config.sqlite_integrity.os.link",
+                    side_effect=FileExistsError("collision"),
+                ),
+                self.assertRaises(SystemExit),
+                mock.patch("sys.stderr"),
+            ):
+                check_database_integrity(db_path)
+
+            self.assertEqual(list((Path(tmp_dir) / "sqlite-recovery").iterdir()), [])
+            conn = sqlite3.connect(db_path)
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM child").fetchone()[0], 1)
+            conn.close()
+
+    def test_prepared_report_survives_resolved_report_failure_and_reconciles(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = self.create_orphan_database(tmp_dir)
+            with self.assertRaises(SystemExit), mock.patch("sys.stderr"):
+                check_database_integrity(db_path)
+            report = self.read_incident_report(db_path)
+            real_write = sqlite_integrity._write_incident_report
+
+            def fail_resolved(*args, **kwargs):
+                if kwargs["status"] == "resolved":
+                    raise OSError("simulated report failure")
+                return real_write(*args, **kwargs)
+
+            with (
+                mock.patch.dict(
+                    os.environ,
+                    {_ACTION_ENV: f"quarantine:{report['incident_token']}"},
+                ),
+                mock.patch.object(
+                    sqlite_integrity,
+                    "_write_incident_report",
+                    side_effect=fail_resolved,
+                ),
+                self.assertRaises(SystemExit),
+                mock.patch("sys.stderr"),
+            ):
+                check_database_integrity(db_path)
+
+            prepared = self.read_incident_report(db_path)
+            self.assertEqual(prepared["status"], "prepared")
+            self.assertTrue(Path(prepared["backup_path"]).is_file())
+            conn = sqlite3.connect(db_path)
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM child").fetchone()[0], 0)
+            conn.close()
+
+            check_database_integrity(db_path)
+            resolved = self.read_incident_report(db_path)
+            self.assertEqual(resolved["status"], "resolved")
+            self.assertEqual(resolved["resolution"], "quarantine")
+
+    def test_resolved_directory_fsync_failure_restores_prepared_report(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = self.create_orphan_database(tmp_dir)
+            with self.assertRaises(SystemExit), mock.patch("sys.stderr"):
+                check_database_integrity(db_path)
+            blocked = self.read_incident_report(db_path)
+            real_fsync_directory = sqlite_integrity._fsync_directory
+            failed_resolved = False
+
+            def fail_after_resolved_replace(directory):
+                nonlocal failed_resolved
+                report = self.read_incident_report(db_path)
+                if report["status"] == "resolved" and not failed_resolved:
+                    failed_resolved = True
+                    raise OSError("simulated resolved directory fsync failure")
+                return real_fsync_directory(directory)
+
+            with (
+                mock.patch.dict(
+                    os.environ,
+                    {_ACTION_ENV: f"quarantine:{blocked['incident_token']}"},
+                ),
+                mock.patch.object(
+                    sqlite_integrity,
+                    "_fsync_directory",
+                    side_effect=fail_after_resolved_replace,
+                ),
+                self.assertRaises(SystemExit),
+                mock.patch("sys.stderr"),
+            ):
+                check_database_integrity(db_path)
+
+            self.assertTrue(failed_resolved)
+            prepared = self.read_incident_report(db_path)
+            self.assertEqual(prepared["status"], "prepared")
+            backup_path = Path(prepared["backup_path"])
+            self.assertTrue(backup_path.is_file())
+            backup = sqlite3.connect(backup_path)
+            self.assertEqual(backup.execute("PRAGMA quick_check").fetchone(), ("ok",))
+            self.assertEqual(backup.execute("SELECT COUNT(*) FROM child").fetchone()[0], 1)
+            backup.close()
+            conn = sqlite3.connect(db_path)
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM child").fetchone()[0], 0)
+            conn.close()
+
+            check_database_integrity(db_path)
+            resolved = self.read_incident_report(db_path)
+            self.assertEqual(resolved["status"], "resolved")
+            self.assertEqual(resolved["resolution"], "quarantine")
+
+    def test_resolved_report_restoration_failure_does_not_claim_success(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = self.create_orphan_database(tmp_dir)
+            with self.assertRaises(SystemExit), mock.patch("sys.stderr"):
+                check_database_integrity(db_path)
+            blocked = self.read_incident_report(db_path)
+            real_fsync_directory = sqlite_integrity._fsync_directory
+            resolved_failed = False
+
+            def fail_resolved_and_restoration(directory):
+                nonlocal resolved_failed
+                status = self.read_incident_report(db_path)["status"]
+                if status == "resolved":
+                    resolved_failed = True
+                    raise OSError("simulated resolved fsync failure")
+                if resolved_failed and status == "prepared":
+                    raise OSError("simulated restoration fsync failure")
+                return real_fsync_directory(directory)
+
+            with (
+                mock.patch.dict(
+                    os.environ,
+                    {_ACTION_ENV: f"quarantine:{blocked['incident_token']}"},
+                ),
+                mock.patch.object(
+                    sqlite_integrity,
+                    "_fsync_directory",
+                    side_effect=fail_resolved_and_restoration,
+                ),
+                self.assertRaises(SystemExit),
+                mock.patch("sys.stderr", new_callable=io.StringIO) as stderr,
+            ):
+                check_database_integrity(db_path)
+
+            output = stderr.getvalue()
+            self.assertIn("restoration could not be confirmed", output)
+            self.assertNotIn("prepared report was restored", output)
+            conn = sqlite3.connect(db_path)
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM child").fetchone()[0], 0)
+            conn.close()
+
+    def test_unverifiable_prepared_backup_does_not_block_a_healthy_database(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = self.create_orphan_database(tmp_dir)
+            with self.assertRaises(SystemExit), mock.patch("sys.stderr"):
+                check_database_integrity(db_path)
+            report = self.read_incident_report(db_path)
+            real_write = sqlite_integrity._write_incident_report
+
+            def fail_resolved(*args, **kwargs):
+                if kwargs["status"] == "resolved":
+                    raise OSError("simulated report failure")
+                return real_write(*args, **kwargs)
+
+            with (
+                mock.patch.dict(
+                    os.environ,
+                    {_ACTION_ENV: f"quarantine:{report['incident_token']}"},
+                ),
+                mock.patch.object(
+                    sqlite_integrity,
+                    "_write_incident_report",
+                    side_effect=fail_resolved,
+                ),
+                self.assertRaises(SystemExit),
+                mock.patch("sys.stderr"),
+            ):
+                check_database_integrity(db_path)
+
+            prepared = self.read_incident_report(db_path)
+            self.assertEqual(prepared["status"], "prepared")
+            # The operator prunes sqlite-recovery/ after reading the report.
+            Path(prepared["backup_path"]).unlink()
+
+            with mock.patch("sys.stderr", new_callable=io.StringIO) as stderr:
+                check_database_integrity(db_path)
+
+            # The delete is already committed and the relationships are clean,
+            # so bookkeeping must not wedge an otherwise healthy container.
+            self.assertIn("could not be finalized", stderr.getvalue())
+            self.assertEqual(self.read_incident_report(db_path)["status"], "prepared")
+
+    def test_main_table_named_like_conflict_staging_table_is_quarantined(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = str(Path(tmp_dir) / "db.sqlite3")
+            conn = sqlite3.connect(db_path)
+            conn.executescript(
+                """
+                CREATE TABLE parent (id INTEGER PRIMARY KEY);
+                CREATE TABLE floppy_fk_conflicts (
+                    id INTEGER PRIMARY KEY,
+                    parent_id INTEGER REFERENCES parent(id)
+                );
+                INSERT INTO floppy_fk_conflicts VALUES (1, 42);
+                """
+            )
+            conn.commit()
+            conn.close()
+
+            with self.assertRaises(SystemExit), mock.patch("sys.stderr"):
+                check_database_integrity(db_path)
+            report = self.read_incident_report(db_path)
+            with (
+                mock.patch.dict(
+                    os.environ,
+                    {_ACTION_ENV: f"quarantine:{report['incident_token']}"},
+                ),
+                mock.patch("sys.stderr"),
+            ):
+                check_database_integrity(db_path)
+
+            conn = sqlite3.connect(db_path)
+            self.assertEqual(
+                conn.execute("SELECT COUNT(*) FROM main.floppy_fk_conflicts").fetchone()[0],
+                0,
+            )
+            conn.close()
+
+    def test_wal_backup_is_complete_and_restorable(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = str(Path(tmp_dir) / "db.sqlite3")
+            setup = sqlite3.connect(db_path)
+            setup.execute("PRAGMA journal_mode=WAL")
+            setup.execute("PRAGMA wal_autocheckpoint=0")
+            setup.executescript(
+                """
+                CREATE TABLE parent (id INTEGER PRIMARY KEY);
+                CREATE TABLE child (
+                    id INTEGER PRIMARY KEY,
+                    parent_id INTEGER REFERENCES parent(id)
+                );
+                CREATE TABLE marker (value TEXT);
+                INSERT INTO child VALUES (1, 42);
+                INSERT INTO marker VALUES ('in wal');
+                """
+            )
+            setup.commit()
+
+            with self.assertRaises(SystemExit), mock.patch("sys.stderr"):
+                check_database_integrity(db_path)
+            report = self.read_incident_report(db_path)
+            with (
+                mock.patch.dict(
+                    os.environ,
+                    {_ACTION_ENV: f"quarantine:{report['incident_token']}"},
+                ),
+                mock.patch("sys.stderr"),
+            ):
+                check_database_integrity(db_path)
+            setup.close()
+
+            backup_path = self.read_incident_report(db_path)["backup_path"]
+            backup = sqlite3.connect(backup_path)
+            restored_path = str(Path(tmp_dir) / "restored.sqlite3")
+            restored = sqlite3.connect(restored_path)
+            backup.backup(restored)
+            backup.close()
+            self.assertEqual(restored.execute("PRAGMA quick_check").fetchone(), ("ok",))
+            self.assertEqual(restored.execute("SELECT value FROM marker").fetchone(), ("in wal",))
+            self.assertEqual(restored.execute("SELECT COUNT(*) FROM child").fetchone()[0], 1)
+            restored.close()
+
+    def test_entrypoint_parks_once_instead_of_polling_exited_checker(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            db_path = self.create_orphan_database(tmp_dir, rows=1000)
+            bin_path = tmp_path / "bin"
+            bin_path.mkdir()
+            wrappers = {
+                "python": (
+                    "#!/bin/sh\n"
+                    'case "$2" in\n'
+                    "  *check_database_integrity*)\n"
+                    '    echo "[entrypoint] bounded integrity failure" >&2\n'
+                    "    exit 1\n"
+                    "    ;;\n"
+                    "esac\n"
+                    f'exec "{sys.executable}" "$@"\n'
+                ),
+                "sleep": (
+                    "#!/bin/sh\n"
+                    'echo "$$" > "$PARKING_PID_FILE"\n'
+                    "exec /bin/sleep 30\n"
+                ),
+            }
+            for name, script in wrappers.items():
+                wrapper = bin_path / name
+                wrapper.write_text(script)
+                wrapper.chmod(0o755)
+
+            env = {
+                **os.environ,
+                "DB_HOST": "",
+                "PARKING_PID_FILE": str(tmp_path / "parking.pid"),
+                "FLOPPY_DATA_DIR": tmp_dir,
+                "FLOPPY_DB_PATH": db_path,
+                "PATH": f"{bin_path}:{os.environ['PATH']}",
+                "PYTHONPATH": str(ENTRYPOINT.parent / "src"),
+            }
+            output_path = tmp_path / "entrypoint.log"
+            with output_path.open("w") as output:
+                process = subprocess.Popen(  # noqa: S603
+                    ["/bin/sh", str(ENTRYPOINT)],
+                    cwd=ENTRYPOINT.parent,
+                    env=env,
+                    stdout=output,
+                    stderr=output,
+                    text=True,
+                )
+                deadline = time.monotonic() + 5
+                while (
+                    (
+                        "SQLite startup is paused" not in output_path.read_text()
+                        or not (tmp_path / "parking.pid").is_file()
+                    )
+                    and time.monotonic() < deadline
+                ):
+                    time.sleep(0.02)
+                parked_before_term = process.poll() is None
+                parking_pid = (
+                    int((tmp_path / "parking.pid").read_text())
+                    if (tmp_path / "parking.pid").is_file()
+                    else None
+                )
+                parking_child_before_term = False
+                if parking_pid is not None:
+                    try:
+                        os.kill(parking_pid, 0)
+                        parking_child_before_term = True
+                    except ProcessLookupError:
+                        pass
+                process.terminate()
+                process.wait(timeout=5)
+            output = output_path.read_text()
+
+            self.assertTrue(parked_before_term)
+            self.assertTrue(parking_child_before_term)
+            self.assertEqual(process.returncode, 0)
+            self.assertEqual(output.count("bounded integrity failure"), 1)
+            self.assertNotIn("Still checking SQLite integrity", output)
+            self.assertIn("SQLite startup is paused", output)
+            self.assertNotIn("exceeded its 600s timeout", output)
+            self.assertNotIn("Applying database migrations", output)
+            with self.assertRaises(ProcessLookupError):
+                os.kill(parking_pid, 0)
+
+    def test_entrypoint_term_during_integrity_check_stops_before_migrations(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            db_path = self.create_orphan_database(tmp_dir)
+            bin_path = tmp_path / "bin"
+            bin_path.mkdir()
+            python_wrapper = bin_path / "python"
+            python_wrapper.write_text(
+                "#!/bin/sh\n"
+                'case "$2" in\n'
+                "  *check_database_integrity*)\n"
+                '    echo "$$" > "$CHECKER_PID_FILE"\n'
+                '    echo "[entrypoint] checker waiting" >&2\n'
+                "    exec /bin/sleep 30\n"
+                "    ;;\n"
+                "esac\n"
+                f'exec "{sys.executable}" "$@"\n'
+            )
+            python_wrapper.chmod(0o755)
+            timeout_wrapper = bin_path / "timeout"
+            timeout_wrapper.write_text('#!/bin/sh\nshift\nexec "$@"\n')
+            timeout_wrapper.chmod(0o755)
+            env = {
+                **os.environ,
+                "DB_HOST": "",
+                "CHECKER_PID_FILE": str(tmp_path / "checker.pid"),
+                "FLOPPY_DATA_DIR": tmp_dir,
+                "FLOPPY_DB_PATH": db_path,
+                "PATH": f"{bin_path}:{os.environ['PATH']}",
+                "PYTHONPATH": str(ENTRYPOINT.parent / "src"),
+            }
+            output_path = tmp_path / "entrypoint-term.log"
+            with output_path.open("w") as output:
+                process = subprocess.Popen(  # noqa: S603
+                    ["/bin/sh", str(ENTRYPOINT)],
+                    cwd=ENTRYPOINT.parent,
+                    env=env,
+                    stdout=output,
+                    stderr=output,
+                    text=True,
+                )
+                deadline = time.monotonic() + 5
+                while (
+                    "checker waiting" not in output_path.read_text()
+                    and time.monotonic() < deadline
+                ):
+                    time.sleep(0.02)
+                process.terminate()
+                process.wait(timeout=5)
+            output = output_path.read_text()
+
+            self.assertEqual(process.returncode, 0)
+            self.assertIn("checker waiting", output)
+            self.assertNotIn("Applying database migrations", output)
+            checker_pid = int((tmp_path / "checker.pid").read_text())
+            with self.assertRaises(ProcessLookupError):
+                os.kill(checker_pid, 0)
 
     def test_repair_holds_write_lock_from_check_through_delete(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -117,7 +1051,7 @@ class SqliteIntegrityTests(SimpleTestCase):
             competing_result = []
 
             def attempt_competing_repair(statement):
-                if not statement.startswith("DELETE FROM app_albumartist"):
+                if not statement.startswith('DELETE FROM main."app_albumartist"'):
                     return
                 try:
                     competing_conn.execute("INSERT INTO app_album VALUES (345)")
@@ -126,10 +1060,20 @@ class SqliteIntegrityTests(SimpleTestCase):
                     competing_result.append(str(error))
 
             check_conn.set_trace_callback(attempt_competing_repair)
+            real_connect = sqlite3.connect
+            primary_opened = False
+
+            def connect(path, *args, **kwargs):
+                nonlocal primary_opened
+                if str(path) == db_path and not primary_opened:
+                    primary_opened = True
+                    return check_conn
+                return real_connect(path, *args, **kwargs)
+
             with (
                 mock.patch(
                     "config.sqlite_integrity.sqlite3.connect",
-                    return_value=check_conn,
+                    side_effect=connect,
                 ),
                 mock.patch("sys.stderr"),
             ):
@@ -163,10 +1107,20 @@ class SqliteIntegrityTests(SimpleTestCase):
 
             check_conn = sqlite3.connect(db_path)
             check_conn.setlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER, 5)
+            real_connect = sqlite3.connect
+            primary_opened = False
+
+            def connect(path, *args, **kwargs):
+                nonlocal primary_opened
+                if str(path) == db_path and not primary_opened:
+                    primary_opened = True
+                    return check_conn
+                return real_connect(path, *args, **kwargs)
+
             with (
                 mock.patch(
                     "config.sqlite_integrity.sqlite3.connect",
-                    return_value=check_conn,
+                    side_effect=connect,
                 ),
                 mock.patch("sys.stderr"),
             ):
@@ -253,12 +1207,41 @@ class SqliteIntegrityTests(SimpleTestCase):
 
         fake_conn.close.assert_called_once()
 
-    def test_entrypoint_stops_when_integrity_check_times_out(self):
+    def test_entrypoint_bounds_integrity_check_without_background_polling(self):
         script = ENTRYPOINT.read_text()
-        timeout = "integrity_timed_out=1"
-        stop = (
-            'if [ "$integrity_timed_out" -eq 1 ] || [ "$integrity_status" -ne 0 ]; then'
+        check = (
+            "timeout 600 python -c 'from config.sqlite_integrity import "
+            "check_database_integrity; import sys; "
+            "check_database_integrity(sys.argv[1])' \"$DB_FILE\""
         )
 
-        self.assertLess(script.index(timeout), script.index(stop))
-        self.assertIn("exit 1", script[script.index(stop) : script.index(stop) + 150])
+        self.assertIn(check, script)
+        self.assertIn('"$DB_FILE" &', script)
+        self.assertNotIn("kill -0", script)
+        self.assertNotIn("/proc/", script)
+        self.assertNotIn("Still checking SQLite integrity", script)
+        launch = script.index(check)
+        cleanup_trap = script.index(
+            "trap 'kill \"$integrity_pid\" 2>/dev/null || :; "
+            "wait \"$integrity_pid\" 2>/dev/null || :; exit 0' TERM INT"
+        )
+        wait = script.index('wait "$integrity_pid"', launch)
+        reset_trap = script.index("trap - TERM INT", wait)
+        self.assertLess(cleanup_trap, launch)
+        self.assertLess(launch, wait)
+        self.assertLess(wait, reset_trap)
+        timeout_case = script.index("124|143)")
+        failure_case = script.index("*)", timeout_case)
+        self.assertIn(
+            "exceeded its 600s timeout", script[timeout_case:failure_case]
+        )
+        self.assertIn("integrity check failed", script[failure_case:])
+        self.assertIn(
+            "trap 'kill \"$parking_pid\" 2>/dev/null || :; "
+            "wait \"$parking_pid\" 2>/dev/null || :; exit 0' TERM INT",
+            script,
+        )
+        self.assertIn("sleep 86400 &", script)
+        self.assertIn("parking_pid=$!", script)
+        self.assertIn('wait "$parking_pid" || :', script)
+        self.assertNotIn("tail -f /dev/null", script)
