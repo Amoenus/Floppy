@@ -1,5 +1,6 @@
 import datetime
 from unittest.mock import patch
+from uuid import UUID, uuid4
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -266,6 +267,55 @@ class ProgressEditTV(TestCase):
                 item__episode_number=2,
             ).exists(),
         )
+
+    def test_progress_increase_retry_does_not_advance(self):
+        """Retrying one rendered quick-progress request returns its original watch."""
+        watch_operation_id = uuid4()
+        url = reverse(
+            "progress_edit",
+            kwargs={
+                "media_type": MediaTypes.TV.value,
+                "instance_id": self.tv.id,
+            },
+        )
+
+        first_response = self.client.post(
+            url,
+            {"operation": "increase", "watch_operation_id": watch_operation_id},
+        )
+        retry_response = self.client.post(
+            url,
+            {"operation": "increase", "watch_operation_id": watch_operation_id},
+        )
+
+        watched = Episode.objects.filter(related_season=self.season)
+        self.assertEqual(first_response.status_code, 200)
+        self.assertEqual(retry_response.status_code, 200)
+        self.assertEqual(watched.count(), 2)
+        self.assertTrue(watched.filter(item__episode_number=2).exists())
+        returned_token = retry_response.content.decode().split(
+            '"watch_operation_id": "',
+            1,
+        )[1].split('"', 1)[0]
+        self.assertEqual(str(UUID(returned_token)), returned_token)
+        self.assertNotEqual(returned_token, str(watch_operation_id))
+
+    def test_progress_increase_rejects_malformed_operation_id_without_echo(self):
+        malformed = "not-a-private-token"
+
+        response = self.client.post(
+            reverse(
+                "progress_edit",
+                kwargs={
+                    "media_type": MediaTypes.TV.value,
+                    "instance_id": self.tv.id,
+                },
+            ),
+            {"operation": "increase", "watch_operation_id": malformed},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertNotContains(response, malformed, status_code=400)
 
     def test_progress_increase_uses_same_next_episode_target_as_next_ep(self):
         """Quick update follows the later tracked season selected by Next ep."""
