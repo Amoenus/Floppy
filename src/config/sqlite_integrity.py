@@ -106,11 +106,15 @@ def _inspect_foreign_keys(conn: sqlite3.Connection) -> dict:
                 f"affected table {table!r} declares {shadowed_aliases!r} and "
                 "shadows hidden row identity"
             )
+        # sqlite_schema.tbl_name keeps the spelling used by CREATE TRIGGER while
+        # foreign_key_check reports the canonical table name. SQLite resolves
+        # both case-insensitively, so a BINARY match would miss a trigger
+        # declared as ON CHILD and let quarantine fire it.
         triggers = conn.execute(
             "SELECT name FROM main.sqlite_schema "
-            "WHERE type = 'trigger' AND tbl_name = ? COLLATE BINARY "
+            "WHERE type = 'trigger' AND tbl_name = ? COLLATE NOCASE "
             "UNION ALL SELECT name FROM temp.sqlite_schema "
-            "WHERE type = 'trigger' AND tbl_name = ? COLLATE BINARY",
+            "WHERE type = 'trigger' AND tbl_name = ? COLLATE NOCASE",
             [table, table],
         )
         for trigger_name, in triggers:
@@ -314,17 +318,20 @@ def _selected_action(incident: dict, incident_token: str) -> str:
     if not configured or configured == "halt":
         return "halt"
 
-    action, separator, fingerprint = configured.partition(":")
+    action, separator, supplied_token = configured.partition(":")
     if action not in {"accept", "quarantine"} or not separator:
         print(  # noqa: T201
             f"[entrypoint] Invalid {_ACTION_ENV}={configured!r}; using halt",
             file=sys.stderr,
         )
         return "halt"
-    if fingerprint != incident_token:
+    if supplied_token != incident_token:
+        # The operator must supply the one-time incident token, not the
+        # fingerprint; naming the fingerprint alone sends them to the wrong
+        # value and every retry halts again.
         print(  # noqa: T201
-            f"[entrypoint] {_ACTION_ENV} does not match this incident "
-            f"({incident['fingerprint']}); using halt",
+            f"[entrypoint] {_ACTION_ENV} does not carry the current incident "
+            f"token for fingerprint {incident['fingerprint']}; using halt",
             file=sys.stderr,
         )
         return "halt"
@@ -555,11 +562,15 @@ def _check_foreign_keys(conn: sqlite3.Connection, db_path: str) -> None:
             try:
                 _reconcile_report(db_path, prior_report)
             except (KeyError, OSError, sqlite3.DatabaseError) as error:
+                # Every relationship is already clean and any quarantine delete
+                # is already committed, so refusing to start cannot protect the
+                # data; it only wedges a healthy container. Leave the report
+                # untouched so the next startup retries the reconciliation.
                 print(  # noqa: T201
-                    f"[entrypoint] SQLite recovery report reconciliation failed: {error}",
+                    "[entrypoint] SQLite recovery report could not be finalized; "
+                    f"the database is healthy and startup continues: {error}",
                     file=sys.stderr,
                 )
-                sys.exit(1)
         return
 
     _print_incident(db_path, incident)

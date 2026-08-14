@@ -559,22 +559,28 @@ but includes at most 20 row samples, so a large incident cannot fill the log.
 Startup then remains idle and unhealthy without running migrations or services;
 this prevents Docker restart policies from repeating the same failure.
 
-The report and startup log provide an incident fingerprint and three choices:
+The report identifies the incident with a fingerprint and issues a separate
+one-time **incident token**. The startup log prints the exact value to set, and
+the report repeats it under `actions`. Copy that token; the fingerprint is an
+identifier, not an approval. There are three choices:
 
 1. **Restore or repair:** stop Floppy, back up the database with its `-wal` and
    `-shm` files, then restore a known-good copy or repair the named rows.
-2. **Accept:** set `FLOPPY_SQLITE_CONFLICT_ACTION=accept:<fingerprint>` and
+2. **Accept:** set `FLOPPY_SQLITE_CONFLICT_ACTION=accept:<incident-token>` and
    recreate the container. Floppy starts without changing the conflicting rows.
 3. **Quarantine:** set
-   `FLOPPY_SQLITE_CONFLICT_ACTION=quarantine:<fingerprint>` and recreate the
+   `FLOPPY_SQLITE_CONFLICT_ACTION=quarantine:<incident-token>` and recreate the
    container. Floppy first writes and verifies a full backup under
    `sqlite-recovery/`, then removes the orphaned child rows and verifies all
-   relationships again. Tables without a usable SQLite row ID must be repaired
-   manually.
+   relationships again. Floppy refuses to quarantine a table that has no usable
+   SQLite row ID or that carries any trigger; the log names the reason and those
+   rows must be repaired manually.
 
-The fingerprint must match the current report, so an old approval cannot apply
-to a changed incident. Remove `FLOPPY_SQLITE_CONFLICT_ACTION` after a successful
-start. Do not delete the live database or its `-wal` or `-shm` files.
+A token is issued per incident and retired once that incident is resolved, so an
+old approval cannot apply to a later or changed incident. Remove
+`FLOPPY_SQLITE_CONFLICT_ACTION` after a successful start. Backups under
+`sqlite-recovery/` are kept until you remove them. Do not delete the live
+database or its `-wal` or `-shm` files.
 
 If the log says that the database is busy, another process still holds a
 write lock. Stop that process, then restart Floppy. Do not delete the database

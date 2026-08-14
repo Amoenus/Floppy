@@ -172,7 +172,7 @@ class SqliteIntegrityTests(SimpleTestCase):
             self.assertEqual(conn.execute("SELECT COUNT(*) FROM child").fetchone()[0], 3)
             conn.close()
 
-    def test_mismatched_accept_fingerprint_stops_startup(self):
+    def test_mismatched_accept_token_stops_startup(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = self.create_orphan_database(tmp_dir)
             with (
@@ -186,7 +186,12 @@ class SqliteIntegrityTests(SimpleTestCase):
                 check_database_integrity(db_path)
 
             self.assertEqual(ctx.exception.code, 1)
-            self.assertIn("does not match this incident", stderr.getvalue())
+            output = stderr.getvalue()
+            self.assertIn("does not carry the current incident token", output)
+            # The operator must be sent to the token, never to the fingerprint.
+            report = self.read_incident_report(db_path)
+            self.assertIn(f"accept:{report['incident_token']}", output)
+            self.assertNotIn(f"accept:{report['fingerprint']}", output)
 
     def test_quarantine_action_backs_up_then_deletes_orphans(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -462,6 +467,46 @@ class SqliteIntegrityTests(SimpleTestCase):
             self.assertEqual(conn.execute("SELECT COUNT(*) FROM unrelated").fetchone()[0], 1)
             conn.close()
 
+    def test_quarantine_refuses_case_mismatched_delete_trigger(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = self.create_orphan_database(tmp_dir)
+            conn = sqlite3.connect(db_path)
+            # sqlite_schema.tbl_name keeps the spelling used by CREATE TRIGGER,
+            # but SQLite still fires the trigger for the canonical table name.
+            conn.executescript(
+                """
+                CREATE TABLE unrelated (id INTEGER PRIMARY KEY);
+                INSERT INTO unrelated VALUES (1);
+                CREATE TRIGGER child_cleanup AFTER DELETE ON CHILD BEGIN
+                    DELETE FROM unrelated;
+                END;
+                """
+            )
+            conn.commit()
+            conn.close()
+
+            with self.assertRaises(SystemExit), mock.patch("sys.stderr"):
+                check_database_integrity(db_path)
+            report = self.read_incident_report(db_path)
+            self.assertFalse(report["can_quarantine"])
+            self.assertNotIn("quarantine", report["actions"])
+
+            with (
+                mock.patch.dict(
+                    os.environ,
+                    {_ACTION_ENV: f"quarantine:{report['incident_token']}"},
+                ),
+                self.assertRaises(SystemExit),
+                mock.patch("sys.stderr", new_callable=io.StringIO) as stderr,
+            ):
+                check_database_integrity(db_path)
+
+            self.assertIn("DELETE trigger", stderr.getvalue())
+            conn = sqlite3.connect(db_path)
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM child").fetchone()[0], 1)
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM unrelated").fetchone()[0], 1)
+            conn.close()
+
     def test_quarantine_refuses_declared_rowid_without_deleting_duplicate_values(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = str(Path(tmp_dir) / "db.sqlite3")
@@ -717,6 +762,47 @@ class SqliteIntegrityTests(SimpleTestCase):
             conn = sqlite3.connect(db_path)
             self.assertEqual(conn.execute("SELECT COUNT(*) FROM child").fetchone()[0], 0)
             conn.close()
+
+    def test_unverifiable_prepared_backup_does_not_block_a_healthy_database(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = self.create_orphan_database(tmp_dir)
+            with self.assertRaises(SystemExit), mock.patch("sys.stderr"):
+                check_database_integrity(db_path)
+            report = self.read_incident_report(db_path)
+            real_write = sqlite_integrity._write_incident_report
+
+            def fail_resolved(*args, **kwargs):
+                if kwargs["status"] == "resolved":
+                    raise OSError("simulated report failure")
+                return real_write(*args, **kwargs)
+
+            with (
+                mock.patch.dict(
+                    os.environ,
+                    {_ACTION_ENV: f"quarantine:{report['incident_token']}"},
+                ),
+                mock.patch.object(
+                    sqlite_integrity,
+                    "_write_incident_report",
+                    side_effect=fail_resolved,
+                ),
+                self.assertRaises(SystemExit),
+                mock.patch("sys.stderr"),
+            ):
+                check_database_integrity(db_path)
+
+            prepared = self.read_incident_report(db_path)
+            self.assertEqual(prepared["status"], "prepared")
+            # The operator prunes sqlite-recovery/ after reading the report.
+            Path(prepared["backup_path"]).unlink()
+
+            with mock.patch("sys.stderr", new_callable=io.StringIO) as stderr:
+                check_database_integrity(db_path)
+
+            # The delete is already committed and the relationships are clean,
+            # so bookkeeping must not wedge an otherwise healthy container.
+            self.assertIn("could not be finalized", stderr.getvalue())
+            self.assertEqual(self.read_incident_report(db_path)["status"], "prepared")
 
     def test_main_table_named_like_conflict_staging_table_is_quarantined(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
