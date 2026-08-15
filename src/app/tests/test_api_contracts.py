@@ -405,7 +405,12 @@ class OpenAPIArtifactTests(SimpleTestCase):
                 "end_date",
                 "notes",
                 "lists",
+                "next_episode",
             },
+        )
+        self.assertEqual(
+            set(schemas["NextEpisode"]["properties"]),
+            {"season_number", "episode_number", "air_date"},
         )
         self.assertEqual(
             set(schemas["ConsumptionResponse"]["properties"]),
@@ -488,6 +493,45 @@ class OpenAPIArtifactTests(SimpleTestCase):
                 },
             },
         )
+
+    def test_media_list_operations_declare_the_complete_filter_contract(self):
+        """Both list operations expose the same documented filter parameters."""
+        paths = generate_static_schema_contract().schema["paths"]
+        expected = {
+            "status",
+            "rating",
+            "collection",
+            "progress",
+            "genre",
+            "implied_genre",
+            "year",
+            "release",
+            "source",
+            "media_status",
+            "language",
+            "country",
+            "platform",
+            "platform_mode",
+            "origin",
+            "format",
+            "author",
+            "provider",
+            "tag",
+            "tag_mode",
+            "search",
+            "sort",
+            "direction",
+            "limit",
+            "offset",
+        }
+        for path in ("/api/v1/media/", "/api/v1/media/{media_type}/"):
+            parameters = paths[path]["get"]["parameters"]
+            query_names = {
+                parameter["name"]
+                for parameter in parameters
+                if parameter["in"] == "query"
+            }
+            self.assertTrue(expected <= query_names)
 
     def test_critical_operations_use_exact_requests_responses_and_statuses(self):
         paths = generate_static_schema_contract().schema["paths"]

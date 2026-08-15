@@ -286,6 +286,8 @@ REST_FRAMEWORK = {
         "api.authentication.APIKeyAuthentication",
     ],
     "DEFAULT_RENDERER_CLASSES": ("rest_framework.renderers.JSONRenderer",),
+    # ``format`` is a media-list filter, not a renderer override.
+    "URL_FORMAT_OVERRIDE": None,
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
 }
 
@@ -1665,4 +1667,3 @@ if not REGISTRATION:
 REDIRECT_LOGIN_TO_SSO = config("REDIRECT_LOGIN_TO_SSO", default=False, cast=bool)
 
 DEMO_ACCOUNT_ENABLED = config("DEMO_ACCOUNT_ENABLED", default=True, cast=bool)
-
