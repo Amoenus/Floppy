@@ -1,7 +1,10 @@
+import logging
+
 from django.test import SimpleTestCase
 
 from app.log_safety import (
     exception_summary,
+    install_redacting_log_record_factory,
     presence_map,
     redact_secrets,
     safe_url,
@@ -42,8 +45,25 @@ class LogSafetyTests(SimpleTestCase):
 
         self.assertEqual(
             redact_secrets(line),
-            "[INFO] Authorization: Bearer [REDACTED] sent to trakt",
+            "[INFO] Authorization: [REDACTED]",
         )
+
+    def test_redact_secrets_strips_basic_authorization(self):
+        self.assertEqual(
+            redact_secrets("Authorization: Basic dXNlcjpwYXNz"),
+            "Authorization: [REDACTED]",
+        )
+
+    def test_redact_secrets_strips_cookie_header(self):
+        result = redact_secrets("Cookie: sessionid=session-secret; csrftoken=csrf-secret")
+
+        self.assertEqual(result, "Cookie: [REDACTED]")
+
+    def test_redact_secrets_strips_url_credentials(self):
+        result = redact_secrets("proxy=socks5://user:password@proxy.example:1080")
+
+        self.assertNotIn("user:password", result)
+        self.assertIn("socks5://[REDACTED]:[REDACTED]@proxy.example:1080", result)
 
     def test_redact_secrets_strips_named_params(self):
         line = (
@@ -61,3 +81,53 @@ class LogSafetyTests(SimpleTestCase):
     def test_redact_secrets_handles_empty_input(self):
         self.assertEqual(redact_secrets(""), "")
         self.assertEqual(redact_secrets(None), "")
+
+    def test_record_factory_scrubs_rendered_arguments(self):
+        install_redacting_log_record_factory()
+        logger = logging.getLogger("app.tests.log_safety.arguments")
+
+        with self.assertLogs(logger, level="INFO") as captured:
+            logger.info(
+                "GET %s",
+                "https://example.test/library?access_token=plain-secret",
+            )
+
+        output = "\n".join(captured.output)
+        self.assertNotIn("plain-secret", output)
+        self.assertIn("access_token=[REDACTED]", output)
+
+    def test_record_factory_scrubs_exception_text(self):
+        install_redacting_log_record_factory()
+        logger = logging.getLogger("app.tests.log_safety.exception")
+
+        with self.assertLogs(logger, level="ERROR") as captured:
+            try:
+                raise RuntimeError("provider failed: api_key=plain-secret")
+            except RuntimeError:
+                logger.exception("Provider request failed")
+
+        output = "\n".join(captured.output)
+        self.assertNotIn("plain-secret", output)
+        self.assertIn("api_key=[REDACTED]", output)
+
+    def test_record_factory_is_installed_once(self):
+        install_redacting_log_record_factory()
+        first_factory = logging.getLogRecordFactory()
+        install_redacting_log_record_factory()
+
+        self.assertIs(logging.getLogRecordFactory(), first_factory)
+        self.assertTrue(getattr(first_factory, "_floppy_redacts_secrets", False))
+
+    def test_record_factory_leaves_ordinary_text_unchanged(self):
+        install_redacting_log_record_factory()
+        record = logging.getLogger("app.tests.log_safety.ordinary").makeRecord(
+            name="app.tests.log_safety.ordinary",
+            level=logging.INFO,
+            fn=__file__,
+            lno=1,
+            msg="Media item %s updated",
+            args=(123,),
+            exc_info=None,
+        )
+
+        self.assertEqual(record.getMessage(), "Media item 123 updated")

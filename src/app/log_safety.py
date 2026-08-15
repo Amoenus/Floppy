@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import logging
 import re
 from collections.abc import Iterable, Mapping
 from typing import Any
@@ -27,12 +28,28 @@ _SECRET_PARAM_NAMES = (
     "passwd",
     "secret",
     "x-plex-token",
+    "sessionid",
+    "csrftoken",
 )
 
 _SECRET_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (
         re.compile(r"(?i)\bBearer\s+[A-Za-z0-9\-_.~+/]+=*"),
         "Bearer [REDACTED]",
+    ),
+    (
+        re.compile(r"(?i)\bBasic\s+[A-Za-z0-9+/]+=*"),
+        "Basic [REDACTED]",
+    ),
+    (
+        re.compile(r"(?im)\b(Authorization|Cookie|Set-Cookie)\s*:\s*[^\r\n]+"),
+        r"\1: [REDACTED]",
+    ),
+    (
+        # Remove credentials from URLs such as proxy and database connection
+        # strings. The host and path stay visible for diagnosis.
+        re.compile(r"(?i)(\b[a-z][a-z0-9+.-]*://)([^/@\s]*):([^@/\s]+)@"),
+        r"\1[REDACTED]:[REDACTED]@",
     ),
     (
         # Matches "name=value"/"Name: value" (URL/form/header style) as well as
@@ -63,6 +80,40 @@ def redact_secrets(text: str) -> str:
     for pattern, replacement in _SECRET_PATTERNS:
         redacted = pattern.sub(replacement, redacted)
     return redacted
+
+
+_REDACTING_FACTORY_MARKER = "_floppy_redacts_secrets"
+
+
+def install_redacting_log_record_factory() -> None:
+    """Redact each Python log record before any handler can write it."""
+    current_factory = logging.getLogRecordFactory()
+    if getattr(current_factory, _REDACTING_FACTORY_MARKER, False):
+        return
+
+    exception_formatter = logging.Formatter()
+
+    def redacting_factory(*args, **kwargs):
+        record = current_factory(*args, **kwargs)
+        try:
+            # Resolve lazy %-style arguments once, then store only the redacted
+            # text. All handlers receive the same safe record.
+            record.msg = redact_secrets(record.getMessage())
+            record.args = ()
+            if record.exc_info:
+                record.exc_text = redact_secrets(
+                    exception_formatter.formatException(record.exc_info),
+                )
+            if record.stack_info:
+                record.stack_info = redact_secrets(record.stack_info)
+        except Exception:
+            # Logging must not interrupt the operation it is reporting. The
+            # formatter still receives the original record if redaction fails.
+            pass
+        return record
+
+    setattr(redacting_factory, _REDACTING_FACTORY_MARKER, True)
+    logging.setLogRecordFactory(redacting_factory)
 
 
 def exception_summary(exc: BaseException | None) -> str:
