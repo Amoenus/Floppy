@@ -31,6 +31,7 @@ _SECRET_PARAM_NAMES = (
     "sessionid",
     "csrftoken",
 )
+_SECRET_NAME_PATTERN = "|".join(re.escape(name) for name in _SECRET_PARAM_NAMES)
 
 _SECRET_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (
@@ -52,14 +53,26 @@ _SECRET_PATTERNS: list[tuple[re.Pattern[str], str]] = [
         r"\1[REDACTED]:[REDACTED]@",
     ),
     (
-        # Matches "name=value"/"Name: value" (URL/form/header style) as well as
-        # JSON's quoted "name": "value" — the optional quotes around the key
-        # and the value's opening quote let the same pattern catch a raw
-        # payload dict that's been json.dumps()'d before logging.
+        # Quoted JSON, Python repr, and assignment values can contain spaces.
         re.compile(
-            r"(?i)\b("
-            + "|".join(_SECRET_PARAM_NAMES)
-            + r")\"?\s*[=:]\s*\"?[^&\s\"'<>]+"
+            rf'(?i)\b({_SECRET_NAME_PATTERN})(["\']?\s*[=:]\s*)'
+            r'"(?:\\.|[^"\\\r\n])*"',
+        ),
+        r'\1\2"[REDACTED]"',
+    ),
+    (
+        re.compile(
+            rf"(?i)\b({_SECRET_NAME_PATTERN})([\"']?\s*[=:]\s*)"
+            r"'(?:\\.|[^'\\\r\n])*'",
+        ),
+        r"\1\2'[REDACTED]'",
+    ),
+    (
+        # Unquoted URL, form, header, and assignment values stop at the next
+        # delimiter. Quoted values are handled by the two patterns above.
+        re.compile(
+            rf"(?i)\b({_SECRET_NAME_PATTERN})[\"']?\s*[=:]\s*"
+            r"[^&\s\"'<>]+",
         ),
         r"\1=[REDACTED]",
     ),

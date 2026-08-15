@@ -87,6 +87,16 @@ class LogSafetyTests(SimpleTestCase):
         self.assertNotIn("hunter2", result)
         self.assertIn("size=10", result)
 
+    def test_redact_secrets_strips_quoted_json_values_with_spaces(self):
+        result = redact_secrets('{"password": "two words", "size": 10}')
+
+        self.assertEqual(result, '{"password": "[REDACTED]", "size": 10}')
+
+    def test_redact_secrets_strips_quoted_repr_values_with_spaces(self):
+        result = redact_secrets("{'api_key': 'two words', 'size': 10}")
+
+        self.assertEqual(result, "{'api_key': '[REDACTED]', 'size': 10}")
+
     def test_redact_secrets_handles_empty_input(self):
         self.assertEqual(redact_secrets(""), "")
         self.assertEqual(redact_secrets(None), "")
