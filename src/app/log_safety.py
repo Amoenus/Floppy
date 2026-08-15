@@ -107,9 +107,13 @@ def install_redacting_log_record_factory() -> None:
             if record.stack_info:
                 record.stack_info = redact_secrets(record.stack_info)
         except Exception:
-            # Logging must not interrupt the operation it is reporting. The
-            # formatter still receives the original record if redaction fails.
-            pass
+            # Do not send the original record to a handler when rendering or
+            # redaction fails. Logging must not expose data or interrupt work.
+            record.msg = "Log message redaction failed"
+            record.args = ()
+            record.exc_info = None
+            record.exc_text = None
+            record.stack_info = None
         return record
 
     setattr(redacting_factory, _REDACTING_FACTORY_MARKER, True)

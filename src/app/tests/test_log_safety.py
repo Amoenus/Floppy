@@ -12,6 +12,15 @@ from app.log_safety import (
 )
 
 
+def _raise_secret_error():
+    raise RuntimeError("provider failed: api_key=plain-secret")
+
+
+class _UnrenderableLogValue:
+    def __str__(self):
+        raise RuntimeError("access_token=plain-secret")
+
+
 class LogSafetyTests(SimpleTestCase):
     def test_exception_summary_includes_status_without_message(self):
         response = type("Response", (), {"status_code": 404})()
@@ -102,13 +111,24 @@ class LogSafetyTests(SimpleTestCase):
 
         with self.assertLogs(logger, level="ERROR") as captured:
             try:
-                raise RuntimeError("provider failed: api_key=plain-secret")
+                _raise_secret_error()
             except RuntimeError:
                 logger.exception("Provider request failed")
 
         output = "\n".join(captured.output)
         self.assertNotIn("plain-secret", output)
         self.assertIn("api_key=[REDACTED]", output)
+
+    def test_record_factory_fails_closed_when_message_cannot_render(self):
+        install_redacting_log_record_factory()
+        logger = logging.getLogger("app.tests.log_safety.failure")
+
+        with self.assertLogs(logger, level="ERROR") as captured:
+            logger.error("Provider value: %s", _UnrenderableLogValue())
+
+        output = "\n".join(captured.output)
+        self.assertNotIn("plain-secret", output)
+        self.assertIn("Log message redaction failed", output)
 
     def test_record_factory_is_installed_once(self):
         install_redacting_log_record_factory()
