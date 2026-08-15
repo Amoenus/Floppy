@@ -384,11 +384,50 @@ class StremioImporter:
                 logger.warning("Cinemeta video-ids request failed: %s", error)
                 continue
 
+            malformed_meta_count = 0
             for meta in response.get("metasDetailed") or []:
-                if meta and meta.get("id"):
-                    videos_by_id[meta["id"]] = [
-                        video["id"] for video in meta.get("videos") or []
-                    ]
+                if not isinstance(meta, dict):
+                    malformed_meta_count += 1
+                    continue
+
+                meta_id = meta.get("id")
+                if not isinstance(meta_id, str) or not meta_id:
+                    malformed_meta_count += 1
+                    continue
+
+                raw_videos = meta.get("videos")
+                if raw_videos is None:
+                    raw_videos = []
+                elif not isinstance(raw_videos, list):
+                    self.warnings.append(
+                        f"{meta_id}: Cinemeta returned a malformed video list; skipped.",
+                    )
+                    videos_by_id[meta_id] = []
+                    continue
+
+                video_ids = []
+                malformed_video_count = 0
+                for video in raw_videos:
+                    video_id = video if isinstance(video, str) else None
+                    if isinstance(video, dict):
+                        video_id = video.get("id")
+
+                    if isinstance(video_id, str) and video_id:
+                        video_ids.append(video_id)
+                    else:
+                        malformed_video_count += 1
+
+                videos_by_id[meta_id] = video_ids
+                if malformed_video_count:
+                    self.warnings.append(
+                        f"{meta_id}: Cinemeta skipped "
+                        f"{malformed_video_count} malformed video entries.",
+                    )
+
+            if malformed_meta_count:
+                self.warnings.append(
+                    f"Cinemeta skipped {malformed_meta_count} malformed series entries.",
+                )
 
         return videos_by_id
 
