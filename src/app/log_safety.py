@@ -117,6 +117,9 @@ def install_redacting_log_record_factory() -> None:
                 record.exc_text = redact_secrets(
                     exception_formatter.formatException(record.exc_info),
                 )
+                # Structured handlers can inspect LogRecord attributes without
+                # using Formatter. Keep only the safe exception text.
+                record.exc_info = None
             if record.stack_info:
                 record.stack_info = redact_secrets(record.stack_info)
         except Exception:

@@ -115,7 +115,7 @@ class LogSafetyTests(SimpleTestCase):
         self.assertNotIn("plain-secret", output)
         self.assertIn("access_token=[REDACTED]", output)
 
-    def test_record_factory_scrubs_exception_text(self):
+    def test_record_factory_scrubs_exception_text_and_tuple(self):
         install_redacting_log_record_factory()
         logger = logging.getLogger("app.tests.log_safety.exception")
 
@@ -126,8 +126,11 @@ class LogSafetyTests(SimpleTestCase):
                 logger.exception("Provider request failed")
 
         output = "\n".join(captured.output)
+        record = captured.records[0]
         self.assertNotIn("plain-secret", output)
         self.assertIn("api_key=[REDACTED]", output)
+        self.assertIsNone(record.exc_info)
+        self.assertNotIn("plain-secret", record.exc_text)
 
     def test_record_factory_fails_closed_when_message_cannot_render(self):
         install_redacting_log_record_factory()
