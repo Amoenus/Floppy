@@ -457,7 +457,13 @@ else:
     }
 
     def configure_sqlite_connection(sender, connection, **_kwargs):
-        """Ensure SQLite connections wait for locks and use WAL."""
+        """Ensure SQLite connections wait for locks and use WAL.
+
+        Foreign keys are not set here. Django's SQLite backend already runs
+        "PRAGMA foreign_keys = ON" as it opens each connection, and it turns
+        them off on purpose while a migration rewrites a table. A second copy
+        here would be dead on the first count and wrong on the second.
+        """
         if connection.vendor != "sqlite":
             return
 
