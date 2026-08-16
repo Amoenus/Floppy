@@ -105,6 +105,35 @@ class DataPathSettingsTests(SimpleTestCase):
             )
             self.assertTrue(external_database.parent.is_dir())
 
+    def test_config_import_reports_a_missing_log_safety_dependency(self):
+        """Only an absent app package is tolerable. Other faults must raise.
+
+        ``config`` tolerates a missing ``app`` package so the isolated checks
+        below can import it. If that tolerance also hid a broken dependency,
+        the process would start with no log redaction and no warning.
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            shutil.copytree(SRC / "config", root / "config")
+            app_package = root / "app"
+            app_package.mkdir()
+            (app_package / "__init__.py").write_text("")
+            (app_package / "log_safety.py").write_text(
+                "import floppy_absent_dependency\n",
+            )
+
+            result = subprocess.run(
+                [sys.executable, "-c", "import config"],
+                cwd=root,
+                env={**os.environ, "PYTHONPATH": str(root)},
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("floppy_absent_dependency", result.stderr)
+
     def test_read_only_source_uses_external_writable_paths(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
