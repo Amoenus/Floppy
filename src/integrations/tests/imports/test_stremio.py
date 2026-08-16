@@ -239,6 +239,82 @@ class ImportStremioTests(TestCase):
         ):
             return stremio.importer(None, self.user, mode)
 
+    def test_cinemeta_skips_malformed_series_entries(self):
+        """Malformed series metadata is summarized without blocking valid data."""
+        importer = stremio.StremioImporter(self.user, "new")
+        response = {
+            "metasDetailed": [
+                None,
+                "private-provider-payload",
+                {"videos": []},
+                {
+                    "id": "tt0903747",
+                    "videos": [{"id": "tt0903747:1:1"}],
+                },
+            ],
+        }
+
+        with patch(
+            "app.providers.services.api_request",
+            return_value=response,
+        ):
+            videos = importer._fetch_cinemeta_videos(["tt0903747"])
+
+        self.assertEqual(videos, {"tt0903747": ["tt0903747:1:1"]})
+        self.assertEqual(
+            importer.warnings,
+            ["Cinemeta skipped 3 malformed series entries."],
+        )
+        self.assertNotIn("private-provider-payload", importer.warnings[0])
+
+    def test_cinemeta_accepts_string_ids_and_skips_malformed_videos(self):
+        """Valid video IDs survive malformed siblings in the same response."""
+        importer = stremio.StremioImporter(self.user, "new")
+        response = {
+            "metasDetailed": [
+                {
+                    "id": "tt0903747",
+                    "videos": [
+                        "tt0903747:1:1",
+                        {"id": "tt0903747:1:2"},
+                        None,
+                        7,
+                        {},
+                        {"id": ""},
+                    ],
+                },
+                {
+                    "id": "tt7366338",
+                    "videos": [{"id": "tt7366338:1:1"}],
+                },
+                {"id": "tt1234567", "videos": "not-a-list"},
+            ],
+        }
+
+        with patch(
+            "app.providers.services.api_request",
+            return_value=response,
+        ):
+            videos = importer._fetch_cinemeta_videos(
+                ["tt0903747", "tt7366338"],
+            )
+
+        self.assertEqual(
+            videos,
+            {
+                "tt0903747": ["tt0903747:1:1", "tt0903747:1:2"],
+                "tt7366338": ["tt7366338:1:1"],
+                "tt1234567": [],
+            },
+        )
+        self.assertEqual(
+            importer.warnings,
+            [
+                "tt0903747: Cinemeta skipped 4 malformed video entries.",
+                "tt1234567: Cinemeta returned a malformed video list; skipped.",
+            ],
+        )
+
     def test_movie_statuses(self):
         """Movies map to completed/in-progress/planning from watch state."""
         library_items = [
