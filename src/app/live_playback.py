@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.urls import reverse
 from django.utils import timezone
@@ -27,6 +28,14 @@ PLAYBACK_STOP_GRACE_SECONDS = 60
 PLAYBACK_STATUS_PLAYING = "playing"
 PLAYBACK_STATUS_PAUSED = "paused"
 PLAYBACK_STATUS_STOPPED = "stopped"
+
+PLAYBACK_PROGRESS_EVENTS = (
+    "media.pause",
+    "media.resume",
+    "media.stop",
+    "media.scrobble",
+)
+PLAYBACK_COMPLETION_TAIL_RATIO = 0.1
 
 IMAGE_RESOLVE_GUARD_PREFIX = "playback_img_fill"
 IMAGE_RESOLVE_GUARD_SECONDS = 60
@@ -124,6 +133,140 @@ def _state_matches(
     return False
 
 
+def _identifiers_from_state(
+    state: dict | None,
+    *,
+    rating_key: str | None,
+    media_id: str | None,
+    season_number: int | None,
+    episode_number: int | None,
+) -> tuple[str | None, int | None, int | None]:
+    """Recover identifiers omitted by a pause/stop event from matching state."""
+    if media_id is not None or not rating_key or not state:
+        return media_id, season_number, episode_number
+
+    if str(state.get("rating_key") or "") != str(rating_key):
+        return media_id, season_number, episode_number
+
+    return (
+        state.get("media_id"),
+        season_number if season_number is not None else state.get("season_number"),
+        episode_number if episode_number is not None else state.get("episode_number"),
+    )
+
+
+def _store_playback_progress(
+    user_id: int,
+    *,
+    event_type: str,
+    playback_media_type: str | None,
+    media_id: str | None = None,
+    source: str = Sources.TMDB.value,
+    season_number: int | None = None,
+    episode_number: int | None = None,
+    view_offset_seconds: int | None,
+    duration_seconds: int | None,
+    item: Item | None = None,
+    provider_completed: bool | None = None,
+) -> None:
+    """Mirror a webhook position into the durable progress store.
+
+    ``item`` is supplied after webhook media processing for first-session and
+    cold-cache stops.  When it is absent, only an exact existing Item lookup
+    is allowed; no provider or title-based guess is made.
+    """
+    if event_type not in PLAYBACK_PROGRESS_EVENTS:
+        return
+
+    completion_only = event_type == "media.scrobble" and view_offset_seconds is None
+    if view_offset_seconds is None and not completion_only:
+        return
+
+    try:
+        if item is None:
+            item = _resolve_state_item(
+                {
+                    "media_id": media_id,
+                    "source": source,
+                    "media_type": playback_media_type,
+                    "season_number": season_number,
+                    "episode_number": episode_number,
+                },
+            )
+        if item is None or item.media_type != playback_media_type:
+            return
+
+        from api.fork_views_playback import upsert_playback_progress
+
+        user = get_user_model().objects.get(pk=user_id)
+        duration = _coerce_int(duration_seconds)
+        duration = max(0, duration) if duration is not None else None
+        if duration == 0:
+            duration = None
+
+        if completion_only:
+            upsert_playback_progress(
+                user,
+                item,
+                None,
+                duration,
+                completed=True,
+                preserve_position=True,
+                fill_missing_duration=True,
+            )
+            return
+
+        position = _coerce_int(view_offset_seconds)
+        if position is None:
+            return
+        position = max(0, position)
+
+        completion = (
+            provider_completed
+            if provider_completed is not None
+            else event_type == "media.scrobble"
+        )
+        preserve_completion = (
+            provider_completed is None
+            and event_type != "media.scrobble"
+            and duration is not None
+            and position >= duration * (1 - PLAYBACK_COMPLETION_TAIL_RATIO)
+        )
+        upsert_playback_progress(
+            user,
+            item,
+            position,
+            duration,
+            completed=completion,
+            preserve_duration=duration is None,
+            preserve_completed=preserve_completion,
+        )
+    except Exception:
+        logger.warning("Webhook playback-progress update failed", exc_info=True)
+
+
+def store_playback_progress(
+    user_id: int,
+    *,
+    event_type: str,
+    playback_media_type: str | None,
+    view_offset_seconds: int | None,
+    duration_seconds: int | None,
+    item: Item,
+    provider_completed: bool | None = None,
+) -> None:
+    """Persist a stop position against an Item resolved by webhook processing."""
+    _store_playback_progress(
+        user_id,
+        event_type=event_type,
+        playback_media_type=playback_media_type,
+        view_offset_seconds=view_offset_seconds,
+        duration_seconds=duration_seconds,
+        item=item,
+        provider_completed=provider_completed,
+    )
+
+
 def apply_playback_event(
     *,
     user_id: int,
@@ -139,12 +282,18 @@ def apply_playback_event(
     episode_number: int | None = None,
     view_offset_seconds: int | None = None,
     duration_seconds: int | None = None,
+    store_progress: bool = False,
+    provider_completed: bool | None = None,
 ) -> None:
     """Update live playback cache state from a webhook event.
 
     All fields are pre-extracted by the caller (Plex / Jellyfin
     processor) so this function is source-agnostic.  Event types
     use the normalised ``media.*`` naming regardless of origin.
+
+    ``store_progress`` mirrors webhook positions into the durable store.
+    ``provider_completed`` is an explicit completion value when the source
+    provides one; ``None`` leaves completion inference source-agnostic.
     """
     if playback_media_type not in (
         MediaTypes.MOVIE.value,
@@ -155,6 +304,7 @@ def apply_playback_event(
     if not event_type:
         return
 
+    source_event_type = event_type
     if event_type == "media.resume":
         event_type = "media.play"
 
@@ -187,6 +337,26 @@ def apply_playback_event(
             existing_state["status"] = PLAYBACK_STATUS_STOPPED
             existing_state["stop_expires_at_ts"] = now_ts + PLAYBACK_STOP_GRACE_SECONDS
             set_user_playback_state(user_id, existing_state)
+        if store_progress:
+            stop_media_id, stop_season, stop_episode = _identifiers_from_state(
+                existing_state,
+                rating_key=rating_key,
+                media_id=media_id,
+                season_number=season_number,
+                episode_number=episode_number,
+            )
+            _store_playback_progress(
+                user_id,
+                event_type=source_event_type,
+                playback_media_type=playback_media_type,
+                media_id=stop_media_id,
+                source=source,
+                season_number=stop_season,
+                episode_number=stop_episode,
+                view_offset_seconds=view_offset_seconds,
+                duration_seconds=duration_seconds,
+                provider_completed=provider_completed,
+            )
         return
 
     if event_type not in ("media.play", "media.pause", "media.scrobble"):
@@ -285,6 +455,27 @@ def apply_playback_event(
 
     set_user_playback_state(user_id, state)
 
+    if store_progress:
+        store_media_id, store_season, store_episode = _identifiers_from_state(
+            existing_state,
+            rating_key=rating_key,
+            media_id=media_id,
+            season_number=season_number,
+            episode_number=episode_number,
+        )
+        _store_playback_progress(
+            user_id,
+            event_type=source_event_type,
+            playback_media_type=playback_media_type,
+            media_id=store_media_id,
+            source=source,
+            season_number=store_season,
+            episode_number=store_episode,
+            view_offset_seconds=view_offset_seconds,
+            duration_seconds=duration_seconds,
+            provider_completed=provider_completed,
+        )
+
 
 def apply_plex_event(
     *,
@@ -295,6 +486,8 @@ def apply_plex_event(
     source: str = Sources.TMDB.value,
     season_number: int | None = None,
     episode_number: int | None = None,
+    store_progress: bool = True,
+    provider_completed: bool | None = None,
 ) -> None:
     """Plex-specific wrapper: extract fields and delegate."""
     event_type = payload.get("event")
@@ -326,6 +519,8 @@ def apply_plex_event(
         ),
         view_offset_seconds=_extract_offset_seconds(payload),
         duration_seconds=_extract_duration_seconds(payload),
+        store_progress=store_progress,
+        provider_completed=provider_completed,
     )
 
 
@@ -410,32 +605,16 @@ def _resolve_state_item(state: dict):
         season_number = _coerce_int(state.get("season_number"))
         episode_number = _coerce_int(state.get("episode_number"))
 
-        if season_number is not None and episode_number is not None:
-            episode_item = Item.objects.filter(
-                media_id=media_id,
-                source=source,
-                media_type=MediaTypes.EPISODE.value,
-                season_number=season_number,
-                episode_number=episode_number,
-            ).first()
-            if episode_item:
-                return episode_item
+        if season_number is None or episode_number is None:
+            return None
 
-        tv_item = Item.objects.filter(
+        return Item.objects.filter(
             media_id=media_id,
             source=source,
-            media_type=MediaTypes.TV.value,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=season_number,
+            episode_number=episode_number,
         ).first()
-        if tv_item:
-            return tv_item
-
-        if season_number is not None:
-            return Item.objects.filter(
-                media_id=media_id,
-                source=source,
-                media_type=MediaTypes.SEASON.value,
-                season_number=season_number,
-            ).first()
 
     return None
 
