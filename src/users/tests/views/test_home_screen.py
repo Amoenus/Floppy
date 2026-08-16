@@ -1,11 +1,12 @@
 import json
 import time
 from datetime import timedelta
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.contrib.messages import get_messages
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 from django.utils import timezone
 
@@ -1590,6 +1591,174 @@ class HomeScreenRandomSortTests(TestCase):
         direction = home_screen.resolve_home_row_direction(HomeSortChoices.RANDOM.value)
 
         self.assertIn(direction, DirectionChoices.values)
+
+
+class HomeScreenUpcomingSortTests(SimpleTestCase):
+    """Tests for season-aware Upcoming sorting."""
+
+    def _entry(
+        self,
+        title,
+        media_type,
+        next_episode_air_date,
+        release_datetime,
+    ):
+        item = SimpleNamespace(
+            title=title,
+            media_type=media_type,
+            release_datetime=release_datetime,
+        )
+        media = SimpleNamespace(
+            item=item,
+            next_episode_air_date=next_episode_air_date,
+            created_at=None,
+        )
+        return home_screen.HomeRowEntry(item=item, media=media)
+
+    def test_season_upcoming_uses_next_episode_air_date(self):
+        now = timezone.now()
+        entries = [
+            self._entry(
+                "Earlier Premiere Season",
+                MediaTypes.SEASON.value,
+                now + timedelta(days=10),
+                now - timedelta(days=100),
+            ),
+            self._entry(
+                "Later Premiere Season",
+                MediaTypes.SEASON.value,
+                now + timedelta(days=2),
+                now + timedelta(days=100),
+            ),
+        ]
+
+        result = home_screen.sort_home_entries(
+            entries,
+            HomeSortChoices.UPCOMING,
+            DirectionChoices.ASC,
+        )
+
+        self.assertEqual(
+            [entry.item.title for entry in result],
+            ["Later Premiere Season", "Earlier Premiere Season"],
+        )
+
+    def test_season_upcoming_keeps_past_next_episode_before_future_dates(self):
+        now = timezone.now()
+        entries = [
+            self._entry(
+                "Future Next Episode",
+                MediaTypes.SEASON.value,
+                now + timedelta(days=2),
+                now - timedelta(days=50),
+            ),
+            self._entry(
+                "Past Unwatched Episode",
+                MediaTypes.SEASON.value,
+                now - timedelta(days=1),
+                now - timedelta(days=100),
+            ),
+        ]
+
+        result = home_screen.sort_home_entries(
+            entries,
+            HomeSortChoices.UPCOMING,
+            DirectionChoices.ASC,
+        )
+
+        self.assertEqual(
+            [entry.item.title for entry in result],
+            ["Past Unwatched Episode", "Future Next Episode"],
+        )
+
+    def test_season_upcoming_places_missing_dates_last_in_both_directions(self):
+        now = timezone.now()
+        entries = [
+            self._entry(
+                "Earlier Dated Season",
+                MediaTypes.SEASON.value,
+                now + timedelta(days=2),
+                now,
+            ),
+            self._entry(
+                "Later Dated Season",
+                MediaTypes.SEASON.value,
+                now + timedelta(days=10),
+                now,
+            ),
+            self._entry(
+                "Fully Watched Season",
+                MediaTypes.SEASON.value,
+                None,
+                now - timedelta(days=100),
+            ),
+            self._entry(
+                "Date-less Season",
+                MediaTypes.SEASON.value,
+                None,
+                None,
+            ),
+        ]
+
+        ascending = home_screen.sort_home_entries(
+            entries,
+            HomeSortChoices.UPCOMING,
+            DirectionChoices.ASC,
+        )
+        descending = home_screen.sort_home_entries(
+            entries,
+            HomeSortChoices.UPCOMING,
+            DirectionChoices.DESC,
+        )
+
+        self.assertEqual(
+            [entry.item.title for entry in ascending],
+            [
+                "Earlier Dated Season",
+                "Later Dated Season",
+                "Date-less Season",
+                "Fully Watched Season",
+            ],
+        )
+        self.assertEqual(
+            [entry.item.title for entry in descending],
+            [
+                "Later Dated Season",
+                "Earlier Dated Season",
+                "Fully Watched Season",
+                "Date-less Season",
+            ],
+        )
+
+    def test_non_season_upcoming_still_uses_next_event(self):
+        now = timezone.now()
+        earlier_event = SimpleNamespace(datetime=now + timedelta(days=2))
+        later_event = SimpleNamespace(datetime=now + timedelta(days=10))
+        earlier = self._entry(
+            "Earlier Event Movie",
+            MediaTypes.MOVIE.value,
+            now + timedelta(days=100),
+            now - timedelta(days=100),
+        )
+        later = self._entry(
+            "Later Event Movie",
+            MediaTypes.MOVIE.value,
+            now - timedelta(days=100),
+            now + timedelta(days=100),
+        )
+        earlier.media.item.prefetched_events = [earlier_event]
+        later.media.item.prefetched_events = [later_event]
+
+        result = home_screen.sort_home_entries(
+            [later, earlier],
+            HomeSortChoices.UPCOMING,
+            DirectionChoices.ASC,
+        )
+
+        self.assertEqual(
+            [entry.item.title for entry in result],
+            ["Earlier Event Movie", "Later Event Movie"],
+        )
 
 
 class CrossProviderDedupTests(TestCase):

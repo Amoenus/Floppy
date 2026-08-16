@@ -2036,6 +2036,17 @@ def sort_home_entries(
         return shuffled
     media_entries = [entry.media for entry in entries if entry.media]
     if sort_by == HomeSortChoices.UPCOMING and media_entries:
+        if all(
+            getattr(getattr(media, "item", None), "media_type", None)
+            == MediaTypes.SEASON.value
+            for media in media_entries
+        ):
+            return _sort_numeric(
+                entries,
+                _entry_next_episode_air_date_timestamp,
+                direction,
+            )
+
         BasicMedia.objects._annotate_next_event(media_entries)
         with_events = []
         without_events = []
