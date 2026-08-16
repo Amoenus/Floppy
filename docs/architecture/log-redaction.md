@@ -75,7 +75,7 @@ enforce these rules.
 
 A value is a credential when its name **ends** with one of these keywords:
 `token`, `secret`, `password`, `passwd`, `apikey`, `api_key`, `api-key`,
-`sessionid`, `client_id`.
+`sessionid`.
 
 Match the keyword, not a list of full names. The same credential reaches the
 log in many spellings, and a list of full names cannot hold all of them:
@@ -99,6 +99,21 @@ readable: `status_code=200`, `error_code=RATE_LIMIT`, `token_count=512` and
 `code` would remove all of them. Nginx removes query strings from the request
 log, and Django logs the request path without the query, so an authorization
 code has no ordinary route into the log. Do not put one in a log message.
+
+**OAuth `client_id` parameters.** A `client_id` identifies the application, not
+the user, so it is not a secret and it stays readable. One case needs care.
+Trakt sends Floppy's `client_id` a second time as a `trakt-api-key` header, and
+Floppy loads that value from the `TRAKT_API_FILE` secret family. The header form
+stays redacted, because `trakt-api-key` ends in a keyword:
+
+```text
+headers={'trakt-api-key': '[REDACTED]'}      redacted
+?client_id=floppy-web&state=abc              not redacted
+```
+
+The second form is an authorize URL that Floppy builds as a redirect target.
+It reaches a log by the same narrow route an authorization `code` does, and the
+same instruction applies: do not put one in a log message. Use `safe_url()`.
 
 **Values whose name gives no clue.** A rule matches a name, not a value. Write
 `logger.info("plex sync failed for %s", safe_url(url))`, not the raw response

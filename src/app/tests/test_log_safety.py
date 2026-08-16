@@ -123,6 +123,20 @@ class LogSafetyTests(SimpleTestCase):
             with self.subTest(line=line):
                 self.assertEqual(redact_secrets(line), line)
 
+    def test_redact_secrets_keeps_client_id(self):
+        """An OAuth client_id identifies the application, it is not a secret.
+
+        Trakt sends the same value as a "trakt-api-key" header. That name ends
+        in a keyword, so the header form stays redacted either way.
+        """
+        line = "connected to trakt client_id=floppy-web using size=10"
+
+        self.assertEqual(redact_secrets(line), line)
+        self.assertNotIn(
+            "floppy-web",
+            redact_secrets("headers={'trakt-api-key': 'floppy-web'}"),
+        )
+
     def test_redact_secrets_strips_list_values(self):
         """Django writes form data as a QueryDict repr with list values."""
         result = redact_secrets("<QueryDict: {'password': ['plain-secret']}>")
