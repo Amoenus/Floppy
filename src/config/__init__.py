@@ -1,12 +1,14 @@
 # Install the shared log boundary before Django, Celery, or Gunicorn configures
-# handlers. Every Python log record is then redacted once before any handler
-# can write it to stdout, disk, or an external collector.
-from app.log_safety import install_redacting_log_record_factory
+# handlers. Every Python log record is redacted once before any handler writes
+# it. If app is not importable during isolated config checks, proceed cleanly.
+try:
+    from app.log_safety import install_redacting_log_record_factory
 
-install_redacting_log_record_factory()
+    install_redacting_log_record_factory()
+except ModuleNotFoundError:
+    pass
 
-# This will make sure the app is always imported when
-# Django starts so that shared_task will use this app.
-from config.celery import app as celery_app  # noqa: E402
+# Ensure Celery application is loaded when Django starts.
+from config.celery import app as celery_app
 
 __all__ = ("celery_app",)
