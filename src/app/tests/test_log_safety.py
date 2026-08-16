@@ -1,4 +1,5 @@
 import logging
+import time
 
 from django.test import SimpleTestCase
 
@@ -127,6 +128,23 @@ class LogSafetyTests(SimpleTestCase):
         result = redact_secrets("<QueryDict: {'password': ['plain-secret']}>")
 
         self.assertEqual(result, "<QueryDict: {'password': [REDACTED]}>")
+
+    def test_redact_secrets_stays_fast_on_a_long_url_like_line(self):
+        """One log record must not be able to stall a worker thread.
+
+        The URL credential rule once accepted ":" in both the user part and
+        the password part. A long line that holds a scheme and many colons but
+        no "@" then made the engine try every split, which took about 4.5
+        seconds for a single 40 KiB record. The bound below is far above the
+        corrected cost (about 12 ms) and far below the fault.
+        """
+        line = "x" * 100 + "scheme://" + "a:" * 20000
+
+        started_at = time.perf_counter()
+        redact_secrets(line)
+        elapsed_ms = (time.perf_counter() - started_at) * 1000
+
+        self.assertLess(elapsed_ms, 2000)
 
     def test_redact_secrets_handles_empty_input(self):
         self.assertEqual(redact_secrets(""), "")

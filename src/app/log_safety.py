@@ -29,11 +29,12 @@ _SECRET_NAME_KEYWORDS = (
     "sessionid",
     "client_id",
 )
-# The prefix stops at the delimiters that separate one field from the next, so
-# "token_count=512" and "status_code=200" stay readable: the keyword must be
-# the last part of the name, immediately before the "=" or ":".
-_SECRET_NAME_PATTERN = r"[\w.-]*(?:{})".format(
-    "|".join(re.escape(keyword) for keyword in _SECRET_NAME_KEYWORDS),
+# Match the keyword alone and let the name prefix stay where it is. The rules
+# below require a "=" or a ":" directly after the keyword, so the keyword must
+# be the last part of the name: "token_count=512", "status_code=200" and
+# "tokenizer_config=default" stay readable.
+_SECRET_NAME_PATTERN = "|".join(
+    re.escape(keyword) for keyword in _SECRET_NAME_KEYWORDS
 )
 
 _SECRET_PATTERNS: list[tuple[re.Pattern[str], str]] = [
@@ -52,7 +53,11 @@ _SECRET_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (
         # Remove credentials from URLs such as proxy and database connection
         # strings. The host and path stay visible for diagnosis.
-        re.compile(r"(?i)(\b[a-z][a-z0-9+.-]*://)([^/@\s]*):([^@/\s]+)@"),
+        # The user part excludes ":" so that only one split of "user:password"
+        # is possible. If both parts accept ":", a long line that holds a
+        # scheme and many colons but no "@" makes the engine try every split,
+        # which costs seconds of processor time for one log record.
+        re.compile(r"(?i)(\b[a-z][a-z0-9+.-]*://)([^:/@\s]*):([^@/\s]{1,256})@"),
         r"\1[REDACTED]:[REDACTED]@",
     ),
     (
