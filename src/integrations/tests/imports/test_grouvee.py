@@ -3,6 +3,7 @@ from io import BytesIO
 from pathlib import Path
 from unittest.mock import patch
 
+from billiard.exceptions import SoftTimeLimitExceeded
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
@@ -81,6 +82,13 @@ class ImportGrouvee(TestCase):
         game = Game.objects.get(user=self.user, item__media_id="5001")
         self.assertEqual(game.status, Status.PLANNING.value)
 
+    def test_dateless_playtime_excluded_from_progress(self):
+        """Steam's dateless auto-tracked playtime isn't counted as progress."""
+        game = Game.objects.get(user=self.user, item__media_id="5001")
+        self.assertEqual(game.progress, 0)
+        self.assertIsNone(game.start_date)
+        self.assertIsNone(game.end_date)
+
     def test_overwrite_mode_replaces_existing(self):
         """Re-importing in overwrite mode replaces existing games."""
         with Path(mock_path / "import_grouvee.json").open("rb") as file:
@@ -151,3 +159,36 @@ class ImportGrouvee(TestCase):
 
         imported_counts, _ = grouvee.importer(buffer, user, "new")
         self.assertEqual(imported_counts["game"], 5)
+
+
+class ImportGrouveeTimeLimit(TestCase):
+    """Test partial-import recovery when the Celery soft time limit trips."""
+
+    def test_entries_processed_before_the_limit_are_still_saved(self):
+        """A time limit mid-import saves prior entries instead of losing them."""
+        user = get_user_model().objects.create_user(username="timelimit", password="***")
+
+        def side_effect(media_type, media_id, source):
+            if media_id == "128167":
+                raise SoftTimeLimitExceeded
+            return GAME_METADATA[media_id]
+
+        with (
+            patch(
+                "app.providers.services.get_media_metadata",
+                side_effect=side_effect,
+            ),
+            Path(mock_path / "import_grouvee.json").open("rb") as file,
+        ):
+            _, warnings = grouvee.importer(file, user, "new")
+
+        self.assertTrue(
+            Game.objects.filter(user=user, item__media_id="1227").exists(),
+        )
+        self.assertFalse(
+            Game.objects.filter(user=user, item__media_id="128167").exists(),
+        )
+        self.assertFalse(
+            Game.objects.filter(user=user, item__media_id="5001").exists(),
+        )
+        self.assertIn("Run the import again", warnings)
