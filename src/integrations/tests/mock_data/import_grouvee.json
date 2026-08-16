@@ -10,9 +10,9 @@
         "Played": {"date_added": "2021-04-04T19:14:05Z"}
       },
       "rating": 3,
-      "review": "",
+      "review": "A charming double pack.",
       "dates": [
-        {"date_started": "2021-04-03", "date_finished": "None", "seconds_played": 3600, "level_of_completion": null},
+        {"date_started": "2021-04-03", "date_finished": "None", "seconds_played": 3600, "level_of_completion": null, "notes": "Took a long break partway through."},
         {"date_started": "None", "date_finished": "2021-04-04", "seconds_played": 0, "level_of_completion": "Main Story"}
       ],
       "release_date": "1993-12-18",
@@ -69,6 +69,18 @@
       "release_date": "2015-01-01",
       "giantbomb_id": null,
       "igdb_id": 7001
+    },
+    {
+      "name": "Wish List Game",
+      "shelves": {
+        "Wish List": {"date_added": "2024-03-01T00:00:00Z"}
+      },
+      "rating": null,
+      "review": "",
+      "dates": [],
+      "release_date": "2024-01-01",
+      "giantbomb_id": null,
+      "igdb_id": 8001
     }
   ],
   "lists": [],

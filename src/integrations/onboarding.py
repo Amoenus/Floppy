@@ -255,7 +255,7 @@ ONBOARDING_SOURCES: tuple[OnboardingSource, ...] = (
         tags=("games",),
         connect_url_name="import_grouvee",
         upload_field_name="grouvee_json",
-        upload_accept=".json",
+        upload_accept=".json,.zip",
     ),
     OnboardingSource(
         "steam",

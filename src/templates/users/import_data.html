@@ -2362,12 +2362,12 @@
                    :class="importFrequency === 'once' && !standardImportsDisabled() ? 'bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer' : 'bg-gray-600 text-gray-400 cursor-not-allowed'"
                    :disabled="importFrequency !== 'once' || standardImportsDisabled()">
               <input name="grouvee_json"
-                     accept=".json"
+                     accept=".json,.zip"
                      class="hidden"
                      type="file"
                      :disabled="importFrequency !== 'once' || standardImportsDisabled()"
                      @change="importFrequency === 'once' && !standardImportsDisabled() && $el.form.submit()">
-              Select JSON File
+              Select File
             </label>
           </form>
         </div>

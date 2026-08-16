@@ -32,7 +32,7 @@ _FILE_IMPORTS = {
     "trakt-collection": (tasks.import_trakt_collection_csv, "Trakt collection CSV"),
     "trakt-export": (tasks.import_trakt_export, "Trakt data export zip"),
     "hltb": (tasks.import_hltb, "HowLongToBeat CSV"),
-    "grouvee": (tasks.import_grouvee, "Grouvee JSON"),
+    "grouvee": (tasks.import_grouvee, "Grouvee export (JSON or zip)"),
     "imdb": (tasks.import_imdb, "IMDB CSV"),
     "goodreads": (tasks.import_goodreads, "Goodreads CSV"),
     "hardcover": (tasks.import_hardcover, "Hardcover CSV"),
