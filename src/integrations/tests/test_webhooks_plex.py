@@ -1730,6 +1730,293 @@ class PlexWebhookTests(TestCase):
         movie = Movie.objects.get(item__media_id="603", user=self.user)
         self.assertEqual(movie.score, 5)
 
+    @patch("app.services.grouped_anime.classify_tv_metadata", return_value=None)
+    def test_existing_tv_tracking_wins_over_flat_anime_mapping(
+        self,
+        mock_classify,
+    ):
+        """A tracked TV row is canonical when a flat MAL mapping also exists."""
+        tv_item = Item.objects.create(
+            media_id="3946240",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            library_media_type=MediaTypes.ANIME.value,
+            title="Frieren: Beyond Journey's End",
+            image="",
+        )
+        TV.objects.create(
+            item=tv_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        flat_item = Item.objects.create(
+            media_id="52991",
+            source=Sources.MAL.value,
+            media_type=MediaTypes.ANIME.value,
+            title="Frieren: Beyond Journey's End",
+            image="",
+        )
+        flat_anime = Anime.objects.create(
+            item=flat_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+            progress=3,
+        )
+
+        payload = {
+            "event": "media.scrobble",
+            "Account": {"title": "testuser"},
+            "Metadata": {
+                "type": "episode",
+                "grandparentTitle": "Frieren: Beyond Journey's End",
+                "index": 1,
+                "parentIndex": 1,
+                "Guid": [
+                    {"id": "imdb://tt23861604"},
+                    {"id": "tmdb://3946240"},
+                    {"id": "tvdb://9350138"},
+                ],
+            },
+        }
+
+        with patch("app.providers.tvdb.enabled", return_value=False):
+            response = self._post_payload(payload)
+
+        self.assertEqual(response.status_code, 200)
+        flat_anime.refresh_from_db()
+        self.assertEqual(flat_anime.progress, 3)
+        episode = Episode.objects.get(
+            item__media_id="3946240",
+            item__season_number=1,
+            item__episode_number=1,
+        )
+        self.assertEqual(episode.related_season.related_tv.item, tv_item)
+        mock_classify.assert_called()
+
+    @patch("app.providers.tmdb.find")
+    @patch("app.providers.tmdb.tv")
+    def test_tv_rating_resolves_episode_ids_and_reuses_tracked_item(
+        self,
+        mock_tv,
+        mock_find,
+    ):
+        """TV ratings resolve episode IDs before updating the tracked show."""
+        mock_find.return_value = {
+            "tv_episode_results": [
+                {
+                    "show_id": 3946240,
+                    "season_number": 1,
+                    "episode_number": 1,
+                },
+            ],
+            "tv_results": [],
+        }
+        mock_tv.return_value = {
+            "title": "Frieren: Beyond Journey's End",
+            "image": "",
+        }
+        tv_item = Item.objects.create(
+            media_id="3946240",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            library_media_type=MediaTypes.ANIME.value,
+            title="Frieren: Beyond Journey's End",
+            image="",
+        )
+        tv_instance = TV.objects.create(
+            item=tv_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+            score=2,
+        )
+
+        payload = {
+            "event": "media.rate",
+            "Account": {"title": "testuser"},
+            "Metadata": {
+                "type": "episode",
+                "grandparentTitle": "Frieren: Beyond Journey's End",
+                "userRating": 8,
+                "Guid": [
+                    {"id": "imdb://tt23861604"},
+                    {"id": "tmdb://1515183"},
+                    {"id": "tvdb://6725919"},
+                ],
+            },
+        }
+
+        response = self._post_payload(payload)
+
+        self.assertEqual(response.status_code, 200)
+        tv_instance.refresh_from_db()
+        self.assertEqual(tv_instance.score, 8)
+        self.assertEqual(
+            Item.objects.filter(
+                media_id="3946240",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.TV.value,
+            ).count(),
+            1,
+        )
+        mock_find.assert_called_once_with("6725919", "tvdb_id")
+
+    @patch("app.providers.tmdb.find")
+    @patch("app.providers.tmdb.tv")
+    def test_tv_rating_removal_resolves_episode_ids(
+        self,
+        mock_tv,
+        mock_find,
+    ):
+        """Rating removal uses the same show-level resolution as rating apply."""
+        mock_find.return_value = {
+            "tv_episode_results": [
+                {
+                    "show_id": 3946240,
+                    "season_number": 1,
+                    "episode_number": 1,
+                },
+            ],
+            "tv_results": [],
+        }
+        mock_tv.return_value = {
+            "title": "Frieren: Beyond Journey's End",
+            "image": "",
+        }
+        tv_item = Item.objects.create(
+            media_id="3946240",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            library_media_type=MediaTypes.ANIME.value,
+            title="Frieren: Beyond Journey's End",
+            image="",
+        )
+        tv_instance = TV.objects.create(
+            item=tv_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+            score=8,
+        )
+
+        payload = {
+            "event": "media.rate",
+            "Account": {"title": "testuser"},
+            "Metadata": {
+                "type": "episode",
+                "grandparentTitle": "Frieren: Beyond Journey's End",
+                "userRating": -1.0,
+                "Guid": [
+                    {"id": "imdb://tt23861604"},
+                    {"id": "tmdb://1515183"},
+                    {"id": "tvdb://6725919"},
+                ],
+            },
+        }
+
+        response = self._post_payload(payload)
+
+        self.assertEqual(response.status_code, 200)
+        tv_instance.refresh_from_db()
+        self.assertIsNone(tv_instance.score)
+        mock_find.assert_called_once_with("6725919", "tvdb_id")
+
+    @patch("app.providers.tmdb.tv")
+    def test_tv_rating_accepts_show_level_tmdb_id(self, mock_tv):
+        """A valid show-level TMDB rating ID remains supported."""
+        mock_tv.return_value = {
+            "title": "Breaking Bad",
+            "image": "",
+        }
+        tv_item = Item.objects.create(
+            media_id="1396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Breaking Bad",
+            image="",
+        )
+        tv_instance = TV.objects.create(
+            item=tv_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+
+        payload = {
+            "event": "media.rate",
+            "Account": {"title": "testuser"},
+            "Metadata": {
+                "type": "episode",
+                "grandparentTitle": "Breaking Bad",
+                "userRating": 9,
+                "Guid": [{"id": "tmdb://1396"}],
+            },
+        }
+
+        response = self._post_payload(payload)
+
+        self.assertEqual(response.status_code, 200)
+        tv_instance.refresh_from_db()
+        self.assertEqual(tv_instance.score, 9)
+        mock_tv.assert_called_with("1396")
+
+    @patch("app.providers.tmdb.search")
+    @patch("app.providers.tmdb.tv")
+    def test_tv_rating_episode_tmdb_id_falls_back_to_title(
+        self,
+        mock_tv,
+        mock_search,
+    ):
+        """An episode-only TMDB rating ID can resolve through the series title."""
+        def fake_tv(media_id):
+            if str(media_id) == "1515183":
+                raise Exception("TMDB episode 404")
+            return {
+                "title": "Frieren: Beyond Journey's End",
+                "image": "",
+            }
+
+        mock_tv.side_effect = fake_tv
+        mock_search.return_value = {
+            "results": [
+                {
+                    "media_id": "3946240",
+                    "title": "Frieren: Beyond Journey's End",
+                },
+            ],
+        }
+        tv_item = Item.objects.create(
+            media_id="3946240",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Frieren: Beyond Journey's End",
+            image="",
+        )
+        tv_instance = TV.objects.create(
+            item=tv_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+
+        payload = {
+            "event": "media.rate",
+            "Account": {"title": "testuser"},
+            "Metadata": {
+                "type": "episode",
+                "grandparentTitle": "Frieren: Beyond Journey's End",
+                "userRating": 7,
+                "Guid": [{"id": "tmdb://1515183"}],
+            },
+        }
+
+        response = self._post_payload(payload)
+
+        self.assertEqual(response.status_code, 200)
+        tv_instance.refresh_from_db()
+        self.assertEqual(tv_instance.score, 7)
+        mock_search.assert_called_once_with(
+            MediaTypes.TV.value,
+            "Frieren: Beyond Journey's End",
+            page=1,
+        )
+
     @patch("app.providers.tmdb.tv")
     def test_remove_rating_reuses_tv_item_from_existing_bucket(self, mock_tv):
         """Rating removal should find a TV item already tracked in another bucket.
