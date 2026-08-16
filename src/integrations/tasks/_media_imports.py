@@ -239,7 +239,7 @@ def import_hltb(file, user_id, mode):
 
 @shared_task(name="Import from Grouvee")
 def import_grouvee(file, user_id, mode):
-    """Celery task for importing game data from a Grouvee JSON export."""
+    """Celery task for importing game data from a Grouvee export (JSON or zip)."""
     return import_media(grouvee.importer, _coerce_uploaded_file(file), user_id, mode)
 
 

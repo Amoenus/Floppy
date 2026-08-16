@@ -1163,11 +1163,11 @@ def import_hltb(request):
 
 @require_POST
 def import_grouvee(request):
-    """View for importing game data from a Grouvee JSON export."""
+    """View for importing game data from a Grouvee export (JSON or zip)."""
     file = request.FILES.get("grouvee_json")
 
     if not file:
-        messages.error(request, "Grouvee JSON file is required.")
+        messages.error(request, "A Grouvee export file is required.")
         return _integration_redirect(request)
 
     mode = request.POST["mode"]
@@ -1178,7 +1178,7 @@ def import_grouvee(request):
     )
     messages.info(
         request,
-        "The task to import media from Grouvee JSON file has been queued.",
+        "The task to import media from the Grouvee export has been queued.",
     )
     return _integration_redirect(request, connected_slug="grouvee")
 
