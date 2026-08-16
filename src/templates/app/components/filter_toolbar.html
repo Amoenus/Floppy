@@ -1104,7 +1104,9 @@
                       @click="toggleTag(option)"
                       type="button">
                 <span class="block min-w-0 truncate max-w-[11rem]" x-text="option"></span>
-                <span class="ml-auto" x-show="isTagSelected(option)">
+                <span class="ml-auto px-2 py-0.5 rounded text-xs bg-[var(--color-surface)] border border-gray-600 text-[var(--color-text-muted)]"
+                      x-text="tagCounts[option] || 0"></span>
+                <span class="ml-2" x-show="isTagSelected(option)">
                   {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
                 </span>
               </button>

@@ -10,7 +10,7 @@ from django.apps import apps as django_apps
 from django.conf import settings
 from django.core.cache import cache
 from django.core.paginator import Paginator
-from django.db.models import F, Min
+from django.db.models import Count, F, Min
 from django.http import HttpResponse, HttpResponseBadRequest
 from django.shortcuts import render
 from django.urls import reverse
@@ -473,6 +473,38 @@ def build_filter_data_from_items(
         "show_formats": False,
         "show_authors": False,
         "show_providers": False,
+    }
+
+
+def _build_media_list_tag_data(user, media_items):
+    """Return user tags ordered and counted for the current media-list items."""
+    item_ids = {
+        getattr(getattr(media, "item", media), "id", None) for media in media_items
+    }
+    item_ids.discard(None)
+
+    tag_counts = {}
+    if item_ids:
+        tag_counts = dict(
+            ItemTag.objects.filter(
+                tag__user=user,
+                item_id__in=item_ids,
+            )
+            .values("tag_id")
+            .annotate(item_count=Count("item_id", distinct=True))
+            .values_list("tag_id", "item_count")
+        )
+
+    tags = list(Tag.objects.filter(user=user).values("id", "name"))
+    tags.sort(
+        key=lambda tag: (
+            -tag_counts.get(tag["id"], 0),
+            tag["name"].casefold(),
+        ),
+    )
+    return {
+        "tags": [tag["name"] for tag in tags],
+        "tag_counts": {tag["name"]: tag_counts.get(tag["id"], 0) for tag in tags},
     }
 
 
@@ -1615,12 +1647,12 @@ def media_list(request, media_type):
                 watch_provider_region and watch_provider_region != "UNSET"
             )
             filter_data["show_progress"] = media_type in progress_media_types
-            user_tags = list(
-                Tag.objects.filter(user=request.user)
-                .values_list("name", flat=True)
-                .order_by("name")
+            filter_data.update(
+                _build_media_list_tag_data(
+                    request.user,
+                    filter_data_source_items,
+                ),
             )
-            filter_data["tags"] = user_tags
             if _media_list_filter_cache_key:
                 cache.set(
                     _media_list_filter_cache_key,
@@ -1852,10 +1884,11 @@ def media_list(request, media_type):
             watch_provider_region and watch_provider_region != "UNSET"
         )
         filter_data["show_progress"] = media_type in progress_media_types
-        filter_data["tags"] = list(
-            Tag.objects.filter(user=request.user)
-            .values_list("name", flat=True)
-            .order_by("name")
+        filter_data.update(
+            _build_media_list_tag_data(
+                request.user,
+                filter_data_source_items,
+            ),
         )
         if _media_list_filter_cache_key:
             cache.set(

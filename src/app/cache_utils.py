@@ -17,7 +17,8 @@ _REGISTRY_TEMPLATE = f"{TIME_LEFT_CACHE_PREFIX}_registry_{{user_id}}"
 
 MEDIA_LIST_CACHE_PREFIX = "media_list_v1"
 MEDIA_LIST_CACHE_TTL = 60  # seconds — enough for "navigate away and back" use case
-MEDIA_LIST_FILTER_CACHE_PREFIX = "media_list_filters_v1"
+# v2: filter payloads include per-tag media-list usage counts.
+MEDIA_LIST_FILTER_CACHE_PREFIX = "media_list_filters_v2"
 MEDIA_LIST_FILTER_CACHE_TTL = 300
 _MEDIA_LIST_REGISTRY_TEMPLATE = f"{MEDIA_LIST_CACHE_PREFIX}_registry_{{user_id}}"
 

@@ -1,6 +1,7 @@
 import json
 
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.test import TestCase
 from django.urls import reverse
 
@@ -292,6 +293,7 @@ class TagFilterViewTest(TestCase):
     """Test tag filtering in the media_list view."""
 
     def setUp(self):
+        cache.clear()
         self.credentials = {"username": "test", "password": "12345"}
         self.user = get_user_model().objects.create_user(**self.credentials)
         self.client.login(**self.credentials)
@@ -398,6 +400,62 @@ class TagFilterViewTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Tagged Movie")
         self.assertContains(response, "Untagged Movie")
+
+    def test_tag_filter_data_is_ordered_by_current_media_usage(self):
+        """Tag options show current-list usage counts, including zeroes."""
+        popular = Tag.objects.create(user=self.user, name="Popular")
+        unused = Tag.objects.create(user=self.user, name="Unused")
+        game_only = Tag.objects.create(user=self.user, name="Game Only")
+        ItemTag.objects.create(tag=popular, item=self.item1)
+        ItemTag.objects.create(tag=popular, item=self.item2)
+
+        game_item = Item.objects.create(
+            media_id="game-1",
+            source=Sources.IGDB.value,
+            media_type=MediaTypes.GAME.value,
+            title="Tagged Game",
+        )
+        ItemTag.objects.create(tag=game_only, item=game_item)
+
+        response = self.client.get(reverse("medialist", args=["movie"]))
+        self.assertEqual(response.status_code, 200)
+        filter_data = response.context["filter_data"]
+
+        self.assertEqual(
+            filter_data["tags"],
+            ["Popular", "Favorite", "Game Only", "Unused"],
+        )
+        self.assertEqual(
+            filter_data["tag_counts"],
+            {"Popular": 2, "Favorite": 1, "Game Only": 0, "Unused": 0},
+        )
+        self.assertContains(response, '"tag_counts"')
+        self.assertContains(response, 'x-text="tagCounts[option] || 0"')
+
+    def test_tag_filter_counts_refresh_after_bulk_assignment(self):
+        """Tag usage counts are invalidated when a tag is assigned in bulk."""
+        list_url = reverse("medialist", args=["movie"])
+        first_response = self.client.get(list_url)
+        self.assertEqual(
+            first_response.context["filter_data"]["tag_counts"],
+            {"Favorite": 1},
+        )
+
+        toggle_response = self.client.post(
+            reverse("tag_bulk_toggle"),
+            {
+                "tag_name": "Favorite",
+                "action": "add",
+                "item_ids": [self.item2.id],
+            },
+        )
+        self.assertEqual(toggle_response.status_code, 204)
+
+        second_response = self.client.get(list_url)
+        self.assertEqual(
+            second_response.context["filter_data"]["tag_counts"],
+            {"Favorite": 2},
+        )
 
 
 class TagIndexViewTest(TestCase):
