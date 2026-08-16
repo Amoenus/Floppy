@@ -12,26 +12,29 @@ from urllib.parse import urlsplit, urlunsplit
 
 from django.conf import settings
 
-# Query/form/header param names that commonly carry secrets across Floppy's
+# Keywords that end the name of a value that carries a secret across Floppy's
 # integrations (Plex, Jellyfin, Trakt, TMDB, Last.fm, Koito, Pocket Casts,
-# gpodder, Stremio). Matches "name=value" (URL/form encoded) up to the next
-# delimiter, or "Name: value" (header style) to end of line.
-_SECRET_PARAM_NAMES = (
+# gpodder, Stremio). Match the keyword at the end of the name and allow any
+# prefix, because the same credential reaches the log in many spellings:
+# "access_token", "authToken", "X-Plex-Token", "X-Api-Key", "TMDB_API_KEY".
+# A list of exact spellings cannot cover them and lets secrets through.
+_SECRET_NAME_KEYWORDS = (
     "token",
-    "access_token",
-    "refresh_token",
-    "api_key",
-    "apikey",
-    "client_secret",
-    "client_id",
+    "secret",
     "password",
     "passwd",
-    "secret",
-    "x-plex-token",
+    "apikey",
+    "api_key",
+    "api-key",
     "sessionid",
-    "csrftoken",
+    "client_id",
 )
-_SECRET_NAME_PATTERN = "|".join(re.escape(name) for name in _SECRET_PARAM_NAMES)
+# The prefix stops at the delimiters that separate one field from the next, so
+# "token_count=512" and "status_code=200" stay readable: the keyword must be
+# the last part of the name, immediately before the "=" or ":".
+_SECRET_NAME_PATTERN = r"[\w.-]*(?:{})".format(
+    "|".join(re.escape(keyword) for keyword in _SECRET_NAME_KEYWORDS),
+)
 
 _SECRET_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (
@@ -53,26 +56,36 @@ _SECRET_PATTERNS: list[tuple[re.Pattern[str], str]] = [
         r"\1[REDACTED]:[REDACTED]@",
     ),
     (
+        # List values, such as the QueryDict repr Django writes for form data:
+        # {'password': ['secret']}. Redact the full list. Without this rule the
+        # unquoted rule below stops at the first quote and leaves the value.
+        re.compile(
+            rf"(?i)({_SECRET_NAME_PATTERN})([\"']?\s*[=:]\s*)\[[^\]\r\n]*\]",
+        ),
+        r"\1\2[REDACTED]",
+    ),
+    (
         # Quoted JSON, Python repr, and assignment values can contain spaces.
         re.compile(
-            rf'(?i)\b({_SECRET_NAME_PATTERN})(["\']?\s*[=:]\s*)'
+            rf'(?i)({_SECRET_NAME_PATTERN})(["\']?\s*[=:]\s*)'
             r'"(?:\\.|[^"\\\r\n])*"',
         ),
         r'\1\2"[REDACTED]"',
     ),
     (
         re.compile(
-            rf"(?i)\b({_SECRET_NAME_PATTERN})([\"']?\s*[=:]\s*)"
+            rf"(?i)({_SECRET_NAME_PATTERN})([\"']?\s*[=:]\s*)"
             r"'(?:\\.|[^'\\\r\n])*'",
         ),
         r"\1\2'[REDACTED]'",
     ),
     (
         # Unquoted URL, form, header, and assignment values stop at the next
-        # delimiter. Quoted values are handled by the two patterns above.
+        # delimiter. Quoted and list values are handled by the rules above, so
+        # this rule does not start on a quote or a bracket.
         re.compile(
-            rf"(?i)\b({_SECRET_NAME_PATTERN})[\"']?\s*[=:]\s*"
-            r"[^&\s\"'<>]+",
+            rf"(?i)({_SECRET_NAME_PATTERN})[\"']?\s*[=:]\s*"
+            r"[^&\s\"'<>\[\]]+",
         ),
         r"\1=[REDACTED]",
     ),

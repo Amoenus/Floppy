@@ -97,6 +97,37 @@ class LogSafetyTests(SimpleTestCase):
 
         self.assertEqual(result, "{'api_key': '[REDACTED]', 'size': 10}")
 
+    def test_redact_secrets_strips_every_credential_name_spelling(self):
+        """Integrations spell the same credential in four different styles."""
+        for line in (
+            "authToken=plain-secret",
+            "accessToken=plain-secret",
+            "auth_token=plain-secret",
+            "X-Api-Key: plain-secret",
+            "TMDB_API_KEY=plain-secret",
+            "webhook_secret=plain-secret",
+            'headers={"authToken": "plain-secret"}',
+        ):
+            with self.subTest(line=line):
+                self.assertNotIn("plain-secret", redact_secrets(line))
+
+    def test_redact_secrets_keeps_names_that_only_end_in_a_keyword_word(self):
+        """Diagnostic fields must stay readable, so match whole name parts."""
+        for line in (
+            "request finished status_code=200 in 0.04s",
+            "error_code=RATE_LIMIT retry_after=30",
+            "token_count=512 model=default",
+            "tokenizer_config=default",
+        ):
+            with self.subTest(line=line):
+                self.assertEqual(redact_secrets(line), line)
+
+    def test_redact_secrets_strips_list_values(self):
+        """Django writes form data as a QueryDict repr with list values."""
+        result = redact_secrets("<QueryDict: {'password': ['plain-secret']}>")
+
+        self.assertEqual(result, "<QueryDict: {'password': [REDACTED]}>")
+
     def test_redact_secrets_handles_empty_input(self):
         self.assertEqual(redact_secrets(""), "")
         self.assertEqual(redact_secrets(None), "")
