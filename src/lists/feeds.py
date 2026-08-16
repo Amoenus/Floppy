@@ -1,6 +1,10 @@
+from itertools import batched
+from urllib.parse import quote
+
 from django.apps import apps
 from django.contrib.auth.decorators import login_not_required
 from django.contrib.syndication.views import Feed
+from django.db import connection
 from django.http import Http404, JsonResponse
 from django.urls import reverse
 from django.utils import timezone
@@ -41,8 +45,17 @@ class PublicListFeed(Feed):
 
     feed_type = FloppyRssFeed
 
+    @staticmethod
+    def _query_batch_size(value_count):
+        """Return a safe query batch size for the active database backend."""
+        max_query_params = connection.features.max_query_params
+        if max_query_params:
+            # Keep room for owner, media-type, and backend-added parameters.
+            return max(1, max_query_params - 8)
+        return max(1, value_count)
+
     def _attach_owner_media_statuses(self, list_items, owner):
-        """Attach owner tracking status and metadata to feed items."""
+        """Attach owner status and metadata with bounded local queries."""
         media_manager = MediaManager()
         item_ids_by_media_type = {}
 
@@ -58,20 +71,22 @@ class PublicListFeed(Feed):
             except LookupError:
                 continue
 
-            if media_type == MediaTypes.EPISODE.value:
-                queryset = model.objects.filter(
-                    item_id__in=item_ids,
-                    related_season__user=owner,
-                ).select_related("item", "related_season")
-            else:
-                queryset = model.objects.filter(
-                    item_id__in=item_ids,
-                    user=owner,
-                ).select_related("item")
-
             entries_by_item = {}
-            for entry in queryset:
-                entries_by_item.setdefault(entry.item_id, []).append(entry)
+            batch_size = self._query_batch_size(len(item_ids))
+            for item_id_batch in batched(sorted(item_ids), batch_size):
+                if media_type == MediaTypes.EPISODE.value:
+                    queryset = model.objects.filter(
+                        item_id__in=item_id_batch,
+                        related_season__user=owner,
+                    ).select_related("item", "related_season")
+                else:
+                    queryset = model.objects.filter(
+                        item_id__in=item_id_batch,
+                        user=owner,
+                    ).select_related("item")
+
+                for entry in queryset:
+                    entries_by_item.setdefault(entry.item_id, []).append(entry)
 
             for item_id, entries in entries_by_item.items():
                 entries.sort(key=lambda entry: entry.created_at, reverse=True)
@@ -89,29 +104,93 @@ class PublicListFeed(Feed):
             list_item.feed_status = status_by_item_id.get(list_item.item_id, "")
             list_item.feed_description = self._build_item_description(list_item.item)
 
-    def _attach_show_titles(self, list_items):
-        """Attach the parent show's title to episode/season list items."""
-        show_keys = {
-            (list_item.item.source, list_item.item.media_id)
-            for list_item in list_items
-            if list_item.item.media_type
-            in (MediaTypes.EPISODE.value, MediaTypes.SEASON.value)
-        }
-        if not show_keys:
-            return
+    @staticmethod
+    def _show_title(media_item, shows):
+        """Return the closest stored series title for a season or episode."""
+        if not shows:
+            return None
 
-        sources = {source for source, _media_id in show_keys}
-        media_ids = {media_id for _source, media_id in show_keys}
-        shows = Item.objects.filter(
-            media_type=MediaTypes.TV.value,
-            source__in=sources,
-            media_id__in=media_ids,
+        library_media_type = media_item.library_media_type or media_item.media_type
+        parent_library_media_type = (
+            MediaTypes.TV.value
+            if library_media_type
+            in {MediaTypes.SEASON.value, MediaTypes.EPISODE.value}
+            else library_media_type
         )
-        title_by_key = {(show.source, show.media_id): show.title for show in shows}
+        show = min(
+            shows,
+            key=lambda candidate: (
+                (candidate.library_media_type or candidate.media_type)
+                != parent_library_media_type,
+                candidate.library_media_type != parent_library_media_type,
+                candidate.media_type != parent_library_media_type,
+                candidate.media_type != MediaTypes.TV.value,
+                candidate.pk,
+            ),
+        )
+        return show.title
+
+    def _attach_show_titles(self, list_items):
+        """Attach stored parent titles with bounded local queries."""
+        child_ids_by_source = {}
 
         for list_item in list_items:
-            key = (list_item.item.source, list_item.item.media_id)
-            list_item.feed_show_title = title_by_key.get(key)
+            media_item = list_item.item
+            if media_item.media_type not in {
+                MediaTypes.SEASON.value,
+                MediaTypes.EPISODE.value,
+            }:
+                continue
+            list_item.feed_show_title = None
+            child_ids_by_source.setdefault(media_item.source, set()).add(
+                media_item.media_id
+            )
+
+        if not child_ids_by_source:
+            return
+
+        shows_by_identity = {}
+        for source, media_ids in child_ids_by_source.items():
+            batch_size = self._query_batch_size(len(media_ids))
+            for media_id_batch in batched(sorted(media_ids), batch_size):
+                shows = (
+                    Item.objects.filter(
+                        source=source,
+                        media_id__in=media_id_batch,
+                        media_type__in=[
+                            MediaTypes.TV.value,
+                            MediaTypes.ANIME.value,
+                        ],
+                        season_number__isnull=True,
+                        episode_number__isnull=True,
+                    )
+                    .only(
+                        "media_id",
+                        "source",
+                        "media_type",
+                        "library_media_type",
+                        "title",
+                    )
+                    .order_by("pk")
+                )
+                for show in shows:
+                    shows_by_identity.setdefault(
+                        (show.source, show.media_id),
+                        [],
+                    ).append(show)
+
+        for list_item in list_items:
+            media_item = list_item.item
+            if media_item.media_type not in {
+                MediaTypes.SEASON.value,
+                MediaTypes.EPISODE.value,
+            }:
+                continue
+            candidates = shows_by_identity.get(
+                (media_item.source, media_item.media_id),
+                [],
+            )
+            list_item.feed_show_title = self._show_title(media_item, candidates)
 
     def _build_item_description(self, item):
         """Return a local feed description without provider lookups."""
@@ -140,7 +219,7 @@ class PublicListFeed(Feed):
         """Return the feed title."""
         return f"{obj.name} - Floppy"
 
-    def link(self, obj):
+    def lind¨self, obj):
         """Return the list detail URL."""
         return self.request.build_absolute_uri(
             reverse("list_detail", args=[obj.public_reference])
@@ -162,11 +241,16 @@ class PublicListFeed(Feed):
         return list_items
 
     def item_title(self, item):
-        """Return the item title with S01E02/year markers for automation tools."""
+        """Return a title that automation tools can match."""
         media_item = item.item
-        title = getattr(item, "feed_show_title", None) or media_item.title
+        title = media_item.title
 
         if media_item.season_number is not None:
+            title = (
+                getattr(item, "feed_show_title", None)
+                or media_item.series_name
+                or title
+            )
             title += f" S{media_item.season_number:02d}"
             if media_item.episode_number is not None:
                 title += f"E{media_item.episode_number:02d}"
@@ -176,7 +260,7 @@ class PublicListFeed(Feed):
         return title
 
     def item_description(self, item):
-        """Return the item description."""
+        """Return the item description.""
         return getattr(
             item, "feed_description", self._build_item_description(item.item)
         )
@@ -186,19 +270,25 @@ class PublicListFeed(Feed):
         return self.request.build_absolute_uri(media_url(item.item))
 
     def item_guid(self, item):
-        """Return a guid from the item's own immutable natural key."""
+        """Return a stable GUID from the stored item identity."""
         media_item = item.item
-        guid = f"{media_item.source}:{media_item.media_type}:{media_item.media_id}"
-
+        media_type = media_item.media_type
+        library_media_type = media_item.library_media_type
+        parts = [
+            quote(media_item.source, safe=""),
+            quote(media_type, safe=""),
+            quote(str(media_item.media_id), safe=""),
+        ]
+        if library_media_type:
+            parts.extend(["library", quote(library_media_type, safe="")])
         if media_item.season_number is not None:
-            guid += f":s{media_item.season_number}"
-            if media_item.episode_number is not None:
-                guid += f":e{media_item.episode_number}"
-
-        return guid
+            parts.append(f"s{media_item.season_number}")
+        if media_item.episode_number is not None:
+            parts.append(f"e{media_item.episode_number}")
+        return ":".join(parts)
 
     def item_guid_is_permalink(self, item):
-        """Return whether the guid is a dereferenceable URL."""
+        """Mark the identity GUID as a non-permalink."""
         return False
 
     def item_categories(self, item):
@@ -234,7 +324,6 @@ def list_json(request, list_reference):
     if custom_list is None:
         msg = "List not found"
         raise Http404(msg)
-
     arr_type = request.GET.get("arr", "").lower()
     if arr_type not in ("radarr", "sonarr"):
         return JsonResponse(
@@ -243,7 +332,6 @@ def list_json(request, list_reference):
             },
             status=400,
         )
-
     if arr_type == "radarr":
         # Filter for TMDB movies
         items = CustomListItem.objects.filter(
@@ -251,7 +339,6 @@ def list_json(request, list_reference):
             item__source=Sources.TMDB.value,
             item__media_type=MediaTypes.MOVIE.value,
         ).select_related("item")
-
         json_data = [{"id": int(item.item.media_id)} for item in items]
     else:  # sonarr
         # Filter for TMDB TV shows
@@ -260,7 +347,6 @@ def list_json(request, list_reference):
             item__source=Sources.TMDB.value,
             item__media_type=MediaTypes.TV.value,
         ).select_related("item")
-
         json_data = []
         for list_item in items:
             # Fetch TMDB metadata (cached) to get TVDB ID
@@ -272,5 +358,4 @@ def list_json(request, list_reference):
             except Exception:  # noqa: S112  # deliberate best-effort; skip the item and continue
                 # Skip items where metadata fetch fails
                 continue
-
     return JsonResponse(json_data, safe=False)

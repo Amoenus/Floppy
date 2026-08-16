@@ -368,12 +368,6 @@ Notes:
 - Review summaries should call out behavior changes, files touched, validation run, and remaining risk.
 - Commit messages should use a short imperative title, then 1–3 bullet clarifications in the body. Optional issue lines: `Fixes #123` / `Refs #456`.
 
-### PR Monitoring (Default Behavior)
-- For any PR opened in this repo — whether the user opened it or Claude did — proactively subscribe to its GitHub activity (e.g. `subscribe_pr_activity`) without waiting to be asked.
-- Drive CI to fully green regardless of cause. Diagnose real failures and fix them; only treat a run as flaky if it died before any test body ran (checkout, dependency install, lost runner), and say so when re-running rather than silently retrying.
-- For automated review comments (e.g. Codex/`chatgpt-codex-connector`), verify each claim against the actual code before acting — read the flagged lines and the code paths they describe. Fix genuine, correctness-affecting findings. For anything speculative, stylistic-only, or that misreads the code, leave a brief reply explaining why rather than churning changes to satisfy noise.
-- Keep the PR's subscription alive until it merges or closes; webhooks don't reliably deliver CI success or new-push events, so re-check state after periods of silence rather than assuming green.
-
 ## Security / Safety Notes
 - `.env` contains secrets and API keys; do not commit it.
 - A process-wide log record factory redacts credentials before any handler writes them (`src/app/log_safety.py`, installed by `src/config/__init__.py`). Do not move the installation later in the start sequence, and do not widen its `except` clause: both faults are silent. See `docs/architecture/log-redaction.md`.
