@@ -105,6 +105,35 @@ class DataPathSettingsTests(SimpleTestCase):
             )
             self.assertTrue(external_database.parent.is_dir())
 
+    def test_config_import_reports_a_missing_log_safety_dependency(self):
+        """Only an absent app package is tolerable. Other faults must raise.
+
+        ``config`` tolerates a missing ``app`` package so the isolated checks
+        below can import it. If that tolerance also hid a broken dependency,
+        the process would start with no log redaction and no warning.
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            shutil.copytree(SRC / "config", root / "config")
+            app_package = root / "app"
+            app_package.mkdir()
+            (app_package / "__init__.py").write_text("")
+            (app_package / "log_safety.py").write_text(
+                "import floppy_absent_dependency\n",
+            )
+
+            result = subprocess.run(
+                [sys.executable, "-c", "import config"],
+                cwd=root,
+                env={**os.environ, "PYTHONPATH": str(root)},
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("floppy_absent_dependency", result.stderr)
+
     def test_read_only_source_uses_external_writable_paths(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -214,6 +243,38 @@ class DataPathSettingsTests(SimpleTestCase):
                 secret_path.read_text(encoding="utf-8"),
             )
             self.assertEqual(stat.S_IMODE(secret_path.stat().st_mode), 0o600)
+
+    def test_configured_secret_file_is_used_when_secret_is_empty(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            data_dir = root / "data"
+            secret_file = root / "custom_secret"
+            secret_file.write_text("custom-secret-value\n", encoding="utf-8")
+            environment = {
+                "PATH": os.environ["PATH"],
+                "PYTHONPATH": str(SRC),
+                "PYTHONDONTWRITEBYTECODE": "1",
+                "SECRET": "",
+                "SECRET_FILE": str(secret_file),
+                "FLOPPY_DATA_DIR": str(data_dir),
+                "LOG_DIR": str(root / "logs"),
+            }
+
+            result = subprocess.run(  # noqa: S603 - test-controlled executable
+                [sys.executable, "-c", DOCKER_SECRET_PROBE],
+                cwd=root,
+                env=environment,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(
+                result.stdout.strip().splitlines()[-1],
+                "custom-secret-value",
+            )
+            self.assertFalse((data_dir / "secret_key").exists())
 
     def test_generated_secret_failure_names_the_path_and_next_action(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -345,13 +406,19 @@ if [ -n "$FAIL_CHOWN_PATH" ] && [ "$last" = "$FAIL_CHOWN_PATH" ]; then
 fi
 """,
         )
-        for command in ("groupmod", "usermod", "supervisord"):
+        for command in ("groupmod", "usermod"):
             self.write_command(
                 fake_bin / command,
                 f"""#!/bin/sh
 {{ printf '{command}'; printf ' <%s>' "$@"; printf '\n'; }} >> "$FAKE_LOG"
 """,
             )
+        self.write_command(
+            fake_bin / "supervisord",
+            """#!/bin/sh
+{ printf 'supervisord'; printf ' <%s>' "$@"; printf ' [SECRET_FILE=%s]' "$SECRET_FILE"; printf '\n'; } >> "$FAKE_LOG"
+""",
+        )
 
         environment = {
             "PATH": f"{fake_bin}:{os.environ['PATH']}",
@@ -514,3 +581,26 @@ fi
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertNotIn("FLOPPY_DB_PATH", result.stderr)
             self.assertNotIn("/db.sqlite3", commands)
+
+    def test_secret_file_environment_variable_is_preserved_for_supervisord(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            data_dir = root / "data"
+            data_dir.mkdir()
+            custom_secret = root / "secrets" / "my_secret"
+            custom_secret.parent.mkdir()
+            custom_secret.write_text("custom-secret-key\n", encoding="utf-8")
+
+            result, commands = self.run_entrypoint(
+                root,
+                FLOPPY_DATA_DIR=str(data_dir),
+                SECRET="",
+                SECRET_FILE=str(custom_secret),
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn(
+                f"supervisord <-c> </etc/supervisord.conf> [SECRET_FILE={custom_secret}]",
+                commands,
+            )
+

@@ -303,6 +303,8 @@ Models/migrations and divergent UI normally require manual adaptation. Provider 
 - `docs/agents/pocketcasts_workflow.md`: Pocket Casts import/schedule workflow details.
 - `docs/agents/migration_sync_playbook.md`: hard-gate flow for adapting accepted upstream migration outcomes to Floppy's current graph.
 - `docs/agents/view_authentication.md`: guide for view authentication and declaring public route exemptions.
+- `docs/architecture/log-redaction.md`: the log boundary contract — where credentials are removed, what the rules match, and what they do not cover.
+- `docs/architecture/theming.md`: the theme resolution contract and the six theme states any colour change must hold.
 
 
 ## Local Commands
@@ -368,5 +370,6 @@ Notes:
 
 ## Security / Safety Notes
 - `.env` contains secrets and API keys; do not commit it.
+- A process-wide log record factory redacts credentials before any handler writes them (`src/app/log_safety.py`, installed by `src/config/__init__.py`). Do not move the installation later in the start sequence, and do not widen its `except` clause: both faults are silent. See `docs/architecture/log-redaction.md`.
 - Docker entrypoint runs migrations and changes ownership inside the container (`entrypoint.sh`).
 - Docker compose stores data in `./db`; local dev SQLite lives under `src/db/`.

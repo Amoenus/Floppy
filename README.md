@@ -11,8 +11,10 @@
 <p align="center">
   <a href="https://yamtrack.dannyvfilms.com">Demo</a> ·
   <a href="https://github.com/dannyvfilms/Floppy/pkgs/container/floppy">Docker Image</a> ·
+  <a href="https://discord.gg/uFgha7Kb6n">Discord</a> ·
   <a href="https://github.com/dannyvfilms/Floppy/wiki">Wiki</a> ·
-  <a href="https://github.com/dannyvfilms/Floppy/releases">Releases</a>
+  <a href="https://github.com/dannyvfilms/Floppy/releases">Releases</a> ·
+  <a href="https://github.com/dannyvfilms/Floppy/issues">Report a Bug</a>
 </p>
 
 Floppy is a self-hosted, all-in-one media tracker and personal media diary, a broader alternative to Trakt, Letterboxd, and TV Time for people who want one place for everything they watch, read, play, or listen to. It gives you a real progress view that tells you what to watch next, a unified history you can actually scan, recap-style statistics, shareable lists, owned-media collections, and integrations that sync instead of asking you to upload a file every few months.
@@ -389,6 +391,7 @@ The only universally required variable is `SECRET`. For Docker installs you shou
 - `HARDCOVER_API` - Hardcover book metadata/imports
 - `COMICVINE_API` - comic metadata
 - `LASTFM_API_KEY` - Last.fm integration and scrobble polling
+- `MUSICBRAINZ_URL` - custom MusicBrainz-compatible API root, including `/ws/2` (defaults to `https://musicbrainz.org/ws/2`)
 - `TRAKT_API` / `TRAKT_API_SECRET` - Trakt private-profile OAuth imports
 - `URLS` - your public URL if using a reverse proxy, for example `https://floppy.mydomain.com`
 - `ADMIN_ENABLED` - set to `True` to enable the Django admin interface at `/admin/` (see the [Admin Guide](https://github.com/dannyvfilms/Floppy/wiki/6.-Admin-and-Operations#admin-guide))
@@ -545,6 +548,24 @@ uv run --no-sync gunicorn --config python:config.gunicorn config.wsgi:applicatio
 
 Do not start the service with bare `gunicorn config.wsgi:application`; that
 skips the shipped configuration and its process lifecycle hooks.
+
+Gunicorn does not write a request access log. A request line holds the query
+string, and a query string can hold an OAuth code or an integration token, so
+the container writes one access line at the Nginx boundary instead, with the
+query string and the referrer removed. Gunicorn still writes its error log.
+
+A source-based deployment therefore gets its request log from its own reverse
+proxy. Configure that proxy to leave the query string out of its log format.
+The container's format is in `nginx.conf`:
+
+```nginx
+log_format floppy_safe '$remote_addr [$time_local] '
+                       '"$request_method $uri $server_protocol" '
+                       '$status $body_bytes_sent';
+```
+
+Application logs are separate and are always redacted before they are written.
+See [docs/architecture/log-redaction.md](docs/architecture/log-redaction.md).
 
 ### Upgrading container images
 
@@ -721,6 +742,7 @@ dependency.
 ## Support the project
 
 - Star the repository if you want to help more people find Floppy.
+- Join the [Discord channel](https://discord.gg/uFgha7Kb6n) to ask questions, share feedback, and chat with the community.
 - Open an [issue](https://github.com/dannyvfilms/Floppy/issues) for bugs, or for feature requests and ideas.
 - Open a pull request if you want to contribute code, docs, or polish.
 

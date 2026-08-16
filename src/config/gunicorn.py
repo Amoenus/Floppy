@@ -26,7 +26,9 @@ print(  # noqa: T201  # gunicorn has no logger configured this early
     f"max_requests={max_requests} timeout={timeout}",
 )
 
-accesslog = "-"
+# Nginx owns the request log. A second Gunicorn access line duplicates every
+# dynamic request and can include the raw query string. Keep Gunicorn errors.
+accesslog = None
 errorlog = "-"
 
 

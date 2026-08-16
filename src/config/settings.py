@@ -457,7 +457,13 @@ else:
     }
 
     def configure_sqlite_connection(sender, connection, **_kwargs):
-        """Ensure SQLite connections wait for locks and use WAL."""
+        """Ensure SQLite connections wait for locks and use WAL.
+
+        Foreign keys are not set here. Django's SQLite backend already runs
+        "PRAGMA foreign_keys = ON" as it opens each connection, and it turns
+        them off on purpose while a migration rewrites a table. A second copy
+        here would be dead on the first count and wrong on the second.
+        """
         if connection.vendor != "sqlite":
             return
 
@@ -1013,6 +1019,11 @@ IMG_NONE = "https://www.themoviedb.org/assets/2/v4/glyphicons/basic/glyphicons-b
 
 REQUEST_TIMEOUT = 120  # seconds
 PER_PAGE = 24
+
+MUSICBRAINZ_URL = config(
+    "MUSICBRAINZ_URL",
+    default="https://musicbrainz.org/ws/2",
+)
 
 TMDB_API = config(
     "TMDB_API",
