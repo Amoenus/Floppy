@@ -41,7 +41,9 @@
       },
       "rating": null,
       "review": "",
-      "dates": [],
+      "dates": [
+        {"date_started": "None", "date_finished": "None", "seconds_played": 240, "level_of_completion": null}
+      ],
       "release_date": "2005-05-05",
       "giantbomb_id": null,
       "igdb_id": 5001

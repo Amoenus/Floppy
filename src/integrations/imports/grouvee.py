@@ -5,6 +5,7 @@ from collections import defaultdict
 from datetime import UTC, datetime
 from io import BytesIO
 
+from billiard.exceptions import SoftTimeLimitExceeded
 from django.apps import apps
 
 import app
@@ -89,6 +90,23 @@ class GrouveeImporter:
             import_progress.report(i, total, "Grouvee")
             try:
                 self._process_entry(entry, unmatched_titles)
+            except SoftTimeLimitExceeded:
+                # Large exports (thousands of games, each an IGDB lookup) can
+                # run long enough to trip the task's soft time limit. Stop
+                # here rather than losing every game already processed - the
+                # entries collected so far still get saved below, and "new"
+                # mode dedup means a re-run picks up where this left off.
+                logger.warning(
+                    "Grouvee import for %s hit the time limit at entry %s/%s",
+                    self.user.username,
+                    i,
+                    total,
+                )
+                self.warnings.append(
+                    "Import stopped partway through because it was taking too "
+                    "long. Run the import again to pick up the remaining games.",
+                )
+                break
             except Exception as error:
                 error_msg = f"Error processing entry: {entry.get('name')}"
                 raise MediaImportUnexpectedError(error_msg) from error
@@ -224,9 +242,17 @@ class GrouveeImporter:
         return (min(starts) if starts else None, max(ends) if ends else None)
 
     def _total_progress_minutes(self, entry):
-        """Sum playtime in seconds across all play sessions, converted to minutes."""
+        """Sum playtime in seconds across dated play sessions, converted to minutes.
+
+        Steam's automatic playtime tracking can log ``seconds_played`` with no
+        ``date_started``/``date_finished`` at all - background telemetry, not
+        a play session the user consciously logged - so those are excluded.
+        """
         total_seconds = sum(
-            play.get("seconds_played") or 0 for play in entry.get("dates", [])
+            play.get("seconds_played") or 0
+            for play in entry.get("dates", [])
+            if self._parse_date(play.get("date_started"))
+            or self._parse_date(play.get("date_finished"))
         )
         return total_seconds // 60
 
