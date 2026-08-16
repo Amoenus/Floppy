@@ -219,7 +219,7 @@ class PublicListFeed(Feed):
         """Return the feed title."""
         return f"{obj.name} - Floppy"
 
-    def lind¨self, obj):
+    def link(self, obj):
         """Return the list detail URL."""
         return self.request.build_absolute_uri(
             reverse("list_detail", args=[obj.public_reference])
@@ -260,7 +260,7 @@ class PublicListFeed(Feed):
         return title
 
     def item_description(self, item):
-        """Return the item description.""
+        """Return the item description."""
         return getattr(
             item, "feed_description", self._build_item_description(item.item)
         )
@@ -273,13 +273,13 @@ class PublicListFeed(Feed):
         """Return a stable GUID from the stored item identity."""
         media_item = item.item
         media_type = media_item.media_type
-        library_media_type = media_item.library_media_type
+        library_media_type = media_item.library_media_type or media_type
         parts = [
             quote(media_item.source, safe=""),
             quote(media_type, safe=""),
             quote(str(media_item.media_id), safe=""),
         ]
-        if library_media_type:
+        if library_media_type != media_type:
             parts.extend(["library", quote(library_media_type, safe="")])
         if media_item.season_number is not None:
             parts.append(f"s{media_item.season_number}")
@@ -324,6 +324,7 @@ def list_json(request, list_reference):
     if custom_list is None:
         msg = "List not found"
         raise Http404(msg)
+
     arr_type = request.GET.get("arr", "").lower()
     if arr_type not in ("radarr", "sonarr"):
         return JsonResponse(
@@ -332,6 +333,7 @@ def list_json(request, list_reference):
             },
             status=400,
         )
+
     if arr_type == "radarr":
         # Filter for TMDB movies
         items = CustomListItem.objects.filter(
@@ -339,6 +341,7 @@ def list_json(request, list_reference):
             item__source=Sources.TMDB.value,
             item__media_type=MediaTypes.MOVIE.value,
         ).select_related("item")
+
         json_data = [{"id": int(item.item.media_id)} for item in items]
     else:  # sonarr
         # Filter for TMDB TV shows
@@ -347,6 +350,7 @@ def list_json(request, list_reference):
             item__source=Sources.TMDB.value,
             item__media_type=MediaTypes.TV.value,
         ).select_related("item")
+
         json_data = []
         for list_item in items:
             # Fetch TMDB metadata (cached) to get TVDB ID
@@ -358,4 +362,5 @@ def list_json(request, list_reference):
             except Exception:  # noqa: S112  # deliberate best-effort; skip the item and continue
                 # Skip items where metadata fetch fails
                 continue
+
     return JsonResponse(json_data, safe=False)

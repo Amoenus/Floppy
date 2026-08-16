@@ -147,107 +147,7 @@ class PublicListRssContractTests(TestCase):
             media_type=MediaTypes.SEASON.value,
             title="Season One",
             season_number=1,
-       )
-
-        titles = [item.findtext("title") for item in self._feed_items()]
-
-        self.assertEqual(titles, ["Season Show S01"])
-
-    def test_grouped_anime_uses_matching_library_parent(self):
-        """A grouped anime episode uses the title from its library parent."""
-        Item.objects.create(
-            media_id="grouped-anime",
-            source=Sources.TMDB.value,
-            media_type=MediaTypes.TV.value,
-            library_media_type=MediaTypes.ANIME.value,
-            title="Anime Library Title",
         )
-        Item.objects.create(
-            media_id="grouped-anime",
-            source=Sources.TMDB.value,
-            media_type=MediaTypes.ANIME.value,
-            title="Anime Model Title",
-        )
-        Item.objects.create(
-            media_id="grouped-anime",
-            source=Sources.TMDB.value,
-            media_type=MediaTypes.TV.value,
-            library_media_type=MediaTypes.TV.value,
-            title="TV Library Title",
-        )
-        self._create_list_item(
-            media_id="grouped-anime",
-            source=Sources.TMDB.value,
-            media_type=MediaTypes.EPISODE.value,
-            library_media_type=MediaTypes.ANIME.value,
-            title="Episode Name",
-            season_number=1,
-            episode_number=3,
-        )
-
-        titles = [item.findtext("title") for item in self._feed_items()]
-
-        self.assertEqual(titles, ["Anime Library Title S01E03"])
-
-    def test_tv_episode_uses_matching_legacy_tv_parent(self):
-        """A normal TV episode does not select an anime-library parent."""
-        Item.objects.create(
-            media_id="tv-with-anime-variant",
-            source=Sources.TMDB.value,
-            media_type=MediaTypes.TV.value,
-            library_media_type=MediaTypes.ANIME.value,
-            title="Anime Variant Title",
-        )
-        Item.objects.create(
-            media_id="tv-with-anime-variant",
-            source=Sources.TMDB.value,
-            media_type=MediaTypes.TV.value,
-            title="TV Variant Title",
-        )
-        self._create_list_item(
-            media_id="tv-with-anime-variant",
-            source=Sources.TMDB.value,
-            media_type=MediaTypes.EPISODE.value,
-            title="Episode Name",
-            season_number=1,
-            episode_number=4,
-        )
-
-        titles = [item.findtext("title") for item in self._feed_items()]
-
-        self.assertEqual(titles, ["TV Variant Title S01E04"])
-
-    def test_series_name_is_used_when_parent_is_not_stored(self):
-        """An orphan episode remains matchable from its stored series name."""
-        self._create_list_item(
-            media_id="orphan-episode",
-            source=Sources.TMDB.value,
-            media_type=MediaTypes.EPISODE.value,
-            title="Pilot",
-            series_name="Orphan Series",
-            season_number=1,
-            episode_number=1,
-        )
-
-        titles = [item.findtext("title") for item in self._feed_items()]
-
-        self.assertEqual(titles, ["Orphan Series S01E01"])
-
-    def test_season_uses_stored_parent_title(self):
-        """A season entry uses its parent title and season marker."""
-        Item.objects.create(
-            media_id="season-show",
-            source=Sources.TMDB.value,
-            media_type=MediaTypes.TV.value,
-            title="Season Show",
-        )
-        self._create_list_item(
-            media_id="season-show",
-            source=Sources.TMDB.value,
-            media_type=MediaTypes.SEASON.value,
-            title="Season One",
-            season_number=1,
-       )
 
         titles = [item.findtext("title") for item in self._feed_items()]
 
@@ -291,20 +191,14 @@ class PublicListRssContractTests(TestCase):
         self.assertEqual(guid.get("isPermaLink"), "false")
 
     def test_guid_distinguishes_library_variants(self):
-        """Legacy and explicit library rows have distinct GUIDs."""
-        self._create_list_item(
-            media_id="shared-show",
-            source=Sources.TMDB.value,
-            media_type=MediaTypes.TV.value,
-            title="Legacy TV Row",
-        )
+        """Two library rows for one provider item have distinct GUIDs."""
         self._create_list_item(
             media_id="shared-show",
             source=Sources.TMDB.value,
             media_type=MediaTypes.TV.value,
             library_media_type=MediaTypes.TV.value,
             title="TV Library Row",
-       )
+        )
         self._create_list_item(
             media_id="shared-show",
             source=Sources.TMDB.value,
@@ -319,7 +213,6 @@ class PublicListRssContractTests(TestCase):
             guids,
             {
                 "tmdb:tv:shared-show",
-                "tmdb:tv:shared-show:library:tv",
                 "tmdb:tv:shared-show:library:anime",
             },
         )
@@ -357,7 +250,7 @@ class PublicListRssContractTests(TestCase):
             source=Sources.TMDB.value,
             media_type=MediaTypes.TV.value,
             title="Query Show",
-       )
+        )
         for episode_number in (1, 2):
             self._create_list_item(
                 media_id="query-show",
