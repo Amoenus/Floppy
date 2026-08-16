@@ -50,7 +50,10 @@ from app.discover.movie_comfort import (
     _phase_affinity_maps,
 )
 from app.discover.profile import get_or_compute_taste_profile
-from app.discover.provider_candidates import _provider_row_candidates
+from app.discover.provider_candidates import (
+    _mal_anime_fallback_candidates,
+    _provider_row_candidates,
+)
 from app.discover.registry import ALL_MEDIA_KEY, DISCOVER_MEDIA_TYPES, get_rows
 from app.discover.row_cache_schema import (
     ROW_CACHE_ACTIVITY_VERSION_META_KEY,
@@ -961,6 +964,9 @@ def _prepare_row_from_candidates(
 def _trakt_row_provider_fallback_candidates(
     media_type: str, row_key: str
 ) -> list[CandidateItem]:
+    if media_type == MediaTypes.ANIME.value:
+        return _mal_anime_fallback_candidates(row_key)
+
     if media_type not in {MediaTypes.MOVIE.value, MediaTypes.TV.value}:
         return []
 

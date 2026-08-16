@@ -25,6 +25,7 @@ ROW_CACHE_ACTIVITY_VERSION_META_KEY = "activity_version"
 
 MOVIE_PERSONALIZED_ROW_SCHEMA_VERSION = 8
 TV_ANIME_TRAKT_ROW_SCHEMA_VERSION = 1
+ANIME_TRAKT_ROW_SCHEMA_VERSION = 2
 TV_ANIME_PERSONALIZED_ROW_SCHEMA_VERSION = 4
 
 MOVIE_PERSONALIZED_ROW_KEYS = {
@@ -93,7 +94,11 @@ def _required_row_cache_schema_version(media_type: str, row_key: str) -> int | N
             "all_time_greats_unseen",
             "coming_soon",
         }:
-            return TV_ANIME_TRAKT_ROW_SCHEMA_VERSION
+            return (
+                ANIME_TRAKT_ROW_SCHEMA_VERSION
+                if media_type == MediaTypes.ANIME.value
+                else TV_ANIME_TRAKT_ROW_SCHEMA_VERSION
+            )
         if row_key in TV_ANIME_PERSONALIZED_ROW_KEYS:
             return TV_ANIME_PERSONALIZED_ROW_SCHEMA_VERSION
     return None

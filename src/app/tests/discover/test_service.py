@@ -18,12 +18,18 @@ from app.discover.match_signals import (
 )
 from app.discover.movie_comfort import _prefer_strong_phase_opening_window
 from app.discover.provider_candidates import (
+    _mal_anime_fallback_candidates,
+    _mal_anime_ranking_candidates,
     _musicbrainz_coming_soon_recording_candidates,
     _provider_row_candidates,
 )
 from app.discover.providers.trakt_adapter import TraktDiscoverAdapter
 from app.discover.registry import ALL_MEDIA_KEY
-from app.discover.row_cache_schema import ROW_CACHE_ACTIVITY_VERSION_META_KEY
+from app.discover.row_cache_schema import (
+    ANIME_TRAKT_ROW_SCHEMA_VERSION,
+    ROW_CACHE_ACTIVITY_VERSION_META_KEY,
+    ROW_CACHE_SCHEMA_META_KEY,
+)
 from app.discover.schemas import CandidateItem, RowDefinition, RowResult
 from app.discover.service import (
     MAX_ITEMS_PER_ROW,
@@ -145,6 +151,227 @@ class DiscoverServiceTests(TestCase):
                 )
 
         mock_trakt_request.assert_not_called()
+
+    @patch("app.discover.provider_candidates._api_cached_results")
+    def test_mal_anime_ranking_candidates_normalize_provider_fields(
+        self,
+        mock_cached_results,
+    ):
+        mock_cached_results.return_value = [
+            {
+                "node": {
+                    "id": 123,
+                    "title": "Original Title",
+                    "alternative_titles": {"en": "Localized Title"},
+                    "main_picture": {"large": "https://example.com/anime.jpg"},
+                    "start_date": "2026-01-02",
+                    "genres": [{"name": "Action"}, {"name": "Fantasy"}],
+                    "mean": 8.7,
+                    "num_scoring_users": 456,
+                },
+                "ranking": {"rank": 2},
+            },
+        ]
+
+        candidates = _mal_anime_ranking_candidates(
+            ranking_type="airing",
+            row_key="trending_right_now",
+            source_reason="MAL airing ranking",
+        )
+
+        self.assertEqual(len(candidates), 1)
+        candidate = candidates[0]
+        self.assertEqual(candidate.media_type, MediaTypes.ANIME.value)
+        self.assertEqual(candidate.source, Sources.MAL.value)
+        self.assertEqual(candidate.media_id, "123")
+        self.assertEqual(candidate.title, "Localized Title")
+        self.assertEqual(candidate.original_title, "Original Title")
+        self.assertEqual(candidate.localized_title, "Localized Title")
+        self.assertEqual(candidate.image, "https://example.com/anime.jpg")
+        self.assertEqual(candidate.release_date, "2026-01-02")
+        self.assertEqual(candidate.genres, ["Action", "Fantasy"])
+        self.assertEqual(candidate.rating, 8.7)
+        self.assertEqual(candidate.rating_count, 456)
+        self.assertEqual(candidate.popularity, 998.0)
+        self.assertEqual(candidate.row_key, "trending_right_now")
+        self.assertEqual(candidate.source_reason, "MAL airing ranking")
+
+        mock_cached_results.assert_called_once()
+        provider, endpoint, params = mock_cached_results.call_args.args[:3]
+        self.assertEqual(provider, Sources.MAL.value)
+        self.assertEqual(endpoint, "/anime/ranking:airing")
+        self.assertEqual(params["ranking_type"], "airing")
+
+    @patch("app.discover.provider_candidates._mal_anime_ranking_candidates")
+    def test_mal_anime_fallback_maps_rows_and_uses_airing_when_upcoming_is_empty(
+        self,
+        mock_ranking_candidates,
+    ):
+        candidate = CandidateItem(
+            media_type=MediaTypes.ANIME.value,
+            source=Sources.MAL.value,
+            media_id="123",
+            title="Fallback Anime",
+        )
+        mock_ranking_candidates.return_value = [candidate]
+
+        expected_rankings = {
+            "trending_right_now": ("airing", "MAL airing ranking"),
+            "all_time_greats_unseen": ("bypopularity", "MAL popular ranking"),
+            "coming_soon": ("upcoming", "MAL upcoming ranking"),
+        }
+        for row_key, (ranking_type, source_reason) in expected_rankings.items():
+            with self.subTest(row_key=row_key):
+                self.assertEqual(
+                    _mal_anime_fallback_candidates(row_key),
+                    [candidate],
+                )
+                mock_ranking_candidates.assert_called_with(
+                    ranking_type=ranking_type,
+                    row_key=row_key,
+                    source_reason=source_reason,
+                    limit=100,
+                )
+
+        mock_ranking_candidates.reset_mock()
+        mock_ranking_candidates.side_effect = [[], [candidate]]
+        self.assertEqual(
+            _mal_anime_fallback_candidates("coming_soon"),
+            [candidate],
+        )
+        self.assertEqual(
+            [
+                call.kwargs["ranking_type"]
+                for call in mock_ranking_candidates.call_args_list
+            ],
+            ["upcoming", "airing"],
+        )
+
+    @patch("app.discover.providers.trakt_adapter.services.api_request")
+    @patch(
+        "app.discover.providers.trakt_adapter.trakt_provider.is_configured",
+        return_value=False,
+    )
+    @patch("app.discover.service._mal_anime_fallback_candidates")
+    def test_unconfigured_trakt_anime_rows_fall_back_to_mal(
+        self,
+        mock_mal_fallback,
+        _mock_trakt_configured,
+        mock_trakt_request,
+    ):
+        def fallback_candidate(row_key):
+            return [
+                CandidateItem(
+                    media_type=MediaTypes.ANIME.value,
+                    source=Sources.MAL.value,
+                    media_id=f"mal-{row_key}",
+                    title=f"MAL {row_key}",
+                    image="https://example.com/anime.jpg",
+                ),
+            ]
+
+        mock_mal_fallback.side_effect = fallback_candidate
+
+        row_definitions = {
+            row_key: RowDefinition(
+                key=row_key,
+                title=row_key.replace("_", " ").title(),
+                mission="Anime Discover",
+                why="Anime fallback",
+                source="trakt",
+            )
+            for row_key in (
+                "trending_right_now",
+                "all_time_greats_unseen",
+                "coming_soon",
+            )
+        }
+
+        for row_key, row_definition in row_definitions.items():
+            with self.subTest(row_key=row_key):
+                row = _build_and_cache_row(
+                    self.user,
+                    MediaTypes.ANIME.value,
+                    row_definition,
+                    {},
+                    defer_artwork=True,
+                )
+
+                self.assertEqual(row.source_state, "fallback")
+                self.assertEqual(
+                    [item.media_id for item in row.items],
+                    [f"mal-{row_key}"],
+                )
+                cached_payload, _ = cache_repo.get_row_cache(
+                    self.user.id,
+                    MediaTypes.ANIME.value,
+                    row_key,
+                )
+                self.assertEqual(cached_payload["source_state"], "fallback")
+                self.assertEqual(
+                    cached_payload["meta"][ROW_CACHE_SCHEMA_META_KEY],
+                    ANIME_TRAKT_ROW_SCHEMA_VERSION,
+                )
+
+        mock_trakt_request.assert_not_called()
+
+    @patch("app.discover.service._build_and_cache_row")
+    @patch("app.discover.service.get_or_compute_taste_profile", return_value={})
+    def test_anime_row_cache_schema_bump_rebuilds_previous_payload(
+        self,
+        _mock_profile,
+        mock_build_and_cache_row,
+    ):
+        row_key = "trending_right_now"
+        cached_row = RowResult(
+            key=row_key,
+            title="Trending Right Now",
+            mission="Cultural Moment",
+            why="Anime fallback",
+            source="trakt",
+            items=[],
+        )
+        cached_payload = cached_row.to_dict()
+        cached_payload["meta"] = {
+            ROW_CACHE_SCHEMA_META_KEY: ANIME_TRAKT_ROW_SCHEMA_VERSION - 1,
+            ROW_CACHE_ACTIVITY_VERSION_META_KEY: tab_cache.get_activity_version(
+                self.user.id,
+                MediaTypes.ANIME.value,
+            ),
+        }
+        cache_repo.set_row_cache(
+            self.user.id,
+            MediaTypes.ANIME.value,
+            row_key,
+            cached_payload,
+            ttl_seconds=3600,
+        )
+
+        rebuilt_row = RowResult(
+            key=row_key,
+            title="Trending Right Now",
+            mission="Cultural Moment",
+            why="Anime fallback",
+            source="trakt",
+            items=[
+                CandidateItem(
+                    media_type=MediaTypes.ANIME.value,
+                    source=Sources.MAL.value,
+                    media_id="123",
+                    title="Rebuilt Anime",
+                ),
+            ],
+        )
+        mock_build_and_cache_row.return_value = rebuilt_row
+
+        rows = get_discover_rows(
+            self.user,
+            MediaTypes.ANIME.value,
+            row_keys=[row_key],
+        )
+
+        self.assertEqual([item.title for item in rows[0].items], ["Rebuilt Anime"])
+        mock_build_and_cache_row.assert_called_once()
 
     @patch("app.discover.service._build_and_cache_row")
     @patch("app.discover.service.get_rows")

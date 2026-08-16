@@ -828,14 +828,15 @@ def _lastfm_top_tracks_candidates(
     return candidates[:limit]
 
 
-def _mal_manga_ranking_candidates(
+def _mal_ranking_candidates(
     *,
+    media_type: str,
     ranking_type: str,
     row_key: str,
     source_reason: str,
     limit: int = 100,
 ) -> list[CandidateItem]:
-    endpoint = "/manga/ranking"
+    endpoint = f"/{media_type}/ranking"
     params = {
         "ranking_type": ranking_type,
         "limit": min(max(limit, 1), 100),
@@ -885,7 +886,7 @@ def _mal_manga_ranking_candidates(
 
         candidates.append(
             CandidateItem(
-                media_type=MediaTypes.MANGA.value,
+                media_type=media_type,
                 source=Sources.MAL.value,
                 media_id=str(media_id),
                 title=title,
@@ -903,6 +904,66 @@ def _mal_manga_ranking_candidates(
         )
 
     return candidates[:limit]
+
+
+def _mal_manga_ranking_candidates(
+    *,
+    ranking_type: str,
+    row_key: str,
+    source_reason: str,
+    limit: int = 100,
+) -> list[CandidateItem]:
+    return _mal_ranking_candidates(
+        media_type=MediaTypes.MANGA.value,
+        ranking_type=ranking_type,
+        row_key=row_key,
+        source_reason=source_reason,
+        limit=limit,
+    )
+
+
+def _mal_anime_ranking_candidates(
+    *,
+    ranking_type: str,
+    row_key: str,
+    source_reason: str,
+    limit: int = 100,
+) -> list[CandidateItem]:
+    return _mal_ranking_candidates(
+        media_type=MediaTypes.ANIME.value,
+        ranking_type=ranking_type,
+        row_key=row_key,
+        source_reason=source_reason,
+        limit=limit,
+    )
+
+
+def _mal_anime_fallback_candidates(row_key: str) -> list[CandidateItem]:
+    ranking_by_row = {
+        "trending_right_now": ("airing", "MAL airing ranking"),
+        "all_time_greats_unseen": ("bypopularity", "MAL popular ranking"),
+        "coming_soon": ("upcoming", "MAL upcoming ranking"),
+    }
+    ranking = ranking_by_row.get(row_key)
+    if ranking is None:
+        return []
+
+    ranking_type, source_reason = ranking
+    candidates = _mal_anime_ranking_candidates(
+        ranking_type=ranking_type,
+        row_key=row_key,
+        source_reason=source_reason,
+        limit=100,
+    )
+    if candidates or row_key != "coming_soon":
+        return candidates
+
+    return _mal_anime_ranking_candidates(
+        ranking_type="airing",
+        row_key=row_key,
+        source_reason="MAL airing fallback",
+        limit=100,
+    )
 
 
 def _igdb_games_candidates(
