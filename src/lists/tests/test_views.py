@@ -3361,13 +3361,19 @@ class ListRssFeedTests(TestCase):
 
         self.assertIn("RSS Feed Movie (2024)", titles)
 
-    def test_episode_title_includes_season_episode_markers(self):
-        """Episode items get "S01E02" markers for automation-tool matching."""
+    def test_episode_title_uses_show_title_not_episode_name(self):
+        """Episode titles are prefixed with the show's title, not the episode's own name."""
+        Item.objects.create(
+            media_id="tmdb-show-1",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="RSS Feed Show",
+        )
         episode = Item.objects.create(
-            media_id="tmdb-episode-1",
+            media_id="tmdb-show-1",
             source=Sources.TMDB.value,
             media_type=MediaTypes.EPISODE.value,
-            title="RSS Feed Show",
+            title="Pilot",
             season_number=1,
             episode_number=2,
         )
@@ -3378,9 +3384,38 @@ class ListRssFeedTests(TestCase):
         titles = [item.findtext("title") for item in root.findall("./channel/item")]
 
         self.assertIn("RSS Feed Show S01E02", titles)
+        self.assertNotIn("Pilot S01E02", titles)
 
-    def test_guid_uses_imdb_id_when_available(self):
-        """Items with a resolved IMDb id get a stable, non-permalink guid."""
+    def test_guid_unique_per_episode_of_same_show(self):
+        """Episodes of the same show get distinct guids, not a shared show-level guid."""
+        episode1 = Item.objects.create(
+            media_id="tmdb-show-2",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="Episode One",
+            season_number=1,
+            episode_number=1,
+        )
+        episode2 = Item.objects.create(
+            media_id="tmdb-show-2",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="Episode Two",
+            season_number=1,
+            episode_number=2,
+        )
+        CustomListItem.objects.create(custom_list=self.custom_list, item=episode1)
+        CustomListItem.objects.create(custom_list=self.custom_list, item=episode2)
+
+        response = self.client.get(reverse("list_rss", args=[self.custom_list.id]))
+        root = ET.fromstring(response.content)
+        guids = {item.findtext("guid") for item in root.findall("./channel/item")}
+
+        self.assertIn("tmdb:episode:tmdb-show-2:s1:e1", guids)
+        self.assertIn("tmdb:episode:tmdb-show-2:s1:e2", guids)
+
+    def test_guid_ignores_provider_external_ids(self):
+        """Guid is derived from the item's own natural key, not mutable external ids."""
         movie = Item.objects.create(
             media_id="tmdb-movie-2",
             source=Sources.TMDB.value,
@@ -3398,18 +3433,18 @@ class ListRssFeedTests(TestCase):
             if item.findtext("title") == "RSS Feed Movie With IMDb"
         )
 
-        self.assertEqual(guid.text, "imdb:tt1234567")
+        self.assertEqual(guid.text, "tmdb:movie:tmdb-movie-2")
         self.assertEqual(guid.get("isPermaLink"), "false")
 
-    def test_guid_falls_back_to_link_without_external_id(self):
-        """Items with no resolvable external id keep a permalink guid."""
+    def test_guid_is_never_a_permalink(self):
+        """Guid is always a stable id, never the internal detail-page URL."""
         response = self.client.get(reverse("list_rss", args=[self.custom_list.id]))
         root = ET.fromstring(response.content)
         item = root.find("./channel/item")
         guid = item.find("guid")
 
-        self.assertEqual(guid.text, item.findtext("link"))
-        self.assertEqual(guid.get("isPermaLink"), "true")
+        self.assertEqual(guid.text, "igdb:game:rss-1")
+        self.assertEqual(guid.get("isPermaLink"), "false")
 
     def test_item_category_reflects_media_type(self):
         """RSS items expose their media type as a category."""

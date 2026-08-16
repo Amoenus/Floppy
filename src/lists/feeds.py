@@ -7,7 +7,7 @@ from django.utils import timezone
 from django.utils.feedgenerator import Rss201rev2Feed
 from django.views.decorators.http import require_GET
 
-from app.models import MediaManager, MediaTypes, Sources
+from app.models import Item, MediaManager, MediaTypes, Sources
 from app.providers import tmdb
 from app.templatetags.app_tags import media_url
 from lists.models import CustomList, CustomListItem
@@ -89,6 +89,30 @@ class PublicListFeed(Feed):
             list_item.feed_status = status_by_item_id.get(list_item.item_id, "")
             list_item.feed_description = self._build_item_description(list_item.item)
 
+    def _attach_show_titles(self, list_items):
+        """Attach the parent show's title to episode/season list items."""
+        show_keys = {
+            (list_item.item.source, list_item.item.media_id)
+            for list_item in list_items
+            if list_item.item.media_type
+            in (MediaTypes.EPISODE.value, MediaTypes.SEASON.value)
+        }
+        if not show_keys:
+            return
+
+        sources = {source for source, _media_id in show_keys}
+        media_ids = {media_id for _source, media_id in show_keys}
+        shows = Item.objects.filter(
+            media_type=MediaTypes.TV.value,
+            source__in=sources,
+            media_id__in=media_ids,
+        )
+        title_by_key = {(show.source, show.media_id): show.title for show in shows}
+
+        for list_item in list_items:
+            key = (list_item.item.source, list_item.item.media_id)
+            list_item.feed_show_title = title_by_key.get(key)
+
     def _build_item_description(self, item):
         """Return a local feed description without provider lookups."""
         manual_metadata = getattr(item, "manual_metadata", None) or {}
@@ -134,12 +158,13 @@ class PublicListFeed(Feed):
             .order_by("-date_added")
         )
         self._attach_owner_media_statuses(list_items, obj.owner)
+        self._attach_show_titles(list_items)
         return list_items
 
     def item_title(self, item):
         """Return the item title with S01E02/year markers for automation tools."""
         media_item = item.item
-        title = media_item.title
+        title = getattr(item, "feed_show_title", None) or media_item.title
 
         if media_item.season_number is not None:
             title += f" S{media_item.season_number:02d}"
@@ -160,34 +185,21 @@ class PublicListFeed(Feed):
         """Return the item URL."""
         return self.request.build_absolute_uri(media_url(item.item))
 
-    def _external_guid(self, media_item):
-        """Return a stable external id for the item, or None if unresolved."""
-        external_ids = media_item.provider_external_ids or {}
-
-        imdb_id = external_ids.get("imdb_id")
-        if imdb_id:
-            return f"imdb:{imdb_id}"
-
-        tvdb_id = external_ids.get("tvdb_id")
-        if tvdb_id:
-            return f"tvdb:{tvdb_id}"
-
-        tmdb_id = external_ids.get("tmdb_id")
-        if tmdb_id:
-            return f"tmdb:{tmdb_id}"
-
-        if media_item.source == Sources.TMDB.value:
-            return f"tmdb:{media_item.media_id}"
-
-        return None
-
     def item_guid(self, item):
-        """Return a stable external id, falling back to the detail link."""
-        return self._external_guid(item.item) or self.item_link(item)
+        """Return a guid from the item's own immutable natural key."""
+        media_item = item.item
+        guid = f"{media_item.source}:{media_item.media_type}:{media_item.media_id}"
+
+        if media_item.season_number is not None:
+            guid += f":s{media_item.season_number}"
+            if media_item.episode_number is not None:
+                guid += f":e{media_item.episode_number}"
+
+        return guid
 
     def item_guid_is_permalink(self, item):
         """Return whether the guid is a dereferenceable URL."""
-        return self._external_guid(item.item) is None
+        return False
 
     def item_categories(self, item):
         """Return the media type as an RSS category for filtering."""
