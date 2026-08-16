@@ -717,6 +717,7 @@ class NotificationTests(TestCase):
             )
             self.assertIn("<ul>", call.kwargs["body"])
             self.assertIn("Enjoy your media!", call.kwargs["body"])
+            self.assertIn("* Season Finale", call.kwargs["body"])
 
     def test_format_notification(self):
         """Test the format_notification function."""
@@ -744,6 +745,66 @@ class NotificationTests(TestCase):
         self.assertIn("E5", notification_text)
         self.assertNotIn("MANGA", notification_text)
         self.assertNotIn("Test Manga", notification_text)
+
+    def test_finale_marker_excludes_non_final_and_special_events(self):
+        """Mark only the highest known regular-season episode as a finale."""
+        earlier_event = Event.objects.create(
+            item=self.season1_item,
+            content_number=4,
+            datetime=timezone.now(),
+        )
+        specials_item = Item.objects.create(
+            media_id="1668",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Test TV Show - Specials",
+            season_number=0,
+            image="http://example.com/tv.jpg",
+        )
+        special_event = Event.objects.create(
+            item=specials_item,
+            content_number=1,
+            datetime=timezone.now(),
+        )
+        missing_number_event = Event.objects.create(
+            item=self.season2_item,
+            content_number=None,
+            datetime=timezone.now(),
+        )
+
+        releases = [
+            earlier_event,
+            self.season1_event,
+            special_event,
+            missing_number_event,
+            self.anime_event,
+        ]
+        notification_text = format_notification(releases)
+        notification_html = format_notification_html(releases)
+
+        self.assertEqual(notification_text.count("* Season Finale"), 1)
+        self.assertEqual(notification_html.count("* Season Finale"), 1)
+        self.assertIn("Test TV Show - Season 1 S1 E5", notification_text)
+        self.assertIn("Test TV Show - Season 1 S1 E4", notification_text)
+        self.assertIn(
+            '<span style="color: #dc2626;">* Season Finale</span>',
+            notification_html,
+        )
+
+    def test_finale_marker_preserves_sentinel_time_format(self):
+        """A finale with an unknown time keeps the no-time display."""
+        self.season1_event.datetime = timezone.now().replace(
+            hour=11,
+            minute=59,
+            second=59,
+            microsecond=999999,
+        )
+        self.season1_event.save()
+
+        notification_text = format_notification([self.season1_event])
+
+        self.assertIn("Test TV Show - Season 1 S1 E5 * Season Finale", notification_text)
+        self.assertNotIn("(11:59)", notification_text)
 
     def test_format_notification_html(self):
         """Test the format_notification_html function."""

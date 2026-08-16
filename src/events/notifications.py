@@ -5,7 +5,7 @@ from html import escape
 import apprise
 from django.apps import apps
 from django.contrib.auth import get_user_model
-from django.db.models import Q
+from django.db.models import Max, Q
 from django.utils import timezone
 
 from app.models import TV, MediaTypes, Season
@@ -184,6 +184,8 @@ def send_notifications(events, users, title, formatter=None):
     )
     logger.info("Found %s events for notification", event_count)
 
+    events = annotate_finale_events(events)
+
     # Create event lookup for quick access
     events_by_item_and_content = {}
     event_ids = []
@@ -250,6 +252,42 @@ def get_user_releases(users, target_events):
             user_releases[user.id] = user_events
 
     return user_releases
+
+
+def annotate_finale_events(events):
+    """Annotate regular season events whose episode is the highest known one."""
+    events = list(events)
+    unannotated_events = [
+        event for event in events if not hasattr(event, "_is_season_finale")
+    ]
+    if not unannotated_events:
+        return events
+
+    season_item_ids = {
+        event.item_id
+        for event in unannotated_events
+        if event.item.media_type == MediaTypes.SEASON.value
+        and event.item.season_number
+        and event.item.season_number > 0
+        and event.content_number is not None
+    }
+    final_episode_by_item = dict(
+        Event.objects.filter(
+            item_id__in=season_item_ids,
+            content_number__isnull=False,
+        )
+        .values("item_id")
+        .annotate(final_episode=Max("content_number"))
+        .values_list("item_id", "final_episode"),
+    )
+
+    for event in unannotated_events:
+        event._is_season_finale = (
+            event.item_id in final_episode_by_item
+            and event.content_number == final_episode_by_item[event.item_id]
+        )
+
+    return events
 
 
 def get_all_user_tracking_data(users, target_events, user_exclusions):
@@ -487,6 +525,8 @@ def format_notification(releases):
     Returns:
         Formatted notification text as a string
     """
+    releases = annotate_finale_events(releases)
+
     # Group releases by media type
     releases_by_type = group_releases_by_type(releases)
 
@@ -506,14 +546,16 @@ def format_notification(releases):
             notification_body.append(f"{icon}  {media_type.upper()}")
 
         for event in media_events:
-            if event.is_sentinel_time:
-                # Don't show time for sentinel times
-                notification_body.append(f"  • {event}")
-            else:
+            line = f"  • {event}"
+            if not event.is_sentinel_time:
                 # Convert to local timezone and format
                 local_dt = timezone.localtime(event.datetime)
                 time_str = local_dt.strftime("%H:%M")
-                notification_body.append(f"  • {event} ({time_str})")
+                line += f" ({time_str})"
+
+            if event._is_season_finale:
+                line += " * Season Finale"
+            notification_body.append(line)
 
         # Add a blank line between media types
         notification_body.append("")
@@ -525,6 +567,7 @@ def format_notification(releases):
 
 def format_notification_html(releases):
     """Format notification HTML for releases."""
+    releases = annotate_finale_events(releases)
     releases_by_type = group_releases_by_type(releases)
     notification_html = ["<div>"]
 
@@ -547,6 +590,8 @@ def format_notification_html(releases):
                 local_dt = timezone.localtime(event.datetime)
                 time_str = local_dt.strftime("%H:%M")
                 line = f"{escape(str(event))} ({time_str})"
+            if event._is_season_finale:
+                line += ' <span style="color: #dc2626;">* Season Finale</span>'
             notification_html.append(f"<li>{line}</li>")
 
         notification_html.append("</ul>")
