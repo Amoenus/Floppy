@@ -137,8 +137,18 @@ class PublicListFeed(Feed):
         return list_items
 
     def item_title(self, item):
-        """Return the item title."""
-        return item.item.title
+        """Return the item title with S01E02/year markers for automation tools."""
+        media_item = item.item
+        title = media_item.title
+
+        if media_item.season_number is not None:
+            title += f" S{media_item.season_number:02d}"
+            if media_item.episode_number is not None:
+                title += f"E{media_item.episode_number:02d}"
+        elif media_item.release_datetime:
+            title += f" ({media_item.release_datetime.year})"
+
+        return title
 
     def item_description(self, item):
         """Return the item description."""
@@ -149,6 +159,39 @@ class PublicListFeed(Feed):
     def item_link(self, item):
         """Return the item URL."""
         return self.request.build_absolute_uri(media_url(item.item))
+
+    def _external_guid(self, media_item):
+        """Return a stable external id for the item, or None if unresolved."""
+        external_ids = media_item.provider_external_ids or {}
+
+        imdb_id = external_ids.get("imdb_id")
+        if imdb_id:
+            return f"imdb:{imdb_id}"
+
+        tvdb_id = external_ids.get("tvdb_id")
+        if tvdb_id:
+            return f"tvdb:{tvdb_id}"
+
+        tmdb_id = external_ids.get("tmdb_id")
+        if tmdb_id:
+            return f"tmdb:{tmdb_id}"
+
+        if media_item.source == Sources.TMDB.value:
+            return f"tmdb:{media_item.media_id}"
+
+        return None
+
+    def item_guid(self, item):
+        """Return a stable external id, falling back to the detail link."""
+        return self._external_guid(item.item) or self.item_link(item)
+
+    def item_guid_is_permalink(self, item):
+        """Return whether the guid is a dereferenceable URL."""
+        return self._external_guid(item.item) is None
+
+    def item_categories(self, item):
+        """Return the media type as an RSS category for filtering."""
+        return [item.item.get_media_type_display()]
 
     def item_pubdate(self, item):
         """Return the item publication date."""

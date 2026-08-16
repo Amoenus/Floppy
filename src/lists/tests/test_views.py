@@ -3344,6 +3344,81 @@ class ListRssFeedTests(TestCase):
 
         self.assertEqual(response.status_code, 404)
 
+    def test_movie_title_includes_year(self):
+        """Movie items get a "(Year)" suffix for automation-tool matching."""
+        movie = Item.objects.create(
+            media_id="tmdb-movie-1",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="RSS Feed Movie",
+            release_datetime=datetime(2024, 5, 1, tzinfo=UTC),
+        )
+        CustomListItem.objects.create(custom_list=self.custom_list, item=movie)
+
+        response = self.client.get(reverse("list_rss", args=[self.custom_list.id]))
+        root = ET.fromstring(response.content)
+        titles = [item.findtext("title") for item in root.findall("./channel/item")]
+
+        self.assertIn("RSS Feed Movie (2024)", titles)
+
+    def test_episode_title_includes_season_episode_markers(self):
+        """Episode items get "S01E02" markers for automation-tool matching."""
+        episode = Item.objects.create(
+            media_id="tmdb-episode-1",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="RSS Feed Show",
+            season_number=1,
+            episode_number=2,
+        )
+        CustomListItem.objects.create(custom_list=self.custom_list, item=episode)
+
+        response = self.client.get(reverse("list_rss", args=[self.custom_list.id]))
+        root = ET.fromstring(response.content)
+        titles = [item.findtext("title") for item in root.findall("./channel/item")]
+
+        self.assertIn("RSS Feed Show S01E02", titles)
+
+    def test_guid_uses_imdb_id_when_available(self):
+        """Items with a resolved IMDb id get a stable, non-permalink guid."""
+        movie = Item.objects.create(
+            media_id="tmdb-movie-2",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="RSS Feed Movie With IMDb",
+            provider_external_ids={"imdb_id": "tt1234567"},
+        )
+        CustomListItem.objects.create(custom_list=self.custom_list, item=movie)
+
+        response = self.client.get(reverse("list_rss", args=[self.custom_list.id]))
+        root = ET.fromstring(response.content)
+        guid = next(
+            item.find("guid")
+            for item in root.findall("./channel/item")
+            if item.findtext("title") == "RSS Feed Movie With IMDb"
+        )
+
+        self.assertEqual(guid.text, "imdb:tt1234567")
+        self.assertEqual(guid.get("isPermaLink"), "false")
+
+    def test_guid_falls_back_to_link_without_external_id(self):
+        """Items with no resolvable external id keep a permalink guid."""
+        response = self.client.get(reverse("list_rss", args=[self.custom_list.id]))
+        root = ET.fromstring(response.content)
+        item = root.find("./channel/item")
+        guid = item.find("guid")
+
+        self.assertEqual(guid.text, item.findtext("link"))
+        self.assertEqual(guid.get("isPermaLink"), "true")
+
+    def test_item_category_reflects_media_type(self):
+        """RSS items expose their media type as a category."""
+        response = self.client.get(reverse("list_rss", args=[self.custom_list.id]))
+        root = ET.fromstring(response.content)
+        item = root.find("./channel/item")
+
+        self.assertEqual(item.findtext("category"), "Game")
+
 
 class ListJsonExportTests(TestCase):
     """Tests for the public list JSON export endpoints."""
