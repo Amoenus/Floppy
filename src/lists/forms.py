@@ -51,6 +51,11 @@ class CustomListForm(forms.ModelForm):
         label="Public (read-only access)",
         help_text="Anyone with the link can view this list",
     )
+    include_notes = forms.BooleanField(
+        required=False,
+        label="Include Notes",
+        help_text="Show the owner's notes on public list pages",
+    )
     is_smart = forms.BooleanField(
         required=False,
         label="Smart List",
@@ -84,10 +89,11 @@ class CustomListForm(forms.ModelForm):
             "description",
             "tags",
             "collaborators",
-            "is_public",
-            "public_slug",
             "allow_recommendations",
             "is_smart",
+            "is_public",
+            "include_notes",
+            "public_slug",
         ]
         widgets = {
             "collaborators": CollaboratorsWidget(
@@ -106,6 +112,7 @@ class CustomListForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         if self.instance and self.instance.pk:
             self.initial["is_public"] = self.instance.visibility == "public"
+            self.initial["include_notes"] = self.instance.include_notes
             self.initial["tags"] = self._normalize_tags(self.instance.tags)
             self.initial["is_smart"] = self.instance.is_smart
 
@@ -144,6 +151,7 @@ class CustomListForm(forms.ModelForm):
         instance.visibility = "public" if is_public else "private"
         if not is_public:
             instance.allow_recommendations = False
+            instance.include_notes = False
 
         is_smart = bool(self.cleaned_data.get("is_smart"))
         instance.is_smart = is_smart

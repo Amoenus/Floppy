@@ -6,6 +6,7 @@
   <div @click.outside="showModal = false" class="bg-[var(--color-surface)] p-6 rounded-lg w-152 max-h-[90vh] overflow-y-auto"
     x-data="{
       isPublic: {{ form.instance.is_public|yesno:'true,false' }},
+      includeNotes: {{ form.instance.include_notes|yesno:'true,false' }},
       isSmart: {{ form.instance.is_smart|yesno:'true,false' }} || (typeof listMode !== 'undefined' && listMode === 'smart'),
       slugValue: '{{ form.public_slug.value|default_if_none:''|escapejs }}',
       listId: '{{ form.instance.id|default_if_none:'' }}',
@@ -59,47 +60,65 @@
       {% for field in form %}
         <div>
           {% if field.name == 'is_public' %}
-            <div class="flex items-center justify-between p-3 bg-[var(--color-surface-strong)] rounded-md">
-              <div class="flex-1">
-                <div class="flex items-center text-[var(--color-text-secondary)] mb-1">
-                  {% include "app/icons/globe.svg" with classes="w-5 h-5 mr-2" %}
-                  <span class="text-sm font-medium">{{ field.label }}</span>
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div class="flex items-center justify-between p-3 bg-[var(--color-surface-strong)] rounded-md">
+                <div class="flex-1">
+                  <div class="flex items-center text-[var(--color-text-secondary)] mb-1">
+                    {% include "app/icons/globe.svg" with classes="w-5 h-5 mr-2" %}
+                    <span class="text-sm font-medium">{{ field.label }}</span>
+                  </div>
+                  <p class="text-xs text-[var(--color-text-muted)] ml-7">{{ field.help_text }}</p>
                 </div>
-                <p class="text-xs text-[var(--color-text-muted)] ml-7">{{ field.help_text }}</p>
+                <label class="relative inline-flex items-center cursor-pointer ml-4">
+                  <input class="sr-only peer" type="checkbox" name="{{ field.name }}" x-model="isPublic" {% if form.instance.is_public %}checked{% endif %}>
+                  <div class="w-9 h-5 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-px after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4.5 after:w-4.5 after:transition-all peer-checked:bg-indigo-600"></div>
+                </label>
               </div>
-              <label class="relative inline-flex items-center cursor-pointer ml-4">
-                <input class="sr-only peer" type="checkbox" name="{{ field.name }}" x-model="isPublic" {% if form.instance.is_public %}checked{% endif %}>
-                <div class="w-9 h-5 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-px after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4.5 after:w-4.5 after:transition-all peer-checked:bg-indigo-600"></div>
-              </label>
-            </div>
-          {% elif field.name == 'is_smart' %}
-            <div class="flex items-center justify-between p-3 bg-[var(--color-surface-strong)] rounded-md">
-              <div class="flex-1">
-                <div class="flex items-center text-[var(--color-text-secondary)] mb-1">
-                  {% include "app/icons/horizontal-sliders.svg" with classes="w-5 h-5 mr-2" %}
-                  <span class="text-sm font-medium">{{ field.label }}</span>
+              <div class="flex items-center justify-between p-3 bg-[var(--color-surface-strong)] rounded-md" :class="{ 'opacity-50': !isPublic }">
+                <div class="flex-1">
+                  <div class="flex items-center text-[var(--color-text-secondary)] mb-1">
+                    {% include "app/icons/eye.svg" with classes="w-5 h-5 mr-2" %}
+                    <span class="text-sm font-medium">{{ form.include_notes.label }}</span>
+                  </div>
+                  <p class="text-xs text-[var(--color-text-muted)] ml-7">{{ form.include_notes.help_text }}</p>
                 </div>
-                <p class="text-xs text-[var(--color-text-muted)] ml-7">{{ field.help_text }}</p>
+                <label class="relative inline-flex items-center ml-4" :class="isPublic ? 'cursor-pointer' : 'cursor-not-allowed'">
+                  <input class="sr-only peer" type="checkbox" name="{{ form.include_notes.name }}" x-model="includeNotes" :disabled="!isPublic" {% if form.instance.include_notes %}checked{% endif %}>
+                  <div class="w-9 h-5 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-px after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4.5 after:w-4.5 after:transition-all peer-checked:bg-indigo-600"></div>
+                </label>
               </div>
-              <label class="relative inline-flex items-center cursor-pointer ml-4">
-                <input class="sr-only peer" type="checkbox" name="{{ field.name }}" x-model="isSmart" :checked="listMode === 'smart'">
-                <div class="w-9 h-5 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-px after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4.5 after:w-4.5 after:transition-all peer-checked:bg-indigo-600"></div>
-              </label>
             </div>
           {% elif field.name == 'allow_recommendations' %}
-            <div class="flex items-center justify-between p-3 bg-[var(--color-surface-strong)] rounded-md" :class="{ 'opacity-50': !isPublic }">
-              <div class="flex-1">
-                <div class="flex items-center text-[var(--color-text-secondary)] mb-1">
-                  {% include "app/icons/bell.svg" with classes="w-5 h-5 mr-2" %}
-                  <span class="text-sm font-medium">{{ field.label }}</span>
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div class="flex items-center justify-between p-3 bg-[var(--color-surface-strong)] rounded-md" :class="{ 'opacity-50': !isPublic }">
+                <div class="flex-1">
+                  <div class="flex items-center text-[var(--color-text-secondary)] mb-1">
+                    {% include "app/icons/bell.svg" with classes="w-5 h-5 mr-2" %}
+                    <span class="text-sm font-medium">{{ field.label }}</span>
+                  </div>
+                  <p class="text-xs text-[var(--color-text-muted)] ml-7">{{ field.help_text }}</p>
                 </div>
-                <p class="text-xs text-[var(--color-text-muted)] ml-7">{{ field.help_text }}</p>
+                <label class="relative inline-flex items-center ml-4" :class="isPublic ? 'cursor-pointer' : 'cursor-not-allowed'">
+                  <input class="sr-only peer" type="checkbox" name="{{ field.name }}" :disabled="!isPublic" {% if form.instance.allow_recommendations %}checked{% endif %}>
+                  <div class="w-9 h-5 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-px after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4.5 after:w-4.5 after:transition-all peer-checked:bg-indigo-600"></div>
+                </label>
               </div>
-              <label class="relative inline-flex items-center ml-4" :class="isPublic ? 'cursor-pointer' : 'cursor-not-allowed'">
-                <input class="sr-only peer" type="checkbox" name="{{ field.name }}" :disabled="!isPublic" {% if form.instance.allow_recommendations %}checked{% endif %}>
-                <div class="w-9 h-5 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-px after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4.5 after:w-4.5 after:transition-all peer-checked:bg-indigo-600"></div>
-              </label>
+              <div class="flex items-center justify-between p-3 bg-[var(--color-surface-strong)] rounded-md">
+                <div class="flex-1">
+                  <div class="flex items-center text-[var(--color-text-secondary)] mb-1">
+                    {% include "app/icons/horizontal-sliders.svg" with classes="w-5 h-5 mr-2" %}
+                    <span class="text-sm font-medium">{{ form.is_smart.label }}</span>
+                  </div>
+                  <p class="text-xs text-[var(--color-text-muted)] ml-7">{{ form.is_smart.help_text }}</p>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer ml-4">
+                  <input class="sr-only peer" type="checkbox" name="{{ form.is_smart.name }}" x-model="isSmart" :checked="listMode === 'smart'" {% if form.instance.is_smart %}checked{% endif %}>
+                  <div class="w-9 h-5 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-px after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4.5 after:w-4.5 after:transition-all peer-checked:bg-indigo-600"></div>
+                </label>
+              </div>
             </div>
+          {% elif field.name == 'is_smart' or field.name == 'include_notes' %}
+            {# Rendered in the grouped controls above. #}
           {% elif field.name == 'public_slug' %}
             <div class="p-3 bg-[var(--color-surface-strong)] rounded-md space-y-3">
               <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -134,9 +153,19 @@
                 Make this list public to customize the share URL.
               </p>
             </div>
-          {% elif field.name == 'collaborators' or field.name == 'tags' %}
-            <label class="block text text-sm font-medium mb-2 text-[var(--color-text-secondary)]">{{ field.label }}</label>
-            {{ field }}
+          {% elif field.name == 'tags' %}
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <label class="block text text-sm font-medium mb-2 text-[var(--color-text-secondary)]">{{ field.label }}</label>
+                {{ field }}
+              </div>
+              <div>
+                <label class="block text text-sm font-medium mb-2 text-[var(--color-text-secondary)]">{{ form.collaborators.label }}</label>
+                {{ form.collaborators }}
+              </div>
+            </div>
+          {% elif field.name == 'collaborators' %}
+            {# Rendered with List Tags above. #}
           {% elif field.name|slice:':6' == 'smart_' %}
           {% else %}
             <label class="block text text-sm font-medium mb-2 text-[var(--color-text-secondary)]">{{ field.label }}</label>

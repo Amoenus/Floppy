@@ -373,6 +373,10 @@ def _smart_list_detail_response(
         "sort_choices": sort_choices,
         "status_choices": status_choices,
         "public_view": public_view,
+        "public_list_reference": custom_list.public_reference
+        if is_public_view
+        else "",
+        "show_public_notes": not is_public_view or custom_list.include_notes,
         "can_edit": can_edit,
         "list_ordering_enabled": can_edit and sort_by == ListDetailSortChoices.CUSTOM,
         "is_public_view": is_public_view,

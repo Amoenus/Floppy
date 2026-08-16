@@ -68,6 +68,36 @@ class CustomListFormTest(TestCase):
         self.assertTrue(form.is_valid())
         self.assertEqual(form.cleaned_data["public_slug"], "favorite-movies-2026")
 
+    def test_custom_list_form_persists_include_notes_only_for_public_lists(self):
+        """Include Notes persists publicly and is cleared when made private."""
+        form = CustomListForm(
+            data={
+                "name": "Public Notes",
+                "is_public": "on",
+                "include_notes": "on",
+            },
+            user=self.user,
+        )
+        self.assertTrue(form.is_valid())
+        custom_list = form.save(commit=False)
+        custom_list.owner = self.user
+        custom_list.save()
+        form.save_m2m()
+
+        self.assertTrue(custom_list.include_notes)
+
+        private_form = CustomListForm(
+            data={"name": "Public Notes", "include_notes": "on"},
+            instance=custom_list,
+            user=self.user,
+        )
+        self.assertTrue(private_form.is_valid())
+        private_form.save()
+
+        custom_list.refresh_from_db()
+        self.assertEqual(custom_list.visibility, "private")
+        self.assertFalse(custom_list.include_notes)
+
     def test_custom_list_form_rejects_duplicate_public_slug(self):
         """Public slugs must be unique once claimed."""
         CustomList.objects.create(

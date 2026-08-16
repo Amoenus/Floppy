@@ -1,4 +1,4 @@
-{% if media.notes %}
+{% if show_public_notes|default_if_none:True and media.notes %}
   <span class="block max-w-xs truncate" title="{{ media.notes }}">
     {{ media.notes }}
   </span>

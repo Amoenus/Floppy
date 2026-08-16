@@ -1,6 +1,6 @@
 {% load app_tags %}
 <div class="flex justify-between items-center">
-  <a href="{{ media.item|media_url }}"
+  <a href="{% if public_list_reference %}{{ media.item|media_url }}?public_view=1&amp;public_list={{ public_list_reference|urlencode }}{% else %}{{ media.item|media_url }}{% endif %}"
      hx-boost="true"
      class="hover:text-[var(--color-link)] transition-colors line-clamp-1">{{ media.item }}</a>
 

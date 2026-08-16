@@ -17,7 +17,7 @@ from app.models import CollectionEntry, Item, MediaManager, MediaTypes, Status
 from app.providers import services
 from integrations.imports import helpers as import_helpers
 from integrations.models import TraktAccount
-from lists.models import CustomListItem
+from lists.models import CustomList, CustomListItem
 from users.models import ListDetailSortChoices, ListSortChoices
 
 logger = logging.getLogger(__name__)
@@ -85,6 +85,17 @@ def _build_list_url_template(request):
     return request.build_absolute_uri(
         reverse("list_detail", args=[LIST_REFERENCE_PLACEHOLDER]),
     )
+
+
+def get_public_list_for_item(list_reference, item):
+    """Return the requested public list only when it contains the item."""
+    if not list_reference or item is None:
+        return None
+
+    custom_list = CustomList.objects.get_public_list(list_reference)
+    if custom_list is None or not custom_list.items.filter(pk=item.pk).exists():
+        return None
+    return custom_list
 
 
 def _get_completed_item_ids(user, item_ids):

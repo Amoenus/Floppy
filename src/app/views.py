@@ -378,6 +378,7 @@ from app.view_constants import (
 from integrations import anime_mapping
 from integrations.models import CollectionSourceState
 from lists.models import CustomList
+from lists.views_helpers import get_public_list_for_item
 from users.home_screen import build_home_page_groups
 from users.models import (
     HomeSortChoices,
@@ -786,7 +787,8 @@ def episode_details(
 ):
     """Return the details page for a single episode."""
     is_anonymous = not request.user.is_authenticated
-    public_view = is_anonymous
+    public_list_view = request.GET.get("public_view") == "1"
+    public_view = is_anonymous or public_list_view
 
     tv_with_seasons_metadata = services.get_media_metadata(
         "tv_with_seasons",
@@ -835,13 +837,33 @@ def episode_details(
         with contextlib.suppress(Exception):
             episode_metadata = tmdb.episode(media_id, season_number, episode_number)
 
-    episode_item = Item.objects.filter(
+    episode_item_qs = Item.objects.filter(
         media_id=media_id,
         source=source,
         media_type=MediaTypes.EPISODE.value,
         season_number=season_number,
         episode_number=episode_number,
-    ).first()
+    )
+    if parent_media_type == MediaTypes.ANIME.value:
+        episode_item_qs = episode_item_qs.filter(
+            library_media_type=MediaTypes.ANIME.value,
+        )
+    else:
+        episode_item_qs = episode_item_qs.exclude(
+            library_media_type=MediaTypes.ANIME.value,
+        )
+    episode_item = episode_item_qs.first()
+
+    list_owner = None
+    public_notes_view = False
+    if public_list_view:
+        public_list = get_public_list_for_item(
+            request.GET.get("public_list"),
+            episode_item,
+        )
+        if public_list:
+            list_owner = public_list.owner
+            public_notes_view = public_list.include_notes
 
     if episode_data is not None and episode_item is not None:
         episode_data["item"] = episode_item
@@ -860,14 +882,38 @@ def episode_details(
 
     # Surface the note from the most recent watch that has one, the same way
     # the movie/season pages do (issue #377).
-    notes_entry = next(
-        (
-            watch
-            for watch in (episode_data or {}).get("history", [])
-            if watch.notes and watch.notes.strip()
-        ),
-        None,
-    )
+    notes_entry = None
+    if not public_view:
+        notes_entry = next(
+            (
+                watch
+                for watch in (episode_data or {}).get("history", [])
+                if watch.notes and watch.notes.strip()
+            ),
+            None,
+        )
+    elif public_notes_view and list_owner:
+        public_user_medias = list(
+            BasicMedia.objects.filter_media_prefetch(
+                list_owner,
+                media_id,
+                MediaTypes.EPISODE.value,
+                source,
+                season_number=season_number,
+                episode_number=episode_number,
+                library_media_type=(
+                    episode_item.library_media_type if episode_item else None
+                ),
+            ),
+        )
+        notes_entry = next(
+            (
+                entry
+                for entry in public_user_medias
+                if entry.notes and entry.notes.strip()
+            ),
+            None,
+        )
 
     context = {
         "user": request.user,
@@ -890,6 +936,8 @@ def episode_details(
         "season_metadata": season_metadata,
         "current_instance": current_season_instance,
         "public_view": public_view,
+        "public_notes_view": public_notes_view,
+        "show_notes": not public_view or public_notes_view,
         "parent_media_type": parent_media_type or MediaTypes.TV.value,
         "season_url": season_url,
         "media_id": media_id,

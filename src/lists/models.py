@@ -149,6 +149,10 @@ class CustomList(models.Model):
         default=False,
         help_text="Allow anyone to recommend items to add to this list (only for public lists)",
     )
+    include_notes = models.BooleanField(
+        default=False,
+        help_text="Show the owner's notes on public list pages",
+    )
     source = models.CharField(
         max_length=20,
         choices=SOURCE_CHOICES,
@@ -189,6 +193,15 @@ class CustomList(models.Model):
     def __str__(self):
         """Return the name of the custom list."""
         return self.name
+
+    def save(self, *args, **kwargs):
+        """Keep public-only settings disabled for private lists."""
+        if self.visibility != "public":
+            self.include_notes = False
+            update_fields = kwargs.get("update_fields")
+            if update_fields is not None:
+                kwargs["update_fields"] = set(update_fields) | {"include_notes"}
+        return super().save(*args, **kwargs)
 
     def get_absolute_url(self):
         """Return the preferred detail URL for this list."""

@@ -457,6 +457,10 @@ def list_detail(request, list_reference):
             *MediaStatusChoices.choices[1:],
         ],
         "public_view": public_view,
+        "public_list_reference": custom_list.public_reference
+        if is_public_view
+        else "",
+        "show_public_notes": not is_public_view or custom_list.include_notes,
         "can_edit": can_edit,
         "list_ordering_enabled": can_edit
         and params["sort_by"] == ListDetailSortChoices.CUSTOM,

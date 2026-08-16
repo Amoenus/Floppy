@@ -38,6 +38,7 @@ class ListExportCsvViewTests(TestCase):
             name="Public List",
             owner=self.owner,
             visibility="public",
+            include_notes=True,
         )
         CustomListItem.objects.create(custom_list=self.public_list, item=self.item)
 
@@ -81,6 +82,7 @@ class ListExportCsvViewTests(TestCase):
         list_rows = [row for row in rows if row["row_type"] == "list"]
         self.assertEqual(len(list_rows), 1)
         self.assertEqual(list_rows[0]["list_name"], "Public List")
+        self.assertEqual(list_rows[0]["list_include_notes"], "True")
 
     def test_unknown_list_returns_404(self):
         """A missing list reference returns a 404."""
@@ -97,15 +99,16 @@ class ImportListCsvViewTests(TestCase):
         self.user = get_user_model().objects.create_user(**self.credentials)
         self.client.login(**self.credentials)
 
-    def _csv_bytes(self):
+    def _csv_bytes(self, *, visibility="private", include_notes="false"):
         content = (
             '"row_type","media_id","source","media_type","title","image",'
             '"season_number","episode_number","list_uid","list_name",'
             '"list_description","list_tags","list_visibility",'
-            '"list_allow_recommendations","list_source","list_source_id",'
+            '"list_allow_recommendations","list_include_notes",'
+            '"list_source","list_source_id",'
             '"list_item_date_added"\n'
-            '"list","","","","","","","","1","Imported List","","[]","private",'
-            '"false","local","",""\n'
+            f'"list","","","","","","","","1","Imported List","","[]","{visibility}",'
+            f'"false","{include_notes}","local","",""\n'
             '"list_item","manualbook1","manual","book","Manual Book",'
             '"https://image.url","","","1","Imported List","","","","","","",""\n'
         )
@@ -135,3 +138,19 @@ class ImportListCsvViewTests(TestCase):
         self.assertIsNotNone(custom_list)
         item_count = CustomListItem.objects.filter(custom_list=custom_list).count()
         self.assertEqual(item_count, 1)
+
+    def test_csv_import_preserves_include_notes_for_public_list(self):
+        """A public list import retains its Include Notes preference."""
+        response = self.client.post(
+            reverse("list_import_csv"),
+            {
+                "csv_file": self._csv_bytes(
+                    visibility="public",
+                    include_notes="true",
+                ),
+            },
+            follow=True,
+        )
+        self.assertRedirects(response, reverse("lists"))
+        custom_list = CustomList.objects.get(owner=self.user, name="Imported List")
+        self.assertTrue(custom_list.include_notes)

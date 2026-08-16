@@ -264,6 +264,7 @@ def _generate_single_list_rows(custom_list, writer, fields, item_tags_map):
             json.dumps(custom_list.tags or []),
             custom_list.visibility,
             custom_list.allow_recommendations,
+            custom_list.include_notes,
             custom_list.source,
             custom_list.source_id,
             custom_list.is_smart,
@@ -289,6 +290,7 @@ def _generate_single_list_rows(custom_list, writer, fields, item_tags_map):
             + [
                 custom_list.id,
                 custom_list.name,
+                "",
                 "",
                 "",
                 "",
@@ -455,6 +457,7 @@ def get_list_fields():
         "list_tags",
         "list_visibility",
         "list_allow_recommendations",
+        "list_include_notes",
         "list_source",
         "list_source_id",
         "list_is_smart",

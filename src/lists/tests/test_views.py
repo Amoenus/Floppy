@@ -754,6 +754,93 @@ class ListDetailViewTests(TestCase):
         response = self.client.get(reverse("list_detail", args=[self.custom_list.id]))
         self.assertEqual(response.status_code, 200)
 
+    @patch("app.providers.services.get_media_metadata")
+    @patch.object(CustomList, "_get_tmdb_backdrop", return_value=None)
+    def test_public_list_table_hides_and_shows_owner_notes(
+        self,
+        _mock_backdrop,
+        mock_get_media_metadata,
+    ):
+        """Public table notes follow the originating list's Include Notes setting."""
+        mock_get_media_metadata.return_value = {
+            "max_progress": 1,
+            "related": {"seasons": []},
+            "title": "Test Movie",
+        }
+        Movie.objects.create(
+            item=self.movie_item,
+            status=Status.COMPLETED.value,
+            user=self.user,
+            notes="Owner-only public-list note",
+        )
+        self.custom_list.visibility = "public"
+        self.custom_list.include_notes = False
+        self.custom_list.save(update_fields=["visibility", "include_notes"])
+
+        self.client.logout()
+        url = reverse("list_detail", args=[self.custom_list.id]) + "?layout=table"
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.context["show_public_notes"])
+        self.assertNotContains(response, "Owner-only public-list note")
+        self.assertContains(
+            response,
+            f"public_view=1&amp;public_list={self.custom_list.id}",
+            html=False,
+        )
+
+        self.custom_list.include_notes = True
+        self.custom_list.save(update_fields=["include_notes"])
+        response = self.client.get(url)
+
+        self.assertTrue(response.context["show_public_notes"])
+        self.assertContains(response, "Owner-only public-list note")
+
+    @patch("app.providers.services.get_media_metadata")
+    @patch.object(CustomList, "_get_tmdb_backdrop", return_value=None)
+    def test_public_smart_list_table_hides_and_shows_owner_notes(
+        self,
+        _mock_backdrop,
+        mock_get_media_metadata,
+    ):
+        """Public smart-list tables honor the same Include Notes setting."""
+        mock_get_media_metadata.return_value = {
+            "max_progress": 1,
+            "related": {"seasons": []},
+            "title": "Test Movie",
+        }
+        Movie.objects.create(
+            item=self.movie_item,
+            status=Status.COMPLETED.value,
+            user=self.user,
+            notes="Owner-only smart-list note",
+        )
+        smart_list = CustomList.objects.create(
+            name="Public Smart List",
+            owner=self.user,
+            is_smart=True,
+            visibility="public",
+            include_notes=False,
+            smart_media_types=[MediaTypes.MOVIE.value],
+            smart_filters={"status": "all"},
+        )
+
+        self.client.logout()
+        url = reverse("list_detail", args=[smart_list.id]) + "?layout=table"
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.context["show_public_notes"])
+        self.assertNotContains(response, "Owner-only smart-list note")
+
+        smart_list.include_notes = True
+        smart_list.save(update_fields=["include_notes"])
+        response = self.client.get(url)
+
+        self.assertTrue(response.context["show_public_notes"])
+        self.assertContains(response, "Owner-only smart-list note")
+
     def test_public_list_detail_reorders_header_and_removes_public_banner(self):
         """Public manual lists should show the owner on the metadata line without the banner."""
         self.custom_list.visibility = "public"

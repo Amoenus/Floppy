@@ -329,7 +329,7 @@
     {% if media_type != MediaTypes.PODCAST.value %}
       {% if notes_entry or media.related or media.cast or media.crew or media_type == MediaTypes.GAME.value or media.episodes %}
         <div class="w-full md:w-3/4">
-        {% if not public_view|default:False and notes_entry %}
+        {% if show_notes|default:False and notes_entry %}
           {% include "app/components/detail_notes_section.html" %}
         {% endif %}
         {% if media.related %}
@@ -547,7 +547,7 @@
       </div>
     {% endif %}
 
-    {% if media_type == MediaTypes.PODCAST.value and not public_view|default:False and notes_entry %}
+    {% if media_type == MediaTypes.PODCAST.value and show_notes|default:False and notes_entry %}
       <div class="w-full">
         {% include "app/components/detail_notes_section.html" %}
       </div>

@@ -57,6 +57,7 @@ from app.providers import services, tmdb
 from app.services import game_lengths as game_length_services
 from app.services.metadata_resolution import MetadataResolutionResult
 from integrations.models import PlexAccount
+from lists.models import CustomList, CustomListItem
 from users.models import DateFormatChoices, RatingScaleChoices, TimeFormatChoices
 
 
@@ -875,6 +876,90 @@ class MediaDetailsViewTests(TestCase):
         self.assertLess(content.index("Your Notes"), content.index("Cast"))
         self.assertNotIn(">Edit<", content)
         self.assertNotIn("YOUR NOTES", content)
+
+    @patch("app.providers.services.get_media_metadata")
+    def test_public_media_notes_require_the_originating_list(self, mock_get_metadata):
+        """Public media notes require the exact public list and enabled setting."""
+        mock_get_metadata.return_value = {
+            "media_id": "238",
+            "title": "Test Movie",
+            "media_type": MediaTypes.MOVIE.value,
+            "source": Sources.TMDB.value,
+            "image": "http://example.com/image.jpg",
+            "max_progress": 1,
+            "synopsis": "Test overview",
+            "details": {},
+            "related": {},
+            "cast": [],
+            "crew": [],
+        }
+        item = Item.objects.create(
+            media_id="238",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Test Movie",
+        )
+        Movie.objects.create(
+            item=item,
+            user=self.user,
+            status=Status.COMPLETED.value,
+            notes="Public list note",
+        )
+        notes_list = CustomList.objects.create(
+            name="Notes List",
+            owner=self.user,
+            visibility="public",
+            include_notes=True,
+        )
+        hidden_list = CustomList.objects.create(
+            name="Hidden List",
+            owner=self.user,
+            visibility="public",
+            include_notes=False,
+        )
+        CustomListItem.objects.create(custom_list=notes_list, item=item)
+        CustomListItem.objects.create(custom_list=hidden_list, item=item)
+
+        detail_url = reverse(
+            "media_details",
+            kwargs={
+                "source": Sources.TMDB.value,
+                "media_type": MediaTypes.MOVIE.value,
+                "media_id": "238",
+                "title": "test-movie",
+            },
+        )
+        self.client.logout()
+
+        response = self.client.get(
+            detail_url,
+            {
+                "fragment": "secondary",
+                "public_view": "1",
+                "public_list": hidden_list.public_reference,
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "Public list note")
+
+        response = self.client.get(
+            detail_url,
+            {
+                "fragment": "secondary",
+                "public_view": "1",
+                "public_list": notes_list.public_reference,
+            },
+        )
+        self.assertContains(response, "Public list note")
+
+        response = self.client.get(
+            detail_url,
+            {"fragment": "secondary", "public_view": "1", "public_list": "999999"},
+        )
+        self.assertNotContains(response, "Public list note")
+
+        response = self.client.get(detail_url, {"fragment": "secondary"})
+        self.assertNotContains(response, "Public list note")
 
     @patch("app.services.music.needs_discography_sync", return_value=False)
     @patch("app.services.music_scrobble.dedupe_artist_albums")
@@ -5162,6 +5247,86 @@ class MediaDetailsViewTests(TestCase):
 
     @patch("app.providers.services.get_media_metadata")
     @patch("app.providers.tmdb.process_episodes")
+    def test_public_season_notes_use_the_originating_list(
+        self,
+        mock_process_episodes,
+        mock_get_metadata,
+    ):
+        """Public season details use the selected list owner's notes."""
+        tv_item = Item.objects.create(
+            media_id="1668",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Test TV Show",
+        )
+        tv = TV.objects.create(
+            item=tv_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        season_item = Item.objects.create(
+            media_id="1668",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=1,
+            title="Season 1",
+        )
+        Season.objects.create(
+            item=season_item,
+            user=self.user,
+            related_tv=tv,
+            status=Status.IN_PROGRESS.value,
+            notes="Public season note",
+        )
+        public_list = CustomList.objects.create(
+            name="Season Notes",
+            owner=self.user,
+            visibility="public",
+            include_notes=True,
+        )
+        CustomListItem.objects.create(custom_list=public_list, item=season_item)
+        mock_get_metadata.side_effect = lambda *_args, **_kwargs: {
+            "title": "Test TV Show",
+            "media_id": "1668",
+            "source": Sources.TMDB.value,
+            "media_type": MediaTypes.TV.value,
+            "image": "http://example.com/image.jpg",
+            "season/1": {
+                "title": "Season 1",
+                "season_title": "Season 1",
+                "media_id": "1668",
+                "media_type": MediaTypes.SEASON.value,
+                "source": Sources.TMDB.value,
+                "image": "http://example.com/season.jpg",
+                "episodes": [],
+            },
+        }
+        mock_process_episodes.return_value = []
+
+        self.client.logout()
+        response = self.client.get(
+            reverse(
+                "season_details",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_id": "1668",
+                    "title": "test-tv-show",
+                    "season_number": 1,
+                },
+            ),
+            {
+                "fragment": "secondary",
+                "public_view": "1",
+                "public_list": public_list.public_reference,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["notes_entry"].notes, "Public season note")
+        self.assertContains(response, "Public season note")
+
+    @patch("app.providers.services.get_media_metadata")
+    @patch("app.providers.tmdb.process_episodes")
     def test_anime_season_details_finds_season_tracked_via_tv_identity(
         self,
         mock_process_episodes,
@@ -5351,6 +5516,97 @@ class MediaDetailsViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
+
+    @patch("app.views.tmdb.episode", return_value={})
+    @patch("app.providers.services.get_media_metadata")
+    @patch("app.providers.tmdb.process_episodes")
+    def test_public_episode_notes_use_the_originating_list(
+        self,
+        mock_process_episodes,
+        mock_get_metadata,
+        _mock_episode,
+    ):
+        """Public episode details use the selected list owner's notes."""
+        tv_item = Item.objects.create(
+            media_id="1668",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Test TV Show",
+        )
+        tv = TV.objects.create(
+            item=tv_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        season_item = Item.objects.create(
+            media_id="1668",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=1,
+            title="Season 1",
+        )
+        season = Season.objects.create(
+            item=season_item,
+            user=self.user,
+            related_tv=tv,
+            status=Status.IN_PROGRESS.value,
+        )
+        episode_item = Item.objects.create(
+            media_id="1668",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=1,
+            episode_number=1,
+            title="Episode 1",
+        )
+        Episode.objects.create(
+            item=episode_item,
+            related_season=season,
+            notes="Public episode note",
+        )
+        public_list = CustomList.objects.create(
+            name="Episode Notes",
+            owner=self.user,
+            visibility="public",
+            include_notes=True,
+        )
+        CustomListItem.objects.create(custom_list=public_list, item=episode_item)
+        mock_get_metadata.side_effect = lambda *_args, **_kwargs: {
+            "title": "Test TV Show",
+            "media_id": "1668",
+            "source": Sources.TMDB.value,
+            "media_type": MediaTypes.TV.value,
+            "image": "http://example.com/image.jpg",
+            "season/1": {
+                "title": "Season 1",
+                "season_title": "Season 1",
+                "media_id": "1668",
+                "media_type": MediaTypes.SEASON.value,
+                "source": Sources.TMDB.value,
+                "image": "http://example.com/season.jpg",
+                "episodes": [],
+            },
+        }
+        mock_process_episodes.return_value = []
+
+        self.client.logout()
+        response = self.client.get(
+            reverse(
+                "episode_details",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_id": "1668",
+                    "title": "test-tv-show",
+                    "season_number": 1,
+                    "episode_number": 1,
+                },
+            ),
+            {"public_view": "1", "public_list": public_list.public_reference},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["notes_entry"].notes, "Public episode note")
+        self.assertContains(response, "Public episode note")
 
     @patch("app.providers.services.get_media_metadata")
     @patch("app.providers.tmdb.process_episodes")

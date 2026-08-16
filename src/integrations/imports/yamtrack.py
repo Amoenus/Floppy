@@ -389,6 +389,7 @@ class YamtrackImporter:
         list_visibility = (row.get("list_visibility") or "private").strip() or "private"
         list_description = row.get("list_description") or ""
         list_allow_recommendations = _parse_bool(row.get("list_allow_recommendations"))
+        list_include_notes = _parse_bool(row.get("list_include_notes"))
         list_tags = _parse_tags(row.get("list_tags"))
         list_is_smart = _parse_bool(row.get("list_is_smart"))
         list_smart_media_types = _parse_tags(row.get("list_smart_media_types"))
@@ -418,6 +419,9 @@ class YamtrackImporter:
                 existing.tags = list_tags
                 existing.visibility = list_visibility
                 existing.allow_recommendations = list_allow_recommendations
+                existing.include_notes = (
+                    list_include_notes if list_visibility == "public" else False
+                )
                 existing.source = list_source
                 existing.source_id = list_source_id
                 existing.is_smart = list_is_smart
@@ -430,6 +434,7 @@ class YamtrackImporter:
                         "tags",
                         "visibility",
                         "allow_recommendations",
+                        "include_notes",
                         "source",
                         "source_id",
                         "is_smart",
@@ -448,6 +453,9 @@ class YamtrackImporter:
                 tags=list_tags,
                 visibility=list_visibility,
                 allow_recommendations=list_allow_recommendations,
+                include_notes=(
+                    list_include_notes if list_visibility == "public" else False
+                ),
                 source=list_source,
                 source_id=list_source_id,
                 is_smart=list_is_smart,

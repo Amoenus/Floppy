@@ -51,7 +51,7 @@ from app.view_constants import (
     DETAIL_SECONDARY_FRAGMENT,
     LOCAL_ONLY_MISSING_SEASON_BANNER,
 )
-from lists.models import CustomList
+from lists.views_helpers import get_public_list_for_item
 
 logger = logging.getLogger(__name__)
 
@@ -79,10 +79,11 @@ def season_details(
         fragment=DETAIL_SECONDARY_FRAGMENT,
     )
 
-    # Treat all anonymous views as public (no user-specific data/actions)
+    # Anonymous views and explicit public-list links are public (no user-specific
+    # data/actions), while only a validated list reference can expose owner notes.
     is_anonymous = not request.user.is_authenticated
-    public_view = is_anonymous
-    public_list_view = request.GET.get("public_view") == "1" and is_anonymous
+    public_list_view = request.GET.get("public_view") == "1"
+    public_view = is_anonymous or public_list_view
 
     # Scope all Season Item / tracking lookups to the correct library type so that
     # anime seasons and TV seasons are fully independent.
@@ -106,20 +107,18 @@ def season_details(
 
     # For public views, find a public list containing this item to get the owner
     list_owner = None
+    public_notes_view = False
     if public_list_view:
         try:
             item = _scoped_season_item_qs().first()
             if item:
-                public_list = (
-                    CustomList.objects.filter(
-                        visibility="public",
-                        items=item,
-                    )
-                    .select_related("owner")
-                    .first()
+                public_list = get_public_list_for_item(
+                    request.GET.get("public_list"),
+                    item,
                 )
                 if public_list:
                     list_owner = public_list.owner
+                    public_notes_view = public_list.include_notes
         except Exception:  # noqa: S110  # deliberate best-effort; failure is non-fatal here
             # If we can't find a list owner, list_owner stays None
             pass
@@ -171,6 +170,38 @@ def season_details(
                 )
             )
         current_instance = user_medias[0] if user_medias else None
+
+    notes_entry = None
+    if render_secondary_only and not public_view and user_medias:
+        notes_entry = next(
+            (
+                entry
+                for entry in user_medias
+                if entry.notes and entry.notes.strip()
+            ),
+            None,
+        )
+    elif render_secondary_only and public_notes_view and list_owner:
+        public_user_medias = list(
+            BasicMedia.objects.filter_media_prefetch(
+                list_owner,
+                media_id,
+                MediaTypes.SEASON.value,
+                source,
+                season_number=season_number,
+                library_media_type=(
+                    season_item.library_media_type if season_item else None
+                ),
+            ),
+        )
+        notes_entry = next(
+            (
+                entry
+                for entry in public_user_medias
+                if entry.notes and entry.notes.strip()
+            ),
+            None,
+        )
 
     episodes_in_db = current_instance.episodes.all() if current_instance else []
     if season_item_is_local_only:
@@ -927,6 +958,9 @@ def season_details(
         "user_medias": user_medias,
         "current_instance": current_instance,
         "public_view": public_view,
+        "public_notes_view": public_notes_view,
+        "show_notes": not public_view or public_notes_view,
+        "notes_entry": notes_entry,
         "collection_entry": collection_entry,
         "collection_entries": collection_entries,
         "collection_stats": season_collection_stats,

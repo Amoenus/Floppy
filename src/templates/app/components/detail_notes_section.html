@@ -6,7 +6,8 @@
   {{ notes_entry.notes|json_script:notes_content_id }}
   <section class="mb-8">
     <div class="mb-4 flex items-center gap-2">
-      <h2 class="text-xl font-bold">Your Notes</h2>
+      <h2 class="text-xl font-bold">{% if public_notes_view|default:False %}Notes{% else %}Your Notes{% endif %}</h2>
+      {% if not public_notes_view|default:False %}
       <div x-data="{ trackOpen: false }" class="shrink-0">
         <button type="button"
                 class="inline-flex items-center justify-center rounded-md p-1.5 text-[var(--color-text-secondary)] transition-colors duration-200 hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] cursor-pointer"
@@ -29,6 +30,7 @@
           </div>
         </div>
       </div>
+      {% endif %}
     </div>
 
     <div x-data="{ isExpanded: false, isClamped: false, checkClamp() { const element = this.$refs.notesPreview; this.isClamped = element.scrollHeight > element.clientHeight; } }"
@@ -54,7 +56,8 @@
   {{ notes_entry.notes|json_script:notes_content_id }}
   <section class="mb-8">
     <div class="mb-4 flex items-center gap-2">
-      <h2 class="text-xl font-bold">Your Notes</h2>
+      <h2 class="text-xl font-bold">{% if public_notes_view|default:False %}Notes{% else %}Your Notes{% endif %}</h2>
+      {% if not public_notes_view|default:False %}
       <div x-data="{ trackOpen: false }" class="shrink-0">
         <button type="button"
                 class="inline-flex items-center justify-center rounded-md p-1.5 text-[var(--color-text-secondary)] transition-colors duration-200 hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] cursor-pointer"
@@ -77,6 +80,7 @@
           </div>
         </div>
       </div>
+      {% endif %}
     </div>
 
     <div x-data="{ isExpanded: false, isClamped: false, checkClamp() { const element = this.$refs.notesPreview; this.isClamped = element.scrollHeight > element.clientHeight; } }"
