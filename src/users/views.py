@@ -138,6 +138,9 @@ SIDEBAR_MEDIA_TYPES = [
     for mt in MediaTypes
     if mt.value not in (MediaTypes.EPISODE.value, MediaTypes.COMIC_ISSUE.value)
 ]
+DELETABLE_MEDIA_TYPES = tuple(
+    mt.value for mt in MediaTypes if mt.value != MediaTypes.EPISODE.value
+)
 
 
 def _normalize_auto_pause_rules(
@@ -1587,6 +1590,7 @@ def advanced(request):
         "tmdb_proxy_configured": bool(request.user.tmdb_proxy_url),
         "bug_report_title": "[BUG] ",
         "bug_report_body": bug_report_body,
+        "media_types": DELETABLE_MEDIA_TYPES,
     }
     return render(request, "users/advanced.html", context)
 
@@ -1675,6 +1679,65 @@ def bulk_delete_by_import_source(request, media_type, source):
     else:
         messages.info(request, "Nothing to delete.")
     return redirect("import_data")
+
+
+@require_POST
+def bulk_delete_by_media_type(request):
+    """Permanently delete all of the requesting user's media of one type."""
+    media_type = request.POST.get("media_type", "").strip().lower()
+    if media_type not in DELETABLE_MEDIA_TYPES:
+        messages.error(request, "Unknown media type.")
+        return redirect("advanced")
+
+    media_querysets = _media_querysets_for_bulk_delete(request.user, media_type)
+    item_count = sum(queryset.count() for queryset in media_querysets)
+    for queryset in media_querysets:
+        queryset.delete()
+
+    if item_count:
+        # Model post-delete signals invalidate runtime caches and schedule
+        # refreshes. These payload clears ensure a just-deleted item cannot
+        # remain visible in the user's cached History/Statistics/Discover UI.
+        cache_management.clear_history_cache_for_user(request.user.id)
+        cache_management.clear_statistics_cache_for_user(request.user.id)
+        cache_management.clear_discover_cache_for_user(request.user.id)
+        label = MediaTypes(media_type).label
+        messages.success(
+            request,
+            f"Permanently deleted {item_count} {label} item(s) from your library.",
+        )
+        logger.info(
+            "Permanently deleted %s %s items for user %s",
+            item_count,
+            media_type,
+            request.user.id,
+        )
+    else:
+        messages.info(request, "Nothing to delete for that media type.")
+
+    return redirect("advanced")
+
+
+def _media_querysets_for_bulk_delete(user, media_type):
+    """Return the user-owned rows represented by a library media type."""
+    if media_type == MediaTypes.ANIME.value:
+        anime_model = apps.get_model(app_label="app", model_name="anime")
+        tv_model = apps.get_model(app_label="app", model_name="tv")
+        return [
+            anime_model.all_objects.filter(user=user),
+            tv_model.objects.filter(
+                user=user,
+                item__library_media_type=MediaTypes.ANIME.value,
+            ),
+        ]
+
+    model = apps.get_model(app_label="app", model_name=media_type)
+    queryset = model.objects.filter(user=user)
+    if media_type == MediaTypes.TV.value:
+        queryset = queryset.exclude(
+            item__library_media_type=MediaTypes.ANIME.value,
+        )
+    return [queryset]
 
 
 @require_POST

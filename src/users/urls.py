@@ -123,6 +123,11 @@ urlpatterns = [
         name="bulk_delete_by_import_source",
     ),
     path(
+        "bulk_delete_by_media_type",
+        views.bulk_delete_by_media_type,
+        name="bulk_delete_by_media_type",
+    ),
+    path(
         "create_export_schedule",
         views.create_export_schedule,
         name="create_export_schedule",
