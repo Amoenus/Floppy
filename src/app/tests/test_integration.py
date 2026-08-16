@@ -429,7 +429,7 @@ class IntegrationTest(StaticLiveServerTestCase):
         self,
         mock_get_metadata,
     ):
-        """Shared modal close should survive split flows and release-date use."""
+        """Date picker shortcuts support release dates and clearing both dates."""
         mock_get_metadata.return_value = {
             "media_id": "238",
             "title": "Test Movie",
@@ -496,6 +496,7 @@ class IntegrationTest(StaticLiveServerTestCase):
         self.page.get_by_role("button", name="More tracking actions").click()
         self.page.get_by_role("button", name="Add new entry").click()
         expect(create_modal).to_be_visible()
+        self.page.set_viewport_size({"width": 375, "height": 812})
 
         end_date_input = create_modal.locator('input[name="end_date"]')
         end_time_segment = "14:25"
@@ -506,6 +507,9 @@ class IntegrationTest(StaticLiveServerTestCase):
             "dialog",
             name="End date picker",
         )
+        expect(
+            end_date_picker.get_by_role("button", name="None", exact=True),
+        ).to_be_visible()
         time_selects = end_date_picker.locator("select")
         time_selects.nth(0).select_option("14")
         time_selects.nth(1).select_option("25")
@@ -518,8 +522,28 @@ class IntegrationTest(StaticLiveServerTestCase):
         ).strftime("%Y-%m-%dT%H:%M")
         expect(start_date_input).to_have_value(expected_start_date)
 
-        create_modal.locator("button[type='button']").first.click()
+        end_date_picker.get_by_role("button", name="None", exact=True).click()
+        expect(end_date_input).to_have_value("")
+
+        create_modal.get_by_role("button", name="Start date picker").click()
+        start_date_picker = create_modal.get_by_role(
+            "dialog",
+            name="Start date picker",
+        )
+        start_date_picker.get_by_role("button", name="None", exact=True).click()
+        expect(start_date_input).to_have_value("")
+
+        with self.page.expect_request(
+            lambda request: request.method == "POST" and "/media_save" in request.url,
+        ) as save_request:
+            create_modal.get_by_role("button", name="Add", exact=True).click()
+        save_request.value.response()
         expect(self.page.locator("[data-track-modal-root]:visible")).to_have_count(0)
+
+        new_movie = Movie.objects.filter(item=item, user=self.user).order_by("-id").first()
+        self.assertIsNotNone(new_movie)
+        self.assertIsNone(new_movie.start_date)
+        self.assertIsNone(new_movie.end_date)
 
         self.page.get_by_role("button", name="Completed", exact=True).click()
         edit_modal = self.page.locator("[data-track-modal-root]:visible").first
