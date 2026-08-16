@@ -1402,7 +1402,7 @@ function initStatisticsCharts() {
           const color = colors[i];
           const pct = total > 0 ? Math.round((count / total) * 100) : 0;
           const row = document.createElement("div");
-          row.style.cssText = "display:flex;align-items:center;gap:10px;font-size:11px;";
+          row.style.cssText = "display:flex;align-items:center;gap:10px;font-size:11px;min-width:250px;";
           row.innerHTML =
             '<div style="flex-shrink:0;display:flex;align-items:center;gap:6px;min-width:0;width:84px">' +
               '<span style="flex-shrink:0;width:10px;height:10px;border-radius:2px;background:' + color + '"></span>' +
@@ -1475,7 +1475,7 @@ function initStatisticsCharts() {
             '<div id="statusCompositionCenter" class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center"></div>' +
             '<canvas id="statusCompositionChart" style="position:relative;z-index:1"></canvas>' +
           "</div>" +
-          '<div id="statusCompositionLegend" class="flex-1 min-w-0 space-y-1.5"></div>';
+          '<div id="statusCompositionLegend" class="flex-1 min-w-0 overflow-x-auto overflow-y-hidden scrollbar-hidden space-y-1.5"></div>';
         statusCompositionChartInstance = null;
       }
 

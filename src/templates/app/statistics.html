@@ -1317,12 +1317,12 @@
     <div class="bg-[var(--color-surface)] rounded-lg p-4 sm:p-6 flex flex-col h-full">
       <h2 class="text-base font-semibold text-[var(--color-text)] mb-0.5" id="statusCompositionTitle">Status Composition</h2>
       <p class="text-xs text-[var(--color-text-muted)] mb-3" id="statusCompositionSubtitle">What portion of your library is in each state.</p>
-      <div id="statusCompositionContainer" class="flex-1 flex items-center gap-4 sm:gap-6">
+      <div id="statusCompositionContainer" class="flex-1 min-w-0 flex items-center gap-4 sm:gap-6">
         <div class="relative shrink-0" style="width:150px;height:150px;">
           <div id="statusCompositionCenter" class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center"></div>
           <canvas id="statusCompositionChart" style="position:relative;z-index:1"></canvas>
         </div>
-        <div id="statusCompositionLegend" class="flex-1 min-w-0 space-y-2"></div>
+        <div id="statusCompositionLegend" class="flex-1 min-w-0 overflow-x-auto overflow-y-hidden scrollbar-hidden space-y-2"></div>
       </div>
     </div>
     <div class="bg-[var(--color-surface)] rounded-lg p-4 sm:p-6">
