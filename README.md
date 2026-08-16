@@ -546,6 +546,24 @@ uv run --no-sync gunicorn --config python:config.gunicorn config.wsgi:applicatio
 Do not start the service with bare `gunicorn config.wsgi:application`; that
 skips the shipped configuration and its process lifecycle hooks.
 
+Gunicorn does not write a request access log. A request line holds the query
+string, and a query string can hold an OAuth code or an integration token, so
+the container writes one access line at the Nginx boundary instead, with the
+query string and the referrer removed. Gunicorn still writes its error log.
+
+A source-based deployment therefore gets its request log from its own reverse
+proxy. Configure that proxy to leave the query string out of its log format.
+The container's format is in `nginx.conf`:
+
+```nginx
+log_format floppy_safe '$remote_addr [$time_local] '
+                       '"$request_method $uri $server_protocol" '
+                       '$status $body_bytes_sent';
+```
+
+Application logs are separate and are always redacted before they are written.
+See [docs/architecture/log-redaction.md](docs/architecture/log-redaction.md).
+
 ### Upgrading container images
 
 The migration conflict involving `0147_item_calendar_checked_at` and

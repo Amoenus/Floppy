@@ -130,6 +130,8 @@ Review and commit generated artifact changes. If regeneration makes no change, r
 
 **Colour and theming:** Colour goes through the `--color-*` tokens, never a raw palette utility and never Tailwind's `dark:` variant, which reads the OS instead of the user's chosen theme. There are six theme states to hold, not two. See [docs/architecture/theming.md](docs/architecture/theming.md); `src/app/tests/test_theme_tokens.py` enforces the two rules that are easiest to break.
 
+**Logging:** Call `logger.info("...", value)` as usual. A process-wide log record factory redacts credentials before any handler writes them, so you do not need a wrapper or a manual sanitizer. Two things still need care: a rule matches the *name* of a value, so give secrets a name that ends in `token`, `secret`, `password`, `api_key` or similar, and never log a raw response body or a full URL — use `safe_url()`. See [docs/architecture/log-redaction.md](docs/architecture/log-redaction.md); `src/app/tests/test_log_safety.py` enforces the rules that are easiest to break.
+
 **Lint cleanup:** If you spot pre-existing ruff/lint violations while working, do not fix them in the same PR. Either open a separate lint-only PR (welcome and easy to review) or leave a note. Fixing unrelated lint mid-feature PR inflates the diff and obscures the actual change.
 
 ---
