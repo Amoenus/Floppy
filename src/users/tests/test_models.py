@@ -1,5 +1,3 @@
-import inspect
-import re
 from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
@@ -9,7 +7,7 @@ from django.utils import timezone
 from django_celery_beat.models import CrontabSchedule, IntervalSchedule, PeriodicTask
 from django_celery_results.models import TaskResult
 
-from integrations.tasks import _media_imports
+from config.celery import app
 
 from users.models import (
     HomeSortChoices,
@@ -1145,14 +1143,18 @@ class GetImportTasksRegistryConsistencyTests(TestCase):
     """
 
     def test_every_recurring_import_task_is_mapped(self):
-        """Every '(Recurring)' shared_task name must be in schedule_task_names."""
-        source = inspect.getsource(_media_imports)
-        recurring_task_names = set(
-            re.findall(r'name="(Import from [^"]+\(Recurring\))"', source),
-        )
+        """Every registered '(Recurring)' task must be in schedule_task_names."""
+        # Use Celery's actual task registry rather than parsing source text:
+        # tasks can be registered with a literal string (`name="..."`) or a
+        # module-level constant (`name=SOME_TASK_NAME`, e.g. how Goodreads
+        # and Jellyfin already do it), and only the registry reflects the
+        # resolved name in both cases.
+        recurring_task_names = {
+            name for name in app.tasks if name.endswith("(Recurring)")
+        }
 
         # Sanity check the extraction itself still finds real tasks, so a
-        # refactor of _media_imports.py can't silently make this test vacuous.
+        # refactor of the task modules can't silently make this test vacuous.
         self.assertIn("Import from Stremio (Recurring)", recurring_task_names)
 
         user = get_user_model().objects.create_user(
@@ -1170,8 +1172,8 @@ class GetImportTasksRegistryConsistencyTests(TestCase):
         self.assertEqual(
             missing,
             set(),
-            "Recurring import task(s) defined in _media_imports.py but missing "
-            "from get_import_tasks()'s schedule_task_names map: "
+            "Recurring import task(s) registered with Celery but missing from "
+            "get_import_tasks()'s schedule_task_names map: "
             f"{sorted(missing)}. Active Periodic Imports will silently omit "
             "these sources until the map is updated.",
         )
