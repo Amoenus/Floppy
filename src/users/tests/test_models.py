@@ -1,3 +1,5 @@
+import inspect
+import re
 from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
@@ -6,6 +8,8 @@ from django.test import TestCase
 from django.utils import timezone
 from django_celery_beat.models import CrontabSchedule, IntervalSchedule, PeriodicTask
 from django_celery_results.models import TaskResult
+
+from integrations.tasks import _media_imports
 
 from users.models import (
     HomeSortChoices,
@@ -470,6 +474,27 @@ class UserGetImportTasksTests(TestCase):
         self.assertEqual(import_tasks["results"][0]["source"], "stremio")
         self.assertEqual(import_tasks["schedules"][0]["source"], "stremio")
         self.assertEqual(import_tasks["schedules"][0]["username"], "test")
+
+    def test_get_import_tasks_excludes_disabled_stremio_schedule(self):
+        """A disabled Stremio recurring import should not appear as active."""
+        periodic_task = PeriodicTask.objects.create(
+            name="Import from Stremio for test (every 2 hours)",
+            task="Import from Stremio (Recurring)",
+            kwargs=f'{{"user_id": {self.user.id}}}',
+            crontab=self.crontab,
+            enabled=False,
+        )
+
+        import_tasks = self.user.get_import_tasks()
+
+        self.assertEqual(import_tasks["schedules"], [])
+
+        # Reading the status must not mutate the schedule it inspected.
+        periodic_task.refresh_from_db()
+        self.assertFalse(periodic_task.enabled)
+        self.assertEqual(periodic_task.task, "Import from Stremio (Recurring)")
+        self.assertEqual(periodic_task.crontab_id, self.crontab.id)
+        self.assertEqual(periodic_task.kwargs, f'{{"user_id": {self.user.id}}}')
 
     @patch("users.helpers.get_next_run_info")
     def test_get_import_tasks_schedules(self, mock_get_next_run_info):
@@ -1107,3 +1132,46 @@ class UserResolveWatchDateTests(TestCase):
         result = self.user.resolve_watch_date(self.now, self.release_date)
 
         self.assertEqual(result, self.now)
+
+
+class GetImportTasksRegistryConsistencyTests(TestCase):
+    """Guard against a source's recurring task being defined but unmapped.
+
+    Issue #598: Stremio's recurring Celery task existed, but
+    ``get_import_tasks()`` didn't know its name, so an enabled recurring
+    Stremio import silently failed to show up in Active Periodic Imports.
+    This test makes that class of omission fail CI for *any* source, not
+    just the one that happened to get reported.
+    """
+
+    def test_every_recurring_import_task_is_mapped(self):
+        """Every '(Recurring)' shared_task name must be in schedule_task_names."""
+        source = inspect.getsource(_media_imports)
+        recurring_task_names = set(
+            re.findall(r'name="(Import from [^"]+\(Recurring\))"', source),
+        )
+
+        # Sanity check the extraction itself still finds real tasks, so a
+        # refactor of _media_imports.py can't silently make this test vacuous.
+        self.assertIn("Import from Stremio (Recurring)", recurring_task_names)
+
+        user = get_user_model().objects.create_user(
+            username="registry-check",
+            password="12345",
+        )
+        import_tasks = user.get_import_tasks()
+        mapped_schedule_names = {
+            task_name
+            for task_names in import_tasks["schedule_task_names"].values()
+            for task_name in task_names
+        }
+
+        missing = recurring_task_names - mapped_schedule_names
+        self.assertEqual(
+            missing,
+            set(),
+            "Recurring import task(s) defined in _media_imports.py but missing "
+            "from get_import_tasks()'s schedule_task_names map: "
+            f"{sorted(missing)}. Active Periodic Imports will silently omit "
+            "these sources until the map is updated.",
+        )

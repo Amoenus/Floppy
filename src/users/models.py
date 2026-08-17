@@ -1925,6 +1925,7 @@ class User(AbstractUser):
         return {
             "results": results,
             "schedules": schedules,
+            "schedule_task_names": schedule_task_names,
         }
 
     def get_export_tasks(self):
