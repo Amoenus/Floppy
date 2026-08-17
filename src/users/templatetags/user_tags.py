@@ -113,6 +113,10 @@ SOURCES_CONFIG = {
         "name": "Hardcover",
         "logo": static("img/hardcover-logo.png"),
     },
+    "letterboxd": {
+        "name": "Letterboxd",
+        "logo": static("img/letterboxd-logo.svg"),
+    },
     "storygraph": {
         "name": "StoryGraph",
         "logo": static("img/storygraph-logo.svg"),
