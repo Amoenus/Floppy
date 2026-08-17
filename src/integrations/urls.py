@@ -140,6 +140,11 @@ urlpatterns = [
     path("import/koito/poll", views.poll_koito_manual, name="poll_koito_manual"),
     path("export/csv", views.export_csv, name="export_csv"),
     path(
+        "export/csv/letterboxd",
+        views.export_csv_letterboxd,
+        name="export_csv_letterboxd",
+    ),
+    path(
         "import/yamtrack/template",
         views.import_template_csv,
         name="import_template_csv",

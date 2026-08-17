@@ -21,6 +21,14 @@
         Scheduled exports are saved to: <code class="text-[var(--color-text-secondary)] bg-[var(--color-surface-strong)] px-1.5 py-0.5 rounded text-xs">{{ backup_dir }}</code>
       </p>
 
+      <div class="flex items-center gap-2 mb-5 text-sm">
+        {% include "app/icons/download.svg" with classes="w-4 h-4 text-[var(--color-link)]" %}
+        <a href="{% url 'export_csv_letterboxd' %}" class="text-[var(--color-link)] hover:underline">
+          Export Movies for Letterboxd (CSV)
+        </a>
+        <span class="text-[var(--color-text-muted)]">— watched movies only, formatted for Letterboxd's diary import.</span>
+      </div>
+
       <form method="post" action="{% url 'create_export_schedule' %}" id="exportForm" x-ref="exportForm">
         {% csrf_token %}
         <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg mb-5">
