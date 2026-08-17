@@ -20,6 +20,7 @@ from app.models import (
     Movie,
     MoviePlay,
     Sources,
+    Status,
 )
 from lists.models import CustomList
 
@@ -360,11 +361,17 @@ LETTERBOXD_HEADER = [
 def generate_letterboxd_rows(user):
     """Generate a Letterboxd-import-compatible CSV of the user's watched movies.
 
-    One row per watch (``MoviePlay``). Movies completed before per-watch
-    tracking existed and that have zero ``MoviePlay`` rows fall back to a
-    single row built from the aggregate ``Movie`` fields. Movies with neither
-    ``MoviePlay`` rows nor an ``end_date`` were never watched and are
-    excluded.
+    Combines two watch representations into one per-item timeline: individual
+    ``MoviePlay`` rows (the play-tracking feature), and legacy/imported
+    completions recorded as a standalone ``Movie`` row with no ``MoviePlay``
+    -- including repeat watches stored as separate ``Movie`` rows sharing the
+    same ``Item`` (see ``test_repeated_completed_plays_remain_separate``).
+    Watches are grouped by underlying ``Item`` rather than ``Movie`` row, so a
+    legacy repeat-watch row still rewatch-flags correctly, and ordered
+    chronologically (undated watches sorted last) to pick the first watch per
+    item. A ``Movie`` with neither a ``MoviePlay`` nor ``Status.COMPLETED`` was
+    never watched and is excluded; a ``Completed`` movie with no watch date
+    still exports with a blank ``WatchedDate`` rather than being dropped.
     """
     pseudo_buffer = Echo()
     writer = csv.writer(pseudo_buffer, quoting=csv.QUOTE_MINIMAL)
@@ -372,37 +379,45 @@ def generate_letterboxd_rows(user):
     yield writer.writerow(LETTERBOXD_HEADER)
 
     item_tags_map = _build_item_tags_map(user)
-    seen_movie_ids = set()
 
-    plays = (
-        MoviePlay.objects.filter(movie__user=user, end_date__isnull=False)
-        .select_related("movie", "movie__item")
-        .order_by("movie_id", "end_date", "created_at")
-    )
-    for play in plays.iterator(chunk_size=500):
+    # (item_id, watched_at, movie) for every discrete watch event, from both
+    # representations. Small enough to hold in memory per user (bounded by
+    # movie count, not episode-scale) so watches can be grouped and ordered
+    # by underlying item before rewatch flags are assigned.
+    events = []
+
+    plays = MoviePlay.objects.filter(
+        movie__user=user,
+        end_date__isnull=False,
+    ).select_related("movie", "movie__item")
+    for play in plays:
         movie = play.movie
         if movie.item is None:
             continue
-        is_rewatch = movie.id in seen_movie_ids
-        seen_movie_ids.add(movie.id)
-        yield writer.writerow(
-            _letterboxd_row(movie, play.end_date, is_rewatch, item_tags_map),
-        )
+        events.append((movie.item_id, play.end_date, movie))
 
     movie_ids_with_plays = MoviePlay.objects.filter(movie__user=user).values_list(
         "movie_id",
         flat=True,
     ).distinct()
     fallback_movies = (
-        Movie.objects.filter(user=user, end_date__isnull=False)
+        Movie.objects.filter(user=user, status=Status.COMPLETED.value)
         .exclude(id__in=movie_ids_with_plays)
         .select_related("item")
     )
-    for movie in fallback_movies.iterator(chunk_size=500):
+    for movie in fallback_movies:
         if movie.item is None:
             continue
+        events.append((movie.item_id, movie.end_date, movie))
+
+    events.sort(key=lambda event: (event[0], event[1] is None, event[1]))
+
+    seen_item_ids = set()
+    for item_id, watched_at, movie in events:
+        is_rewatch = item_id in seen_item_ids
+        seen_item_ids.add(item_id)
         yield writer.writerow(
-            _letterboxd_row(movie, movie.end_date, is_rewatch=False, item_tags_map=item_tags_map),
+            _letterboxd_row(movie, watched_at, is_rewatch, item_tags_map),
         )
 
 

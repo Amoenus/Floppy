@@ -857,7 +857,7 @@ class LetterboxdExportCSVTest(TestCase):
         self.assertEqual(rows[0]["Rewatch"], "")
 
     def test_unwatched_movie_excluded(self):
-        """A movie with no MoviePlay rows and no end_date is not exported."""
+        """A movie that was never completed and has no MoviePlay is not exported."""
         with disable_fetch_releases():
             item = Item.objects.create(
                 media_id="10494",
@@ -874,6 +874,100 @@ class LetterboxdExportCSVTest(TestCase):
 
         rows = self._get_rows()
         self.assertEqual(rows, [])
+
+    def test_completed_movie_without_watch_date_is_included(self):
+        """A Completed movie with no end_date and no MoviePlay still exports.
+
+        Legacy/imported completions can have Status.COMPLETED with no
+        end_date at all (see
+        app.tests.models.test_media.test_repeated_completed_plays_remain_separate),
+        so status -- not end_date -- is the "was this watched" signal.
+        """
+        with disable_fetch_releases():
+            item = Item.objects.create(
+                media_id="10494",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.MOVIE.value,
+                title="Perfect Blue",
+                image="https://image.url",
+            )
+            Movie.objects.create(
+                item=item,
+                user=self.user,
+                status=Status.COMPLETED.value,
+            )
+
+        rows = self._get_rows()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["WatchedDate"], "")
+        self.assertEqual(rows[0]["Rewatch"], "")
+
+    def test_legacy_repeated_completions_grouped_by_item_for_rewatch(self):
+        """Repeat watches stored as separate Movie rows for one Item rewatch-flag correctly.
+
+        Some completions are recorded as multiple standalone Movie rows
+        sharing the same Item rather than MoviePlay entries (see
+        app.tests.models.test_media.test_repeated_completed_plays_remain_separate).
+        Grouping must key off the underlying Item, not the Movie row, or
+        every such row looks like an unrelated first watch.
+        """
+        with disable_fetch_releases():
+            item = Item.objects.create(
+                media_id="10494",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.MOVIE.value,
+                title="Perfect Blue",
+                image="https://image.url",
+            )
+            Movie.objects.create(
+                item=item,
+                user=self.user,
+                status=Status.COMPLETED.value,
+                end_date=datetime(2020, 1, 1, 0, 0, tzinfo=UTC),
+            )
+            Movie.objects.create(
+                item=item,
+                user=self.user,
+                status=Status.COMPLETED.value,
+                end_date=datetime(2021, 1, 1, 0, 0, tzinfo=UTC),
+            )
+            # deliberately no MoviePlay rows -- both are legacy standalone rows
+
+        rows = sorted(self._get_rows(), key=lambda r: r["WatchedDate"])
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0]["WatchedDate"], "2020-01-01")
+        self.assertEqual(rows[0]["Rewatch"], "")
+        self.assertEqual(rows[1]["WatchedDate"], "2021-01-01")
+        self.assertEqual(rows[1]["Rewatch"], "true")
+
+    def test_legacy_repeated_completion_without_date_sorts_after_dated_ones(self):
+        """An undated legacy completion never displaces a dated one as 'first'."""
+        with disable_fetch_releases():
+            item = Item.objects.create(
+                media_id="10494",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.MOVIE.value,
+                title="Perfect Blue",
+                image="https://image.url",
+            )
+            Movie.objects.create(
+                item=item,
+                user=self.user,
+                status=Status.COMPLETED.value,
+            )
+            Movie.objects.create(
+                item=item,
+                user=self.user,
+                status=Status.COMPLETED.value,
+                end_date=datetime(2020, 1, 1, 0, 0, tzinfo=UTC),
+            )
+
+        rows = self._get_rows()
+        self.assertEqual(len(rows), 2)
+        dated = next(r for r in rows if r["WatchedDate"] == "2020-01-01")
+        undated = next(r for r in rows if r["WatchedDate"] == "")
+        self.assertEqual(dated["Rewatch"], "")
+        self.assertEqual(undated["Rewatch"], "true")
 
     def test_imdb_id_population(self):
         """tmdbID/imdbID are populated from Item source/media_id/provider_external_ids."""
