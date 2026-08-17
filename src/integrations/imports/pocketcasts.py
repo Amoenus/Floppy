@@ -313,6 +313,9 @@ class PocketCastsImporter:
         self._sync_window_start = None
         self._sync_window_end = None
         self._existing_history_items = None
+        # Set by _infer_completion_date(); default False so callers reading
+        # it before any inference call treat the (absent) date as unanchored.
+        self._last_completion_anchor_used = False
 
         # Track existing podcasts to calculate deltas
         # Use Sources.POCKETCASTS.value for consistency with lookup keys
@@ -1316,6 +1319,8 @@ class PocketCastsImporter:
         window_seconds = int((sync_window_end - sync_window_start).total_seconds())
         if window_seconds <= 0:
             completion_time = sync_window_end
+            # Invalid window: not backed by a real anchor, so this is a guess.
+            self._last_completion_anchor_used = False
             self._log_completion_inference(
                 episode_uuid,
                 debug_context,
@@ -2252,7 +2257,10 @@ class PocketCastsImporter:
                 completion_date = existing_podcast.end_date
                 completion_date_is_inferred = existing_podcast.is_end_date_inferred
             elif already_completed and self.previous_sync_at:
+                # Guessing from the last sync time, not a real listening
+                # timestamp for this episode.
                 completion_date = self.previous_sync_at
+                completion_date_is_inferred = True
 
             should_set_completion_date = new_status == Status.COMPLETED.value
 
