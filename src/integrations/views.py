@@ -2796,6 +2796,21 @@ def export_csv(request):
     return response
 
 
+@require_GET
+def export_csv_letterboxd(request):
+    """View for exporting the user's watched movies as a Letterboxd import CSV."""
+    now = timezone.localtime()
+    response = StreamingHttpResponse(
+        streaming_content=exports.generate_letterboxd_rows(request.user),
+        content_type="text/csv",
+        headers={
+            "Content-Disposition": f'attachment; filename="letterboxd_{now}.csv"',
+        },
+    )
+    logger.info("User %s started Letterboxd CSV export", request.user.username)
+    return response
+
+
 @login_not_required
 @csrf_exempt
 @require_POST
