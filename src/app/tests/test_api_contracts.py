@@ -18,6 +18,13 @@ from floppy_mcp.http_manifest import (
     canonical_openapi_path,
 )
 
+from api.channel_registry import (
+    ASYNCAPI_VERSION,
+    CELERY_QUEUES,
+    INBOUND_CHANNELS,
+    NON_WEBHOOK_PROVIDERS,
+    render_asyncapi,
+)
 from api.contract_views import api_docs
 from api.helpers import MEDIA_TYPE_VALID_LIST
 from api.schema_contract import (
@@ -39,9 +46,11 @@ from app.domain_vocabulary import (
     render_glossary_rows,
     render_jsonld_context,
 )
+from integrations.tasks._webhook import WEBHOOK_PROCESSORS
 
 OPENAPI_CONTRACT_PATH = settings.BASE_DIR / "api" / "contracts" / "openapi.yaml"
 JSONLD_CONTEXT_PATH = settings.BASE_DIR / "api" / "contracts" / "context.jsonld"
+ASYNCAPI_CONTRACT_PATH = settings.BASE_DIR / "api" / "contracts" / "asyncapi.json"
 
 
 class OfflineAPIDocsTests(SimpleTestCase):
@@ -1109,3 +1118,71 @@ async def exact_template():
             if entry.path not in paths or entry.method not in paths[entry.path]
         ]
         self.assertEqual(missing, [])
+
+
+class AsyncAPIContractTests(SimpleTestCase):
+    def test_contract_file_is_in_sync_with_channel_registry(self):
+        self.assertEqual(
+            ASYNCAPI_CONTRACT_PATH.read_bytes(),
+            render_asyncapi().encode("utf-8"),
+        )
+
+    def test_inbound_channels_cover_all_webhook_processors(self):
+        providers = {channel.provider for channel in INBOUND_CHANNELS}
+        self.assertEqual(
+            providers - NON_WEBHOOK_PROVIDERS,
+            set(WEBHOOK_PROCESSORS.keys()),
+        )
+
+    def test_inbound_channel_addresses_resolve_to_routes(self):
+        from django.urls import resolve
+
+        for channel in INBOUND_CHANNELS:
+            sample_path = (
+                channel.address.replace("{token}", "sampletoken123")
+                .replace("{media_type}", "movie")
+                .replace("{media_id}", "456")
+            )
+            match = resolve(f"/{sample_path}")
+            self.assertIsNotNone(
+                match.func,
+                f"Channel address {channel.address} did not resolve to a route",
+            )
+
+    def test_celery_queues_match_known_queues(self):
+        queue_names = {queue.name for queue in CELERY_QUEUES}
+        self.assertEqual(queue_names, {"celery", "interactive", "discover"})
+
+    def test_asyncapi_contract_serves_valid_cached_json(self):
+        response = self.client.get(reverse("asyncapi-contract"))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.headers["Content-Type"],
+            "application/json; charset=utf-8",
+        )
+        self.assertIn("max-age=3600", response.headers["Cache-Control"])
+        self.assertEqual(
+            response.headers["Content-Disposition"],
+            'inline; filename="asyncapi.json"',
+        )
+
+        data = json.loads(b"".join(response.streaming_content))
+        self.assertEqual(data["asyncapi"], ASYNCAPI_VERSION)
+        self.assertIn("channels", data)
+        self.assertIn("operations", data)
+        self.assertIn("components", data)
+        self.assertIn("x-floppy-celery-queues", data)
+        self.assertIn("x-floppy-worker-plan", data)
+
+    def test_asyncapi_contract_supports_conditional_get_and_head(self):
+        first = self.client.get(reverse("asyncapi-contract"))
+        self.assertEqual(first.status_code, 200)
+        self.assertIn("ETag", first.headers)
+
+        unmodified = self.client.get(
+            reverse("asyncapi-contract"), HTTP_IF_NONE_MATCH=first.headers["ETag"]
+        )
+        self.assertEqual(unmodified.status_code, 304)
+
+        head_response = self.client.head(reverse("asyncapi-contract"))
+        self.assertEqual(head_response.status_code, 200)

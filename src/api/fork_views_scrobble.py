@@ -12,6 +12,8 @@ from rest_framework.response import Response
 import app.providers.tmdb
 from app import live_playback
 from app.models import MediaTypes
+from integrations.delivery import get_or_record_receipt
+from integrations.models import IntegrationToken
 from integrations.webhooks.generic_scrobble import GenericScrobbleProcessor, is_played
 
 from . import fork_views_playback
@@ -204,49 +206,70 @@ class ScrobbleView(drf_views.APIView):
     )
     def post(self, request):
         """Validate and apply a scrobble event."""
-        error = _scrobble_request_error(request.data)
-        if error:
-            return error
+        client_event_id = request.headers.get("Idempotency-Key")
+        if not client_event_id and isinstance(request.data, dict):
+            client_event_id = request.data.get("client_event_id")
 
-        action = request.data.get("action")
-        media_type = request.data.get("media_type")
-        ids = request.data.get("ids") or {}
+        token = request.auth if isinstance(request.auth, IntegrationToken) else None
 
-        self._update_live_playback(request.user, action, media_type, ids, request.data)
+        def _execute():
+            error = _scrobble_request_error(request.data)
+            if error:
+                return error
 
-        if action != "stop":
-            return Response({"detail": "accepted"}, status=HTTP.OK)
+            action = request.data.get("action")
+            media_type = request.data.get("media_type")
+            ids = request.data.get("ids") or {}
 
-        raw_played_at = request.data.get("played_at")
-        payload = {
-            "media_type": media_type,
-            "ids": ids,
-            "title": request.data.get("title"),
-            "series_title": request.data.get("series_title"),
-            "season_number": request.data.get("season_number"),
-            "episode_number": request.data.get("episode_number"),
-            "position_seconds": request.data.get("position_seconds"),
-            "duration_seconds": request.data.get("duration_seconds"),
-            "completed": request.data.get("completed"),
-            "played_at": try_parse_datetime_input(raw_played_at)
-            if raw_played_at
-            else None,
-        }
-        try:
-            GenericScrobbleProcessor().process_payload(payload, request.user)
-        except Exception as e:
-            return Response(
-                {"detail": "Could not resolve media.", "errors": str(e)},
-                status=HTTP.NOT_FOUND,
+            self._update_live_playback(request.user, action, media_type, ids, request.data)
+
+            if action != "stop":
+                return Response({"detail": "accepted"}, status=HTTP.OK)
+
+            raw_played_at = request.data.get("played_at")
+            payload = {
+                "media_type": media_type,
+                "ids": ids,
+                "title": request.data.get("title"),
+                "series_title": request.data.get("series_title"),
+                "season_number": request.data.get("season_number"),
+                "episode_number": request.data.get("episode_number"),
+                "position_seconds": request.data.get("position_seconds"),
+                "duration_seconds": request.data.get("duration_seconds"),
+                "completed": request.data.get("completed"),
+                "played_at": try_parse_datetime_input(raw_played_at)
+                if raw_played_at
+                else None,
+            }
+            try:
+                GenericScrobbleProcessor().process_payload(payload, request.user)
+            except Exception:
+                logger.exception("Failed to process generic scrobble payload.")
+                return Response(
+                    {"detail": "Could not resolve media."},
+                    status=HTTP.NOT_FOUND,
+                )
+
+            self._store_playback_progress(
+                request.user,
+                payload,
+                completed=is_played(payload),
             )
 
-        self._store_playback_progress(
-            request.user,
-            payload,
-            completed=is_played(payload),
-        )
+            return Response({"detail": "accepted"}, status=HTTP.OK)
 
-        return Response({"detail": "accepted"}, status=HTTP.OK)
+        if client_event_id:
+            response, _ = get_or_record_receipt(
+                user=request.user,
+                client_event_id=str(client_event_id),
+                payload=request.data,
+                execute_fn=_execute,
+                token=token,
+            )
+            return response
+
+        return _execute()
+
 
     def _store_playback_progress(self, user, payload, *, completed):
         """Persist the durable resume position; failures are never raised.

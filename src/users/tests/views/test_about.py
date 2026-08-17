@@ -23,6 +23,7 @@ class AboutViewTests(TestCase):
             "Verified API Schema": reverse("openapi-contract"),
             "Domain Context (JSON-LD)": reverse("jsonld-context"),
             "Full Diagnostic API Schema": reverse("schema"),
+            "Asynchronous Channels (AsyncAPI)": reverse("asyncapi-contract"),
         }
         api_links = [
             (link.get_text(" ", strip=True), link.get("href"))
@@ -41,6 +42,3 @@ class AboutViewTests(TestCase):
                 icon = link.find("svg")
                 self.assertEqual(icon.get("aria-hidden"), "true")
                 self.assertEqual(icon.get("focusable"), "false")
-        # AsyncAPI (W3) is not shipped yet, so About must not advertise it.
-        # The rule is unchanged: link only artifacts that actually exist.
-        self.assertNotContains(response, "AsyncAPI")

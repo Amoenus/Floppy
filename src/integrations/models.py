@@ -1,6 +1,10 @@
 """Models for integration data."""
 
+import hashlib
+import secrets
+
 from django.conf import settings
+from django.core.serializers.json import DjangoJSONEncoder
 from django.db import models
 from django.utils import timezone
 
@@ -941,3 +945,123 @@ class ImportRun(models.Model):
     def __str__(self):
         """Readable representation."""
         return f"ImportRun({self.source}, {self.user.username}, {self.status})"
+
+
+DEFAULT_INTEGRATION_SCOPES = [
+    "scrobble:write",
+    "progress:read",
+    "progress:write",
+    "watchlist:read",
+    "watchlist:write",
+    "catalog:read",
+]
+
+
+class IntegrationToken(models.Model):
+    """Scoped, high-entropy API credential for third-party client integrations."""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="integration_tokens",
+    )
+    name = models.CharField(max_length=255)
+    client_identifier = models.CharField(max_length=255, blank=True, default="")
+    token_digest = models.CharField(max_length=64, unique=True, db_index=True)
+    token_prefix = models.CharField(max_length=16, blank=True, default="")
+    scopes = models.JSONField(default=list)
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        """Model options."""
+
+        verbose_name = "Integration token"
+        verbose_name_plural = "Integration tokens"
+        indexes = [
+            models.Index(fields=["user", "created_at"]),
+        ]
+
+    def __str__(self):
+        """Readable representation."""
+        return f"IntegrationToken({self.name}, {self.user.username})"
+
+    @classmethod
+    def generate(
+        cls,
+        user,
+        name: str,
+        scopes: list[str] | None = None,
+        client_identifier: str = "",
+        expires_at: timezone.datetime | None = None,
+    ) -> tuple["IntegrationToken", str]:
+        """Generate a raw token string and persist its SHA-256 digest."""
+        raw_token = f"flp_{secrets.token_urlsafe(32)}"
+        token_digest = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+        token_prefix = raw_token[:12]
+        if scopes is None:
+            scopes = list(DEFAULT_INTEGRATION_SCOPES)
+        instance = cls.objects.create(
+            user=user,
+            name=name,
+            client_identifier=client_identifier,
+            token_digest=token_digest,
+            token_prefix=token_prefix,
+            scopes=scopes,
+            expires_at=expires_at,
+        )
+        return instance, raw_token
+
+    def is_valid(self) -> bool:
+        """Return True if the token is not revoked and not expired."""
+        return self.revoked_at is None and (
+            self.expires_at is None or self.expires_at > timezone.now()
+        )
+
+    def has_scope(self, scope: str) -> bool:
+        """Return True if '*' is in scopes or the specific scope is in scopes."""
+        scopes = self.scopes or []
+        return "*" in scopes or scope in scopes
+
+
+class IntegrationEventReceipt(models.Model):
+    """Store client event receipts for idempotency and deduplication."""
+
+    token = models.ForeignKey(
+        IntegrationToken,
+        on_delete=models.CASCADE,
+        related_name="event_receipts",
+        null=True,
+        blank=True,
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="event_receipts",
+    )
+    client_event_id = models.CharField(max_length=255, db_index=True)
+    payload_digest = models.CharField(max_length=64)
+    response_status_code = models.IntegerField(default=200)
+    response_body = models.JSONField(default=dict, encoder=DjangoJSONEncoder)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+    class Meta:
+        """Model options."""
+
+        verbose_name = "Integration event receipt"
+        verbose_name_plural = "Integration event receipts"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "client_event_id"],
+                name="unique_user_client_event_id",
+            ),
+        ]
+
+    def __str__(self):
+        """Readable representation."""
+        return f"IntegrationEventReceipt({self.user.username}, {self.client_event_id})"
+
+

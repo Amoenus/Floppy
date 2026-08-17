@@ -11,6 +11,7 @@
                 color-scheme: light dark;
                 --background: #fff;
                 --surface: #f4f4f5;
+                --surface-strong: #e4e4e7;
                 --text: #18181b;
                 --muted: #3f3f46;
                 --link: #1d4ed8;
@@ -30,7 +31,7 @@
                 max-width: 70ch;
                 margin: 0 auto;
                 padding: 1rem;
-                font-family: system-ui, sans-serif;
+                font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
                 line-height: 1.55;
                 overflow-wrap: anywhere;
             }
@@ -49,8 +50,28 @@
 
             h1,
             h2,
+            h3,
+            h4 {
+                line-height: 1.25;
+            }
+
+            h1 {
+                font-size: 1.875rem;
+                margin-block-end: 0.5rem;
+            }
+
+            h2 {
+                font-size: 1.35rem;
+                margin-block-start: 1.5rem;
+                margin-block-end: 0.75rem;
+                border-block-end: 1px solid var(--border);
+                padding-block-end: 0.35rem;
+            }
+
             h3 {
-                line-height: 1.2;
+                font-size: 1.1rem;
+                margin-block-start: 1.25rem;
+                margin-block-end: 0.5rem;
             }
 
             a {
@@ -81,14 +102,31 @@
 
             pre {
                 max-width: 100%;
-                padding: 1rem;
+                padding: 0.875rem;
                 overflow-x: auto;
                 background: var(--surface);
                 border: 1px solid var(--border);
+                border-radius: 4px;
+                user-select: all;
+                -webkit-user-select: all;
+                cursor: copy;
             }
 
             code {
-                font-family: ui-monospace, monospace;
+                font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+                font-size: 0.9em;
+            }
+
+            pre code,
+            table code {
+                user-select: all;
+                -webkit-user-select: all;
+            }
+
+            p code, li code {
+                padding: 0.1em 0.3em;
+                background: var(--surface);
+                border-radius: 3px;
             }
 
             dl {
@@ -103,15 +141,48 @@
 
             dt {
                 font-weight: 700;
+                color: var(--text);
             }
 
             dd {
                 margin-inline-start: 0;
+                margin-block-start: 0.25rem;
+            }
+
+            table {
+                width: 100%;
+                border-collapse: collapse;
+                margin-block: 1rem;
+                font-size: 0.9rem;
+            }
+
+            th, td {
+                padding: 0.5rem 0.75rem;
+                text-align: start;
+                border: 1px solid var(--border);
+            }
+
+            th {
+                background: var(--surface);
+                font-weight: 600;
+            }
+
+            .badge {
+                display: inline-block;
+                padding: 0.15rem 0.4rem;
+                font-size: 0.75rem;
+                font-family: ui-monospace, monospace;
+                font-weight: 600;
+                text-transform: uppercase;
+                background: var(--surface-strong);
+                border-radius: 3px;
             }
 
             footer {
                 color: var(--muted);
                 border-block-start: 1px solid var(--border);
+                padding-block-start: 1rem;
+                font-size: 0.875rem;
             }
 
             @media (max-width: 30rem) {
@@ -120,10 +191,31 @@
                 }
             }
 
+            .top-nav {
+                margin-block-end: 1rem;
+                padding-block-end: 0.75rem;
+                border-block-end: 1px solid var(--border);
+            }
+
+            .back-link {
+                display: inline-flex;
+                align-items: center;
+                gap: 0.35rem;
+                font-size: 0.9rem;
+                font-weight: 500;
+                color: var(--link);
+                text-decoration: none;
+            }
+
+            .back-link:hover {
+                text-decoration: underline;
+            }
+
             @media (prefers-color-scheme: dark) {
                 :root {
                     --background: #18181b;
                     --surface: #27272a;
+                    --surface-strong: #3f3f46;
                     --text: #fafafa;
                     --muted: #d4d4d8;
                     --link: #93c5fd;
@@ -135,6 +227,9 @@
   <body>
     <a class="skip-link" href="#main-content">Skip to content</a>
     <header>
+      <nav aria-label="Application navigation" class="top-nav">
+        <a href="{% url 'about' %}" class="back-link">&larr; Back to Floppy (Settings)</a>
+      </nav>
       <h1>Floppy API</h1>
       <p>A read-only index for API setup and schema review.</p>
     </header>
@@ -153,7 +248,7 @@
               <a href="{% url 'schema' %}">Open the full diagnostic schema</a>
             </li>
             <li>
-              <a href="{% url 'openapi-contract' %}">Download the verified API subset</a>
+              <a href="{% url 'openapi-contract' %}">Open the verified API schema</a>
             </li>
           </ul>
         </nav>
@@ -169,6 +264,114 @@
         </p>
         <p>This read-only request returns your preferences.</p>
         <pre><code id="authenticated-command">curl --request GET --header "X-API-Key: YOUR_API_TOKEN" "{{ preferences_url }}"</code></pre>
+
+        <h4>Core integration workflows</h4>
+        <p>Common recipes for searching, tracking, scrobbling, and connecting AI coding assistants.</p>
+
+        <h5>1. Search media catalog</h5>
+        <pre><code>curl --request GET \
+  --header "X-API-Key: YOUR_API_TOKEN" \
+  "https://YOUR_FLOPPY_HOST/api/v1/search/movie/?search=Dune"</code></pre>
+
+        <h5>2. Track or update media</h5>
+        <pre><code>curl --request POST \
+  --header "X-API-Key: YOUR_API_TOKEN" \
+  --header "Content-Type: application/json" \
+  --data '{"title": "Dune", "status": 1, "score": 9}' \
+  "https://YOUR_FLOPPY_HOST/api/v1/media/movie/"</code></pre>
+
+        <h5>3. Scrobble music listen (ListenBrainz standard)</h5>
+        <pre><code>curl --request POST \
+  --header "Authorization: Token YOUR_API_TOKEN" \
+  --header "Content-Type: application/json" \
+  --data '{"listen_type": "single", "payload": [{"listened_at": 1700000000, "track_metadata": {"artist_name": "Pink Floyd", "track_name": "Time", "release_name": "The Dark Side of the Moon"}}]}' \
+  "https://YOUR_FLOPPY_HOST/apis/listenbrainz/1/submit-listens/"</code></pre>
+
+        <h5>4. Connect AI Assistant via FastMCP</h5>
+        <pre><code>claude mcp add floppy -- docker exec -i -e FLOPPY_TOKEN="YOUR_API_TOKEN" floppy uv run --no-sync python -m floppy_mcp</code></pre>
+
+        <h4>Reference cheat sheet</h4>
+        <div style="overflow-x: auto; max-width: 100%;">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Category</th>
+                <th scope="col">Path</th>
+                <th scope="col">Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>System Info</td>
+                <td><code>GET /api/v1/info/</code></td>
+                <td>Instance version, status, and configuration</td>
+              </tr>
+              <tr>
+                <td>Media Entries</td>
+                <td><code>GET, POST /api/v1/media/{type}/</code></td>
+                <td>Query or create user media tracking records</td>
+              </tr>
+              <tr>
+                <td>Item Detail</td>
+                <td><code>GET, PATCH, DELETE /api/v1/media/{type}/{source}/{id}/</code></td>
+                <td>Manage individual item status, score, progress</td>
+              </tr>
+              <tr>
+                <td>Search</td>
+                <td><code>GET /api/v1/search/{type}/?search=...</code></td>
+                <td>Query provider catalog metadata</td>
+              </tr>
+              <tr>
+                <td>History</td>
+                <td><code>GET /api/v1/history/</code></td>
+                <td>Chronological consumption events & scrobbles</td>
+              </tr>
+              <tr>
+                <td>Lists</td>
+                <td><code>GET, POST /api/v1/lists/</code></td>
+                <td>Custom smart lists and curated collections</td>
+              </tr>
+              <tr>
+                <td>Collection</td>
+                <td><code>GET, POST /api/v1/collection/</code></td>
+                <td>Physical & digital media inventory tracking</td>
+              </tr>
+              <tr>
+                <td>Music Plays</td>
+                <td><code>POST /api/v1/music/bulk-plays/</code></td>
+                <td>Batch log album tracks and plays</td>
+              </tr>
+              <tr>
+                <td>Webhooks</td>
+                <td><code>POST /integrations/{service}/webhook/</code></td>
+                <td>Plex, Jellyfin, Emby, Kodi, and Seerr sync (service: <code>plex</code>, <code>jellyfin</code>, <code>emby</code>, <code>kodi</code>, <code>seerr</code>)</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h5>Tracking status codes</h5>
+        <p>
+          <code>0</code> = Planning &bull;
+          <code>1</code> = In progress &bull;
+          <code>2</code> = Paused &bull;
+          <code>3</code> = Completed &bull;
+          <code>4</code> = Dropped
+        </p>
+
+        <h5>Media type slugs</h5>
+        <p>
+          <code>movie</code> &bull;
+          <code>tv</code> &bull;
+          <code>anime</code> &bull;
+          <code>manga</code> &bull;
+          <code>book</code> &bull;
+          <code>comic</code> &bull;
+          <code>game</code> &bull;
+          <code>boardgame</code> &bull;
+          <code>music</code> &bull;
+          <code>podcast</code>
+        </p>
       </section>
       <section id="domain-model" aria-labelledby="domain-model-heading">
         <h2 id="domain-model-heading">Domain model</h2>
@@ -189,20 +392,30 @@
         <article id="dynamic-schema" class="schema-entry">
           <h3>
             <a href="{% url 'schema' %}">Full diagnostic schema</a>
+            <span class="badge">Live</span>
           </h3>
           <p>The full schema is generated dynamically from this running Floppy instance. Use it for diagnostics.</p>
         </article>
         <article id="committed-schema" class="schema-entry">
           <h3>
             <a href="{% url 'openapi-contract' %}">Verified API subset</a>
+            <span class="badge">YAML</span>
           </h3>
           <p>The reviewed, committed, versioned subset contains 41 operations for supported integrations and MCP grounding.</p>
         </article>
         <article id="domain-context" class="schema-entry">
           <h3>
             <a href="{% url 'jsonld-context' %}">Domain context (JSON-LD)</a>
+            <span class="badge">JSON-LD 1.1</span>
           </h3>
           <p>The JSON-LD 1.1 context types Floppy's domain nouns and maps them to schema.org where an equivalent exists.</p>
+        </article>
+        <article id="asyncapi-channels" class="schema-entry">
+          <h3>
+            <a href="{% url 'asyncapi-contract' %}">Asynchronous channels (AsyncAPI)</a>
+            <span class="badge">AsyncAPI 3.0</span>
+          </h3>
+          <p>The AsyncAPI 3.0 contract documents verified inbound message routes and Celery queue ownership across resource tiers.</p>
         </article>
       </section>
     </main>
@@ -211,3 +424,4 @@
     </footer>
   </body>
 </html>
+

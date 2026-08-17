@@ -1,0 +1,272 @@
+{
+  "asyncapi": "3.0.0",
+  "info": {
+    "title": "Floppy asynchronous channels",
+    "version": "1.0.0",
+    "description": "Verified inbound message channels and Celery queue ownership for a Floppy instance. Scope is deliberately narrow: polling importers, Apprise notification destinations, and shared base classes are not channels and are excluded.",
+    "contact": {
+      "url": "https://github.com/dannyvfilms/Floppy/issues"
+    },
+    "license": {
+      "name": "AGPL-3.0",
+      "url": "https://www.gnu.org/licenses/agpl-3.0.html"
+    }
+  },
+  "defaultContentType": "application/json",
+  "channels": {
+    "plexWebhook": {
+      "address": "/webhook/plex/{token}",
+      "title": "plexWebhook",
+      "summary": "Plex playback and scrobble webhook.",
+      "messages": {
+        "request": {
+          "$ref": "#/components/messages/plexWebhookRequest"
+        }
+      },
+      "x-floppy-provider": "plex",
+      "x-floppy-dispatches-to-queue": "celery"
+    },
+    "jellyfinWebhook": {
+      "address": "/webhook/jellyfin/{token}",
+      "title": "jellyfinWebhook",
+      "summary": "Jellyfin playback webhook.",
+      "messages": {
+        "request": {
+          "$ref": "#/components/messages/jellyfinWebhookRequest"
+        }
+      },
+      "x-floppy-provider": "jellyfin",
+      "x-floppy-dispatches-to-queue": "celery"
+    },
+    "embyWebhook": {
+      "address": "/webhook/emby/{token}",
+      "title": "embyWebhook",
+      "summary": "Emby playback webhook.",
+      "messages": {
+        "request": {
+          "$ref": "#/components/messages/embyWebhookRequest"
+        }
+      },
+      "x-floppy-provider": "emby",
+      "x-floppy-dispatches-to-queue": "celery"
+    },
+    "jellyseerrWebhook": {
+      "address": "/webhook/jellyseerr/{token}",
+      "title": "jellyseerrWebhook",
+      "summary": "Jellyseerr request webhook scoped to one user token.",
+      "messages": {
+        "request": {
+          "$ref": "#/components/messages/jellyseerrWebhookRequest"
+        }
+      },
+      "x-floppy-provider": "seerr",
+      "x-floppy-dispatches-to-queue": "celery"
+    },
+    "seerrGlobalWebhook": {
+      "address": "/webhook/seerr/global/",
+      "title": "seerrGlobalWebhook",
+      "summary": "Overseerr or Jellyseerr global webhook. Floppy resolves the owning user from the payload instead of a token in the path.",
+      "messages": {
+        "request": {
+          "$ref": "#/components/messages/seerrGlobalWebhookRequest"
+        }
+      },
+      "x-floppy-provider": "seerr",
+      "x-floppy-dispatches-to-queue": "celery"
+    },
+    "kodiWebhook": {
+      "address": "/webhook/kodi/{token}",
+      "title": "kodiWebhook",
+      "summary": "Kodi playback webhook.",
+      "messages": {
+        "request": {
+          "$ref": "#/components/messages/kodiWebhookRequest"
+        }
+      },
+      "x-floppy-provider": "kodi",
+      "x-floppy-dispatches-to-queue": "celery"
+    },
+    "stremioAddonSubtitles": {
+      "address": "/stremio-addon/{token}/subtitles/{media_type}/{media_id}.json",
+      "title": "stremioAddonSubtitles",
+      "summary": "Stremio subtitles request used as a playback-start signal. Stremio re-requests on seek and quality change, so Floppy throttles to one scrobble per item per window.",
+      "messages": {
+        "request": {
+          "$ref": "#/components/messages/stremioAddonSubtitlesRequest"
+        }
+      },
+      "x-floppy-provider": "stremio",
+      "x-floppy-dispatches-to-queue": "celery"
+    },
+    "listenBrainzSubmitListens": {
+      "address": "/apis/listenbrainz/1/submit-listens",
+      "title": "listenBrainzSubmitListens",
+      "summary": "ListenBrainz-compatible listen submission. Handled synchronously by the REST API, not by the webhook task, and described in OpenAPI as well because it has an exact HTTP wire shape.",
+      "messages": {
+        "request": {
+          "$ref": "#/components/messages/listenBrainzSubmitListensRequest"
+        }
+      },
+      "x-floppy-provider": "listenbrainz"
+    }
+  },
+  "operations": {
+    "receivePlexWebhook": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/plexWebhook"
+      },
+      "summary": "Plex playback and scrobble webhook."
+    },
+    "receiveJellyfinWebhook": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/jellyfinWebhook"
+      },
+      "summary": "Jellyfin playback webhook."
+    },
+    "receiveEmbyWebhook": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/embyWebhook"
+      },
+      "summary": "Emby playback webhook."
+    },
+    "receiveJellyseerrWebhook": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/jellyseerrWebhook"
+      },
+      "summary": "Jellyseerr request webhook scoped to one user token."
+    },
+    "receiveSeerrGlobalWebhook": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/seerrGlobalWebhook"
+      },
+      "summary": "Overseerr or Jellyseerr global webhook. Floppy resolves the owning user from the payload instead of a token in the path."
+    },
+    "receiveKodiWebhook": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/kodiWebhook"
+      },
+      "summary": "Kodi playback webhook."
+    },
+    "receiveStremioAddonSubtitles": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/stremioAddonSubtitles"
+      },
+      "summary": "Stremio subtitles request used as a playback-start signal. Stremio re-requests on seek and quality change, so Floppy throttles to one scrobble per item per window."
+    },
+    "receiveListenBrainzSubmitListens": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/listenBrainzSubmitListens"
+      },
+      "summary": "ListenBrainz-compatible listen submission. Handled synchronously by the REST API, not by the webhook task, and described in OpenAPI as well because it has an exact HTTP wire shape."
+    }
+  },
+  "components": {
+    "messages": {
+      "plexWebhookRequest": {
+        "name": "plexWebhookRequest",
+        "title": "Plex playback and scrobble webhook.",
+        "contentType": "application/json",
+        "payload": {
+          "type": "object"
+        },
+        "x-floppy-payload-owner": "third-party"
+      },
+      "jellyfinWebhookRequest": {
+        "name": "jellyfinWebhookRequest",
+        "title": "Jellyfin playback webhook.",
+        "contentType": "application/json",
+        "payload": {
+          "type": "object"
+        },
+        "x-floppy-payload-owner": "third-party"
+      },
+      "embyWebhookRequest": {
+        "name": "embyWebhookRequest",
+        "title": "Emby playback webhook.",
+        "contentType": "application/json",
+        "payload": {
+          "type": "object"
+        },
+        "x-floppy-payload-owner": "third-party"
+      },
+      "jellyseerrWebhookRequest": {
+        "name": "jellyseerrWebhookRequest",
+        "title": "Jellyseerr request webhook scoped to one user token.",
+        "contentType": "application/json",
+        "payload": {
+          "type": "object"
+        },
+        "x-floppy-payload-owner": "third-party"
+      },
+      "seerrGlobalWebhookRequest": {
+        "name": "seerrGlobalWebhookRequest",
+        "title": "Overseerr or Jellyseerr global webhook. Floppy resolves the owning user from the payload instead of a token in the path.",
+        "contentType": "application/json",
+        "payload": {
+          "type": "object"
+        },
+        "x-floppy-payload-owner": "third-party"
+      },
+      "kodiWebhookRequest": {
+        "name": "kodiWebhookRequest",
+        "title": "Kodi playback webhook.",
+        "contentType": "application/json",
+        "payload": {
+          "type": "object"
+        },
+        "x-floppy-payload-owner": "third-party"
+      },
+      "stremioAddonSubtitlesRequest": {
+        "name": "stremioAddonSubtitlesRequest",
+        "title": "Stremio subtitles request used as a playback-start signal. Stremio re-requests on seek and quality change, so Floppy throttles to one scrobble per item per window.",
+        "contentType": "application/json",
+        "payload": {
+          "type": "object"
+        },
+        "x-floppy-payload-owner": "third-party"
+      },
+      "listenBrainzSubmitListensRequest": {
+        "name": "listenBrainzSubmitListensRequest",
+        "title": "ListenBrainz-compatible listen submission. Handled synchronously by the REST API, not by the webhook task, and described in OpenAPI as well because it has an exact HTTP wire shape.",
+        "contentType": "application/json",
+        "payload": {
+          "type": "object"
+        },
+        "x-floppy-payload-owner": "floppy"
+      }
+    }
+  },
+  "x-floppy-celery-queues": {
+    "celery": {
+      "summary": "Background work. Default queue for tasks with no explicit override, including webhook processing and metadata backfills.",
+      "defaultPriority": 5,
+      "contentType": "application/x-python-serialize"
+    },
+    "interactive": {
+      "summary": "Latency-sensitive work a user is waiting on. Kept isolated so bulk backfills cannot starve it.",
+      "defaultPriority": 0,
+      "contentType": "application/x-python-serialize"
+    },
+    "discover": {
+      "summary": "Discover cache rebuilds.",
+      "defaultPriority": 9,
+      "contentType": "application/x-python-serialize"
+    }
+  },
+  "x-floppy-worker-plan": {
+    "description": "Queues the background worker consumes at each resource tier. A tier that omits a queue from this list starts a dedicated worker for it instead; no queue is ever dropped.",
+    "byTier": {
+      "minimal": "celery,interactive,discover",
+      "constrained": "celery,discover",
+      "standard": "celery,discover"
+    }
+  }
+}

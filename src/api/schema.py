@@ -2,13 +2,35 @@ from drf_spectacular.extensions import (
     OpenApiAuthenticationExtension,
     OpenApiSerializerFieldExtension,
 )
-from drf_spectacular.utils import OpenApiParameter
+from drf_spectacular.renderers import OpenApiJsonRenderer, OpenApiYamlRenderer
+from drf_spectacular.utils import OpenApiParameter, extend_schema
+from drf_spectacular.views import SpectacularAPIView
 
 from api.helpers import (
     MEDIA_STATUS_MAP,
     MEDIA_TYPE_COMPLETE_VALID_LIST,
     MEDIA_TYPE_VALID_LIST,
 )
+
+
+class OpenApiTextYamlRenderer(OpenApiYamlRenderer):
+    """Render OpenAPI YAML schemas with text/yaml content-type for in-browser display."""
+
+    media_type = "text/yaml"
+
+
+@extend_schema(exclude=True)
+class LiveSchemaView(SpectacularAPIView):
+    """Serve the dynamic OpenAPI schema with text/yaml and inline display headers."""
+
+    renderer_classes = [OpenApiTextYamlRenderer, OpenApiYamlRenderer, OpenApiJsonRenderer]
+
+    def get(self, request, *args, **kwargs):
+        """Serve dynamic OpenAPI schema with text/yaml content-type and inline disposition."""
+        response = super().get(request, *args, **kwargs)
+        response["Content-Disposition"] = 'inline; filename="openapi-live.yaml"'
+        return response
+
 
 STATUS_LABELS_BY_CODE = {code: label for label, code in MEDIA_STATUS_MAP.items()}
 

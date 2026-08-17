@@ -25,6 +25,8 @@ from app.models import (
     Status,
 )
 from app.services.tracking_hydration import ensure_item_metadata
+from integrations.delivery import get_or_record_receipt
+from integrations.models import IntegrationToken
 
 from .helpers import paginate_data, parse_limit_offset, try_parse_datetime_input
 
@@ -575,17 +577,36 @@ class PlaybackProgressView(drf_views.APIView):
     )
     def put(self, request):
         """Set or clear a resume position."""
-        error = _write_request_error(request.data, require_position=True)
-        if error:
-            return error
+        client_event_id = request.headers.get("Idempotency-Key")
+        if not client_event_id and isinstance(request.data, dict):
+            client_event_id = request.data.get("client_event_id")
 
-        if request.data.get("position_seconds") is None:
-            return self._clear(request)
+        token = request.auth if isinstance(request.auth, IntegrationToken) else None
 
-        media_type = request.data.get("media_type")
-        if media_type == MediaTypes.PODCAST.value:
-            return self._put_podcast(request)
-        return self._put_video(request, media_type)
+        def _execute():
+            error = _write_request_error(request.data, require_position=True)
+            if error:
+                return error
+
+            if request.data.get("position_seconds") is None:
+                return self._clear(request)
+
+            media_type = request.data.get("media_type")
+            if media_type == MediaTypes.PODCAST.value:
+                return self._put_podcast(request)
+            return self._put_video(request, media_type)
+
+        if client_event_id:
+            response, _ = get_or_record_receipt(
+                user=request.user,
+                client_event_id=str(client_event_id),
+                payload=request.data,
+                execute_fn=_execute,
+                token=token,
+            )
+            return response
+
+        return _execute()
 
     def _put_video(self, request, media_type):
         """Upsert a movie/episode position, creating the Item if needed."""
@@ -651,10 +672,30 @@ class PlaybackProgressView(drf_views.APIView):
     )
     def delete(self, request):
         """Clear a saved resume position."""
-        error = _write_request_error(request.data, require_position=False)
-        if error:
-            return error
-        return self._clear(request)
+        client_event_id = request.headers.get("Idempotency-Key")
+        if not client_event_id and isinstance(request.data, dict):
+            client_event_id = request.data.get("client_event_id")
+
+        token = request.auth if isinstance(request.auth, IntegrationToken) else None
+
+        def _execute():
+            error = _write_request_error(request.data, require_position=False)
+            if error:
+                return error
+            return self._clear(request)
+
+        if client_event_id:
+            response, _ = get_or_record_receipt(
+                user=request.user,
+                client_event_id=str(client_event_id),
+                payload=request.data,
+                execute_fn=_execute,
+                token=token,
+            )
+            return response
+
+        return _execute()
+
 
     def _clear(self, request):
         """Delete the stored position for the identified media."""

@@ -1,29 +1,57 @@
+"""Authentication classes for API requests."""
+
+import hashlib
+
 from rest_framework.authentication import BaseAuthentication
 from rest_framework.exceptions import AuthenticationFailed
+from rest_framework.permissions import BasePermission
 
+from integrations.models import IntegrationToken
 from users.models import User
 
 
-class BearerAuthentication(BaseAuthentication):
-    """Bearer Authentication."""
+def authenticate_token(raw_token: str):
+    """Authenticate raw token against IntegrationToken or fallback to User.token."""
+    if not raw_token:
+        msg = "Invalid token"
+        raise AuthenticationFailed(msg)
 
-    keyword = "Bearer"
+    token_digest = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+    try:
+        integration_token = IntegrationToken.objects.select_related("user").get(
+            token_digest=token_digest
+        )
+    except IntegrationToken.DoesNotExist:
+        pass
+    else:
+        if not integration_token.is_valid():
+            msg = "Invalid token"
+            raise AuthenticationFailed(msg)
+        return (integration_token.user, integration_token)
+
+    try:
+        user = User.objects.get(token=raw_token)
+    except User.DoesNotExist:
+        msg = "Invalid token"
+        raise AuthenticationFailed(msg) from None
+    return (user, None)
+
+
+class BearerAuthentication(BaseAuthentication):
+    """Bearer or Token Authorization header authentication."""
+
+    keywords = ("bearer", "token")
 
     def authenticate(self, request):
-        """Authenticate the user with Bearer token."""
+        """Authenticate the user with Bearer or Token header."""
         auth = request.headers.get("Authorization")
         if not auth:
             return None
         parts = auth.split()
-        if len(parts) != 2 or parts[0] != self.keyword:  # noqa: PLR2004
+        if len(parts) != 2 or parts[0].lower() not in self.keywords:  # noqa: PLR2004
             return None
         token = parts[1]
-        try:
-            user = User.objects.get(token=token)
-        except User.DoesNotExist:
-            msg = "Invalid token"
-            raise AuthenticationFailed(msg) from None
-        return (user, None)
+        return authenticate_token(token)
 
 
 class ListenBrainzTokenAuthentication(BaseAuthentication):
@@ -31,7 +59,7 @@ class ListenBrainzTokenAuthentication(BaseAuthentication):
 
     Exists so ListenBrainz-compatible scrobble clients (Multi-Scrobbler,
     Navidrome, Pano Scrobbler, ...) can authenticate against the ingest
-    endpoints. Uses the same `User.token` as the rest of the API.
+    endpoints. Supports both IntegrationToken and legacy User.token.
     """
 
     keyword = "Token"
@@ -53,25 +81,43 @@ class ListenBrainzTokenAuthentication(BaseAuthentication):
         if len(parts) != 2 or parts[0].lower() != self.keyword.lower():  # noqa: PLR2004
             return None
         token = parts[1]
-        try:
-            user = User.objects.get(token=token)
-        except User.DoesNotExist:
-            msg = "Invalid token"
-            raise AuthenticationFailed(msg) from None
-        return (user, None)
+        return authenticate_token(token)
 
 
 class APIKeyAuthentication(BaseAuthentication):
-    """API Key Authentication."""
+    """API Key Authentication via X-API-Key header."""
 
     def authenticate(self, request):
         """Authenticate the user with API Key."""
         auth = request.headers.get("X-API-Key")
         if not auth:
             return None
-        try:
-            user = User.objects.get(token=auth)
-        except User.DoesNotExist:
-            msg = "Invalid token"
-            raise AuthenticationFailed(msg) from None
-        return (user, None)
+        return authenticate_token(auth.strip())
+
+
+class HasScope(BasePermission):
+    """Permission class to check whether request.auth grants a required scope.
+
+    Legacy tokens (request.auth is None) have full access to all scopes.
+    """
+
+    required_scope = None
+
+    def __init__(self, required_scope=None):
+        """Initialize permission class with an optional required scope."""
+        if required_scope is not None:
+            self.required_scope = required_scope
+
+    def has_permission(self, request, view):
+        """Return True if the request user and token scopes satisfy requirements."""
+        if not request.user or not request.user.is_authenticated:
+            return False
+        if request.auth is None:
+            return True
+        if hasattr(request.auth, "has_scope"):
+            scope = getattr(view, "required_scope", self.required_scope)
+            if not scope:
+                return True
+            return request.auth.has_scope(scope)
+        return False
+

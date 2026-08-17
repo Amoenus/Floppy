@@ -39,7 +39,13 @@ class PublicEndpointsTests(FloppyApiTestCase):
         )
 
     def test_openapi_endpoints_are_public(self):
-        for route_name in ("schema", "swagger-ui", "openapi-contract"):
+        for route_name in (
+            "schema",
+            "swagger-ui",
+            "openapi-contract",
+            "jsonld-context",
+            "asyncapi-contract",
+        ):
             with self.subTest(route_name=route_name):
                 response = self.client.get(reverse(route_name))
                 self.assertEqual(response.status_code, 200)
@@ -53,7 +59,10 @@ class PublicEndpointsTests(FloppyApiTestCase):
 
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response["Content-Type"], "application/yaml")
+        self.assertEqual(response["Content-Type"], "text/yaml; charset=utf-8")
+        self.assertEqual(
+            response["Content-Disposition"], 'inline; filename="openapi.yaml"'
+        )
         self.assertEqual(response["Cache-Control"], "public, max-age=3600")
         self.assertEqual(response["ETag"], expected_etag)
         self.assertEqual(int(response["Content-Length"]), len(artifact))
