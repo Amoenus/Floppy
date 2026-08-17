@@ -115,7 +115,7 @@ SOURCES_CONFIG = {
     },
     "letterboxd": {
         "name": "Letterboxd",
-        "logo": static("img/letterboxd-logo.svg"),
+        "logo": static("img/letterboxd-logo.png"),
     },
     "storygraph": {
         "name": "StoryGraph",
