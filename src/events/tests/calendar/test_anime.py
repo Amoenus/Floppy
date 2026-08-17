@@ -21,7 +21,6 @@ class CalendarAnimeTests(CalendarFixturesMixin, TestCase):
                     "media": [
                         {
                             "idMal": 437,
-                            "episodes": 1,
                             "airingSchedule": {
                                 "pageInfo": {"hasNextPage": False},
                                 "nodes": [
@@ -45,15 +44,17 @@ class CalendarAnimeTests(CalendarFixturesMixin, TestCase):
             mock_api_request.call_args.kwargs["params"]["variables"],
             {"ids": ["437"], "page": 1, "airingPage": 1},
         )
+        query = mock_api_request.call_args.kwargs["params"]["query"]
+        self.assertNotIn("\n          episodes\n", query)
 
     @patch("events.calendar.anime.services.get_media_metadata")
     @patch("events.calendar.anime.services.api_request")
-    def test_get_anime_schedule_bulk_pages_and_deduplicates_unknown_total(
+    def test_get_anime_schedule_bulk_pages_and_deduplicates_without_total(
         self,
         mock_api_request,
         mock_get_media_metadata,
     ):
-        """Read every nested page without requiring a final episode total."""
+        """Read every nested page without requiring an aggregate episode total."""
 
         def anilist_response(*_args, **kwargs):
             airing_page = kwargs["params"]["variables"]["airingPage"]
@@ -76,7 +77,6 @@ class CalendarAnimeTests(CalendarFixturesMixin, TestCase):
                         "media": [
                             {
                                 "idMal": 55809,
-                                "episodes": None,
                                 "airingSchedule": {
                                     "pageInfo": {
                                         "hasNextPage": airing_page == 1,
@@ -133,7 +133,6 @@ class CalendarAnimeTests(CalendarFixturesMixin, TestCase):
                 media = [
                     {
                         "idMal": 100,
-                        "episodes": 2,
                         "airingSchedule": {
                             "pageInfo": {"hasNextPage": airing_page == 1},
                             "nodes": nodes,
@@ -145,7 +144,6 @@ class CalendarAnimeTests(CalendarFixturesMixin, TestCase):
                 media = [
                     {
                         "idMal": 200,
-                        "episodes": 1,
                         "airingSchedule": {
                             "pageInfo": {"hasNextPage": False},
                             "nodes": [
@@ -189,9 +187,14 @@ class CalendarAnimeTests(CalendarFixturesMixin, TestCase):
             [(1, 1), (1, 2), (2, 1)],
         )
 
+    @patch("events.calendar.anime.services.get_media_metadata")
     @patch("events.calendar.anime.services.api_request")
-    def test_get_anime_schedule_bulk_filter_episodes(self, mock_api_request):
-        """Filter nodes above a known positive AniList episode total."""
+    def test_get_anime_schedule_bulk_keeps_explicit_schedule_nodes(
+        self,
+        mock_api_request,
+        mock_get_media_metadata,
+    ):
+        """Do not use an aggregate count or fallback provider to remove nodes."""
         mock_api_request.return_value = {
             "data": {
                 "Page": {
@@ -199,7 +202,6 @@ class CalendarAnimeTests(CalendarFixturesMixin, TestCase):
                     "media": [
                         {
                             "idMal": 437,
-                            "episodes": 1,
                             "airingSchedule": {
                                 "pageInfo": {"hasNextPage": False},
                                 "nodes": [
@@ -217,43 +219,10 @@ class CalendarAnimeTests(CalendarFixturesMixin, TestCase):
 
         self.assertEqual(
             result["437"],
-            [{"episode": 1, "airingAt": 870739200}],
-        )
-
-    @patch("events.calendar.anime.services.get_media_metadata")
-    @patch("events.calendar.anime.services.api_request")
-    def test_get_anime_schedule_bulk_does_not_invent_final_episode(
-        self,
-        mock_api_request,
-        mock_get_media_metadata,
-    ):
-        """Do not turn a count or end date into a schedule node."""
-        mock_api_request.return_value = {
-            "data": {
-                "Page": {
-                    "pageInfo": {"hasNextPage": False},
-                    "media": [
-                        {
-                            "idMal": 437,
-                            "episodes": 3,
-                            "airingSchedule": {
-                                "pageInfo": {"hasNextPage": False},
-                                "nodes": [
-                                    {"episode": 1, "airingAt": 870739200},
-                                    {"episode": 2, "airingAt": 870825600},
-                                ],
-                            },
-                        },
-                    ],
-                },
-            },
-        }
-
-        result = get_anime_schedule_bulk(["437"])
-
-        self.assertEqual(
-            [episode["episode"] for episode in result["437"]],
-            [1, 2],
+            [
+                {"episode": 1, "airingAt": 870739200},
+                {"episode": 2, "airingAt": 870825600},
+            ],
         )
         mock_get_media_metadata.assert_not_called()
 
@@ -267,7 +236,6 @@ class CalendarAnimeTests(CalendarFixturesMixin, TestCase):
                     "media": [
                         {
                             "idMal": 437,
-                            "episodes": 1,
                             "airingSchedule": {
                                 "pageInfo": {"hasNextPage": False},
                                 "nodes": [
@@ -301,7 +269,6 @@ class CalendarAnimeTests(CalendarFixturesMixin, TestCase):
                     "media": [
                         {
                             "idMal": 437,
-                            "episodes": None,
                             "airingSchedule": {
                                 "pageInfo": {"hasNextPage": False},
                                 "nodes": [{"episode": 1, "airingAt": None}],
@@ -336,7 +303,6 @@ class CalendarAnimeTests(CalendarFixturesMixin, TestCase):
                     "media": [
                         {
                             "idMal": 437,
-                            "episodes": 2,
                             "airingSchedule": {
                                 "pageInfo": {"hasNextPage": False},
                                 "nodes": [],
