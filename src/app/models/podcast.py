@@ -154,6 +154,15 @@ class Podcast(Media):
             "timestamp for ?updated_since= delta sync."
         ),
     )
+    is_end_date_inferred = models.BooleanField(
+        default=False,
+        help_text=(
+            "True when end_date is a synthetic estimate (e.g. derived from "
+            "publication time + duration, or distributed across the sync "
+            "window) rather than a timestamp backed by real provider "
+            "listening evidence."
+        ),
+    )
 
     @property
     def completed_play_count(self):
