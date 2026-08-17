@@ -2300,6 +2300,86 @@ def watch_provider_regions():
     return data
 
 
+def global_watch_provider_catalog():
+    """Return the full TMDB watch-provider catalog (movie + tv), deduped by id.
+
+    Unlike ``filter_providers``, this isn't scoped to a single item or region —
+    it's the source list for browsing/pinning providers outside the user's
+    home region. This is called on every media-list render (to populate the
+    "More" filter panel), so a TMDB outage must degrade to an empty list
+    rather than take the page down.
+    """
+    cache_key = f"{Sources.TMDB.value}_watch_provider_catalog"
+    data = cache.get(cache_key)
+
+    if data is None:
+        providers = {}
+        for media_type in ("movie", "tv"):
+            url = f"{base_url}/watch/providers/{media_type}"
+            params = {**base_params()}
+
+            try:
+                response = services.api_request(
+                    Sources.TMDB.value,
+                    "GET",
+                    url,
+                    params=params,
+                )
+            except (requests.exceptions.RequestException, services.ProviderAPIError):
+                logger.warning(
+                    "Skipping %s watch-provider catalog fetch due to TMDB API error",
+                    media_type,
+                )
+                continue
+
+            for provider in response.get("results", []):
+                provider_id = provider.get("provider_id")
+                provider_name = provider.get("provider_name")
+                if provider_id is None or not provider_name:
+                    continue
+                providers[provider_id] = {
+                    "provider_id": provider_id,
+                    "provider_name": provider_name,
+                    "image": get_image_url(provider.get("logo_path")),
+                }
+
+        data = sorted(providers.values(), key=lambda p: p["provider_name"].lower())
+        if data:
+            cache.set(cache_key, data)
+
+    return data
+
+
+def pinned_provider_matches(item, pinned_names):
+    """Return providers on ``item`` (any region) whose name is in ``pinned_names``.
+
+    Lets a pinned provider surface on the detail page even when the item is
+    only available on it outside the user's home region.
+    """
+    if not item or not pinned_names or not item.watch_providers:
+        return []
+
+    pinned_set = set(pinned_names)
+    providers = {}
+    for region_data in item.watch_providers.values():
+        if not isinstance(region_data, dict):
+            continue
+        for provider in [
+            *region_data.get("flatrate", []),
+            *region_data.get("free", []),
+        ]:
+            if provider.get("provider_name") not in pinned_set:
+                continue
+            providers[provider.get("provider_id")] = provider
+
+    matches = list(providers.values())
+    for provider in matches:
+        provider["image"] = get_image_url(provider.get("logo_path"))
+
+    matches.sort(key=lambda e: e.get("display_priority", 999))
+    return matches
+
+
 def metadata_languages():
     """Return the available metadata languages from The Movie Database."""
     cache_key = f"{Sources.TMDB.value}_metadata_languages"

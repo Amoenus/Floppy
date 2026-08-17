@@ -66,6 +66,7 @@
       formatSearch: '',
       authorSearch: '',
       providerSearch: '',
+      moreProviderSearch: '',
       tagSearch: '',
       departmentSearch: '',
       genres: data.genres || [],
@@ -80,6 +81,9 @@
       formats: data.formats || [],
       authors: data.authors || [],
       providers: data.providers || [],
+      allProviders: data.all_providers || [],
+      pinnedProviderNames: data.pinned_providers || [],
+      pinTogglePending: false,
       tags: data.tags || [],
       tagCounts: data.tag_counts || {},
       departments: data.departments || [],
@@ -96,6 +100,7 @@
         this.formatSearch = '';
         this.authorSearch = '';
         this.providerSearch = '';
+        this.moreProviderSearch = '';
         this.tagSearch = '';
         this.departmentSearch = '';
       },
@@ -182,6 +187,35 @@
           return this.providers;
         }
         return this.providers.filter(option => option.label.toLowerCase().includes(term));
+      },
+      filteredAllProviders() {
+        const term = this.moreProviderSearch.toLowerCase();
+        if (!term) {
+          return this.allProviders;
+        }
+        return this.allProviders.filter(option => option.label.toLowerCase().includes(term));
+      },
+      isProviderPinned(name) {
+        return this.pinnedProviderNames.includes(name);
+      },
+      togglePinnedProvider(name) {
+        if (this.pinTogglePending) {
+          return;
+        }
+        this.pinTogglePending = true;
+        fetch('{% url "toggle_pinned_provider" %}', {
+          method: 'POST',
+          headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+          body: new URLSearchParams({ provider_name: name }),
+        })
+          .then((response) => {
+            if (response.ok) {
+              window.location.reload();
+            }
+          })
+          .finally(() => {
+            this.pinTogglePending = false;
+          });
       },
       filteredTags() {
         const term = this.tagSearch.toLowerCase();

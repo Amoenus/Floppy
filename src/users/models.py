@@ -1169,6 +1169,11 @@ class User(AbstractUser):
         blank=True,
         help_text="Per-library table column order and hidden keys",
     )
+    pinned_watch_providers = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Watch-provider names pinned/favorited by the user, promoted out of 'More'",
+    )
     book_comic_manga_progress_percentage = models.BooleanField(
         default=False,
         help_text="Track book, comic, and manga progress as percentage instead of pages/issues/chapters",
@@ -1527,6 +1532,19 @@ class User(AbstractUser):
             self.save(update_fields=["table_column_prefs"])
 
         return prefs[media_type]
+
+    def toggle_pinned_provider(self, provider_name):
+        """Pin or unpin a watch-provider name, returning the updated pinned list."""
+        pinned = list(self.pinned_watch_providers or [])
+        if provider_name in pinned:
+            pinned.remove(provider_name)
+        else:
+            pinned.append(provider_name)
+
+        self.pinned_watch_providers = pinned
+        self.save(update_fields=["pinned_watch_providers"])
+
+        return pinned
 
     @property
     def rating_scale_max(self):

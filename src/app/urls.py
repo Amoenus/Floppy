@@ -34,6 +34,11 @@ urlpatterns = [
         views.update_table_columns,
         name="medialist_columns",
     ),
+    path(
+        "providers/pin/",
+        views.toggle_pinned_provider,
+        name="toggle_pinned_provider",
+    ),
     path("tags", views.tag_index, name="tag_index"),
     path("search", views.media_search, name="search"),
     path(
