@@ -18,7 +18,10 @@ from app.models import (
 )
 from integrations import pocketcasts_api
 from integrations.imports.helpers import MediaImportError
-from integrations.imports.pocketcasts import PocketCastsImporter
+from integrations.imports.pocketcasts import (
+    PocketCastsImporter,
+    _cleanup_duplicate_episodes_global,
+)
 from integrations.models import PocketCastsAccount
 
 
@@ -83,6 +86,8 @@ class PocketCastsInferenceTests(TestCase):
 
         # 60 min - 40 min progress = 20 min remaining
         self.assertEqual(inferred, self.sync_start + timedelta(minutes=20))
+        # Anchored inference is backed by real prior progress, not a guess.
+        self.assertTrue(self.importer._last_completion_anchor_used)
 
     def test_infer_completion_without_anchor_uses_hash_distribution(self):
         """Non-anchored completion uses hash-based distribution across window."""
@@ -105,6 +110,8 @@ class PocketCastsInferenceTests(TestCase):
         self.assertNotEqual(inferred, self.sync_end)
         # With boundary avoidance, should not be exactly at sync_start either
         self.assertGreater(inferred, self.sync_start + timedelta(seconds=30))
+        # No prior in-progress snapshot: this is a synthetic estimate.
+        self.assertFalse(self.importer._last_completion_anchor_used)
 
     def test_infer_completion_conflict_with_scrobble(self):
         """Anchored completion pushed after scrobbled music block."""
@@ -796,3 +803,268 @@ class PocketCastsImportFlowTests(TestCase):
         self.assertGreater(
             self.importer.account.last_sync_at, datetime(2026, 1, 1, tzinfo=UTC)
         )
+
+    def test_import_first_completed_episode_marks_end_date_as_inferred(self):
+        """A first-import completed episode's end_date is flagged as inferred."""
+        published = datetime(2026, 1, 1, tzinfo=UTC)
+        podcast_list = {
+            "podcasts": [
+                {
+                    "uuid": "show-1",
+                    "title": "Test Show",
+                    "author": "Test Author",
+                    "description": "",
+                    "url": "",
+                }
+            ],
+        }
+        play_states = {
+            "uuid-played": {
+                "uuid": "uuid-played",
+                "playingStatus": 3,
+                "playedUpTo": 1800,
+                "duration": 1800,
+            },
+        }
+        metadata = {
+            "uuid-played": {
+                "uuid": "uuid-played",
+                "title": "Played Ep",
+                "published": published.isoformat(),
+                "duration": 1800,
+                "url": "https://example.com/played.mp3",
+            },
+        }
+
+        with (
+            self._artwork_patches(),
+            patch.object(PocketCastsImporter, "_ensure_valid_token"),
+            patch.object(PocketCastsImporter, "_get_access_token", return_value="fake"),
+            patch(
+                "integrations.pocketcasts_api.get_podcast_list",
+                return_value=podcast_list,
+            ),
+            patch.object(
+                PocketCastsImporter, "_fetch_show_play_states", return_value=play_states
+            ),
+            patch.object(
+                PocketCastsImporter, "_fetch_show_full_metadata", return_value=metadata
+            ),
+        ):
+            importer = PocketCastsImporter(self.user, "new")
+            importer.import_data()
+
+        podcast = Podcast.objects.get(user=self.user, item__media_id="uuid-played")
+        self.assertEqual(podcast.end_date, published + timedelta(seconds=1800))
+        self.assertTrue(podcast.is_end_date_inferred)
+
+
+class PocketCastsIdentityAmbiguityTests(TestCase):
+    """Tests that ambiguous show+title+date matches never trigger a wrong merge."""
+
+    def setUp(self):
+        """Set up a user, importer, and a show for catalog episodes."""
+        User = get_user_model()
+        self.user = User.objects.create_user(username="ambiguser", password="pass")
+        PocketCastsAccount.objects.create(user=self.user, access_token="token")
+        self.importer = PocketCastsImporter(self.user, "new")
+        self.show = PodcastShow.objects.create(podcast_uuid="show-1", title="Show")
+
+    def test_sync_catalog_episode_does_not_merge_ambiguous_title_date_match(self):
+        """Two distinct existing episodes sharing show+title+date must not be merged."""
+        published = datetime(2025, 1, 1, tzinfo=UTC)
+        PodcastEpisode.objects.create(
+            show=self.show,
+            episode_uuid="uuid-a",
+            title="Weekly Update",
+            published=published,
+            duration=1800,
+            episode_number=1,
+        )
+        PodcastEpisode.objects.create(
+            show=self.show,
+            episode_uuid="uuid-b",
+            title="Weekly Update",
+            published=published,
+            duration=2400,
+            episode_number=2,
+        )
+
+        incoming = {
+            "uuid": "uuid-c",
+            "podcastUuid": "show-1",
+            "title": "Weekly Update",
+            "published": int(published.timestamp()),
+            "duration": 2000,
+        }
+        result = self.importer._sync_catalog_episode(incoming, show=self.show)
+
+        # The ambiguous fallback must not silently reuse either existing
+        # episode; a new one is created and both originals survive.
+        self.assertEqual(result["episode"].episode_uuid, "uuid-c")
+        self.assertEqual(PodcastEpisode.objects.filter(show=self.show).count(), 3)
+        self.assertTrue(
+            PodcastEpisode.objects.filter(show=self.show, episode_uuid="uuid-a").exists()
+        )
+        self.assertTrue(
+            PodcastEpisode.objects.filter(show=self.show, episode_uuid="uuid-b").exists()
+        )
+
+    def test_sync_catalog_episode_still_matches_unique_title_date(self):
+        """A single unique show+title+date match still reconciles normally."""
+        published = datetime(2025, 1, 1, tzinfo=UTC)
+        episode = PodcastEpisode.objects.create(
+            show=self.show,
+            episode_uuid="uuid-old",
+            title="Solo Episode",
+            published=published,
+            duration=1800,
+        )
+        incoming = {
+            "uuid": "uuid-new",
+            "podcastUuid": "show-1",
+            "title": "Solo Episode",
+            "published": int(published.timestamp()),
+            "duration": 1800,
+        }
+        result = self.importer._sync_catalog_episode(incoming, show=self.show)
+
+        self.assertEqual(result["episode"].id, episode.id)
+        self.assertEqual(PodcastEpisode.objects.filter(show=self.show).count(), 1)
+
+
+class PocketCastsCleanupDuplicatesTests(TestCase):
+    """Tests for the global duplicate-episode cleanup pass."""
+
+    def setUp(self):
+        """Set up a show to attach candidate duplicate episodes to."""
+        self.show = PodcastShow.objects.create(podcast_uuid="show-1", title="Show")
+
+    def test_cleanup_merges_corroborated_duplicate_group(self):
+        """A group agreeing on episode_number (in addition to title+date) is merged."""
+        published = datetime(2025, 1, 1, tzinfo=UTC)
+        PodcastEpisode.objects.create(
+            show=self.show,
+            episode_uuid="uuid-corrob-1",
+            title="Bonus Ep",
+            published=published,
+            duration=1800,
+            episode_number=5,
+        )
+        PodcastEpisode.objects.create(
+            show=self.show,
+            episode_uuid="uuid-corrob-2",
+            title="Bonus Ep",
+            published=published,
+            duration=1800,
+            episode_number=5,
+        )
+
+        stats = _cleanup_duplicate_episodes_global()
+
+        self.assertEqual(stats["duplicates_removed"], 1)
+        self.assertEqual(PodcastEpisode.objects.filter(show=self.show).count(), 1)
+
+    def test_cleanup_does_not_merge_ambiguous_duplicate_group(self):
+        """A same title+date group that disagrees on episode_number/duration is left alone."""
+        published = datetime(2025, 1, 1, tzinfo=UTC)
+        PodcastEpisode.objects.create(
+            show=self.show,
+            episode_uuid="uuid-distinct-1",
+            title="Two Parter",
+            published=published,
+            duration=1800,
+            episode_number=1,
+        )
+        PodcastEpisode.objects.create(
+            show=self.show,
+            episode_uuid="uuid-distinct-2",
+            title="Two Parter",
+            published=published,
+            duration=2400,
+            episode_number=2,
+        )
+
+        stats = _cleanup_duplicate_episodes_global()
+
+        self.assertEqual(stats["duplicates_removed"], 0)
+        self.assertEqual(PodcastEpisode.objects.filter(show=self.show).count(), 2)
+
+
+class PocketCastsChangedUuidReconciliationTests(TestCase):
+    """Tests that completion-date inference survives a reconciled UUID change."""
+
+    def setUp(self):
+        """Set up a user, importer, and sync window for direct _process_episode calls."""
+        User = get_user_model()
+        self.user = User.objects.create_user(username="reconuser", password="pass")
+        self.sync_start = datetime(2025, 1, 1, 12, 0, tzinfo=UTC)
+        self.sync_end = datetime(2025, 1, 1, 14, 0, tzinfo=UTC)
+        PocketCastsAccount.objects.create(
+            user=self.user,
+            access_token="token",
+            last_sync_at=self.sync_start,
+        )
+        self.importer = PocketCastsImporter(self.user, "new")
+        self.importer._sync_window_start = self.sync_start
+        self.importer._sync_window_end = self.sync_end
+        self.importer._existing_history_items = []
+        self.importer.previous_sync_at = self.sync_start
+        self.importer.podcast_metadata = {"show-1": {"uuid": "show-1", "title": "Show"}}
+        self.show = PodcastShow.objects.create(podcast_uuid="show-1", title="Show")
+
+    def test_completion_inference_uses_reconciled_uuid_anchor(self):
+        """A changed provider UUID must still find the prior in-progress anchor."""
+        published = datetime(2025, 1, 1, tzinfo=UTC)
+        episode = PodcastEpisode.objects.create(
+            show=self.show,
+            episode_uuid="uuid-old",
+            title="Ep 1",
+            published=published,
+            duration=3600,
+        )
+        item = Item.objects.create(
+            media_id="uuid-old",
+            source=Sources.POCKETCASTS.value,
+            media_type=MediaTypes.PODCAST.value,
+            title="Ep 1",
+            image="",
+        )
+        podcast = Podcast.objects.create(
+            user=self.user,
+            item=item,
+            show=self.show,
+            episode=episode,
+            status=Status.IN_PROGRESS.value,
+            progress=40,
+            played_up_to_seconds=2400,
+        )
+        history_record = podcast.history.order_by("-history_date").first()
+        history_record.progress = 40
+        history_record.status = Status.IN_PROGRESS.value
+        history_record.end_date = None
+        history_record.history_date = self.sync_start
+        history_record.save()
+
+        self.importer.existing_podcasts = {
+            ("uuid-old", Sources.POCKETCASTS.value): podcast,
+        }
+
+        # Provider now reports a different UUID for the same episode, but
+        # title+date uniquely reconcile it back to the tracked "uuid-old".
+        episode_data = {
+            "uuid": "uuid-new",
+            "podcastUuid": "show-1",
+            "title": "Ep 1",
+            "published": int(published.timestamp()),
+            "duration": 3600,
+            "playingStatus": 3,
+            "playedUpTo": 3600,
+        }
+
+        self.importer._process_episode(episode_data)
+
+        podcast.refresh_from_db()
+        # Anchored: 60 min duration - 40 min progress = 20 min remaining.
+        self.assertEqual(podcast.end_date, self.sync_start + timedelta(minutes=20))
+        self.assertFalse(podcast.is_end_date_inferred)

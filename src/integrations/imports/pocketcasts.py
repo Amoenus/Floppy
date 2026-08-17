@@ -56,6 +56,24 @@ DUPLICATE_HISTORY_WINDOW_SECONDS = 300
 EPOCH_MS_THRESHOLD = 1_000_000_000_000
 
 
+def _episodes_corroborate_duplicate(episodes):
+    """Return True if a group of same show/title/date episodes corroborate being duplicates.
+
+    Requires agreement on at least one more stable signal (episode number,
+    duration, or audio URL); any disagreement on a signal is treated as
+    evidence the episodes are genuinely distinct, overriding agreement on
+    any other single signal.
+    """
+    episode_numbers = {ep.episode_number for ep in episodes if ep.episode_number}
+    durations = {ep.duration for ep in episodes if ep.duration}
+    audio_urls = {ep.audio_url for ep in episodes if ep.audio_url}
+
+    if len(episode_numbers) > 1 or len(durations) > 1 or len(audio_urls) > 1:
+        return False
+
+    return len(episode_numbers) == 1 or len(durations) == 1 or len(audio_urls) == 1
+
+
 def _cleanup_duplicate_episodes_global():
     """Clean up duplicate podcast episodes globally (standalone function).
 
@@ -99,6 +117,20 @@ def _cleanup_duplicate_episodes_global():
             episodes_list_sorted = sorted(episodes_list, key=lambda ep: ep.id)
 
             if len(episodes_list_sorted) <= 1:
+                continue
+
+            # Show+title+date alone isn't enough evidence to safely merge:
+            # publishers can reuse a title on the same day for genuinely
+            # distinct episodes. Only merge when the group also agrees on at
+            # least one more stable signal (episode/season number, duration,
+            # or audio URL); otherwise leave the group as separate episodes
+            # for later reconciliation rather than risk deleting real data.
+            if not _episodes_corroborate_duplicate(episodes_list_sorted):
+                logger.info(
+                    "Skipping ambiguous duplicate group (no corroborating "
+                    "evidence) for episodes: %s",
+                    [ep.id for ep in episodes_list_sorted],
+                )
                 continue
 
             # Choose which episode to keep
@@ -494,6 +526,7 @@ class PocketCastsImporter:
                     debug_context=debug_context,
                     inferred_podcasts=inferred_podcasts,
                 )
+                date_is_inferred = not self._last_completion_anchor_used
 
                 # Track this completion as a blocked interval for subsequent podcasts
                 # Use a buffer proportional to podcast duration (min 2 min, max 5 min)
@@ -505,6 +538,7 @@ class PocketCastsImporter:
                 for podcast in self.bulk_media.get(MediaTypes.PODCAST.value, []):
                     if podcast.item.media_id == episode_uuid:
                         podcast.end_date = inferred_date
+                        podcast.is_end_date_inferred = date_is_inferred
                         logger.debug(
                             "Inferred completion_date for episode %s: %s (published: %s, duration: %d seconds)",
                             episode_data.get("title", "Unknown"),
@@ -1298,6 +1332,10 @@ class PocketCastsImporter:
             return completion_time
 
         anchor_used = bool(last_in_progress_date and last_progress_minutes is not None)
+        # Exposed so callers can tell whether the returned completion time is
+        # backed by a real prior in-progress snapshot (anchored) or is a
+        # synthetic estimate (hash-distributed placement in the sync window).
+        self._last_completion_anchor_used = anchor_used
         base_completion_time = None
         placement_duration_seconds = duration_seconds
 
@@ -1825,7 +1863,12 @@ class PocketCastsImporter:
                     title__iexact=episode_data["title"].strip(),
                     published__date=published.date(),
                 )
-                if matching_episodes.exists():
+                # Only trust this fallback when it uniquely identifies one
+                # episode. Show+title+date can collide for legitimate distinct
+                # episodes (e.g. multi-part releases), so an ambiguous match
+                # must not be picked arbitrarily - fall through to the other,
+                # more specific fallbacks (or create a new episode) instead.
+                if matching_episodes.count() == 1:
                     episode = matching_episodes.first()
                     existing_uuid_episode = PodcastEpisode.objects.filter(
                         episode_uuid=episode_uuid
@@ -2202,8 +2245,12 @@ class PocketCastsImporter:
 
             # Estimate completion date
             completion_date = None
+            # Whether completion_date is a synthetic estimate rather than a
+            # value backed by a real provider timestamp or anchor snapshot.
+            completion_date_is_inferred = False
             if already_completed and existing_podcast.end_date:
                 completion_date = existing_podcast.end_date
+                completion_date_is_inferred = existing_podcast.is_end_date_inferred
             elif already_completed and self.previous_sync_at:
                 completion_date = self.previous_sync_at
 
@@ -2216,7 +2263,10 @@ class PocketCastsImporter:
                     or not existing_podcast.end_date
                     or delta_seconds > 0
                 ):
-                    episode_uuid = episode_data.get("uuid")
+                    # Use the reconciled canonical episode_uuid (set earlier from
+                    # catalog_sync["episode_uuid"]), not the raw incoming provider
+                    # UUID, so completion-date inference can find the prior
+                    # in-progress anchor even when the provider UUID changed.
                     sync_window_start, sync_window_end, existing_history = (
                         self._get_inference_window()
                     )
@@ -2238,6 +2288,7 @@ class PocketCastsImporter:
                         self.previous_sync_at,
                         debug_context=debug_context,
                     )
+                    completion_date_is_inferred = not self._last_completion_anchor_used
             elif should_set_completion_date and published:
                 if defer_completion_date:
                     # Will be inferred later in import_data()
@@ -2249,13 +2300,16 @@ class PocketCastsImporter:
                         duration_seconds,
                     )
                 else:
-                    # First import: use published + duration
+                    # First import: no listening history to anchor to, so
+                    # this is an estimate (published + duration), not an
+                    # exact provider-supplied listening timestamp.
                     if duration_seconds:
                         completion_date = published + timedelta(
                             seconds=duration_seconds
                         )
                     else:
                         completion_date = published
+                    completion_date_is_inferred = True
                     if completion_date and timezone.is_naive(completion_date):
                         completion_date = timezone.make_aware(completion_date)
                     logger.debug(
@@ -2308,6 +2362,9 @@ class PocketCastsImporter:
                     elif existing_podcast.end_date is None:
                         # Only update if missing
                         existing_podcast.end_date = completion_date
+                        existing_podcast.is_end_date_inferred = (
+                            completion_date_is_inferred
+                        )
                         fields_changed = True
                         logger.debug(
                             "Updated end_date for existing podcast %s: %s",
@@ -2319,6 +2376,9 @@ class PocketCastsImporter:
                         and existing_podcast.end_date != completion_date
                     ):
                         existing_podcast.end_date = completion_date
+                        existing_podcast.is_end_date_inferred = (
+                            completion_date_is_inferred
+                        )
                         fields_changed = True
                         logger.debug(
                             "Updated end_date for newly completed podcast %s: %s",
@@ -2376,6 +2436,9 @@ class PocketCastsImporter:
                     end_date=completion_date
                     if new_status == Status.COMPLETED.value
                     else None,
+                    is_end_date_inferred=completion_date_is_inferred
+                    if new_status == Status.COMPLETED.value
+                    else False,
                     notes="Imported from Pocket Casts",
                 )
 
