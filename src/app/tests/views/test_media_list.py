@@ -2819,6 +2819,81 @@ class MediaListViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.context["filter_data"]["show_providers"])
 
+    def test_pinned_provider_shown_and_filters_outside_home_region(self):
+        """A pinned provider from a non-home region still filters the library (#519)."""
+        uk_only_movie = Item.objects.create(
+            media_id="provider-filter-pinned-1",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Provider Filter Pinned Movie",
+            image="http://example.com/pfp1.jpg",
+            watch_providers={
+                "GB": {"flatrate": [{"provider_id": 39, "provider_name": "Now TV"}]},
+            },
+        )
+        other_movie = Item.objects.create(
+            media_id="provider-filter-pinned-2",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Provider Filter Other Movie",
+            image="http://example.com/pfp2.jpg",
+            watch_providers={
+                "US": {"flatrate": [{"provider_id": 8, "provider_name": "Netflix"}]},
+            },
+        )
+        Movie.objects.create(
+            item=uk_only_movie,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+            progress=0,
+        )
+        Movie.objects.create(
+            item=other_movie,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+            progress=0,
+        )
+        # No home region configured, but "Now TV" (GB-only) is pinned.
+        self.user.pinned_watch_providers = ["Now TV"]
+        self.user.save(update_fields=["pinned_watch_providers"])
+
+        url = reverse("medialist", args=[MediaTypes.MOVIE.value])
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context["filter_data"]["show_providers"])
+        self.assertTrue(
+            any(
+                option["value"] == "Now TV"
+                for option in response.context["filter_data"]["providers"]
+            ),
+        )
+
+        filtered_response = self.client.get(f"{url}?provider=Now TV")
+        self.assertEqual(filtered_response.status_code, 200)
+        self.assertContains(filtered_response, "Provider Filter Pinned Movie")
+        self.assertNotContains(filtered_response, "Provider Filter Other Movie")
+
+    def test_toggle_pinned_provider_requires_authentication(self):
+        self.client.logout()
+        response = self.client.post(
+            reverse("toggle_pinned_provider"), {"provider_name": "Netflix"}
+        )
+        self.assertEqual(response.status_code, 302)
+
+    def test_toggle_pinned_provider_pins_and_unpins(self):
+        url = reverse("toggle_pinned_provider")
+
+        response = self.client.post(url, {"provider_name": "Netflix"})
+        self.assertEqual(response.status_code, 204)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.pinned_watch_providers, ["Netflix"])
+
+        response = self.client.post(url, {"provider_name": "Netflix"})
+        self.assertEqual(response.status_code, 204)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.pinned_watch_providers, [])
+
     def test_movie_filter_data_hides_author_filter(self):
         response = self.client.get(reverse("medialist", args=[MediaTypes.MOVIE.value]))
         self.assertEqual(response.status_code, 200)

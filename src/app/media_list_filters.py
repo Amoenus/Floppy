@@ -116,6 +116,7 @@ class MediaListFilters:
     author: str = ""
     provider: str = ""
     provider_region: str = ""
+    pinned_providers: tuple[str, ...] = ()
     tags: tuple[str, ...] = ()
     tag_mode: str = "or"
     sort: str = ""
@@ -308,6 +309,10 @@ def parse_media_list_filters(request) -> MediaListFilters:
             getattr(getattr(request, "user", None), "watch_provider_region", "")
             or ""
         ).strip(),
+        pinned_providers=tuple(
+            getattr(getattr(request, "user", None), "pinned_watch_providers", None)
+            or ()
+        ),
         tags=tags,
         tag_mode=tag_mode_value,
         sort=sort,
@@ -508,11 +513,16 @@ def _matches_metadata(entry, filters, collection_platforms, collection_formats, 
     }:
         pass
     elif filters.provider:
-        providers = (
+        providers = set(
             tmdb.item_watch_provider_names(item, filters.provider_region)
             if filters.provider_region
             else []
         )
+        if filters.pinned_providers:
+            pinned_matches = tmdb.pinned_provider_matches(item, filters.pinned_providers)
+            providers |= {
+                p["provider_name"] for p in pinned_matches if p.get("provider_name")
+            }
         if not any(_normalize(filters.provider) == _normalize(value) for value in providers):
             return False
     if tag_ids[0] is not None and item.id not in tag_ids[0]:

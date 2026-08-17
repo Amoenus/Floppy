@@ -46,6 +46,7 @@ def build_time_left_cache_key(
     provider_filter: str = "",
     watch_provider_region: str = "",
     media_status_filter: str = "",
+    pinned_providers: str = "",
 ) -> str:
     """Create the cache key used for time-left sorted TV lists."""
     normalized_status = status_filter or ""
@@ -68,13 +69,14 @@ def build_time_left_cache_key(
     normalized_provider = provider_filter or ""
     normalized_region = watch_provider_region or ""
     normalized_media_status = media_status_filter or ""
+    normalized_pinned_providers = pinned_providers or ""
     return (
         f"{TIME_LEFT_CACHE_PREFIX}_{user_id}_{media_type}_{normalized_status}_"
         f"{normalized_query}_{normalized_direction}_{normalized_rating}_{normalized_progress}_{normalized_collection}_"
         f"{normalized_genre}_{normalized_year}_{normalized_release}_{normalized_source}_"
         f"{normalized_language}_{normalized_country}_{normalized_platform}_{normalized_platform_mode}_{normalized_origin}_"
         f"{normalized_tag}_{normalized_tag_mode}_{normalized_provider}_{normalized_region}_"
-        f"{normalized_media_status}"
+        f"{normalized_media_status}_{normalized_pinned_providers}"
     )
 
 
@@ -144,6 +146,7 @@ def build_media_list_cache_key(
     provider_filter: str = "",
     watch_provider_region: str = "",
     media_status_filter: str = "",
+    pinned_providers: str = "",
 ) -> str:
     """Create the cache key for a fully-processed media list page."""
     parts = [
@@ -175,6 +178,7 @@ def build_media_list_cache_key(
         provider_filter or "",
         watch_provider_region or "",
         media_status_filter or "",
+        pinned_providers or "",
     ]
     return "_".join(parts)
 
@@ -202,6 +206,7 @@ def build_media_list_filter_cache_key(
     provider_filter: str = "",
     watch_provider_region: str = "",
     media_status_filter: str = "",
+    pinned_providers: str = "",
 ) -> str:
     """Create the cache key for media-list filter summary data."""
     parts = [
@@ -228,6 +233,7 @@ def build_media_list_filter_cache_key(
         provider_filter or "",
         watch_provider_region or "",
         media_status_filter or "",
+        pinned_providers or "",
     ]
     return "_".join(parts)
 
