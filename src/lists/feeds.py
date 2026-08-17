@@ -123,7 +123,6 @@ class PublicListFeed(Feed):
                 (candidate.library_media_type or candidate.media_type)
                 != parent_library_media_type,
                 candidate.library_media_type != parent_library_media_type,
-                candidate.media_type != parent_library_media_type,
                 candidate.media_type != MediaTypes.TV.value,
                 candidate.pk,
             ),
