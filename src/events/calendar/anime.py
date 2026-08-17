@@ -79,19 +79,9 @@ def _collect_airing_schedule_pages(query, url, media_ids, page):
 
         for media in page_data["media"]:
             mal_id = str(media["idMal"])
-            media_data = media_by_id.setdefault(
-                mal_id,
-                {
-                    "episodes": media["episodes"],
-                    "airingSchedule": {},
-                },
-            )
-
-            if media_data["episodes"] is None and media["episodes"] is not None:
-                media_data["episodes"] = media["episodes"]
-
+            schedule_by_episode = media_by_id.setdefault(mal_id, {})
             schedule = media["airingSchedule"]
-            schedule_by_episode = media_data["airingSchedule"]
+
             for node in schedule.get("nodes", []):
                 episode_number = node.get("episode")
                 if episode_number is None:
@@ -131,7 +121,6 @@ def get_anime_schedule_bulk(media_ids):
         }
         media(idMal_in: $ids, type: ANIME) {
           idMal
-          episodes
           airingSchedule(page: $airingPage) {
             pageInfo {
               hasNextPage
@@ -154,29 +143,11 @@ def get_anime_schedule_bulk(media_ids):
             page,
         )
 
-        for mal_id, media in media_by_id.items():
-            airing_schedule = sorted(
-                media["airingSchedule"].values(),
+        for mal_id, schedule_by_episode in media_by_id.items():
+            all_data[mal_id] = sorted(
+                schedule_by_episode.values(),
                 key=lambda episode: episode["episode"],
             )
-            total_episodes = media["episodes"]
-
-            if total_episodes is not None and total_episodes > 0:
-                original_length = len(airing_schedule)
-                airing_schedule = [
-                    episode
-                    for episode in airing_schedule
-                    if episode["episode"] <= total_episodes
-                ]
-
-                if original_length > len(airing_schedule):
-                    logger.info(
-                        "Filtered episodes for MAL ID %s - keep only %s episodes",
-                        mal_id,
-                        total_episodes,
-                    )
-
-            all_data[mal_id] = airing_schedule
 
         if not has_next_page:
             break
