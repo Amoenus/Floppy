@@ -28,6 +28,15 @@ if [ -n "$VIRTUAL_ENV" ]; then
     export VIRTUAL_ENV PATH
 fi
 
+# Point the operator at the diagnostic at the moment it is needed, which is the
+# only moment they are reading these lines. The two forms are not
+# interchangeable: "docker exec" needs a running container, so it works while
+# startup is parked and fails with "Container is restarting" once a path exits
+# and a restart policy takes over. Each failure below prints the form that works
+# for it.
+PREFLIGHT_HINT_EXEC="For a full diagnosis run: docker exec ${HOSTNAME:-floppy} python manage.py floppy_preflight"
+PREFLIGHT_HINT_RUN="For a full diagnosis run: docker compose run --rm floppy python manage.py floppy_preflight"
+
 reject_unsafe_managed_directory() {
     managed_name=$1
     managed_dir=$2
@@ -46,6 +55,44 @@ LOG_DIR_PATH=$(python -c 'from pathlib import Path; import sys; print(Path(sys.a
 
 reject_unsafe_managed_directory FLOPPY_DATA_DIR "$DATA_DIR"
 reject_unsafe_managed_directory LOG_DIR "$LOG_DIR_PATH"
+
+# Check the mounts with the shell, before anything imports Django.
+#
+# A read-only or wrongly owned mount is the most common reason a container will
+# not start, and it is the one failure floppy_preflight cannot report: Django
+# opens its log file while it loads settings, so the process dies with a
+# traceback before the command runs. Test it here, where a clear message is
+# still possible, and say which directory and which fix.
+# Name an unwritable directory before Django loads.
+#
+# This reports and never stops. The gates that follow already stop: the
+# ownership step exits when it cannot chown the data directory, and Django
+# raises when it cannot create the generated secret. What neither of them gives
+# is a readable line for the log directory, because Django opens its log file
+# while it loads settings, so the process dies with a logging traceback before
+# any of Floppy's own messages appear. This is that line.
+#
+# Reporting rather than exiting also keeps the check harmless: a pre-check that
+# can fail a start which would otherwise have worked is worse than no check.
+warn_when_not_writable() {
+    name=$1
+    directory=$2
+    if [ ! -d "$directory" ]; then
+        # Absent is normal on a first start. Django creates both of these.
+        return 0
+    fi
+    probe="${directory}/.floppy-write-probe.$$"
+    if ! (: > "$probe") 2>/dev/null; then
+        echo "[entrypoint] WARNING: ${name} ${directory} is not writable." >&2
+        echo "[entrypoint] The mount is read-only, or it belongs to another user. Give it to PUID=${PUID:-1000} PGID=${PGID:-1000} on the host. Startup will fail until then." >&2
+        return 0
+    fi
+    rm -f "$probe"
+    return 0
+}
+
+warn_when_not_writable FLOPPY_DATA_DIR "$DATA_DIR"
+warn_when_not_writable LOG_DIR "$LOG_DIR_PATH"
 
 if [ -z "$DB_HOST" ]; then
     DB_FILE_INPUT=${FLOPPY_DB_PATH:-"${DATA_DIR_INPUT}/db.sqlite3"}
@@ -80,6 +127,8 @@ if [ -z "$DB_HOST" ]; then
                     echo "[entrypoint] SQLite startup is paused because the integrity check failed; migrations and services were not started. The container will remain unhealthy and idle." >&2
                     ;;
             esac
+            # The container stays up while it is parked, so "exec" can attach.
+            echo "[entrypoint] ${PREFLIGHT_HINT_EXEC}" >&2
             decision_file="${DB_FILE}.integrity.decision"
             # The check above consumes a choice it can act on. Anything left is
             # stale, and a stale file would defeat the parking guard below and
@@ -124,6 +173,10 @@ until echo "[entrypoint] Applying database migrations (attempt $((migrate_attemp
     migrate_verbosity=2
     if [ "$migrate_attempts" -ge 5 ]; then
         echo "[entrypoint] Migrations failed after ${migrate_attempts} attempts, exiting" >&2
+        # This path exits, so a restart policy puts the container into a restart
+        # loop. "exec" cannot attach to a restarting container, so name the
+        # one-off form here instead.
+        echo "[entrypoint] ${PREFLIGHT_HINT_RUN}" >&2
         exit 1
     fi
     echo "[entrypoint] Migrations blocked or failed (attempt ${migrate_attempts}), retrying in 15s" >&2
