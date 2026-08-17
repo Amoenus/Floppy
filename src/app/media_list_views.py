@@ -354,6 +354,7 @@ def build_filter_data_from_items(
     collection_platforms_by_item_id=None,
     region=None,
     pinned_providers=None,
+    include_providers=True,
 ):
     """Build filter menu option lists from a sequence of media/Item objects.
 
@@ -368,6 +369,10 @@ def build_filter_data_from_items(
     selectable options, even outside the user's home region, and the full
     TMDB provider catalog is returned under ``all_providers`` /
     ``pinned_providers`` for the filter dropdown's "More" panel.
+
+    ``include_providers`` should be false for media types that never show a
+    provider filter (games, books, music, ...) so the global TMDB catalog
+    fetch is skipped entirely rather than run and then discarded.
     """
     pinned_providers = list(pinned_providers or [])
     genres_set = set()
@@ -422,9 +427,10 @@ def build_filter_data_from_items(
         item_formats = _extract_item_formats(item, collection_formats_by_item_id)
         if item_formats:
             formats_set.update(item_formats)
-        if has_region:
+        if include_providers and has_region:
             providers_set.update(_extract_item_providers(item, region) or [])
-    providers_set.update(pinned_providers)
+    if include_providers:
+        providers_set.update(pinned_providers)
 
     genres = sorted(genres_set, key=lambda value: value.lower())
     implied_genres = sorted(implied_genres_set, key=lambda value: value.lower())
@@ -473,14 +479,18 @@ def build_filter_data_from_items(
         {"value": value, "label": value}
         for value in sorted(providers_set, key=lambda val: val.lower())
     ]
-    all_providers = [
-        {
-            "value": provider["provider_name"],
-            "label": provider["provider_name"],
-            "image": provider["image"],
-        }
-        for provider in tmdb.global_watch_provider_catalog()
-    ]
+    all_providers = (
+        [
+            {
+                "value": provider["provider_name"],
+                "label": provider["provider_name"],
+                "image": provider["image"],
+            }
+            for provider in tmdb.global_watch_provider_catalog()
+        ]
+        if include_providers
+        else []
+    )
     media_statuses = [
         {"value": value, "label": value}
         for value in sorted(media_statuses_set, key=lambda val: val.lower())
@@ -1670,6 +1680,7 @@ def media_list(request, media_type):
                 collection_platforms_by_item_id=collection_platforms_by_item_id,
                 region=watch_provider_region,
                 pinned_providers=request.user.pinned_watch_providers,
+                include_providers=media_type in provider_media_types,
             )
             filter_data["show_languages"] = media_type in (
                 MediaTypes.TV.value,
@@ -1912,6 +1923,7 @@ def media_list(request, media_type):
             collection_platforms_by_item_id=collection_platforms_by_item_id,
             region=watch_provider_region,
             pinned_providers=request.user.pinned_watch_providers,
+            include_providers=media_type in provider_media_types,
         )
         filter_data["show_languages"] = media_type in (
             MediaTypes.TV.value,

@@ -1039,7 +1039,11 @@
           <div class="max-h-64 overflow-y-auto">
             <template x-for="option in filteredAllProviders()" :key="option.value">
               <div class="flex items-center w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]">
-                <button class="flex items-center flex-1 min-w-0 gap-2 cursor-pointer"
+                <button hx-get="{{ filter_hx_endpoint }}"
+                        hx-target="{{ filter_hx_target }}"
+                        hx-include="#filter-form"
+                        hx-indicator="#loading-indicator"
+                        class="flex items-center flex-1 min-w-0 gap-2 cursor-pointer"
                         @click="provider = option.value; open = false; view = 'root'"
                         type="button">
                   <span class="block min-w-0 truncate max-w-[10rem]" x-text="option.label"></span>

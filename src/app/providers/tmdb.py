@@ -32,6 +32,11 @@ SEARCH_CACHE_TIMEOUT = 60 * 60
 # Season blobs are the largest single thing Floppy caches (full episode lists),
 # so they expire sooner than the show payload they hang off.
 SEASON_CACHE_TIMEOUT = 60 * 60 * 12
+# build_filter_data_from_items() requests this catalog on every media-list
+# render. A cold cache during a TMDB outage must not repeat both provider
+# requests (each carrying the full request timeout) on every single render,
+# so a failed fetch is still cached, just for a much shorter window.
+WATCH_PROVIDER_CATALOG_FAILURE_CACHE_TIMEOUT = 60 * 5
 TMDB_APPEND_TO_RESPONSE_MAX_REMOTE_CALLS = 20
 TV_DETAIL_APPEND_RESPONSES = (
     "recommendations,external_ids,aggregate_credits,alternative_titles,watch/providers"
@@ -2314,6 +2319,7 @@ def global_watch_provider_catalog():
 
     if data is None:
         providers = {}
+        any_fetch_failed = False
         for media_type in ("movie", "tv"):
             url = f"{base_url}/watch/providers/{media_type}"
             params = {**base_params()}
@@ -2330,6 +2336,7 @@ def global_watch_provider_catalog():
                     "Skipping %s watch-provider catalog fetch due to TMDB API error",
                     media_type,
                 )
+                any_fetch_failed = True
                 continue
 
             for provider in response.get("results", []):
@@ -2346,6 +2353,10 @@ def global_watch_provider_catalog():
         data = sorted(providers.values(), key=lambda p: p["provider_name"].lower())
         if data:
             cache.set(cache_key, data)
+        elif any_fetch_failed:
+            # Cache the empty result too, just briefly: an outage must not
+            # repeat two full-timeout requests on every media-list render.
+            cache.set(cache_key, data, WATCH_PROVIDER_CATALOG_FAILURE_CACHE_TIMEOUT)
 
     return data
 
