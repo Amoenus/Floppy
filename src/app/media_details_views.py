@@ -2038,6 +2038,18 @@ def media_details(
             if watch_provider_payload is not None
             else None
         )
+
+        if request.user.is_authenticated and request.user.pinned_watch_providers:
+            pinned_matches = tmdb.pinned_provider_matches(
+                detail_item, request.user.pinned_watch_providers
+            )
+            if pinned_matches:
+                merged = {p["provider_id"]: p for p in (watch_providers or [])}
+                for provider in pinned_matches:
+                    merged.setdefault(provider["provider_id"], provider)
+                watch_providers = sorted(
+                    merged.values(), key=lambda e: e.get("display_priority", 999)
+                )
     else:
         watch_providers = None
 
