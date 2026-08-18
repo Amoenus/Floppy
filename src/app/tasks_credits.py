@@ -11,7 +11,13 @@ from celery import shared_task
 from app import backfill_queue
 from app import credits as credit_helpers
 from app.log_safety import exception_summary
-from app.models import CREDITS_BACKFILL_VERSION, Item, MediaTypes, MetadataBackfillField
+from app.models import (
+    CREDITS_BACKFILL_VERSION,
+    Item,
+    MediaTypes,
+    MetadataBackfillField,
+    Sources,
+)
 from app.providers import services
 from app.task_cooperation import CooperativeRun
 from app.tasks_backfill_state import (
@@ -25,7 +31,7 @@ from app.tasks_metadata_cache import _clear_item_metadata_cache, _fetch_item_met
 
 logger = logging.getLogger(__name__)
 
-CREDITS_BACKFILL_SOURCES = ("tmdb",)
+CREDITS_BACKFILL_SOURCES = ("tmdb", "tvdb")
 CREDITS_BACKFILL_QUEUE_TTL = 60 * 60  # 1 hour
 CREDITS_BACKFILL_ITEMS_QUEUE_KEY = "credits_backfill_items_queue"
 CREDITS_BACKFILL_ITEMS_SCHEDULED_KEY = "credits_backfill_items_scheduled"
@@ -48,6 +54,15 @@ def _next_credits_backfill_item_ids(batch_size: int, scan_multiplier: int):
                 MediaTypes.SEASON.value,
                 MediaTypes.EPISODE.value,
             ],
+        )
+        # TVDB only exposes cast/crew on the series-level payload: seasons get
+        # no credits payload at all, and tvdb.episode() hardcodes empty
+        # cast/crew, so both would otherwise be reprocessed every cycle for
+        # nothing (a season eventually gives up; an episode never fails, so
+        # it never stops being requeued).
+        .exclude(
+            source=Sources.TVDB.value,
+            media_type__in=[MediaTypes.SEASON.value, MediaTypes.EPISODE.value],
         )
         .order_by("id")
         .values_list("id", flat=True)[:candidate_limit]

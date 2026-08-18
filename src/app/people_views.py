@@ -22,7 +22,15 @@ from app.models import (
     Sources,
     Studio,
 )
-from app.providers import comicvine, hardcover, igdb, mangaupdates, openlibrary, tmdb
+from app.providers import (
+    comicvine,
+    hardcover,
+    igdb,
+    mangaupdates,
+    openlibrary,
+    tmdb,
+    tvdb,
+)
 from users.models import MediaSortChoices
 
 logger = __import__("logging").getLogger(__name__)
@@ -42,6 +50,15 @@ def person_detail(request, source, person_id, name):
             ),
             "source_url": lambda person_id_value: (
                 f"https://www.themoviedb.org/person/{person_id_value}"
+            ),
+            "is_author": False,
+        },
+        Sources.TVDB.value: {
+            "fetcher": tvdb.person,
+            "entries_key": "filmography",
+            "tracked_media_types": (MediaTypes.TV.value,),
+            "source_url": lambda person_id_value: (
+                f"https://www.thetvdb.com/dereferrer/person/{person_id_value}"
             ),
             "is_author": False,
         },

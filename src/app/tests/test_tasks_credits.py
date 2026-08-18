@@ -494,6 +494,95 @@ class CreditsBackfillTaskTests(TestCase):
 
         self.assertCountEqual(missing_ids, [tv_item.id, season_item.id])
 
+    def test_missing_credits_item_ids_does_not_require_studios_for_tvdb_tv(self):
+        """TVDB never returns studio data, so cast alone should satisfy TV items."""
+        tvdb_item = Item.objects.create(
+            media_id="81189",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.TV.value,
+            title="TVDB Show",
+        )
+        person = Person.objects.create(
+            source=Sources.TVDB.value,
+            source_person_id="291115",
+            name="TVDB Cast Member",
+            gender=PersonGender.UNKNOWN.value,
+        )
+        ItemPersonCredit.objects.create(
+            item=tvdb_item,
+            person=person,
+            role_type=CreditRoleType.CAST.value,
+            role="Lead",
+        )
+        MetadataBackfillState.objects.update_or_create(
+            item=tvdb_item,
+            field=MetadataBackfillField.CREDITS,
+            defaults={
+                "last_success_at": timezone.now(),
+                "strategy_version": CREDITS_BACKFILL_VERSION,
+            },
+        )
+
+        missing_ids = tasks._missing_credits_item_ids([tvdb_item.id])
+
+        self.assertEqual(missing_ids, [])
+
+    def test_missing_credits_item_ids_excludes_tvdb_seasons_and_episodes(self):
+        """TVDB seasons/episodes never carry a credits payload; skip them entirely.
+
+        Otherwise a season would record a permanent backfill failure and an
+        episode (whose provider payload hardcodes empty cast/crew) would be
+        reprocessed forever since it "succeeds" with zero credits every time.
+        """
+        tvdb_season = Item.objects.create(
+            media_id="81189",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=1,
+            title="TVDB Season",
+        )
+        tvdb_episode = Item.objects.create(
+            media_id="81189",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=1,
+            episode_number=1,
+            title="TVDB Episode",
+        )
+
+        missing_ids = tasks._missing_credits_item_ids(
+            [tvdb_season.id, tvdb_episode.id]
+        )
+
+        self.assertEqual(missing_ids, [])
+
+    @patch("app.tasks.populate_credits_backfill_queue.apply_async")
+    def test_enqueue_credits_backfill_excludes_tvdb_seasons_and_episodes(
+        self, mock_apply_async
+    ):
+        tvdb_season = Item.objects.create(
+            media_id="81190",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=1,
+            title="TVDB Season Needing Credits",
+        )
+        tvdb_episode = Item.objects.create(
+            media_id="81190",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=1,
+            episode_number=1,
+            title="TVDB Episode Needing Credits",
+        )
+
+        queued = tasks.enqueue_credits_backfill_items(
+            [tvdb_season.id, tvdb_episode.id], countdown=1
+        )
+
+        self.assertEqual(queued, 0)
+        mock_apply_async.assert_not_called()
+
     @patch("app.tasks.populate_credits_backfill_queue.apply_async")
     def test_enqueue_credits_backfill_requeues_tv_and_season_with_old_strategy_version(
         self,
