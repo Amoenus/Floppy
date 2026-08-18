@@ -174,13 +174,62 @@ def process_webhook(provider, payload, user_id, share_id=None):
     time_limit=120,
 )
 def process_stremio_webhook(payload, user_id, queue_member=None):
-    """Process one bounded Stremio playback event.
-
-    ``queue_member`` is released immediately when the worker starts so a
-    stuck task cannot permanently consume the per-user admission budget.
-    """
+    """Process one Stremio start and create its guarded verifier session."""
     if queue_member:
         from integrations.stremio_queue import release_pending
 
         release_pending(user_id, queue_member)
-    return _process_webhook("stremio", payload, user_id)
+
+    result = _process_webhook("stremio", payload, user_id)
+    if payload.get("_floppy_verified_completion"):
+        return result
+
+    from integrations.stremio_playback import start_session
+
+    decision = start_session(payload, user_id)
+    if decision.status == "schedule":
+        verify_stremio_playback.apply_async(
+            args=[decision.session_id],
+            countdown=decision.countdown,
+            queue="interactive",
+        )
+    else:
+        logger.info(
+            "stremio_verify_start status=%s reason=%s user_id=%s media_id=%s",
+            decision.status,
+            decision.reason,
+            user_id,
+            payload.get("id"),
+        )
+    return result
+
+
+@shared_task(
+    name="Verify Stremio playback completion",
+    soft_time_limit=90,
+    time_limit=120,
+)
+def verify_stremio_playback(session_id):
+    """Run one bounded observation and schedule only the requested successor."""
+    from integrations.stremio_playback import observe_session
+
+    decision = observe_session(session_id)
+    if decision.status == "schedule":
+        verify_stremio_playback.apply_async(
+            args=[session_id],
+            countdown=decision.countdown,
+            queue="interactive",
+        )
+    elif decision.status == "complete":
+        _process_webhook("stremio", decision.payload, decision.user_id)
+    logger.info(
+        "stremio_verify status=%s reason=%s session_id=%s",
+        decision.status,
+        decision.reason,
+        session_id,
+    )
+    return {
+        "status": decision.status,
+        "reason": decision.reason,
+        "session_id": session_id,
+    }
