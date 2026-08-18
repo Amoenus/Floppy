@@ -612,11 +612,13 @@ def season_details(
             season_metadata["episodes"] = manual.process_episodes(
                 season_metadata,
                 episodes_in_db,
+                season=current_instance,
             )
         else:
             season_metadata["episodes"] = tmdb.process_episodes(
                 season_metadata,
                 episodes_in_db,
+                season=current_instance,
             )
 
     if (

@@ -1094,3 +1094,15 @@ def parse_completion_datetime(value):
         parsed = make_aware(parsed)
 
     return parsed
+
+def split_pass_history(tracked_plays, season):
+    """Return (plays in the season's current rewatch pass, every play).
+
+    Outside a pass the two are the same, so callers can key display off the
+    first and lifetime counts off the second without special-casing.
+    """
+    if season is None:
+        return tracked_plays, tracked_plays
+    return [
+        play for play in tracked_plays if season.play_counts_for_pass(play)
+    ], tracked_plays

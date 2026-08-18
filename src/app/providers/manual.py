@@ -227,7 +227,7 @@ def episode(media_id, season_number, episode_number):
     return None
 
 
-def process_episodes(season_metadata, episodes_in_db):
+def process_episodes(season_metadata, episodes_in_db, season=None):
     """Process the episodes for the selected season."""
     tracked_episodes = {}
     for ep in episodes_in_db:
@@ -240,6 +240,10 @@ def process_episodes(season_metadata, episodes_in_db):
 
     for episode_payload in season_metadata["episodes"]:
         episode_number = episode_payload["episode_number"]
+        pass_plays, all_plays = helpers.split_pass_history(
+            tracked_episodes.get(episode_number, []),
+            season,
+        )
         episode_data = {
             "source": Sources.MANUAL.value,
             "media_id": episode_payload["media_id"],
@@ -254,7 +258,8 @@ def process_episodes(season_metadata, episodes_in_db):
                 or episode_payload.get("synopsis")
                 or "No synopsis available."
             ),
-            "history": tracked_episodes.get(episode_number, []),
+            "history": pass_plays,
+            "all_history": all_plays,
         }
         if episode_payload.get("runtime"):
             episode_data["runtime"] = episode_payload["runtime"]

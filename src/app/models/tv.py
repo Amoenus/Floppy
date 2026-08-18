@@ -887,12 +887,18 @@ class Season(Media):
         return self.rewatch_started_at is not None
 
     def play_counts_for_pass(self, episode):
-        """Return whether a play belongs to the season's current pass."""
+        """Return whether a play belongs to the season's current pass.
+
+        A play counts when it was logged after the pass began, or carries a
+        watch date inside it. Checking both matters because a date-only watch
+        date lands at midnight, which is before a pass started later that day.
+        """
         if self.rewatch_started_at is None:
             return True
-        # end_date is nullable, so fall back to when the play was logged.
-        played_at = episode.end_date or episode.created_at
-        return played_at is not None and played_at >= self.rewatch_started_at
+        return any(
+            played_at is not None and played_at >= self.rewatch_started_at
+            for played_at in (episode.created_at, episode.end_date)
+        )
 
     def _invalidate_episode_stats(self):
         """Drop cached episode stats after the pass or its plays changed."""
@@ -1297,11 +1303,8 @@ class Season(Media):
         plays = Episode.objects.filter(related_season=self)
         if self.rewatch_started_at is not None:
             plays = plays.filter(
-                models.Q(end_date__gte=self.rewatch_started_at)
-                | models.Q(
-                    end_date__isnull=True,
-                    created_at__gte=self.rewatch_started_at,
-                ),
+                models.Q(created_at__gte=self.rewatch_started_at)
+                | models.Q(end_date__gte=self.rewatch_started_at),
             )
         latest_watched_ep_num = plays.aggregate(
             latest_watched_ep_num=Max("item__episode_number"),
