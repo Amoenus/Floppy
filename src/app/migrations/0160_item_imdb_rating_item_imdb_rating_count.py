@@ -5,7 +5,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("app", "0158_podcast_end_date_inferred"),
+        ("app", "0159_alter_studio_logo"),
     ]
 
     operations = [
