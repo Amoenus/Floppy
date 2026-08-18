@@ -36,6 +36,7 @@ from integrations import (
     koito_api,
     lastfm_api,
     pocketcasts_api,
+    psn_api,
     stremio_queue,
     tasks,
     xbox_api,
@@ -77,6 +78,7 @@ from integrations.models import (
     PlexAccount,
     PlexWebhookShare,
     PocketCastsAccount,
+    PSNAccount,
     RadarrAccount,
     SonarrAccount,
     StorytellerAccount,
@@ -1859,8 +1861,9 @@ def import_stremio(request):
 
 
 XBOX_RECURRING_TASK_NAME = "Import from Xbox (Recurring)"
-XBOX_RECURRING_FREQUENCIES = {"daily": "*", "2days": "*/2"}
-XBOX_DEFAULT_IMPORT_TIME = "04:00"
+PSN_RECURRING_TASK_NAME = "Import from PSN (Recurring)"
+CONSOLE_RECURRING_FREQUENCIES = {"daily": "*", "2days": "*/2"}
+CONSOLE_DEFAULT_IMPORT_TIME = "04:00"
 
 
 def _next_crontab_run(crontab):
@@ -1879,12 +1882,12 @@ def _next_crontab_run(crontab):
     return croniter.croniter(cron_expression, now).get_next(datetime)
 
 
-def _xbox_schedule_name(user, parsed_time, frequency):
-    """Name a user's Xbox schedule for the beat admin and the schedule list."""
-    return f"Import from Xbox for {user.username} at {parsed_time} {frequency}"
+def _console_schedule_name(source, user, parsed_time, frequency):
+    """Name a user's console schedule for the beat admin and the schedule list."""
+    return f"Import from {source} for {user.username} at {parsed_time} {frequency}"
 
 
-def _reclaim_xbox_schedule_name(task_name, parsed_time, frequency):
+def _reclaim_console_schedule_name(source, task_name, parsed_time, frequency):
     """Free a schedule name whose holder no longer answers to it.
 
     `PeriodicTask.name` is unique and these names are built from the
@@ -1913,7 +1916,7 @@ def _reclaim_xbox_schedule_name(task_name, parsed_time, frequency):
         holder.delete()
         return True
 
-    current_name = _xbox_schedule_name(holder_user, parsed_time, frequency)
+    current_name = _console_schedule_name(source, holder_user, parsed_time, frequency)
     if current_name == task_name:
         # The holder is entitled to the name; it just isn't ours.
         return False
@@ -1923,8 +1926,15 @@ def _reclaim_xbox_schedule_name(task_name, parsed_time, frequency):
     return True
 
 
-def _create_xbox_schedule(request, mode, frequency, import_time):
-    """Create a recurring Xbox import schedule for the chosen time."""
+def _create_console_schedule(
+    request,
+    source,
+    recurring_task_name,
+    mode,
+    frequency,
+    import_time,
+):
+    """Create a recurring console import schedule for the chosen time."""
     from django_celery_beat.models import CrontabSchedule, PeriodicTask
 
     try:
@@ -1936,18 +1946,18 @@ def _create_xbox_schedule(request, mode, frequency, import_time):
     crontab, _ = CrontabSchedule.objects.get_or_create(
         minute=parsed_time.minute,
         hour=parsed_time.hour,
-        day_of_week=XBOX_RECURRING_FREQUENCIES[frequency],
+        day_of_week=CONSOLE_RECURRING_FREQUENCIES[frequency],
         day_of_month="*",
         month_of_year="*",
         timezone=timezone.get_default_timezone(),
     )
 
-    task_name = _xbox_schedule_name(request.user, parsed_time, frequency)
+    task_name = _console_schedule_name(source, request.user, parsed_time, frequency)
     desired_kwargs = json.dumps({"user_id": request.user.id, "mode": mode})
     existing_task = (
         PeriodicTask.objects.filter(
             _periodic_task_filter_for_user(request.user.id),
-            task=XBOX_RECURRING_TASK_NAME,
+            task=recurring_task_name,
             crontab=crontab,
         )
         .order_by("-enabled", "id")
@@ -1967,46 +1977,56 @@ def _create_xbox_schedule(request, mode, frequency, import_time):
         existing_task.save(
             update_fields=["name", "kwargs", "start_time", "enabled"],
         )
-        messages.success(request, "Xbox import task re-enabled.")
+        messages.success(request, f"{source} import task re-enabled.")
         return
 
-    if not _reclaim_xbox_schedule_name(task_name, parsed_time, frequency):
+    if not _reclaim_console_schedule_name(source, task_name, parsed_time, frequency):
         messages.error(request, "The same import task is already scheduled.")
         return
 
     try:
         PeriodicTask.objects.create(
             name=task_name,
-            task=XBOX_RECURRING_TASK_NAME,
+            task=recurring_task_name,
             crontab=crontab,
             kwargs=desired_kwargs,
             start_time=_next_crontab_run(crontab),
             enabled=True,
         )
     except IntegrityError:
-        logger.exception("Xbox schedule %s could not be created", task_name)
+        logger.exception("%s schedule %s could not be created", source, task_name)
         messages.error(request, "The same import task is already scheduled.")
         return
 
-    messages.success(request, "Xbox import task scheduled.")
+    messages.success(request, f"{source} import task scheduled.")
 
 
-def _start_xbox_import(request):
-    """Queue a one-off Xbox import, or schedule a recurring one.
+def _start_console_import(request, source, task, recurring_task_name):
+    """Queue a one-off console import, or schedule a recurring one.
 
     A scheduled import only runs on its schedule; a one time import runs
     straight away and creates no periodic task.
     """
     mode = request.POST.get("mode") or "new"
     frequency = request.POST.get("frequency") or "once"
-    import_time = request.POST.get("time") or XBOX_DEFAULT_IMPORT_TIME
+    import_time = request.POST.get("time") or CONSOLE_DEFAULT_IMPORT_TIME
 
-    if frequency not in XBOX_RECURRING_FREQUENCIES:
-        tasks.import_xbox.delay(user_id=request.user.id, mode=mode)
-        messages.info(request, "The task to import media from Xbox has been queued.")
+    if frequency not in CONSOLE_RECURRING_FREQUENCIES:
+        task.delay(user_id=request.user.id, mode=mode)
+        messages.info(
+            request,
+            f"The task to import media from {source} has been queued.",
+        )
         return
 
-    _create_xbox_schedule(request, mode, frequency, import_time)
+    _create_console_schedule(
+        request,
+        source,
+        recurring_task_name,
+        mode,
+        frequency,
+        import_time,
+    )
 
 
 @require_POST
@@ -2042,7 +2062,7 @@ def xbox_connect(request):
         },
     )
     messages.success(request, f"Connected to Xbox as {gamertag or xuid}.")
-    _start_xbox_import(request)
+    _start_console_import(request, "Xbox", tasks.import_xbox, XBOX_RECURRING_TASK_NAME)
     return redirect("import_data")
 
 
@@ -2068,7 +2088,76 @@ def import_xbox(request):
         messages.error(request, "Connect Xbox before importing.")
         return redirect("import_data")
 
-    _start_xbox_import(request)
+    _start_console_import(request, "Xbox", tasks.import_xbox, XBOX_RECURRING_TASK_NAME)
+    return redirect("import_data")
+
+
+@require_POST
+def psn_connect(request):
+    """Connect a PlayStation Network account using an NPSSO token."""
+    npsso = request.POST.get("npsso", "").strip()
+    if not npsso:
+        messages.error(request, "A PSN NPSSO token is required.")
+        return redirect("import_data")
+
+    try:
+        account_id, online_id = psn_api.get_account(npsso)
+    except helpers.MediaImportError as error:
+        messages.error(
+            request,
+            f"Could not connect to PlayStation Network: {error}",
+        )
+        return redirect("import_data")
+    except Exception as error:
+        logger.exception("Failed to connect to PlayStation Network")
+        messages.error(
+            request,
+            "Failed to connect to PlayStation Network "
+            f"({exception_summary(error)}). Check the logs for details.",
+        )
+        return redirect("import_data")
+
+    PSNAccount.objects.update_or_create(
+        user=request.user,
+        defaults={
+            "npsso": helpers.encrypt(npsso),
+            "account_id": account_id,
+            "online_id": online_id,
+            "connection_broken": False,
+            "last_error_message": "",
+        },
+    )
+    messages.success(
+        request,
+        f"Connected to PlayStation Network as {online_id or account_id}.",
+    )
+    _start_console_import(request, "PSN", tasks.import_psn, PSN_RECURRING_TASK_NAME)
+    return redirect("import_data")
+
+
+@require_POST
+def psn_disconnect(request):
+    """Disconnect the PlayStation Network integration."""
+    from django_celery_beat.models import PeriodicTask
+
+    PeriodicTask.objects.filter(
+        _periodic_task_filter_for_user(request.user.id),
+        task=PSN_RECURRING_TASK_NAME,
+    ).delete()
+    PSNAccount.objects.filter(user=request.user).delete()
+    messages.info(request, "Disconnected PlayStation Network.")
+    return redirect("import_data")
+
+
+@require_POST
+def import_psn(request):
+    """Queue a one-off PSN import or schedule a recurring one."""
+    account = getattr(request.user, "psn_account", None)
+    if not account:
+        messages.error(request, "Connect PlayStation Network before importing.")
+        return redirect("import_data")
+
+    _start_console_import(request, "PSN", tasks.import_psn, PSN_RECURRING_TASK_NAME)
     return redirect("import_data")
 
 
@@ -2825,6 +2914,21 @@ def export_csv(request):
         headers={"Content-Disposition": f'attachment; filename="floppy_{now}.csv"'},
     )
     logger.info("User %s started CSV export", request.user.username)
+    return response
+
+
+@require_GET
+def export_csv_letterboxd(request):
+    """View for exporting the user's watched movies as a Letterboxd import CSV."""
+    now = timezone.localtime()
+    response = StreamingHttpResponse(
+        streaming_content=exports.generate_letterboxd_rows(request.user),
+        content_type="text/csv",
+        headers={
+            "Content-Disposition": f'attachment; filename="letterboxd_{now}.csv"',
+        },
+    )
+    logger.info("User %s started Letterboxd CSV export", request.user.username)
     return response
 
 

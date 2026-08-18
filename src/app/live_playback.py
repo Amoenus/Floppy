@@ -22,6 +22,9 @@ PLAYBACK_CACHE_TIMEOUT_SECONDS = 6 * 60 * 60
 PLAYBACK_HARD_STALE_SECONDS = 4 * 60 * 60
 PLAYBACK_PAUSE_STALE_SECONDS = 45 * 60
 PLAYBACK_SCROBBLE_BUFFER_SECONDS = 30  # small buffer after calculated end time
+# Watched threshold the media servers scrobble at, used as the floor for a
+# scrobbled title's progress when the event carries no view offset.
+PLAYBACK_SCROBBLE_MIN_PROGRESS_RATIO = 0.9
 PLAYBACK_SCROBBLE_FALLBACK_SECONDS = 15 * 60  # fallback when duration unavailable
 PLAYBACK_STOP_GRACE_SECONDS = 60
 
@@ -428,6 +431,14 @@ def apply_playback_event(
         dur = dur_seconds or 0
         off = offset_seconds or 0
         if dur > 0:
+            if view_offset_seconds is None:
+                # Plex sends the scrobble itself without a view offset, and the
+                # last one it did report can be far behind after a seek. The
+                # event does say the server considers the title watched, so
+                # take its threshold as the floor rather than trusting a stale
+                # position. An offset the event actually carries is kept.
+                off = max(off, int(dur * PLAYBACK_SCROBBLE_MIN_PROGRESS_RATIO))
+                state["view_offset_seconds"] = off
             remaining = max(0, dur - off)
             state["scrobble_expires_at_ts"] = (
                 now_ts + remaining + PLAYBACK_SCROBBLE_BUFFER_SECONDS

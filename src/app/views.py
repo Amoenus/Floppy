@@ -168,6 +168,7 @@ from app.media_list_views import (
     _collect_reading_activity_day_keys,
     _tracked_media_entries,
     media_list,
+    toggle_pinned_provider,
     update_table_columns,
 )
 from app.metadata_sync_views import (
@@ -2219,6 +2220,7 @@ __all__ = [
     "tag_item_toggle",
     "tags_modal",
     "time",
+    "toggle_pinned_provider",
     "track_modal",
     "trakt_popularity_service",
     "update_album_score",

@@ -256,11 +256,26 @@ PROVIDER_MEDIA_TYPES = (
 )
 
 
-def _extract_item_providers(item, region):
-    """Extract watch-provider names for an item, or None if region is unset."""
+def _extract_item_providers(item, region, pinned_providers=None):
+    """Extract watch-provider names for an item, or None if region is unset.
+
+    When ``pinned_providers`` is given, also matches those provider names
+    against the item's availability in *any* region, so a pinned provider
+    from outside the user's home region still filters correctly.
+    """
     if not item:
         return None
-    return tmdb.item_watch_provider_names(item, region)
+    names = tmdb.item_watch_provider_names(item, region)
+    if pinned_providers:
+        pinned_matches = tmdb.pinned_provider_matches(item, pinned_providers)
+        pinned_names = {
+            provider["provider_name"]
+            for provider in pinned_matches
+            if provider.get("provider_name")
+        }
+        if pinned_names:
+            return sorted((set(names) if names else set()) | pinned_names)
+    return names
 
 
 def _extract_item_authors(item):
@@ -338,6 +353,8 @@ def build_filter_data_from_items(
     collection_formats_by_item_id=None,
     collection_platforms_by_item_id=None,
     region=None,
+    pinned_providers=None,
+    include_providers=True,
 ):
     """Build filter menu option lists from a sequence of media/Item objects.
 
@@ -346,7 +363,18 @@ def build_filter_data_from_items(
     ``collection_platforms_by_item_id`` from the media-list view to include
     collection-enriched format/platform data; omit them (or pass None) for
     contexts that don't have collection data (e.g. person detail pages).
+
+    ``pinned_providers`` is the user's pinned/favorited watch-provider names
+    (see ``User.pinned_watch_providers``). They're always included as
+    selectable options, even outside the user's home region, and the full
+    TMDB provider catalog is returned under ``all_providers`` /
+    ``pinned_providers`` for the filter dropdown's "More" panel.
+
+    ``include_providers`` should be false for media types that never show a
+    provider filter (games, books, music, ...) so the global TMDB catalog
+    fetch is skipped entirely rather than run and then discarded.
     """
+    pinned_providers = list(pinned_providers or [])
     genres_set = set()
     implied_genres_set = set()
     years_set = set()
@@ -399,8 +427,10 @@ def build_filter_data_from_items(
         item_formats = _extract_item_formats(item, collection_formats_by_item_id)
         if item_formats:
             formats_set.update(item_formats)
-        if has_region:
+        if include_providers and has_region:
             providers_set.update(_extract_item_providers(item, region) or [])
+    if include_providers:
+        providers_set.update(pinned_providers)
 
     genres = sorted(genres_set, key=lambda value: value.lower())
     implied_genres = sorted(implied_genres_set, key=lambda value: value.lower())
@@ -449,6 +479,18 @@ def build_filter_data_from_items(
         {"value": value, "label": value}
         for value in sorted(providers_set, key=lambda val: val.lower())
     ]
+    all_providers = (
+        [
+            {
+                "value": provider["provider_name"],
+                "label": provider["provider_name"],
+                "image": provider["image"],
+            }
+            for provider in tmdb.global_watch_provider_catalog()
+        ]
+        if include_providers
+        else []
+    )
     media_statuses = [
         {"value": value, "label": value}
         for value in sorted(media_statuses_set, key=lambda val: val.lower())
@@ -465,6 +507,8 @@ def build_filter_data_from_items(
         "formats": formats,
         "authors": authors,
         "providers": providers,
+        "all_providers": all_providers,
+        "pinned_providers": sorted(pinned_providers, key=lambda val: val.lower()),
         "media_statuses": media_statuses,
         "show_languages": False,
         "show_countries": False,
@@ -837,7 +881,7 @@ def media_list(request, media_type):
                 filtered_items.append(media)
         return filtered_items
 
-    def apply_provider_filter(media_items, filter_value, region):
+    def apply_provider_filter(media_items, filter_value, region, pinned_providers=None):
         if not filter_value:
             return media_items
         target = _normalize_filter_value(filter_value)
@@ -846,7 +890,7 @@ def media_list(request, media_type):
             item = getattr(media, "item", None)
             if not item:
                 continue
-            providers = _extract_item_providers(item, region)
+            providers = _extract_item_providers(item, region, pinned_providers)
             if providers and any(
                 _normalize_filter_value(provider) == target for provider in providers
             ):
@@ -1385,6 +1429,9 @@ def media_list(request, media_type):
             provider_filter=provider_filter,
             watch_provider_region=watch_provider_region,
             media_status_filter=media_status_filter,
+            pinned_providers=",".join(
+                sorted(request.user.pinned_watch_providers or [])
+            ),
         )
         if _use_media_list_cache
         else None
@@ -1413,6 +1460,9 @@ def media_list(request, media_type):
             provider_filter=provider_filter,
             watch_provider_region=watch_provider_region,
             media_status_filter=media_status_filter,
+            pinned_providers=",".join(
+                sorted(request.user.pinned_watch_providers or [])
+            ),
         )
         if (_use_media_list_cache or _time_left_active)
         else None
@@ -1456,6 +1506,9 @@ def media_list(request, media_type):
             provider_filter=provider_filter,
             watch_provider_region=watch_provider_region,
             media_status_filter=media_status_filter,
+            pinned_providers=",".join(
+                sorted(request.user.pinned_watch_providers or [])
+            ),
         )
         _time_left_cached_order = cache.get(_time_left_cache_key)
         if _time_left_cached_order is not None and filter_data is not None:
@@ -1626,6 +1679,8 @@ def media_list(request, media_type):
                 collection_formats_by_item_id=collection_formats_by_item_id,
                 collection_platforms_by_item_id=collection_platforms_by_item_id,
                 region=watch_provider_region,
+                pinned_providers=request.user.pinned_watch_providers,
+                include_providers=media_type in provider_media_types,
             )
             filter_data["show_languages"] = media_type in (
                 MediaTypes.TV.value,
@@ -1644,7 +1699,8 @@ def media_list(request, media_type):
             filter_data["show_formats"] = media_type in author_media_types
             filter_data["show_authors"] = media_type in author_media_types
             filter_data["show_providers"] = media_type in provider_media_types and bool(
-                watch_provider_region and watch_provider_region != "UNSET"
+                (watch_provider_region and watch_provider_region != "UNSET")
+                or request.user.pinned_watch_providers
             )
             filter_data["show_progress"] = media_type in progress_media_types
             filter_data.update(
@@ -1673,7 +1729,10 @@ def media_list(request, media_type):
             media_list = apply_format_filter(media_list, format_filter)
         if media_type in provider_media_types:
             media_list = apply_provider_filter(
-                media_list, provider_filter, watch_provider_region
+                media_list,
+                provider_filter,
+                watch_provider_region,
+                request.user.pinned_watch_providers,
             )
         if sort_filter == "author" and media_type in author_media_types:
             media_list = sort_media_items_by_author(media_list, direction)
@@ -1863,6 +1922,8 @@ def media_list(request, media_type):
             collection_formats_by_item_id=collection_formats_by_item_id,
             collection_platforms_by_item_id=collection_platforms_by_item_id,
             region=watch_provider_region,
+            pinned_providers=request.user.pinned_watch_providers,
+            include_providers=media_type in provider_media_types,
         )
         filter_data["show_languages"] = media_type in (
             MediaTypes.TV.value,
@@ -1881,7 +1942,8 @@ def media_list(request, media_type):
         filter_data["show_formats"] = media_type in author_media_types
         filter_data["show_authors"] = media_type in author_media_types
         filter_data["show_providers"] = media_type in provider_media_types and bool(
-            watch_provider_region and watch_provider_region != "UNSET"
+            (watch_provider_region and watch_provider_region != "UNSET")
+            or request.user.pinned_watch_providers
         )
         filter_data["show_progress"] = media_type in progress_media_types
         filter_data.update(
@@ -2933,3 +2995,17 @@ def update_table_columns(request, media_type):
     response = HttpResponse(status=204)
     response["HX-Trigger"] = json.dumps({"refreshTableColumns": True})
     return response
+
+
+def toggle_pinned_provider(request):
+    """Pin or unpin a watch-provider name, promoting/demoting it in filter menus."""
+    if not request.user.is_authenticated:
+        return HttpResponseBadRequest("Authentication required")
+
+    provider_name = request.POST.get("provider_name", "").strip()
+    if not provider_name:
+        return HttpResponseBadRequest("provider_name is required")
+
+    request.user.toggle_pinned_provider(provider_name)
+
+    return HttpResponse(status=204)

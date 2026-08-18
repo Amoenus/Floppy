@@ -1,32 +1,28 @@
 ## Summary
-- Describe what changed and why.
+- What changed and why in plain, approachable terms.
+- For user interface or visual changes, attach before and after screenshots.
 
 ## AI Assistance
-- If an AI agent generated or substantially shaped this change, name the specific model (e.g. `claude-sonnet-4-6`, `gpt-5.1-codex`). A tool or subscription name alone ("Claude Code", "Copilot", "Codex Subscription") is NOT sufficient — say which model actually did the work. Delete this section only if no AI assistance was used.
+- If an AI assistant (such as Claude, Codex, Copilot) generated or shaped this code, specify the exact model name (e.g. `claude-sonnet-4-6`, `gpt-4o`).
+- If no AI assistance was used, delete this section.
 
-## Validation
-- List commands run and outcomes.
+## How It Was Tested
+- List the test commands you ran and their outcomes (e.g. `scripts/test.sh users.tests.views.test_about` -> Passed).
 
-## Contract Handoff
-- Domain guide regeneration/check outcome: <!-- result or not applicable -->
-- Verified OpenAPI regeneration outcome: <!-- result or not applicable -->
-- Contract-test outcome: <!-- result or not applicable -->
+## Public API & Documentation Handoff
+- [ ] Domain terminology is up to date (`python -m app.domain_vocabulary --check`)
+- [ ] OpenAPI schema contracts verified (if API endpoints changed)
+- [ ] Not applicable (no API or vocabulary changes)
 
-## Human Review
-- [ ] Pending human review.
-- [ ] Completed — reviewer/evidence: <!-- link or concise evidence -->
+## Human Review & Quality Assurance
+- [ ] Code review completed
+- [ ] Visual or manual QA verified (e.g. `/gstack-qa` or browser testing)
 
-## Gstack QA
-- [ ] Pending `/gstack-qa`.
-- [ ] Completed — report/outcome: <!-- link or concise outcome -->
+## Database & Migration Safety (Only if modifying models)
+- [ ] No existing or shared migrations were altered or renumbered
+- [ ] Migration hygiene passed (`uv run --no-sync python src/manage.py check_migration_hygiene --strict`)
+- [ ] Not applicable (no database changes)
 
-## Migration Sync Gate (Required for `upstream` -> `latest` sync PRs)
-- [ ] Conflicts resolved with upstream files preserved and fork behavior merged intentionally.
-- [ ] Migration conflicts handled per policy (no rewrite of shared/released migrations).
-- [ ] `uv run --no-sync python src/manage.py makemigrations --merge` run for affected apps.
-- [ ] `uv run --no-sync python src/manage.py check_migration_hygiene --strict` passed.
-- [ ] `scripts/replay_upgrade_matrix.sh --from-tag <previous_release_tag> --to-ref latest --db sqlite,postgres --with-drift-scenarios` passed.
-- [ ] `uv run --no-sync coverage run src/manage.py test app users integrations lists events --parallel` passed.
+## Related Issues
+- Link relevant issues and PRs (e.g. `Fixes #123`, `Refs #456`).
 
-## Notes
-- Link relevant issues (for example: `Refs #101`).

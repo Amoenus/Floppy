@@ -308,6 +308,33 @@ class UserColumnPrefsTests(TestCase):
         )
 
 
+class UserPinnedProvidersTests(TestCase):
+    """Tests for pinning/favoriting watch providers (issue #519)."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="pinnedproviders",
+            password="12345",
+        )
+
+    def test_toggle_pinned_provider_adds_new_provider(self):
+        result = self.user.toggle_pinned_provider("Netflix")
+
+        self.assertEqual(result, ["Netflix"])
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.pinned_watch_providers, ["Netflix"])
+
+    def test_toggle_pinned_provider_removes_existing_provider(self):
+        self.user.pinned_watch_providers = ["Netflix", "Hulu"]
+        self.user.save(update_fields=["pinned_watch_providers"])
+
+        result = self.user.toggle_pinned_provider("Netflix")
+
+        self.assertEqual(result, ["Hulu"])
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.pinned_watch_providers, ["Hulu"])
+
+
 class UserGetImportTasksTests(TestCase):
     """Tests for the User.get_import_tasks method."""
 

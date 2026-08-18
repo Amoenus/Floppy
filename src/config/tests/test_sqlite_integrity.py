@@ -932,18 +932,25 @@ class SqliteIntegrityTests(SimpleTestCase):
             wrappers = {
                 "python": (
                     "#!/bin/sh\n"
-                    'case "$2" in\n'
+                    'case "$*" in\n'
                     "  *check_database_integrity*)\n"
                     '    echo "[entrypoint] bounded integrity failure" >&2\n'
                     "    exit 1\n"
                     "    ;;\n"
+                    "  *config.sqlite_recovery_server*)\n"
+                    "    exit 0\n"
+                    "    ;;\n"
                     "esac\n"
                     f'exec "{sys.executable}" "$@"\n'
                 ),
+                "timeout": '#!/bin/sh\nshift\nexec "$@"\n',
                 "sleep": (
                     "#!/bin/sh\n"
                     'echo "$$" > "$PARKING_PID_FILE"\n'
-                    "exec /bin/sleep 30\n"
+                    # Sleep for the interval the entrypoint asked for. A shorter
+                    # fixed sleep ends, the parking loop starts another one, and
+                    # the pid file is overwritten while the test reads it.
+                    'exec /bin/sleep "$@"\n'
                 ),
             }
             for name, script in wrappers.items():
@@ -959,6 +966,7 @@ class SqliteIntegrityTests(SimpleTestCase):
                 "FLOPPY_DB_PATH": db_path,
                 "PATH": f"{bin_path}:{os.environ['PATH']}",
                 "PYTHONPATH": str(ENTRYPOINT.parent / "src"),
+                "VIRTUAL_ENV": "",
             }
             output_path = tmp_path / "entrypoint.log"
             with output_path.open("w") as output:
@@ -970,7 +978,8 @@ class SqliteIntegrityTests(SimpleTestCase):
                     stderr=output,
                     text=True,
                 )
-                deadline = time.monotonic() + 5
+                started_waiting = time.monotonic()
+                deadline = started_waiting + 5
                 while (
                     (
                         "SQLite startup is paused" not in output_path.read_text()
@@ -979,6 +988,11 @@ class SqliteIntegrityTests(SimpleTestCase):
                     and time.monotonic() < deadline
                 ):
                     time.sleep(0.02)
+                # Two faults leave parking_child_before_term False and they need
+                # opposite fixes: the wait ran out before the pid file appeared,
+                # or the file appeared naming a process that had already exited.
+                waited_seconds = time.monotonic() - started_waiting
+                pid_file_appeared = (tmp_path / "parking.pid").is_file()
                 parked_before_term = process.poll() is None
                 parking_pid = (
                     int((tmp_path / "parking.pid").read_text())
@@ -997,9 +1011,18 @@ class SqliteIntegrityTests(SimpleTestCase):
             output = output_path.read_text()
 
             self.assertTrue(parked_before_term)
-            self.assertTrue(parking_child_before_term)
+            self.assertTrue(
+                parking_child_before_term,
+                f"no live parking child after {waited_seconds:.2f}s. "
+                f"parking.pid present: {pid_file_appeared}. "
+                "Absent means the entrypoint never reached the parking loop. "
+                "Present but dead means the parking child exited, which no "
+                f"longer wait can fix. Log:\n{output}",
+            )
             self.assertEqual(process.returncode, 0)
             self.assertEqual(output.count("bounded integrity failure"), 1)
+            # "Parks once" means the outer loop did not run the check again.
+            self.assertEqual(output.count("Checking SQLite storage"), 1, output)
             self.assertNotIn("Still checking SQLite integrity", output)
             self.assertIn("SQLite startup is paused", output)
             self.assertNotIn("exceeded its 600s timeout", output)
@@ -1037,6 +1060,7 @@ class SqliteIntegrityTests(SimpleTestCase):
                 "FLOPPY_DB_PATH": db_path,
                 "PATH": f"{bin_path}:{os.environ['PATH']}",
                 "PYTHONPATH": str(ENTRYPOINT.parent / "src"),
+                "VIRTUAL_ENV": "",
             }
             output_path = tmp_path / "entrypoint-term.log"
             with output_path.open("w") as output:

@@ -111,6 +111,9 @@ urlpatterns = [
     path("import/xbox/connect", views.xbox_connect, name="xbox_connect"),
     path("import/xbox/disconnect", views.xbox_disconnect, name="xbox_disconnect"),
     path("import/xbox", views.import_xbox, name="import_xbox"),
+    path("import/psn/connect", views.psn_connect, name="psn_connect"),
+    path("import/psn/disconnect", views.psn_disconnect, name="psn_disconnect"),
+    path("import/psn", views.import_psn, name="import_psn"),
     path(
         "import/pocketcasts/connect",
         views.pocketcasts_connect,
@@ -144,6 +147,11 @@ urlpatterns = [
     ),
     path("import/koito/poll", views.poll_koito_manual, name="poll_koito_manual"),
     path("export/csv", views.export_csv, name="export_csv"),
+    path(
+        "export/csv/letterboxd",
+        views.export_csv_letterboxd,
+        name="export_csv_letterboxd",
+    ),
     path(
         "import/yamtrack/template",
         views.import_template_csv,

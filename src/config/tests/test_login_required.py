@@ -84,7 +84,13 @@ class LoginRequiredConfigurationTests(TestCase):
 
     def test_anonymous_api_schema_and_docs_return_200(self):
         """OpenAPI schema and documentation endpoints must be accessible without login."""
-        for endpoint in [reverse("schema"), reverse("openapi-contract"), reverse("swagger-ui")]:
+        for endpoint in [
+            reverse("schema"),
+            reverse("openapi-contract"),
+            reverse("jsonld-context"),
+            reverse("asyncapi-contract"),
+            reverse("swagger-ui"),
+        ]:
             response = self.client.get(endpoint)
             self.assertEqual(
                 response.status_code,

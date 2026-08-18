@@ -32,7 +32,7 @@ class PodcastShow(models.Model):
     title = models.CharField(max_length=255)
     slug = models.CharField(max_length=255, blank=True, default="")
     author = models.CharField(max_length=255, blank=True, default="")
-    image = models.URLField(blank=True, default="")
+    image = models.TextField(blank=True, default="")
     description = models.TextField(
         blank=True, default="", help_text="Show description from Pocket Casts"
     )
@@ -152,6 +152,15 @@ class Podcast(Media):
             "When played_up_to_seconds last changed. Media.progressed_at only "
             "monitors 'progress', so the playback progress API needs its own "
             "timestamp for ?updated_since= delta sync."
+        ),
+    )
+    is_end_date_inferred = models.BooleanField(
+        default=False,
+        help_text=(
+            "True when end_date is a synthetic estimate (e.g. derived from "
+            "publication time + duration, or distributed across the sync "
+            "window) rather than a timestamp backed by real provider "
+            "listening evidence."
         ),
     )
 
