@@ -18,6 +18,7 @@ from integrations.imports import (
     helpers,
     hltb,
     imdb,
+    jellyfin_playback_reporting,
     kitsu,
     mal,
     mdblist,
@@ -328,6 +329,17 @@ def import_storygraph(file, user_id, mode):
 def import_plex(library, user_id, mode, username=None):
     """Celery task for importing media data from Plex."""
     return import_media(plex.importer, library, user_id, mode)
+
+
+@shared_task(name="Import from Jellyfin Playback Reporting")
+def import_jellyfin_playback_reporting(file, user_id, mode="new"):
+    """Import a Jellyfin Playback Reporting TSV backup."""
+    return import_media(
+        jellyfin_playback_reporting.importer,
+        _coerce_uploaded_file(file),
+        user_id,
+        mode,
+    )
 
 
 @shared_task(name="Import from Radarr")

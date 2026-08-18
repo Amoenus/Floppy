@@ -64,6 +64,11 @@ urlpatterns = [
     path("jellyfin/disconnect", views.jellyfin_disconnect, name="jellyfin_disconnect"),
     path("jellyfin/settings", views.jellyfin_settings, name="jellyfin_settings"),
     path("jellyfin/push", views.jellyfin_push_now, name="jellyfin_push_now"),
+    path(
+        "jellyfin/playback-reporting/import",
+        views.jellyfin_playback_reporting_import,
+        name="jellyfin_playback_reporting_import",
+    ),
     path("import/imdb", views.import_imdb, name="import_imdb"),
     path("import/goodreads", views.import_goodreads, name="import_goodreads"),
     path("import/hardcover", views.import_hardcover, name="import_hardcover"),

@@ -93,6 +93,7 @@ from integrations.webhooks.plex import extract_plex_webhook_usernames
 logger = logging.getLogger(__name__)
 ARR_SYNC_INTERVAL_HOURS = 2
 RADARR_RECURRING_TASK_NAME = "Import from Radarr (Recurring)"
+JELLYFIN_PLAYBACK_REPORTING_MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 SONARR_RECURRING_TASK_NAME = "Import from Sonarr (Recurring)"
 GPODDER_RECURRING_TASK_NAME = "Import from GPodder (Recurring)"
 # The upload rides in the Celery message, so bound what a single import can send.
@@ -1425,6 +1426,37 @@ def jellyfin_push_now(request):
 
     tasks.push_jellyfin_watched.delay(user_id=request.user.id)
     messages.info(request, "Jellyfin sync queued.")
+    return redirect("integrations")
+
+
+@require_POST
+def jellyfin_playback_reporting_import(request):
+    """Queue a manual Playback Reporting TSV import for the connected user."""
+    account = getattr(request.user, "jellyfin_account", None)
+    if not account or not account.is_connected:
+        messages.error(request, "Connect Jellyfin before importing Playback Reporting data.")
+        return redirect("integrations")
+
+    uploaded_file = request.FILES.get("playback_reporting_file")
+    if not uploaded_file:
+        messages.error(request, "Choose a Playback Reporting TSV export first.")
+        return redirect("integrations")
+
+    if uploaded_file.size > JELLYFIN_PLAYBACK_REPORTING_MAX_UPLOAD_BYTES:
+        messages.error(request, "The Playback Reporting export is larger than 50 MB.")
+        return redirect("integrations")
+
+    payload = uploaded_file.read()
+    if not payload:
+        messages.error(request, "The Playback Reporting export is empty.")
+        return redirect("integrations")
+
+    tasks.import_jellyfin_playback_reporting.delay(
+        payload,
+        request.user.id,
+        "new",
+    )
+    messages.info(request, "Jellyfin Playback Reporting import queued.")
     return redirect("integrations")
 
 

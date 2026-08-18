@@ -1288,6 +1288,14 @@ def integrations(request):
         ]
 
     jellyfin_account = getattr(user, "jellyfin_account", None)
+    jellyfin_playback_reporting_import = (
+        ImportRun.objects.filter(
+            user=user,
+            source="jellyfin_playback_reporting",
+        )
+        .order_by("-started_at")
+        .first()
+    )
     plex_webhook_shares = list(
         PlexWebhookShare.objects.filter(owner=user)
         .select_related("recipient")
@@ -1327,6 +1335,7 @@ def integrations(request):
             "plex_share_recipients": plex_share_recipients,
             "plex_connected": bool(plex_account and plex_account.plex_token),
             "jellyfin_account": jellyfin_account,
+            "jellyfin_playback_reporting_import": jellyfin_playback_reporting_import,
             "seerr_global_webhook_enabled": bool(settings.SEERR_GLOBAL_WEBHOOK_SECRET),
         },
     )
