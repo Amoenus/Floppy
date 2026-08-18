@@ -145,7 +145,15 @@ def missing_credits_backfill_item_ids(item_ids):
                 MediaTypes.SEASON.value,
                 MediaTypes.EPISODE.value,
             ],
-        ).values("id", "media_type", "source"),
+        )
+        # TVDB seasons/episodes never carry a credits payload (see
+        # providers.tvdb._normalize_season_metadata / episode()), so they
+        # would otherwise always look "missing" and be requeued forever.
+        .exclude(
+            source=Sources.TVDB.value,
+            media_type__in=[MediaTypes.SEASON.value, MediaTypes.EPISODE.value],
+        )
+        .values("id", "media_type", "source"),
     )
     if not candidate_items:
         return []

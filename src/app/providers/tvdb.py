@@ -995,6 +995,44 @@ def _person_filmography_entries(characters, language: str | None = None):
     return list(deduped.values())
 
 
+def _person_biography(response: dict | None, language: str | None = None) -> str:
+    """Return the preferred-language biography from a TVDB people/extended payload.
+
+    TVDB v4 exposes localized biographies as a `biographies` array (each row
+    keyed by `language`), not under `translations.overview` or a singular
+    `biography` field - those are only checked as a defensive fallback.
+    """
+    response = response or {}
+    biographies = [
+        row for row in _coerce_list(response.get("biographies")) if isinstance(row, dict)
+    ]
+
+    def _text(row: dict) -> str | None:
+        return _normalize_text_value(
+            row.get("biography") or row.get("overview") or row.get("text"),
+        )
+
+    preferred = _preferred_language_code(language)
+    lang_keys = dict.fromkeys((preferred, preferred[:2], "eng", "en"))
+    for lang_key in lang_keys:
+        for row in biographies:
+            if _normalize_language_code(row.get("language")) == lang_key:
+                text = _text(row)
+                if text:
+                    return text
+
+    for row in biographies:
+        text = _text(row)
+        if text:
+            return text
+
+    return (
+        _find_translation(response, "overview", language=language)
+        or _normalize_text_value(response.get("biography"))
+        or ""
+    )
+
+
 def person(person_id, language=None):
     """Return metadata for a TVDB person profile."""
     cache_key = _person_cache_key(person_id, language)
@@ -1011,9 +1049,7 @@ def person(person_id, language=None):
         "source": Sources.TVDB.value,
         "name": _get_name(response),
         "image": response.get("image") or settings.IMG_NONE,
-        "biography": _find_translation(response, "overview", language=language)
-        or _normalize_text_value(response.get("biography"))
-        or "",
+        "biography": _person_biography(response, language),
         "known_for_department": _normalize_text_value(response.get("peopleType")) or "",
         "gender": "unknown",
         "birth_date": _normalize_text_value(response.get("birth")),

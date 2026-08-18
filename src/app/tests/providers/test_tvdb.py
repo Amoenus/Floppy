@@ -696,7 +696,9 @@ class TVDBProviderTests(TestCase):
                 "id": 291115,
                 "name": "Bryan Cranston",
                 "image": "https://artworks.thetvdb.com/banners/person/291115.jpg",
-                "biography": "American actor.",
+                "biographies": [
+                    {"language": "eng", "biography": "American actor."},
+                ],
                 "peopleType": "Actor",
                 "birth": "1956-03-07",
                 "death": None,
@@ -763,3 +765,35 @@ class TVDBProviderTests(TestCase):
         result = tvdb.person("291115")
 
         self.assertEqual(result["filmography"], [])
+
+    @patch("app.providers.tvdb._request")
+    def test_person_prefers_english_biography_among_multiple_languages(
+        self, mock_request
+    ):
+        """Biography should be picked from the `biographies` array by language."""
+        mock_request.return_value = {
+            "data": {
+                "id": 291115,
+                "name": "Bryan Cranston",
+                "biographies": [
+                    {"language": "spa", "biography": "Actor estadounidense."},
+                    {"language": "eng", "biography": "American actor."},
+                ],
+                "characters": [],
+            },
+        }
+
+        result = tvdb.person("291115")
+
+        self.assertEqual(result["biography"], "American actor.")
+
+    @patch("app.providers.tvdb._request")
+    def test_person_falls_back_when_no_biographies_present(self, mock_request):
+        """Missing `biographies` shouldn't crash and should return an empty bio."""
+        mock_request.return_value = {
+            "data": {"id": 291115, "name": "Bryan Cranston", "characters": []},
+        }
+
+        result = tvdb.person("291115")
+
+        self.assertEqual(result["biography"], "")
