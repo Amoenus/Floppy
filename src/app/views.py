@@ -833,6 +833,24 @@ def episode_details(
         None,
     )
 
+    episode_numbers = [ep["episode_number"] for ep in processed_episodes]
+    current_episode_index = (
+        episode_numbers.index(episode_number)
+        if episode_number in episode_numbers
+        else None
+    )
+    prev_episode_number = (
+        episode_numbers[current_episode_index - 1]
+        if current_episode_index is not None and current_episode_index > 0
+        else None
+    )
+    next_episode_number = (
+        episode_numbers[current_episode_index + 1]
+        if current_episode_index is not None
+        and current_episode_index < len(episode_numbers) - 1
+        else None
+    )
+
     episode_metadata = {}
     if source == Sources.TMDB.value:
         with contextlib.suppress(Exception):
@@ -933,6 +951,8 @@ def episode_details(
             },
         ),
         "episodes": processed_episodes,
+        "prev_episode_number": prev_episode_number,
+        "next_episode_number": next_episode_number,
         "episode_metadata": episode_metadata,
         "season_metadata": season_metadata,
         "current_instance": current_season_instance,

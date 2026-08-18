@@ -68,14 +68,31 @@
             </div>
           </div>
 
-          {# Episode dropdown #}
+          {# Episode dropdown + prev/next navigation #}
           {% if episodes %}
+            <div class="flex w-full items-center gap-2 md:w-auto">
+              {% if prev_episode_number %}
+                <a href="{% if parent_media_type == MediaTypes.ANIME.value %}{% url 'anime_episode_details' source=source media_id=media_id title=show_title|slug season_number=season_number episode_number=prev_episode_number %}{% else %}{% url 'episode_details' source=source media_id=media_id title=show_title|slug season_number=season_number episode_number=prev_episode_number %}{% endif %}"
+                   hx-boost="true"
+                   aria-label="Previous episode"
+                   title="Previous episode"
+                   class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer">
+                  {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
+                </a>
+              {% else %}
+                <span aria-label="Previous episode"
+                      title="Previous episode"
+                      class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-surface-muted)] text-[var(--color-text-muted)] cursor-not-allowed">
+                  {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
+                </span>
+              {% endif %}
+
             <div class="relative w-full md:w-auto"
                  x-data="{ open: false }"
                  @click.away="open = false"
                  @keydown.escape.window="open = false">
               <button @click="open = !open"
-                      class="flex w-full items-center justify-center space-x-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-100 rounded-md transition-colors duration-200 cursor-pointer md:w-auto md:justify-start">
+                      class="flex h-11 w-full items-center justify-center space-x-2 px-4 border border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm hover:bg-[var(--color-surface-muted)] rounded-xl transition-colors duration-200 cursor-pointer md:w-auto md:justify-start">
                 <span class="text-sm font-medium">{{ episode.display_episode_number|default:episode_number }}. {{ episode_title }}</span>
                 <div class="w-4 h-4" :class="{ 'rotate-180': open }">{% include "app/icons/chevron-down.svg" with classes="w-full h-full" %}</div>
               </button>
@@ -105,6 +122,23 @@
                   {% endfor %}
                 </div>
               </div>
+            </div>
+
+              {% if next_episode_number %}
+                <a href="{% if parent_media_type == MediaTypes.ANIME.value %}{% url 'anime_episode_details' source=source media_id=media_id title=show_title|slug season_number=season_number episode_number=next_episode_number %}{% else %}{% url 'episode_details' source=source media_id=media_id title=show_title|slug season_number=season_number episode_number=next_episode_number %}{% endif %}"
+                   hx-boost="true"
+                   aria-label="Next episode"
+                   title="Next episode"
+                   class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer">
+                  {% include "app/icons/chevron-right.svg" with classes="w-4 h-4" %}
+                </a>
+              {% else %}
+                <span aria-label="Next episode"
+                      title="Next episode"
+                      class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-surface-muted)] text-[var(--color-text-muted)] cursor-not-allowed">
+                  {% include "app/icons/chevron-right.svg" with classes="w-4 h-4" %}
+                </span>
+              {% endif %}
             </div>
           {% endif %}
         </div>

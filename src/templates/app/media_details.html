@@ -121,7 +121,7 @@
                    @click.away="open = false"
                    @keydown.escape.window="open = false">
                 <button @click="open = !open"
-                        class="flex w-full items-center justify-center space-x-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-100 rounded-md transition-colors duration-200 cursor-pointer md:w-auto md:justify-start">
+                        class="flex w-full items-center justify-center space-x-2 px-4 py-2 border border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm hover:bg-[var(--color-surface-muted)] rounded-xl transition-colors duration-200 cursor-pointer md:w-auto md:justify-start">
                   <span class="text-sm font-medium">{{ media.season_header_title|default:media.title }}</span>
                   <div class="w-4 h-4" :class="{ 'rotate-180': open }">{% include "app/icons/chevron-down.svg" with classes="w-full h-full" %}</div>
                 </button>
@@ -218,7 +218,7 @@
 
       <div class="flex flex-col sm:contents">
       {# Score chips #}
-      {% if media.score_count is not None or trakt_score or user_medias and current_instance and not public_view|default:False %}
+      {% if media.score_count is not None or trakt_score or imdb_score or user_medias and current_instance and not public_view|default:False %}
         <div class="order-2 mt-0 mb-5 flex w-full items-center justify-start gap-2 sm:order-1 sm:mt-4 sm:flex-wrap">
           {% if media.score_count is not None %}
             <div class="relative"
@@ -326,6 +326,23 @@
                 {% include "app/components/series_graph_tooltip.html" with graph_data=trakt_series_graph_data provider_label="Trakt" only %}
               {% endif %}
             </div>
+          {% endif %}
+
+          {% if imdb_score %}
+            <button type="button"
+                    class="inline-flex h-[1.875rem] min-w-0 cursor-default items-center gap-0.5 overflow-hidden rounded-full border border-amber-400/18 bg-amber-500/[0.07] pl-0 pr-1.5 text-[12px] text-white shadow-sm sm:h-8 sm:gap-2 sm:pr-3 sm:text-sm"
+                    title="IMDb rating">
+              <span class="sr-only">IMDb score</span>
+              <span class="-my-px -ml-px flex h-[1.875rem] w-[1.875rem] shrink-0 items-center justify-center rounded-full border border-amber-400/28 bg-amber-500/14 sm:h-8 sm:w-8">
+                <img src="{% static 'img/imdb-logo.png' %}"
+                     alt=""
+                     aria-hidden="true"
+                     class="h-3 w-3 object-contain sm:h-3.5 sm:w-3.5">
+              </span>
+              <span class="text-[12px] font-semibold text-[var(--color-text)] sm:text-sm">{{ imdb_score.rating }}</span>
+              <span class="text-[12px] text-[var(--color-text-muted)] sm:text-sm">|</span>
+              <span class="truncate text-[12px] text-[var(--color-text-secondary)] sm:text-sm">{{ imdb_score.rating_count|intcomma }} vote{{ imdb_score.rating_count|pluralize }}</span>
+            </button>
           {% endif %}
 
           {% include "app/components/detail_score_chip_slot.html" with media=media current_instance=current_instance media_type=media_type user=user user_medias=user_medias public_view=public_view csrf_token=csrf_token only %}

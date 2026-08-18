@@ -5520,6 +5520,75 @@ class MediaDetailsViewTests(TestCase):
     @patch("app.views.tmdb.episode", return_value={})
     @patch("app.providers.services.get_media_metadata")
     @patch("app.providers.tmdb.process_episodes")
+    def test_episode_details_prev_next_episode_numbers(
+        self,
+        mock_process_episodes,
+        mock_get_metadata,
+        _mock_episode,
+    ):
+        """Episode context exposes prev/next episode numbers, None at season edges."""
+        mock_get_metadata.side_effect = lambda *_args, **_kwargs: {
+            "title": "Test TV Show",
+            "media_id": "1668",
+            "source": Sources.TMDB.value,
+            "media_type": MediaTypes.TV.value,
+            "image": "http://example.com/image.jpg",
+            "season/1": {
+                "title": "Season 1",
+                "season_title": "Season 1",
+                "media_id": "1668",
+                "media_type": MediaTypes.SEASON.value,
+                "source": Sources.TMDB.value,
+                "image": "http://example.com/season.jpg",
+                "episodes": [{"episode_number": number} for number in range(1, 4)],
+            },
+        }
+        mock_process_episodes.return_value = [
+            {
+                "media_id": "1668",
+                "source": Sources.TMDB.value,
+                "media_type": MediaTypes.EPISODE.value,
+                "season_number": 1,
+                "episode_number": number,
+                "title": f"Episode {number}",
+                "air_date": f"2023-01-{number:02d}",
+                "watched": False,
+            }
+            for number in range(1, 4)
+        ]
+
+        def get_episode_details(episode_number):
+            return self.client.get(
+                reverse(
+                    "episode_details",
+                    kwargs={
+                        "source": Sources.TMDB.value,
+                        "media_id": "1668",
+                        "title": "test-tv-show",
+                        "season_number": 1,
+                        "episode_number": episode_number,
+                    },
+                ),
+            )
+
+        first = get_episode_details(1)
+        self.assertEqual(first.status_code, 200)
+        self.assertIsNone(first.context["prev_episode_number"])
+        self.assertEqual(first.context["next_episode_number"], 2)
+
+        middle = get_episode_details(2)
+        self.assertEqual(middle.status_code, 200)
+        self.assertEqual(middle.context["prev_episode_number"], 1)
+        self.assertEqual(middle.context["next_episode_number"], 3)
+
+        last = get_episode_details(3)
+        self.assertEqual(last.status_code, 200)
+        self.assertEqual(last.context["prev_episode_number"], 2)
+        self.assertIsNone(last.context["next_episode_number"])
+
+    @patch("app.views.tmdb.episode", return_value={})
+    @patch("app.providers.services.get_media_metadata")
+    @patch("app.providers.tmdb.process_episodes")
     def test_public_episode_notes_use_the_originating_list(
         self,
         mock_process_episodes,
