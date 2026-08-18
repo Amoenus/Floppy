@@ -87,6 +87,7 @@ from integrations.tasks._webhook import (
     _webhook_history_user,
     process_stremio_webhook,
     process_webhook,
+    verify_stremio_playback,
 )
 
 logger = logging.getLogger(__name__)
@@ -186,4 +187,5 @@ __all__ = [
     "sync_plex_watchlist",
     "update_collection_metadata_from_plex",
     "update_collection_metadata_from_plex_webhook",
+    "verify_stremio_playback",
 ]

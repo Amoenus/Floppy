@@ -4,8 +4,9 @@ Stremio has no playback webhook, so Floppy serves a minimal addon whose
 ``subtitles`` resource is requested when playback starts. The payload built
 by the addon views is ``{"id": "tt123" | "tt123:season:episode", "type":
 "movie" | "series"}``. That is a start-only signal: media is marked
-in-progress here, and the recurring Stremio library sync flips items to
-completed from real library state.
+in-progress here. A Redis-guarded verifier later marks it completed only after
+post-baseline Stremio library state proves progress from that playback session;
+the recurring library sync remains a fallback.
 """
 
 import logging
@@ -109,9 +110,10 @@ class StremioWebhookProcessor(BaseWebhookProcessor):
         return True
 
     def _is_played(self, payload):
-        # The subtitles request only proves playback started; completion is
-        # picked up by the recurring library sync.
-        return False
+        # A normal Stremio subtitles request only proves playback started.
+        # The delayed verifier sets this private flag only after atomically
+        # claiming exact-video, >=90%, post-baseline completion evidence.
+        return payload.get("_floppy_verified_completion") is True
 
     def _get_media_type(self, payload):
         return self.MEDIA_TYPE_MAPPING.get(payload.get("type"))
