@@ -1,4 +1,7 @@
-document.addEventListener("alpine:init", () => {
+// Bind once: this script is re-evaluated on boosted (hx-boost) navigation.
+if (!window.__floppyEpisodeBulkTrackFormBound) {
+  window.__floppyEpisodeBulkTrackFormBound = true;
+  document.addEventListener("alpine:init", () => {
   Alpine.data("episodeBulkTrackForm", (domainId) => ({
     domain: null,
     firstSeason: "",
@@ -198,4 +201,5 @@ document.addEventListener("alpine:init", () => {
           : "";
     },
   }));
-});
+  });
+}

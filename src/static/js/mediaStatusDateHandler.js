@@ -334,9 +334,13 @@ function trackModalHandleToast(event) {
   window.showTrackToast(event.detail || {});
 }
 
-document.addEventListener("closeModal", trackModalHandleClose);
-document.addEventListener("openModal", trackModalHandleOpen);
-document.addEventListener("showToast", trackModalHandleToast);
+// Bind once: this script is re-evaluated on boosted (hx-boost) navigation.
+if (!window.__floppyMediaStatusDateHandlerBound) {
+  window.__floppyMediaStatusDateHandlerBound = true;
+  document.addEventListener("closeModal", trackModalHandleClose);
+  document.addEventListener("openModal", trackModalHandleOpen);
+  document.addEventListener("showToast", trackModalHandleToast);
+}
 
 document.addEventListener("alpine:init", () => {
   Alpine.data("mediaForm", () => ({

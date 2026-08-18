@@ -1,4 +1,7 @@
-document.addEventListener("alpine:init", () => {
+// Bind once: this script is re-evaluated on boosted (hx-boost) navigation.
+if (!window.__floppyDateTimePickerBound) {
+  window.__floppyDateTimePickerBound = true;
+  document.addEventListener("alpine:init", () => {
   Alpine.data("dateTimePicker", (config) => ({
     fieldName: config.fieldName,
     trackTime: Boolean(config.trackTime),
@@ -684,4 +687,5 @@ document.addEventListener("alpine:init", () => {
       }
     },
   }));
-});
+  });
+}
