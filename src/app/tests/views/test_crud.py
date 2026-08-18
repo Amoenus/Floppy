@@ -19,6 +19,7 @@ from app.models import (
     Book,
     Comic,
     ComicIssue,
+    DeletedMedia,
     Episode,
     Game,
     Item,
@@ -1590,6 +1591,37 @@ class DeleteMedia(TestCase):
         self.assertEqual(
             Episode.objects.filter(related_season__user=self.user).count(),
             0,
+        )
+
+    def test_delete_custom_tv(self):
+        """Deleting a manual/custom item tombstones a UUID media_id (#877)."""
+        manual_id = Item.generate_manual_id()
+        item = Item.objects.create(
+            media_id=manual_id,
+            source=Sources.MANUAL.value,
+            media_type=MediaTypes.TV.value,
+            title="Custom Show",
+            image="http://example.com/image.jpg",
+        )
+        tv_obj = TV.objects.create(item=item, user=self.user, status=Status.IN_PROGRESS.value)
+
+        response = self.client.post(
+            reverse("media_delete"),
+            data={
+                "instance_id": tv_obj.id,
+                "media_type": MediaTypes.TV.value,
+            },
+        )
+
+        self.assertNotEqual(response.status_code, 405)
+        self.assertFalse(TV.objects.filter(id=tv_obj.id).exists())
+        self.assertTrue(
+            DeletedMedia.objects.filter(
+                user=self.user,
+                media_type=MediaTypes.TV.value,
+                source=Sources.MANUAL.value,
+                media_id=manual_id,
+            ).exists(),
         )
 
     def test_unwatch_episode(self):

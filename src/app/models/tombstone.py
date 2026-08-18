@@ -17,7 +17,7 @@ class DeletedMedia(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     media_type = models.CharField(max_length=20, choices=MediaTypes)
     source = models.CharField(max_length=20, choices=Sources)
-    media_id = models.CharField(max_length=20)
+    media_id = models.CharField(max_length=500)
     deleted_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
