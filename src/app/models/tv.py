@@ -135,6 +135,38 @@ class TV(Media):
         return self.completed_episode_count
 
     @property
+    def is_rewatching(self):
+        """Return whether any season of the show is in a rewatch pass."""
+        return any(
+            season.rewatch_started_at is not None
+            for season in self.seasons.all()
+            if season.status != Status.DROPPED.value
+        )
+
+    def start_rewatch(self, started_at=None):
+        """Open a rewatch pass on every season of the show."""
+        started_at = started_at or timezone.now()
+        seasons = [
+            season
+            for season in self.seasons.filter(item__season_number__gt=0)
+            if season.status != Status.DROPPED.value
+        ]
+        for season in seasons:
+            season.rewatch_started_at = started_at
+            season.status = Status.IN_PROGRESS.value
+            season._invalidate_episode_stats()  # same-module sibling
+        if seasons:
+            bulk_update_with_history(
+                seasons,
+                Season,
+                fields=["rewatch_started_at", "status"],
+            )
+
+        if self.status != Status.IN_PROGRESS.value:
+            self.status = Status.IN_PROGRESS.value
+            bulk_update_with_history([self], TV, fields=["status"])
+
+    @property
     def progress_percentage(self):
         """Return percent of the show actually watched (0-100), or None.
 
@@ -546,6 +578,14 @@ class Season(Media):
         on_delete=models.CASCADE,
         related_name="seasons",
     )
+    rewatch_started_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text=(
+            "When the current rewatch began. Plays before it are kept as"
+            " history but don't count towards the current pass."
+        ),
+    )
 
     tracker = FieldTracker()
 
@@ -644,6 +684,16 @@ class Season(Media):
                         bulk_create_with_history(
                             episodes_to_create,
                             Episode,
+                        )
+
+                    # Completing the season ends any pass it was in.
+                    if self.rewatch_started_at is not None:
+                        self.rewatch_started_at = None
+                        self._invalidate_episode_stats()
+                        bulk_update_with_history(
+                            [self],
+                            Season,
+                            fields=["rewatch_started_at"],
                         )
 
                     self.related_tv._handle_completed_season(
@@ -770,33 +820,38 @@ class Season(Media):
         percentage = round(self.completed_episode_count / max_progress_value * 100)
         return max(0, min(percentage, 100))
 
-    def derived_status_from_episode_progress(self, max_progress=None):
-        """Return the effective season status from local episode history."""
-        if self.status in {Status.DROPPED.value, Status.PAUSED.value}:
-            return self.status
-
+    def _is_fully_watched(self, max_progress=None):
+        """Return whether the current pass covers every episode of the season."""
         max_progress_value = max_progress
         if max_progress_value is None:
             max_progress_value = getattr(self, "max_progress", None)
         try:
             max_progress_value = int(max_progress_value)
         except (TypeError, ValueError):
-            max_progress_value = None
-        if max_progress_value is not None and max_progress_value <= 0:
-            max_progress_value = None
+            return False
+        return (
+            max_progress_value > 0
+            and self.completed_episode_count >= max_progress_value
+        )
+
+    def derived_status_from_episode_progress(self, max_progress=None):
+        """Return the effective season status from local episode history."""
+        if self.status in {Status.DROPPED.value, Status.PAUSED.value}:
+            return self.status
 
         completed_episode_count = self.completed_episode_count
         progress_value = self.progress
 
-        if (
-            max_progress_value is not None
-            and completed_episode_count >= max_progress_value
-        ):
-            # A season the user reopened to rewatch is fully watched by
-            # definition, so completion alone must not overrule the choice.
-            # Requiring a logged repeat keeps a normal final episode completing
-            # the season as before.
-            if self.status == Status.IN_PROGRESS.value and self.has_repeat_plays:
+        if self._is_fully_watched(max_progress):
+            # Without an explicit pass, a season the user reopened is fully
+            # watched by definition, so completion alone must not overrule the
+            # choice. Requiring a logged repeat keeps a normal final episode
+            # completing the season as before.
+            if (
+                self.rewatch_started_at is None
+                and self.status == Status.IN_PROGRESS.value
+                and self.has_repeat_plays
+            ):
                 return Status.IN_PROGRESS.value
             return Status.COMPLETED.value
         if progress_value > 0 or completed_episode_count > 0:
@@ -821,13 +876,69 @@ class Season(Media):
         self.related_tv._handle_completed_season(self.item.season_number)
         return True
 
+    def play_counts_for_pass(self, episode):
+        """Return whether a play belongs to the season's current pass."""
+        if self.rewatch_started_at is None:
+            return True
+        # end_date is nullable, so fall back to when the play was logged.
+        played_at = episode.end_date or episode.created_at
+        return played_at is not None and played_at >= self.rewatch_started_at
+
+    def _invalidate_episode_stats(self):
+        """Drop cached episode stats after the pass or its plays changed."""
+        if hasattr(self, "_episode_stats_cache"):
+            del self._episode_stats_cache
+
+    def start_rewatch(self, started_at=None):
+        """Begin a new pass, keeping every existing play as history."""
+        self.rewatch_started_at = started_at or timezone.now()
+        self.status = Status.IN_PROGRESS.value
+        self._invalidate_episode_stats()
+        bulk_update_with_history(
+            [self],
+            Season,
+            fields=["rewatch_started_at", "status"],
+        )
+
+    def stop_rewatch(self, max_progress=None):
+        """Abandon the current pass; the full history decides the status again."""
+        if self.rewatch_started_at is None:
+            return
+        self.rewatch_started_at = None
+        self._invalidate_episode_stats()
+        if self._is_fully_watched(max_progress):
+            self.status = Status.COMPLETED.value
+        bulk_update_with_history(
+            [self],
+            Season,
+            fields=["rewatch_started_at", "status"],
+        )
+
+    def finish_rewatch_if_complete(self, max_progress=None):
+        """Close the pass once every episode has been played again."""
+        if self.rewatch_started_at is None:
+            return False
+        if (
+            self.derived_status_from_episode_progress(max_progress=max_progress)
+            != Status.COMPLETED.value
+        ):
+            return False
+
+        self.rewatch_started_at = None
+        self._invalidate_episode_stats()
+        bulk_update_with_history([self], Season, fields=["rewatch_started_at"])
+        return True
+
     def _get_episode_stats(self):
         """Return cached episode stats for this season."""
         cached = getattr(self, "_episode_stats_cache", None)
         if cached is not None:
             return cached
 
-        episodes = list(self.episodes.all())
+        # Filter in Python: season querysets prefetch `episodes`, and a
+        # queryset filter here would bypass that cache and turn every list
+        # page into an N+1.
+        episodes = [ep for ep in self.episodes.all() if self.play_counts_for_pass(ep)]
         episode_counts = {}
         completed_episode_numbers = set()
         max_episode_number = 0
@@ -1173,7 +1284,16 @@ class Season(Media):
 
     def get_remaining_eps(self, season_metadata, end_date=_UNSET_END_DATE):
         """Return episodes needed to complete a season."""
-        latest_watched_ep_num = Episode.objects.filter(related_season=self).aggregate(
+        plays = Episode.objects.filter(related_season=self)
+        if self.rewatch_started_at is not None:
+            plays = plays.filter(
+                models.Q(end_date__gte=self.rewatch_started_at)
+                | models.Q(
+                    end_date__isnull=True,
+                    created_at__gte=self.rewatch_started_at,
+                ),
+            )
+        latest_watched_ep_num = plays.aggregate(
             latest_watched_ep_num=Max("item__episode_number"),
         )["latest_watched_ep_num"]
 
@@ -1532,6 +1652,10 @@ class Episode(models.Model):
                 Season,
                 fields=["status"],
             )
+
+        # Close an explicit rewatch once this play completed it, so the next
+        # pass starts from a clean window.
+        self.related_season.finish_rewatch_if_complete(max_progress=max_progress)
 
         if desired_status == Status.COMPLETED.value:
             self.related_season.related_tv._handle_completed_season(season_number)

@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.utils import timezone
 
 from app.models import (
     TV,
@@ -116,3 +117,90 @@ class SeasonRewatch(TestCase):
             Season.objects.get(pk=self.season.pk).status,
             Status.COMPLETED.value,
         )
+
+    def test_rewatch_resets_progress_to_the_start_of_the_season(
+        self,
+        _mock_metadata,
+    ):
+        """Starting a rewatch makes the season read as unwatched again."""
+        self.season.start_rewatch()
+
+        self.assertEqual(self.season.progress, 0)
+        self.assertEqual(self.season.completed_episode_count, 0)
+        self.assertEqual(self.season.next_episode_number(), 1)
+        self.assertEqual(self.season.status, Status.IN_PROGRESS.value)
+
+    def test_play_during_rewatch_advances_progress(self, _mock_metadata):
+        """Only plays inside the pass count towards it."""
+        self.season.start_rewatch()
+
+        self._watch(self.episode_items[0], timezone.now())
+
+        self.season.refresh_from_db()
+        self.assertEqual(self.season.progress, 1)
+        self.assertEqual(self.season.completed_episode_count, 1)
+        self.assertEqual(self.season.next_episode_number(), 2)
+
+    def test_play_without_end_date_counts_towards_the_pass(self, _mock_metadata):
+        """A play logged with no date still belongs to the open pass."""
+        self.season.start_rewatch()
+
+        self._watch(self.episode_items[0], None)
+
+        self.season.refresh_from_db()
+        self.assertEqual(self.season.completed_episode_count, 1)
+
+    def test_finishing_the_rewatch_completes_and_clears_the_pass(
+        self,
+        _mock_metadata,
+    ):
+        """The pass ends itself once every episode has been played again."""
+        self.season.start_rewatch()
+
+        for episode_item in self.episode_items:
+            self._watch(episode_item, timezone.now())
+
+        self.season.refresh_from_db()
+        self.assertEqual(self.season.status, Status.COMPLETED.value)
+        self.assertIsNone(self.season.rewatch_started_at)
+
+    def test_stopping_a_rewatch_restores_the_completed_status(self, _mock_metadata):
+        """Abandoning a pass falls back to what the full history implies."""
+        self.season.start_rewatch()
+
+        self.season.stop_rewatch()
+
+        self.season.refresh_from_db()
+        self.assertIsNone(self.season.rewatch_started_at)
+        self.assertEqual(self.season.status, Status.COMPLETED.value)
+
+    def test_completing_a_season_mid_rewatch_logs_the_missing_plays(
+        self,
+        _mock_metadata,
+    ):
+        """Marking the season complete fills in the episodes the pass missed."""
+        self.season.start_rewatch()
+        self._watch(self.episode_items[0], timezone.now())
+
+        self.season.status = Status.COMPLETED.value
+        self.season.save()
+
+        self.assertEqual(
+            self.season.episodes.filter(item=self.episode_items[1]).count(),
+            2,
+        )
+        self.season.refresh_from_db()
+        self.assertIsNone(self.season.rewatch_started_at)
+
+    def test_show_rewatch_starts_a_pass_on_every_season(self, _mock_metadata):
+        """Rewatching a show opens a pass on each of its seasons."""
+        self.tv.start_rewatch()
+
+        self.season.refresh_from_db()
+        self.assertIsNotNone(self.season.rewatch_started_at)
+        self.assertEqual(self.season.status, Status.IN_PROGRESS.value)
+        self.assertTrue(self.tv.is_rewatching)
+
+    def test_show_is_not_rewatching_without_an_open_pass(self, _mock_metadata):
+        """A show with no season in a pass is not being rewatched."""
+        self.assertFalse(self.tv.is_rewatching)
