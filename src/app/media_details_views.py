@@ -1,7 +1,7 @@
 import json
 import logging
 import time
-from datetime import UTC
+from datetime import UTC, timedelta
 
 from django.apps import apps
 from django.conf import settings
@@ -36,6 +36,7 @@ from app.detail_builders import (
     _build_detail_person_rows,
     _build_episode_graph_from_season_cache,
     _build_game_lengths_context,
+    _build_imdb_rating_context,
     _build_season_scores_graph,
     _build_series_graph_data,
     _build_stored_season_scores_graph,
@@ -88,6 +89,19 @@ def _stored_metadata_fallback(item):
         "crew": [],
         "studios_full": [],
     }
+
+
+def _needs_live_secondary_metadata(source, tracking_media_type):
+    """TMDB TV/season secondary logic force-refetches on empty cast/crew.
+
+    A stored-metadata fallback always reports empty cast/crew (they aren't
+    cached on Item), which would otherwise make should_refresh_tmdb_tv_credits
+    immediately undo the skip with its own live call.
+    """
+    return source == Sources.TMDB.value and tracking_media_type in (
+        MediaTypes.TV.value,
+        MediaTypes.SEASON.value,
+    )
 
 
 def _enrich_comic_issues(issues, user):
@@ -980,22 +994,40 @@ def media_details(
     if hardcover_edition_id:
         metadata_kwargs["edition_id"] = hardcover_edition_id
 
-    try:
-        media_metadata = services.get_media_metadata(
-            media_type,
-            media_id,
-            source,
-            language=metadata_resolution.metadata_language_default(request.user),
-            **metadata_kwargs,
+    metadata_is_fresh = (
+        detail_item is not None
+        and detail_item.metadata_fetched_at is not None
+        and timezone.now() - detail_item.metadata_fetched_at
+        < timedelta(seconds=settings.CACHE_TIMEOUT)
+    )
+    can_skip_live_fetch = (
+        detail_item is not None and detail_item.metadata_fetched_at is not None
+    )
+    if render_secondary_only:
+        can_skip_live_fetch = can_skip_live_fetch and (
+            metadata_is_fresh
+            and not _needs_live_secondary_metadata(source, tracking_media_type)
         )
-    except services.ProviderAPIError:
-        if detail_item is None:
-            raise
-        logger.warning(
-            "Falling back to stored metadata for media_id=%s due to provider API error",
-            media_id,
-        )
+
+    if can_skip_live_fetch:
         media_metadata = _stored_metadata_fallback(detail_item)
+    else:
+        try:
+            media_metadata = services.get_media_metadata(
+                media_type,
+                media_id,
+                source,
+                language=metadata_resolution.metadata_language_default(request.user),
+                **metadata_kwargs,
+            )
+        except services.ProviderAPIError:
+            if detail_item is None:
+                raise
+            logger.warning(
+                "Falling back to stored metadata for media_id=%s due to provider API error",
+                media_id,
+            )
+            media_metadata = _stored_metadata_fallback(detail_item)
 
     if isinstance(media_metadata, dict):
         media_metadata.update(Item.title_fields_from_metadata(media_metadata))
@@ -1334,6 +1366,7 @@ def media_details(
                 is not None
             )
     trakt_score = _build_trakt_popularity_context(detail_item, media_type)
+    imdb_score = _build_imdb_rating_context(detail_item, media_type)
 
     author_detail_keys = ("author", "authors", "people")
     authors_linked = []
@@ -2145,6 +2178,7 @@ def media_details(
         "play_stats": play_stats,
         "activity_subtitle": activity_subtitle,
         "trakt_score": trakt_score,
+        "imdb_score": imdb_score,
         "game_lengths": game_lengths,
         "game_lengths_pending": game_lengths_refresh_pending
         and not (game_lengths and game_lengths.get("available")),

@@ -2037,6 +2037,155 @@ class MediaDetailsViewTests(TestCase):
         self.assertEqual(response.context["media"]["image"], item.image)
 
     @patch("app.providers.services.get_media_metadata")
+    def test_media_details_shell_skips_provider_call_when_metadata_already_fetched(
+        self,
+        mock_get_metadata,
+    ):
+        """Shell-phase loads reuse stored metadata once it's been fetched before (#879)."""
+        Item.objects.create(
+            media_id="377938",
+            source=Sources.HARDCOVER.value,
+            media_type=MediaTypes.BOOK.value,
+            title="The Lord of the Rings",
+            image="https://images.example.com/custom-cover.jpg",
+            synopsis="A hobbit's journey.",
+            metadata_fetched_at=timezone.now(),
+        )
+
+        response = self.client.get(
+            reverse(
+                "media_details",
+                kwargs={
+                    "source": Sources.HARDCOVER.value,
+                    "media_type": MediaTypes.BOOK.value,
+                    "media_id": "377938",
+                    "title": "the-lord-of-the-rings",
+                },
+            ),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        mock_get_metadata.assert_not_called()
+
+    @patch("app.providers.services.get_media_metadata")
+    def test_media_details_secondary_skips_provider_call_for_fresh_book_metadata(
+        self,
+        mock_get_metadata,
+    ):
+        """Secondary-phase loads reuse fresh stored metadata for non-TV types (#879)."""
+        Item.objects.create(
+            media_id="377938",
+            source=Sources.HARDCOVER.value,
+            media_type=MediaTypes.BOOK.value,
+            title="The Lord of the Rings",
+            image="https://images.example.com/custom-cover.jpg",
+            metadata_fetched_at=timezone.now(),
+        )
+
+        response = self.client.get(
+            reverse(
+                "media_details",
+                kwargs={
+                    "source": Sources.HARDCOVER.value,
+                    "media_type": MediaTypes.BOOK.value,
+                    "media_id": "377938",
+                    "title": "the-lord-of-the-rings",
+                },
+            ),
+            {"fragment": "secondary"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        mock_get_metadata.assert_not_called()
+
+    @patch("app.providers.services.get_media_metadata")
+    def test_media_details_secondary_refetches_stale_book_metadata(
+        self,
+        mock_get_metadata,
+    ):
+        """Secondary-phase loads still refresh once stored metadata is stale (#879)."""
+        Item.objects.create(
+            media_id="377938",
+            source=Sources.HARDCOVER.value,
+            media_type=MediaTypes.BOOK.value,
+            title="The Lord of the Rings",
+            image="https://images.example.com/custom-cover.jpg",
+            metadata_fetched_at=timezone.now()
+            - timedelta(seconds=settings.CACHE_TIMEOUT + 1),
+        )
+        mock_get_metadata.return_value = {
+            "media_id": "377938",
+            "title": "The Lord of the Rings",
+            "media_type": MediaTypes.BOOK.value,
+            "source": Sources.HARDCOVER.value,
+            "image": "https://images.example.com/provider-cover.jpg",
+            "details": {},
+            "related": {},
+            "cast": [],
+            "crew": [],
+            "studios_full": [],
+        }
+
+        response = self.client.get(
+            reverse(
+                "media_details",
+                kwargs={
+                    "source": Sources.HARDCOVER.value,
+                    "media_type": MediaTypes.BOOK.value,
+                    "media_id": "377938",
+                    "title": "the-lord-of-the-rings",
+                },
+            ),
+            {"fragment": "secondary"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        mock_get_metadata.assert_called_once()
+
+    @patch("app.providers.services.get_media_metadata")
+    def test_media_details_secondary_still_fetches_fresh_tv_metadata(
+        self,
+        mock_get_metadata,
+    ):
+        """TV secondary-phase loads always fetch live data for season/episode resolution (#879)."""
+        Item.objects.create(
+            media_id="1399",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Game of Thrones",
+            image="https://images.example.com/custom-cover.jpg",
+            metadata_fetched_at=timezone.now(),
+        )
+        mock_get_metadata.return_value = {
+            "media_id": "1399",
+            "title": "Game of Thrones",
+            "media_type": MediaTypes.TV.value,
+            "source": Sources.TMDB.value,
+            "image": "https://images.example.com/custom-cover.jpg",
+            "details": {},
+            "related": {},
+            "cast": [],
+            "crew": [],
+            "studios_full": [],
+        }
+
+        response = self.client.get(
+            reverse(
+                "media_details",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.TV.value,
+                    "media_id": "1399",
+                    "title": "game-of-thrones",
+                },
+            ),
+            {"fragment": "secondary"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        mock_get_metadata.assert_called()
+
+    @patch("app.providers.services.get_media_metadata")
     def test_media_details_repairs_stringified_title_payloads_on_existing_item(
         self,
         mock_get_metadata,
@@ -2371,6 +2520,80 @@ class MediaDetailsViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, "trakt-logo.svg")
+
+    @patch("app.providers.services.get_media_metadata")
+    def test_media_details_renders_imdb_score_card_when_data_exists(
+        self, mock_get_metadata
+    ):
+        Item.objects.create(
+            media_id="238",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Test Movie",
+            image="http://example.com/image.jpg",
+            imdb_rating=9.3,
+            imdb_rating_count=2800000,
+        )
+        mock_get_metadata.return_value = {
+            "media_id": "238",
+            "title": "Test Movie",
+            "media_type": MediaTypes.MOVIE.value,
+            "source": Sources.TMDB.value,
+            "image": "http://example.com/image.jpg",
+            "details": {},
+            "related": {},
+        }
+
+        response = self.client.get(
+            reverse(
+                "media_details",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.MOVIE.value,
+                    "media_id": "238",
+                    "title": "test-movie",
+                },
+            ),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "imdb-logo.png")
+        self.assertContains(response, "9.3")
+        self.assertContains(response, "2,800,000 votes")
+
+    @patch("app.providers.services.get_media_metadata")
+    def test_media_details_hides_imdb_score_card_without_data(self, mock_get_metadata):
+        Item.objects.create(
+            media_id="239",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="No IMDB Movie",
+            image="http://example.com/image.jpg",
+        )
+        mock_get_metadata.return_value = {
+            "media_id": "239",
+            "title": "No IMDB Movie",
+            "media_type": MediaTypes.MOVIE.value,
+            "source": Sources.TMDB.value,
+            "image": "http://example.com/image.jpg",
+            "details": {},
+            "related": {},
+        }
+
+        response = self.client.get(
+            reverse(
+                "media_details",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.MOVIE.value,
+                    "media_id": "239",
+                    "title": "no-imdb-movie",
+                },
+            ),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "imdb-logo.png")
 
     @patch("app.providers.services.get_media_metadata")
     def test_media_details_renders_source_score_chip_with_tmdb_logo(
