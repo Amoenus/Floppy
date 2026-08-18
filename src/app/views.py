@@ -105,6 +105,7 @@ from app.detail_builders import (
     _build_detail_link_sections,
     _build_game_length_card,
     _build_game_lengths_context,
+    _build_imdb_rating_context,
     _build_trakt_popularity_context,
     _format_game_length_minutes,
     _format_game_length_seconds,
@@ -869,6 +870,8 @@ def episode_details(
     if episode_data is not None and episode_item is not None:
         episode_data["item"] = episode_item
 
+    imdb_score = _build_imdb_rating_context(episode_item, MediaTypes.EPISODE.value)
+
     season_url = reverse(
         "anime_season_details"
         if parent_media_type == MediaTypes.ANIME.value
@@ -934,6 +937,7 @@ def episode_details(
         ),
         "episodes": processed_episodes,
         "episode_metadata": episode_metadata,
+        "imdb_score": imdb_score,
         "season_metadata": season_metadata,
         "current_instance": current_season_instance,
         "public_view": public_view,
@@ -2014,6 +2018,7 @@ __all__ = [
     "_build_game_length_card",
     "_build_game_lengths_context",
     "_build_hours_per_media_type_comparison",
+    "_build_imdb_rating_context",
     "_build_local_tv_with_seasons_metadata",
     "_build_missing_season_metadata",
     "_build_music_album_activity_subtitle",

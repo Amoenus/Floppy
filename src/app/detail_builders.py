@@ -299,12 +299,22 @@ def _build_series_graph_from_raw(season_number, raw_episodes, source):
     }
 
 
+def _rating_fields(*, use_trakt=False, use_imdb=False):
+    """Return the (rating_field, count_field) Item field names for a rating source."""
+    if use_trakt:
+        return "trakt_rating", "trakt_rating_count"
+    if use_imdb:
+        return "imdb_rating", "imdb_rating_count"
+    return "provider_rating", "provider_rating_count"
+
+
 def _build_series_graph_data(
     source,
     media_id,
     season_number=None,
     *,
     use_trakt=False,
+    use_imdb=False,
     include_unrated=False,
 ):
     """Query stored episode ratings and return series graph data dict or None.
@@ -329,8 +339,7 @@ def _build_series_graph_data(
     else:
         filters["season_number__gt"] = 0
 
-    rating_field = "trakt_rating" if use_trakt else "provider_rating"
-    count_field = "trakt_rating_count" if use_trakt else "provider_rating_count"
+    rating_field, count_field = _rating_fields(use_trakt=use_trakt, use_imdb=use_imdb)
 
     episode_query = Item.objects.filter(**filters)
     if not include_unrated:
@@ -533,12 +542,13 @@ def _build_season_scores_graph(related_seasons, source):
     }
 
 
-def _build_stored_season_scores_graph(source, media_id, *, use_trakt=False):
+def _build_stored_season_scores_graph(
+    source, media_id, *, use_trakt=False, use_imdb=False
+):
     """Build a season-summary graph from stored season rating fields."""
     from app.models import Item, MediaTypes
 
-    rating_field = "trakt_rating" if use_trakt else "provider_rating"
-    count_field = "trakt_rating_count" if use_trakt else "provider_rating_count"
+    rating_field, count_field = _rating_fields(use_trakt=use_trakt, use_imdb=use_imdb)
 
     seasons = list(
         Item.objects.filter(
@@ -611,6 +621,37 @@ def _build_trakt_popularity_context(detail_item, route_media_type):
         "rank": detail_item.trakt_popularity_rank,
         "score": detail_item.trakt_popularity_score,
         "fetched_at": detail_item.trakt_popularity_fetched_at,
+    }
+
+
+def _build_imdb_rating_context(detail_item, route_media_type):
+    """Return template-ready stored IMDB rating metadata for a detail item."""
+    if (
+        not detail_item
+        or route_media_type
+        not in (
+            MediaTypes.MOVIE.value,
+            MediaTypes.TV.value,
+            MediaTypes.ANIME.value,
+            MediaTypes.EPISODE.value,
+        )
+        or detail_item.imdb_rating_count is None
+    ):
+        return None
+
+    rating = detail_item.imdb_rating
+    if rating is not None:
+        with contextlib.suppress(InvalidOperation, TypeError, ValueError):
+            rating = float(
+                Decimal(str(rating)).quantize(
+                    Decimal("0.1"),
+                    rounding=ROUND_DOWN,
+                ),
+            )
+
+    return {
+        "rating": rating,
+        "rating_count": detail_item.imdb_rating_count,
     }
 
 

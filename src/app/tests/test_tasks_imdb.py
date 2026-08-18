@@ -16,6 +16,7 @@ from app.tasks_backfill_state import _record_backfill_success
 from app.tasks_imdb import (
     backfill_imdb_game_person_profiles,
     refresh_imdb_game_credits_from_datasets,
+    sync_imdb_ratings_from_datasets,
 )
 
 
@@ -112,3 +113,55 @@ class BackfillImdbGamePersonProfilesTaskTests(TestCase):
             result = backfill_imdb_game_person_profiles()
 
         self.assertEqual(result, {"profiles_backfilled": 1})
+
+
+class SyncImdbRatingsTaskTests(TestCase):
+    def test_syncs_movie_show_and_episode_ratings(self):
+        movie = Item.objects.create(
+            media_id="tmdb-1",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="A Movie",
+            provider_external_ids={"imdb_id": "tt0000001"},
+        )
+        show = Item.objects.create(
+            media_id="tmdb-2",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="A Show",
+            provider_external_ids={"imdb_id": "tt0000002"},
+        )
+        episode = Item.objects.create(
+            media_id="tmdb-2",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="Pilot",
+            season_number=1,
+            episode_number=1,
+        )
+
+        with (
+            patch(
+                "app.providers.imdb_datasets.download_ratings",
+                side_effect=[
+                    {"tt0000001": (8.1, 1000), "tt0000002": (7.5, 2000)},
+                    {"tt0000003": (9.0, 500)},
+                ],
+            ),
+            patch(
+                "app.providers.imdb_datasets.download_episode_map",
+                return_value={"tt0000002": {(1, 1): "tt0000003"}},
+            ),
+        ):
+            result = sync_imdb_ratings_from_datasets()
+
+        movie.refresh_from_db()
+        show.refresh_from_db()
+        episode.refresh_from_db()
+        self.assertEqual(movie.imdb_rating, 8.1)
+        self.assertEqual(movie.imdb_rating_count, 1000)
+        self.assertEqual(show.imdb_rating, 7.5)
+        self.assertEqual(show.imdb_rating_count, 2000)
+        self.assertEqual(episode.imdb_rating, 9.0)
+        self.assertEqual(episode.imdb_rating_count, 500)
+        self.assertEqual(result, {"movies_and_shows_updated": 2, "episodes_updated": 1})

@@ -2373,6 +2373,81 @@ class MediaDetailsViewTests(TestCase):
         self.assertNotContains(response, "trakt-logo.svg")
 
     @patch("app.providers.services.get_media_metadata")
+    def test_media_details_renders_imdb_score_card_when_data_exists(
+        self, mock_get_metadata
+    ):
+        Item.objects.create(
+            media_id="240",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="IMDb Rated Movie",
+            image="http://example.com/image.jpg",
+            imdb_rating=8.34,
+            imdb_rating_count=987654,
+        )
+        mock_get_metadata.return_value = {
+            "media_id": "240",
+            "title": "IMDb Rated Movie",
+            "media_type": MediaTypes.MOVIE.value,
+            "source": Sources.TMDB.value,
+            "image": "http://example.com/image.jpg",
+            "details": {},
+            "related": {},
+        }
+
+        response = self.client.get(
+            reverse(
+                "media_details",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.MOVIE.value,
+                    "media_id": "240",
+                    "title": "imdb-rated-movie",
+                },
+            ),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "imdb-logo.png")
+        self.assertContains(response, "8.3")
+        self.assertNotContains(response, "8.34")
+        self.assertContains(response, "987,654 ratings")
+
+    @patch("app.providers.services.get_media_metadata")
+    def test_media_details_hides_imdb_score_card_without_data(self, mock_get_metadata):
+        Item.objects.create(
+            media_id="241",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="No IMDb Movie",
+            image="http://example.com/image.jpg",
+        )
+        mock_get_metadata.return_value = {
+            "media_id": "241",
+            "title": "No IMDb Movie",
+            "media_type": MediaTypes.MOVIE.value,
+            "source": Sources.TMDB.value,
+            "image": "http://example.com/image.jpg",
+            "details": {},
+            "related": {},
+        }
+
+        response = self.client.get(
+            reverse(
+                "media_details",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.MOVIE.value,
+                    "media_id": "241",
+                    "title": "no-imdb-movie",
+                },
+            ),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "IMDb score")
+
+    @patch("app.providers.services.get_media_metadata")
     def test_media_details_renders_source_score_chip_with_tmdb_logo(
         self, mock_get_metadata
     ):
@@ -6740,7 +6815,8 @@ class MediaDetailsViewTests(TestCase):
         )
         self.assertIn('aria-label="Show alternative title"', content)
         self.assertIn(
-            '<h2 class="text-sm font-medium text-[var(--color-text-muted)]">Season 3</h2>', content
+            '<h2 class="text-sm font-medium text-[var(--color-text-muted)]">Season 3</h2>',
+            content,
         )
         self.assertIn("<p>Alicization</p>", content)
 
@@ -7847,7 +7923,9 @@ class MediaDetailsViewTests(TestCase):
         )
         html = response.content.decode()
         self.assertEqual(
-            html.count('text-sm font-semibold text-[var(--color-text-muted)]">AUTHOR</h3>'),
+            html.count(
+                'text-sm font-semibold text-[var(--color-text-muted)]">AUTHOR</h3>'
+            ),
             1,
         )
 
