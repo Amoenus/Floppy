@@ -204,3 +204,13 @@ class SeasonRewatch(TestCase):
     def test_show_is_not_rewatching_without_an_open_pass(self, _mock_metadata):
         """A show with no season in a pass is not being rewatched."""
         self.assertFalse(self.tv.is_rewatching)
+
+    def test_show_stop_rewatch_closes_every_open_pass(self, _mock_metadata):
+        """Ending a show rewatch closes the pass on each of its seasons."""
+        self.tv.start_rewatch()
+
+        self.tv.stop_rewatch()
+
+        self.season.refresh_from_db()
+        self.assertIsNone(self.season.rewatch_started_at)
+        self.assertFalse(self.tv.is_rewatching)

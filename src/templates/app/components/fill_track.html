@@ -187,6 +187,13 @@
                       formaction="{{ general_delete_formaction }}"
                       class="px-4 py-2 rounded-md transition duration-300 {% if general_existing_instance %}bg-red-700 text-white hover:bg-red-800 cursor-pointer{% else %}bg-gray-600 text-gray-300 cursor-not-allowed{% endif %}"
                       {% if not general_existing_instance %}disabled{% endif %}>Delete</button>
+              {% if general_rewatch_formaction %}
+                <button type="submit"
+                        formaction="{{ general_rewatch_formaction }}"
+                        class="px-4 py-2 rounded-md bg-[var(--color-surface-strong)] text-white border border-gray-600 hover:bg-gray-700 transition duration-300 cursor-pointer">
+                  {{ general_rewatch_label }}
+                </button>
+              {% endif %}
             {% endif %}
             {% if episode_create_url %}
               <button type="button"

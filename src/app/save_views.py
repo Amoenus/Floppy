@@ -515,6 +515,43 @@ def media_delete(request):
     return redirect_response
 
 
+@require_POST
+def media_rewatch(request):
+    """Start or stop a rewatch pass for a show or season."""
+    media_type = request.POST["media_type"]
+    instance_id = request.POST["instance_id"]
+    # The track-modal button carries the action in the query string, the same
+    # way the other modal actions carry `next`.
+    action = request.POST.get("action") or request.GET.get("action") or "start"
+
+    if media_type not in {MediaTypes.TV.value, MediaTypes.SEASON.value}:
+        return HttpResponseBadRequest("Only shows and seasons can be rewatched.")
+
+    model = apps.get_model(app_label="app", model_name=media_type)
+    media = get_object_or_404(model, pk=instance_id, user=request.user)
+
+    if action == "stop":
+        # Ending a pass has to decide whether the full history means the entry
+        # is complete again, which needs the season's episode count.
+        seasons = (
+            [media] if media_type == MediaTypes.SEASON.value else list(media.seasons.all())
+        )
+        BasicMedia.objects.annotate_max_progress(seasons, MediaTypes.SEASON.value)
+        for season in seasons:
+            season.stop_rewatch(max_progress=getattr(season, "max_progress", None))
+        logger.info("Rewatch of %s ended.", media)
+    else:
+        media.start_rewatch()
+        logger.info("Rewatch of %s started.", media)
+
+    cache_utils.clear_media_list_cache_for_user(request.user.id)
+
+    redirect_response = helpers.redirect_back(request)
+    if request.headers.get("HX-Request"):
+        return HttpResponse(status=204, headers={"HX-Redirect": redirect_response.url})
+    return redirect_response
+
+
 def _render_season_progress_oob(related_season):
     """Render the mobile+desktop season-progress OOB span pair as one string.
 

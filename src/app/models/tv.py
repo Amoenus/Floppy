@@ -166,6 +166,11 @@ class TV(Media):
             self.status = Status.IN_PROGRESS.value
             bulk_update_with_history([self], TV, fields=["status"])
 
+    def stop_rewatch(self, max_progress=None):
+        """Close every open rewatch pass on the show's seasons."""
+        for season in self.seasons.all():
+            season.stop_rewatch(max_progress=max_progress)
+
     @property
     def progress_percentage(self):
         """Return percent of the show actually watched (0-100), or None.
@@ -875,6 +880,11 @@ class Season(Media):
         bulk_update_with_history([self], Season, fields=["status"])
         self.related_tv._handle_completed_season(self.item.season_number)
         return True
+
+    @property
+    def is_rewatching(self):
+        """Return whether the season is in an open rewatch pass."""
+        return self.rewatch_started_at is not None
 
     def play_counts_for_pass(self, episode):
         """Return whether a play belongs to the season's current pass."""

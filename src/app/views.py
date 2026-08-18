@@ -280,6 +280,7 @@ from app.save_views import (
     episode_history_poll,
     episode_save,
     media_delete,
+    media_rewatch,
     media_save,
 )
 from app.score_views import (
@@ -2189,6 +2190,7 @@ __all__ = [
     "media_delete",
     "media_details",
     "media_list",
+    "media_rewatch",
     "media_save",
     "media_search",
     "metadata_resolution",
