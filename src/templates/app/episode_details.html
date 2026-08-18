@@ -113,7 +113,7 @@
 
     <div class="flex flex-col sm:contents">
       {# Score chips row — mirrors media_details.html order-2/order-1 chip row. Render whenever a TMDB score exists OR the viewer is logged in with an episode, so the always-present rating-chip slot is in the DOM on first load (before any watch) and episode_save can OOB-swap it in place. #}
-      {% if episode_metadata.score_count or not public_view and episode %}
+      {% if episode_metadata.score_count or imdb_score or not public_view and episode %}
         <div class="order-2 mt-0 mb-5 flex w-full items-center justify-between gap-0.5 sm:order-1 sm:mt-4 sm:flex-wrap sm:justify-start sm:gap-2">
           {# TMDB provider score chip #}
           {% if episode_metadata.score_count %}
@@ -129,6 +129,22 @@
               {% endif %}
               <span class="text-[12px] text-[var(--color-text-muted)] sm:text-sm">|</span>
               <span class="text-[12px] text-[var(--color-text-secondary)] sm:text-sm">{{ episode_metadata.score_count|intcomma }} vote{{ episode_metadata.score_count|pluralize }}</span>
+            </div>
+          {% endif %}
+          {# IMDb rating chip #}
+          {% if imdb_score %}
+            <div class="inline-flex h-[1.875rem] shrink-0 items-center gap-0.5 rounded-full border border-amber-400/18 bg-amber-500/[0.07] pl-0 pr-1.5 text-[12px] text-white shadow-sm sm:h-8 sm:gap-2 sm:pr-3 sm:text-sm">
+              <span class="sr-only">IMDb score</span>
+              <span class="-my-px -ml-px flex h-[1.875rem] w-[1.875rem] shrink-0 items-center justify-center rounded-full border border-amber-400/28 bg-amber-500/14 sm:h-8 sm:w-8">
+                <img src="{% static 'img/imdb-logo.png' %}" alt="" aria-hidden="true" class="h-3.5 w-3.5 object-contain sm:h-4 sm:w-4">
+              </span>
+              {% if imdb_score.rating is not None %}
+                <span class="text-[12px] font-semibold text-[var(--color-text)] sm:text-sm">{{ imdb_score.rating }}</span>
+              {% else %}
+                <span class="text-[12px] font-semibold text-[var(--color-text-muted)] sm:text-sm">-</span>
+              {% endif %}
+              <span class="text-[12px] text-[var(--color-text-muted)] sm:text-sm">|</span>
+              <span class="text-[12px] text-[var(--color-text-secondary)] sm:text-sm">{{ imdb_score.rating_count|intcomma }} rating{{ imdb_score.rating_count|pluralize }}</span>
             </div>
           {% endif %}
           {# User episode rating chip — always-present slot so it can be OOB-swapped into place on first watch without a page refresh. #}

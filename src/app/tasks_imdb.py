@@ -51,6 +51,20 @@ def refresh_imdb_game_credits_from_datasets():
     return result
 
 
+@shared_task(name="Sync IMDB ratings from datasets")
+def sync_imdb_ratings_from_datasets():
+    """Sync IMDB's public aggregate ratings for movies, shows, and episodes."""
+    from app.services import imdb_ratings
+
+    movies_and_shows_updated = imdb_ratings.sync_movie_and_show_ratings()
+    episodes_updated = imdb_ratings.sync_episode_ratings()
+
+    return {
+        "movies_and_shows_updated": movies_and_shows_updated,
+        "episodes_updated": episodes_updated,
+    }
+
+
 @shared_task(name="Backfill IMDB game person profiles")
 def backfill_imdb_game_person_profiles():
     """Backfill TMDB profile data for IMDB-sourced game people."""

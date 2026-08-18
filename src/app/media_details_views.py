@@ -36,6 +36,7 @@ from app.detail_builders import (
     _build_detail_person_rows,
     _build_episode_graph_from_season_cache,
     _build_game_lengths_context,
+    _build_imdb_rating_context,
     _build_season_scores_graph,
     _build_series_graph_data,
     _build_stored_season_scores_graph,
@@ -1334,6 +1335,7 @@ def media_details(
                 is not None
             )
     trakt_score = _build_trakt_popularity_context(detail_item, media_type)
+    imdb_score = _build_imdb_rating_context(detail_item, media_type)
 
     author_detail_keys = ("author", "authors", "people")
     authors_linked = []
@@ -1622,10 +1624,15 @@ def media_details(
             # ready before the user hovers.
             from app.providers import trakt as _trakt
 
-            if not public_view and _trakt.is_configured() and source in {
-                Sources.TMDB.value,
-                Sources.TVDB.value,
-            }:
+            if (
+                not public_view
+                and _trakt.is_configured()
+                and source
+                in {
+                    Sources.TMDB.value,
+                    Sources.TVDB.value,
+                }
+            ):
                 from app.models import Item as _Item
                 from app.tasks_trakt import (
                     populate_trakt_episode_ratings_for_season,
@@ -2145,6 +2152,7 @@ def media_details(
         "play_stats": play_stats,
         "activity_subtitle": activity_subtitle,
         "trakt_score": trakt_score,
+        "imdb_score": imdb_score,
         "game_lengths": game_lengths,
         "game_lengths_pending": game_lengths_refresh_pending
         and not (game_lengths and game_lengths.get("available")),
@@ -2199,6 +2207,14 @@ def media_details(
             _build_series_graph_data(display_provider, media_id, use_trakt=True)
             or _build_stored_season_scores_graph(
                 display_provider, media_id, use_trakt=True
+            )
+            if media_type in (MediaTypes.TV.value, MediaTypes.ANIME.value)
+            else None
+        ),
+        "imdb_series_graph_data": (
+            _build_series_graph_data(display_provider, media_id, use_imdb=True)
+            or _build_stored_season_scores_graph(
+                display_provider, media_id, use_imdb=True
             )
             if media_type in (MediaTypes.TV.value, MediaTypes.ANIME.value)
             else None

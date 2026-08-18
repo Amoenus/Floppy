@@ -1,6 +1,6 @@
 from django.test import TestCase
 
-from app.detail_builders import _build_series_graph_data
+from app.detail_builders import _build_imdb_rating_context, _build_series_graph_data
 from app.models import Item, MediaTypes, Sources
 
 
@@ -50,3 +50,66 @@ class SeriesGraphBuilderTests(TestCase):
         self.assertEqual([row["ep"] for row in graph_data["episode_rows"]], [1, 2])
         self.assertEqual(graph_data["episode_rows"][0]["cells"][0]["score"], 8.0)
         self.assertIsNone(graph_data["episode_rows"][1]["cells"][0]["score"])
+
+    def test_use_imdb_reads_imdb_rating_fields(self):
+        Item.objects.create(
+            media_id="show-2",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="Episode 1",
+            season_number=1,
+            episode_number=1,
+            imdb_rating=9.1,
+            imdb_rating_count=1234,
+        )
+
+        graph_data = _build_series_graph_data(
+            Sources.TMDB.value,
+            "show-2",
+            use_imdb=True,
+        )
+
+        self.assertIsNotNone(graph_data)
+        self.assertEqual(graph_data["episode_rows"][0]["cells"][0]["score"], 9.1)
+        self.assertEqual(graph_data["episode_rows"][0]["cells"][0]["votes"], 1234)
+
+
+class ImdbRatingContextTests(TestCase):
+    """Focused coverage for the IMDb rating chip context builder."""
+
+    def test_returns_none_without_rating_count(self):
+        item = Item.objects.create(
+            media_id="movie-1",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="A Movie",
+        )
+
+        self.assertIsNone(_build_imdb_rating_context(item, MediaTypes.MOVIE.value))
+
+    def test_returns_rounded_rating_and_count(self):
+        item = Item.objects.create(
+            media_id="movie-2",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Another Movie",
+            imdb_rating=7.88,
+            imdb_rating_count=54321,
+        )
+
+        context = _build_imdb_rating_context(item, MediaTypes.MOVIE.value)
+
+        self.assertEqual(context, {"rating": 7.8, "rating_count": 54321})
+
+    def test_returns_none_for_unsupported_media_type(self):
+        item = Item.objects.create(
+            media_id="season-1",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Season 1",
+            season_number=1,
+            imdb_rating=8.0,
+            imdb_rating_count=100,
+        )
+
+        self.assertIsNone(_build_imdb_rating_context(item, MediaTypes.SEASON.value))
