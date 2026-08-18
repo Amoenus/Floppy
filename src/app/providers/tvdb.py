@@ -940,6 +940,95 @@ def _build_series_metadata(series_data: dict, *, media_type: str, language: str 
     }
 
 
+def _person_cache_key(person_id, language: str | None = None):
+    """Return the cache key for a person profile payload."""
+    return _cache_key("person", person_id, _preferred_language_code(language))
+
+
+def _person_filmography_entries(characters, language: str | None = None):
+    """Return normalized filmography entries from a TVDB person's characters."""
+    entries = []
+    for character in _coerce_list(characters):
+        if not isinstance(character, dict):
+            continue
+        series_id = character.get("seriesId") or character.get("series_id")
+        if not series_id:
+            continue
+        series_row = character.get("series")
+        series_row = series_row if isinstance(series_row, dict) else {}
+        title = (
+            _find_translation(series_row, "name", language=language)
+            or _get_name(series_row)
+            or _normalize_text_value(character.get("seriesName"))
+            or "Unknown Title"
+        )
+        year = None
+        first_aired = _parse_date(
+            series_row.get("firstAired") or character.get("year"),
+        )
+        if first_aired:
+            year = first_aired.year
+        is_cast = str(character.get("type") or "").lower() in {
+            "actor",
+            "guest star",
+            "voice",
+        }
+        entries.append(
+            {
+                "media_id": str(series_id),
+                "source": Sources.TVDB.value,
+                "media_type": MediaTypes.TV.value,
+                "title": title,
+                "image": _get_image(series_row, language),
+                "year": year,
+                "credit_type": "cast" if is_cast else "crew",
+                "role": character.get("name") or character.get("character") or "",
+                "department": "Acting" if is_cast else (character.get("type") or "Crew"),
+            },
+        )
+
+    # Deduplicate by media + credit + role in case TVDB returns duplicates.
+    deduped = {}
+    for entry in entries:
+        key = (entry["media_id"], entry["credit_type"], entry["role"])
+        deduped.setdefault(key, entry)
+    return list(deduped.values())
+
+
+def person(person_id, language=None):
+    """Return metadata for a TVDB person profile."""
+    cache_key = _person_cache_key(person_id, language)
+    data = cache.get(cache_key)
+    if data is not None:
+        return data
+
+    response = _unwrap_data(_request(f"people/{person_id}/extended")) or {}
+    if not response:
+        return None
+
+    data = {
+        "person_id": str(response.get("id") or person_id),
+        "source": Sources.TVDB.value,
+        "name": _get_name(response),
+        "image": response.get("image") or settings.IMG_NONE,
+        "biography": _find_translation(response, "overview", language=language)
+        or _normalize_text_value(response.get("biography"))
+        or "",
+        "known_for_department": _normalize_text_value(response.get("peopleType")) or "",
+        "gender": "unknown",
+        "birth_date": _normalize_text_value(response.get("birth")),
+        "death_date": _normalize_text_value(response.get("death")),
+        "place_of_birth": _normalize_text_value(response.get("birthPlace")) or "",
+        "filmography": _person_filmography_entries(
+            response.get("characters"), language,
+        ),
+    }
+
+    cache.set(cache_key, data, timeout=TVDB_METADATA_CACHE_TIMEOUT)
+
+    return data
+
+
 def _normalize_episode_rows(
     season_data: dict | None, language: str | None = None, *, series_id: Any = None
 ):

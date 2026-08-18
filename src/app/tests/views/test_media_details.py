@@ -5082,6 +5082,64 @@ class MediaDetailsViewTests(TestCase):
         self.assertTrue(response.context["detail_persistence_deferred"])
         _mock_sleep.assert_not_called()
 
+    @patch("integrations.tasks.fetch_collection_metadata_for_item.delay")
+    @patch("app.views.credits.sync_item_credits_from_metadata")
+    @patch("app.views.metadata_utils.apply_item_metadata", return_value=[])
+    @patch("app.providers.services.get_media_metadata")
+    def test_tvdb_tv_media_details_syncs_credits(
+        self,
+        mock_get_metadata,
+        _mock_apply_item_metadata,
+        mock_sync_credits,
+        _mock_fetch_delay,
+    ):
+        """A TVDB-sourced TV item should also get its cast/crew persisted (#868)."""
+        item = Item.objects.create(
+            media_id="81189",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Breaking Bad",
+            image="https://example.com/breaking-bad.jpg",
+        )
+        base_metadata = {
+            "media_id": item.media_id,
+            "title": "Breaking Bad",
+            "media_type": MediaTypes.TV.value,
+            "source": Sources.TVDB.value,
+            "source_url": "https://www.thetvdb.com/dereferrer/series/81189",
+            "image": "https://example.com/breaking-bad.jpg",
+            "synopsis": "Chemistry teacher cooks meth.",
+            "details": {"episodes": 62},
+            "related": {},
+            "cast": [
+                {
+                    "person_id": "291115",
+                    "name": "Bryan Cranston",
+                    "image": "https://example.com/bryan.jpg",
+                    "role": "Walter White",
+                },
+            ],
+            "crew": [],
+            "studios_full": [],
+        }
+        mock_get_metadata.return_value = base_metadata
+
+        response = self.client.get(
+            reverse(
+                "media_details",
+                kwargs={
+                    "source": Sources.TVDB.value,
+                    "media_type": MediaTypes.TV.value,
+                    "media_id": item.media_id,
+                    "title": "breaking-bad",
+                },
+            ),
+            {"fragment": "secondary"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        mock_sync_credits.assert_called_once_with(item, base_metadata)
+
     @patch(
         "app.media_details_views._queue_game_lengths_refresh",
         side_effect=RuntimeError("queue unavailable"),

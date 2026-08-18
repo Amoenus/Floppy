@@ -494,6 +494,39 @@ class CreditsBackfillTaskTests(TestCase):
 
         self.assertCountEqual(missing_ids, [tv_item.id, season_item.id])
 
+    def test_missing_credits_item_ids_does_not_require_studios_for_tvdb_tv(self):
+        """TVDB never returns studio data, so cast alone should satisfy TV items."""
+        tvdb_item = Item.objects.create(
+            media_id="81189",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.TV.value,
+            title="TVDB Show",
+        )
+        person = Person.objects.create(
+            source=Sources.TVDB.value,
+            source_person_id="291115",
+            name="TVDB Cast Member",
+            gender=PersonGender.UNKNOWN.value,
+        )
+        ItemPersonCredit.objects.create(
+            item=tvdb_item,
+            person=person,
+            role_type=CreditRoleType.CAST.value,
+            role="Lead",
+        )
+        MetadataBackfillState.objects.update_or_create(
+            item=tvdb_item,
+            field=MetadataBackfillField.CREDITS,
+            defaults={
+                "last_success_at": timezone.now(),
+                "strategy_version": CREDITS_BACKFILL_VERSION,
+            },
+        )
+
+        missing_ids = tasks._missing_credits_item_ids([tvdb_item.id])
+
+        self.assertEqual(missing_ids, [])
+
     @patch("app.tasks.populate_credits_backfill_queue.apply_async")
     def test_enqueue_credits_backfill_requeues_tv_and_season_with_old_strategy_version(
         self,

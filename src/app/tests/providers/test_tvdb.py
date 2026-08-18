@@ -687,3 +687,79 @@ class TVDBProviderTests(TestCase):
         self.assertEqual(first["1_1"], "2008-01-20T22:00:00+00:00")
         self.assertEqual(second, first)
         mock_request.assert_called_once()
+
+    @patch("app.providers.tvdb._request")
+    def test_person_normalizes_profile_and_filmography(self, mock_request):
+        """Person profiles should normalize bio fields and character credits."""
+        mock_request.return_value = {
+            "data": {
+                "id": 291115,
+                "name": "Bryan Cranston",
+                "image": "https://artworks.thetvdb.com/banners/person/291115.jpg",
+                "biography": "American actor.",
+                "peopleType": "Actor",
+                "birth": "1956-03-07",
+                "death": None,
+                "birthPlace": "Hollywood, California, USA",
+                "characters": [
+                    {
+                        "seriesId": 81189,
+                        "type": "Actor",
+                        "name": "Walter White",
+                        "series": {
+                            "id": 81189,
+                            "name": "Breaking Bad",
+                            "image": "https://artworks.thetvdb.com/banners/series/81189.jpg",
+                            "firstAired": "2008-01-20",
+                        },
+                    },
+                ],
+            },
+        }
+
+        result = tvdb.person("291115")
+
+        self.assertEqual(result["person_id"], "291115")
+        self.assertEqual(result["source"], Sources.TVDB.value)
+        self.assertEqual(result["name"], "Bryan Cranston")
+        self.assertEqual(result["biography"], "American actor.")
+        self.assertEqual(result["birth_date"], "1956-03-07")
+        self.assertIsNone(result["death_date"])
+        self.assertEqual(result["place_of_birth"], "Hollywood, California, USA")
+
+        self.assertEqual(len(result["filmography"]), 1)
+        entry = result["filmography"][0]
+        self.assertEqual(entry["media_id"], "81189")
+        self.assertEqual(entry["media_type"], MediaTypes.TV.value)
+        self.assertEqual(entry["title"], "Breaking Bad")
+        self.assertEqual(entry["year"], 2008)
+        self.assertEqual(entry["credit_type"], "cast")
+        self.assertEqual(entry["role"], "Walter White")
+
+    @patch("app.providers.tvdb._request")
+    def test_person_caches_response(self, mock_request):
+        """Person profiles should be cached between calls."""
+        mock_request.return_value = {
+            "data": {"id": 291115, "name": "Bryan Cranston", "characters": []},
+        }
+
+        first = tvdb.person("291115")
+        second = tvdb.person("291115")
+
+        self.assertEqual(first, second)
+        mock_request.assert_called_once()
+
+    @patch("app.providers.tvdb._request")
+    def test_person_skips_characters_without_series_id(self, mock_request):
+        """Characters missing a seriesId shouldn't produce filmography entries."""
+        mock_request.return_value = {
+            "data": {
+                "id": 291115,
+                "name": "Bryan Cranston",
+                "characters": [{"type": "Actor", "name": "Unknown Role"}],
+            },
+        }
+
+        result = tvdb.person("291115")
+
+        self.assertEqual(result["filmography"], [])

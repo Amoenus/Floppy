@@ -25,7 +25,7 @@ from app.tasks_metadata_cache import _clear_item_metadata_cache, _fetch_item_met
 
 logger = logging.getLogger(__name__)
 
-CREDITS_BACKFILL_SOURCES = ("tmdb",)
+CREDITS_BACKFILL_SOURCES = ("tmdb", "tvdb")
 CREDITS_BACKFILL_QUEUE_TTL = 60 * 60  # 1 hour
 CREDITS_BACKFILL_ITEMS_QUEUE_KEY = "credits_backfill_items_queue"
 CREDITS_BACKFILL_ITEMS_SCHEDULED_KEY = "credits_backfill_items_scheduled"
