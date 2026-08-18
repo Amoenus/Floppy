@@ -301,7 +301,10 @@ class Studio(models.Model):
     )
     source_studio_id = models.CharField(max_length=32)
     name = models.CharField(max_length=255)
-    logo = models.URLField(blank=True, default="")
+    # Provider artwork is opaque metadata. Signed/CDN URLs can exceed the
+    # URLField default of 200 characters and are not indexed, so storing the
+    # complete value is safer than truncating it and works on SQLite/PostgreSQL.
+    logo = models.TextField(blank=True, default="")
 
     class Meta:
         """Meta options for the model."""

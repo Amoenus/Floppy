@@ -1237,7 +1237,7 @@ def media_details(
 
     if (
         render_secondary_only
-        and source == Sources.TMDB.value
+        and source in (Sources.TMDB.value, Sources.TVDB.value)
         and tracking_media_type
         in (
             MediaTypes.MOVIE.value,
@@ -1248,14 +1248,18 @@ def media_details(
         and detail_item
     ):
         missing_people = not detail_item.person_credits.exists()
-        missing_studios = not detail_item.studio_credits.exists()
+        # TVDB never returns studio data, so it would otherwise always look
+        # "missing" and re-trigger this sync on every page view.
+        missing_studios = (
+            source == Sources.TMDB.value and not detail_item.studio_credits.exists()
+        )
         if missing_people or missing_studios:
             _best_effort_detail_db_work(
                 lambda: credits.sync_item_credits_from_metadata(
                     detail_item,
                     media_metadata,
                 ),
-                operation_name="TMDB detail credits sync",
+                operation_name="detail credits sync",
             )
 
     should_refresh_igdb_game_studios = (
@@ -1655,10 +1659,15 @@ def media_details(
             # ready before the user hovers.
             from app.providers import trakt as _trakt
 
-            if not public_view and _trakt.is_configured() and source in {
-                Sources.TMDB.value,
-                Sources.TVDB.value,
-            }:
+            if (
+                not public_view
+                and _trakt.is_configured()
+                and source
+                in {
+                    Sources.TMDB.value,
+                    Sources.TVDB.value,
+                }
+            ):
                 from app.models import Item as _Item
                 from app.tasks_trakt import (
                     populate_trakt_episode_ratings_for_season,
@@ -2233,6 +2242,14 @@ def media_details(
             _build_series_graph_data(display_provider, media_id, use_trakt=True)
             or _build_stored_season_scores_graph(
                 display_provider, media_id, use_trakt=True
+            )
+            if media_type in (MediaTypes.TV.value, MediaTypes.ANIME.value)
+            else None
+        ),
+        "imdb_series_graph_data": (
+            _build_series_graph_data(display_provider, media_id, use_imdb=True)
+            or _build_stored_season_scores_graph(
+                display_provider, media_id, use_imdb=True
             )
             if media_type in (MediaTypes.TV.value, MediaTypes.ANIME.value)
             else None

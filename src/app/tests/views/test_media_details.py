@@ -2526,17 +2526,17 @@ class MediaDetailsViewTests(TestCase):
         self, mock_get_metadata
     ):
         Item.objects.create(
-            media_id="238",
+            media_id="240",
             source=Sources.TMDB.value,
             media_type=MediaTypes.MOVIE.value,
-            title="Test Movie",
+            title="IMDb Rated Movie",
             image="http://example.com/image.jpg",
-            imdb_rating=9.3,
-            imdb_rating_count=2800000,
+            imdb_rating=8.34,
+            imdb_rating_count=987654,
         )
         mock_get_metadata.return_value = {
-            "media_id": "238",
-            "title": "Test Movie",
+            "media_id": "240",
+            "title": "IMDb Rated Movie",
             "media_type": MediaTypes.MOVIE.value,
             "source": Sources.TMDB.value,
             "image": "http://example.com/image.jpg",
@@ -2550,29 +2550,30 @@ class MediaDetailsViewTests(TestCase):
                 kwargs={
                     "source": Sources.TMDB.value,
                     "media_type": MediaTypes.MOVIE.value,
-                    "media_id": "238",
-                    "title": "test-movie",
+                    "media_id": "240",
+                    "title": "imdb-rated-movie",
                 },
             ),
         )
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "imdb-logo.png")
-        self.assertContains(response, "9.3")
-        self.assertContains(response, "2,800,000 votes")
+        self.assertContains(response, "8.3")
+        self.assertNotContains(response, "8.34")
+        self.assertContains(response, "987,654 ratings")
 
     @patch("app.providers.services.get_media_metadata")
     def test_media_details_hides_imdb_score_card_without_data(self, mock_get_metadata):
         Item.objects.create(
-            media_id="239",
+            media_id="241",
             source=Sources.TMDB.value,
             media_type=MediaTypes.MOVIE.value,
-            title="No IMDB Movie",
+            title="No IMDb Movie",
             image="http://example.com/image.jpg",
         )
         mock_get_metadata.return_value = {
-            "media_id": "239",
-            "title": "No IMDB Movie",
+            "media_id": "241",
+            "title": "No IMDb Movie",
             "media_type": MediaTypes.MOVIE.value,
             "source": Sources.TMDB.value,
             "image": "http://example.com/image.jpg",
@@ -2586,14 +2587,14 @@ class MediaDetailsViewTests(TestCase):
                 kwargs={
                     "source": Sources.TMDB.value,
                     "media_type": MediaTypes.MOVIE.value,
-                    "media_id": "239",
+                    "media_id": "241",
                     "title": "no-imdb-movie",
                 },
             ),
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertNotContains(response, "imdb-logo.png")
+        self.assertNotContains(response, "IMDb score")
 
     @patch("app.providers.services.get_media_metadata")
     def test_media_details_renders_source_score_chip_with_tmdb_logo(
@@ -5305,6 +5306,64 @@ class MediaDetailsViewTests(TestCase):
         self.assertTrue(response.context["detail_persistence_deferred"])
         _mock_sleep.assert_not_called()
 
+    @patch("integrations.tasks.fetch_collection_metadata_for_item.delay")
+    @patch("app.views.credits.sync_item_credits_from_metadata")
+    @patch("app.views.metadata_utils.apply_item_metadata", return_value=[])
+    @patch("app.providers.services.get_media_metadata")
+    def test_tvdb_tv_media_details_syncs_credits(
+        self,
+        mock_get_metadata,
+        _mock_apply_item_metadata,
+        mock_sync_credits,
+        _mock_fetch_delay,
+    ):
+        """A TVDB-sourced TV item should also get its cast/crew persisted (#868)."""
+        item = Item.objects.create(
+            media_id="81189",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Breaking Bad",
+            image="https://example.com/breaking-bad.jpg",
+        )
+        base_metadata = {
+            "media_id": item.media_id,
+            "title": "Breaking Bad",
+            "media_type": MediaTypes.TV.value,
+            "source": Sources.TVDB.value,
+            "source_url": "https://www.thetvdb.com/dereferrer/series/81189",
+            "image": "https://example.com/breaking-bad.jpg",
+            "synopsis": "Chemistry teacher cooks meth.",
+            "details": {"episodes": 62},
+            "related": {},
+            "cast": [
+                {
+                    "person_id": "291115",
+                    "name": "Bryan Cranston",
+                    "image": "https://example.com/bryan.jpg",
+                    "role": "Walter White",
+                },
+            ],
+            "crew": [],
+            "studios_full": [],
+        }
+        mock_get_metadata.return_value = base_metadata
+
+        response = self.client.get(
+            reverse(
+                "media_details",
+                kwargs={
+                    "source": Sources.TVDB.value,
+                    "media_type": MediaTypes.TV.value,
+                    "media_id": item.media_id,
+                    "title": "breaking-bad",
+                },
+            ),
+            {"fragment": "secondary"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        mock_sync_credits.assert_called_once_with(item, base_metadata)
+
     @patch(
         "app.media_details_views._queue_game_lengths_refresh",
         side_effect=RuntimeError("queue unavailable"),
@@ -6974,7 +7033,8 @@ class MediaDetailsViewTests(TestCase):
         )
         self.assertIn('aria-label="Show alternative title"', content)
         self.assertIn(
-            '<h2 class="text-sm font-medium text-[var(--color-text-muted)]">Season 3</h2>', content
+            '<h2 class="text-sm font-medium text-[var(--color-text-muted)]">Season 3</h2>',
+            content,
         )
         self.assertIn("<p>Alicization</p>", content)
 
@@ -8081,7 +8141,9 @@ class MediaDetailsViewTests(TestCase):
         )
         html = response.content.decode()
         self.assertEqual(
-            html.count('text-sm font-semibold text-[var(--color-text-muted)]">AUTHOR</h3>'),
+            html.count(
+                'text-sm font-semibold text-[var(--color-text-muted)]">AUTHOR</h3>'
+            ),
             1,
         )
 

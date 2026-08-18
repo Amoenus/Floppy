@@ -36,6 +36,7 @@ from integrations import (
     koito_api,
     lastfm_api,
     pocketcasts_api,
+    stremio_catalog,
     psn_api,
     stremio_queue,
     tasks,
@@ -3157,16 +3158,14 @@ def kodi_webhook(request, token):
 
 
 STREMIO_ADDON_MANIFEST = {
-    # Id stays "org.yamtrack.scrobbler": Stremio clients key installed
-    # addons by it, and changing it would force everyone to reinstall.
+    # Keep the existing addon id so installed clients remain compatible.
     "id": "org.yamtrack.scrobbler",
-    "version": "1.0.0",
-    "name": "Floppy Scrobbler",
+    "version": "1.1.0",
+    "name": "Floppy",
     "description": (
-        "Marks movies and episodes as in progress on Floppy when playback "
-        "starts in Stremio."
+        "Floppy Watchlist catalogs and playback scrobbling for Stremio."
     ),
-    "resources": ["subtitles"],
+    "resources": ["catalog", "subtitles"],
     "types": ["movie", "series"],
     "idPrefixes": ["tt"],
     "catalogs": [],
@@ -3188,15 +3187,58 @@ def _stremio_addon_response(payload, status=200):
 @login_not_required
 @csrf_exempt
 @require_GET
+def stremio_addon_catalog(
+    request,
+    token,
+    media_type,
+    catalog_id,
+    extra=None,
+):
+    """Serve a Floppy Watchlist catalog to Stremio."""
+    try:
+        user = users.models.User.objects.get(token=token)
+    except ObjectDoesNotExist:
+        logger.warning("Invalid token on Stremio addon catalog request")
+        return _stremio_addon_response(
+            {"error": "Invalid token"},
+            status=401,
+        )
+
+    spec = stremio_catalog.get_catalog_spec(media_type, catalog_id)
+    if spec is None:
+        return _stremio_addon_response({"metas": []})
+
+    try:
+        skip = stremio_catalog.parse_skip(extra)
+    except ValueError as error:
+        return _stremio_addon_response({"error": str(error)}, status=400)
+
+    metas, unresolved_count = stremio_catalog.project_catalog(user, spec, skip)
+    logger.info(
+        "Stremio catalog projection catalog_id=%s skip=%s returned=%s unresolved=%s",
+        catalog_id,
+        skip,
+        len(metas),
+        unresolved_count,
+    )
+    return _stremio_addon_response({"metas": metas})
+
+
+@login_not_required
+@csrf_exempt
+@require_GET
 def stremio_addon_manifest(request, token):
     """Serve the Stremio addon manifest for a user's install URL."""
     try:
-        users.models.User.objects.get(token=token)
+        user = users.models.User.objects.get(token=token)
     except ObjectDoesNotExist:
         logger.warning("Invalid token on Stremio addon manifest request")
         return _stremio_addon_response({"error": "Invalid token"}, status=401)
 
-    return _stremio_addon_response(STREMIO_ADDON_MANIFEST)
+    manifest = STREMIO_ADDON_MANIFEST | {
+        "catalogs": stremio_catalog.manifest_catalogs(user)
+    }
+    return _stremio_addon_response(manifest)
 
 
 @login_not_required

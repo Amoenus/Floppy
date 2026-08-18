@@ -1010,6 +1010,75 @@ class PersonDetailViewTests(TestCase):
         )
         self.assertContains(response, "Manga Title")
 
+    @patch("app.providers.tvdb.person")
+    def test_person_detail_shows_tvdb_filmography(self, mock_person):
+        item = Item.objects.create(
+            media_id="81189",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Tracked Show",
+            image="http://example.com/tracked.jpg",
+        )
+        person = Person.objects.create(
+            source=Sources.TVDB.value,
+            source_person_id="291115",
+            name="Bryan Cranston",
+        )
+        ItemPersonCredit.objects.create(
+            item=item,
+            person=person,
+            role_type=CreditRoleType.CAST.value,
+            role="Walter White",
+        )
+        TV.objects.create(
+            item=item,
+            user=self.user,
+            status=Status.PLANNING.value,
+        )
+
+        mock_person.return_value = {
+            "person_id": "291115",
+            "source": Sources.TVDB.value,
+            "name": "Bryan Cranston",
+            "image": "http://example.com/bryan.jpg",
+            "biography": "American actor.",
+            "known_for_department": "Actor",
+            "gender": "male",
+            "birth_date": "1956-03-07",
+            "death_date": None,
+            "place_of_birth": "Hollywood, California, USA",
+            "filmography": [
+                {
+                    "media_id": "81189",
+                    "source": Sources.TVDB.value,
+                    "media_type": MediaTypes.TV.value,
+                    "title": "Tracked Show",
+                    "image": "http://example.com/tracked.jpg",
+                    "year": 2008,
+                    "credit_type": "cast",
+                    "role": "Walter White",
+                    "department": "Acting",
+                },
+            ],
+        }
+
+        response = self.client.get(
+            reverse(
+                "person_detail",
+                kwargs={
+                    "source": Sources.TVDB.value,
+                    "person_id": "291115",
+                    "name": "bryan-cranston",
+                },
+            ),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "app/person_detail.html")
+        self.assertEqual(len(response.context["filmography"]), 1)
+        self.assertContains(response, "Tracked Show")
+        self.assertContains(response, "?person_source=tvdb&amp;person_id=291115")
+
     def test_person_detail_rejects_unsupported_source(self):
         response = self.client.get(
             reverse(

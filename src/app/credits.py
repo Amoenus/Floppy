@@ -122,7 +122,7 @@ def usable_credits_backfill_item_ids(item_ids):
 
 
 def missing_credits_backfill_item_ids(item_ids):
-    """Return TMDB item IDs that still need credits backfill."""
+    """Return item IDs that still need credits backfill."""
     normalized_ids = []
     for item_id in item_ids or []:
         try:
@@ -138,20 +138,29 @@ def missing_credits_backfill_item_ids(item_ids):
     candidate_items = list(
         Item.objects.filter(
             id__in=normalized_ids,
-            source=Sources.TMDB.value,
+            source__in=(Sources.TMDB.value, Sources.TVDB.value),
             media_type__in=[
                 MediaTypes.MOVIE.value,
                 MediaTypes.TV.value,
                 MediaTypes.SEASON.value,
                 MediaTypes.EPISODE.value,
             ],
-        ).values("id", "media_type"),
+        )
+        # TVDB seasons/episodes never carry a credits payload (see
+        # providers.tvdb._normalize_season_metadata / episode()), so they
+        # would otherwise always look "missing" and be requeued forever.
+        .exclude(
+            source=Sources.TVDB.value,
+            media_type__in=[MediaTypes.SEASON.value, MediaTypes.EPISODE.value],
+        )
+        .values("id", "media_type", "source"),
     )
     if not candidate_items:
         return []
 
     candidate_ids = {row["id"] for row in candidate_items}
     media_type_by_id = {row["id"]: row["media_type"] for row in candidate_items}
+    source_by_id = {row["id"]: row["source"] for row in candidate_items}
     current_credit_ids = current_credits_backfill_item_ids(candidate_ids)
 
     person_credit_ids = set(
@@ -177,12 +186,19 @@ def missing_credits_backfill_item_ids(item_ids):
         has_people = item_id in person_credit_ids
         has_cast = item_id in cast_credit_ids
         has_studios = item_id in studio_credit_ids
+        # TVDB never returns studio data (see providers.tvdb._build_series_metadata),
+        # so only TMDB items are held to the "has studios" bar.
+        studios_required = source_by_id.get(item_id) == Sources.TMDB.value
         if media_type == MediaTypes.SEASON.value:
             if not has_cast or item_id not in current_credit_ids:
                 missing_ids.append(item_id)
             continue
         if media_type == MediaTypes.TV.value:
-            if not has_cast or not has_studios or item_id not in current_credit_ids:
+            if (
+                not has_cast
+                or (studios_required and not has_studios)
+                or item_id not in current_credit_ids
+            ):
                 missing_ids.append(item_id)
             continue
         if media_type == MediaTypes.EPISODE.value:

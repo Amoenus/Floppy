@@ -47,7 +47,9 @@ class Item(CalendarTriggerMixin, models.Model):
         default="",
         help_text="Cached provider synopsis, used as a fallback when live metadata is unavailable",
     )
-    image = models.TextField(blank=True, default="")  # if add default, custom media entry will show the value
+    image = models.TextField(
+        blank=True, default=""
+    )  # if add default, custom media entry will show the value
     season_number = models.PositiveIntegerField(null=True, blank=True)
     episode_number = models.PositiveIntegerField(null=True, blank=True)
     runtime_minutes = models.PositiveIntegerField(
@@ -124,6 +126,16 @@ class Item(CalendarTriggerMixin, models.Model):
         null=True,
         blank=True,
         help_text="Rating count from Trakt metadata",
+    )
+    imdb_rating = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Average rating value from IMDB public datasets",
+    )
+    imdb_rating_count = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Rating count from IMDB public datasets",
     )
     igdb_user_rating = models.FloatField(
         null=True,

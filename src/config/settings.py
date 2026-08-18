@@ -1382,6 +1382,7 @@ CELERY_TASK_ROUTES = {
     "Refresh IMDB game credits from datasets": {
         "priority": CELERY_TASK_PRIORITY_BACKGROUND
     },
+    "Sync IMDB ratings from datasets": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Warm Discover API Cache": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Warm Discover Startup Tabs": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Warm History Day Cache Coverage": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
@@ -1612,6 +1613,11 @@ CELERY_BEAT_SCHEDULE = {
         "task": "Migrate TV shows to preferred metadata provider",
         "schedule": crontab(hour=3, minute=45),  # every day at 3:45 AM
         "kwargs": {"batch_size": _scaled(200)},
+        "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
+    },
+    "sync_imdb_ratings": {
+        "task": "Sync IMDB ratings from datasets",
+        "schedule": crontab(hour=5, minute=0),  # every day at 5 AM
         "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     },
 }
