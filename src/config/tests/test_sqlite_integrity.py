@@ -10,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest import mock
 
@@ -1335,6 +1336,34 @@ class SqliteIntegrityTests(SimpleTestCase):
         status_path = Path(f"{db_path}.integrity.status.json")
         status_path.write_text("not json")
         self.assertIsNone(sqlite_integrity.read_startup_status(db_path))
+
+    def test_heartbeat_elapsed_advances_even_while_stuck_in_one_phase(self):
+        """A phase like quick_check has no progress callback to update the
+        sidecar mid-flight, so it writes elapsed_seconds once, at the phase's
+        start, and never again until the phase finishes. The heartbeat must
+        not echo that frozen number back on every 30s tick -- that is
+        precisely the "elapsed=0s" symptom seen in production.
+        """
+        db_path = self.create_orphan_database(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, str(Path(db_path).parent), ignore_errors=True)
+        started_at = (
+            datetime.now(UTC) - timedelta(seconds=185)
+        ).isoformat()
+        sqlite_integrity.write_startup_status(
+            db_path,
+            status="running",
+            phase="quick_check",
+            started_at=started_at,
+            elapsed_seconds=0.0,
+        )
+
+        with mock.patch("sys.stderr", new_callable=io.StringIO) as stderr:
+            sqlite_integrity.print_startup_heartbeat(db_path)
+
+        output = stderr.getvalue()
+        self.assertIn("phase=quick_check", output)
+        self.assertNotIn("elapsed=0s", output)
+        self.assertIn("elapsed=185s", output)
 
     def test_a_healthy_scan_clears_a_stale_timeout_status(self):
         """A prior boot's timeout must not describe the current, healthy one."""

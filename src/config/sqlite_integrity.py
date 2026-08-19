@@ -263,6 +263,25 @@ def read_startup_status(db_path: str) -> dict | None:
     return status
 
 
+def _live_elapsed_text(status: dict) -> str:
+    """Compute elapsed time as of now, not as of the sidecar's last write.
+
+    A phase that blocks on one long call has no progress callback to update
+    the sidecar with -- ``PRAGMA quick_check`` on a large file, for example,
+    writes its status once at the start of the phase and not again until it
+    finishes. Echoing the stored ``elapsed_seconds`` verbatim would freeze
+    every heartbeat at that phase's start time for its entire duration,
+    which is exactly the case a heartbeat exists to cover.
+    """
+    try:
+        started = datetime.fromisoformat(str(status.get("started_at")))
+    except (TypeError, ValueError):
+        elapsed = status.get("elapsed_seconds")
+        return f"{elapsed:.0f}s" if isinstance(elapsed, int | float) else "unknown"
+    elapsed = (datetime.now(UTC) - started).total_seconds()
+    return f"{max(elapsed, 0):.0f}s"
+
+
 def print_startup_heartbeat(db_path: str) -> None:
     """Emit one operator heartbeat line from the startup-status sidecar.
 
@@ -275,9 +294,7 @@ def print_startup_heartbeat(db_path: str) -> None:
         _log("[entrypoint] SQLite integrity scan heartbeat: still running")
         return
     phase = status.get("phase", "unknown")
-    elapsed = status.get("elapsed_seconds")
-    elapsed_text = f"{elapsed:.0f}s" if isinstance(elapsed, int | float) else "unknown"
-    detail = f"phase={phase} elapsed={elapsed_text}"
+    detail = f"phase={phase} elapsed={_live_elapsed_text(status)}"
     read_bytes = status.get("read_bytes")
     if isinstance(read_bytes, int | float) and read_bytes:
         detail += f" read={read_bytes / 1_048_576:.0f}MB"
