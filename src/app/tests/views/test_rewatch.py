@@ -468,3 +468,78 @@ class EpisodePageDuringRewatch(TestCase):
             for call in mock_process_episodes.call_args_list
         ]
         self.assertIn(self.season, seasons_passed)
+
+
+@patch(METADATA_PATH, return_value=SEASON_METADATA)
+class HistoryModalEditing(TestCase):
+    """Past plays stay editable while a rewatch hides them from the season page."""
+
+    def setUp(self):
+        """Track one episode, watched twice."""
+        self.credentials = {"username": "test", "password": "12345"}
+        self.user = get_user_model().objects.create_user(**self.credentials)
+        self.client.login(**self.credentials)
+
+        with patch(METADATA_PATH, return_value=SEASON_METADATA):
+            tv_item = Item.objects.create(
+                media_id="123",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.TV.value,
+                title="Show",
+            )
+            tv = TV.objects.create(item=tv_item, user=self.user)
+            season_item = Item.objects.create(
+                media_id="123",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.SEASON.value,
+                title="Show",
+                season_number=1,
+            )
+            self.season = Season.objects.create(
+                item=season_item,
+                user=self.user,
+                related_tv=tv,
+                status=Status.IN_PROGRESS.value,
+            )
+            self.episode_item = Item.objects.create(
+                media_id="123",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.EPISODE.value,
+                title="Show",
+                season_number=1,
+                episode_number=1,
+            )
+            self.old_play = Episode.objects.create(
+                item=self.episode_item,
+                related_season=self.season,
+                end_date=datetime(2023, 6, 1, tzinfo=UTC),
+            )
+
+    def _history_modal(self):
+        return self.client.get(
+            reverse(
+                "history_modal",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.EPISODE.value,
+                    "media_id": "123",
+                    "season_number": 1,
+                    "episode_number": 1,
+                },
+            ),
+        )
+
+    def test_each_entry_offers_to_edit_the_play_it_belongs_to(self, _mock_metadata):
+        """A play is reachable for editing from its own timeline entry."""
+        response = self._history_modal()
+
+        self.assertContains(response, f"instance_id={self.old_play.id}")
+        self.assertContains(response, "Edit")
+
+    def test_entries_stay_editable_during_a_rewatch(self, _mock_metadata):
+        """An open pass hides the play elsewhere, but not from its history."""
+        self.season.start_rewatch()
+
+        response = self._history_modal()
+
+        self.assertContains(response, f"instance_id={self.old_play.id}")
