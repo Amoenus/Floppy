@@ -153,6 +153,38 @@ class MediaCoreTests(FloppyApiTestCase):
         titles = [item["item"]["title"] for item in payload["results"]]
         self.assertEqual(titles, sorted(titles, reverse=True))
 
+    def test_media_list_get_sorts_by_user_score(self):
+        """Media list accepts score as a tracked-media sort field."""
+        for media, score in zip(self.movie_medias, (7, 9, 8), strict=True):
+            media.score = score
+            media.save(update_fields=["score"])
+
+        response = self.call_api(
+            "get",
+            "api_media_list",
+            params={"media_type": MediaTypes.MOVIE.value, "sort": "score_desc"},
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [item["score"] for item in response.json()["results"]],
+            [9, 8, 7],
+        )
+
+        response = self.call_api(
+            "get",
+            "api_media_list",
+            params={"sort": "score_desc"},
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [item["score"] for item in response.json()["results"][:3]],
+            [9, 8, 7],
+        )
+
     def test_media_list_get_with_exclude_filter_excludes_type(self):
         """Media list endpoint should exclude requested media types."""
         response = self.call_api(

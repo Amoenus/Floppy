@@ -124,6 +124,7 @@ MAX_RESULT_LIMIT = 200
 
 
 MEDIA_EXISTING_SORTS = [
+    "score",
     "start_date",
     "end_date",
 ] + [f.name for f in Item._meta.fields]
@@ -724,6 +725,9 @@ _AGGREGATED_SORT_KEYS = {
     "itemid": itemid_key_compare,
     "mediaid": _sort_mediaid,
     "progress": lambda media: int(getattr(media, "progress", 0) or 0),
+    "score": lambda media: _sort_nullable(
+        getattr(media, "aggregated_score", getattr(media, "score", None)),
+    ),
     "source": _sort_source,
     "started": lambda media: _sort_nullable(getattr(media, "start_date", None)),
     "title": _sort_title,
