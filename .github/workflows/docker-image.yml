@@ -121,6 +121,16 @@ jobs:
             # in source.
             timeout 10 docker exec "$SMOKE_APP" python -c \
               'from config.sqlite_integrity import mark_startup_status_timeout, print_startup_heartbeat, read_startup_status, write_startup_status'
+            # The build-info file must exist and match this build, and a
+            # shadowing runtime environment override (an orchestrator's
+            # persisted .env, for example) must not be able to defeat it --
+            # this is the failure a real deployment hit.
+            build_info=$(docker exec "$SMOKE_APP" cat /etc/floppy-build-info)
+            grep -Fxq "VERSION=ci-smoke" <<<"$build_info"
+            grep -Fxq "COMMIT_SHA=$SMOKE_SHA" <<<"$build_info"
+            restored=$(docker exec -e COMMIT_SHA=stale-override -e VERSION=stale-override "$SMOKE_APP" sh -c \
+              '. /etc/floppy-build-info; export VERSION COMMIT_SHA; echo "$VERSION $COMMIT_SHA"')
+            test "$restored" = "ci-smoke $SMOKE_SHA"
             # HOST_CONTAINERNAME is unset in this smoke run, so the identity
             # line must fall back to "floppy" rather than erroring. Captured
             # into a variable first: piping a long-lived command straight

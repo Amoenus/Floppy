@@ -2,6 +2,19 @@
 
 set -e
 
+# A stray environment override (an orchestrator's persisted .env, a leftover
+# manual "docker run -e", etc.) can shadow the image's own VERSION/COMMIT_SHA
+# and make every VERSION/COMMIT_SHA reader in this container -- this script,
+# Django's own settings, the startup-status sidecar -- silently misreport
+# which build is actually running. This file is baked into the image and
+# cannot be shadowed that way, so it is authoritative here whenever present;
+# exporting it early means every later reader, including child processes,
+# sees the corrected value.
+if [ -f /etc/floppy-build-info ]; then
+    . /etc/floppy-build-info
+    export VERSION COMMIT_SHA
+fi
+
 # The packaged runtime wrapper passes the already-resolved public listener.
 # Direct entrypoint use can omit it; the recovery server then uses the same
 # local resolver itself if database recovery is needed.

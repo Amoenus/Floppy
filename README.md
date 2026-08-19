@@ -770,9 +770,19 @@ docker run --rm ghcr.io/dannyvfilms/floppy@sha256:<digest> 2>&1 | grep 'Floppy r
 ```
 
 If a moving tag such as `latest` still reports an older `COMMIT_SHA` after a
-verified publish, that is a registry or Portainer caching issue, not a code
-defect — do not change startup behavior to work around it. Clear the cache or
-re-pull by digest instead.
+verified publish and `docker inspect --format '{{.Id}}'` on the running
+container matches the freshly pulled image, that is not a registry or image
+problem. It means something in the container's runtime environment — a
+value an orchestrator (Portainer, Compose) persisted in a stack's `.env` and
+keeps re-applying, or a leftover manual `docker run -e` — is setting
+`VERSION`/`COMMIT_SHA` explicitly and shadowing the image's own build
+identity. `entrypoint.sh` restores both from `/etc/floppy-build-info`, a file
+baked into the image at build time that a runtime environment variable
+cannot override, before anything reads either one; the running container's
+own identity line and `/api/v1/info/` should reflect the real build
+regardless of what the orchestrator's `.env` still says. If they do not,
+check `docker exec <container> cat /etc/floppy-build-info` against the
+digest you pulled before assuming the image itself is stale.
 
 ### Grouped anime migration diagnostics
 

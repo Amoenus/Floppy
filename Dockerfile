@@ -72,6 +72,14 @@ ARG COMMIT_SHA=unknown
 # Set it as an environment variable
 ENV VERSION=$VERSION
 ENV COMMIT_SHA=$COMMIT_SHA
+# A stray environment override (an orchestrator's persisted .env, a leftover
+# manual "docker run -e", etc.) can otherwise shadow the ENV above and make
+# the running container silently misreport its own build identity, with
+# nothing in this image able to tell the difference. Recording the same
+# values in a plain file baked into the image gives entrypoint.sh something
+# runtime environment variables cannot override, to restore VERSION and
+# COMMIT_SHA from before it reports either one.
+RUN printf 'VERSION=%s\nCOMMIT_SHA=%s\n' "$VERSION" "$COMMIT_SHA" > /etc/floppy-build-info
 
 # supervisord expands %(ENV_...)s in supervisord.conf and refuses to start if a
 # referenced variable is unset, so these need image-level defaults even though
