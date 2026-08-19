@@ -34,6 +34,7 @@ _MAX_CONFLICT_SAMPLES = 5
 _MAX_AFFECTED_TITLES = 5
 _REPORT_SUFFIX = ".integrity.json"
 _DECISION_SUFFIX = ".integrity.decision"
+_STATUS_SUFFIX = ".integrity.status.json"
 _RECOVERY_PAGE_NAME = "floppy-recovery.html"
 # Lock contention and scan duration are different failures and need different
 # bounds. A long busy timeout turns a fast "another process holds the database"
@@ -187,6 +188,136 @@ def _read_incident_report(db_path: str) -> dict | None:
     if report.get("database") != str(Path(db_path).resolve()):
         return None
     return report
+
+
+def _status_path(db_path: str) -> Path:
+    database_path = Path(db_path).resolve()
+    return database_path.with_name(f"{database_path.name}{_STATUS_SUFFIX}")
+
+
+def write_startup_status(
+    db_path: str,
+    *,
+    status: str,
+    phase: str,
+    started_at: str,
+    elapsed_seconds: float,
+    read_bytes: int | None = None,
+    error_class: str | None = None,
+    error_message: str | None = None,
+    version: str | None = None,
+    commit_sha: str | None = None,
+) -> None:
+    """Persist a bounded, non-secret snapshot of the startup scan's progress.
+
+    Unlike the incident report, this sidecar carries nothing that needs the
+    approval-token protections behind ``_publish_report``'s default mode, so
+    it is published world-readable. A write failure here is logged and
+    swallowed: this file only describes what was happening when the scan was
+    last observed, and must never itself change whether startup may continue.
+    """
+    payload = {
+        "commit_sha": commit_sha,
+        "database": str(Path(db_path).resolve()),
+        "elapsed_seconds": elapsed_seconds,
+        "error_class": error_class,
+        "error_message": error_message,
+        "phase": phase,
+        "read_bytes": read_bytes,
+        "schema_version": 1,
+        "started_at": started_at,
+        "status": status,
+        "updated_at": datetime.now(UTC).isoformat(),
+        "version": version,
+    }
+    contents = json.dumps(payload, sort_keys=True) + "\n"
+    try:
+        _publish_report(_status_path(db_path), contents, mode=0o644)
+    except OSError as error:
+        _log(f"[entrypoint] Could not publish SQLite startup status: {error}")
+
+
+def read_startup_status(db_path: str) -> dict | None:
+    """Read the startup-status sidecar, or ``None`` if absent or unreadable."""
+    status_path = _status_path(db_path)
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(status_path, flags)
+    except OSError:
+        return None
+    try:
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            return None
+        with os.fdopen(descriptor) as status_file:
+            descriptor = -1
+            status = json.load(status_file)
+    except (json.JSONDecodeError, OSError, TypeError, ValueError):
+        return None
+    finally:
+        if descriptor != -1:
+            os.close(descriptor)
+    if not isinstance(status, dict) or status.get("database") != str(
+        Path(db_path).resolve()
+    ):
+        return None
+    return status
+
+
+def print_startup_heartbeat(db_path: str) -> None:
+    """Emit one operator heartbeat line from the startup-status sidecar.
+
+    Called periodically by the entrypoint while the scan runs, in place of the
+    ``/proc/<pid>/io`` polling this used to do directly. Best-effort only: a
+    missing or unreadable sidecar still produces a line rather than silence.
+    """
+    status = read_startup_status(db_path)
+    if status is None:
+        _log("[entrypoint] SQLite integrity scan heartbeat: still running")
+        return
+    phase = status.get("phase", "unknown")
+    elapsed = status.get("elapsed_seconds")
+    elapsed_text = f"{elapsed:.0f}s" if isinstance(elapsed, int | float) else "unknown"
+    detail = f"phase={phase} elapsed={elapsed_text}"
+    read_bytes = status.get("read_bytes")
+    if isinstance(read_bytes, int | float) and read_bytes:
+        detail += f" read={read_bytes / 1_048_576:.0f}MB"
+    _log(f"[entrypoint] SQLite integrity scan heartbeat: {detail}")
+
+
+def mark_startup_status_timeout(db_path: str, timeout_seconds: float) -> None:
+    """Ensure the sidecar reflects a timeout even if the scanner was killed.
+
+    Also logs the last observed phase/elapsed/bytes. The entrypoint's
+    external ``timeout`` wrapper can SIGKILL the scanner
+    before it publishes its own terminal status, so this is called from the
+    shell immediately after that happens. It preserves whatever the scanner
+    last reported and only fills in what is missing.
+    """
+    previous = read_startup_status(db_path) or {}
+    phase = previous.get("phase", "unknown")
+    elapsed = previous.get("elapsed_seconds")
+    elapsed = float(elapsed) if isinstance(elapsed, int | float) else float(timeout_seconds)
+    elapsed = max(elapsed, float(timeout_seconds))
+    read_bytes = previous.get("read_bytes")
+    write_startup_status(
+        db_path,
+        status="timeout",
+        phase=phase,
+        started_at=previous.get("started_at") or datetime.now(UTC).isoformat(),
+        elapsed_seconds=elapsed,
+        read_bytes=read_bytes,
+        error_class="timeout",
+        error_message=f"scan exceeded {timeout_seconds:g}s",
+        version=previous.get("version") or os.environ.get("VERSION"),
+        commit_sha=previous.get("commit_sha") or os.environ.get("COMMIT_SHA"),
+    )
+    detail = f"phase={phase} elapsed={elapsed:.0f}s"
+    if isinstance(read_bytes, int | float) and read_bytes:
+        detail += f" read={read_bytes / 1_048_576:.0f}MB"
+    _log(
+        "[entrypoint] SQLite integrity scan timed out after "
+        f"{timeout_seconds:g}s; last observed {detail}",
+    )
 
 
 def _fsync_directory(path: Path) -> None:

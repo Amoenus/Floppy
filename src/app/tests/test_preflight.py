@@ -18,6 +18,7 @@ import os
 import sqlite3
 import tempfile
 from contextlib import redirect_stdout, suppress
+from datetime import UTC, datetime
 from io import StringIO
 from pathlib import Path
 from unittest import mock, skipIf
@@ -261,6 +262,106 @@ class DatabaseCheckTests(SimpleTestCase):
         self.assertEqual(result.status, FAIL)
         self.assertIn("did not finish in time", result.summary)
         self.assertIn("--timeout", result.fix)
+
+    def test_timeout_includes_a_fresh_matching_sidecar(self):
+        with _TempDatabase() as temp:
+            _make_database(temp.db_path)
+            status_path = Path(f"{temp.db_path}.integrity.status.json")
+            status_path.write_text(
+                json.dumps(
+                    {
+                        "database": str(temp.db_path.resolve()),
+                        "elapsed_seconds": 598.0,
+                        "error_class": None,
+                        "phase": "foreign_key_check",
+                        "status": "running",
+                        "updated_at": datetime.now(UTC).isoformat(),
+                    }
+                )
+            )
+            with temp.settings():
+                with mock.patch.object(
+                    preflight,
+                    "inspect_database",
+                    side_effect=preflight.IntegrityScanTimeoutError("scan exceeded 0.1s"),
+                ):
+                    result = preflight.check_database(timeout_seconds=0.1)
+
+        sidecar = result.facts["startup_status_sidecar"]
+        self.assertTrue(sidecar["available"])
+        self.assertEqual(sidecar["phase"], "foreign_key_check")
+        self.assertEqual(sidecar["status"], "running")
+
+    def test_timeout_ignores_a_stale_sidecar(self):
+        with _TempDatabase() as temp:
+            _make_database(temp.db_path)
+            status_path = Path(f"{temp.db_path}.integrity.status.json")
+            status_path.write_text(
+                json.dumps(
+                    {
+                        "database": str(temp.db_path.resolve()),
+                        "elapsed_seconds": 600.0,
+                        "error_class": "timeout",
+                        "phase": "foreign_key_check",
+                        "status": "timeout",
+                        "updated_at": "2020-01-01T00:00:00+00:00",
+                    }
+                )
+            )
+            with temp.settings():
+                with mock.patch.object(
+                    preflight,
+                    "inspect_database",
+                    side_effect=preflight.IntegrityScanTimeoutError("scan exceeded 0.1s"),
+                ):
+                    result = preflight.check_database(timeout_seconds=0.1)
+
+        sidecar = result.facts["startup_status_sidecar"]
+        self.assertFalse(sidecar["available"])
+        self.assertEqual(sidecar["ignored_reason"], "stale or mismatched")
+        self.assertNotIn("phase", sidecar)
+
+    def test_timeout_ignores_a_sidecar_for_a_different_database(self):
+        with _TempDatabase() as temp:
+            _make_database(temp.db_path)
+            status_path = Path(f"{temp.db_path}.integrity.status.json")
+            status_path.write_text(
+                json.dumps(
+                    {
+                        "database": "/some/other/db.sqlite3",
+                        "elapsed_seconds": 1.0,
+                        "phase": "quick_check",
+                        "status": "running",
+                        "updated_at": datetime.now(UTC).isoformat(),
+                    }
+                )
+            )
+            with temp.settings():
+                with mock.patch.object(
+                    preflight,
+                    "inspect_database",
+                    side_effect=preflight.IntegrityScanTimeoutError("scan exceeded 0.1s"),
+                ):
+                    result = preflight.check_database(timeout_seconds=0.1)
+
+        sidecar = result.facts["startup_status_sidecar"]
+        self.assertFalse(sidecar["available"])
+
+    def test_timeout_without_any_sidecar_reports_unavailable(self):
+        with _TempDatabase() as temp:
+            _make_database(temp.db_path)
+            with temp.settings():
+                with mock.patch.object(
+                    preflight,
+                    "inspect_database",
+                    side_effect=preflight.IntegrityScanTimeoutError("scan exceeded 0.1s"),
+                ):
+                    result = preflight.check_database(timeout_seconds=0.1)
+
+        self.assertEqual(
+            result.facts["startup_status_sidecar"],
+            {"available": False},
+        )
 
     def test_reports_a_locked_database_clearly_instead_of_stalling(self):
         error = sqlite3.OperationalError("database is locked")

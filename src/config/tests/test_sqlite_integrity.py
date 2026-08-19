@@ -3,7 +3,9 @@
 import io
 import json
 import os
+import shutil
 import sqlite3
+import stat
 import subprocess
 import sys
 import tempfile
@@ -946,11 +948,15 @@ class SqliteIntegrityTests(SimpleTestCase):
                 "timeout": '#!/bin/sh\nshift\nexec "$@"\n',
                 "sleep": (
                     "#!/bin/sh\n"
-                    'echo "$$" > "$PARKING_PID_FILE"\n'
-                    # Sleep for the interval the entrypoint asked for. A shorter
-                    # fixed sleep ends, the parking loop starts another one, and
-                    # the pid file is overwritten while the test reads it.
-                    'exec /bin/sleep "$@"\n'
+                    # Only the parking loop's 86400s sleep records its pid and
+                    # actually sleeps; other sleeps (e.g. the heartbeat's 30s
+                    # interval) return immediately so this test never waits on
+                    # them and never fights the parking loop for the pid file.
+                    'if [ "$1" = "86400" ]; then\n'
+                    '  echo "$$" > "$PARKING_PID_FILE"\n'
+                    '  exec /bin/sleep "$@"\n'
+                    "fi\n"
+                    "exit 0\n"
                 ),
             }
             for name, script in wrappers.items():
@@ -1270,6 +1276,130 @@ class SqliteIntegrityTests(SimpleTestCase):
 
         fake_conn.close.assert_called_once()
 
+    def test_status_sidecar_round_trips_and_is_world_readable(self):
+        db_path = self.create_orphan_database(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, str(Path(db_path).parent), ignore_errors=True)
+        status_path = Path(f"{db_path}.integrity.status.json")
+
+        sqlite_integrity.write_startup_status(
+            db_path,
+            status="running",
+            phase="foreign_key_check",
+            started_at="2026-01-01T00:00:00+00:00",
+            elapsed_seconds=12.5,
+            read_bytes=1_048_576,
+        )
+
+        self.assertTrue(status_path.is_file())
+        self.assertEqual(stat.S_IMODE(status_path.stat().st_mode), 0o644)
+        status = sqlite_integrity.read_startup_status(db_path)
+        self.assertEqual(status["status"], "running")
+        self.assertEqual(status["phase"], "foreign_key_check")
+        self.assertEqual(status["elapsed_seconds"], 12.5)
+        self.assertEqual(status["read_bytes"], 1_048_576)
+        # A status write must never carry the approval token or any other
+        # incident-report secret; there is nothing secret to strip.
+        self.assertNotIn("incident_token", status)
+        self.assertNotIn("actions", status)
+
+    def test_status_sidecar_write_failure_is_logged_and_swallowed(self):
+        db_path = self.create_orphan_database(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, str(Path(db_path).parent), ignore_errors=True)
+
+        with (
+            mock.patch(
+                "config.sqlite_integrity._publish_report",
+                side_effect=OSError("disk full"),
+            ),
+            mock.patch("sys.stderr", new_callable=io.StringIO) as stderr,
+        ):
+            sqlite_integrity.write_startup_status(
+                db_path,
+                status="running",
+                phase="quick_check",
+                started_at="2026-01-01T00:00:00+00:00",
+                elapsed_seconds=1.0,
+            )
+
+        self.assertIn("Could not publish SQLite startup status", stderr.getvalue())
+
+    def test_missing_or_malformed_status_does_not_crash_readers(self):
+        db_path = self.create_orphan_database(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, str(Path(db_path).parent), ignore_errors=True)
+
+        self.assertIsNone(sqlite_integrity.read_startup_status(db_path))
+        with mock.patch("sys.stderr", new_callable=io.StringIO) as stderr:
+            sqlite_integrity.print_startup_heartbeat(db_path)
+        self.assertIn("still running", stderr.getvalue())
+
+        status_path = Path(f"{db_path}.integrity.status.json")
+        status_path.write_text("not json")
+        self.assertIsNone(sqlite_integrity.read_startup_status(db_path))
+
+    def test_a_healthy_scan_clears_a_stale_timeout_status(self):
+        """A prior boot's timeout must not describe the current, healthy one."""
+        db_path = self.create_orphan_database(tempfile.mkdtemp(), rows=0)
+        self.addCleanup(shutil.rmtree, str(Path(db_path).parent), ignore_errors=True)
+        sqlite_integrity.write_startup_status(
+            db_path,
+            status="timeout",
+            phase="foreign_key_check",
+            started_at="2020-01-01T00:00:00+00:00",
+            elapsed_seconds=600.0,
+        )
+
+        from config.sqlite_recovery_policy import check_database_for_startup
+
+        check_database_for_startup(db_path)
+
+        status = sqlite_integrity.read_startup_status(db_path)
+        self.assertEqual(status["status"], "ok")
+
+    def test_mark_startup_status_timeout_reproduces_the_incident(self):
+        """The incident: the scanner is killed mid-phase before it can report.
+
+        This is the deterministic reproduction of the production timeout,
+        without waiting out a real 600s bound: a phase is recorded, then the
+        entrypoint's own timeout-confirmation call runs, as it does the moment
+        `timeout(1)` kills the scanner. The sidecar and log must describe the
+        timeout even though the scanner itself never got to.
+        """
+        db_path = self.create_orphan_database(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, str(Path(db_path).parent), ignore_errors=True)
+        sqlite_integrity.write_startup_status(
+            db_path,
+            status="running",
+            phase="foreign_key_check",
+            started_at="2026-01-01T00:00:00+00:00",
+            elapsed_seconds=598.0,
+            read_bytes=882_638_848,
+        )
+
+        with mock.patch("sys.stderr", new_callable=io.StringIO) as stderr:
+            sqlite_integrity.mark_startup_status_timeout(db_path, 600.0)
+
+        status = sqlite_integrity.read_startup_status(db_path)
+        self.assertEqual(status["status"], "timeout")
+        self.assertEqual(status["phase"], "foreign_key_check")
+        self.assertEqual(status["error_class"], "timeout")
+        self.assertGreaterEqual(status["elapsed_seconds"], 600.0)
+        log_output = stderr.getvalue()
+        self.assertIn("timed out after 600s", log_output)
+        self.assertIn("phase=foreign_key_check", log_output)
+        self.assertIn("read=842MB", log_output)
+
+    def test_mark_startup_status_timeout_without_any_prior_status(self):
+        """The scanner can be killed before it writes anything at all."""
+        db_path = self.create_orphan_database(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, str(Path(db_path).parent), ignore_errors=True)
+
+        sqlite_integrity.mark_startup_status_timeout(db_path, 600.0)
+
+        status = sqlite_integrity.read_startup_status(db_path)
+        self.assertEqual(status["status"], "timeout")
+        self.assertEqual(status["phase"], "unknown")
+        self.assertEqual(status["elapsed_seconds"], 600.0)
+
     def test_entrypoint_bounds_integrity_check_without_background_polling(self):
         script = ENTRYPOINT.read_text()
         check = (
@@ -1283,23 +1413,40 @@ class SqliteIntegrityTests(SimpleTestCase):
         # The bound and the message it reports must come from one definition.
         self.assertIn("integrity_timeout=600", script)
         self.assertIn('"$DB_FILE" &', script)
+        # The heartbeat reads the status sidecar the scan itself writes; it
+        # must never poll the scanner's own PID or /proc directly, which is
+        # exactly what the old, removed heartbeat did.
         self.assertNotIn("kill -0", script)
         self.assertNotIn("/proc/", script)
         self.assertNotIn("Still checking SQLite integrity", script)
+        self.assertIn("print_startup_heartbeat", script)
+        self.assertIn("sleep 30", script)
         launch = script.index(check)
         cleanup_trap = script.index(
             "trap 'kill \"$integrity_pid\" 2>/dev/null || :; "
-            "wait \"$integrity_pid\" 2>/dev/null || :; exit 0' TERM INT"
+            'wait "$integrity_pid" 2>/dev/null || :; '
+            'kill "$heartbeat_pid" 2>/dev/null || :; '
+            "wait \"$heartbeat_pid\" 2>/dev/null || :; exit 0' TERM INT"
         )
-        wait = script.index('wait "$integrity_pid"', launch)
-        reset_trap = script.index("trap - TERM INT", wait)
+        heartbeat_launch = script.index("heartbeat_pid=$!", launch)
+        wait = script.index('wait "$integrity_pid"', heartbeat_launch)
+        heartbeat_cleanup = script.index('kill "$heartbeat_pid"', wait)
+        heartbeat_wait = script.index('wait "$heartbeat_pid"', heartbeat_cleanup)
+        reset_trap = script.index("trap - TERM INT", heartbeat_wait)
         self.assertLess(cleanup_trap, launch)
-        self.assertLess(launch, wait)
-        self.assertLess(wait, reset_trap)
+        self.assertLess(launch, heartbeat_launch)
+        self.assertLess(heartbeat_launch, wait)
+        self.assertLess(wait, heartbeat_cleanup)
+        self.assertLess(heartbeat_cleanup, heartbeat_wait)
+        self.assertLess(heartbeat_wait, reset_trap)
         timeout_case = script.index("124|143)")
         failure_case = script.index("*)", timeout_case)
         self.assertIn(
             "exceeded its ${integrity_timeout}s timeout",
+            script[timeout_case:failure_case],
+        )
+        self.assertIn(
+            "mark_startup_status_timeout",
             script[timeout_case:failure_case],
         )
         self.assertIn("integrity check failed", script[failure_case:])

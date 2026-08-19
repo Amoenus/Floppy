@@ -32,6 +32,7 @@ from config.sqlite_integrity import (
     _log,
     _publish_report,
     _read_incident_report,
+    read_startup_status,
 )
 
 _HEALTH_PATHS = frozenset({"/health", "/health/"})
@@ -266,14 +267,63 @@ def _repair_plan_card(report: dict) -> str:
     return "<div class='card'><h2>Repair plan</h2>" + "".join(parts) + "</div>"
 
 
+def _timeout_body() -> str:
+    return (
+        "<h1>The SQLite startup check timed out.</h1>"
+        "<p>Floppy paused before migrations and services. The check exceeded "
+        "its bound and was stopped. No recovery decision or migration "
+        "completed. No migration or recovery action completed; the database "
+        "result is unknown until preflight or an offline check finishes.</p>"
+    )
+
+
+def _timeout_details(status: dict) -> str:
+    phase = html.escape(str(status.get("phase", "unknown")))
+    elapsed = status.get("elapsed_seconds")
+    elapsed_text = f"{elapsed:.0f}s" if isinstance(elapsed, int | float) else "unknown"
+    read_bytes = status.get("read_bytes")
+    items = [
+        f"<li>Phase when stopped: <code>{phase}</code></li>",
+        f"<li>Elapsed: {elapsed_text}</li>",
+    ]
+    if isinstance(read_bytes, int | float) and read_bytes:
+        items.append(f"<li>Read so far: ~{read_bytes / 1_048_576:.0f}MB</li>")
+    items.append(f"<li>Database: <code>{html.escape(str(status.get('database', 'unknown')))}</code></li>")
+    version = html.escape(str(status.get("version") or "unknown"))
+    commit_sha = html.escape(str(status.get("commit_sha") or "unknown"))
+    items.append(f"<li>Build: version={version} commit={commit_sha}</li>")
+    return f"<div class='card'><h2>What was happening</h2><ul>{''.join(items)}</ul></div>"
+
+
+def _timeout_diagnosis_card() -> str:
+    container_name = html.escape(os.environ.get("HOST_CONTAINERNAME", "floppy"))
+    return (
+        "<div class='card'><h2>Run a full diagnosis</h2>"
+        f"<p><code>docker exec {container_name} python manage.py floppy_preflight"
+        "</code></p>"
+        "<p>If the container is restarting instead of running, use "
+        "<code>docker compose run --rm floppy python manage.py "
+        "floppy_preflight</code> instead.</p></div>"
+    )
+
+
 def render_page(
     report: dict | None,
     *,
     interactive: bool,
     port: int = DEFAULT_SERVER_PORT,
+    status: dict | None = None,
 ) -> str:
     """Build the page. The written file is the same page without the buttons."""
     port = validate_port(port, source="recovery page port")
+    if status and status.get("status") == "timeout":
+        body = (
+            _timeout_body()
+            + _timeout_details(status)
+            + _timeout_diagnosis_card()
+            + _help_card()
+        )
+        return _document(body)
     if not report:
         body = (
             "<h1>Your data is safe. Nothing was deleted.</h1>"
@@ -448,12 +498,13 @@ def write_page(
     report: dict | None,
     *,
     port: int = DEFAULT_SERVER_PORT,
+    status: dict | None = None,
 ) -> Path:
     """Write the page beside the database so it is always available."""
     page_path = Path(db_path).resolve().with_name(_RECOVERY_PAGE_NAME)
     _publish_report(
         page_path,
-        render_page(report, interactive=False, port=port),
+        render_page(report, interactive=False, port=port, status=status),
         mode=0o644,
     )
     return page_path
@@ -505,9 +556,10 @@ class _Handler(BaseHTTPRequestHandler):
             self._send_backup()
             return
         report = _read_incident_report(self.db_path)
+        status = read_startup_status(self.db_path)
         self._send(
             200,
-            render_page(report, interactive=True, port=self.server_port),
+            render_page(report, interactive=True, port=self.server_port, status=status),
             "text/html; charset=utf-8",
         )
 
@@ -643,8 +695,9 @@ def serve(db_path: str, port: object | None = None) -> None:
         else validate_port(port, source="recovery server port")
     )
     report = _read_incident_report(db_path)
+    status = read_startup_status(db_path)
     try:
-        page_path = write_page(db_path, report, port=server_port)
+        page_path = write_page(db_path, report, port=server_port, status=status)
         _log(f"[entrypoint] Recovery page written to {page_path}")
     except OSError as error:
         _log(f"[entrypoint] Could not write the recovery page: {error}")

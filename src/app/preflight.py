@@ -37,6 +37,7 @@ import shutil
 import sqlite3
 from contextlib import suppress
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 
 import redis
@@ -47,7 +48,11 @@ from django.db.migrations.executor import MigrationExecutor
 
 from app.log_safety import redact_secrets, safe_url
 from app.redis_tuning import parse_size
-from config.sqlite_integrity import IntegrityScanTimeoutError, inspect_database
+from config.sqlite_integrity import (
+    IntegrityScanTimeoutError,
+    inspect_database,
+    read_startup_status,
+)
 
 OK = "ok"
 WARN = "warn"
@@ -398,6 +403,37 @@ def _check_postgres() -> CheckResult:
     )
 
 
+def _startup_status_sidecar_fact(db_path: Path, timeout_seconds: float) -> dict:
+    """Read the entrypoint's startup-status sidecar, if it can be trusted.
+
+    This check's own scan (:func:`inspect_database`) is a separate process,
+    and often a separate code path, from the entrypoint's startup scan that
+    writes the sidecar. A sidecar it left behind is useful supplementary
+    context only when it clearly describes this exact database and is recent
+    enough to plausibly be from a run that is timing out right now; anything
+    else is reported as ignored rather than surfaced as if it were live.
+    """
+    status = read_startup_status(str(db_path))
+    if status is None:
+        return {"available": False}
+    if status.get("database") != str(db_path.resolve()):
+        return {"available": False, "ignored_reason": "stale or mismatched"}
+    try:
+        updated = datetime.fromisoformat(str(status.get("updated_at")))
+    except (TypeError, ValueError):
+        return {"available": False, "ignored_reason": "stale or mismatched"}
+    age_seconds = (datetime.now(UTC) - updated).total_seconds()
+    if age_seconds < 0 or age_seconds > 2 * timeout_seconds:
+        return {"available": False, "ignored_reason": "stale or mismatched"}
+    return {
+        "available": True,
+        "elapsed_seconds": status.get("elapsed_seconds"),
+        "error_class": status.get("error_class"),
+        "phase": status.get("phase"),
+        "status": status.get("status"),
+    }
+
+
 def check_database(
     *,
     timeout_seconds: float = DEFAULT_SCAN_TIMEOUT_SECONDS,
@@ -440,6 +476,10 @@ def check_database(
     try:
         verdict = inspect_database(str(db_path), timeout_seconds=timeout_seconds)
     except IntegrityScanTimeoutError as error:
+        facts["startup_status_sidecar"] = _startup_status_sidecar_fact(
+            db_path,
+            timeout_seconds,
+        )
         return CheckResult(
             name="database",
             status=FAIL,

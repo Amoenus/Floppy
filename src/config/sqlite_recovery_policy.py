@@ -7,7 +7,10 @@ import os
 import secrets
 import sqlite3
 import stat
+import time
+from collections.abc import Callable
 from contextlib import suppress
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from config.sqlite_integrity import (
@@ -25,6 +28,7 @@ from config.sqlite_integrity import (
     _report_corruption,
     _valid_blocked_token,
     _write_incident_report,
+    write_startup_status,
 )
 from config.sqlite_repair import apply_repair_plan, build_repair_plan
 
@@ -33,6 +37,42 @@ if TYPE_CHECKING:
 
 _ACTION_ENV = "FLOPPY_SQLITE_CONFLICT_ACTION"
 _AUTO_REPAIR_ENV = "FLOPPY_SQLITE_AUTO_REPAIR"
+
+StatusEmitter = Callable[..., None]
+
+
+def _status_emitter(db_path: str) -> StatusEmitter:
+    """Build a closure that reports startup-scan progress to the status sidecar.
+
+    Every call carries the same start time and process, so ``elapsed_seconds``
+    is a plain monotonic delta rather than something reconstructed from disk.
+    """
+    started_monotonic = time.monotonic()
+    started_at = datetime.now(UTC).isoformat()
+    version = os.environ.get("VERSION")
+    commit_sha = os.environ.get("COMMIT_SHA")
+
+    def emit(
+        status: str,
+        phase: str,
+        *,
+        error_class: str | None = None,
+        error_message: str | None = None,
+    ) -> None:
+        _log(f"[integrity] phase={phase} status={status}")
+        write_startup_status(
+            db_path,
+            status=status,
+            phase=phase,
+            started_at=started_at,
+            elapsed_seconds=time.monotonic() - started_monotonic,
+            version=version,
+            commit_sha=commit_sha,
+            error_class=error_class,
+            error_message=error_message,
+        )
+
+    return emit
 
 
 class UnsafeRecoverySchemaError(sqlite3.IntegrityError):
@@ -146,9 +186,13 @@ def _describe_incident(conn: sqlite3.Connection, incident: dict) -> None:
         _log(f"[entrypoint] Could not name the affected entries: {error}")
 
 
-def _scan_and_publish_block(db_path: str) -> dict | None:
+def _scan_and_publish_block(
+    db_path: str,
+    emit: StatusEmitter,
+) -> dict | None:
     """Scan storage and publish the policy's blocked relationship report."""
     prior_report = _read_incident_report(db_path)
+    emit("running", "quick_check")
     conn = sqlite3.connect(db_path, timeout=30.0)
     try:
         result = conn.execute("PRAGMA quick_check").fetchone()
@@ -158,9 +202,16 @@ def _scan_and_publish_block(db_path: str) -> dict | None:
                 "[entrypoint] Database integrity check failed: "
                 f"quick_check returned {status!r}",
             )
+            emit(
+                "failed",
+                "quick_check",
+                error_class="corruption",
+                error_message=f"quick_check returned {status!r}",
+            )
             _report_corruption(db_path, f"quick_check returned {status!r}")
             raise SystemExit(1)
 
+        emit("running", "foreign_key_check")
         incident = _inspect_foreign_keys(conn)
         if not incident["total_conflicts"]:
             if prior_report:
@@ -171,13 +222,16 @@ def _scan_and_publish_block(db_path: str) -> dict | None:
                         "[entrypoint] SQLite recovery report could not be finalized; "
                         f"the database is healthy and startup continues: {error}",
                     )
+            emit("ok", "foreign_key_check")
             return None
 
+        emit("running", "describe_incident")
         _describe_incident(conn, incident)
         _print_incident(db_path, incident)
         incident_token = _valid_blocked_token(prior_report, incident)
         if incident_token is None:
             incident_token = secrets.token_hex(16)
+        emit("running", "publish_report")
         try:
             report_path = _write_incident_report(
                 db_path,
@@ -186,11 +240,24 @@ def _scan_and_publish_block(db_path: str) -> dict | None:
                 incident_token=incident_token,
             )
         except OSError as error:
+            emit(
+                "failed",
+                "publish_report",
+                error_class=type(error).__name__,
+                error_message=str(error),
+            )
             _log(f"[entrypoint] Could not publish SQLite incident report: {error}")
             raise SystemExit(1) from error
         _log(f"[entrypoint] Startup is blocked by report {report_path}")
+        emit("blocked", "publish_report")
         return _read_incident_report(db_path)
     except sqlite3.DatabaseError as error:
+        emit(
+            "failed",
+            "foreign_key_check",
+            error_class=type(error).__name__,
+            error_message=str(error),
+        )
         _log(f"[entrypoint] Database integrity check failed: {error}")
         raise SystemExit(1) from error
     finally:
@@ -392,6 +459,8 @@ def _annotate_blocked_report(
 
 def check_database_for_startup(db_path: str) -> None:
     """Repair safe relationship damage or block before migrations."""
+    emit = _status_emitter(db_path)
+    emit("running", "connect")
     reopened = reopen_previous_acceptance(db_path)
     if reopened:
         _log(
@@ -405,9 +474,10 @@ def check_database_for_startup(db_path: str) -> None:
         and report.get("status") == "blocked"
         and _handle_operator_decision(db_path, report)
     ):
+        emit("ok", "repair")
         return
 
-    report = _scan_and_publish_block(db_path)
+    report = _scan_and_publish_block(db_path, emit)
     if report is None:
         return
 
@@ -419,6 +489,7 @@ def check_database_for_startup(db_path: str) -> None:
     ):
         raise SystemExit(1)
 
+    emit("running", "repair")
     try:
         _incident, applied_plan, result, backup_path, remaining = _apply_plan(
             db_path,
@@ -426,6 +497,12 @@ def check_database_for_startup(db_path: str) -> None:
             include_required=False,
         )
     except (OSError, sqlite3.DatabaseError, ValueError) as error:
+        emit(
+            "failed",
+            "repair",
+            error_class=type(error).__name__,
+            error_message=str(error),
+        )
         _log(
             "[entrypoint] Safe SQLite relationship repair failed without changing "
             f"the live database: {error}",
@@ -449,11 +526,12 @@ def check_database_for_startup(db_path: str) -> None:
             backup_path=backup_path,
             repair_result=safe_summary,
         )
+        emit("ok", "repair")
         return
 
     # The safe subset changed the incident fingerprint. Re-scan through this
     # policy so the next approval code is tied to the exact remaining rows.
-    refreshed = _scan_and_publish_block(db_path)
+    refreshed = _scan_and_publish_block(db_path, emit)
     if refreshed is None:
         return
     _annotate_blocked_report(

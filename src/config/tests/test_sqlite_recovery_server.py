@@ -331,6 +331,62 @@ class RecoveryPageTests(SimpleTestCase):
         self.assertIn("Your data is safe", page)
         self.assertNotIn("<form", page)
 
+    def test_a_timeout_status_overrides_the_generic_no_report_page(self):
+        status = {
+            "database": "/data/db.sqlite3",
+            "elapsed_seconds": 601.0,
+            "phase": "foreign_key_check",
+            "read_bytes": 882_638_848,
+            "status": "timeout",
+            "version": "1.2.3",
+            "commit_sha": "abc1234",
+        }
+        page = recovery.render_page(None, interactive=True, status=status)
+        self.assertIn("timed out", page)
+        self.assertIn("foreign_key_check", page)
+        self.assertIn("601s", page)
+        self.assertIn("842MB", page)
+        self.assertIn("version=1.2.3", page)
+        self.assertIn("commit=abc1234", page)
+        self.assertIn("floppy_preflight", page)
+        # The old timeout-path claim that data is definitely safe must not
+        # survive: the scan never finished, so that is not something Floppy
+        # actually knows.
+        self.assertNotIn("Your data is safe", page)
+        self.assertIn("database result is unknown", page)
+
+    def test_a_timeout_status_takes_the_stable_container_name(self):
+        status = {"database": "/data/db.sqlite3", "status": "timeout"}
+        with mock.patch.dict(os.environ, {"HOST_CONTAINERNAME": "Yamtrack"}):
+            page = recovery.render_page(None, interactive=True, status=status)
+        self.assertIn("docker exec Yamtrack python manage.py floppy_preflight", page)
+
+    def test_a_non_timeout_status_does_not_change_the_normal_blocked_page(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = self.create_incident(tmp_dir)
+            report = self.block_startup(db_path)
+            status = {"database": db_path, "status": "ok"}
+            page = recovery.render_page(report, interactive=True, status=status)
+            self.assertIn("Your data is safe. Floppy paused before migrations.", page)
+            self.assertNotIn("timed out", page)
+
+    def test_offline_and_live_pages_render_the_same_timeout_diagnosis(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = str(Path(tmp_dir) / "db.sqlite3")
+            sqlite3.connect(db_path).close()
+            status = {
+                "database": db_path,
+                "elapsed_seconds": 600.0,
+                "phase": "quick_check",
+                "status": "timeout",
+            }
+            live_page = recovery.render_page(None, interactive=True, status=status)
+            offline_page = recovery.render_page(None, interactive=False, status=status)
+            self.assertIn("timed out", live_page)
+            self.assertIn("timed out", offline_page)
+            self.assertIn("quick_check", live_page)
+            self.assertIn("quick_check", offline_page)
+
     def test_the_page_loads_no_external_resource(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = self.create_incident(tmp_dir)

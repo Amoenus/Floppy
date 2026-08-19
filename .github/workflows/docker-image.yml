@@ -116,6 +116,15 @@ jobs:
               'import importlib.metadata; import floppy_mcp; assert importlib.metadata.version("floppy-mcp")'
             timeout 10 docker exec "$SMOKE_APP" sh -c \
               'timeout 5 floppy-mcp </dev/null; status=$?; [ "$status" -eq 0 ] || [ "$status" -eq 124 ]'
+            # The startup-scan observability path (heartbeat, status sidecar,
+            # timeout marking) must actually be present in the image, not just
+            # in source.
+            timeout 10 docker exec "$SMOKE_APP" python -c \
+              'from config.sqlite_integrity import mark_startup_status_timeout, print_startup_heartbeat, read_startup_status, write_startup_status'
+            # HOST_CONTAINERNAME is unset in this smoke run, so the identity
+            # line must fall back to "floppy" rather than erroring.
+            docker logs "$SMOKE_APP" 2>&1 | grep -Fq "[entrypoint] Floppy runtime: version=ci-smoke commit=$SMOKE_SHA"
+            docker logs "$SMOKE_APP" 2>&1 | grep -Fq "container_name=floppy"
           }
 
           start_app() {

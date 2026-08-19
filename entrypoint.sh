@@ -34,7 +34,11 @@ fi
 # startup is parked and fails with "Container is restarting" once a path exits
 # and a restart policy takes over. Each failure below prints the form that works
 # for it.
-PREFLIGHT_HINT_EXEC="For a full diagnosis run: docker exec ${HOSTNAME:-floppy} python manage.py floppy_preflight"
+# HOSTNAME is the Docker container ID, which is stable for the life of one
+# container but changes on every recreation, so a command captured from an
+# earlier log becomes unusable. HOST_CONTAINERNAME (set by the orchestrator,
+# e.g. Unraid) or the Compose service name survive recreation and stay valid.
+PREFLIGHT_HINT_EXEC="For a full diagnosis run: docker exec ${HOST_CONTAINERNAME:-floppy} python manage.py floppy_preflight"
 PREFLIGHT_HINT_RUN="For a full diagnosis run: docker compose run --rm floppy python manage.py floppy_preflight"
 
 reject_unsafe_managed_directory() {
@@ -94,6 +98,11 @@ warn_when_not_writable() {
 warn_when_not_writable FLOPPY_DATA_DIR "$DATA_DIR"
 warn_when_not_writable LOG_DIR "$LOG_DIR_PATH"
 
+# Safe identifiers only, so this line can be pasted into a bug report without
+# redaction. Correlates a log against the image that produced it, and against
+# a specific container instance when HOSTNAME/HOST_CONTAINERNAME diverge.
+echo "[entrypoint] Floppy runtime: version=${VERSION:-unknown} commit=${COMMIT_SHA:-unknown} hostname=${HOSTNAME:-unknown} container_name=${HOST_CONTAINERNAME:-floppy}" >&2
+
 if [ -z "$DB_HOST" ]; then
     DB_FILE_INPUT=${FLOPPY_DB_PATH:-"${DATA_DIR_INPUT}/db.sqlite3"}
     DB_FILE=$(python -c 'from pathlib import Path; import sys; print(Path(sys.argv[1]).resolve())' "$DB_FILE_INPUT")
@@ -110,19 +119,35 @@ if [ -z "$DB_HOST" ]; then
             echo "[entrypoint] Checking SQLite storage and relationships for ${DB_FILE}" >&2
             integrity_status=0
             integrity_pid=
+            heartbeat_pid=
             # One bound, used by the command and its operator message, so the two
             # can never drift apart.
             integrity_timeout=600
-            trap 'kill "$integrity_pid" 2>/dev/null || :; wait "$integrity_pid" 2>/dev/null || :; exit 0' TERM INT
+            trap 'kill "$integrity_pid" 2>/dev/null || :; wait "$integrity_pid" 2>/dev/null || :; kill "$heartbeat_pid" 2>/dev/null || :; wait "$heartbeat_pid" 2>/dev/null || :; exit 0' TERM INT
             timeout "$integrity_timeout" python -c 'from config.sqlite_recovery_policy import check_database_for_startup; import sys; check_database_for_startup(sys.argv[1])' "$DB_FILE" &
             integrity_pid=$!
+            # Heartbeats come from the status sidecar the scan itself writes,
+            # not from polling the scanner's PID, so a missing or malformed
+            # sidecar can never take the entrypoint down under "set -e".
+            (
+                while :; do
+                    sleep 30
+                    python -c 'from config.sqlite_integrity import print_startup_heartbeat; import sys; print_startup_heartbeat(sys.argv[1])' "$DB_FILE" 2>&1 || :
+                done
+            ) &
+            heartbeat_pid=$!
             wait "$integrity_pid" || integrity_status=$?
+            kill "$heartbeat_pid" 2>/dev/null || :
+            wait "$heartbeat_pid" 2>/dev/null || :
             trap - TERM INT
             if [ "$integrity_status" -eq 0 ]; then
                 break
             fi
             case "$integrity_status" in
                 124|143)
+                    # The scanner may have been killed before it could publish
+                    # its own terminal status, so the sidecar is confirmed here.
+                    python -c 'from config.sqlite_integrity import mark_startup_status_timeout; import sys; mark_startup_status_timeout(sys.argv[1], float(sys.argv[2]))' "$DB_FILE" "$integrity_timeout" 2>&1 || :
                     echo "[entrypoint] SQLite integrity check exceeded its ${integrity_timeout}s timeout; startup is paused before migrations and services. The container will remain unhealthy and idle." >&2
                     ;;
                 *)

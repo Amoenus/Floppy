@@ -665,6 +665,18 @@ check runs even when startup is what fails.
 
 Both commands work with `podman` in place of `docker`.
 
+The `docker exec` form above uses the container's Compose service name
+(`container_name: floppy`). If you run outside Compose, or under an
+orchestrator that renames containers on every recreation (for example
+Unraid), set `HOST_CONTAINERNAME` to a name that survives recreation; the
+startup log's diagnostic hint and the SQLite recovery page both use it
+instead of the container's own, per-instance Docker ID. Verify the name you
+are about to use actually matches the running container:
+
+```bash
+docker inspect --format '{{.Id}} {{.Name}} {{.Config.Image}}' <container>
+```
+
 For a source install, load the environment first. All `manage.py` commands need
 `SECRET`:
 
@@ -704,7 +716,7 @@ Options:
 | `--json` | Print one JSON object and nothing else. |
 | `--no-redis` | Do not check Redis. |
 | `--auto-migrate` | Apply the pending migrations, then check again. |
-| `--timeout SECONDS` | Bound the database storage check. The default is 600. |
+| `--timeout SECONDS` | Bound the database storage check. The default matches the startup entrypoint's own bound (`integrity_timeout` in `entrypoint.sh`), currently 600 seconds. |
 
 The command reads only. `--auto-migrate` is the one exception, and it is for an
 operator at a terminal. Containers do not need it, because the startup sequence
@@ -727,6 +739,40 @@ There is one failure `floppy_preflight` cannot report. If the data directory
 denies access to the container user, Django stops while it loads its settings,
 which is before this command starts. The startup log reports that condition
 directly.
+
+#### If the SQLite startup check times out
+
+The startup SQLite scan writes its progress to `<database>.integrity.status.json`
+beside the database as it runs, and the container log gets one heartbeat line
+roughly every 30 seconds while the scan is in progress. If the scan still
+exceeds its bound, the entrypoint stops it, records `status: timeout` in that
+file along with the last phase, elapsed time, and bytes read, and the recovery
+page (both the live page and the offline `floppy-recovery.html` copy) shows
+that detail instead of the generic "cannot read the report" page. A timeout
+does not mean the database is corrupt; it means the scan did not finish in
+time. Run `floppy_preflight` (above) for a completed answer.
+
+#### Verifying a published image actually has a fix
+
+When a fix to this startup path ships, confirm the image you pulled actually
+contains it before relying on it in production:
+
+```bash
+# Pull the exact digest you intend to run, not just a moving tag.
+docker pull ghcr.io/dannyvfilms/floppy@sha256:<digest>
+
+# Confirm the baked-in build identity.
+docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' ghcr.io/dannyvfilms/floppy@sha256:<digest> | grep -E '^(VERSION|COMMIT_SHA)='
+
+# Run it once, disposably, and check the startup identity line and, if you
+# can trigger one, the heartbeat/timeout behavior described above.
+docker run --rm ghcr.io/dannyvfilms/floppy@sha256:<digest> 2>&1 | grep 'Floppy runtime:'
+```
+
+If a moving tag such as `latest` still reports an older `COMMIT_SHA` after a
+verified publish, that is a registry or Portainer caching issue, not a code
+defect — do not change startup behavior to work around it. Clear the cache or
+re-pull by digest instead.
 
 ### Grouped anime migration diagnostics
 
