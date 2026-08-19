@@ -3125,6 +3125,7 @@ class MediaListViewTests(TestCase):
                     "start_date",
                     "end_date",
                     "notes",
+                    "synopsis",
                 ],
                 "hidden": ["status"],
             },
@@ -3194,6 +3195,7 @@ class MediaListViewTests(TestCase):
                 "date_added",
                 "end_date",
                 "notes",
+                "synopsis",
             ],
         )
 
@@ -3219,6 +3221,7 @@ class MediaListViewTests(TestCase):
                 "date_added",
                 "end_date",
                 "notes",
+                "synopsis",
             ],
         )
 
@@ -3284,6 +3287,7 @@ class MediaListViewTests(TestCase):
                 "Release Date",
                 "Date Added",
                 "Notes",
+                "Description",
             ],
         )
 
@@ -3325,6 +3329,7 @@ class MediaListViewTests(TestCase):
                 "Release Date",
                 "Date Added",
                 "Notes",
+                "Description",
             ],
         )
 
@@ -3359,6 +3364,7 @@ class MediaListViewTests(TestCase):
                     "release_date",
                     "date_added",
                     "notes",
+                    "synopsis",
                 ],
             )
 
@@ -3381,6 +3387,7 @@ class MediaListViewTests(TestCase):
                 "release_date",
                 "date_added",
                 "notes",
+                "synopsis",
             ],
         )
 

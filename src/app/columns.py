@@ -346,6 +346,15 @@ MEDIA_COLUMNS: list[ColumnDef] = [
         default_order=105,
     ),
     ColumnDef(
+        key="synopsis",
+        label="Description",
+        th_classes="p-2",
+        td_classes="p-2",
+        cell_template="app/components/cells/media_synopsis_cell.html",
+        table_types=("media",),
+        default_order=106,
+    ),
+    ColumnDef(
         key="image",
         label="",
         th_classes="p-2 w-15",

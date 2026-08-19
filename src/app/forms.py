@@ -190,7 +190,13 @@ class ManualItemForm(forms.ModelForm):
             "image",
             "season_number",
             "episode_number",
+            "synopsis",
         ]
+        widgets = {
+            "synopsis": forms.Textarea(
+                attrs={"placeholder": "Add a description...", "rows": "5"},
+            ),
+        }
 
     def __init__(self, *args, **kwargs):
         """Initialize the form."""

@@ -178,6 +178,7 @@ class ResolveColumnsTests(TestCase):
                 "start_date",
                 "end_date",
                 "notes",
+                "synopsis",
             ],
         )
 
@@ -216,6 +217,7 @@ class ResolveColumnsTests(TestCase):
                 "start_date",
                 "end_date",
                 "notes",
+                "synopsis",
             ],
         )
 

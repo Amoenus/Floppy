@@ -1,0 +1,7 @@
+{% if media.item.synopsis %}
+  <span class="block max-w-xs truncate" title="{{ media.item.synopsis }}">
+    {{ media.item.synopsis }}
+  </span>
+{% else %}
+  <span class="text-[var(--color-text-muted)]">-</span>
+{% endif %}
