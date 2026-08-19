@@ -1,6 +1,6 @@
 import json
 import logging
-from datetime import timedelta
+from datetime import datetime, time, timedelta
 from urllib.parse import quote, urlparse
 from uuid import uuid4
 
@@ -11,6 +11,7 @@ from django.http import HttpResponse, HttpResponseBadRequest
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.utils import timezone
+from django.utils.dateparse import parse_date, parse_datetime
 from django.views.decorators.http import require_GET, require_POST
 
 from app import cache_utils, fork_services_episode, helpers, history_cache
@@ -515,6 +516,29 @@ def media_delete(request):
     return redirect_response
 
 
+def _parse_rewatch_start(raw_value):
+    """Return an aware datetime for a pass start, defaulting to now.
+
+    Raises ValueError for anything unparseable or in the future, since a pass
+    starting later than now would hide every play the user logs today.
+    """
+    value = (raw_value or "").strip()
+    if not value:
+        return timezone.now()
+
+    parsed = parse_datetime(value)
+    if parsed is None:
+        parsed_date = parse_date(value)
+        if parsed_date is None:
+            raise ValueError(value)
+        parsed = datetime.combine(parsed_date, time.min)
+    if timezone.is_naive(parsed):
+        parsed = timezone.make_aware(parsed)
+    if parsed > timezone.now():
+        raise ValueError(value)
+    return parsed
+
+
 @require_POST
 def media_rewatch(request):
     """Start or stop a rewatch pass for a show or season."""
@@ -541,8 +565,12 @@ def media_rewatch(request):
             season.stop_rewatch(max_progress=getattr(season, "max_progress", None))
         logger.info("Rewatch of %s ended.", media)
     else:
-        media.start_rewatch()
-        logger.info("Rewatch of %s started.", media)
+        try:
+            started_at = _parse_rewatch_start(request.POST.get("rewatch_started_at"))
+        except ValueError:
+            return HttpResponseBadRequest("Enter a rewatch start date in the past.")
+        media.start_rewatch(started_at=started_at)
+        logger.info("Rewatch of %s started, from %s.", media, started_at)
 
     cache_utils.clear_media_list_cache_for_user(request.user.id)
 

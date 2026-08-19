@@ -242,3 +242,44 @@ class SeasonRewatch(TestCase):
             .first()
         )
         self.assertEqual(str(newest.score), "5.0")
+
+    def test_completing_mid_pass_fills_after_the_furthest_replay_only(
+        self,
+        _mock_metadata,
+    ):
+        """Skipped episodes below the furthest replay stay unlogged, as on a first watch."""
+        third_item = Item.objects.create(
+            media_id="123",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="Show",
+            season_number=1,
+            episode_number=3,
+        )
+        three_episodes = {
+            **SEASON_METADATA,
+            "episodes": [{"episode_number": n} for n in (1, 2, 3)],
+            "max_progress": 3,
+            "season/1": {"episodes": [{"episode_number": n} for n in (1, 2, 3)]},
+        }
+
+        def play_counts():
+            return [
+                self.season.episodes.filter(item=item).count()
+                for item in (*self.episode_items, third_item)
+            ]
+
+        with patch(METADATA_PATH, return_value=three_episodes):
+            self._watch(third_item, datetime(2023, 6, 3, tzinfo=UTC))
+            self.season.start_rewatch()
+            # Replay episode 2 only, leaving episode 1 skipped in this pass.
+            self._watch(self.episode_items[1], timezone.now())
+
+            before = play_counts()
+            self.season.status = Status.COMPLETED.value
+            self.season.save()
+
+        after = play_counts()
+        added = [now - then for now, then in zip(after, before, strict=True)]
+        # Only episode 3 — the one after the furthest replay — is filled in.
+        self.assertEqual(added, [0, 0, 1])

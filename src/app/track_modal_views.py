@@ -727,6 +727,10 @@ def _render_standard_track_modal(
             else ""
         ),
         "general_rewatch_label": rewatch_action["label"] if rewatch_action else "",
+        "general_rewatch_action": rewatch_action["action"] if rewatch_action else "",
+        "general_rewatch_started_at": (
+            getattr(media, "rewatch_started_at", None) if rewatch_action else None
+        ),
         "general_existing_instance": media,
         # Episodes are multi-watch: when the modal is bound to an existing watch
         # this re-opens it in create mode so a rewatch can still be logged.

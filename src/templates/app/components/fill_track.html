@@ -188,11 +188,26 @@
                       class="px-4 py-2 rounded-md transition duration-300 {% if general_existing_instance %}bg-red-700 text-white hover:bg-red-800 cursor-pointer{% else %}bg-gray-600 text-gray-300 cursor-not-allowed{% endif %}"
                       {% if not general_existing_instance %}disabled{% endif %}>Delete</button>
               {% if general_rewatch_formaction %}
-                <button type="submit"
-                        formaction="{{ general_rewatch_formaction }}"
-                        class="px-4 py-2 rounded-md border border-[var(--color-border)] bg-[var(--color-surface-muted)] text-[var(--color-text)] hover:bg-[var(--color-surface-strong)] transition duration-300 cursor-pointer">
-                  {{ general_rewatch_label }}
-                </button>
+                <div class="flex items-center gap-2">
+                  <button type="submit"
+                          formaction="{{ general_rewatch_formaction }}"
+                          class="px-4 py-2 rounded-md border border-[var(--color-border)] bg-[var(--color-surface-muted)] text-[var(--color-text)] hover:bg-[var(--color-surface-strong)] transition duration-300 cursor-pointer">
+                    {{ general_rewatch_label }}
+                  </button>
+                  {% if general_rewatch_action == "start" %}
+                    <label class="flex items-center gap-2 text-xs text-[var(--color-text-secondary)]">
+                      Since
+                      <input type="date"
+                             name="rewatch_started_at"
+                             title="Leave empty to start the rewatch today"
+                             class="p-1.5 rounded-md border border-[var(--color-border)] bg-[var(--color-surface-strong)] text-[var(--color-text)] text-xs">
+                    </label>
+                  {% else %}
+                    <span class="text-xs text-[var(--color-text-secondary)]">
+                      Rewatching since {{ general_rewatch_started_at|user_date_format:user }}
+                    </span>
+                  {% endif %}
+                </div>
               {% endif %}
             {% endif %}
             {% if episode_create_url %}

@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.utils import timezone
 
 from app.models import (
     TV,
@@ -115,7 +116,7 @@ class EpisodePassHistory(TestCase):
         Episode.objects.create(
             item=self.episode_items[0],
             related_season=self.season,
-            end_date=datetime(2026, 8, 18, tzinfo=UTC),
+            end_date=timezone.now(),
         )
 
         episodes = tmdb.process_episodes(

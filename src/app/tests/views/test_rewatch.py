@@ -1,10 +1,11 @@
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.template.loader import render_to_string
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from app.models import (
     TV,
@@ -81,6 +82,21 @@ class RewatchViewTests(TestCase):
         self.season.refresh_from_db()
         self.assertEqual(self.season.status, Status.COMPLETED.value)
 
+    def _replay(self, episode_number, end_date):
+        """Log another play of an episode that is already watched."""
+        item = Item.objects.get(
+            media_id="123",
+            media_type=MediaTypes.EPISODE.value,
+            season_number=1,
+            episode_number=episode_number,
+        )
+        with patch(METADATA_PATH, return_value=SEASON_METADATA):
+            return Episode.objects.create(
+                item=item,
+                related_season=self.season,
+                end_date=end_date,
+            )
+
     def test_start_rewatch_reopens_the_season(self, _mock_metadata):
         """Starting a rewatch opens a pass and reopens the season."""
         self.client.post(
@@ -112,6 +128,74 @@ class RewatchViewTests(TestCase):
         self.season.refresh_from_db()
         self.assertIsNone(self.season.rewatch_started_at)
         self.assertEqual(self.season.status, Status.COMPLETED.value)
+
+    def test_rewatch_can_start_from_an_earlier_date(self, _mock_metadata):
+        """A rewatch already under way is recorded from the day it began."""
+        self.client.post(
+            reverse("media_rewatch"),
+            data={
+                "instance_id": self.season.id,
+                "media_type": MediaTypes.SEASON.value,
+                "action": "start",
+                "rewatch_started_at": "2026-08-01",
+            },
+        )
+
+        self.season.refresh_from_db()
+        self.assertEqual(
+            timezone.localtime(self.season.rewatch_started_at).date(),
+            date(2026, 8, 1),
+        )
+
+    def test_backdated_rewatch_counts_the_plays_already_logged(self, _mock_metadata):
+        """Episodes replayed before pressing the button belong to the pass."""
+        self._replay(1, datetime(2026, 8, 5, 20, 0, tzinfo=UTC))
+
+        self.client.post(
+            reverse("media_rewatch"),
+            data={
+                "instance_id": self.season.id,
+                "media_type": MediaTypes.SEASON.value,
+                "action": "start",
+                "rewatch_started_at": "2026-08-01",
+            },
+        )
+
+        self.season.refresh_from_db()
+        self.assertEqual(self.season.progress, 1)
+        self.assertEqual(self.season.next_episode_number(), 2)
+
+    def test_a_future_start_date_is_rejected(self, _mock_metadata):
+        """A pass starting in the future would hide every play, so refuse it."""
+        response = self.client.post(
+            reverse("media_rewatch"),
+            data={
+                "instance_id": self.season.id,
+                "media_type": MediaTypes.SEASON.value,
+                "action": "start",
+                "rewatch_started_at": "2099-01-01",
+            },
+        )
+
+        self.season.refresh_from_db()
+        self.assertEqual(response.status_code, 400)
+        self.assertIsNone(self.season.rewatch_started_at)
+
+    def test_an_unparseable_start_date_is_rejected(self, _mock_metadata):
+        """Garbage in the date field must not silently become "now"."""
+        response = self.client.post(
+            reverse("media_rewatch"),
+            data={
+                "instance_id": self.season.id,
+                "media_type": MediaTypes.SEASON.value,
+                "action": "start",
+                "rewatch_started_at": "last tuesday",
+            },
+        )
+
+        self.season.refresh_from_db()
+        self.assertEqual(response.status_code, 400)
+        self.assertIsNone(self.season.rewatch_started_at)
 
     def test_stop_rewatch_accepts_the_action_from_the_query_string(
         self,
@@ -180,6 +264,22 @@ class RewatchViewTests(TestCase):
             ),
             {"season_number": 1, "instance_id": self.season.id},
         )
+
+    def test_track_modal_offers_a_start_date_for_a_rewatch(self, _mock_metadata):
+        """A rewatch already under way can be dated when it is recorded."""
+        response = self._track_modal()
+
+        self.assertContains(response, 'name="rewatch_started_at"')
+
+    def test_track_modal_shows_when_an_open_rewatch_began(self, _mock_metadata):
+        """An open pass says which day it started from."""
+        self.season.start_rewatch(
+            started_at=datetime(2026, 8, 1, 12, 0, tzinfo=UTC),
+        )
+
+        response = self._track_modal()
+
+        self.assertContains(response, "Rewatching since")
 
     def test_track_modal_offers_a_rewatch_for_a_completed_season(self, _mock_metadata):
         """A finished season can be rewatched from its track modal."""
