@@ -122,9 +122,13 @@ jobs:
             timeout 10 docker exec "$SMOKE_APP" python -c \
               'from config.sqlite_integrity import mark_startup_status_timeout, print_startup_heartbeat, read_startup_status, write_startup_status'
             # HOST_CONTAINERNAME is unset in this smoke run, so the identity
-            # line must fall back to "floppy" rather than erroring.
-            docker logs "$SMOKE_APP" 2>&1 | grep -Fq "[entrypoint] Floppy runtime: version=ci-smoke commit=$SMOKE_SHA"
-            docker logs "$SMOKE_APP" 2>&1 | grep -Fq "container_name=floppy"
+            # line must fall back to "floppy" rather than erroring. Captured
+            # into a variable first: piping a long-lived command straight
+            # into "grep -q" trips pipefail on the writer's SIGPIPE once grep
+            # finds its match and closes the pipe early.
+            smoke_logs=$(docker logs "$SMOKE_APP" 2>&1)
+            grep -Fq "[entrypoint] Floppy runtime: version=ci-smoke commit=$SMOKE_SHA" <<<"$smoke_logs"
+            grep -Fq "container_name=floppy" <<<"$smoke_logs"
           }
 
           start_app() {
