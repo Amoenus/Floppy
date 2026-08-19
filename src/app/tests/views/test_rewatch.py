@@ -283,6 +283,12 @@ class RewatchRatingVisibility(TestCase):
 
         self.assertIn("Rate episode", html)
 
+    def test_row_renders_no_leaked_template_comment(self):
+        """A `{# #}` comment only spans one line; a longer one renders as text."""
+        html = self._render(self._payload([], [self.play]))
+
+        self.assertNotIn("{#", html)
+
     def test_rating_is_hidden_for_an_episode_never_watched(self):
         """An untouched episode still offers no rating."""
         html = self._render(self._payload([], []))

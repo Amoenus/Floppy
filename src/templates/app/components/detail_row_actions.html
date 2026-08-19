@@ -88,8 +88,10 @@
     </div>
   {% endif %}
 
-  {# A rating belongs to the episode, not to one pass over it, so this reads
-     every play rather than only the ones inside an open rewatch. #}
+  {% comment %}
+    A rating belongs to the episode, not to one pass over it, so this reads
+    every play rather than only the ones inside an open rewatch.
+  {% endcomment %}
   {% with plays=episode|rating_plays %}
     {% if plays and action_media_type == MediaTypes.EPISODE.value and current_instance %}
       {% with ep_score=plays.0.score %}
