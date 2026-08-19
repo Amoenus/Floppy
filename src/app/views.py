@@ -824,10 +824,16 @@ def episode_details(
             from app.providers import manual
 
             processed_episodes = manual.process_episodes(
-                season_metadata, episodes_in_db
+                season_metadata,
+                episodes_in_db,
+                season=current_season_instance,
             )
         else:
-            processed_episodes = tmdb.process_episodes(season_metadata, episodes_in_db)
+            processed_episodes = tmdb.process_episodes(
+                season_metadata,
+                episodes_in_db,
+                season=current_season_instance,
+            )
 
     processed_episodes = _normalize_detail_episode_actions(processed_episodes)
     episode_data = next(

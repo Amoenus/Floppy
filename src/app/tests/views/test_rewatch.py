@@ -294,3 +294,77 @@ class RewatchRatingVisibility(TestCase):
         html = self._render(self._payload([], []))
 
         self.assertNotIn("Rate episode", html)
+
+
+@patch(METADATA_PATH, return_value=SEASON_METADATA)
+class EpisodePageDuringRewatch(TestCase):
+    """The episode page and the season page agree on the current pass."""
+
+    def setUp(self):
+        """Watch one episode, then reopen the season for a rewatch."""
+        self.credentials = {"username": "test", "password": "12345"}
+        self.user = get_user_model().objects.create_user(**self.credentials)
+        self.client.login(**self.credentials)
+
+        with patch(METADATA_PATH, return_value=SEASON_METADATA):
+            tv_item = Item.objects.create(
+                media_id="123",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.TV.value,
+                title="Show",
+            )
+            tv = TV.objects.create(item=tv_item, user=self.user)
+            season_item = Item.objects.create(
+                media_id="123",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.SEASON.value,
+                title="Show",
+                season_number=1,
+            )
+            self.season = Season.objects.create(
+                item=season_item,
+                user=self.user,
+                related_tv=tv,
+                status=Status.IN_PROGRESS.value,
+            )
+            episode_item = Item.objects.create(
+                media_id="123",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.EPISODE.value,
+                title="Show",
+                season_number=1,
+                episode_number=1,
+            )
+            Episode.objects.create(
+                item=episode_item,
+                related_season=self.season,
+                end_date=datetime(2023, 6, 1, tzinfo=UTC),
+            )
+
+    @patch("app.providers.tmdb.process_episodes", return_value=[])
+    def test_episode_page_scopes_plays_to_the_open_pass(
+        self,
+        mock_process_episodes,
+        _mock_metadata,
+    ):
+        """Without the season, the page would contradict the season page."""
+        self.season.start_rewatch()
+
+        self.client.get(
+            reverse(
+                "episode_details",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_id": "123",
+                    "title": "show",
+                    "season_number": 1,
+                    "episode_number": 1,
+                },
+            ),
+        )
+
+        seasons_passed = [
+            call.kwargs.get("season")
+            for call in mock_process_episodes.call_args_list
+        ]
+        self.assertIn(self.season, seasons_passed)

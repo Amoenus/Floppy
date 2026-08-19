@@ -151,3 +151,4 @@ class EpisodePassHistory(TestCase):
 
         self.assertEqual(episodes[0]["history"], [])
         self.assertEqual(len(episodes[0]["all_history"]), 1)
+
