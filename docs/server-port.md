@@ -120,23 +120,30 @@ A saved value is stored under `FLOPPY_DATA_DIR`, so it persists when that direct
 
 ## App UI
 
-A superuser can open **Settings → Advanced → Server port**.
+Open **Settings → Advanced → Server port**.
 
-Advanced remains one Settings destination. Floppy does not add a separate Server settings page for this one instance control.
+Every signed-in user can see a safe, read-only summary of the current listener. This includes the normal account created through the standard Docker setup.
 
-The panel shows three separate states:
+The read-only view shows:
 
 - **Running listener** — the port reported by the current packaged launcher.
 - **Configured port** — the value that the resolver currently selects and its source.
+
+Normal users cannot save or reset the listener. The server also rejects a direct mutation request from a non-superuser. If local configuration is malformed, a normal user sees a generic administrator-attention state rather than local configuration paths or detailed recovery errors.
+
+A superuser sees the full control in the same location. The administrator view also shows:
+
 - **Saved fallback** — the persisted value that can apply when no environment override exists.
+- environment override ownership and repair guidance;
+- save and reset controls.
 
-Normal users can continue to use Advanced but do not see the instance port panel and cannot call its mutation endpoint.
+Advanced remains one Settings destination. Floppy does not add a separate Server settings page for this one instance control.
 
-Saving a different port does not restart Floppy. The panel reports the restart requirement and tells container users to update the published target before restart when the internal listener changes.
+Saving a different port does not restart Floppy. The administrator panel reports the restart requirement and tells container users to update the published target before restart when the internal listener changes.
 
-When `FLOPPY_PORT` is active, the panel shows that environment ownership in text and disables the conflicting save control. An administrator can still remove a stale or malformed saved fallback.
+When `FLOPPY_PORT` is active, the administrator panel shows that environment ownership in text and disables the conflicting save control. An administrator can still remove a stale or malformed saved fallback.
 
-The control uses a normal numeric field, normal form submission, visible labels and state text, keyboard-accessible controls, and no timed or automatic focus changes.
+The controls use a normal numeric field, normal form submission, visible labels and state text, keyboard-accessible controls, and no timed or automatic focus changes. The read-only state uses the same status cards without rendering mutation controls.
 
 ## Saved instance value
 
@@ -150,7 +157,7 @@ When `FLOPPY_DATA_DIR` is not set, the application data directory is used.
 
 Writes use a temporary file in the same directory and an atomic replace. The saved file uses private POSIX permissions when the platform supports them. The save path does not require POSIX-only file APIs, so a future Windows-compatible packaged launcher can use the same configuration model. Reads reject non-regular files and use no-follow semantics where the platform provides them.
 
-A malformed saved file fails closed when it is the active source. If a valid `FLOPPY_PORT` is present, Floppy can continue to use that environment value while the Advanced panel reports the bad saved fallback for repair or reset.
+A malformed saved file fails closed when it is the active source. If a valid `FLOPPY_PORT` is present, Floppy can continue to use that environment value while the administrator panel reports the bad saved fallback for repair or reset.
 
 ## Container startup and health
 
@@ -197,6 +204,8 @@ This setting adds no background process, polling loop, database lookup, or netwo
 - The Advanced panel and CLI use local environment/file work only when they are opened or called.
 - SQLite recovery reuses the already-resolved packaged value instead of adding another startup lookup.
 
+The read-only status uses the same local status computation as the administrator view. It adds no new route, query, worker, remote request, or periodic task.
+
 ## Offline and packaged launchers
 
 The resolver is a small standard-library module. It has no database or network dependency. A future native or desktop launcher can use the same functions and saved file instead of copying Docker-specific logic.
@@ -213,6 +222,10 @@ A packaged launcher should:
 The application remains usable without internet access. Port resolution never contacts an external service.
 
 ## Troubleshooting
+
+### I can see the status but not the save or reset controls
+
+Only a superuser can change the saved listener from the web interface. A host administrator can also use `FLOPPY_PORT` or the CLI.
 
 ### Floppy still opens on the old port after saving
 
@@ -244,7 +257,8 @@ Then restart Floppy.
 
 ## Related work
 
-- Floppy issue `#837` owns the configurable listener behavior.
+- Floppy issue `#837` owns the configurable listener behavior and this visibility correction.
+- Floppy PR `#838` introduced the configurable listener and administrator mutation control.
 - Floppy PR `#839` identified the recovery-page fixed-port gap while keeping its App Test workflow repair scoped to CI reliability.
 - Floppy issue `#597` can report the effective listener as part of deployment preflight work.
 - Floppy issue `#512` is the performance baseline; this setting adds no steady-state request task or daemon.

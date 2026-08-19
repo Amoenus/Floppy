@@ -5,11 +5,15 @@
       <h3 class="text-xl font-semibold">Server port</h3>
     </div>
     <p class="text-[var(--color-text-muted)] text-sm mb-6 max-w-4xl">
-      Change the public HTTP port only when another process in the same network namespace already uses port 8000.
-      A normal Docker host-port change does not need this setting.
+      {% if can_manage_server_port %}
+        Change the public HTTP port only when another process in the same network namespace already uses port 8000.
+        A normal Docker host-port change does not need this setting.
+      {% else %}
+        This status is read-only for your account. An instance administrator can change the saved listener.
+      {% endif %}
     </p>
 
-    <div class="grid gap-3 sm:grid-cols-3 mb-6" aria-label="Server port status">
+    <div class="grid gap-3 {% if can_manage_server_port %}sm:grid-cols-3{% else %}sm:grid-cols-2{% endif %} mb-6" aria-label="Server port status">
       <div class="bg-[var(--color-surface-strong)] rounded-lg p-4">
         <p class="text-xs uppercase tracking-wide text-[var(--color-text-muted)]">Running listener</p>
         <p class="mt-1 text-lg font-semibold">
@@ -32,6 +36,7 @@
         </p>
       </div>
 
+      {% if can_manage_server_port %}
       <div class="bg-[var(--color-surface-strong)] rounded-lg p-4">
         <p class="text-xs uppercase tracking-wide text-[var(--color-text-muted)]">Saved fallback</p>
         <p class="mt-1 text-lg font-semibold">
@@ -57,9 +62,10 @@
           {% endif %}
         </p>
       </div>
+      {% endif %}
     </div>
 
-    {% if environment_override %}
+    {% if can_manage_server_port and environment_override %}
       <div class="mb-6 rounded-lg border border-[var(--color-surface-border)] bg-[var(--color-surface-strong)] p-4" role="status">
         <div class="flex items-start gap-3">
           {% include "app/icons/info.svg" with classes="w-5 h-5 shrink-0 mt-0.5 text-[var(--color-warning-text)]" %}
@@ -79,6 +85,7 @@
         <div class="flex items-start gap-3">
           {% include "app/icons/error.svg" with classes="w-5 h-5 shrink-0 mt-0.5 text-[var(--color-error-text)]" %}
           <div>
+            {% if can_manage_server_port %}
             <h4 class="font-medium text-[var(--color-error-text)]">
               {% if server_port_config_error_source == "environment" %}
                 Environment server port is invalid
@@ -94,11 +101,18 @@
                 Reset the saved value below, or correct the file before you restart Floppy.
               {% endif %}
             </p>
+            {% else %}
+            <h4 class="font-medium text-[var(--color-error-text)]">Server port configuration needs administrator attention</h4>
+            <p class="mt-1 text-sm text-[var(--color-text-muted)]">
+              Detailed configuration errors and recovery controls are hidden for this account.
+            </p>
+            {% endif %}
           </div>
         </div>
       </div>
     {% endif %}
 
+    {% if can_manage_server_port %}
     <div class="bg-[var(--color-surface-strong)] rounded-lg p-5">
       <h4 class="text-base font-medium mb-1">Internal listener</h4>
       <p id="server-port-help" class="text-sm text-[var(--color-text-muted)] mb-4">
@@ -148,6 +162,13 @@
         </form>
       {% endif %}
     </div>
+    {% else %}
+      <div class="rounded-lg border border-[var(--color-surface-border)] bg-[var(--color-surface-strong)] p-4" role="status">
+        <p class="text-sm text-[var(--color-text-muted)]">
+          Need to change the internal listener? Ask an instance administrator, or use the documented environment or CLI configuration for the host.
+        </p>
+      </div>
+    {% endif %}
 
     <div class="mt-5 text-sm text-[var(--color-text-muted)] max-w-4xl">
       <h4 class="font-medium text-[var(--color-text)]">Deployment notes</h4>
