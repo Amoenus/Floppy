@@ -1596,6 +1596,20 @@ class Episode(models.Model):
             self.status = (
                 Status.DROPPED.value if self.dropped else Status.COMPLETED.value
             )
+        if self._state.adding and self.score is None:
+            # A rating belongs to the episode, not to one viewing of it — the
+            # score endpoint writes every play at once — so a replay inherits
+            # the rating instead of coming back unrated.
+            self.score = (
+                Episode.objects.filter(
+                    related_season_id=self.related_season_id,
+                    item_id=self.item_id,
+                )
+                .exclude(score__isnull=True)
+                .values_list("score", flat=True)
+                .first()
+            )
+
         planning_entries, merged_fields = prepare_completed_entry(self)
         if merged_fields and kwargs.get("update_fields") is not None:
             kwargs["update_fields"] = tuple(

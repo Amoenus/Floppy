@@ -214,3 +214,31 @@ class SeasonRewatch(TestCase):
         self.season.refresh_from_db()
         self.assertIsNone(self.season.rewatch_started_at)
         self.assertFalse(self.tv.is_rewatching)
+
+    def test_replaying_an_episode_keeps_its_rating(self, _mock_metadata):
+        """A rating belongs to the episode, so a new play carries it too."""
+        self.season.episodes.filter(item=self.episode_items[0]).update(score=8)
+        self.season.start_rewatch()
+
+        self._watch(self.episode_items[0], timezone.now())
+
+        scores = list(
+            self.season.episodes.filter(item=self.episode_items[0]).values_list(
+                "score",
+                flat=True,
+            ),
+        )
+        self.assertEqual([str(score) for score in scores], ["8.0", "8.0"])
+
+    def test_an_explicit_rating_on_a_play_wins(self, _mock_metadata):
+        """Rating the new play directly still takes precedence."""
+        self.season.episodes.filter(item=self.episode_items[0]).update(score=8)
+
+        self.season.watch(1, timezone.now(), score=5)
+
+        newest = (
+            self.season.episodes.filter(item=self.episode_items[0])
+            .order_by("-created_at")
+            .first()
+        )
+        self.assertEqual(str(newest.score), "5.0")

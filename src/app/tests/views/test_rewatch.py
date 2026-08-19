@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.template.loader import render_to_string
 from django.test import TestCase
 from django.urls import reverse
 
@@ -204,3 +205,86 @@ class RewatchViewTests(TestCase):
         response = self._track_modal()
 
         self.assertNotContains(response, reverse("media_rewatch"))
+
+
+class RewatchRatingVisibility(TestCase):
+    """The episode rating stays reachable while a rewatch is under way."""
+
+    def setUp(self):
+        """Build the episode payload a season page renders mid-pass."""
+        with patch(METADATA_PATH, return_value=SEASON_METADATA):
+            self.user = get_user_model().objects.create_user(username="t", password="x")
+            tv_item = Item.objects.create(
+                media_id="123",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.TV.value,
+                title="Show",
+            )
+            tv = TV.objects.create(item=tv_item, user=self.user)
+            season_item = Item.objects.create(
+                media_id="123",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.SEASON.value,
+                title="Show",
+                season_number=1,
+            )
+            self.season = Season.objects.create(
+                item=season_item,
+                user=self.user,
+                related_tv=tv,
+                status=Status.IN_PROGRESS.value,
+            )
+            self.episode_item = Item.objects.create(
+                media_id="123",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.EPISODE.value,
+                title="Show",
+                season_number=1,
+                episode_number=1,
+            )
+            self.play = Episode.objects.create(
+                item=self.episode_item,
+                related_season=self.season,
+                end_date=datetime(2023, 6, 1, tzinfo=UTC),
+                score=8,
+            )
+
+    def _payload(self, history, all_history):
+        """Mimic one entry of what process_episodes() hands the template."""
+        return {
+            "media_id": "123",
+            "media_type": MediaTypes.EPISODE.value,
+            "source": Sources.TMDB.value,
+            "season_number": 1,
+            "episode_number": 1,
+            "item": self.episode_item,
+            "history": history,
+            "all_history": all_history,
+        }
+
+    def _render(self, episode_payload):
+        return render_to_string(
+            "app/components/detail_row_actions.html",
+            {
+                "episode": episode_payload,
+                "action_media_type": MediaTypes.EPISODE.value,
+                "track_button_variant": "row",
+                "current_instance": self.season,
+                "history_item": self.episode_item,
+                "user": self.user,
+                "MediaTypes": MediaTypes,
+                "media_type": MediaTypes.SEASON.value,
+            },
+        )
+
+    def test_rating_is_offered_for_an_episode_not_yet_replayed(self):
+        """Mid-pass the episode has no play in the window, but it is still rated."""
+        html = self._render(self._payload([], [self.play]))
+
+        self.assertIn("Rate episode", html)
+
+    def test_rating_is_hidden_for_an_episode_never_watched(self):
+        """An untouched episode still offers no rating."""
+        html = self._render(self._payload([], []))
+
+        self.assertNotIn("Rate episode", html)

@@ -254,6 +254,21 @@ def watched_count(history):
 
 
 @register.filter
+def rating_plays(episode):
+    """Return the plays a row's rating reads, ignoring any open rewatch pass.
+
+    A rating belongs to the episode rather than to one pass over it, so this
+    prefers the lifetime list and falls back to whatever the payload carries
+    (other media types only supply `history`).
+    """
+    if isinstance(episode, dict):
+        return episode.get("all_history") or episode.get("history") or []
+    return (
+        getattr(episode, "all_history", None) or getattr(episode, "history", None) or []
+    )
+
+
+@register.filter
 def score_display(score, user):
     """Format a score using the user's rating scale."""
     if score is None:
