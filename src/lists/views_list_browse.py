@@ -246,20 +246,11 @@ def lists(request):
             cl.completed_count = 0
             cl.completion_percent = None
 
-    # Create a form for each list
-    # needs unique id for django-select2
+    # The edit form (with its select2 widgets) is fetched lazily via
+    # list_edit_form when the user opens the modal, so only compute the
+    # cheap permission flag here.
     for custom_list in lists_page:
-        try:
-            custom_list.form = CustomListForm(
-                instance=custom_list,
-                auto_id=f"id_{custom_list.id}_%s",
-                user=request.user,
-                available_tags=available_tags,
-            )
-        except Exception:
-            logger.exception("Error creating form for list ID %s", custom_list.id)
-            # Skip form creation for this list
-            custom_list.form = None
+        custom_list.can_edit = custom_list.user_can_edit(request.user)
 
     # Add timestamp to context for cache busting
     import time

@@ -42,6 +42,11 @@ urlpatterns = [
     path("list/create", views_list_actions.create, name="list_create"),
     path("list/share-view", views_list_actions.share_view, name="list_share_view"),
     path("list/edit", views_list_actions.edit, name="list_edit"),
+    path(
+        "list/<int:list_id>/edit-form",
+        views_list_actions.edit_form,
+        name="list_edit_form",
+    ),
     path("list/delete", views_list_actions.delete, name="list_delete"),
     path("list/import-csv", views_list_actions.import_list_csv, name="list_import_csv"),
     path("list/<slug:list_reference>", views.list_detail, name="list_detail"),

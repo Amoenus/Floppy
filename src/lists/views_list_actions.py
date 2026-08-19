@@ -37,6 +37,7 @@ from lists.models import (
     ListActivityType,
 )
 from lists.views_helpers import (
+    _build_list_url_template,
     _list_item_title_fields_from_metadata,
     _maybe_backfill_episode_title,
 )
@@ -257,6 +258,42 @@ def edit(request):
     else:
         messages.error(request, "You do not have permission to edit this list.")
     return helpers.redirect_back(request)
+
+
+@require_GET
+def edit_form(request, list_id):
+    """Render the edit-list modal fragment for a single list, on demand.
+
+    Building this select2-backed form for every list on the /lists page
+    eagerly was expensive (a Redis round-trip per widget render), so it's
+    fetched lazily when the user opens the edit modal instead.
+    """
+    custom_list = get_object_or_404(CustomList, id=list_id)
+    if not custom_list.user_can_edit(request.user):
+        return HttpResponse(status=403)
+
+    available_tags = CustomListForm._normalize_tags(
+        tag
+        for other_list in CustomList.objects.filter(
+            Q(owner=request.user) | Q(collaborators=request.user),
+        ).only("tags")
+        for tag in (other_list.tags or [])
+    )
+    form = CustomListForm(
+        instance=custom_list,
+        auto_id=f"id_{custom_list.id}_%s",
+        user=request.user,
+        available_tags=available_tags,
+    )
+    return render(
+        request,
+        "lists/components/list_form.html",
+        {
+            "form": form,
+            "custom_list": custom_list,
+            "list_url_template": _build_list_url_template(request),
+        },
+    )
 
 
 @require_POST
