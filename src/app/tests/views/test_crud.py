@@ -793,8 +793,7 @@ class CreateMedia(TestCase):
             2,
         )
 
-    @tag("network")
-    @patch("app.views.ensure_item_metadata")
+    @patch("app.save_views.ensure_item_metadata")
     def test_create_game_htmx_returns_activity_subtitle_update(
         self, ensure_item_metadata_mock
     ):
@@ -843,6 +842,88 @@ class CreateMedia(TestCase):
                 progress=205,
                 status=Status.PLANNING.value,
             ).exists(),
+        )
+
+    @patch("app.save_views.ensure_item_metadata")
+    @patch("app.save_views._build_detail_activity_state")
+    def test_create_game_htmx_recovers_from_post_save_enrichment_failure(
+        self,
+        activity_state_mock,
+        ensure_item_metadata_mock,
+    ):
+        """A post-save rendering failure must not blank a first-save response.
+
+        Regression test for #601: the record is already committed by this point,
+        so a downstream enrichment error (e.g. building the activity subtitle)
+        must still return a valid confirmation, not a 500 swapped into a fragment.
+        """
+        item = Item.objects.create(
+            media_id="456",
+            source=Sources.IGDB.value,
+            media_type=MediaTypes.GAME.value,
+            title="Tracked Game",
+            image="http://example.com/game.jpg",
+        )
+        ensure_item_metadata_mock.return_value = SimpleNamespace(item=item)
+        activity_state_mock.side_effect = RuntimeError("boom")
+
+        response = self.client.post(
+            f"{reverse('media_save')}?next=/details/igdb/game/456/tracked-game",
+            {
+                "track_form_id": "track-form-test",
+                "media_id": "456",
+                "source": Sources.IGDB.value,
+                "media_type": MediaTypes.GAME.value,
+                "status": Status.PLANNING.value,
+                "progress": "0h",
+            },
+            HTTP_HX_REQUEST="true",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "data-track-action-root", html=False)
+        trigger = json.loads(response["HX-Trigger"])
+        self.assertEqual(trigger["closeModal"]["formId"], "track-form-test")
+        self.assertEqual(trigger["showToast"]["type"], "success")
+        self.assertEqual(
+            Game.objects.filter(item__media_id="456", user=self.user).count(),
+            1,
+        )
+
+    @patch("app.providers.services.get_media_metadata")
+    def test_create_movie_htmx_hydrates_real_first_save_metadata(
+        self,
+        metadata_mock,
+    ):
+        """The genuine first-save hydration path (uncached Item) must not blank.
+
+        Unlike other HTMX create tests, this does not mock ``ensure_item_metadata``
+        itself, so the real get-or-create + provider-metadata code path runs.
+        """
+        metadata_mock.return_value = {
+            "title": "Brand New Movie",
+            "image": "http://example.com/movie.jpg",
+        }
+
+        response = self.client.post(
+            f"{reverse('media_save')}?next=/details/tmdb/movie/999/brand-new-movie",
+            {
+                "track_form_id": "track-form-test",
+                "media_id": "999",
+                "source": Sources.TMDB.value,
+                "media_type": MediaTypes.MOVIE.value,
+                "status": Status.PLANNING.value,
+            },
+            HTTP_HX_REQUEST="true",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "data-track-action-root", html=False)
+        trigger = json.loads(response["HX-Trigger"])
+        self.assertEqual(trigger["showToast"]["type"], "success")
+        self.assertEqual(
+            Movie.objects.filter(item__media_id="999", user=self.user).count(),
+            1,
         )
 
     @patch("app.save_views.ensure_item_metadata")

@@ -188,16 +188,28 @@ def media_save(request):
             instance_id,
         )
     else:
-        hydrated = ensure_item_metadata(
-            request.user,
-            media_type,
-            media_id,
-            source,
-            season_number,
-            identity_media_type=identity_media_type,
-            library_media_type=library_media_type,
-            edition_id=(request.POST.get("edition_id") or "").strip() or None,
-        )
+        try:
+            hydrated = ensure_item_metadata(
+                request.user,
+                media_type,
+                media_id,
+                source,
+                season_number,
+                identity_media_type=identity_media_type,
+                library_media_type=library_media_type,
+                edition_id=(request.POST.get("edition_id") or "").strip() or None,
+            )
+        except Exception:
+            logger.exception(
+                "First-save metadata hydration failed for "
+                "media_type=%s source=%s media_id=%s season_number=%s user_id=%s",
+                media_type,
+                source,
+                media_id,
+                season_number,
+                request.user.id,
+            )
+            raise
         model = apps.get_model(app_label="app", model_name=tracking_media_type)
         instance = model(item=hydrated.item, user=request.user)
 
@@ -243,69 +255,92 @@ def media_save(request):
             else media.item.title
         ) or "item"
         if is_htmx:
-            user_medias = list(
-                media.__class__.objects.filter(
-                    user=request.user, item=media.item
-                ).select_related(
-                    "item",
-                ),
-            )
-            play_stats, activity_subtitle = _build_detail_activity_state(
-                media_type,
-                {"max_progress": getattr(media, "max_progress", None)},
-                current_instance=media,
-                user_medias=user_medias,
-                public_view=False,
-            )
-            response = render(
-                request,
-                "app/components/detail_track_action.html",
-                {
-                    "media": media.item,
-                    "current_instance": media,
-                    "return_url": return_url,
-                    "track_action_update": True,
-                },
-            )
-            activity_subtitle_response = render(
-                request,
-                "app/components/detail_activity_subtitle_slot.html",
-                {
-                    "media": media.item,
-                    "media_type": media_type,
-                    "current_instance": media,
-                    "activity_subtitle": activity_subtitle,
-                    "play_stats": play_stats,
-                    "user": request.user,
-                    "activity_subtitle_slot_oob": True,
-                },
-            )
-            score_chip_response = render(
-                request,
-                "app/components/detail_score_chip_slot.html",
-                {
-                    "media": media.item,
-                    "current_instance": media,
-                    "media_type": media_type,
-                    "user": request.user,
-                    "user_medias": [media],
-                    "public_view": False,
-                    "csrf_token": request.META.get("CSRF_COOKIE", ""),
-                    "score_chip_slot_oob": True,
-                },
-            )
-            card_rating_response = render(
-                request,
-                "app/components/media_card_rating_oob.html",
-                {
-                    "media_instance_id": media.id,
-                    "rating_value": media.formatted_score,
-                    "user": request.user,
-                },
-            )
-            response.write(activity_subtitle_response.content.decode())
-            response.write(score_chip_response.content.decode())
-            response.write(card_rating_response.content.decode())
+            try:
+                user_medias = list(
+                    media.__class__.objects.filter(
+                        user=request.user, item=media.item
+                    ).select_related(
+                        "item",
+                    ),
+                )
+                play_stats, activity_subtitle = _build_detail_activity_state(
+                    media_type,
+                    {"max_progress": getattr(media, "max_progress", None)},
+                    current_instance=media,
+                    user_medias=user_medias,
+                    public_view=False,
+                )
+                response = render(
+                    request,
+                    "app/components/detail_track_action.html",
+                    {
+                        "media": media.item,
+                        "current_instance": media,
+                        "return_url": return_url,
+                        "track_action_update": True,
+                    },
+                )
+                activity_subtitle_response = render(
+                    request,
+                    "app/components/detail_activity_subtitle_slot.html",
+                    {
+                        "media": media.item,
+                        "media_type": media_type,
+                        "current_instance": media,
+                        "activity_subtitle": activity_subtitle,
+                        "play_stats": play_stats,
+                        "user": request.user,
+                        "activity_subtitle_slot_oob": True,
+                    },
+                )
+                score_chip_response = render(
+                    request,
+                    "app/components/detail_score_chip_slot.html",
+                    {
+                        "media": media.item,
+                        "current_instance": media,
+                        "media_type": media_type,
+                        "user": request.user,
+                        "user_medias": [media],
+                        "public_view": False,
+                        "csrf_token": request.META.get("CSRF_COOKIE", ""),
+                        "score_chip_slot_oob": True,
+                    },
+                )
+                card_rating_response = render(
+                    request,
+                    "app/components/media_card_rating_oob.html",
+                    {
+                        "media_instance_id": media.id,
+                        "rating_value": media.formatted_score,
+                        "user": request.user,
+                    },
+                )
+                response.write(activity_subtitle_response.content.decode())
+                response.write(score_chip_response.content.decode())
+                response.write(card_rating_response.content.decode())
+            except Exception:
+                logger.exception(
+                    "Post-save enrichment failed for %s save "
+                    "media_type=%s source=%s media_id=%s instance_id=%s user_id=%s; "
+                    "record was already saved, falling back to a minimal confirmation.",
+                    action_verb.lower(),
+                    media_type,
+                    source,
+                    media_id,
+                    instance_id,
+                    request.user.id,
+                )
+                response = render(
+                    request,
+                    "app/components/detail_track_action.html",
+                    {
+                        "media": media.item,
+                        "current_instance": media,
+                        "return_url": return_url,
+                        "track_action_update": True,
+                    },
+                )
             htmx_trigger = {
                 "closeModal": {"formId": track_form_id},
                 "showToast": {
