@@ -47,6 +47,7 @@ from app.models import (
     Season,
     Sources,
 )
+from lists.models import CustomListItem
 from lists.smart_rules import sync_smart_lists_for_item
 
 logger = logging.getLogger(__name__)
@@ -391,6 +392,27 @@ def sync_smart_lists_on_item_tag_change(sender, instance, **kwargs):
     if not owner or not item:
         return
     _sync_owner_smart_lists_for_items(owner, [item])
+
+
+@receiver([post_save, post_delete], sender=CustomListItem)
+def sync_smart_lists_on_list_membership_change(sender, instance, **kwargs):
+    """Re-evaluate referencing smart lists when a manual list's membership changes.
+
+    A smart list's "List" filter includes the full contents of any linked
+    (non-smart) list. Membership changes on that manual list happen outside
+    the normal media-tracking signals below, so they need their own hook.
+    """
+    if kwargs.get("raw"):
+        return
+    custom_list = getattr(instance, "custom_list", None)
+    item = getattr(instance, "item", None)
+    if not custom_list or not item or custom_list.is_smart:
+        return
+
+    owners = {custom_list.owner}
+    owners.update(custom_list.collaborators.all())
+    for owner in owners:
+        _sync_owner_smart_lists_for_items(owner, [item])
 
 
 @receiver(post_save, sender=Item)

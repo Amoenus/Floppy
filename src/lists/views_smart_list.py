@@ -161,6 +161,9 @@ def _smart_list_detail_response(
                 else saved_rules["tag"],
                 "tag_exclude": request.GET.get("tag_exclude", ""),
                 "tag_mode": request.GET.get("tag_mode", saved_rules["tag_mode"]),
+                "list": request.GET.getlist("list")
+                if "list" in request.GET
+                else saved_rules["list"],
                 "search": request.GET.get("q", saved_rules["search"]),
                 "sort": request.GET.get("sort", saved_rules["sort"]),
                 "sort_direction": request.GET.get(
@@ -334,6 +337,7 @@ def _smart_list_detail_response(
         [
             bool(active_rules.get("status")),
             bool(active_rules.get("tag")),
+            bool(active_rules.get("list")),
             active_rules.get("rating") not in {"", "all"},
             active_rules.get("rating_min"),
             active_rules.get("rating_max"),
