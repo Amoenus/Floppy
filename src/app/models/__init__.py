@@ -71,6 +71,7 @@ from app.models.tombstone import DeletedMedia
 from app.models.tv import (
     TV,
     Episode,
+    RewatchAlreadyCompleteError,
     Season,
 )
 
@@ -128,6 +129,7 @@ __all__ = [
     "PodcastShow",
     "PodcastShowTracker",
     "ProviderMetadataStatus",
+    "RewatchAlreadyCompleteError",
     "Season",
     "Sources",
     "Status",

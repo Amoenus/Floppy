@@ -1,0 +1,129 @@
+from datetime import UTC, datetime
+from unittest.mock import patch
+
+from django.contrib.auth import get_user_model
+from django.test import TestCase
+from django.urls import reverse
+
+from app.models import TV, Episode, Item, MediaTypes, Season, Sources, Status
+
+METADATA_PATH = "app.providers.services.get_media_metadata"
+
+SEASON_METADATA = {
+    "episodes": [{"episode_number": 1}, {"episode_number": 2}],
+    "max_progress": 2,
+    "image": "s.jpg",
+    "season/1": {"episodes": [{"episode_number": 1}, {"episode_number": 2}]},
+}
+
+
+@patch(METADATA_PATH, return_value=SEASON_METADATA)
+class SeasonStatusPillSyncTests(TestCase):
+    """The status pill stays in sync when the season's status changes indirectly.
+
+    E.g. completing on the last episode, or reopening when a rewatch
+    starts — rather than only from editing the season directly.
+    """
+
+    def setUp(self):
+        """Track a two-episode season, one episode already watched."""
+        self.credentials = {"username": "test", "password": "12345"}
+        self.user = get_user_model().objects.create_user(**self.credentials)
+        self.client.login(**self.credentials)
+
+        with patch(METADATA_PATH, return_value=SEASON_METADATA):
+            tv_item = Item.objects.create(
+                media_id="123",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.TV.value,
+                title="Show",
+            )
+            self.tv = TV.objects.create(item=tv_item, user=self.user)
+            season_item = Item.objects.create(
+                media_id="123",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.SEASON.value,
+                title="Show",
+                season_number=1,
+            )
+            self.season = Season.objects.create(
+                item=season_item,
+                user=self.user,
+                related_tv=self.tv,
+                status=Status.IN_PROGRESS.value,
+            )
+            self.episode_items = [
+                Item.objects.create(
+                    media_id="123",
+                    source=Sources.TMDB.value,
+                    media_type=MediaTypes.EPISODE.value,
+                    title="Show",
+                    season_number=1,
+                    episode_number=n,
+                )
+                for n in (1, 2)
+            ]
+            Episode.objects.create(
+                item=self.episode_items[0],
+                related_season=self.season,
+                end_date=datetime(2023, 6, 1, tzinfo=UTC),
+            )
+
+    def test_watching_the_last_episode_refreshes_the_status_pill(
+        self,
+        _mock_metadata,
+    ):
+        """Completing the season from an episode row updates the status pill too.
+
+        Without this, the page keeps showing "In progress" until reloaded —
+        the episode-save response only OOB-swaps that one episode's own
+        button and the season's progress counter, never the season's own
+        status pill (`detail_track_action.html`).
+        """
+        response = self.client.post(
+            reverse("episode_save"),
+            data={
+                "media_id": "123",
+                "season_number": 1,
+                "episode_number": 2,
+                "source": Sources.TMDB.value,
+                "status": Status.COMPLETED.value,
+                "end_date": "2023-06-02",
+            },
+            HTTP_HX_REQUEST="true",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.season.refresh_from_db()
+        self.assertEqual(self.season.status, Status.COMPLETED.value)
+        content = response.content.decode()
+        self.assertIn(f"track-action-season-{self.season.item.media_id}", content)
+        self.assertIn("Completed", content)
+
+    def test_poll_refreshes_the_status_pill_after_an_external_write(
+        self,
+        _mock_metadata,
+    ):
+        """A webhook/scrobbler completing the season is also picked up by the poll.
+
+        `episode_history_poll` already re-renders episode rows written with
+        no open response to swap into; the season's own status pill needs
+        the same treatment.
+        """
+        with patch(METADATA_PATH, return_value=SEASON_METADATA):
+            Episode.objects.create(
+                item=self.episode_items[1],
+                related_season=self.season,
+                end_date=datetime(2023, 6, 2, tzinfo=UTC),
+            )
+        self.season.refresh_from_db()
+        self.assertEqual(self.season.status, Status.COMPLETED.value)
+
+        response = self.client.get(
+            reverse("episode_history_poll", args=[self.season.id]),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode()
+        self.assertIn(f"track-action-season-{self.season.item.media_id}", content)
+        self.assertIn("Completed", content)

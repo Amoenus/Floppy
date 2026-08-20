@@ -30,6 +30,10 @@ _UNSET_END_DATE = object()
 MIN_VALID_RELEASE_YEAR = 1900
 
 
+class RewatchAlreadyCompleteError(Exception):
+    """Raised when a rewatch's start date leaves nothing left to rewatch."""
+
+
 def _runtime_minutes(value):
     """Return a positive runtime in minutes, or None.
 
@@ -143,33 +147,105 @@ class TV(Media):
             if season.status != Status.DROPPED.value
         )
 
+    @property
+    def rewatch_started_at(self):
+        """Return when this show's rewatch began, or None.
+
+        TV has no rewatch_started_at column of its own — the pass lives on
+        each season — so this reads the earliest open one. `start_rewatch`
+        opens every season together, but a season skipped for already
+        being covered (or one whose pass was started separately) can leave
+        them different; the earliest is the more honest "since" to show.
+        """
+        dates = [
+            season.rewatch_started_at
+            for season in self.seasons.all()
+            if season.rewatch_started_at is not None
+        ]
+        return min(dates) if dates else None
+
     def start_rewatch(self, started_at=None):
-        """Open a rewatch pass on every season of the show."""
+        """Open a rewatch pass on every season with something left to rewatch.
+
+        A season already fully covered by plays at or after `started_at`
+        is skipped rather than opened and immediately closed again —
+        that's more confusing than just leaving it alone. Raises
+        RewatchAlreadyCompleteError only if every season would be skipped,
+        so the caller can tell the user nothing would happen. Returns the
+        seasons that *were* skipped (empty if none) so a caller can still
+        tell the user about a partial skip, since that succeeds silently
+        otherwise.
+        """
+        from app.models.media import BasicMedia  # avoid a module-load cycle
+
         started_at = started_at or timezone.now()
         seasons = [
             season
             for season in self.seasons.filter(item__season_number__gt=0)
             if season.status != Status.DROPPED.value
         ]
-        for season in seasons:
+        if not seasons:
+            no_seasons_msg = "This show has no seasons to rewatch."
+            raise RewatchAlreadyCompleteError(no_seasons_msg)
+        BasicMedia.objects.annotate_max_progress(seasons, MediaTypes.SEASON.value)
+
+        skipped = [
+            season
+            for season in seasons
+            if season._would_be_immediately_complete(
+                started_at,
+                getattr(season, "max_progress", None),
+            )
+        ]
+        openable = [season for season in seasons if season not in skipped]
+        if not openable:
+            all_covered_msg = "Every season is already fully watched from that date."
+            raise RewatchAlreadyCompleteError(all_covered_msg)
+
+        for season in openable:
             season.rewatch_started_at = started_at
             season.status = Status.IN_PROGRESS.value
             season._invalidate_episode_stats()  # same-module sibling
-        if seasons:
-            bulk_update_with_history(
-                seasons,
-                Season,
-                fields=["rewatch_started_at", "status"],
-            )
+        bulk_update_with_history(
+            openable,
+            Season,
+            fields=["rewatch_started_at", "status"],
+        )
 
         if self.status != Status.IN_PROGRESS.value:
             self.status = Status.IN_PROGRESS.value
             bulk_update_with_history([self], TV, fields=["status"])
 
+        return skipped
+
     def stop_rewatch(self, max_progress=None):
-        """Close every open rewatch pass on the show's seasons."""
-        for season in self.seasons.all():
-            season.stop_rewatch(max_progress=max_progress)
+        """Close every open rewatch pass on the show's seasons.
+
+        `max_progress` is ignored: seasons can have different episode
+        counts, so each resolves its own via `Season.stop_rewatch`. Also
+        reconciles the show's own status against where its seasons land —
+        ending a pass before it finished can fall back to Completed (or
+        stay In Progress) independently of what the show currently reads
+        as, same as `start_rewatch`.
+        """
+        seasons = [
+            season
+            for season in self.seasons.filter(item__season_number__gt=0)
+            if season.status != Status.DROPPED.value
+        ]
+        for season in seasons:
+            season.stop_rewatch()
+
+        if not seasons:
+            return
+        desired_status = (
+            Status.COMPLETED.value
+            if all(season.status == Status.COMPLETED.value for season in seasons)
+            else Status.IN_PROGRESS.value
+        )
+        if self.status != desired_status:
+            self.status = desired_status
+            bulk_update_with_history([self], TV, fields=["status"])
 
     @property
     def progress_percentage(self):
@@ -839,6 +915,22 @@ class Season(Media):
             and self.completed_episode_count >= max_progress_value
         )
 
+    def _would_be_immediately_complete(self, started_at, max_progress=None):
+        """Return whether opening a pass from started_at leaves nothing to rewatch.
+
+        Checked without persisting: swaps in the candidate start, asks
+        `_is_fully_watched` (which reads plays through the pass window it
+        implies), then puts the season's actual state back.
+        """
+        original_started_at = self.rewatch_started_at
+        self.rewatch_started_at = started_at
+        self._invalidate_episode_stats()
+        try:
+            return self._is_fully_watched(max_progress)
+        finally:
+            self.rewatch_started_at = original_started_at
+            self._invalidate_episode_stats()
+
     def derived_status_from_episode_progress(self, max_progress=None):
         """Return the effective season status from local episode history."""
         if self.status in {Status.DROPPED.value, Status.PAUSED.value}:
@@ -922,9 +1014,28 @@ class Season(Media):
         if hasattr(self, "_episode_stats_cache"):
             del self._episode_stats_cache
 
-    def start_rewatch(self, started_at=None):
-        """Begin a new pass, keeping every existing play as history."""
-        self.rewatch_started_at = started_at or timezone.now()
+    def start_rewatch(self, started_at=None, max_progress=None):
+        """Begin a new pass, keeping every existing play as history.
+
+        Raises RewatchAlreadyCompleteError if the plays already logged at
+        or after `started_at` already cover the season — opening a pass
+        that would immediately close itself again is more confusing than
+        just refusing it. Looks up its own episode count when
+        `max_progress` isn't supplied — see `stop_rewatch` for why that
+        can't be a shared value.
+        """
+        started_at = started_at or timezone.now()
+        if max_progress is None:
+            from app.models.media import BasicMedia  # avoid a module-load cycle
+
+            BasicMedia.objects.annotate_max_progress([self], MediaTypes.SEASON.value)
+            max_progress = getattr(self, "max_progress", None)
+
+        if self._would_be_immediately_complete(started_at, max_progress):
+            already_complete_msg = "Every episode is already watched from that date."
+            raise RewatchAlreadyCompleteError(already_complete_msg)
+
+        self.rewatch_started_at = started_at
         self.status = Status.IN_PROGRESS.value
         self._invalidate_episode_stats()
         bulk_update_with_history(
@@ -934,9 +1045,20 @@ class Season(Media):
         )
 
     def stop_rewatch(self, max_progress=None):
-        """Abandon the current pass; the full history decides the status again."""
+        """Abandon the current pass; the full history decides the status again.
+
+        Looks up its own episode count when `max_progress` isn't supplied,
+        so a caller resolving several seasons at once (e.g.
+        `TV.stop_rewatch`) doesn't have to share one value across seasons
+        that can have different episode counts.
+        """
         if self.rewatch_started_at is None:
             return
+        if max_progress is None:
+            from app.models.media import BasicMedia  # avoid a module-load cycle
+
+            BasicMedia.objects.annotate_max_progress([self], MediaTypes.SEASON.value)
+            max_progress = getattr(self, "max_progress", None)
         self.rewatch_started_at = None
         self._invalidate_episode_stats()
         if self._is_fully_watched(max_progress):
@@ -948,7 +1070,13 @@ class Season(Media):
         )
 
     def finish_rewatch_if_complete(self, max_progress=None):
-        """Close the pass once every episode has been played again."""
+        """Close the pass and complete the season once every episode is replayed.
+
+        Does not fan out to the parent TV — callers that care (e.g.
+        advancing to the next season) do that themselves, since a bulk
+        caller closing several seasons at once needs that to happen after
+        every season in the batch has settled, not mid-loop.
+        """
         if self.rewatch_started_at is None:
             return False
         if (
@@ -958,8 +1086,13 @@ class Season(Media):
             return False
 
         self.rewatch_started_at = None
+        self.status = Status.COMPLETED.value
         self._invalidate_episode_stats()
-        bulk_update_with_history([self], Season, fields=["rewatch_started_at"])
+        bulk_update_with_history(
+            [self],
+            Season,
+            fields=["rewatch_started_at", "status"],
+        )
         return True
 
     def _get_episode_stats(self):
@@ -1066,7 +1199,9 @@ class Season(Media):
         logger.info("No more episodes to watch.")
         return None
 
-    def watch(self, episode_number, end_date, watch_operation_id=None, **episode_fields):
+    def watch(
+        self, episode_number, end_date, watch_operation_id=None, **episode_fields
+    ):
         """Create or add a repeat to an episode of the season."""
         from app import fork_services_episode
 
@@ -1346,7 +1481,9 @@ class Season(Media):
             # An explicit end_date (including None) from the completion form
             # applies uniformly; otherwise fall back to the user's preference.
             if end_date is _UNSET_END_DATE:
-                resolved_end_date = self.user.resolve_watch_date(now, episode.get("air_date"))
+                resolved_end_date = self.user.resolve_watch_date(
+                    now, episode.get("air_date")
+                )
             else:
                 resolved_end_date = end_date
 

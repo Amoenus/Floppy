@@ -25,6 +25,7 @@ from app.models import (
     Episode,
     Item,
     MediaTypes,
+    RewatchAlreadyCompleteError,
     Season,
     Sources,
     Status,
@@ -32,6 +33,7 @@ from app.models import (
 from app.providers import services
 from app.services import metadata_resolution
 from app.services.tracking_hydration import ensure_item_metadata
+from app.templatetags.app_tags import media_url
 from app.track_modal_views import (
     _render_standard_track_modal,
 )
@@ -555,21 +557,43 @@ def media_rewatch(request):
     media = get_object_or_404(model, pk=instance_id, user=request.user)
 
     if action == "stop":
-        # Ending a pass has to decide whether the full history means the entry
-        # is complete again, which needs the season's episode count.
-        seasons = (
-            [media] if media_type == MediaTypes.SEASON.value else list(media.seasons.all())
-        )
-        BasicMedia.objects.annotate_max_progress(seasons, MediaTypes.SEASON.value)
-        for season in seasons:
-            season.stop_rewatch(max_progress=getattr(season, "max_progress", None))
+        # Each model resolves its own season(s) against their own episode
+        # counts — a show's seasons can have different lengths.
+        media.stop_rewatch()
         logger.info("Rewatch of %s ended.", media)
     else:
         try:
             started_at = _parse_rewatch_start(request.POST.get("rewatch_started_at"))
         except ValueError:
             return HttpResponseBadRequest("Enter a rewatch start date in the past.")
-        media.start_rewatch(started_at=started_at)
+        try:
+            skipped_seasons = media.start_rewatch(started_at=started_at) or []
+        except RewatchAlreadyCompleteError as error:
+            # htmx doesn't swap a non-2xx response, so without an explicit
+            # trigger the button click would just silently do nothing.
+            response = HttpResponseBadRequest(str(error))
+            response["HX-Trigger"] = json.dumps(
+                {"showToast": {"message": str(error), "type": "error"}},
+            )
+            return response
+        if skipped_seasons:
+            # A show-level start only raises when *every* season would be a
+            # no-op; a partial skip otherwise succeeds with no other signal
+            # that some seasons were left untouched, so say so explicitly.
+            # This uses the messages framework, not the showToast trigger
+            # above, because the success response below causes a full page
+            # navigation (HX-Redirect) that a same-request toast wouldn't
+            # survive.
+            skipped_numbers = sorted(
+                season.item.season_number for season in skipped_seasons
+            )
+            season_word = "Season" if len(skipped_numbers) == 1 else "Seasons"
+            skipped_list = ", ".join(str(number) for number in skipped_numbers)
+            messages.warning(
+                request,
+                f"{season_word} {skipped_list} already fully watched from "
+                f"that date — left as is.",
+            )
         logger.info("Rewatch of %s started, from %s.", media, started_at)
 
     cache_utils.clear_media_list_cache_for_user(request.user.id)
@@ -601,6 +625,28 @@ def _render_season_progress_oob(related_season):
             f"Progress: {progress}</span>"
         )
     return spans
+
+
+def _render_track_action_oob(request, related_season, return_url):
+    """Render the season's own status pill as an OOB swap.
+
+    Watching an episode (or a webhook/scrobbler writing one with no open
+    response to attach to) can complete the season — or completing the
+    season directly fills in the episodes it missed — and either way
+    nothing else refreshes this pill, so callers on both sides of that
+    need to push it explicitly.
+    """
+    return render_to_string(
+        "app/components/detail_track_action.html",
+        {
+            "media": related_season.item,
+            "current_instance": related_season,
+            "return_url": return_url,
+            "track_action_update": True,
+            "swap_oob": True,
+        },
+        request=request,
+    )
 
 
 def _write_episode_save_oob(
@@ -668,6 +714,9 @@ def _write_episode_save_oob(
                 request=request,
             ),
         )
+        response.write(
+            _render_track_action_oob(request, related_season, parsed_next),
+        )
         # Season-progress spans only exist on the season page — nothing to target here.
         return
 
@@ -695,6 +744,9 @@ def _write_episode_save_oob(
         ),
     )
     response.write(_render_season_progress_oob(related_season))
+    response.write(
+        _render_track_action_oob(request, related_season, parsed_next),
+    )
 
 
 @require_POST
@@ -980,6 +1032,13 @@ def episode_history_poll(request, season_id):
         )
 
     response.write(_render_season_progress_oob(related_season))
+    response.write(
+        _render_track_action_oob(
+            request,
+            related_season,
+            media_url(related_season.item),
+        ),
+    )
     response["Cache-Control"] = "no-cache, no-store, must-revalidate"
     return response
 

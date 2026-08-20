@@ -1,12 +1,13 @@
 {% load app_tags %}
 {% load user_tags %}
 
-{# Always-present rating-chip slot for the standalone episode page. The wrapper div is rendered even when the user has no watch history yet (it is simply empty), so episode_save can OOB-swap the populated chip in on the first watch without a page reload. `class="contents"` keeps the wrapper out of the flex layout. The inner chip is only rendered once history + a season instance exist. #}
+{# Always-present rating-chip slot for the standalone episode page. The wrapper div is rendered even when the user has no watch history yet (it is simply empty), so episode_save can OOB-swap the populated chip in on the first watch without a page reload. `class="contents"` keeps the wrapper out of the flex layout. The inner chip is only rendered once a lifetime play + a season instance exist — reading `rating_plays` rather than `episode.history` so a rewatch pass that hasn't reached this episode yet doesn't hide its existing rating. #}
 <div id="episode-rating-chip-{{ source }}-{{ media_id }}-{{ season_number }}-{{ episode_number }}"
      {% if rating_chip_oob %}hx-swap-oob="true"{% endif %}
      class="contents">
-  {% if not public_view and episode and episode.history and current_instance %}
-    {% with ep_score=episode.history.0.score %}
+  {% with rating_plays=episode|rating_plays %}
+  {% if not public_view and episode and rating_plays and current_instance %}
+    {% with ep_score=rating_plays.0.score %}
     <div x-data="{
       showRatingPopup: false,
       rating: {% if ep_score is not None %}{{ ep_score|score_display:user }}{% else %}null{% endif %},
@@ -63,4 +64,5 @@
     </div>
     {% endwith %}
   {% endif %}
+  {% endwith %}
 </div>

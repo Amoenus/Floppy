@@ -10,6 +10,7 @@ from app.models import (
     Episode,
     Item,
     MediaTypes,
+    RewatchAlreadyCompleteError,
     Season,
     Sources,
     Status,
@@ -130,6 +131,38 @@ class SeasonRewatch(TestCase):
         self.assertEqual(self.season.next_episode_number(), 1)
         self.assertEqual(self.season.status, Status.IN_PROGRESS.value)
 
+    def test_starting_a_rewatch_already_fully_replayed_is_rejected(
+        self,
+        _mock_metadata,
+    ):
+        """A pass backdated over plays that already cover it is refused.
+
+        Opening it and having it immediately close itself again would be
+        more confusing than just saying no — the user asked to rewatch
+        something and nothing would visibly happen.
+        """
+        self._watch(self.episode_items[0], datetime(2026, 8, 2, tzinfo=UTC))
+        self._watch(self.episode_items[1], datetime(2026, 8, 3, tzinfo=UTC))
+
+        with self.assertRaises(RewatchAlreadyCompleteError):
+            self.season.start_rewatch(started_at=datetime(2026, 8, 1, tzinfo=UTC))
+
+        self.season.refresh_from_db()
+        self.assertIsNone(self.season.rewatch_started_at)
+        self.assertEqual(self.season.status, Status.COMPLETED.value)
+
+    def test_starting_a_rewatch_partially_replayed_stays_in_progress(
+        self,
+        _mock_metadata,
+    ):
+        """A pass that doesn't yet cover every episode stays open."""
+        self._watch(self.episode_items[0], datetime(2026, 8, 2, tzinfo=UTC))
+
+        self.season.start_rewatch(started_at=datetime(2026, 8, 1, tzinfo=UTC))
+
+        self.assertIsNotNone(self.season.rewatch_started_at)
+        self.assertEqual(self.season.status, Status.IN_PROGRESS.value)
+
     def test_play_during_rewatch_advances_progress(self, _mock_metadata):
         """Only plays inside the pass count towards it."""
         self.season.start_rewatch()
@@ -201,6 +234,96 @@ class SeasonRewatch(TestCase):
         self.assertEqual(self.season.status, Status.IN_PROGRESS.value)
         self.assertTrue(self.tv.is_rewatching)
 
+    def test_show_rewatch_already_fully_replayed_is_rejected(
+        self,
+        _mock_metadata,
+    ):
+        """A show whose only season would immediately re-close is refused too."""
+        self._watch(self.episode_items[0], datetime(2026, 8, 2, tzinfo=UTC))
+        self._watch(self.episode_items[1], datetime(2026, 8, 3, tzinfo=UTC))
+
+        with self.assertRaises(RewatchAlreadyCompleteError):
+            self.tv.start_rewatch(started_at=datetime(2026, 8, 1, tzinfo=UTC))
+
+        self.season.refresh_from_db()
+        self.assertIsNone(self.season.rewatch_started_at)
+        self.assertEqual(self.season.status, Status.COMPLETED.value)
+
+    def test_show_rewatch_skips_a_season_already_covered_but_opens_the_rest(
+        self,
+        _mock_metadata,
+    ):
+        """One already-covered season doesn't block reopening the others."""
+        season_2_item = Item.objects.create(
+            media_id="123",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Show",
+            season_number=2,
+        )
+        # Created In Progress, then completed separately: creating it
+        # Completed directly would fire the season's own "fill in the
+        # episodes a completion implies" logic under the class-level
+        # 2-episode metadata mock, before the 1-episode mock below is
+        # active — auto-creating an episode 2 that doesn't exist here.
+        season_2 = Season.objects.create(
+            item=season_2_item,
+            user=self.user,
+            related_tv=self.tv,
+            status=Status.IN_PROGRESS.value,
+        )
+        season_2_episode_item = Item.objects.create(
+            media_id="123",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="Show",
+            season_number=2,
+            episode_number=1,
+        )
+        one_episode_metadata = {
+            "episodes": [{"episode_number": 1}],
+            "max_progress": 1,
+            "image": "s.jpg",
+            "season/2": {"episodes": [{"episode_number": 1}]},
+        }
+        with patch(METADATA_PATH, return_value=one_episode_metadata):
+            Episode.objects.create(
+                item=season_2_episode_item,
+                related_season=season_2,
+                end_date=datetime(2023, 6, 1, tzinfo=UTC),
+            )
+        Season.objects.filter(pk=season_2.pk).update(status=Status.COMPLETED.value)
+        season_2.refresh_from_db()
+
+        # Season 1 gets a play on the pass date, so it's already covered from
+        # there; season 2's only play predates it, so it genuinely reopens.
+        self._watch(self.episode_items[0], datetime(2026, 8, 1, tzinfo=UTC))
+        self._watch(self.episode_items[1], datetime(2026, 8, 1, tzinfo=UTC))
+
+        def metadata_for_season(
+            media_type,
+            media_id,
+            source,
+            season_numbers=None,
+            **_kwargs,
+        ):
+            if season_numbers and season_numbers[0] == 2:
+                return one_episode_metadata
+            return SEASON_METADATA
+
+        with patch(METADATA_PATH, side_effect=metadata_for_season):
+            skipped = self.tv.start_rewatch(started_at=datetime(2026, 8, 1, tzinfo=UTC))
+
+        self.season.refresh_from_db()
+        season_2.refresh_from_db()
+        self.assertIsNone(self.season.rewatch_started_at)
+        self.assertEqual(self.season.status, Status.COMPLETED.value)
+        self.assertIsNotNone(season_2.rewatch_started_at)
+        self.assertEqual(season_2.status, Status.IN_PROGRESS.value)
+        # Reported back so a caller can tell the user season 1 was left
+        # alone — succeeding silently here would hide that from them.
+        self.assertEqual([s.item.season_number for s in skipped], [1])
+
     def test_show_is_not_rewatching_without_an_open_pass(self, _mock_metadata):
         """A show with no season in a pass is not being rewatched."""
         self.assertFalse(self.tv.is_rewatching)
@@ -214,6 +337,125 @@ class SeasonRewatch(TestCase):
         self.season.refresh_from_db()
         self.assertIsNone(self.season.rewatch_started_at)
         self.assertFalse(self.tv.is_rewatching)
+
+    def test_show_stop_rewatch_reconciles_the_shows_own_status(
+        self,
+        _mock_metadata,
+    ):
+        """Ending a show pass before finishing it must not strand the show.
+
+        Each season correctly falls back to what its own history implies,
+        but nothing previously re-derived the parent TV's status from that —
+        a show stopped before its rewatch finished stayed In Progress
+        forever, even once every season was Completed again. Each call below
+        re-fetches the TV, the way the view does per request — reusing the
+        setUp instance in place would hide the bug behind its own staleness
+        (it predates the auto-completion that watching every episode in
+        setUp triggers).
+        """
+        TV.objects.get(pk=self.tv.pk).start_rewatch()
+        self.assertEqual(
+            TV.objects.get(pk=self.tv.pk).status,
+            Status.IN_PROGRESS.value,
+        )
+
+        TV.objects.get(pk=self.tv.pk).stop_rewatch()
+
+        self.assertEqual(
+            TV.objects.get(pk=self.tv.pk).status,
+            Status.COMPLETED.value,
+        )
+
+    def test_show_stop_rewatch_resolves_each_season_by_its_own_length(
+        self,
+        _mock_metadata,
+    ):
+        """A 3-episode season isn't judged complete by a 2-episode one's count.
+
+        Built with bulk_create + a direct status update rather than the
+        normal watch flow, so this only exercises stop_rewatch's own
+        resolution — Episode.save() resolving a fully-replayed season on its
+        own is covered separately, and would otherwise mask this bug too.
+        """
+        season_2_item = Item.objects.create(
+            media_id="123",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Show",
+            season_number=2,
+        )
+        season_2 = Season.objects.create(
+            item=season_2_item,
+            user=self.user,
+            related_tv=self.tv,
+            status=Status.IN_PROGRESS.value,
+        )
+        season_2_episode_items = [
+            Item.objects.create(
+                media_id="123",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.EPISODE.value,
+                title="Show",
+                season_number=2,
+                episode_number=episode_number,
+            )
+            for episode_number in (1, 2, 3)
+        ]
+        three_episode_metadata = {
+            "episodes": [{"episode_number": n} for n in (1, 2, 3)],
+            "max_progress": 3,
+            "image": "s.jpg",
+            "season/2": {"episodes": [{"episode_number": n} for n in (1, 2, 3)]},
+        }
+
+        def metadata_for_season(
+            media_type,
+            media_id,
+            source,
+            season_numbers=None,
+            **_kwargs,
+        ):
+            if season_numbers and season_numbers[0] == 2:
+                return three_episode_metadata
+            return SEASON_METADATA
+
+        now = timezone.now()
+        Season.objects.filter(pk__in=[self.season.pk, season_2.pk]).update(
+            status=Status.IN_PROGRESS.value,
+            rewatch_started_at=now,
+        )
+        # Season 1 (2 episodes): both replayed within the pass.
+        Episode.objects.bulk_create(
+            Episode(
+                item=item,
+                related_season=self.season,
+                end_date=now,
+                status=Status.COMPLETED.value,
+            )
+            for item in self.episode_items
+        )
+        # Season 2 (3 episodes): only 1 of 3 replayed within the pass.
+        Episode.objects.bulk_create(
+            [
+                Episode(
+                    item=season_2_episode_items[0],
+                    related_season=season_2,
+                    end_date=now,
+                    status=Status.COMPLETED.value,
+                ),
+            ],
+        )
+
+        with patch(METADATA_PATH, side_effect=metadata_for_season):
+            # A fresh instance, the way a real request loads one — no
+            # in-memory `max_progress`, so this only passes if stop_rewatch
+            # annotates it itself.
+            TV.objects.get(pk=self.tv.pk).stop_rewatch()
+
+        self.season.refresh_from_db()
+        season_2.refresh_from_db()
+        self.assertEqual(self.season.status, Status.COMPLETED.value)
+        self.assertEqual(season_2.status, Status.IN_PROGRESS.value)
 
     def test_replaying_an_episode_keeps_its_rating(self, _mock_metadata):
         """A rating belongs to the episode, so a new play carries it too."""
