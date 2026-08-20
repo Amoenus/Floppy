@@ -38,7 +38,7 @@
           {% endif %}
 
           {% if show_status_chip|default_if_none:True %}
-            {% include "app/components/media_card_status_chip.html" with media=media current_sort_value=current_sort_value recommend_mode=recommend_mode show_next_event_chip=show_next_event_chip only %}
+            {% include "app/components/media_card_status_chip.html" with media=media current_sort_value=current_sort_value recommend_mode=recommend_mode show_next_event_chip=show_next_event_chip Status=Status only %}
           {% endif %}
 
           {% if resolved_media_type == MediaTypes.SEASON.value and item.provider_metadata_status == "local_only_missing_season" %}

@@ -131,6 +131,7 @@ class SeasonStatusPillSyncTests(TestCase):
         content = response.content.decode()
         self.assertIn(f'id="media-status-chip-{self.season.id}"', content)
         self.assertIn('hx-swap-oob="outerHTML"', content)
+        self.assertIn("M21.801 10A10 10 0 1 1 17 3.335", content)
 
     def test_completing_the_last_season_refreshes_the_shows_own_pill(
         self,
@@ -191,3 +192,33 @@ class SeasonStatusPillSyncTests(TestCase):
         content = response.content.decode()
         self.assertIn(f"track-action-season-{self.season.item.media_id}", content)
         self.assertIn("Completed", content)
+
+    def test_media_card_renders_its_status_icon(
+        self,
+        _mock_metadata,
+    ):
+        """A season card (e.g. on the show page) shows its status icon, not an empty chip.
+
+        media_card.html includes media_card_status_chip.html with `only`,
+        which drops everything not explicitly passed — including `Status`,
+        normally injected by a context processor. Without passing it
+        through explicitly, every `status_value == Status.X.value` check
+        in the partial silently fails, so the chip renders but stays
+        empty: no icon, just the bare colored box.
+        """
+        from django.template.loader import render_to_string
+        from django.test import RequestFactory
+
+        self.season.status = Status.COMPLETED.value
+        self.season.save()
+
+        request = RequestFactory().get("/")
+        request.user = self.user
+        content = render_to_string(
+            "app/components/media_card.html",
+            {"item": self.season.item, "media": self.season},
+            request=request,
+        )
+
+        self.assertIn(f'id="media-status-chip-{self.season.id}"', content)
+        self.assertIn("M21.801 10A10 10 0 1 1 17 3.335", content)
