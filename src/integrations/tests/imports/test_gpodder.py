@@ -185,6 +185,143 @@ class GPodderImporterTests(TestCase):
         )
         self.assertEqual(Podcast.objects.filter(user=self.user, item=item).count(), 1)
 
+    @patch("integrations.imports.gpodder.gpodder_api.register_device")
+    @patch("integrations.imports.gpodder.gpodder_api.fetch_episode_actions")
+    @patch("integrations.imports.gpodder.gpodder_api.fetch_subscriptions")
+    @patch("integrations.imports.gpodder.gpodder_api.verify_login")
+    @patch("integrations.imports.gpodder.podcast_rss.fetch_episodes_from_rss")
+    @patch("integrations.imports.gpodder.podcast_rss.fetch_show_metadata_from_rss")
+    def test_initial_sync_populates_show_and_item_artwork_from_rss(
+        self,
+        mock_show_metadata,
+        mock_fetch_rss_episodes,
+        _mock_verify_login,
+        mock_fetch_subscriptions,
+        mock_fetch_actions,
+        _mock_register_device,
+    ):
+        mock_fetch_subscriptions.return_value = ["https://example.com/feed.xml"]
+        mock_show_metadata.return_value = {
+            "title": "Example Show",
+            "image": "https://example.com/art.jpg",
+        }
+        mock_fetch_rss_episodes.return_value = [
+            {
+                "title": "Episode 1",
+                "published": timezone.now(),
+                "duration": 300,
+                "audio_url": "https://cdn.example.com/ep1.mp3",
+                "guid": "ep-1",
+            },
+        ]
+        mock_fetch_actions.return_value = (
+            [
+                {
+                    "action": "play",
+                    "podcast": "https://example.com/feed.xml",
+                    "episode": "https://cdn.example.com/ep1.mp3",
+                    "timestamp": "2026-01-01T12:00:00Z",
+                    "position": 120,
+                    "total": 300,
+                },
+            ],
+            77,
+        )
+
+        gpodder_import.importer(None, self.user, "new")
+
+        show = PodcastShow.objects.get()
+        self.assertEqual(show.image, "https://example.com/art.jpg")
+        item = Item.objects.get(
+            source=Sources.GPODDER.value, media_type=MediaTypes.PODCAST.value
+        )
+        self.assertEqual(item.image, "https://example.com/art.jpg")
+
+    @patch("integrations.imports.gpodder.gpodder_api.register_device")
+    @patch("integrations.imports.gpodder.gpodder_api.fetch_episode_actions")
+    @patch("integrations.imports.gpodder.gpodder_api.fetch_subscriptions")
+    @patch("integrations.imports.gpodder.gpodder_api.verify_login")
+    @patch("integrations.imports.gpodder.podcast_rss.fetch_episodes_from_rss")
+    @patch("integrations.imports.gpodder.podcast_rss.fetch_show_metadata_from_rss")
+    def test_resync_backfills_item_image_once_show_gains_artwork(
+        self,
+        mock_show_metadata,
+        mock_fetch_rss_episodes,
+        _mock_verify_login,
+        mock_fetch_subscriptions,
+        mock_fetch_actions,
+        _mock_register_device,
+    ):
+        now = timezone.now()
+        show = PodcastShow.objects.create(
+            podcast_uuid="gp_existing",
+            source=Sources.GPODDER.value,
+            title="Example Show",
+            rss_feed_url="https://example.com/feed.xml",
+        )
+        episode = PodcastEpisode.objects.create(
+            show=show,
+            episode_uuid="ep-1",
+            title="Episode 1",
+            audio_url="https://cdn.example.com/ep1.mp3",
+            duration=300,
+            published=now,
+        )
+        item = Item.objects.create(
+            media_id="ep-1",
+            source=Sources.GPODDER.value,
+            media_type=MediaTypes.PODCAST.value,
+            title="Episode 1",
+            image="",
+            runtime_minutes=5,
+            release_datetime=now,
+        )
+        Podcast.objects.create(
+            user=self.user,
+            item=item,
+            show=show,
+            episode=episode,
+            status=Status.IN_PROGRESS.value,
+            progress=2,
+            played_up_to_seconds=120,
+            last_seen_status=2,
+        )
+
+        mock_fetch_subscriptions.return_value = ["https://example.com/feed.xml"]
+        mock_show_metadata.return_value = {
+            "title": "Example Show",
+            "image": "https://example.com/new-art.jpg",
+        }
+        mock_fetch_rss_episodes.return_value = [
+            {
+                "title": "Episode 1",
+                "published": now,
+                "duration": 300,
+                "audio_url": "https://cdn.example.com/ep1.mp3",
+                "guid": "ep-1",
+            },
+        ]
+        mock_fetch_actions.return_value = (
+            [
+                {
+                    "action": "play",
+                    "podcast": "https://example.com/feed.xml",
+                    "episode": "https://cdn.example.com/ep1.mp3",
+                    "timestamp": "2026-01-01T12:05:00Z",
+                    "position": 150,
+                    "total": 300,
+                },
+            ],
+            88,
+        )
+
+        gpodder_import.importer(None, self.user, "new")
+
+        show.refresh_from_db()
+        item.refresh_from_db()
+        self.assertEqual(show.image, "https://example.com/new-art.jpg")
+        self.assertEqual(item.image, "https://example.com/new-art.jpg")
+
     @patch(
         "integrations.imports.gpodder.GPodderImporter._process_action",
         side_effect=RuntimeError("boom"),

@@ -37,6 +37,7 @@ def fetch_show_metadata_from_rss(rss_feed_url: str) -> dict:
         - description: Show description
         - language: Show language (optional)
         - author: Show author (optional)
+        - image: Show artwork URL (optional)
     """
     try:
         response = requests.get(
@@ -90,6 +91,16 @@ def fetch_show_metadata_from_rss(rss_feed_url: str) -> dict:
             author_elem = channel.find("itunes:author", namespaces)
             if author_elem is not None and author_elem.text:
                 metadata["author"] = author_elem.text.strip()
+
+            # Artwork, preferring the iTunes namespace image, falling back to
+            # the plain RSS <image><url> element.
+            itunes_image_elem = channel.find("itunes:image", namespaces)
+            if itunes_image_elem is not None and itunes_image_elem.get("href"):
+                metadata["image"] = itunes_image_elem.get("href").strip()
+            else:
+                image_url_elem = channel.find("image/url")
+                if image_url_elem is not None and image_url_elem.text:
+                    metadata["image"] = image_url_elem.text.strip()
 
     except requests.RequestException as e:
         logger.exception(

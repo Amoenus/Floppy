@@ -203,6 +203,7 @@ class GPodderImporter:
             "description": rss_metadata.get("description", ""),
             "language": rss_metadata.get("language", "")[:10],
             "rss_feed_url": raw_feed_url,
+            "image": rss_metadata.get("image", ""),
         }
 
         if show is None:
@@ -439,6 +440,9 @@ class GPodderImporter:
         if episode.published and item.release_datetime != episode.published:
             item.release_datetime = episode.published
             update_fields.append("release_datetime")
+        if show.image and item.image != show.image:
+            item.image = show.image
+            update_fields.append("image")
         if update_fields:
             item.save(update_fields=update_fields)
         return item

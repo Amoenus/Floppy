@@ -14,7 +14,6 @@ from app.models import (
     Item,
     MediaTypes,
     PodcastShowTracker,
-    Sources,
 )
 from app.providers import services
 from app.services import metadata_resolution
@@ -157,7 +156,7 @@ def media_search(request):
 
                         self.item, _ = Item.objects.get_or_create(
                             media_id=tracker.show.podcast_uuid,
-                            source=Sources.POCKETCASTS.value,
+                            source=tracker.show.source,
                             media_type=MediaTypes.PODCAST.value,
                             defaults={
                                 "title": tracker.show.title,
@@ -396,7 +395,7 @@ def get_saved_suggestions(user, media_type, query, limit=8):
                 media_url,
                 {
                     "media_type": MediaTypes.PODCAST.value,
-                    "source": Sources.POCKETCASTS.value,
+                    "source": show.source,
                     "media_id": show.podcast_uuid,
                     "title": show.title,
                 },

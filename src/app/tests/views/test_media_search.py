@@ -10,7 +10,10 @@ from app.models import (
     Artist,
     ArtistTracker,
     MediaTypes,
+    PodcastShow,
+    PodcastShowTracker,
     Sources,
+    Status,
 )
 from users.models import MetadataSourceDefaultChoices
 
@@ -59,6 +62,33 @@ class MediaSearchViewTests(TestCase):
             Sources.TMDB.value,
             language="en",
         )
+
+    @patch("app.providers.services.search")
+    def test_podcast_local_result_keeps_show_source(self, mock_search):
+        """Local podcast search results must not be mislabeled as Pocket Casts."""
+        mock_search.return_value = {
+            "page": 1,
+            "total_results": 0,
+            "total_pages": 0,
+            "results": [],
+        }
+        show = PodcastShow.objects.create(
+            podcast_uuid="gp_abc123",
+            source=Sources.GPODDER.value,
+            title="Gpodder Show",
+        )
+        PodcastShowTracker.objects.create(
+            user=self.user, show=show, status=Status.IN_PROGRESS.value
+        )
+
+        response = self.client.get(
+            reverse("search") + "?media_type=podcast&q=Gpodder",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        local_results = response.context["local_results"]
+        self.assertEqual(len(local_results), 1)
+        self.assertEqual(local_results[0]["item"].source, Sources.GPODDER.value)
 
     @patch("app.providers.services.search")
     def test_music_search_view_uses_shared_template(
