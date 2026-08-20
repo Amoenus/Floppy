@@ -710,7 +710,24 @@ class CreateMedia(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'id="episode-track-button-', html=False)
+        self.assertContains(
+            response,
+            'id="episode-track-button-',
+            count=2,
+            html=False,
+        )
+        self.assertContains(response, '-list" hx-swap-oob="true"', html=False)
+        latest_episode = Episode.objects.filter(
+            item__media_id="1668",
+            related_season__user=self.user,
+            item__episode_number=1,
+        ).latest("id")
+        self.assertContains(
+            response,
+            f'"instance_id": "{latest_episode.id}"',
+            count=2,
+            html=False,
+        )
         self.assertContains(response, 'id="episode-history-', html=False)
         self.assertContains(response, 'hx-swap-oob="true"', html=False)
         self.assertContains(response, "Watched 2 times")

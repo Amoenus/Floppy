@@ -505,16 +505,18 @@ def _write_episode_save_oob(
         # Season-progress spans only exist on the season page — nothing to target here.
         return
 
-    response.write(
-        render_to_string(
-            "app/components/detail_episode_track_button.html",
-            {
-                "episode": episode,
-                "track_button_oob": True,
-            },
-            request=request,
-        ),
-    )
+    for target_suffix in ("", "-list"):
+        response.write(
+            render_to_string(
+                "app/components/detail_episode_track_button.html",
+                {
+                    "episode": episode,
+                    "target_suffix": target_suffix,
+                    "track_button_oob": True,
+                },
+                request=request,
+            ),
+        )
     response.write(
         render_to_string(
             "app/components/detail_episode_history_line.html",
@@ -791,13 +793,18 @@ def episode_history_poll(request, season_id):
             .first()
         )
 
-        response.write(
-            render_to_string(
-                "app/components/detail_episode_track_button.html",
-                {"episode": episode, "track_button_oob": True},
-                request=request,
-            ),
-        )
+        for target_suffix in ("", "-list"):
+            response.write(
+                render_to_string(
+                    "app/components/detail_episode_track_button.html",
+                    {
+                        "episode": episode,
+                        "target_suffix": target_suffix,
+                        "track_button_oob": True,
+                    },
+                    request=request,
+                ),
+            )
         response.write(
             render_to_string(
                 "app/components/detail_episode_history_line.html",
