@@ -339,6 +339,8 @@ class CompleteMediaSerializer(serializers.Serializer):
             "score_count": int(media_metadata.get("score_count"))
             if media_metadata.get("score_count") is not None
             else None,
+            "cast": media_metadata.get("cast") or [],
+            "crew": media_metadata.get("crew") or [],
             "details": details,
             "related": related,
             "item_id": ItemIdField().to_representation(temp_media),

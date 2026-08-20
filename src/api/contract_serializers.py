@@ -152,6 +152,8 @@ class CompleteMediaResponseSerializer(serializers.Serializer):
     genres = serializers.ListField(child=serializers.CharField(), allow_null=True)
     score = serializers.FloatField(allow_null=True)
     score_count = serializers.IntegerField(allow_null=True)
+    cast = serializers.ListField(child=serializers.DictField())
+    crew = serializers.ListField(child=serializers.DictField())
     details = serializers.DictField()
     related = serializers.DictField()
     item_id = serializers.CharField(allow_null=True)

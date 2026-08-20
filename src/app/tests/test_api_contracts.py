@@ -448,6 +448,8 @@ class OpenAPIArtifactTests(SimpleTestCase):
             "genres",
             "score",
             "score_count",
+            "cast",
+            "crew",
             "details",
             "related",
             "item_id",
