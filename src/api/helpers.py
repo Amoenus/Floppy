@@ -168,7 +168,9 @@ def build_item_id(item):
     """Build the item_id string for the given item."""
     if not item:
         return None
-    media_type = item.media_type
+    media_type = getattr(item, "media_type", None)
+    if media_type is None:
+        return None
     children = ""
 
     if item.media_type == "season":
@@ -207,7 +209,7 @@ def build_lists_by_item_id(user, objects):
 
 def build_parent_id(item):
     """Build the parent_id string for seasons and episodes."""
-    if not item:
+    if not item or getattr(item, "media_type", None) is None:
         return None
     if item.media_type == "season":
         return f"tv/{item.source}/{item.media_id}"

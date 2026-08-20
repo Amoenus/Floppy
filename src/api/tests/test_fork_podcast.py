@@ -118,7 +118,7 @@ class ShowTrackerTests(PodcastApiTestCase):
 
 
 class ShowEpisodesTests(PodcastApiTestCase):
-    """GET podcasts/shows/{id}/episodes delegates to the web JSON view."""
+    """GET podcasts/shows/{id}/episodes uses the standard limit/offset envelope."""
 
     def test_episodes_listing(self):
         """Episodes are returned with pagination, newest first."""
@@ -130,8 +130,29 @@ class ShowEpisodesTests(PodcastApiTestCase):
         )
         self.assertEqual(response.status_code, HTTP.OK)
         payload = response.json()
-        self.assertEqual(payload["pagination"]["total_count"], 2)
-        self.assertEqual(payload["episodes"][0]["title"], "Episode Two")
+        self.assertEqual(payload["pagination"]["total"], 2)
+        self.assertEqual(payload["pagination"]["limit"], 20)
+        self.assertEqual(payload["pagination"]["offset"], 0)
+        self.assertEqual(payload["results"][0]["title"], "Episode Two")
+
+    def test_episodes_listing_respects_limit_offset(self):
+        """limit/offset page through the catalog like the rest of the API."""
+        response = self.call_api(
+            "get",
+            "api_podcast_show_episodes",
+            args=(self.show.id,),
+            params={"limit": 1, "offset": 1},
+            headers=self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.OK)
+        payload = response.json()
+        self.assertEqual(payload["pagination"]["total"], 2)
+        self.assertEqual(payload["pagination"]["limit"], 1)
+        self.assertEqual(payload["pagination"]["offset"], 1)
+        self.assertEqual(len(payload["results"]), 1)
+        self.assertEqual(payload["results"][0]["title"], "Episode One")
+        self.assertIsNone(payload["pagination"]["next"])
+        self.assertIsNotNone(payload["pagination"]["previous"])
 
 
 class EpisodePlayTests(PodcastApiTestCase):

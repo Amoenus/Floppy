@@ -517,8 +517,14 @@ class MediaSeasonTests(FloppyApiTestCase):
         payload = response.json()
         check_complete_media_structure(self, payload)
 
-    def test_season_detail_get_invalid_media_id_returns_internal_server_error(self):
-        """Season detail GET with invalid media_id should return 500."""
+    def test_season_detail_get_invalid_media_id_returns_ok_with_null_item_id(self):
+        """Season detail GET no longer 500s when provider metadata is bare.
+
+        Regression test for #888: build_item_id()/build_parent_id() used to
+        dereference `media_type` unconditionally, so metadata missing that
+        field (as returned here by the shared get_media_metadata patch)
+        crashed outside any handler instead of degrading gracefully.
+        """
         tv_item = self.items_by_type[MediaTypes.TV.value][0]
 
         response = self.call_api(
@@ -528,7 +534,9 @@ class MediaSeasonTests(FloppyApiTestCase):
             headers=self.auth_headers,
         )
 
-        self.assertEqual(response.status_code, 500)
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.data["item_id"])
+        self.assertIsNone(response.data["parent_id"])
 
     @patch("api.views.services.get_media_metadata")
     def test_season_detail_patch_updates_season_fields(self, mock_metadata):

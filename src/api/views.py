@@ -17,6 +17,10 @@ from rest_framework import permissions
 from rest_framework import views as drf_views
 from rest_framework.response import Response
 
+from app.activity_builders import (
+    _queue_game_lengths_refresh,
+    _should_queue_game_lengths_refresh,
+)
 from app.db_retry import run_retryable_db_operation
 from app.forms import ManualItemForm, get_form_class
 from app.media_list_filters import (
@@ -1199,6 +1203,27 @@ class MediaDetailView(drf_views.APIView):
             }
 
         lists = get_item_lists(user, media_id, source, media_type)
+
+        if media_type == MediaTypes.GAME.value:
+            game_length_item = (
+                user_medias[0].item
+                if user_medias
+                else Item.objects.filter(
+                    media_id=media_id,
+                    source=source,
+                    media_type=media_type,
+                ).first()
+            )
+            if game_length_item:
+                media_metadata["provider_game_lengths"] = (
+                    game_length_item.provider_game_lengths
+                )
+                if _should_queue_game_lengths_refresh(game_length_item):
+                    _queue_game_lengths_refresh(
+                        game_length_item,
+                        force=False,
+                        fetch_hltb=True,
+                    )
 
         data = {
             "media_metadata": media_metadata,

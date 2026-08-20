@@ -504,7 +504,7 @@ def build_history_day(
                     else None,
                     "play_count": play_count,
                     "instance_id": podcast.id,
-                    "entry_key": history_record.history_id,
+                    "entry_key": str(history_record.history_id),
                 },
             )
 
@@ -560,7 +560,7 @@ def build_history_day(
                 if runtime_minutes
                 else None,
                 "instance_id": game.id,
-                "entry_key": game.id,
+                "entry_key": str(game.id),
             }
             _attach_entry_score(entry, game)
             if genres:
@@ -620,7 +620,7 @@ def build_history_day(
                 "runtime_minutes": 0,
                 "runtime_display": progress_display,
                 "instance_id": boardgame.id,
-                "entry_key": boardgame.id,
+                "entry_key": str(boardgame.id),
             }
             _attach_entry_score(entry, boardgame)
             if genres:
