@@ -319,9 +319,37 @@ def media_save(request):
                         "user": request.user,
                     },
                 )
+                status_chip_response = render(
+                    request,
+                    "app/components/media_card_status_chip.html",
+                    {
+                        "media": media,
+                        "status_chip_oob": True,
+                    },
+                )
                 response.write(activity_subtitle_response.content.decode())
                 response.write(score_chip_response.content.decode())
                 response.write(card_rating_response.content.decode())
+                response.write(status_chip_response.content.decode())
+                # A season completing (or reopening) can cascade to complete
+                # (or reopen) its show — Season.save() already applies that
+                # server-side, but nothing else refreshes the show's own
+                # pill, e.g. when marking a season watched from the show
+                # page rather than the season's own page.
+                if media_type == MediaTypes.SEASON.value and media.related_tv_id:
+                    tv = (
+                        TV.objects.filter(pk=media.related_tv_id)
+                        .select_related("item")
+                        .first()
+                    )
+                    if tv:
+                        response.write(
+                            _render_track_action_oob(
+                                request,
+                                tv,
+                                media_url(tv.item),
+                            ),
+                        )
             except Exception:
                 logger.exception(
                     "Post-save enrichment failed for %s save "
@@ -627,20 +655,22 @@ def _render_season_progress_oob(related_season):
     return spans
 
 
-def _render_track_action_oob(request, related_season, return_url):
-    """Render the season's own status pill as an OOB swap.
+def _render_track_action_oob(request, instance, return_url):
+    """Render a tracked instance's own status pill as an OOB swap.
 
     Watching an episode (or a webhook/scrobbler writing one with no open
     response to attach to) can complete the season — or completing the
-    season directly fills in the episodes it missed — and either way
-    nothing else refreshes this pill, so callers on both sides of that
-    need to push it explicitly.
+    season directly fills in the episodes it missed, and can in turn
+    complete the show — and none of that has an open response of its own
+    to refresh this pill, so callers on any side of that need to push it
+    explicitly. Works for any tracked instance with an `.item` (Season,
+    TV, ...), not just seasons.
     """
     return render_to_string(
         "app/components/detail_track_action.html",
         {
-            "media": related_season.item,
-            "current_instance": related_season,
+            "media": instance.item,
+            "current_instance": instance,
             "return_url": return_url,
             "track_action_update": True,
             "swap_oob": True,

@@ -100,6 +100,70 @@ class SeasonStatusPillSyncTests(TestCase):
         self.assertIn(f"track-action-season-{self.season.item.media_id}", content)
         self.assertIn("Completed", content)
 
+    def test_marking_a_season_watched_refreshes_its_own_card_status_chip(
+        self,
+        _mock_metadata,
+    ):
+        """Completing a season directly updates its own card's status chip.
+
+        media_card.html renders each season as a card (e.g. on the show
+        page) with a status chip that has no OOB target of its own, so a
+        season edit never refreshed it — the card kept showing the old
+        status until the page was reloaded.
+        """
+        response = self.client.post(
+            reverse("media_save"),
+            data={
+                "instance_id": self.season.id,
+                "media_id": "123",
+                "source": Sources.TMDB.value,
+                "media_type": MediaTypes.SEASON.value,
+                "season_number": 1,
+                "status": Status.COMPLETED.value,
+                "end_date": "2023-06-02",
+            },
+            HTTP_HX_REQUEST="true",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.season.refresh_from_db()
+        self.assertEqual(self.season.status, Status.COMPLETED.value)
+        content = response.content.decode()
+        self.assertIn(f'id="media-status-chip-{self.season.id}"', content)
+        self.assertIn('hx-swap-oob="outerHTML"', content)
+
+    def test_completing_the_last_season_refreshes_the_shows_own_pill(
+        self,
+        _mock_metadata,
+    ):
+        """Completing a show's only season also refreshes the show's pill.
+
+        Season.save() already cascades the completion to the show
+        server-side, but nothing refreshed the show's own status pill
+        client-side — marking the last season watched from the show page
+        left its "In progress" pill stale until reload.
+        """
+        response = self.client.post(
+            reverse("media_save"),
+            data={
+                "instance_id": self.season.id,
+                "media_id": "123",
+                "source": Sources.TMDB.value,
+                "media_type": MediaTypes.SEASON.value,
+                "season_number": 1,
+                "status": Status.COMPLETED.value,
+                "end_date": "2023-06-02",
+            },
+            HTTP_HX_REQUEST="true",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        tv = TV.objects.get(pk=self.tv.pk)
+        self.assertEqual(tv.status, Status.COMPLETED.value)
+        content = response.content.decode()
+        self.assertIn(f"track-action-tv-{self.tv.item.media_id}", content)
+        self.assertIn("Completed", content)
+
     def test_poll_refreshes_the_status_pill_after_an_external_write(
         self,
         _mock_metadata,
