@@ -481,6 +481,45 @@ class HistoryTimelineTests(FloppyApiTestCase):
             for entry in day["entries"]:
                 self.assertEqual(entry["media_type"], "game")
 
+    def test_episode_history_includes_parent_show_name(self):
+        """Episode entries identify their parent show on every history path."""
+        episode = self.episode_medias[0]
+        episode.item.title = "Pilot"
+        episode.item.save(update_fields=["title"])
+        episode.end_date = datetime.datetime(2024, 5, 11, tzinfo=datetime.UTC)
+        episode.save(update_fields=["end_date"])
+
+        requests = (
+            {"types": "episodes"},
+            {
+                "types": "tv",
+                "media_id": "1001",
+                "source": Sources.TMDB.value,
+            },
+        )
+        for params in requests:
+            with self.subTest(params=params):
+                response = self.call_api(
+                    "get",
+                    "api_history",
+                    params=params,
+                    headers=self.auth_headers,
+                )
+
+                self.assertEqual(response.status_code, HTTP.OK)
+                entries = [
+                    entry
+                    for day in response.json()["results"]
+                    for entry in day["entries"]
+                ]
+                history_entry = next(
+                    entry
+                    for entry in entries
+                    if entry["instance_id"] == episode.id
+                )
+                self.assertEqual(history_entry["title"], "Pilot")
+                self.assertEqual(history_entry["show"]["title"], "TV Show 1")
+
     def test_history_types_alias_filters_categories_before_querying(self):
         """The issue's plural types parameter excludes unrelated categories."""
         episode = self.episode_medias[0]
