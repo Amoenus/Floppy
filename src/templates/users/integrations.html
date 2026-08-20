@@ -323,7 +323,7 @@
         {% endif %}
       </div>
       <p class="text-[var(--color-text-muted)] mb-4 text-sm">Push your Floppy watched status onto a Jellyfin server, e.g. after re-adding media or setting up a fresh Jellyfin instance.</p>
-      <div class="bg-[var(--color-surface-dim)] p-4 rounded-md space-y-3">
+      <div class="bg-[var(--color-surface-dim)] p-4 rounded-md space-y-3" x-data="{ editingJellyfin: false }">
         {% if jellyfin_account %}
           <div class="flex items-center gap-2 text-sm text-[var(--color-text-muted)]">
             <span>{{ jellyfin_account.base_url }}</span>
@@ -403,12 +403,50 @@
                 Sync Now
               </button>
             </form>
+            <button type="button"
+                    @click="editingJellyfin = !editingJellyfin"
+                    class="px-4 py-2 text-sm rounded-md bg-slate-500/10 text-slate-200 border border-slate-400/30 hover:bg-slate-500/20 transition-colors cursor-pointer">
+              Edit connection
+            </button>
             <form method="post" action="{% url 'jellyfin_disconnect' %}">
               {% csrf_token %}
               <button type="submit"
                       class="px-4 py-2 text-sm rounded-md bg-slate-500/10 text-slate-200 border border-slate-400/30 hover:bg-slate-500/20 transition-colors cursor-pointer">
                 Disconnect
               </button>
+            </form>
+          </div>
+          <div x-show="editingJellyfin" x-transition.opacity.duration.150ms class="border-t border-gray-600/50 pt-3 space-y-3">
+            <p class="text-sm text-[var(--color-text-muted)]">Update the server URL, API key, or user. If the key doesn't resolve a user automatically, also provide the exact Jellyfin username.</p>
+            <form method="post" action="{% url 'jellyfin_connect' %}" class="space-y-3">
+              {% csrf_token %}
+              <input name="base_url"
+                     value="{{ jellyfin_account.base_url }}"
+                     placeholder="https://jellyfin.local:8096"
+                     class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+                     type="url"
+                     required>
+              <input name="api_key"
+                     placeholder="Jellyfin API key (re-enter to update)"
+                     class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+                     type="password"
+                     required>
+              <input name="username"
+                     value="{{ jellyfin_account.jellyfin_username }}"
+                     placeholder="Jellyfin username (only needed for server-admin keys)"
+                     class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+                     type="text">
+              <div class="flex gap-2">
+                <button type="submit"
+                        class="px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
+                  Update Jellyfin connection
+                </button>
+                <button type="button"
+                        @click="editingJellyfin = false"
+                        class="px-4 py-2 text-sm rounded-md bg-slate-500/10 text-slate-200 border border-slate-400/30 hover:bg-slate-500/20 transition-colors cursor-pointer">
+                  Cancel
+                </button>
+              </div>
             </form>
           </div>
         {% else %}

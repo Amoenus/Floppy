@@ -44,6 +44,39 @@ class JellyfinViewTests(TestCase):
 
     @patch("integrations.views.JellyfinClient.get_current_user")
     @patch("integrations.views.JellyfinClient.healthcheck")
+    def test_connect_updates_existing_account(self, mock_healthcheck, mock_current_user):
+        """Reconnecting should update the existing account in place, preserving push settings."""
+        existing = JellyfinAccount.objects.create(
+            user=self.user,
+            base_url="https://old.jellyfin.local:8096",
+            api_key="old-encrypted-key",
+            jellyfin_user_id="jf-old",
+            jellyfin_username="olduser",
+            push_watched_enabled=False,
+            scheduled_push_enabled=True,
+        )
+        mock_current_user.return_value = {"Id": "jf-2", "Name": "newuser"}
+
+        response = self.client.post(
+            reverse("jellyfin_connect"),
+            {
+                "base_url": "https://new.jellyfin.local:8096",
+                "api_key": "jf-new-key",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        account = JellyfinAccount.objects.get(user=self.user)
+        self.assertEqual(account.pk, existing.pk)
+        self.assertEqual(account.base_url, "https://new.jellyfin.local:8096")
+        self.assertEqual(account.jellyfin_user_id, "jf-2")
+        self.assertEqual(account.jellyfin_username, "newuser")
+        self.assertNotEqual(account.api_key, "jf-new-key")
+        self.assertFalse(account.push_watched_enabled)
+        self.assertTrue(account.scheduled_push_enabled)
+
+    @patch("integrations.views.JellyfinClient.get_current_user")
+    @patch("integrations.views.JellyfinClient.healthcheck")
     def test_connect_surfaces_auth_error(self, mock_healthcheck, mock_current_user):
         """A failed healthcheck should not persist an account."""
         mock_healthcheck.side_effect = JellyfinAuthError("bad key")
