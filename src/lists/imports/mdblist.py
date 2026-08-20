@@ -17,7 +17,6 @@ from django.utils import timezone
 from app.models import Item, MediaTypes, Sources
 from app.providers import services
 from integrations.imports import helpers
-from lists.smart_rules import sync_smart_lists_for_item
 
 # Shared MDBList client helpers live with the full-account importer; keep the
 # old private names so existing call sites and test patch targets still work.
@@ -31,6 +30,7 @@ from integrations.imports.mdblist import (
 from integrations.imports.mdblist import request as _request
 from integrations.imports.mdblist import resolve_tmdb_id as _resolve_tmdb_id
 from lists.models import CustomList, CustomListItem
+from lists.smart_rules import sync_smart_lists_for_item
 
 logger = logging.getLogger(__name__)
 
