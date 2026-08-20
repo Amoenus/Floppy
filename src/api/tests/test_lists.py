@@ -1,5 +1,9 @@
-from django.urls import reverse
+from datetime import timedelta
 
+from django.urls import reverse
+from django.utils import timezone
+
+from app.models import MediaTypes
 from lists.models import CustomList, CustomListItem
 
 from .base import FloppyApiTestCase
@@ -623,6 +627,35 @@ class ListsTests(FloppyApiTestCase):
         payload = response.json()
         titles = [item["item"]["title"] for item in payload["results"]]
         self.assertEqual(titles, sorted(titles, reverse=True))
+
+    def test_list_items_sort_filter_supports_multiword_fields(self):
+        """List items accept a descending multiword Item field sort."""
+        movie, tv, anime = self.items_by_type[MediaTypes.MOVIE.value][0], self.items_by_type[
+            MediaTypes.TV.value
+        ][0], self.items_by_type[MediaTypes.ANIME.value][0]
+        now = timezone.now()
+        for item, release_datetime in (
+            (movie, now - timedelta(days=2)),
+            (tv, now),
+            (anime, now - timedelta(days=1)),
+        ):
+            item.release_datetime = release_datetime
+            item.save(update_fields=["release_datetime"])
+
+        custom_list = self.lists_by_name["favorites"]
+        response = self.call_api(
+            "get",
+            "api_list_add_item",
+            args=(custom_list.id,),
+            params={"sort": "release_datetime_desc"},
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [item["item"]["media_id"] for item in response.json()["results"]],
+            [tv.media_id, anime.media_id, movie.media_id],
+        )
 
     def test_list_items_not_found_returns_404(self):
         """List items endpoint with non-existent ID should return 404."""

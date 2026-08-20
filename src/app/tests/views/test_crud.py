@@ -710,7 +710,24 @@ class CreateMedia(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'id="episode-track-button-', html=False)
+        self.assertContains(
+            response,
+            'id="episode-track-button-',
+            count=2,
+            html=False,
+        )
+        self.assertContains(response, '-list" hx-swap-oob="true"', html=False)
+        latest_episode = Episode.objects.filter(
+            item__media_id="1668",
+            related_season__user=self.user,
+            item__episode_number=1,
+        ).latest("id")
+        self.assertContains(
+            response,
+            f'"instance_id": "{latest_episode.id}"',
+            count=2,
+            html=False,
+        )
         self.assertContains(response, 'id="episode-history-', html=False)
         self.assertContains(response, 'hx-swap-oob="true"', html=False)
         self.assertContains(response, "Watched 2 times")
@@ -1719,6 +1736,28 @@ class DeleteMedia(TestCase):
             Episode.objects.filter(related_season__user=self.user).count(),
             0,
         )
+
+    def test_unwatch_episode_htmx_updates_episode_controls(self):
+        """HTMX episode deletes update the list without redirecting the page."""
+        response = self.client.post(
+            reverse("media_delete") + "?next=/details/tmdb/tv/1668/friends/season/1",
+            data={
+                "instance_id": self.episode.id,
+                "media_type": MediaTypes.EPISODE.value,
+            },
+            HTTP_HX_REQUEST="true",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("HX-Redirect", response)
+        self.assertContains(response, 'id="episode-track-button-', html=False)
+        self.assertContains(response, 'id="episode-history-', html=False)
+        self.assertContains(response, "season-progress-mobile-", html=False)
+        self.assertContains(response, "season-progress-desktop-", html=False)
+        trigger = json.loads(response["HX-Trigger"])
+        self.assertEqual(trigger["closeModal"], {})
+        self.assertEqual(trigger["showToast"]["type"], "success")
+        self.assertFalse(Episode.objects.filter(pk=self.episode.id).exists())
 
     @patch("app.signals._handle_media_cache_change")
     def test_unwatch_episode_removes_warm_history_cache_entry(
