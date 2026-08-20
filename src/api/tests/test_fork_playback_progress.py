@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from django.utils import timezone
 
+from app import live_playback
 from app.models import (
     Item,
     MediaTypes,
@@ -86,6 +87,8 @@ class PlaybackProgressWriteTests(FloppyApiTestCase):
         self.assertEqual(body["episode_number"], 2)
         self.assertEqual(body["series_title"], "TV Show 1")
         self.assertEqual(body["ids"], {"tmdb": "1001", "imdb": "tt0001"})
+        self.assertEqual(body["image"], "https://example.com/episode-2.jpg")
+        self.assertIsNotNone(body["url"])
 
     def test_unknown_movie_creates_item_without_watch_record(self):
         """Positions for untracked media create metadata only, never history."""
@@ -332,6 +335,13 @@ class PlaybackProgressListTests(FloppyApiTestCase):
             {entry["media_type"] for entry in body["results"]},
             {"movie", "episode", "podcast"},
         )
+        for entry in body["results"]:
+            self.assertIn("image", entry)
+            self.assertIn("url", entry)
+        podcast_entry = next(
+            entry for entry in body["results"] if entry["media_type"] == "podcast"
+        )
+        self.assertEqual(podcast_entry["image"], "https://example.com/podcast-1.jpg")
 
     def test_media_type_filter(self):
         """?media_type= accepts a comma separated subset."""
@@ -584,3 +594,67 @@ class PlaybackProgressScrobbleTests(FloppyApiTestCase):
             )
 
         self.assertEqual(response.status_code, HTTP.OK)
+
+
+class NowPlayingTests(FloppyApiTestCase):
+    """GET /playback/now-playing/ projects the live_playback cache as JSON."""
+
+    def _get(self, headers=None):
+        return self.call_api(
+            "get",
+            "api_playback_now_playing",
+            headers=self.auth_headers if headers is None else headers,
+        )
+
+    def test_no_active_state_reports_inactive(self):
+        """No cached playback state returns {"active": false}."""
+        response = self._get()
+        self.assertEqual(response.status_code, HTTP.OK)
+        self.assertEqual(response.json(), {"active": False})
+
+    def test_active_movie_state_is_projected(self):
+        """An active movie state surfaces title/image/progress/url/ids."""
+        movie_item = self.items_by_type[MediaTypes.MOVIE.value][0]
+        now_ts = live_playback._now_ts()
+        live_playback.set_user_playback_state(
+            self.user1.id,
+            {
+                "event_type": "media.play",
+                "media_type": MediaTypes.MOVIE.value,
+                "media_id": movie_item.media_id,
+                "source": movie_item.source,
+                "rating_key": "rk-1",
+                "title": movie_item.title,
+                "image": "https://example.com/now-playing.jpg",
+                "image_source": "primary",
+                "view_offset_seconds": 60,
+                "duration_seconds": 3000,
+                "started_at_ts": now_ts,
+                "status": live_playback.PLAYBACK_STATUS_PLAYING,
+                "updated_at_ts": now_ts,
+                "expires_at_ts": now_ts + 3600,
+                "pause_expires_at_ts": None,
+                "scrobble_expires_at_ts": None,
+            },
+        )
+        self.addCleanup(live_playback.clear_user_playback_state, self.user1.id)
+
+        response = self._get()
+        self.assertEqual(response.status_code, HTTP.OK)
+        body = response.json()
+        self.assertTrue(body["active"])
+        self.assertEqual(body["media_type"], MediaTypes.MOVIE.value)
+        self.assertEqual(body["title"], movie_item.title)
+        self.assertEqual(body["image"], "https://example.com/now-playing.jpg")
+        self.assertEqual(body["status"], live_playback.PLAYBACK_STATUS_PLAYING)
+        self.assertIsNotNone(body["url"])
+        self.assertIn("ids", body)
+        self.assertIsNotNone(body["updated_at"])
+
+    def test_requires_authentication(self):
+        """An unauthenticated request is rejected."""
+        response = self._get(headers={})
+        self.assertIn(
+            response.status_code,
+            (HTTP.UNAUTHORIZED, HTTP.FORBIDDEN),
+        )

@@ -16,6 +16,8 @@ from rest_framework import views as drf_views
 from rest_framework.response import Response
 
 import app.providers.tmdb
+from app import live_playback
+from app.helpers import build_provider_ids
 from app.models import (
     Item,
     MediaTypes,
@@ -25,6 +27,7 @@ from app.models import (
     Status,
 )
 from app.services.tracking_hydration import ensure_item_metadata
+from app.templatetags.app_tags import media_url
 from integrations.delivery import get_or_record_receipt
 from integrations.models import IntegrationToken
 
@@ -52,14 +55,14 @@ def _coerce_position(value):
     return position
 
 
-def _external_ids(item):
-    """Map an Item's resolved external ids back to the API's `ids` vocabulary."""
-    stored = item.provider_external_ids or {}
-    return {
-        key: str(stored[field])
-        for key, field in _EXTERNAL_ID_KEYS.items()
-        if stored.get(field)
-    }
+def _detail_url(item):
+    """Return the detail URL for an Item, or None."""
+    if item is None:
+        return None
+    try:
+        return media_url(item) or None
+    except Exception:
+        return None
 
 
 def resolve_show_tmdb_id(media_type, ids):
@@ -241,8 +244,10 @@ def _serialize_progress(progress, show_map):
         else None
     )
     # Episode Items are created without provider links, so their show-level
-    # ids (which is what clients match on) come from the show row.
-    ids = _external_ids(item) or (_external_ids(show) if show else {})
+    # ids/image/url (which is what clients match on) come from the show row.
+    ids = build_provider_ids(item) or (build_provider_ids(show) if show else {})
+    image = item.image or (show.image if show else None)
+    url = _detail_url(item) or (_detail_url(show) if show else None)
 
     return {
         "media_type": item.media_type,
@@ -253,6 +258,8 @@ def _serialize_progress(progress, show_map):
         "ids": ids,
         "title": item.title,
         "series_title": show.title if show else None,
+        "image": image,
+        "url": url,
         "position_seconds": progress.position_seconds,
         "duration_seconds": progress.duration_seconds,
         "completed": progress.completed,
@@ -289,6 +296,8 @@ def _serialize_podcast(podcast):
         "ids": {"episode_uuid": episode.episode_uuid} if episode else {},
         "title": item.title if item else None,
         "series_title": podcast.show.title if podcast.show else None,
+        "image": item.image if item else None,
+        "url": _detail_url(item),
         "position_seconds": podcast.played_up_to_seconds,
         "duration_seconds": duration_seconds,
         "completed": (
@@ -428,6 +437,8 @@ _ENTRY_SCHEMA = {
         "ids": {"type": "object"},
         "title": {"type": "string", "nullable": True},
         "series_title": {"type": "string", "nullable": True},
+        "image": {"type": "string", "nullable": True},
+        "url": {"type": "string", "nullable": True},
         "position_seconds": {"type": "integer", "nullable": True},
         "duration_seconds": {"type": "integer", "nullable": True},
         "completed": {"type": "boolean"},
@@ -738,3 +749,71 @@ class PlaybackProgressView(drf_views.APIView):
 
         PlaybackProgress.objects.filter(user=request.user, item=item).delete()
         return Response(status=HTTP.NO_CONTENT)
+
+
+_NOW_PLAYING_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "active": {"type": "boolean"},
+        "media_type": {"type": "string", "nullable": True},
+        "source": {"type": "string", "nullable": True},
+        "media_id": {"type": "string", "nullable": True},
+        "ids": {"type": "object"},
+        "title": {"type": "string", "nullable": True},
+        "subtitle": {"type": "string", "nullable": True},
+        "episode_code": {"type": "string", "nullable": True},
+        "episode_title": {"type": "string", "nullable": True},
+        "image": {"type": "string", "nullable": True},
+        "status": {"type": "string", "nullable": True},
+        "url": {"type": "string", "nullable": True},
+        "progress_percent": {"type": "integer", "nullable": True},
+        "offset_seconds": {"type": "integer", "nullable": True},
+        "duration_seconds": {"type": "integer", "nullable": True},
+        "updated_at": {"type": "string", "format": "date-time", "nullable": True},
+    },
+}
+
+
+# /api/v1/playback/now-playing/
+class NowPlayingView(drf_views.APIView):
+    """Read-only snapshot of the user's active playback (from scrobble/webhook state)."""
+
+    @extend_schema(
+        description=(
+            "Return the user's current playback, sourced from the same live "
+            "state the home page 'now playing' card renders. `active` is "
+            "false with no other fields when nothing is playing."
+        ),
+        responses={200: _NOW_PLAYING_SCHEMA},
+    )
+    def get(self, request):
+        """Return the user's active playback state, or {"active": false}."""
+        state = live_playback.get_user_playback_state(request.user.id)
+        if not state:
+            return Response({"active": False}, status=HTTP.OK)
+
+        card = live_playback.build_home_playback_card(request.user)
+        state_item = live_playback._resolve_state_item(state)
+
+        payload = {
+            "active": True,
+            "media_type": state.get("media_type"),
+            "source": state.get("source"),
+            "media_id": state.get("media_id"),
+            "ids": build_provider_ids(state_item),
+            "title": card["title"],
+            "subtitle": card["subtitle"],
+            "episode_code": card["episode_code"],
+            "episode_title": card["episode_title"],
+            "image": card["image"],
+            "status": card["status"],
+            "url": card["details_url"],
+            "progress_percent": card["progress_percent"],
+            "offset_seconds": card["offset_seconds"],
+            "duration_seconds": card["duration_seconds"],
+            "updated_at": datetime.fromtimestamp(
+                card["updated_at_ts"],
+                tz=UTC,
+            ).isoformat(),
+        }
+        return Response(payload, status=HTTP.OK)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime
 from dataclasses import dataclass, replace
 
 from django.apps import apps
@@ -20,6 +21,7 @@ from app.models import (
     Status,
 )
 from app.providers import tmdb
+from app.templatetags.app_tags import media_url
 from users.models import MediaSortChoices
 
 MEDIA_LIST_MEDIA_TYPES = tuple(
@@ -104,6 +106,8 @@ class MediaListFilters:
     genre: str = ""
     implied_genre: str = ""
     year: str = ""
+    completed_date_from: str = ""
+    completed_date_to: str = ""
     release: str = "all"
     source: str = ""
     media_status: str = ""
@@ -140,6 +144,23 @@ class MediaListEntry:
 
 def _normalize(value) -> str:
     return str(value or "").strip().lower()
+
+
+def normalize_completed_date_filter(value) -> str:
+    """Return a YYYY-MM-DD string or empty string.
+
+    Shared by the web list view, the API filters, and the SQL manager filter
+    so `completed_date_from`/`completed_date_to` validate identically
+    everywhere they're accepted.
+    """
+    normalized = str(value or "").strip()
+    if not normalized:
+        return ""
+    try:
+        datetime.date.fromisoformat(normalized)
+    except ValueError:
+        return ""
+    return normalized
 
 
 def _split_values(values) -> list[str]:
@@ -280,6 +301,24 @@ def parse_media_list_filters(request) -> MediaListFilters:
         parameter = "year"
         message = "year must be a four-digit year or unknown"
         raise MediaListFilterError(parameter, message)
+    completed_date_from_raw = str(
+        request.query_params.get("completed_date_from", "") or ""
+    ).strip()
+    if completed_date_from_raw and not normalize_completed_date_filter(
+        completed_date_from_raw,
+    ):
+        parameter = "completed_date_from"
+        message = "completed_date_from must be a YYYY-MM-DD date"
+        raise MediaListFilterError(parameter, message)
+    completed_date_to_raw = str(
+        request.query_params.get("completed_date_to", "") or ""
+    ).strip()
+    if completed_date_to_raw and not normalize_completed_date_filter(
+        completed_date_to_raw,
+    ):
+        parameter = "completed_date_to"
+        message = "completed_date_to must be a YYYY-MM-DD date"
+        raise MediaListFilterError(parameter, message)
     return MediaListFilters(
         statuses=statuses,
         include_no_status=include_no_status,
@@ -292,6 +331,8 @@ def parse_media_list_filters(request) -> MediaListFilters:
             request.query_params.get("implied_genre", "") or ""
         ).strip(),
         year=year,
+        completed_date_from=completed_date_from_raw,
+        completed_date_to=completed_date_to_raw,
         release=release,
         source=str(request.query_params.get("source", "") or "").strip(),
         media_status=str(
@@ -450,6 +491,23 @@ def _matches_metadata(entry, filters, collection_platforms, collection_formats, 
             if release_datetime is not None:
                 return False
         elif str(getattr(release_datetime, "year", "")) != filters.year:
+            return False
+    if filters.completed_date_from or filters.completed_date_to:
+        end_date = getattr(entry.media, "end_date", None)
+        if end_date is None:
+            return False
+        completed_date = timezone.localtime(end_date).date() if timezone.is_aware(
+            end_date,
+        ) else end_date.date()
+        if (
+            filters.completed_date_from
+            and completed_date < datetime.date.fromisoformat(filters.completed_date_from)
+        ):
+            return False
+        if (
+            filters.completed_date_to
+            and completed_date > datetime.date.fromisoformat(filters.completed_date_to)
+        ):
             return False
     if filters.release != "all":
         release_datetime = getattr(item, "release_datetime", None)
@@ -655,6 +713,28 @@ def _episode_air_date(season, episode_number):
     return None
 
 
+def _enrich_next_episode(base, *, source, media_id):
+    """Attach title/image/ids/url to a next_episode dict from a matching Item."""
+    if base is None:
+        return None
+    episode_item = None
+    if base.get("episode_number") is not None:
+        episode_item = Item.objects.filter(
+            source=source,
+            media_id=media_id,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=base.get("season_number"),
+            episode_number=base.get("episode_number"),
+        ).first()
+    return {
+        **base,
+        "title": episode_item.title if episode_item else None,
+        "image": episode_item.image if episode_item else None,
+        "ids": helpers.build_provider_ids(episode_item) if episode_item else {},
+        "url": (media_url(episode_item) or None) if episode_item else None,
+    }
+
+
 def next_episode_for_media(media):
     """Return the first released, unwatched episode for a TV-like row."""
     if media is None:
@@ -684,11 +764,15 @@ def next_episode_for_media(media):
                 continue
             episode_number = season.next_episode_number()
             if episode_number is not None:
-                return {
-                    "season_number": season_number,
-                    "episode_number": episode_number,
-                    "air_date": _episode_air_date(season, episode_number),
-                }
+                return _enrich_next_episode(
+                    {
+                        "season_number": season_number,
+                        "episode_number": episode_number,
+                        "air_date": _episode_air_date(season, episode_number),
+                    },
+                    source=item.source,
+                    media_id=item.media_id,
+                )
         from events.models import Event
 
         untracked_events = (
@@ -705,21 +789,29 @@ def next_episode_for_media(media):
         )
         event = untracked_events.first()
         if event is not None:
-            return {
-                "season_number": event.item.season_number,
-                "episode_number": event.content_number,
-                "air_date": event.datetime,
-            }
+            return _enrich_next_episode(
+                {
+                    "season_number": event.item.season_number,
+                    "episode_number": event.content_number,
+                    "air_date": event.datetime,
+                },
+                source=item.source,
+                media_id=item.media_id,
+            )
         return None
     if media_type == MediaTypes.SEASON.value and hasattr(media, "next_episode_number"):
         episode_number = media.next_episode_number()
         if episode_number is None:
             return None
-        return {
-            "season_number": getattr(item, "season_number", None),
-            "episode_number": episode_number,
-            "air_date": _episode_air_date(media, episode_number),
-        }
+        return _enrich_next_episode(
+            {
+                "season_number": getattr(item, "season_number", None),
+                "episode_number": episode_number,
+                "air_date": _episode_air_date(media, episode_number),
+            },
+            source=item.source,
+            media_id=item.media_id,
+        )
     if media_type == MediaTypes.ANIME.value:
         from events.models import Event
 
@@ -735,11 +827,15 @@ def next_episode_for_media(media):
             .first()
         )
         if event is not None:
-            return {
-                "season_number": None,
-                "episode_number": event.content_number,
-                "air_date": event.datetime,
-            }
+            return _enrich_next_episode(
+                {
+                    "season_number": None,
+                    "episode_number": event.content_number,
+                    "air_date": event.datetime,
+                },
+                source=item.source,
+                media_id=item.media_id,
+            )
     return None
 
 
@@ -907,6 +1003,8 @@ def _get_media_entries_for_type(user, media_type, filters):
             "genre": filters.genre,
             "implied_genre": filters.implied_genre,
             "year": filters.year,
+            "completed_date_from": filters.completed_date_from,
+            "completed_date_to": filters.completed_date_to,
             "release": filters.release,
             "source": filters.source,
             "media_status": filters.media_status,
@@ -940,6 +1038,8 @@ def _get_media_entries_for_type(user, media_type, filters):
                     "genre": filters.genre,
                     "implied_genre": filters.implied_genre,
                     "year": filters.year,
+                    "completed_date_from": filters.completed_date_from,
+                    "completed_date_to": filters.completed_date_to,
                     "release": filters.release,
                     "source": filters.source,
                     "media_status": filters.media_status,

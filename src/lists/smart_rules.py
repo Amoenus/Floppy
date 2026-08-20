@@ -8,7 +8,7 @@ from itertools import batched
 
 from django.apps import apps
 from django.db import connection
-from django.db.models import Q
+from django.db.models import Exists, OuterRef, Q
 from django.utils import timezone
 
 from app.models import CollectionEntry, Item, ItemTag, MediaTypes, Sources, Status
@@ -23,6 +23,8 @@ SMART_FILTER_KEYS = (
     "genre",
     "implied_genre",
     "year",
+    "completed_date_from",
+    "completed_date_to",
     "release",
     "release_date_from",
     "release_date_to",
@@ -41,6 +43,7 @@ SMART_FILTER_KEYS = (
     "provider",
     "tag",
     "tag_mode",
+    "list",
 )
 
 TAG_MODE_CHOICES = {"and", "or", "not"}
@@ -54,6 +57,8 @@ SMART_FILTER_DEFAULTS = {
     "genre": "",
     "implied_genre": "",
     "year": "",
+    "completed_date_from": "",
+    "completed_date_to": "",
     "release": "all",
     "release_date_from": "",
     "release_date_to": "",
@@ -72,6 +77,7 @@ SMART_FILTER_DEFAULTS = {
     "provider": "",
     "tag": [],
     "tag_mode": "or",
+    "list": [],
 }
 
 MAX_RATING = 10.0
@@ -242,6 +248,22 @@ def _payload_getlist(payload, key: str) -> list[str]:
     return []
 
 
+def _valid_linked_list_ids(owner, raw_values: list[str]) -> list[int]:
+    """Return ids from raw_values that are non-smart lists owner can access."""
+    candidate_ids = {int(value) for value in raw_values if str(value).strip().isdigit()}
+    if not candidate_ids or not owner:
+        return []
+
+    from lists.models import CustomList
+
+    return list(
+        CustomList.objects.filter(id__in=candidate_ids, is_smart=False)
+        .filter(Q(owner=owner) | Q(collaborators=owner))
+        .distinct()
+        .values_list("id", flat=True),
+    )
+
+
 def get_available_media_types(owner) -> list[str]:
     """Return enabled media types that can participate in smart rules."""
     if owner and hasattr(owner, "get_enabled_media_types"):
@@ -331,6 +353,12 @@ def normalize_rule_payload(payload, owner):
         _payload_get(payload, "date_added_from", "")
     )
     date_added_to = _normalize_date_filter(_payload_get(payload, "date_added_to", ""))
+    completed_date_from = _normalize_date_filter(
+        _payload_get(payload, "completed_date_from", "")
+    )
+    completed_date_to = _normalize_date_filter(
+        _payload_get(payload, "completed_date_to", "")
+    )
 
     year = str(_payload_get(payload, "year", "") or "").strip().lower()
     if year and year != "unknown" and not year.isdigit():
@@ -368,6 +396,8 @@ def normalize_rule_payload(payload, owner):
         seen_tags.add(key)
         deduped_tags.append(value)
 
+    list_ids = _valid_linked_list_ids(owner, _payload_getlist(payload, "list"))
+
     return {
         "media_types": normalized_media_types,
         "status": normalized_statuses,
@@ -378,6 +408,8 @@ def normalize_rule_payload(payload, owner):
         "genre": str(_payload_get(payload, "genre", "") or "").strip(),
         "implied_genre": str(_payload_get(payload, "implied_genre", "") or "").strip(),
         "year": year,
+        "completed_date_from": completed_date_from,
+        "completed_date_to": completed_date_to,
         "release": release,
         "release_date_from": release_date_from,
         "release_date_to": release_date_to,
@@ -396,6 +428,7 @@ def normalize_rule_payload(payload, owner):
         "provider": str(_payload_get(payload, "provider", "") or "").strip(),
         "tag": deduped_tags,
         "tag_mode": tag_mode,
+        "list": list_ids,
     }
 
 
@@ -438,6 +471,8 @@ def _base_media_queryset(
     search_query: str = "",
     date_added_from: str = "",
     date_added_to: str = "",
+    completed_date_from: str = "",
+    completed_date_to: str = "",
 ):
     if isinstance(status_filter, str):
         status_filters = [] if status_filter in ("", "all") else [status_filter]
@@ -462,6 +497,28 @@ def _base_media_queryset(
         queryset = queryset.filter(created_at__date__gte=date_added_from)
     if date_added_to:
         queryset = queryset.filter(created_at__date__lte=date_added_to)
+
+    if completed_date_from or completed_date_to:
+        if media_type in (MediaTypes.TV.value, MediaTypes.SEASON.value):
+            episode_model = apps.get_model("app", "episode")
+            episode_lookup = (
+                "related_season"
+                if media_type == MediaTypes.SEASON.value
+                else "related_season__related_tv"
+            )
+            episode_filter = Q(**{episode_lookup: OuterRef("pk")})
+            if completed_date_from:
+                episode_filter &= Q(end_date__date__gte=completed_date_from)
+            if completed_date_to:
+                episode_filter &= Q(end_date__date__lte=completed_date_to)
+            queryset = queryset.filter(
+                Exists(episode_model.objects.filter(episode_filter)),
+            )
+        else:
+            if completed_date_from:
+                queryset = queryset.filter(end_date__date__gte=completed_date_from)
+            if completed_date_to:
+                queryset = queryset.filter(end_date__date__lte=completed_date_to)
 
     return queryset.select_related("item")
 
@@ -836,6 +893,21 @@ def _resolve_tag_id_sets(
     return set().union(*per_tag_id_sets), None
 
 
+def _resolve_list_membership_item_ids(list_ids: list[int]) -> set[int]:
+    """Return the union of item ids belonging to the given linked lists."""
+    if not list_ids:
+        return set()
+
+    from lists.models import CustomListItem
+
+    return set(
+        CustomListItem.objects.filter(custom_list_id__in=list_ids).values_list(
+            "item_id",
+            flat=True,
+        ),
+    )
+
+
 def collect_matching_item_ids(
     owner,
     normalized_rules: dict,
@@ -894,6 +966,8 @@ def collect_matching_item_ids(
             search_query=normalized_rules.get("search", ""),
             date_added_from=normalized_rules.get("date_added_from", ""),
             date_added_to=normalized_rules.get("date_added_to", ""),
+            completed_date_from=normalized_rules.get("completed_date_from", ""),
+            completed_date_to=normalized_rules.get("completed_date_to", ""),
         )
         queryset_item_ids = set(queryset.values_list("item_id", flat=True))
 
@@ -981,6 +1055,8 @@ def collect_matching_item_ids(
                             continue
                         matched_ids.add(item.id)
 
+    matched_ids |= _resolve_list_membership_item_ids(normalized_rules.get("list") or [])
+
     return matched_ids
 
 
@@ -995,6 +1071,16 @@ def item_matches_rules(
     if not owner or not item:
         return False
 
+    list_ids = normalized_rules.get("list") or []
+    if list_ids:
+        from lists.models import CustomListItem
+
+        if CustomListItem.objects.filter(
+            custom_list_id__in=list_ids,
+            item_id=item.id,
+        ).exists():
+            return True
+
     target_media_types = _target_media_types(
         owner, normalized_rules.get("media_types", [])
     )
@@ -1008,6 +1094,8 @@ def item_matches_rules(
         search_query=normalized_rules.get("search", ""),
         date_added_from=normalized_rules.get("date_added_from", ""),
         date_added_to=normalized_rules.get("date_added_to", ""),
+        completed_date_from=normalized_rules.get("completed_date_from", ""),
+        completed_date_to=normalized_rules.get("completed_date_to", ""),
     ).filter(item_id=item.id)
 
     rating_filter = normalized_rules.get("rating", "all")
@@ -1151,6 +1239,7 @@ def build_rule_filter_data(
     *,
     include_collection_only_untracked: bool = False,
     precomputed_tags: list[str] | None = None,
+    include_list_options: bool = True,
 ):
     """Build menu options for smart-rule filters from matched candidate media."""
     target_media_types = _target_media_types(owner, media_types)
@@ -1344,5 +1433,16 @@ def build_rule_filter_data(
             .values_list("name", flat=True)
             .order_by("name")
         )
+
+    filter_data["lists"] = []
+    if include_list_options:
+        from lists.models import CustomList
+
+        filter_data["lists"] = [
+            {"id": custom_list.id, "label": custom_list.name}
+            for custom_list in CustomList.objects.get_user_lists(owner)
+            .filter(is_smart=False)
+            .order_by("name")
+        ]
 
     return filter_data

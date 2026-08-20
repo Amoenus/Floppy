@@ -57,6 +57,7 @@
       genreSearch: '',
       impliedGenreSearch: '',
       yearSearch: '',
+      completedYearSearch: '',
       sourceSearch: '',
       mediaStatusSearch: '',
       languageSearch: '',
@@ -91,6 +92,7 @@
         this.genreSearch = '';
         this.impliedGenreSearch = '';
         this.yearSearch = '';
+        this.completedYearSearch = '';
         this.sourceSearch = '';
         this.mediaStatusSearch = '';
         this.languageSearch = '';
@@ -124,6 +126,14 @@
           return this.years;
         }
         return this.years.filter(option => option.label.toLowerCase().includes(term));
+      },
+      filteredCompletedYears() {
+        const term = this.completedYearSearch.toLowerCase();
+        const options = this.years.filter(option => option.value !== 'unknown');
+        if (!term) {
+          return options;
+        }
+        return options.filter(option => option.label.toLowerCase().includes(term));
       },
       filteredSources() {
         const term = this.sourceSearch.toLowerCase();

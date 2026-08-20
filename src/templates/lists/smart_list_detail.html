@@ -60,6 +60,11 @@
       {% endfor %}
     ],
     tagMode: '{{ active_smart_rules.tag_mode|default:'or'|escapejs }}',
+    selectedLists: [
+      {% for id in active_smart_rules.list %}
+        {{ id }}{% if not forloop.last %},{% endif %}
+      {% endfor %}
+    ],
     showLanguages: {{ smart_filter_data.show_languages|yesno:'true,false' }},
     showCountries: {{ smart_filter_data.show_countries|yesno:'true,false' }},
     showPlatforms: {{ smart_filter_data.show_platforms|yesno:'true,false' }},
@@ -208,6 +213,20 @@
     cycleTagMode() {
       this.tagMode = this.tagMode === 'and' ? 'or' : (this.tagMode === 'or' ? 'not' : 'and');
     },
+    isListSelected(id) { return this.selectedLists.includes(id); },
+    toggleList(id) {
+      if (this.selectedLists.includes(id)) {
+        this.selectedLists = this.selectedLists.filter((l) => l !== id);
+      } else {
+        this.selectedLists = [...this.selectedLists, id];
+      }
+    },
+    listLabelFor(id) {
+      const dataEl = document.getElementById('smart-filter-data');
+      const data = dataEl ? JSON.parse(dataEl.textContent) : {};
+      const match = (data.lists || []).find((option) => option.id === id);
+      return match ? match.label : `List ${id}`;
+    },
     filterLabel() {
       const labels = [];
       if (!this.allTypesSelected()) {
@@ -268,6 +287,9 @@
         const prefix = this.tagMode === 'not' ? '-' : '+';
         labels.push(prefix + this.selectedTags.join(this.tagMode === 'and' ? ' & ' : ', '));
       }
+      if (this.selectedLists.length) {
+        labels.push(this.selectedLists.map((id) => this.listLabelFor(id)).join(', '));
+      }
       if (labels.length === 0) {
         return 'All';
       }
@@ -298,6 +320,7 @@
       this.provider = '';
       this.selectedTags = [];
       this.tagMode = 'or';
+      this.selectedLists = [];
     },
     itemsCountLabel() {
       return `${this.itemsCount} item${this.itemsCount === 1 ? '' : 's'}`;
@@ -336,6 +359,7 @@
         provider: this.provider,
         tag: this.selectedTags,
         tag_mode: this.tagMode,
+        list: this.selectedLists,
         search: this.query,
         sort: this.sort,
         sort_direction: this.direction,
@@ -733,6 +757,7 @@
         formatSearch: '',
         providerSearch: '',
         tagSearch: '',
+        listSearch: '',
         genres: data.genres || [],
         impliedGenres: data.implied_genres || [],
         years: data.years || [],
@@ -744,6 +769,7 @@
         formats: data.formats || [],
         providers: data.providers || [],
         tags: data.tags || [],
+        lists: data.lists || [],
         resetSearch() {
           this.genreSearch = '';
           this.impliedGenreSearch = '';
@@ -756,6 +782,7 @@
           this.formatSearch = '';
           this.providerSearch = '';
           this.tagSearch = '';
+          this.listSearch = '';
         },
         filteredGenres() {
           const term = this.genreSearch.toLowerCase();
@@ -833,6 +860,13 @@
             return this.tags;
           }
           return this.tags.filter((t) => t.toLowerCase().includes(term));
+        },
+        filteredLists() {
+          const term = this.listSearch.toLowerCase();
+          if (!term) {
+            return this.lists;
+          }
+          return this.lists.filter((option) => option.label.toLowerCase().includes(term));
         },
       };
     }

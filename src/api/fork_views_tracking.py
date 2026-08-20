@@ -17,6 +17,7 @@ from app.fork_services_movie import resolve_or_create_movie
 from app.history_cache_utils import normalize_history_media_type_tokens
 from app.models import Episode, ItemTag, MediaTypes, Movie, Season, Tag
 from app.tasks import bulk_episode_plays_task
+from app.templatetags.app_tags import media_url
 
 from .helpers import (
     MEDIA_TYPE_MODEL_MAP,
@@ -468,6 +469,17 @@ _HISTORY_STR_FILTERS = (
 )
 
 
+def _entry_url(entry):
+    """Return the detail URL for a flattened history entry, or None."""
+    item = entry.get("item")
+    if not item:
+        return None
+    try:
+        return media_url(item) or None
+    except Exception:
+        return None
+
+
 # /api/v1/history/
 class HistoryView(drf_views.APIView):
     """Day-by-day consumption timeline (mirrors the web history page).
@@ -525,6 +537,21 @@ class HistoryView(drf_views.APIView):
             value = request.GET.get(param)
             if value:
                 date_filters[param] = value
+
+        if request.GET.get("flat") in ("1", "true"):
+            history_days = history_cache_reader.get_history_days(
+                request.user,
+                filters=filters or None,
+                date_filters=date_filters or None,
+                logging_style_override=logging_style or None,
+            )
+            flat_entries = [
+                {**entry, "url": _entry_url(entry)}
+                for day in history_days
+                for entry in day.get("entries", [])
+            ]
+            paginated = paginate_data(request, flat_entries, limit, offset)
+            return Response(paginated, status=HTTP.OK)
 
         type_only_request = not date_filters and set(filters).issubset(
             {"media_type"},

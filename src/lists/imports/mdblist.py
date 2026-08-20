@@ -30,6 +30,7 @@ from integrations.imports.mdblist import (
 from integrations.imports.mdblist import request as _request
 from integrations.imports.mdblist import resolve_tmdb_id as _resolve_tmdb_id
 from lists.models import CustomList, CustomListItem
+from lists.smart_rules import sync_smart_lists_for_item
 
 logger = logging.getLogger(__name__)
 
@@ -173,6 +174,8 @@ def _sync_list(user, api_key, list_info):
             continue
         desired_item_ids.add(item.id)
 
+    changed_item_ids = set()
+
     def _apply():
         with transaction.atomic():
             custom_list, _ = CustomList.objects.update_or_create(
@@ -184,22 +187,41 @@ def _sync_list(user, api_key, list_info):
                     "description": list_info.get("description") or "",
                 },
             )
-            custom_list.customlistitem_set.exclude(
-                item_id__in=desired_item_ids,
+            removed_item_ids = set(
+                custom_list.customlistitem_set.exclude(
+                    item_id__in=desired_item_ids,
+                ).values_list("item_id", flat=True),
+            )
+            custom_list.customlistitem_set.filter(
+                item_id__in=removed_item_ids,
             ).delete()
             existing_item_ids = set(
                 custom_list.customlistitem_set.values_list("item_id", flat=True),
             )
+            added_item_ids = desired_item_ids - existing_item_ids
             CustomListItem.objects.bulk_create(
                 CustomListItem(
                     custom_list=custom_list,
                     item_id=item_id,
                     added_by=user,
                 )
-                for item_id in desired_item_ids - existing_item_ids
+                for item_id in added_item_ids
             )
+            changed_item_ids.update(removed_item_ids, added_item_ids)
 
     helpers.retry_on_lock(_apply)
+
+    # bulk_create() and the bulk .delete() above bypass CustomListItem's
+    # save()/delete(), so the smart-list membership signal never fires for
+    # them; resync explicitly for whatever actually changed.
+    for item_id in changed_item_ids:
+        try:
+            sync_smart_lists_for_item(owner=user, item=Item(id=item_id))
+        except Exception:
+            logger.exception(
+                "Failed to sync smart lists for item %s after MDBList list sync",
+                item_id,
+            )
     logger.info(
         "Synced MDBList list %s (%s) for %s: %s items, %s skipped",
         list_id,

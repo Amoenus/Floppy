@@ -68,10 +68,12 @@ class HomeScreenViewTests(TestCase):
         self.assertTemplateUsed(response, "users/home_screen.html")
 
         sections = json.loads(response.context["home_screen_sections_json"])
-        # Season stays configurable even when its library type is disabled.
+        # Disabled Season isn't offered as a configurable section here, even
+        # though it still renders on Home itself (see get_home_configurable_
+        # media_types's include_disabled_season flag).
         self.assertEqual(
             [section["media_type"] for section in sections],
-            ["tv", "movie", "season"],
+            ["tv", "movie"],
         )
         self.assertContains(response, "Home Screen")
         self.assertContains(response, "sections: JSON.parse(")
@@ -1313,6 +1315,43 @@ class HomeScreenViewTests(TestCase):
 
         self.user.refresh_from_db()
         self.assertFalse(self.user.home_show_media_type_headers)
+
+    def test_home_screen_save_preserves_existing_rows_for_disabled_season(self):
+        """Saving other sections must not wipe pre-existing Season rows.
+
+        Season is intentionally excluded from the settings page's
+        configurable sections once disabled (see
+        get_home_configurable_media_types's include_disabled_season flag),
+        so a save payload never resubmits a season section for a user who
+        has season_enabled=False. That must not cause the save to delete
+        Season's stored rows out from under Home rendering, which still
+        force-includes Season regardless of the sidebar setting.
+        """
+        self._set_enabled_media_types(MediaTypes.TV.value, MediaTypes.SEASON.value)
+        self.client.get(reverse("home_screen"))
+        self.assertTrue(
+            HomeScreenRow.objects.filter(
+                user=self.user,
+                media_type=MediaTypes.SEASON.value,
+            ).exists(),
+        )
+
+        self.user.season_enabled = False
+        self.user.save(update_fields=["season_enabled"])
+
+        payload = [{"media_type": MediaTypes.TV.value, "rows": []}]
+        response = self.client.post(
+            reverse("home_screen"),
+            {"home_screen_sections": json.dumps(payload)},
+        )
+        self.assertRedirects(response, reverse("home_screen"))
+
+        self.assertTrue(
+            HomeScreenRow.objects.filter(
+                user=self.user,
+                media_type=MediaTypes.SEASON.value,
+            ).exists(),
+        )
 
     def test_home_screen_deleted_last_row_does_not_reseed(self):
         self._set_enabled_media_types(MediaTypes.TV.value)

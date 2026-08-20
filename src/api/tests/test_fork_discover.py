@@ -133,7 +133,7 @@ class HomeTests(FloppyApiTestCase):
     """GET /home returns serialized home groups."""
 
     def test_home_groups(self):
-        """Groups include the user's tracked media rows."""
+        """Groups include the user's tracked media rows, fully serialized."""
         response = self.call_api("get", "api_home", headers=self.auth_headers)
         self.assertEqual(response.status_code, HTTP.OK)
         groups = response.json()["groups"]
@@ -141,6 +141,14 @@ class HomeTests(FloppyApiTestCase):
         first_rows = groups[0]["rows"]
         self.assertTrue(first_rows)
         self.assertIn("items", first_rows[0])
+        row_item = first_rows[0]["items"][0]
+        # Regression guard for the HomeRowEntry serializer_map gap: items must
+        # not fall back to a bare {"title": ...} dict.
+        self.assertIn("id", row_item)
+        self.assertIn("item", row_item)
+        self.assertIn("url", row_item["item"])
+        self.assertIn("ids", row_item["item"])
+        self.assertIn("image", row_item["item"])
 
     def test_home_invalid_limit_rejected(self):
         """Non-numeric limits return 400."""

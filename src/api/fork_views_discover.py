@@ -224,6 +224,7 @@ class HomeView(drf_views.APIView):
                     try:
                         items.append(serialize_data(entry))
                     except Exception:
+                        logger.exception("Failed to serialize home row entry")
                         title = getattr(
                             getattr(entry, "item", None),
                             "title",

@@ -31,6 +31,9 @@ from app.media_list_filters import (
     apply_media_list_rating_filter,
     apply_media_list_status_filter,
 )
+from app.media_list_filters import (
+    normalize_completed_date_filter as _normalize_completed_date_filter,
+)
 from app.models import (
     TV,
     BasicMedia,
@@ -769,6 +772,12 @@ def media_list(request, media_type):
     if media_type != MediaTypes.MUSIC.value:
         implied_genre_filter = ""
     year_filter = (request.GET.get("year") or "").strip()
+    completed_date_from = _normalize_completed_date_filter(
+        request.GET.get("completed_date_from"),
+    )
+    completed_date_to = _normalize_completed_date_filter(
+        request.GET.get("completed_date_to"),
+    )
     release_filter = (request.GET.get("release") or "all").strip().lower()
     valid_release_filters = {"all", "released", "not_released"}
     if release_filter not in valid_release_filters:
@@ -1154,6 +1163,8 @@ def media_list(request, media_type):
         "genre": genre_filter,
         "implied_genre": implied_genre_filter,
         "year": year_filter,
+        "completed_date_from": completed_date_from,
+        "completed_date_to": completed_date_to,
         "release": release_filter,
         "source": source_filter,
         "media_status": media_status_filter,
@@ -1352,6 +1363,10 @@ def media_list(request, media_type):
                 )
                 if release_year != int(normalized_year):
                     continue
+            if completed_date_from or completed_date_to:
+                # Untracked/statusless entries have no Media row, so no
+                # completion date — they never match a completed-date range.
+                continue
             if source_filter and getattr(item, "source", None) != source_filter:
                 continue
             if media_status_filter and getattr(item, "status", None) != media_status_filter:
@@ -1430,6 +1445,8 @@ def media_list(request, media_type):
             pinned_providers=",".join(
                 sorted(request.user.pinned_watch_providers or [])
             ),
+            completed_date_from=completed_date_from,
+            completed_date_to=completed_date_to,
         )
         if _use_media_list_cache
         else None
@@ -1461,6 +1478,8 @@ def media_list(request, media_type):
             pinned_providers=",".join(
                 sorted(request.user.pinned_watch_providers or [])
             ),
+            completed_date_from=completed_date_from,
+            completed_date_to=completed_date_to,
         )
         if (_use_media_list_cache or _time_left_active)
         else None
@@ -1507,6 +1526,8 @@ def media_list(request, media_type):
             pinned_providers=",".join(
                 sorted(request.user.pinned_watch_providers or [])
             ),
+            completed_date_from=completed_date_from,
+            completed_date_to=completed_date_to,
         )
         _time_left_cached_order = cache.get(_time_left_cache_key)
         if _time_left_cached_order is not None and filter_data is not None:
@@ -2072,6 +2093,8 @@ def media_list(request, media_type):
         "current_genre": genre_filter,
         "current_implied_genre": implied_genre_filter,
         "current_year": year_filter,
+        "current_completed_date_from": completed_date_from,
+        "current_completed_date_to": completed_date_to,
         "current_release": release_filter,
         "current_source": source_filter,
         "current_media_status": media_status_filter,
@@ -2302,6 +2325,8 @@ def media_list(request, media_type):
             "current_genre": genre_filter,
             "current_implied_genre": implied_genre_filter,
             "current_year": year_filter,
+        "current_completed_date_from": completed_date_from,
+        "current_completed_date_to": completed_date_to,
             "current_release": release_filter,
             "current_source": source_filter,
         "current_media_status": media_status_filter,

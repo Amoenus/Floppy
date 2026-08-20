@@ -347,15 +347,20 @@ def get_enabled_home_media_types(user) -> list[str]:
     return list(user.get_enabled_media_types())
 
 
-def get_home_configurable_media_types(user) -> list[str]:
+def get_home_configurable_media_types(
+    user, *, include_disabled_season: bool = True
+) -> list[str]:
     """Return media types available for Home screen configuration.
 
-    Always includes MediaTypes.SEASON even when the user has it disabled as a
-    library type, so season rows (which surface the next-episode pill) can be
-    added to the home screen regardless of sidebar settings.
+    By default always includes MediaTypes.SEASON even when the user has it
+    disabled as a library type, so season rows (which surface the
+    next-episode pill) keep rendering on Home regardless of sidebar
+    settings. Pass include_disabled_season=False to instead respect the
+    sidebar setting exactly (used by the Home Screen settings page, so a
+    disabled type isn't offered there for configuration).
     """
     types = list(user.get_enabled_media_types())
-    if MediaTypes.SEASON.value not in types:
+    if include_disabled_season and MediaTypes.SEASON.value not in types:
         types.append(MediaTypes.SEASON.value)
 
     preferred_order = getattr(user, "home_screen_media_type_order", None) or []
@@ -1036,7 +1041,9 @@ def serialize_settings_sections(user) -> list[dict]:
     )
 
     sections = []
-    for media_type in get_home_configurable_media_types(user):
+    for media_type in get_home_configurable_media_types(
+        user, include_disabled_season=False
+    ):
         media_rows = rows_by_media_type.get(media_type, [])
         sections.append(
             {
@@ -1384,7 +1391,9 @@ def save_home_screen_configuration(user, raw_payload: str) -> None:
         msg = "Home Screen settings payload must be a list."
         raise HomeScreenValidationError(msg)
 
-    allowed_media_types = set(get_home_configurable_media_types(user))
+    allowed_media_types = set(
+        get_home_configurable_media_types(user, include_disabled_season=False)
+    )
     replacement_rows: list[HomeScreenRow] = []
     seen_recent_rows: set[str] = set()
     media_type_order: list[str] = []
