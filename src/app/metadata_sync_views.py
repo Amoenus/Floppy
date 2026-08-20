@@ -1307,6 +1307,173 @@ def _build_flat_anime_episode_preview(
     return episodes or None
 
 
+def enrich_synced_item(
+    item,
+    metadata,
+    *,
+    source,
+    route_media_type,
+    tracking_media_type,
+    season_number,
+    user,
+):
+    """Apply the full metadata refresh to an already title/image-updated item.
+
+    Shared by the Web UI "Sync metadata with provider" action and the REST
+    API sync endpoints so both produce the same result. `route_media_type`
+    is the movie/tv/season/episode/game/book "route" type used by
+    metadata_resolution and trakt_popularity_service — for a season sync
+    this is "season", even where a caller's own media_type parameter is
+    fixed to "tv" (e.g. the API's season sync endpoint).
+
+    Returns (warnings, preferred_provider_synced_or_none) — the second value
+    is the preferred provider's source value if it was successfully synced,
+    else None.
+    """
+    warnings = []
+
+    # A successful season re-fetch means the provider now has the season,
+    # so the local-only flag and its media-server episode count are stale.
+    if (
+        route_media_type == MediaTypes.SEASON.value
+        and item.provider_metadata_status
+        and metadata.get("episodes")
+    ):
+        _save_provider_metadata_status(item, "")
+        if item.local_season_episode_count is not None:
+            item.local_season_episode_count = None
+            item.save(update_fields=["local_season_episode_count"])
+
+    metadata_update_fields = metadata_utils.apply_item_genres(
+        item,
+        metadata_utils.extract_metadata_genres(metadata),
+    )
+    metadata_update_fields.extend(metadata_utils.apply_item_metadata(item, metadata))
+    if metadata_update_fields:
+        metadata_update_fields = list(dict.fromkeys(metadata_update_fields))
+        item.metadata_fetched_at = timezone.now()
+        metadata_update_fields.append("metadata_fetched_at")
+        item.save(update_fields=metadata_update_fields)
+
+    if source == Sources.IGDB.value and route_media_type == MediaTypes.GAME.value:
+        try:
+            game_length_services.refresh_game_lengths(
+                item,
+                igdb_metadata=metadata,
+                force=True,
+                fetch_hltb=True,
+            )
+        except Exception as exc:
+            logger.warning(
+                "game_lengths_manual_refresh_failed item_id=%s media_id=%s error=%s",
+                item.id,
+                item.media_id,
+                exception_summary(exc),
+            )
+            warnings.append(
+                "Game length metadata could not be refreshed. Cached data will be used if available.",
+            )
+
+    metadata_resolution.upsert_provider_links(
+        item,
+        metadata,
+        provider=source,
+        provider_media_type=tracking_media_type,
+        season_number=season_number,
+    )
+
+    if source == Sources.TMDB.value and tracking_media_type == MediaTypes.TV.value:
+        from app.tasks_genre import populate_genres_for_item_sync
+
+        populate_genres_for_item_sync(item, metadata)
+
+    preferred_provider = metadata_resolution.get_preferred_provider(
+        user,
+        item,
+        route_media_type,
+    )
+    preferred_provider_synced = None
+    if preferred_provider not in (source, Sources.MANUAL.value):
+        preferred_media_id = metadata_resolution.resolve_provider_media_id(
+            item,
+            preferred_provider,
+            route_media_type=route_media_type,
+            season_number=season_number,
+        )
+        if preferred_media_id:
+            preferred_tracking_type = metadata_resolution.get_tracking_media_type(
+                route_media_type,
+                source=preferred_provider,
+            )
+            preferred_cache_key = (
+                f"{preferred_provider}_{preferred_tracking_type}_{preferred_media_id}"
+            )
+            cache.delete(preferred_cache_key)
+            try:
+                preferred_metadata = services.get_media_metadata(
+                    metadata_resolution.provider_route_media_type(
+                        route_media_type,
+                        preferred_provider,
+                    ),
+                    preferred_media_id,
+                    preferred_provider,
+                )
+                metadata_resolution.upsert_provider_links(
+                    item,
+                    preferred_metadata,
+                    provider=preferred_provider,
+                    provider_media_type=preferred_tracking_type,
+                    season_number=season_number,
+                )
+                preferred_provider_synced = preferred_provider
+            except (
+                requests.exceptions.RequestException,
+                services.ProviderAPIError,
+            ) as exc:
+                logger.warning(
+                    "preferred_provider_sync_failed item_id=%s preferred_provider=%s preferred_media_id=%s error=%s",
+                    item.id,
+                    preferred_provider,
+                    preferred_media_id,
+                    exception_summary(exc),
+                )
+
+    if trakt_popularity_service.supports_route_media_type(route_media_type):
+        try:
+            trakt_popularity_service.refresh_trakt_popularity(
+                item,
+                route_media_type=route_media_type,
+                force=True,
+            )
+        except Exception as exc:
+            logger.warning(
+                "trakt_popularity_manual_refresh_failed item_id=%s media_id=%s error=%s",
+                item.id,
+                item.media_id,
+                exception_summary(exc),
+            )
+            warnings.append(
+                "Trakt popularity metadata could not be refreshed. Cached data will be used if available.",
+            )
+
+    if source == Sources.TMDB.value and tracking_media_type in (
+        MediaTypes.MOVIE.value,
+        MediaTypes.TV.value,
+        MediaTypes.SEASON.value,
+    ):
+        credits.sync_item_credits_from_metadata(item, metadata)
+    elif source == Sources.IGDB.value and tracking_media_type == MediaTypes.GAME.value:
+        # No inline metadata payload for cast here — IMDB cast/crew is a
+        # separate best-effort match+download pipeline that's too heavy to
+        # run synchronously in a request. Queue it so a manual refresh
+        # doesn't have to wait for the nightly job to pick this game up.
+        from app.tasks_imdb import refresh_imdb_game_credits_from_datasets
+
+        refresh_imdb_game_credits_from_datasets.apply_async(countdown=2)
+
+    return warnings, preferred_provider_synced
+
+
 @require_POST
 def sync_metadata(request, source, media_type, media_id, season_number=None):
     """Refresh the metadata for a media item."""
@@ -1475,156 +1642,17 @@ def sync_metadata(request, source, media_type, media_id, season_number=None):
             item.number_of_pages = number_of_pages
             item.save(update_fields=["number_of_pages"])
 
-        # A successful season re-fetch means the provider now has the season,
-        # so the local-only flag and its media-server episode count are stale.
-        if (
-            media_type == MediaTypes.SEASON.value
-            and item.provider_metadata_status
-            and metadata.get("episodes")
-        ):
-            _save_provider_metadata_status(item, "")
-            if item.local_season_episode_count is not None:
-                item.local_season_episode_count = None
-                item.save(update_fields=["local_season_episode_count"])
-
-        metadata_update_fields = metadata_utils.apply_item_genres(
-            item,
-            metadata_utils.extract_metadata_genres(metadata),
-        )
-        metadata_update_fields.extend(
-            metadata_utils.apply_item_metadata(item, metadata)
-        )
-        if metadata_update_fields:
-            metadata_update_fields = list(dict.fromkeys(metadata_update_fields))
-            item.metadata_fetched_at = timezone.now()
-            metadata_update_fields.append("metadata_fetched_at")
-            item.save(update_fields=metadata_update_fields)
-
-        if source == Sources.IGDB.value and media_type == MediaTypes.GAME.value:
-            try:
-                game_length_services.refresh_game_lengths(
-                    item,
-                    igdb_metadata=metadata,
-                    force=True,
-                    fetch_hltb=True,
-                )
-            except Exception as exc:
-                logger.warning(
-                    "game_lengths_manual_refresh_failed item_id=%s media_id=%s error=%s",
-                    item.id,
-                    item.media_id,
-                    exception_summary(exc),
-                )
-                messages.warning(
-                    request,
-                    "Game length metadata could not be refreshed. Cached data will be used if available.",
-                )
-
-        metadata_resolution.upsert_provider_links(
+        warnings, preferred_provider_synced = enrich_synced_item(
             item,
             metadata,
-            provider=source,
-            provider_media_type=tracking_media_type,
+            source=source,
+            route_media_type=media_type,
+            tracking_media_type=tracking_media_type,
             season_number=season_number,
+            user=request.user,
         )
-
-        if source == Sources.TMDB.value and tracking_media_type == MediaTypes.TV.value:
-            from app.tasks_genre import populate_genres_for_item_sync
-
-            populate_genres_for_item_sync(item, metadata)
-
-        preferred_provider = metadata_resolution.get_preferred_provider(
-            request.user,
-            item,
-            media_type,
-        )
-        preferred_provider_synced = False
-        if preferred_provider not in (source, Sources.MANUAL.value):
-            preferred_media_id = metadata_resolution.resolve_provider_media_id(
-                item,
-                preferred_provider,
-                route_media_type=media_type,
-                season_number=season_number,
-            )
-            if preferred_media_id:
-                preferred_tracking_type = metadata_resolution.get_tracking_media_type(
-                    media_type,
-                    source=preferred_provider,
-                )
-                preferred_cache_key = f"{preferred_provider}_{preferred_tracking_type}_{preferred_media_id}"
-                cache.delete(preferred_cache_key)
-                try:
-                    preferred_metadata = services.get_media_metadata(
-                        metadata_resolution.provider_route_media_type(
-                            media_type,
-                            preferred_provider,
-                        ),
-                        preferred_media_id,
-                        preferred_provider,
-                    )
-                    metadata_resolution.upsert_provider_links(
-                        item,
-                        preferred_metadata,
-                        provider=preferred_provider,
-                        provider_media_type=preferred_tracking_type,
-                        season_number=season_number,
-                    )
-                    preferred_provider_synced = True
-                except (
-                    requests.exceptions.RequestException,
-                    services.ProviderAPIError,
-                ) as exc:
-                    logger.warning(
-                        "preferred_provider_sync_failed item_id=%s preferred_provider=%s preferred_media_id=%s error=%s",
-                        item.id,
-                        preferred_provider,
-                        preferred_media_id,
-                        exception_summary(exc),
-                    )
-
-        if trakt_popularity_service.supports_route_media_type(media_type):
-            try:
-                trakt_popularity_service.refresh_trakt_popularity(
-                    item,
-                    route_media_type=media_type,
-                    force=True,
-                )
-            except Exception as exc:
-                logger.warning(
-                    "trakt_popularity_manual_refresh_failed item_id=%s media_id=%s error=%s",
-                    item.id,
-                    item.media_id,
-                    exception_summary(exc),
-                )
-                messages.warning(
-                    request,
-                    "Trakt popularity metadata could not be refreshed. Cached data will be used if available.",
-                )
-
-        if source == Sources.TMDB.value and tracking_media_type in (
-            MediaTypes.MOVIE.value,
-            MediaTypes.TV.value,
-            MediaTypes.SEASON.value,
-        ):
-            credits.sync_item_credits_from_metadata(item, metadata)
-        elif (
-            source == Sources.IGDB.value
-            and tracking_media_type == MediaTypes.GAME.value
-        ):
-            # No inline metadata payload for cast here — IMDB cast/crew is a
-            # separate best-effort match+download pipeline that's too heavy to
-            # run synchronously in a request. Queue it so a manual refresh
-            # doesn't have to wait for the nightly job to pick this game up.
-            # This is a manual force action from the UI, so it always fires —
-            # no silent debounce. The sync_metadata cache-TTL check above this
-            # block already throttles rapid refreshes on the same item with a
-            # visible message; that's the right layer for rate-limiting, not a
-            # silent global gate here.
-            from app.tasks_imdb import (
-                refresh_imdb_game_credits_from_datasets,
-            )
-
-            refresh_imdb_game_credits_from_datasets.apply_async(countdown=2)
+        for warning in warnings:
+            messages.warning(request, warning)
 
         title = metadata["title"]
         if season_number:
@@ -1725,7 +1753,7 @@ def sync_metadata(request, source, media_type, media_id, season_number=None):
         if preferred_provider_synced:
             msg = (
                 f"{title} was synced to {Sources(source).label} and "
-                f"{Sources(preferred_provider).label} successfully."
+                f"{Sources(preferred_provider_synced).label} successfully."
             )
         else:
             msg = f"{title} was synced to {Sources(source).label} successfully."
