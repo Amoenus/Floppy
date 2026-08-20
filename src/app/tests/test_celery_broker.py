@@ -6,6 +6,7 @@ from django.conf import settings
 from django.test import SimpleTestCase, override_settings
 
 from app import celery_broker
+from app.tasks import repair_celery_broker_bindings
 
 
 class _FakeRedisPipeline:
@@ -243,3 +244,27 @@ class CeleryBrokerRepairTests(SimpleTestCase):
             fake_client.data["_kombu.binding.reply.celery.pidbox"],
             set(),
         )
+
+
+class RepairCeleryBrokerBindingsTaskTests(SimpleTestCase):
+    @patch("app.celery_broker.repair_celery_redis_bindings")
+    def test_calls_repair_and_returns_summary(self, mock_repair):
+        mock_repair.return_value = {
+            "keys": 1,
+            "members": 1,
+            "repaired": 1,
+            "removed": 0,
+        }
+
+        result = repair_celery_broker_bindings()
+
+        mock_repair.assert_called_once_with()
+        self.assertEqual(result, mock_repair.return_value)
+
+    @patch("app.celery_broker.repair_celery_redis_bindings")
+    def test_swallows_repair_errors(self, mock_repair):
+        mock_repair.side_effect = RuntimeError("broker unavailable")
+
+        result = repair_celery_broker_bindings()
+
+        self.assertIsNone(result)

@@ -55,6 +55,40 @@ def cleanup_task_results(batch_size=5000):
     deleted, _ = TaskResult.objects.filter(pk__in=candidate_ids).filter(eligible).delete()
     return deleted
 
+
+@shared_task(name="Repair Celery broker bindings", ignore_result=True)
+def repair_celery_broker_bindings():
+    """Sweep and normalize Kombu Redis pidbox/fanout bindings periodically.
+
+    The same repair runs once at process startup (app/apps.py), but a control
+    command reply (e.g. control.revoke, the celery_ping health check) can write
+    a malformed binding at any point during a container's uptime, and that
+    entry then breaks every later control-command reply until the next
+    restart. Running this on a schedule bounds how long a bad write survives.
+    """
+    from app.celery_broker import repair_celery_redis_bindings
+
+    try:
+        summary = repair_celery_redis_bindings()
+    except Exception as error:
+        logger.warning(
+            "Periodic Kombu Redis binding repair failed: %s",
+            exception_summary(error),
+        )
+        return None
+    if summary["repaired"] or summary["removed"]:
+        logger.info(
+            (
+                "Normalized Kombu Redis bindings "
+                "(keys=%s members=%s repaired=%s removed=%s)"
+            ),
+            summary["keys"],
+            summary["members"],
+            summary["repaired"],
+            summary["removed"],
+        )
+    return summary
+
 # ---------------------------------------------------------------------------
 # Modular task re-exports
 # These tasks are defined in focused sub-modules but re-exported here so all

@@ -1533,6 +1533,14 @@ CELERY_BEAT_SCHEDULE = {
         "kwargs": {"batch_size": 5000},
         "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     },
+    # A control-command reply (control.revoke, the celery_ping health check)
+    # can write a malformed Kombu Redis binding at any point during uptime,
+    # not just at startup, so this bounds how long a bad entry survives (#588).
+    "repair_celery_broker_bindings": {
+        "task": "Repair Celery broker bindings",
+        "schedule": 60 * 15,
+        "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
+    },
     "reload_calendar": {
         "task": "Reload calendar",
         "schedule": 60 * 60 * 24,  # every 24 hours
