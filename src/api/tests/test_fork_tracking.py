@@ -441,6 +441,34 @@ class HistoryTimelineTests(FloppyApiTestCase):
             any(entry["media_type"] == "movie" for entry in all_entries),
         )
 
+    def test_history_flat_returns_paginated_entry_list(self):
+        """?flat=1 returns a flat, card-oriented entry list, not day buckets."""
+        day_response = self.call_api(
+            "get",
+            "api_history",
+            headers=self.auth_headers,
+        )
+        day_total_entries = sum(
+            len(day["entries"]) for day in day_response.json()["results"]
+        )
+
+        response = self.call_api(
+            "get",
+            "api_history",
+            params={"flat": "1"},
+            headers=self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.OK)
+        payload = response.json()
+        self.assertIn("results", payload)
+        self.assertEqual(payload["pagination"]["total"], day_total_entries)
+        for entry in payload["results"]:
+            self.assertIn("item", entry)
+            self.assertIn("url", entry)
+        self.assertTrue(
+            any(entry["media_type"] == "movie" for entry in payload["results"]),
+        )
+
     @patch(
         "app.history_cache_reader.get_history_days",
         side_effect=AssertionError("unfiltered API history must use the cached window"),

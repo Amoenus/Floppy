@@ -265,6 +265,21 @@ def refresh_item_image_if_missing(item, new_image):
     item.save(update_fields=["image"])
 
 
+_PROVIDER_ID_KEYS = {"tmdb": "tmdb_id", "imdb": "imdb_id", "tvdb": "tvdb_id"}
+
+
+def build_provider_ids(item):
+    """Map an Item's resolved external ids to the API's `ids` vocabulary."""
+    if item is None:
+        return {}
+    stored = getattr(item, "provider_external_ids", None) or {}
+    return {
+        key: str(stored[field])
+        for key, field in _PROVIDER_ID_KEYS.items()
+        if stored.get(field)
+    }
+
+
 def enrich_items_with_user_data(
     request, items, section_name=None, user=None, library_media_type=None
 ):

@@ -21,6 +21,7 @@ from app.models import (
     Status,
 )
 from app.providers import tmdb
+from app.templatetags.app_tags import media_url
 from users.models import MediaSortChoices
 
 MEDIA_LIST_MEDIA_TYPES = tuple(
@@ -712,6 +713,28 @@ def _episode_air_date(season, episode_number):
     return None
 
 
+def _enrich_next_episode(base, *, source, media_id):
+    """Attach title/image/ids/url to a next_episode dict from a matching Item."""
+    if base is None:
+        return None
+    episode_item = None
+    if base.get("episode_number") is not None:
+        episode_item = Item.objects.filter(
+            source=source,
+            media_id=media_id,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=base.get("season_number"),
+            episode_number=base.get("episode_number"),
+        ).first()
+    return {
+        **base,
+        "title": episode_item.title if episode_item else None,
+        "image": episode_item.image if episode_item else None,
+        "ids": helpers.build_provider_ids(episode_item) if episode_item else {},
+        "url": (media_url(episode_item) or None) if episode_item else None,
+    }
+
+
 def next_episode_for_media(media):
     """Return the first released, unwatched episode for a TV-like row."""
     if media is None:
@@ -741,11 +764,15 @@ def next_episode_for_media(media):
                 continue
             episode_number = season.next_episode_number()
             if episode_number is not None:
-                return {
-                    "season_number": season_number,
-                    "episode_number": episode_number,
-                    "air_date": _episode_air_date(season, episode_number),
-                }
+                return _enrich_next_episode(
+                    {
+                        "season_number": season_number,
+                        "episode_number": episode_number,
+                        "air_date": _episode_air_date(season, episode_number),
+                    },
+                    source=item.source,
+                    media_id=item.media_id,
+                )
         from events.models import Event
 
         untracked_events = (
@@ -762,21 +789,29 @@ def next_episode_for_media(media):
         )
         event = untracked_events.first()
         if event is not None:
-            return {
-                "season_number": event.item.season_number,
-                "episode_number": event.content_number,
-                "air_date": event.datetime,
-            }
+            return _enrich_next_episode(
+                {
+                    "season_number": event.item.season_number,
+                    "episode_number": event.content_number,
+                    "air_date": event.datetime,
+                },
+                source=item.source,
+                media_id=item.media_id,
+            )
         return None
     if media_type == MediaTypes.SEASON.value and hasattr(media, "next_episode_number"):
         episode_number = media.next_episode_number()
         if episode_number is None:
             return None
-        return {
-            "season_number": getattr(item, "season_number", None),
-            "episode_number": episode_number,
-            "air_date": _episode_air_date(media, episode_number),
-        }
+        return _enrich_next_episode(
+            {
+                "season_number": getattr(item, "season_number", None),
+                "episode_number": episode_number,
+                "air_date": _episode_air_date(media, episode_number),
+            },
+            source=item.source,
+            media_id=item.media_id,
+        )
     if media_type == MediaTypes.ANIME.value:
         from events.models import Event
 
@@ -792,11 +827,15 @@ def next_episode_for_media(media):
             .first()
         )
         if event is not None:
-            return {
-                "season_number": None,
-                "episode_number": event.content_number,
-                "air_date": event.datetime,
-            }
+            return _enrich_next_episode(
+                {
+                    "season_number": None,
+                    "episode_number": event.content_number,
+                    "air_date": event.datetime,
+                },
+                source=item.source,
+                media_id=item.media_id,
+            )
     return None
 
 

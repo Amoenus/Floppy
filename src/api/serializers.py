@@ -2,6 +2,7 @@ from django.conf import settings
 from django.utils.timezone import now
 from rest_framework import serializers
 
+from app.helpers import build_provider_ids
 from app.models import (
     TV,
     Anime,
@@ -21,8 +22,10 @@ from app.models import (
     Podcast,  # FORK: fork-only media type
     Season,
 )
+from app.templatetags.app_tags import media_url
 from events.models import Event
 from lists.models import CustomList, CustomListItem
+from users.home_screen import HomeRowEntry
 
 from .changes_history_processor import (
     get_changes_from_diff,
@@ -60,6 +63,8 @@ class ItemSerializer(serializers.ModelSerializer):
     """Serializer used for item details."""
 
     media_id = serializers.SerializerMethodField()
+    url = serializers.SerializerMethodField()
+    ids = serializers.SerializerMethodField()
 
     def get_media_id(self, obj):
         """Return media_id preserving alphanumeric provider IDs."""
@@ -67,6 +72,19 @@ class ItemSerializer(serializers.ModelSerializer):
         if media_id is None:
             return None
         return str(media_id)
+
+    def get_url(self, obj):
+        """Return the Floppy detail URL for this item, or None."""
+        if not getattr(obj, "media_id", None):
+            return None
+        try:
+            return media_url(obj) or None
+        except Exception:
+            return None
+
+    def get_ids(self, obj):
+        """Return the item's resolved external provider ids."""
+        return build_provider_ids(obj)
 
     class Meta:  # noqa: D106
         model = Item
@@ -788,6 +806,27 @@ class UntrackedMediaSerializer(serializers.Serializer):
         }
 
 
+class HomeRowEntrySerializer(serializers.Serializer):
+    """Serialize a users.home_screen.HomeRowEntry (a Home row card)."""
+
+    def to_representation(self, instance):
+        """Delegate to MediaSerializer/UntrackedMediaSerializer based on tracking."""
+        context = self.context or {}
+        if instance.media is not None:
+            data = MediaSerializer(instance.media, context=context).data
+        else:
+            data = UntrackedMediaSerializer(instance.item, context=context).data
+        data["show_progress_controls"] = instance.show_progress_controls
+        if instance.subtitle_override:
+            data["subtitle_override"] = instance.subtitle_override
+        if instance.use_podcast_show and instance.podcast_show is not None:
+            data["podcast_show"] = {
+                "id": getattr(instance.podcast_show, "id", None),
+                "title": getattr(instance.podcast_show, "title", None),
+            }
+        return data
+
+
 class TimelineItemSerializer(serializers.ModelSerializer):
     """Compact serializer used for timeline entries to reduce payload size."""
 
@@ -825,6 +864,7 @@ serializer_map = {
     Episode: EpisodeSerializer,
     Event: EventSerializer,
     Game: MediaSerializer,
+    HomeRowEntry: HomeRowEntrySerializer,
     Item: ItemSerializer,
     Manga: MediaSerializer,
     Movie: MediaSerializer,

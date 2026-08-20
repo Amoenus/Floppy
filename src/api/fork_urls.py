@@ -314,6 +314,11 @@ urlpatterns = [
         name="api_playback_progress",
     ),
     re_path(
+        r"^playback/now-playing/?$",
+        fork_views_playback.NowPlayingView.as_view(),
+        name="api_playback_now_playing",
+    ),
+    re_path(
         r"^scrobble/?$",
         fork_views_scrobble.ScrobbleView.as_view(),
         name="api_scrobble",
