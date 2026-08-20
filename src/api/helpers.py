@@ -641,11 +641,12 @@ def validate_body(body, media_type):
 
 def parse_sort_filter(sort_filter):
     """Parse a sort_filter string into (field, direction) tuple."""
-    if sort_filter and sort_filter != "":
-        parts = sort_filter.split("_", 1)
-        if len(parts) == 2:  # noqa: PLR2004
-            return parts[0], parts[1]
-        return parts[0], ""
+    if sort_filter:
+        for direction in ("asc", "desc"):
+            suffix = f"_{direction}"
+            if sort_filter.endswith(suffix):
+                return sort_filter.removesuffix(suffix), direction
+        return sort_filter, ""
     return "", ""
 
 
@@ -724,6 +725,9 @@ _AGGREGATED_SORT_KEYS = {
     "itemid": itemid_key_compare,
     "mediaid": _sort_mediaid,
     "progress": lambda media: int(getattr(media, "progress", 0) or 0),
+    "release_datetime": lambda media: _sort_nullable(
+        getattr(_item_from_result(media), "release_datetime", None),
+    ),
     "source": _sort_source,
     "started": lambda media: _sort_nullable(getattr(media, "start_date", None)),
     "title": _sort_title,
