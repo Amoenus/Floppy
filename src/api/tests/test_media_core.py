@@ -684,6 +684,39 @@ class MediaCoreTests(FloppyApiTestCase):
             },
         )
 
+    @patch("api.views.services.get_media_metadata")
+    def test_tv_detail_reports_tracked_season(self, mock_metadata):
+        """TV detail should preserve tracked state for provider seasons."""
+        tv_item = self.items_by_type[MediaTypes.TV.value][0]
+        season_media = self.season_medias[0]
+        mock_metadata.return_value = {
+            "media_id": tv_item.media_id,
+            "source": tv_item.source,
+            "media_type": MediaTypes.TV.value,
+            "related": {
+                "seasons": [
+                    {
+                        "media_id": tv_item.media_id,
+                        "source": tv_item.source,
+                        "media_type": MediaTypes.SEASON.value,
+                        "season_number": season_media.item.season_number,
+                    },
+                ],
+            },
+        }
+
+        response = self.call_api(
+            "get",
+            "api_media_detail",
+            args=(MediaTypes.TV.value, tv_item.source, tv_item.media_id),
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        season = response.json()["related"]["seasons"][0]
+        self.assertTrue(season["tracked"])
+        self.assertEqual(season["id"], season_media.item_id)
+
     def test_media_detail_get_invalid_type_returns_bad_request(self):
         """Media detail endpoint should reject unsupported media types."""
         response = self.call_api(
