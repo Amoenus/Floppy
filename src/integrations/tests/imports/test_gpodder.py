@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -366,3 +367,13 @@ class GPodderImporterTests(TestCase):
     def test_invalid_credentials_raise_media_import_error(self, _mock_verify_login):
         with self.assertRaises(MediaImportError):
             gpodder_import.importer(None, self.user, "new")
+
+    def test_naive_timestamp_is_parsed_as_utc_not_local_time(self):
+        importer = gpodder_import.GPodderImporter(self.user, "new")
+
+        with timezone.override("America/New_York"):
+            parsed = importer._parse_action_timestamp(
+                {"timestamp": "2026-01-01T12:00:00"}
+            )
+
+        self.assertEqual(parsed, datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC))

@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import logging
 from collections import defaultdict
+from datetime import UTC
 
 from django.conf import settings
 from django.utils import timezone
@@ -505,7 +506,9 @@ class GPodderImporter:
         if parsed is None:
             return None
         if timezone.is_naive(parsed):
-            parsed = timezone.make_aware(parsed, timezone.get_current_timezone())
+            # gpodder.net API timestamps are UTC and often sent without a
+            # timezone offset; localize to UTC, not the server's local zone.
+            parsed = timezone.make_aware(parsed, UTC)
         return parsed
 
     def _has_listening_activity(self, action):
