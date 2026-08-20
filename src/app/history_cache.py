@@ -1019,9 +1019,7 @@ def build_history_days(
         )
     )
     process_movies = (
-        process_all
-        or has_person_filter
-        or MediaTypes.MOVIE.value in media_type_filter
+        process_all or has_person_filter or MediaTypes.MOVIE.value in media_type_filter
     )
     process_reading = (
         process_all
@@ -1037,9 +1035,7 @@ def build_history_days(
         )
     )
     process_music = (
-        process_all
-        or has_music_filter
-        or MediaTypes.MUSIC.value in media_type_filter
+        process_all or has_music_filter or MediaTypes.MUSIC.value in media_type_filter
     )
     process_podcasts = (
         process_all
@@ -1047,9 +1043,7 @@ def build_history_days(
         or MediaTypes.PODCAST.value in media_type_filter
     )
     process_games = process_all or MediaTypes.GAME.value in media_type_filter
-    process_boardgames = (
-        process_all or MediaTypes.BOARDGAME.value in media_type_filter
-    )
+    process_boardgames = process_all or MediaTypes.BOARDGAME.value in media_type_filter
 
     # --- Fetch querysets ---
     episodes_start = time.perf_counter()
@@ -1399,11 +1393,7 @@ def build_history_days(
                 entries.append(entry)
                 entry_counts["episodes"] += 1
 
-    if (
-        process_all
-        or has_person_filter
-        or MediaTypes.MOVIE.value in media_type_filter
-    ):
+    if process_all or has_person_filter or MediaTypes.MOVIE.value in media_type_filter:
         for movie in movies:
             if genre_filters and not matches_genre(movie, MediaTypes.MOVIE.value):
                 continue
@@ -1449,11 +1439,7 @@ def build_history_days(
         elif mt == MediaTypes.ANIME.value:
             entry_counts["anime"] += 1
 
-    if (
-        process_all
-        or has_music_filter
-        or MediaTypes.MUSIC.value in media_type_filter
-    ):
+    if process_all or has_music_filter or MediaTypes.MUSIC.value in media_type_filter:
         music_entry_list, music_history_records_scanned, music_album_day_groups = (
             _build_music_entries(
                 user, music_entries, genre_filters, start_date, end_date
@@ -1492,9 +1478,7 @@ def build_history_days(
         )
 
     process_games = process_all or MediaTypes.GAME.value in media_type_filter
-    process_boardgames = (
-        process_all or MediaTypes.BOARDGAME.value in media_type_filter
-    )
+    process_boardgames = process_all or MediaTypes.BOARDGAME.value in media_type_filter
     if process_games or process_boardgames:
         for entry in _build_game_entries(
             games,
@@ -1528,7 +1512,14 @@ def build_history_days(
     undated_entries = [e for e in entries if e["played_at_local"] is None]
     entries = [e for e in entries if e["played_at_local"] is not None]
 
-    entries.sort(key=lambda e: e["played_at_local"], reverse=True)
+    entries.sort(
+        key=lambda e: (
+            e["played_at_local"],
+            e.get("season_number") or 0,
+            e.get("episode_number") or 0,
+        ),
+        reverse=True,
+    )
 
     grouped_entries = defaultdict(list)
     for entry in entries:
@@ -1538,7 +1529,14 @@ def build_history_days(
     for _, day_entries in sorted(
         grouped_entries.items(), key=lambda x: x[0], reverse=True
     ):
-        day_entries.sort(key=lambda e: e["played_at_local"], reverse=True)
+        day_entries.sort(
+            key=lambda e: (
+                e["played_at_local"],
+                e.get("season_number") or 0,
+                e.get("episode_number") or 0,
+            ),
+            reverse=True,
+        )
         first_entry_time = day_entries[0]["played_at_local"]
         total_minutes = sum(e["runtime_minutes"] or 0 for e in day_entries)
         history_days.append(
