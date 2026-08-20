@@ -3348,7 +3348,7 @@ class MediaDetailsViewTests(TestCase):
             show=show,
             episode=episode_one,
             status=Status.COMPLETED.value,
-            progress=1800,
+            progress=30,
             start_date=datetime(2026, 3, 1, 12, 0, tzinfo=UTC),
             end_date=datetime(2026, 3, 1, 12, 30, tzinfo=UTC),
         )
@@ -3358,7 +3358,7 @@ class MediaDetailsViewTests(TestCase):
             show=show,
             episode=episode_two,
             status=Status.COMPLETED.value,
-            progress=2700,
+            progress=45,
             start_date=datetime(2026, 3, 12, 12, 0, tzinfo=UTC),
             end_date=datetime(2026, 3, 12, 12, 45, tzinfo=UTC),
         )

@@ -329,8 +329,7 @@ def _build_detail_activity_state(
                         },
                     )
             elif media_type == MediaTypes.PODCAST.value:
-                total_progress_seconds = int(aggregated_progress or 0)
-                total_minutes = total_progress_seconds // 60
+                total_minutes = int(aggregated_progress or 0)
                 completed_entries = sum(
                     1
                     for entry in user_medias
