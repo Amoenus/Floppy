@@ -1199,6 +1199,7 @@ def build_rule_filter_data(
     *,
     include_collection_only_untracked: bool = False,
     precomputed_tags: list[str] | None = None,
+    include_list_options: bool = True,
 ):
     """Build menu options for smart-rule filters from matched candidate media."""
     target_media_types = _target_media_types(owner, media_types)
@@ -1393,13 +1394,15 @@ def build_rule_filter_data(
             .order_by("name")
         )
 
-    from lists.models import CustomList
+    filter_data["lists"] = []
+    if include_list_options:
+        from lists.models import CustomList
 
-    filter_data["lists"] = [
-        {"id": custom_list.id, "label": custom_list.name}
-        for custom_list in CustomList.objects.get_user_lists(owner)
-        .filter(is_smart=False)
-        .order_by("name")
-    ]
+        filter_data["lists"] = [
+            {"id": custom_list.id, "label": custom_list.name}
+            for custom_list in CustomList.objects.get_user_lists(owner)
+            .filter(is_smart=False)
+            .order_by("name")
+        ]
 
     return filter_data
