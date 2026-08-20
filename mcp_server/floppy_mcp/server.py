@@ -212,7 +212,7 @@ async def track_media(
     carries progress_scope="entry" for clarity). Its unit depends on
     media_type: minutes for games, episodes for tv/season/anime, plays for
     boardgame/music, percentage/pages/chapters for book/manga/comic
-    depending on the user's preference and format, seconds for podcast.
+    depending on the user's preference and format, minutes for podcast.
     Each response's progress_unit field states the unit actually in use;
     check it rather than assuming from media_type alone.
     """

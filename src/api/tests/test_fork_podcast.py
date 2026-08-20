@@ -132,9 +132,13 @@ class EpisodePlayTests(PodcastApiTestCase):
             headers=self.auth_headers,
         )
         self.assertEqual(response.status_code, HTTP.CREATED)
+        payload = response.json()
+        self.assertEqual(payload["progress"], 30)
+        self.assertEqual(payload["progress_unit"], "minutes")
         podcast = Podcast.objects.get(user=self.user1, episode=self.episode1)
         self.assertEqual(podcast.item.media_id, "ep-uuid-1")
         self.assertEqual(podcast.progress, 30)
+        self.assertEqual(podcast.formatted_progress, "30m")
 
     def test_blank_date_uses_current_server_time(self):
         """A blank date records a completed play at the current server time."""
