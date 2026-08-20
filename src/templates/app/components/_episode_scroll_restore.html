@@ -35,6 +35,12 @@
       return null;
     }
 
+    function isPaginationTrigger(elt) {
+      if (!elt) return false;
+      if (elt.closest && elt.closest('[data-episode-load-more]')) return true;
+      return !!(elt.classList && elt.classList.contains('episodes-load-more-trigger'));
+    }
+
     function bindBatchTracking(container) {
       if (container.dataset.scrollRestoreBound === 'true') {
         return;
@@ -46,10 +52,13 @@
       // outerHTML swap (TV/comic "Show more") is detached from the DOM by
       // the time afterSwap fires, so a containment check there always
       // misses. The requesting element is still attached at beforeRequest.
+      // Only count the pagination trigger itself - the track/lists/history
+      // buttons on each episode row also issue HTMX requests from within
+      // this container and must not be counted as a loaded batch.
       document.body.addEventListener('htmx:beforeRequest', function(event) {
         var elt = event.detail.elt;
         if (!elt) return;
-        if (container.contains(elt) || elt === container) {
+        if ((container.contains(elt) || elt === container) && isPaginationTrigger(elt)) {
           var current = Number.parseInt(container.dataset.loadedBatches || '0', 10);
           container.dataset.loadedBatches = String((Number.isNaN(current) ? 0 : current) + 1);
         }
@@ -58,6 +67,11 @@
       container.addEventListener('click', function(event) {
         var link = event.target.closest('a[href]');
         if (!link || !container.contains(link)) {
+          return;
+        }
+        // The "Show more" link is intercepted by HTMX (no real navigation),
+        // so it must not overwrite the saved state for an actual departure.
+        if (link.closest('[data-episode-load-more]')) {
           return;
         }
         var batches = Number.parseInt(container.dataset.loadedBatches || '0', 10);
@@ -100,43 +114,44 @@
       });
     }
 
-    function replayPodcastPages(container, batches) {
-      if (batches <= 0) {
+    function replayPodcastPages(container, remaining) {
+      if (remaining <= 0) {
         return Promise.resolve();
       }
       var loadMore = getLoadMoreLink(container);
       if (!loadMore) {
         return Promise.resolve();
       }
-      var url = new URL(loadMore.url, window.location.origin);
-      var startPage = Number.parseInt(url.searchParams.get('page') || '2', 10);
-      if (Number.isNaN(startPage)) {
-        startPage = 2;
-      }
-
-      var chain = Promise.resolve();
-      for (var i = 0; i < batches; i++) {
-        (function(page) {
-          chain = chain.then(function() {
-            var pageUrl = new URL(loadMore.url, window.location.origin);
-            pageUrl.searchParams.set('page', page);
-            return fetch(pageUrl.toString())
-              .then(function(response) { return response.ok ? response.text() : ''; })
-              .then(function(html) {
-                if (html) {
-                  var trigger = container.querySelector('.episodes-load-more-trigger');
-                  if (trigger) {
-                    trigger.insertAdjacentHTML('beforebegin', html);
-                  } else {
-                    container.insertAdjacentHTML('beforeend', html);
-                  }
-                }
-              })
-              .catch(function() {});
-          });
-        })(startPage + i);
-      }
-      return chain;
+      return fetch(loadMore.url)
+        .then(function(response) { return response.ok ? response.text() : ''; })
+        .then(function(html) {
+          if (!html) return;
+          // Replace the old trigger (rather than inserting alongside it) so
+          // its still-active "revealed" listener can't re-fire and
+          // re-request the same page. htmx.process activates the hx-*
+          // attributes on the freshly inserted markup (its own next-page
+          // trigger and any per-episode buttons), since raw innerHTML
+          // insertion bypasses HTMX's usual auto-processing on swap.
+          var temp = document.createElement('div');
+          temp.innerHTML = html;
+          var fragment = document.createDocumentFragment();
+          while (temp.firstChild) {
+            fragment.appendChild(temp.firstChild);
+          }
+          var oldTrigger = container.querySelector('.episodes-load-more-trigger');
+          if (oldTrigger) {
+            container.replaceChild(fragment, oldTrigger);
+          } else {
+            container.appendChild(fragment);
+          }
+          if (window.htmx) {
+            htmx.process(container);
+          }
+        })
+        .catch(function() {})
+        .then(function() {
+          return replayPodcastPages(container, remaining - 1);
+        });
     }
 
     function restoreScroll() {
