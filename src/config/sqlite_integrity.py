@@ -203,6 +203,7 @@ def write_startup_status(
     started_at: str,
     elapsed_seconds: float,
     read_bytes: int | None = None,
+    progress_callbacks: int | None = None,
     error_class: str | None = None,
     error_message: str | None = None,
     version: str | None = None,
@@ -223,6 +224,7 @@ def write_startup_status(
         "error_class": error_class,
         "error_message": error_message,
         "phase": phase,
+        "progress_callbacks": progress_callbacks,
         "read_bytes": read_bytes,
         "schema_version": 1,
         "started_at": started_at,
@@ -298,6 +300,9 @@ def print_startup_heartbeat(db_path: str) -> None:
     read_bytes = status.get("read_bytes")
     if isinstance(read_bytes, int | float) and read_bytes:
         detail += f" read={read_bytes / 1_048_576:.0f}MB"
+    progress_callbacks = status.get("progress_callbacks")
+    if isinstance(progress_callbacks, int | float):
+        detail += f" progress_callbacks={progress_callbacks:.0f}"
     _log(f"[entrypoint] SQLite integrity scan heartbeat: {detail}")
 
 
@@ -316,6 +321,7 @@ def mark_startup_status_timeout(db_path: str, timeout_seconds: float) -> None:
     elapsed = float(elapsed) if isinstance(elapsed, int | float) else float(timeout_seconds)
     elapsed = max(elapsed, float(timeout_seconds))
     read_bytes = previous.get("read_bytes")
+    progress_callbacks = previous.get("progress_callbacks")
     write_startup_status(
         db_path,
         status="timeout",
@@ -323,6 +329,7 @@ def mark_startup_status_timeout(db_path: str, timeout_seconds: float) -> None:
         started_at=previous.get("started_at") or datetime.now(UTC).isoformat(),
         elapsed_seconds=elapsed,
         read_bytes=read_bytes,
+        progress_callbacks=progress_callbacks,
         error_class="timeout",
         error_message=f"scan exceeded {timeout_seconds:g}s",
         version=previous.get("version") or os.environ.get("VERSION"),
@@ -331,6 +338,8 @@ def mark_startup_status_timeout(db_path: str, timeout_seconds: float) -> None:
     detail = f"phase={phase} elapsed={elapsed:.0f}s"
     if isinstance(read_bytes, int | float) and read_bytes:
         detail += f" read={read_bytes / 1_048_576:.0f}MB"
+    if isinstance(progress_callbacks, int | float):
+        detail += f" progress_callbacks={progress_callbacks:.0f}"
     _log(
         "[entrypoint] SQLite integrity scan timed out after "
         f"{timeout_seconds:g}s; last observed {detail}",

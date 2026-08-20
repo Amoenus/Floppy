@@ -288,6 +288,9 @@ def _timeout_details(status: dict) -> str:
     ]
     if isinstance(read_bytes, int | float) and read_bytes:
         items.append(f"<li>Read so far: ~{read_bytes / 1_048_576:.0f}MB</li>")
+    progress_callbacks = status.get("progress_callbacks")
+    if isinstance(progress_callbacks, int | float):
+        items.append(f"<li>SQLite progress callbacks: {progress_callbacks:.0f}</li>")
     items.append(f"<li>Database: <code>{html.escape(str(status.get('database', 'unknown')))}</code></li>")
     version = html.escape(str(status.get("version") or "unknown"))
     commit_sha = html.escape(str(status.get("commit_sha") or "unknown"))
@@ -307,6 +310,23 @@ def _timeout_diagnosis_card() -> str:
     )
 
 
+def _timeout_retry_card(*, interactive: bool) -> str:
+    if interactive:
+        return (
+            "<div class='card'><h2>Retry the startup check</h2>"
+            "<p>After checking the database, retry the startup integrity gate. "
+            "Floppy will not bypass the gate; if it finds relationship damage, "
+            "the normal recovery policy still applies.</p>"
+            "<form method='POST' action='/retry'>"
+            "<button>Retry startup check</button></form></div>"
+        )
+    return (
+        "<div class='card'><h2>Retry the startup check</h2>"
+        "<p>Open the recovery page on the published port to retry the scan after "
+        "checking the database.</p></div>"
+    )
+
+
 def render_page(
     report: dict | None,
     *,
@@ -320,6 +340,7 @@ def render_page(
         body = (
             _timeout_body()
             + _timeout_details(status)
+            + _timeout_retry_card(interactive=interactive)
             + _timeout_diagnosis_card()
             + _help_card()
         )
@@ -466,6 +487,19 @@ def _waiting_page() -> str:
     return _document(body, script=_POLL_SCRIPT)
 
 
+def _retry_waiting_page() -> str:
+    body = (
+        "<div class='card'>"
+        "<h1>Floppy is retrying the startup check.</h1>"
+        "<p role='status'>The database was not changed. Floppy will start the "
+        "application if the check completes successfully.</p>"
+        "<p class='note'>If the check times out again, this page will be available "
+        "after the recovery server starts again.</p>"
+        "</div>"
+    )
+    return _document(body)
+
+
 def _help_card() -> str:
     """Offer the places where a person can get help."""
     links = " · ".join(
@@ -523,6 +557,13 @@ def _write_decision(db_path: str, report: dict, action: str) -> None:
             sort_keys=True,
         )
         + "\n",
+    )
+
+
+def _write_retry_decision(db_path: str) -> None:
+    _publish_report(
+        _decision_path(db_path),
+        json.dumps({"action": "retry"}, sort_keys=True) + "\n",
     )
 
 
@@ -628,6 +669,21 @@ class _Handler(BaseHTTPRequestHandler):
         return bool(host) and urlsplit(origin).netloc == host
 
     def do_POST(self) -> None:
+        if self.path == "/retry":
+            status = read_startup_status(self.db_path)
+            if not status or status.get("status") != "timeout":
+                self._send(409, "startup is not waiting after a timeout", "text/plain")
+                return
+            if not self._is_same_origin():
+                self._send(403, "cross-site request", "text/plain; charset=utf-8")
+                return
+            _write_retry_decision(self.db_path)
+            self._send(200, _retry_waiting_page(), "text/html; charset=utf-8")
+            with suppress(OSError):
+                self.wfile.flush()
+            threading.Thread(target=self.server.shutdown, daemon=True).start()
+            return
+
         action = {"/accept": "accept", "/quarantine": "quarantine"}.get(self.path)
         report = _read_incident_report(self.db_path)
         if action is None or not report:

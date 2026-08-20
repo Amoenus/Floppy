@@ -37,6 +37,8 @@ if TYPE_CHECKING:
 
 _ACTION_ENV = "FLOPPY_SQLITE_CONFLICT_ACTION"
 _AUTO_REPAIR_ENV = "FLOPPY_SQLITE_AUTO_REPAIR"
+_PROGRESS_INSTRUCTIONS = 10_000
+_PROGRESS_REPORT_INTERVAL_SECONDS = 10.0
 
 StatusEmitter = Callable[..., None]
 
@@ -56,6 +58,7 @@ def _status_emitter(db_path: str) -> StatusEmitter:
         status: str,
         phase: str,
         *,
+        progress_callbacks: int | None = None,
         error_class: str | None = None,
         error_message: str | None = None,
     ) -> None:
@@ -66,6 +69,7 @@ def _status_emitter(db_path: str) -> StatusEmitter:
             phase=phase,
             started_at=started_at,
             elapsed_seconds=time.monotonic() - started_monotonic,
+            progress_callbacks=progress_callbacks,
             version=version,
             commit_sha=commit_sha,
             error_class=error_class,
@@ -73,6 +77,42 @@ def _status_emitter(db_path: str) -> StatusEmitter:
         )
 
     return emit
+
+
+def _run_with_progress(
+    conn: sqlite3.Connection,
+    operation: Callable[[], object],
+    *,
+    phase: str,
+    emit: StatusEmitter,
+) -> tuple[object, int]:
+    """Run one SQLite operation and periodically publish progress counts."""
+    progress_callbacks = 0
+    last_report = time.monotonic()
+
+    def progress() -> int:
+        nonlocal last_report, progress_callbacks
+        progress_callbacks += 1
+        now = time.monotonic()
+        if now - last_report >= _PROGRESS_REPORT_INTERVAL_SECONDS:
+            _log(
+                f"[integrity] phase={phase} status=running "
+                f"progress_callbacks={progress_callbacks}",
+            )
+            emit(
+                "running",
+                phase,
+                progress_callbacks=progress_callbacks,
+            )
+            last_report = now
+        return 0
+
+    conn.set_progress_handler(progress, _PROGRESS_INSTRUCTIONS)
+    try:
+        result = operation()
+    finally:
+        conn.set_progress_handler(None, 0)
+    return result, progress_callbacks
 
 
 class UnsafeRecoverySchemaError(sqlite3.IntegrityError):
@@ -192,10 +232,15 @@ def _scan_and_publish_block(
 ) -> dict | None:
     """Scan storage and publish the policy's blocked relationship report."""
     prior_report = _read_incident_report(db_path)
-    emit("running", "quick_check")
     conn = sqlite3.connect(db_path, timeout=30.0)
     try:
-        result = conn.execute("PRAGMA quick_check").fetchone()
+        emit("running", "quick_check", progress_callbacks=0)
+        result, quick_progress = _run_with_progress(
+            conn,
+            lambda: conn.execute("PRAGMA quick_check").fetchone(),
+            phase="quick_check",
+            emit=emit,
+        )
         status = result[0] if result else None
         if status != "ok":
             _log(
@@ -205,14 +250,24 @@ def _scan_and_publish_block(
             emit(
                 "failed",
                 "quick_check",
+                progress_callbacks=quick_progress,
                 error_class="corruption",
                 error_message=f"quick_check returned {status!r}",
             )
             _report_corruption(db_path, f"quick_check returned {status!r}")
             raise SystemExit(1)
 
-        emit("running", "foreign_key_check")
-        incident = _inspect_foreign_keys(conn)
+        emit(
+            "running",
+            "foreign_key_check",
+            progress_callbacks=quick_progress,
+        )
+        incident, _foreign_key_progress = _run_with_progress(
+            conn,
+            lambda: _inspect_foreign_keys(conn),
+            phase="foreign_key_check",
+            emit=emit,
+        )
         if not incident["total_conflicts"]:
             if prior_report:
                 try:

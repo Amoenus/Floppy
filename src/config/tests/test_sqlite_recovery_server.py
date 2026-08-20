@@ -16,7 +16,7 @@ from unittest import mock
 from django.test import SimpleTestCase
 
 from config import sqlite_recovery_server as recovery
-from config.sqlite_integrity import check_database_integrity
+from config.sqlite_integrity import check_database_integrity, write_startup_status
 
 
 class RecoveryPageTests(SimpleTestCase):
@@ -100,6 +100,37 @@ class RecoveryPageTests(SimpleTestCase):
                 # A success here would report the container as healthy while
                 # Floppy cannot serve a single request.
                 self.assertEqual(ctx.exception.code, 503)
+
+    def test_timeout_page_can_retry_without_a_container_restart(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = str(Path(tmp_dir) / "db.sqlite3")
+            sqlite3.connect(db_path).close()
+            write_startup_status(
+                db_path,
+                status="timeout",
+                phase="quick_check",
+                started_at="2026-08-20T01:49:43+00:00",
+                elapsed_seconds=600,
+                error_class="timeout",
+                error_message="scan exceeded 600s",
+                version="test",
+                commit_sha="test",
+            )
+            base = self.serve(db_path)
+
+            with urllib.request.urlopen(f"{base}/") as response:  # noqa: S310
+                page = response.read().decode()
+            self.assertIn("Retry startup check", page)
+            self.assertIn("action='/retry'", page)
+
+            with self.post(f"{base}/retry") as response:
+                body = response.read().decode()
+            self.assertIn("Floppy is retrying", body)
+
+            decision = json.loads(
+                Path(f"{db_path}.integrity.decision").read_text(),
+            )
+            self.assertEqual(decision, {"action": "retry"})
 
     def test_page_names_the_affected_titles(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
