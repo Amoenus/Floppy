@@ -438,6 +438,31 @@ class MediaCoreTests(FloppyApiTestCase):
             "genres": ["Drama"],
             "score": 7.8,
             "score_count": 30,
+            "cast": [
+                {
+                    "person_id": "101",
+                    "name": "Cast Member",
+                    "image": "https://example.com/cast.jpg",
+                    "known_for_department": "Acting",
+                    "gender": "unknown",
+                    "department": "Acting",
+                    "role": "Lead",
+                    "order": 0,
+                    "episode_count": 11,
+                }
+            ],
+            "crew": [
+                {
+                    "person_id": "202",
+                    "name": "Crew Member",
+                    "image": "https://example.com/crew.jpg",
+                    "known_for_department": "Directing",
+                    "gender": "unknown",
+                    "department": "Directing",
+                    "role": "Director",
+                    "order": 0,
+                }
+            ],
             "details": {
                 "format": "TV",
                 "first_air_date": "2004-01-12",
@@ -673,6 +698,8 @@ class MediaCoreTests(FloppyApiTestCase):
                 "genres",
                 "score",
                 "score_count",
+                "cast",
+                "crew",
                 "details",
                 "related",
                 "item_id",
@@ -683,6 +710,8 @@ class MediaCoreTests(FloppyApiTestCase):
                 "lists",
             },
         )
+        self.assertEqual(payload["cast"], mock_metadata.return_value["cast"])
+        self.assertEqual(payload["crew"], mock_metadata.return_value["crew"])
 
     @patch("api.views.services.get_media_metadata")
     def test_tv_detail_reports_tracked_season(self, mock_metadata):
