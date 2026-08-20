@@ -380,11 +380,77 @@ def media_delete(request):
             media_type,
             instance_id,
         )
+        if media_type == MediaTypes.EPISODE.value:
+            episode_item = media.item
+            related_season = media.related_season
         start_date = getattr(media, "start_date", None)
         end_date = getattr(media, "end_date", None)
         created_at = getattr(media, "created_at", None)
         media.delete()
         logger.info("%s deleted successfully.", media)
+
+        if media_type == MediaTypes.EPISODE.value and request.headers.get(
+            "HX-Request",
+        ):
+            related_season._sync_status_after_episode_change()
+            cache_utils.clear_time_left_cache_for_user(related_season.user_id)
+            cache_utils.clear_media_list_cache_for_user(related_season.user_id)
+            history_day_key = history_cache.history_day_key(
+                end_date or start_date or created_at,
+            )
+            if history_day_key:
+                history_cache.invalidate_history_days(
+                    request.user.id,
+                    day_keys=[history_day_key],
+                    logging_styles=("sessions", "repeats"),
+                    reason="media_delete",
+                    force=True,
+                )
+
+            episode_history = list(
+                Episode.objects.filter(
+                    related_season=related_season,
+                    item=episode_item,
+                )
+                .select_related("item", "related_season")
+                .order_by("-end_date", "-created_at"),
+            )
+            episode = episode_history[0] if episode_history else media
+            episode.history = episode_history
+            episode.collection_entry = (
+                CollectionEntry.objects.filter(
+                    item=episode_item,
+                    user=request.user,
+                )
+                .select_related("item")
+                .first()
+            )
+
+            response = HttpResponse()
+            _write_episode_save_oob(
+                response,
+                request,
+                episode=episode,
+                related_season=related_season,
+                media_id=episode_item.media_id,
+                source=episode_item.source,
+                season_number=episode_item.season_number,
+                episode_number=episode_item.episode_number,
+                next_path=request.GET.get("next") or "",
+            )
+            response["HX-Trigger"] = json.dumps(
+                {
+                    "closeModal": {},
+                    "showToast": {
+                        "message": f"Removed watch for episode {episode_item.episode_number}.",
+                        "type": "success",
+                    },
+                },
+            )
+            response["Cache-Control"] = "no-cache, no-store, must-revalidate"
+            response["Pragma"] = "no-cache"
+            response["Expires"] = "0"
+            return response
 
         if media_type in (MediaTypes.GAME.value, MediaTypes.BOARDGAME.value):
             history_day_keys = history_cache.history_day_keys_for_range(
