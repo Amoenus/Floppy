@@ -25,6 +25,7 @@ from app.media_list_filters import (
     get_next_episode_map,
     parse_media_list_filters,
 )
+from app.metadata_sync_views import enrich_synced_item
 from app.models import BasicMedia, Item, MediaTypes, Sources
 from app.providers import services, tmdb
 from app.services import metadata_resolution
@@ -2145,6 +2146,22 @@ class MediaSyncView(drf_views.APIView):
                 Item.objects.filter(pk=item.pk).update(**item_fields)
                 item.refresh_from_db()
 
+            sync_warnings, _preferred_provider_synced = enrich_synced_item(
+                item,
+                metadata,
+                source=source,
+                route_media_type=media_type,
+                tracking_media_type=media_type,
+                season_number=None,
+                user=request.user,
+            )
+            for sync_warning in sync_warnings:
+                logger.warning(
+                    "metadata_sync_partial_failure item_id=%s warning=%s",
+                    item.id,
+                    sync_warning,
+                )
+
             item.fetch_releases(delay=False)
 
             return Response(
@@ -3226,6 +3243,22 @@ class MediaSeasonSyncView(drf_views.APIView):
             else:
                 Item.objects.filter(pk=item.pk).update(**item_fields)
                 item.refresh_from_db()
+
+            sync_warnings, _preferred_provider_synced = enrich_synced_item(
+                item,
+                metadata,
+                source=source,
+                route_media_type=MediaTypes.SEASON.value,
+                tracking_media_type=MediaTypes.SEASON.value,
+                season_number=season_number,
+                user=request.user,
+            )
+            for sync_warning in sync_warnings:
+                logger.warning(
+                    "metadata_sync_partial_failure item_id=%s warning=%s",
+                    item.id,
+                    sync_warning,
+                )
 
             metadata["episodes"] = tmdb.process_episodes(
                 metadata,
