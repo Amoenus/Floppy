@@ -262,10 +262,12 @@ class TrackModalViewTests(TestCase):
         # Bound to a real watch, so Delete is live and a rewatch is still one
         # click away via "Add new entry".
         self.assertEqual(response.context["general_existing_instance"], episode)
-        delete_start = content.index('formaction="/media_delete')
+        delete_start = content.index('hx-post="/media_delete')
         delete_button = content[delete_start : content.index("</button>", delete_start)]
         self.assertIn("bg-red-700", delete_button)
         self.assertNotIn("disabled", delete_button)
+        self.assertIn('hx-post="/media_delete', content)
+        self.assertIn('hx-include="closest form"', content)
         self.assertIn("is_create=1", response.context["episode_create_url"])
         self.assertContains(response, "Add new entry")
 

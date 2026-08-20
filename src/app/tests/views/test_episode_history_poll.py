@@ -52,6 +52,11 @@ class EpisodeHistoryPollTests(TestCase):
             f'id="episode-track-button-{self.episode_item.id}"',
             html=False,
         )
+        self.assertContains(
+            response,
+            f'id="episode-track-button-{self.episode_item.id}-list"',
+            html=False,
+        )
         self.assertContains(response, 'hx-swap-oob="true"', html=False)
         self.assertContains(response, "season-progress-mobile-", html=False)
         self.assertContains(response, "season-progress-desktop-", html=False)

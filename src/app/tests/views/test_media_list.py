@@ -3024,8 +3024,8 @@ class MediaListViewTests(TestCase):
         self.assertNotContains(response, 'id="column-refresh-runner"')
         self.assertNotContains(response, 'hx-trigger="runColumnRefresh"')
 
-    def test_table_header_and_row_cells_match_for_pagination(self):
-        """Table pagination rows should always match header column count."""
+    def test_paginated_media_layouts_render_correctly(self):
+        """Grid and table pagination retain their layout-specific safeguards."""
         extra_ids = [f"extra-{i}" for i in range(6, 41)]
         Item.objects.bulk_create(
             [
@@ -3061,6 +3061,17 @@ class MediaListViewTests(TestCase):
         )
 
         headers = {"HTTP_HX_REQUEST": "true"}
+        grid_page = self.client.get(
+            reverse("medialist", args=[MediaTypes.MOVIE.value])
+            + "?layout=grid&page=1",
+            **headers,
+        )
+        self.assertContains(
+            grid_page,
+            'hx-trigger="revealed threshold:200px once"',
+            html=False,
+        )
+
         first_page = self.client.get(
             reverse("medialist", args=[MediaTypes.MOVIE.value])
             + "?layout=table&page=1",

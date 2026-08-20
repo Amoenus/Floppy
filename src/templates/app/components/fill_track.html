@@ -175,10 +175,19 @@
                 Add
               {% endif %}
             </button>
-            <button type="submit"
-                    formaction="{{ general_delete_formaction }}"
-                    class="px-4 py-2 rounded-md transition duration-300 {% if general_existing_instance %}bg-red-700 text-white hover:bg-red-800 cursor-pointer{% else %}bg-gray-600 text-gray-300 cursor-not-allowed{% endif %}"
-                    {% if not general_existing_instance %}disabled{% endif %}>Delete</button>
+            {% if media_type == "episode" %}
+              <button type="button"
+                      hx-post="{{ general_delete_formaction }}"
+                      hx-include="closest form"
+                      hx-swap="none"
+                      class="px-4 py-2 rounded-md transition duration-300 {% if general_existing_instance %}bg-red-700 text-white hover:bg-red-800 cursor-pointer{% else %}bg-gray-600 text-gray-300 cursor-not-allowed{% endif %}"
+                      {% if not general_existing_instance %}disabled{% endif %}>Delete</button>
+            {% else %}
+              <button type="submit"
+                      formaction="{{ general_delete_formaction }}"
+                      class="px-4 py-2 rounded-md transition duration-300 {% if general_existing_instance %}bg-red-700 text-white hover:bg-red-800 cursor-pointer{% else %}bg-gray-600 text-gray-300 cursor-not-allowed{% endif %}"
+                      {% if not general_existing_instance %}disabled{% endif %}>Delete</button>
+            {% endif %}
             {% if episode_create_url %}
               <button type="button"
                       hx-get="{{ episode_create_url }}"

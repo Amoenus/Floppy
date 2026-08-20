@@ -354,6 +354,11 @@ class ListsViewTests(TestCase):
         response = self.client.get(reverse("lists"))
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.context["custom_lists"]), 20)  # 20 per page
+        self.assertContains(
+            response,
+            'hx-trigger="revealed threshold:200px once"',
+            html=False,
+        )
 
         # Test second page
         response = self.client.get(reverse("lists") + "?page=2")
