@@ -8,7 +8,7 @@ from itertools import batched
 
 from django.apps import apps
 from django.db import connection
-from django.db.models import Q
+from django.db.models import Exists, OuterRef, Q
 from django.utils import timezone
 
 from app.models import CollectionEntry, Item, ItemTag, MediaTypes, Sources, Status
@@ -23,6 +23,8 @@ SMART_FILTER_KEYS = (
     "genre",
     "implied_genre",
     "year",
+    "completed_date_from",
+    "completed_date_to",
     "release",
     "release_date_from",
     "release_date_to",
@@ -54,6 +56,8 @@ SMART_FILTER_DEFAULTS = {
     "genre": "",
     "implied_genre": "",
     "year": "",
+    "completed_date_from": "",
+    "completed_date_to": "",
     "release": "all",
     "release_date_from": "",
     "release_date_to": "",
@@ -331,6 +335,12 @@ def normalize_rule_payload(payload, owner):
         _payload_get(payload, "date_added_from", "")
     )
     date_added_to = _normalize_date_filter(_payload_get(payload, "date_added_to", ""))
+    completed_date_from = _normalize_date_filter(
+        _payload_get(payload, "completed_date_from", "")
+    )
+    completed_date_to = _normalize_date_filter(
+        _payload_get(payload, "completed_date_to", "")
+    )
 
     year = str(_payload_get(payload, "year", "") or "").strip().lower()
     if year and year != "unknown" and not year.isdigit():
@@ -378,6 +388,8 @@ def normalize_rule_payload(payload, owner):
         "genre": str(_payload_get(payload, "genre", "") or "").strip(),
         "implied_genre": str(_payload_get(payload, "implied_genre", "") or "").strip(),
         "year": year,
+        "completed_date_from": completed_date_from,
+        "completed_date_to": completed_date_to,
         "release": release,
         "release_date_from": release_date_from,
         "release_date_to": release_date_to,
@@ -438,6 +450,8 @@ def _base_media_queryset(
     search_query: str = "",
     date_added_from: str = "",
     date_added_to: str = "",
+    completed_date_from: str = "",
+    completed_date_to: str = "",
 ):
     if isinstance(status_filter, str):
         status_filters = [] if status_filter in ("", "all") else [status_filter]
@@ -462,6 +476,28 @@ def _base_media_queryset(
         queryset = queryset.filter(created_at__date__gte=date_added_from)
     if date_added_to:
         queryset = queryset.filter(created_at__date__lte=date_added_to)
+
+    if completed_date_from or completed_date_to:
+        if media_type in (MediaTypes.TV.value, MediaTypes.SEASON.value):
+            episode_model = apps.get_model("app", "episode")
+            episode_lookup = (
+                "related_season"
+                if media_type == MediaTypes.SEASON.value
+                else "related_season__related_tv"
+            )
+            episode_filter = Q(**{episode_lookup: OuterRef("pk")})
+            if completed_date_from:
+                episode_filter &= Q(end_date__date__gte=completed_date_from)
+            if completed_date_to:
+                episode_filter &= Q(end_date__date__lte=completed_date_to)
+            queryset = queryset.filter(
+                Exists(episode_model.objects.filter(episode_filter)),
+            )
+        else:
+            if completed_date_from:
+                queryset = queryset.filter(end_date__date__gte=completed_date_from)
+            if completed_date_to:
+                queryset = queryset.filter(end_date__date__lte=completed_date_to)
 
     return queryset.select_related("item")
 
@@ -894,6 +930,8 @@ def collect_matching_item_ids(
             search_query=normalized_rules.get("search", ""),
             date_added_from=normalized_rules.get("date_added_from", ""),
             date_added_to=normalized_rules.get("date_added_to", ""),
+            completed_date_from=normalized_rules.get("completed_date_from", ""),
+            completed_date_to=normalized_rules.get("completed_date_to", ""),
         )
         queryset_item_ids = set(queryset.values_list("item_id", flat=True))
 
@@ -1008,6 +1046,8 @@ def item_matches_rules(
         search_query=normalized_rules.get("search", ""),
         date_added_from=normalized_rules.get("date_added_from", ""),
         date_added_to=normalized_rules.get("date_added_to", ""),
+        completed_date_from=normalized_rules.get("completed_date_from", ""),
+        completed_date_to=normalized_rules.get("completed_date_to", ""),
     ).filter(item_id=item.id)
 
     rating_filter = normalized_rules.get("rating", "all")

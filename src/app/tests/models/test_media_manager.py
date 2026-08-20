@@ -197,6 +197,81 @@ class MediaManagerTests(TestCase):
 
         self.assertEqual(len(media_list), 1)
 
+    def test_get_media_list_with_completed_date_filter(self):
+        """Completed-date filter matches on end_date, not release year."""
+        manager = MediaManager()
+
+        movie_completed_date = timezone.localdate()
+        Movie.objects.filter(id=self.movie.id).update(
+            end_date=timezone.now(),
+        )
+
+        media_list = manager.get_media_list(
+            user=self.user,
+            media_type=MediaTypes.MOVIE.value,
+            status_filter=MediaStatusChoices.ALL,
+            sort_filter="",
+            list_sql_filters={
+                "completed_date_from": movie_completed_date.isoformat(),
+                "completed_date_to": movie_completed_date.isoformat(),
+            },
+        )
+        self.assertEqual(list(media_list), [self.movie])
+
+        media_list = manager.get_media_list(
+            user=self.user,
+            media_type=MediaTypes.MOVIE.value,
+            status_filter=MediaStatusChoices.ALL,
+            sort_filter="",
+            list_sql_filters={
+                "completed_date_from": "1999-01-01",
+                "completed_date_to": "1999-01-02",
+            },
+        )
+        self.assertEqual(list(media_list), [])
+
+    def test_get_media_list_completed_date_filter_uses_episode_dates_for_tv(self):
+        """TV/Season have no persisted end_date; filter via episode Exists."""
+        manager = MediaManager()
+
+        season_list = manager.get_media_list(
+            user=self.user,
+            media_type=MediaTypes.SEASON.value,
+            status_filter=MediaStatusChoices.ALL,
+            sort_filter="",
+            list_sql_filters={
+                "completed_date_from": "2023-06-01",
+                "completed_date_to": "2023-06-03",
+            },
+        )
+        self.assertEqual(list(season_list), [self.season1])
+
+        tv_list = manager.get_media_list(
+            user=self.user,
+            media_type=MediaTypes.TV.value,
+            status_filter=MediaStatusChoices.ALL,
+            sort_filter="",
+            list_sql_filters={
+                "completed_date_from": "2023-06-01",
+                "completed_date_to": "2023-06-03",
+            },
+        )
+        self.assertEqual(list(tv_list), [self.tv])
+
+        # A range that misses every watched episode excludes the season/show,
+        # even though the show's release year (unset here) can't disambiguate.
+        season_list = manager.get_media_list(
+            user=self.user,
+            media_type=MediaTypes.SEASON.value,
+            status_filter=MediaStatusChoices.ALL,
+            sort_filter="",
+            list_sql_filters={
+                "completed_date_from": "2024-01-01",
+                "completed_date_to": "2024-01-02",
+            },
+        )
+        self.assertEqual(list(season_list), [])
+
     def test_get_in_progress_excludes_latest_completed(self):
         """Ensure home in-progress list ignores items whose latest status is completed."""
         manager = MediaManager()

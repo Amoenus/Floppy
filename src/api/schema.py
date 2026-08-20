@@ -104,6 +104,21 @@ MEDIA_LIST_FILTER_PARAMS = [
     ),
     OpenApiParameter(name="year", type=str, location=OpenApiParameter.QUERY),
     OpenApiParameter(
+        name="completed_date_from",
+        type=str,
+        location=OpenApiParameter.QUERY,
+        description=(
+            "Match items completed on or after this date (YYYY-MM-DD), "
+            "independent of release year."
+        ),
+    ),
+    OpenApiParameter(
+        name="completed_date_to",
+        type=str,
+        location=OpenApiParameter.QUERY,
+        description="Match items completed on or before this date (YYYY-MM-DD).",
+    ),
+    OpenApiParameter(
         name="release",
         type=str,
         location=OpenApiParameter.QUERY,

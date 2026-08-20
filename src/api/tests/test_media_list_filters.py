@@ -99,6 +99,37 @@ class MediaListFilterParityTests(FloppyApiTestCase):
         self.assertEqual(results["1001"]["next_episode"]["episode_number"], 2)
         self.assertIsNotNone(results["1001"]["next_episode"]["air_date"])
         self.assertIsNone(results["1003"]["next_episode"])
+        # The base fixture has a real S01E02 Item (episode_medias), so
+        # next_episode enriches from it instead of only carrying numbers.
+        next_episode = results["1001"]["next_episode"]
+        self.assertEqual(next_episode["title"], "TV Show 1")
+        self.assertEqual(next_episode["image"], "https://example.com/episode-2.jpg")
+        self.assertIn("ids", next_episode)
+        self.assertIsNotNone(next_episode["url"])
+
+    def test_next_episode_missing_item_degrades_gracefully(self):
+        """No matching local Item leaves enrichment fields None/empty, not a 500."""
+        tv1 = self.tv_medias[0]
+        Item.objects.filter(
+            media_id=tv1.item.media_id,
+            source=tv1.item.source,
+            media_type="episode",
+            season_number=1,
+            episode_number=2,
+        ).delete()
+        response = self._get_tv(
+            status="1",
+            progress="not_caught_up",
+            sort="next_episode_air_date",
+            direction="asc",
+        )
+        self.assertEqual(response.status_code, HTTP.OK)
+        results = {entry["item"]["media_id"]: entry for entry in response.json()["results"]}
+        next_episode = results["1001"]["next_episode"]
+        self.assertIsNone(next_episode["title"])
+        self.assertIsNone(next_episode["image"])
+        self.assertEqual(next_episode["ids"], {})
+        self.assertIsNone(next_episode["url"])
 
     def test_repeated_statuses_and_pagination_are_backward_compatible(self):
         """Repeated status values and limit/offset pagination preserve the contract."""
@@ -207,6 +238,45 @@ class MediaListFilterParityTests(FloppyApiTestCase):
         self.assertEqual(response.status_code, HTTP.OK)
         self.assertEqual(response.json()["pagination"]["total"], 1)
 
+    def test_completed_date_filter_differs_from_release_year(self):
+        """completed_date_from/to matches end_date, independent of release year."""
+        movie_item = self.items_by_type["movie"][0]
+        movie = self.movie_medias[0]
+        Item.objects.filter(pk=movie_item.pk).update(
+            release_datetime=timezone.datetime(1999, 1, 1, tzinfo=timezone.get_default_timezone()),
+        )
+        movie.__class__.objects.filter(pk=movie.pk).update(
+            end_date=timezone.datetime(2025, 6, 15, tzinfo=timezone.get_default_timezone()),
+        )
+
+        response = self.client.get(
+            "/api/v1/media/movie/",
+            {
+                "completed_date_from": "2025-06-01",
+                "completed_date_to": "2025-06-30",
+            },
+            **self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.OK, response.json())
+        result_media_ids = {
+            entry["item"]["media_id"] for entry in response.json()["results"]
+        }
+        self.assertIn(movie_item.media_id, result_media_ids)
+
+        response = self.client.get(
+            "/api/v1/media/movie/",
+            {
+                "completed_date_from": "1999-01-01",
+                "completed_date_to": "1999-12-31",
+            },
+            **self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.OK, response.json())
+        result_media_ids = {
+            entry["item"]["media_id"] for entry in response.json()["results"]
+        }
+        self.assertNotIn(movie_item.media_id, result_media_ids)
+
     def test_invalid_filter_values_return_bad_request(self):
         """Invalid filter choices are explicit API errors instead of ignored filters."""
         for params in (
@@ -215,6 +285,8 @@ class MediaListFilterParityTests(FloppyApiTestCase):
             {"tag_mode": "xor"},
             {"direction": "sideways"},
             {"year": "20"},
+            {"completed_date_from": "not-a-date"},
+            {"completed_date_to": "2025-13-40"},
         ):
             response = self._get_tv(**params)
             self.assertEqual(response.status_code, HTTP.BAD_REQUEST, params)

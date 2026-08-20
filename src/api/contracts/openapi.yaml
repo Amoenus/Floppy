@@ -552,6 +552,17 @@ paths:
           - collected
           - not_collected
       - in: query
+        name: completed_date_from
+        schema:
+          type: string
+        description: Match items completed on or after this date (YYYY-MM-DD), independent
+          of release year.
+      - in: query
+        name: completed_date_to
+        schema:
+          type: string
+        description: Match items completed on or before this date (YYYY-MM-DD).
+      - in: query
         name: country
         schema:
           type: string
@@ -772,6 +783,17 @@ paths:
           - all
           - collected
           - not_collected
+      - in: query
+        name: completed_date_from
+        schema:
+          type: string
+        description: Match items completed on or after this date (YYYY-MM-DD), independent
+          of release year.
+      - in: query
+        name: completed_date_to
+        schema:
+          type: string
+        description: Match items completed on or before this date (YYYY-MM-DD).
       - in: query
         name: country
         schema:

@@ -3,6 +3,7 @@
 # express across postgres and sqlite. Every identifier goes through
 # connection.ops.quote_name() and the only user value is bound via params.
 import contextlib
+import datetime
 import logging
 from collections import defaultdict
 from datetime import timedelta
@@ -35,6 +36,18 @@ MIN_PLAUSIBLE_YEAR = 1900
 
 def _normalize_media_list_filter_value(value):
     return str(value or "").strip().lower()
+
+
+def _normalize_completed_date_filter(value):
+    """Return a YYYY-MM-DD string or empty string."""
+    normalized = str(value or "").strip()
+    if not normalized:
+        return ""
+    try:
+        datetime.date.fromisoformat(normalized)
+    except ValueError:
+        return ""
+    return normalized
 
 
 def _filter_queryset_by_item_json_array_ci(
@@ -115,6 +128,30 @@ class MediaManager(models.Manager):
             return "asc"
         return "desc"
 
+    def _apply_completed_date_filter(self, queryset, media_type, date_from, date_to):
+        """Filter by completion date (end_date), TV/Season via episode Exists."""
+        if media_type in (MediaTypes.TV.value, MediaTypes.SEASON.value):
+            episode_model = apps.get_model(app_label="app", model_name="episode")
+            episode_lookup = (
+                "related_season"
+                if media_type == MediaTypes.SEASON.value
+                else "related_season__related_tv"
+            )
+            episode_filter = Q(**{episode_lookup: OuterRef("pk")})
+            if date_from:
+                episode_filter &= Q(end_date__date__gte=date_from)
+            if date_to:
+                episode_filter &= Q(end_date__date__lte=date_to)
+            return queryset.filter(
+                Exists(episode_model.objects.filter(episode_filter)),
+            )
+
+        if date_from:
+            queryset = queryset.filter(end_date__date__gte=date_from)
+        if date_to:
+            queryset = queryset.filter(end_date__date__lte=date_to)
+        return queryset
+
     def _apply_list_sql_filters(self, queryset, user, media_type, filters):
         """Apply Item-level filters in SQL before window deduplication and materialization."""
         if not filters:
@@ -143,6 +180,20 @@ class MediaManager(models.Manager):
             else:
                 with contextlib.suppress(TypeError, ValueError):
                     queryset = queryset.filter(item__release_datetime__year=int(year))
+
+        completed_date_from = _normalize_completed_date_filter(
+            filters.get("completed_date_from"),
+        )
+        completed_date_to = _normalize_completed_date_filter(
+            filters.get("completed_date_to"),
+        )
+        if completed_date_from or completed_date_to:
+            queryset = self._apply_completed_date_filter(
+                queryset,
+                media_type,
+                completed_date_from,
+                completed_date_to,
+            )
 
         release = str(filters.get("release") or "all").strip().lower()
         today = timezone.localdate()

@@ -12,12 +12,14 @@ from django.utils import timezone
 from app.models import (
     TV,
     CollectionEntry,
+    Episode,
     Game,
     Item,
     ItemTag,
     MediaTypes,
     Movie,
     Music,
+    Season,
     Sources,
     Status,
     Tag,
@@ -435,6 +437,109 @@ class CustomListManagerTest(TestCase):
         )
         smart_list.sync_smart_items()
         self.assertTrue(smart_list.items.filter(id=item.id).exists())
+
+    def test_smart_list_completed_date_filter_differs_from_release_year(self):
+        """Completed-date filter matches end_date, not the item's release year."""
+        item = Item.objects.create(
+            title="Old Release, Recently Finished",
+            media_id="901",
+            media_type=MediaTypes.MOVIE.value,
+            source=Sources.TMDB.value,
+            image="https://example.com/movie.jpg",
+            release_datetime=datetime.date(1999, 1, 1),
+        )
+        Movie.objects.create(
+            item=item,
+            user=self.user,
+            status=Status.COMPLETED.value,
+            end_date=datetime.datetime(2025, 6, 15, tzinfo=datetime.UTC),
+        )
+
+        smart_list = CustomList.objects.create(
+            name="Completed in June 2025",
+            owner=self.user,
+            is_smart=True,
+            smart_media_types=[MediaTypes.MOVIE.value],
+            smart_filters={
+                "completed_date_from": "2025-06-01",
+                "completed_date_to": "2025-06-30",
+            },
+        )
+        smart_list.sync_smart_items()
+        self.assertTrue(smart_list.items.filter(id=item.id).exists())
+
+        # The item's release year (1999) doesn't overlap the completed range,
+        # confirming this isn't accidentally matching on year/release_datetime.
+        year_filtered = smart_rules.normalize_rule_payload(
+            {
+                "media_types": [MediaTypes.MOVIE.value],
+                "year": "2025",
+            },
+            self.user,
+        )
+        self.assertNotIn(
+            item.id,
+            smart_rules.collect_matching_item_ids(self.user, year_filtered),
+        )
+
+        outside_range = CustomList.objects.create(
+            name="Completed in 1999",
+            owner=self.user,
+            is_smart=True,
+            smart_media_types=[MediaTypes.MOVIE.value],
+            smart_filters={
+                "completed_date_from": "1999-01-01",
+                "completed_date_to": "1999-12-31",
+            },
+        )
+        outside_range.sync_smart_items()
+        self.assertFalse(outside_range.items.filter(id=item.id).exists())
+
+    def test_smart_list_completed_date_filter_uses_episode_dates_for_tv(self):
+        """TV/Season have no persisted end_date; filter matches via episodes."""
+        season_item = Item.objects.create(
+            title="Friends",
+            media_id="1668",
+            media_type=MediaTypes.SEASON.value,
+            source=Sources.TMDB.value,
+            image="https://example.com/friends.jpg",
+            season_number=1,
+        )
+        season = Season.objects.create(
+            item=season_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        tv = TV.objects.get(user=self.user, item__media_id="1668")
+
+        episode_item = Item.objects.create(
+            title="Friends S1E1",
+            media_id="1668",
+            media_type=MediaTypes.EPISODE.value,
+            source=Sources.TMDB.value,
+            image="https://example.com/friends.jpg",
+            season_number=1,
+            episode_number=1,
+        )
+        Episode.objects.create(
+            item=episode_item,
+            related_season=season,
+            end_date=datetime.datetime(2023, 6, 2, tzinfo=datetime.UTC),
+        )
+
+        smart_list = CustomList.objects.create(
+            name="Completed early June 2023",
+            owner=self.user,
+            is_smart=True,
+            smart_media_types=[MediaTypes.SEASON.value, MediaTypes.TV.value],
+            smart_filters={
+                "completed_date_from": "2023-06-01",
+                "completed_date_to": "2023-06-03",
+            },
+        )
+        smart_list.sync_smart_items()
+        self.assertTrue(smart_list.items.filter(id=season_item.id).exists())
+        self.assertTrue(smart_list.items.filter(id=tv.item_id).exists())
 
     def test_smart_list_implied_genre_filter_matches_item_implied_genres(self):
         """Implied genre rules should match only the implied_genres field."""

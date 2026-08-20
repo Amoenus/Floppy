@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime
 from dataclasses import dataclass, replace
 
 from django.apps import apps
@@ -104,6 +105,8 @@ class MediaListFilters:
     genre: str = ""
     implied_genre: str = ""
     year: str = ""
+    completed_date_from: str = ""
+    completed_date_to: str = ""
     release: str = "all"
     source: str = ""
     media_status: str = ""
@@ -140,6 +143,23 @@ class MediaListEntry:
 
 def _normalize(value) -> str:
     return str(value or "").strip().lower()
+
+
+def normalize_completed_date_filter(value) -> str:
+    """Return a YYYY-MM-DD string or empty string.
+
+    Shared by the web list view, the API filters, and the SQL manager filter
+    so `completed_date_from`/`completed_date_to` validate identically
+    everywhere they're accepted.
+    """
+    normalized = str(value or "").strip()
+    if not normalized:
+        return ""
+    try:
+        datetime.date.fromisoformat(normalized)
+    except ValueError:
+        return ""
+    return normalized
 
 
 def _split_values(values) -> list[str]:
@@ -280,6 +300,24 @@ def parse_media_list_filters(request) -> MediaListFilters:
         parameter = "year"
         message = "year must be a four-digit year or unknown"
         raise MediaListFilterError(parameter, message)
+    completed_date_from_raw = str(
+        request.query_params.get("completed_date_from", "") or ""
+    ).strip()
+    if completed_date_from_raw and not normalize_completed_date_filter(
+        completed_date_from_raw,
+    ):
+        parameter = "completed_date_from"
+        message = "completed_date_from must be a YYYY-MM-DD date"
+        raise MediaListFilterError(parameter, message)
+    completed_date_to_raw = str(
+        request.query_params.get("completed_date_to", "") or ""
+    ).strip()
+    if completed_date_to_raw and not normalize_completed_date_filter(
+        completed_date_to_raw,
+    ):
+        parameter = "completed_date_to"
+        message = "completed_date_to must be a YYYY-MM-DD date"
+        raise MediaListFilterError(parameter, message)
     return MediaListFilters(
         statuses=statuses,
         include_no_status=include_no_status,
@@ -292,6 +330,8 @@ def parse_media_list_filters(request) -> MediaListFilters:
             request.query_params.get("implied_genre", "") or ""
         ).strip(),
         year=year,
+        completed_date_from=completed_date_from_raw,
+        completed_date_to=completed_date_to_raw,
         release=release,
         source=str(request.query_params.get("source", "") or "").strip(),
         media_status=str(
@@ -450,6 +490,23 @@ def _matches_metadata(entry, filters, collection_platforms, collection_formats, 
             if release_datetime is not None:
                 return False
         elif str(getattr(release_datetime, "year", "")) != filters.year:
+            return False
+    if filters.completed_date_from or filters.completed_date_to:
+        end_date = getattr(entry.media, "end_date", None)
+        if end_date is None:
+            return False
+        completed_date = timezone.localtime(end_date).date() if timezone.is_aware(
+            end_date,
+        ) else end_date.date()
+        if (
+            filters.completed_date_from
+            and completed_date < datetime.date.fromisoformat(filters.completed_date_from)
+        ):
+            return False
+        if (
+            filters.completed_date_to
+            and completed_date > datetime.date.fromisoformat(filters.completed_date_to)
+        ):
             return False
     if filters.release != "all":
         release_datetime = getattr(item, "release_datetime", None)
@@ -907,6 +964,8 @@ def _get_media_entries_for_type(user, media_type, filters):
             "genre": filters.genre,
             "implied_genre": filters.implied_genre,
             "year": filters.year,
+            "completed_date_from": filters.completed_date_from,
+            "completed_date_to": filters.completed_date_to,
             "release": filters.release,
             "source": filters.source,
             "media_status": filters.media_status,
@@ -940,6 +999,8 @@ def _get_media_entries_for_type(user, media_type, filters):
                     "genre": filters.genre,
                     "implied_genre": filters.implied_genre,
                     "year": filters.year,
+                    "completed_date_from": filters.completed_date_from,
+                    "completed_date_to": filters.completed_date_to,
                     "release": filters.release,
                     "source": filters.source,
                     "media_status": filters.media_status,
