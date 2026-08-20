@@ -15,7 +15,10 @@ logger = logging.getLogger(__name__)
 TIME_LEFT_CACHE_PREFIX = "time_left_sorted_v19"
 _REGISTRY_TEMPLATE = f"{TIME_LEFT_CACHE_PREFIX}_registry_{{user_id}}"
 
-MEDIA_LIST_CACHE_PREFIX = "media_list_v1"
+# v2: payload changed from a pickled full MediaListEntry list to a compact
+# {media_pk, model, item_pk} order hydrated per page (issue #865). Bumped so a
+# rolling deploy can't hand the new code an old pickled entry (or vice versa).
+MEDIA_LIST_CACHE_PREFIX = "media_list_v2"
 MEDIA_LIST_CACHE_TTL = 60  # seconds — enough for "navigate away and back" use case
 # v2: filter payloads include per-tag media-list usage counts.
 MEDIA_LIST_FILTER_CACHE_PREFIX = "media_list_filters_v2"

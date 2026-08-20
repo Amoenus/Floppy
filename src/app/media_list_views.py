@@ -192,34 +192,58 @@ def _hydrate_time_left_page(user, order_slice):
 def _serialize_media_list_order(entries):
     """Compact, cache-friendly representation of a fully filtered/sorted list.
 
-    Stores only primary keys; a cache hit hydrates one page from the DB
-    instead of unpickling the whole per-user library on every request (see
-    issue #865 — this was the dominant cost even when few SQL queries ran).
+    Stores only primary keys (plus the concrete model backing each row, since
+    a grouped-anime list mixes Anime and TV rows under one route media_type);
+    a cache hit hydrates one page from the DB instead of unpickling the whole
+    per-user library on every request (see issue #865 — this was the
+    dominant cost even when few SQL queries ran).
     """
-    return [
-        {"media_pk": getattr(getattr(entry, "media", None), "pk", None), "item_pk": entry.item_id}
-        for entry in entries
-    ]
+    result = []
+    for entry in entries:
+        media = getattr(entry, "media", None)
+        result.append(
+            {
+                "media_pk": getattr(media, "pk", None),
+                "model": type(media).__name__.lower() if media is not None else None,
+                "item_pk": entry.item_id,
+            }
+        )
+    return result
 
 
 def _hydrate_media_list_page(user, media_type, order_slice):
     """Rebuild MediaListEntry objects for a slice of a cached compact order."""
-    model = django_apps.get_model(app_label="app", model_name=media_type)
-    media_pks = [o["media_pk"] for o in order_slice if o.get("media_pk")]
-    item_pks = [
-        o["item_pk"] for o in order_slice if not o.get("media_pk") and o.get("item_pk")
-    ]
-    media_queryset = model.objects.filter(user=user, pk__in=media_pks).select_related(
-        "item",
-    )
-    # Same prefetch profile as get_media_list, so per-page progress/runtime
-    # annotation doesn't devolve into per-item queries.
-    media_queryset = BasicMedia.objects._apply_prefetch_related(
-        media_queryset,
-        media_type,
-        list_mode=True,
-    )
-    media_by_pk = {media.pk: media for media in media_queryset}
+    pks_by_model: dict[str, list] = {}
+    item_pks = []
+    for order_entry in order_slice:
+        media_pk = order_entry.get("media_pk")
+        if media_pk:
+            model_name = order_entry.get("model") or media_type
+            pks_by_model.setdefault(model_name, []).append(media_pk)
+        elif order_entry.get("item_pk"):
+            item_pks.append(order_entry["item_pk"])
+
+    media_by_key = {}
+    for model_name, media_pks in pks_by_model.items():
+        model = django_apps.get_model(app_label="app", model_name=model_name)
+        media_queryset = model.objects.filter(
+            user=user, pk__in=media_pks
+        ).select_related("item")
+        # Same prefetch profile as get_media_list, so per-page progress/runtime
+        # annotation doesn't devolve into per-item queries.
+        media_queryset = BasicMedia.objects._apply_prefetch_related(
+            media_queryset,
+            model_name,
+            list_mode=True,
+        )
+        media_list = list(media_queryset)
+        # Restore duplicate-tracking aggregates (aggregated_progress/status/
+        # score, dates, repeats) that get_media_list() would have attached —
+        # a raw pk lookup bypasses that window/aggregation pass entirely.
+        BasicMedia.objects._aggregate_duplicate_data(media_list, user, model_name)
+        for media in media_list:
+            media_by_key[(model_name, media.pk)] = media
+
     items_by_pk = (
         {item.pk: item for item in Item.objects.filter(pk__in=item_pks)}
         if item_pks
@@ -228,14 +252,17 @@ def _hydrate_media_list_page(user, media_type, order_slice):
 
     entries = []
     for order_entry in order_slice:
-        media = media_by_pk.get(order_entry.get("media_pk"))
-        if media is not None:
-            entries.append(MediaListEntry.from_media(media))
+        media_pk = order_entry.get("media_pk")
+        if media_pk:
+            model_name = order_entry.get("model") or media_type
+            media = media_by_key.get((model_name, media_pk))
+            if media is not None:
+                entries.append(MediaListEntry.from_media(media))
+            # Row deleted since the order was cached; skip until the
+            # invalidation signal refreshes the cache.
             continue
         item = items_by_pk.get(order_entry.get("item_pk"))
         if item is None:
-            # Row deleted since the order was cached; skip until the
-            # invalidation signal refreshes the cache.
             continue
         entries.append(MediaListEntry(item=item, media=None))
     return entries
