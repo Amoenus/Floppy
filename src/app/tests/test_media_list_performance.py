@@ -416,3 +416,73 @@ class MaterializationWasteTests(TestCase):
         print("  All 1000 items go through: build_filter_data_from_items,")
         print("  apply_latest_status_filter, and all Python filter functions")
         print("  before pagination reduces to 32.")
+
+
+@tag("slow", "benchmark")
+class CachedPageScalingTests(TestCase):
+    """Issue #865: a warm-cache page-2+ request must not scale with library size.
+
+    Production logs showed /medialist/movie scroll requests taking 2.6-3.4s
+    on only 4 SQL queries — the cost was unpickling the ENTIRE cached library
+    just to slice out one page. The fix caches a compact {media_pk, item_pk}
+    order instead of full objects and hydrates only the requested page.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = get_user_model().objects.create_user(
+            username="scalepage", password="12345"
+        )
+        cls.user.movie_enabled = True
+        cls.user.save()
+        cls.factory = RequestFactory()
+
+    def _second_page_ms(self, count):
+        cache.clear()
+        Movie.objects.filter(user=self.user).delete()
+        Item.objects.filter(
+            media_id__startswith="perf_",
+            media_type=MediaTypes.MOVIE.value,
+        ).delete()
+        _bulk_create_movie_items_and_entries(self.user, count)
+
+        from app.views import media_list
+
+        # Warm both the order cache and the filter_data cache with page 1.
+        first_request = self.factory.get("/medialist/movie")
+        first_request.user = self.user
+        media_list(first_request, MediaTypes.MOVIE.value)
+
+        second_request = self.factory.get("/medialist/movie", {"page": 2})
+        second_request.user = self.user
+        with override_settings(DEBUG=True):
+            reset_queries()
+            start = time.perf_counter()
+            response = media_list(second_request, MediaTypes.MOVIE.value)
+            elapsed_ms = (time.perf_counter() - start) * 1000
+            n_queries = len(connection.queries)
+        self.assertEqual(response.status_code, 200)
+        return elapsed_ms, n_queries
+
+    def test_cached_second_page_does_not_scale_with_library_size(self):
+        """A warm-cache page-2 request should cost roughly the same at 100 vs 2000 items."""
+        print()
+        small_ms, small_queries = self._second_page_ms(100)
+        large_ms, large_queries = self._second_page_ms(2000)
+
+        print("[PERF] Cached page-2 request:")
+        print(f"  100 items:  {small_ms:.0f}ms, {small_queries} queries")
+        print(f"  2000 items: {large_ms:.0f}ms, {large_queries} queries")
+
+        # A generous bound: even accounting for noise, a page-2 request that
+        # only ever touches ~32 rows should not take meaningfully longer as
+        # the underlying library grows 20x. Before the fix this scaled
+        # roughly linearly with library size because the whole cached
+        # library was unpickled every request.
+        self.assertLess(
+            large_ms,
+            small_ms * 5 + 200,
+            "page-2 request time scaled with library size; the media_list "
+            "cache is likely storing/hydrating full objects instead of a "
+            "compact per-page order",
+        )
