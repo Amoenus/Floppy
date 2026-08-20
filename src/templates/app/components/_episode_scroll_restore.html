@@ -1,0 +1,192 @@
+{% comment %}
+  Restores scroll position and loaded-episode extent when a user returns
+  to the episode list (#episodes-list) via the browser Back button.
+
+  The page is always freshly server-rendered on back-navigation (see the
+  pageshow/persisted reload in media_details.html and
+  htmx.config.historyCacheSize = 0 in base.html), so native scroll
+  restoration has nothing to restore into and any "Show more"/infinite
+  scroll content loaded before navigating away is gone. This script saves
+  {scrollY, batches} to sessionStorage before the user clicks into an
+  episode, then on the next load replays that many load-more steps before
+  restoring scrollY.
+
+  Include once per page that renders #episodes-list.
+{% endcomment %}
+<script>
+  (function() {
+    function scrollRestoreKey() {
+      return 'floppy-episode-scroll:' + location.pathname + location.search;
+    }
+
+    function getEpisodesList() {
+      return document.getElementById('episodes-list');
+    }
+
+    function getLoadMoreLink(container) {
+      var trigger = container.querySelector('[data-episode-load-more] a[hx-get]');
+      if (trigger) {
+        return { url: trigger.getAttribute('hx-get'), el: trigger };
+      }
+      var podcastTrigger = container.querySelector('.episodes-load-more-trigger[hx-get]');
+      if (podcastTrigger) {
+        return { url: podcastTrigger.getAttribute('hx-get'), el: podcastTrigger };
+      }
+      return null;
+    }
+
+    function bindBatchTracking(container) {
+      if (container.dataset.scrollRestoreBound === 'true') {
+        return;
+      }
+      container.dataset.scrollRestoreBound = 'true';
+      container.dataset.loadedBatches = container.dataset.loadedBatches || '0';
+
+      // beforeRequest (not afterSwap): the triggering element for an
+      // outerHTML swap (TV/comic "Show more") is detached from the DOM by
+      // the time afterSwap fires, so a containment check there always
+      // misses. The requesting element is still attached at beforeRequest.
+      document.body.addEventListener('htmx:beforeRequest', function(event) {
+        var elt = event.detail.elt;
+        if (!elt) return;
+        if (container.contains(elt) || elt === container) {
+          var current = Number.parseInt(container.dataset.loadedBatches || '0', 10);
+          container.dataset.loadedBatches = String((Number.isNaN(current) ? 0 : current) + 1);
+        }
+      });
+
+      container.addEventListener('click', function(event) {
+        var link = event.target.closest('a[href]');
+        if (!link || !container.contains(link)) {
+          return;
+        }
+        var batches = Number.parseInt(container.dataset.loadedBatches || '0', 10);
+        var state = {
+          scrollY: window.scrollY,
+          batches: Number.isNaN(batches) ? 0 : batches,
+        };
+        try {
+          sessionStorage.setItem(scrollRestoreKey(), JSON.stringify(state));
+        } catch (e) {
+          // sessionStorage unavailable (private mode, quota) - nothing to restore later.
+        }
+      });
+    }
+
+    function replayLoadMore(container, remaining) {
+      if (remaining <= 0) {
+        return Promise.resolve();
+      }
+      var loadMore = getLoadMoreLink(container);
+      if (!loadMore || !window.htmx) {
+        return Promise.resolve();
+      }
+      return new Promise(function(resolve) {
+        var target = loadMore.el.closest('[data-episode-load-more]') || container;
+        var onSwap = function(event) {
+          if (event.detail.target === target || container.contains(event.detail.target)) {
+            document.body.removeEventListener('htmx:afterSwap', onSwap);
+            resolve();
+          }
+        };
+        document.body.addEventListener('htmx:afterSwap', onSwap);
+        htmx.ajax('GET', loadMore.url, {
+          target: target,
+          select: '#episodes-batch > *',
+          swap: 'outerHTML',
+        });
+      }).then(function() {
+        return replayLoadMore(container, remaining - 1);
+      });
+    }
+
+    function replayPodcastPages(container, batches) {
+      if (batches <= 0) {
+        return Promise.resolve();
+      }
+      var loadMore = getLoadMoreLink(container);
+      if (!loadMore) {
+        return Promise.resolve();
+      }
+      var url = new URL(loadMore.url, window.location.origin);
+      var startPage = Number.parseInt(url.searchParams.get('page') || '2', 10);
+      if (Number.isNaN(startPage)) {
+        startPage = 2;
+      }
+
+      var chain = Promise.resolve();
+      for (var i = 0; i < batches; i++) {
+        (function(page) {
+          chain = chain.then(function() {
+            var pageUrl = new URL(loadMore.url, window.location.origin);
+            pageUrl.searchParams.set('page', page);
+            return fetch(pageUrl.toString())
+              .then(function(response) { return response.ok ? response.text() : ''; })
+              .then(function(html) {
+                if (html) {
+                  var trigger = container.querySelector('.episodes-load-more-trigger');
+                  if (trigger) {
+                    trigger.insertAdjacentHTML('beforebegin', html);
+                  } else {
+                    container.insertAdjacentHTML('beforeend', html);
+                  }
+                }
+              })
+              .catch(function() {});
+          });
+        })(startPage + i);
+      }
+      return chain;
+    }
+
+    function restoreScroll() {
+      var container = getEpisodesList();
+      if (!container) {
+        return;
+      }
+      bindBatchTracking(container);
+
+      var raw;
+      try {
+        raw = sessionStorage.getItem(scrollRestoreKey());
+      } catch (e) {
+        raw = null;
+      }
+      if (!raw) {
+        return;
+      }
+      try {
+        sessionStorage.removeItem(scrollRestoreKey());
+      } catch (e) {
+        // ignore
+      }
+
+      var state;
+      try {
+        state = JSON.parse(raw);
+      } catch (e) {
+        return;
+      }
+      if (!state || typeof state.scrollY !== 'number') {
+        return;
+      }
+
+      var isPodcast = !!container.querySelector('.episodes-load-more-trigger');
+      var replay = isPodcast
+        ? replayPodcastPages(container, state.batches || 0)
+        : replayLoadMore(container, state.batches || 0);
+
+      replay.then(function() {
+        requestAnimationFrame(function() {
+          window.scrollTo(0, state.scrollY);
+        });
+      });
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', restoreScroll);
+    } else {
+      restoreScroll();
+    }
+  })();
+</script>
