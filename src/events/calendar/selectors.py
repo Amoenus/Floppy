@@ -169,8 +169,12 @@ def get_tvdb_tv_items_to_include(tv_items):
     )
     # Unknown air dates are stored as datetime.min (year 1); future events
     # include the year-9999 sentinel. Both mean dates may still change.
+    # Use year__lt=1900 (not the exact year=1) to match the sentinel: Django's
+    # __year= lookup is optimized into a bounds check that converts year-1's
+    # lower bound through the DB connection's timezone, which can underflow
+    # datetime.MINYEAR and raise OverflowError for negative UTC offsets.
     refreshable_season_events = season_events.filter(
-        Q(datetime__gte=now) | Q(datetime__year=1),
+        Q(datetime__gte=now) | Q(datetime__year__lt=1900),
     )
 
     included_tv_rows = list(
