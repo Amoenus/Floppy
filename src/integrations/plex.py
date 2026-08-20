@@ -1,6 +1,7 @@
 """Helpers for interacting with the Plex APIs."""
 
 import logging
+import time
 from http import HTTPStatus
 from typing import Any
 from urllib.parse import quote_plus
@@ -197,13 +198,23 @@ def list_resources(token: str) -> list[dict[str, Any]]:
 
 
 def list_sections(token: str) -> list[dict[str, Any]]:
-    """Return all accessible library sections for the account."""
+    """Return all accessible library sections for the account.
+
+    Bounded by PLEX_SECTIONS_TIMEOUT_BUDGET so an unreachable server can't
+    stall the caller for N servers x M connections x per-connection timeout.
+    """
     sections: list[dict[str, Any]] = []
     seen = set()
+    deadline = time.monotonic() + settings.PLEX_SECTIONS_TIMEOUT_BUDGET
 
     for server in list_resources(token):
         server_token = server.get("access_token") or token
         for connection in _sorted_connections(server.get("connections", [])):
+            if time.monotonic() >= deadline:
+                logger.info(
+                    "Plex section refresh time budget exceeded; stopping early",
+                )
+                return sections
             uri = connection.get("uri")
             if not uri:
                 continue

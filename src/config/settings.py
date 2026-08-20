@@ -1193,6 +1193,11 @@ PLEX_PLATFORM = config("PLEX_PLATFORM", default="Floppy")
 PLEX_PLATFORM_VERSION = config("PLEX_PLATFORM_VERSION", default=VERSION)
 PLEX_SSL_VERIFY = config("PLEX_SSL_VERIFY", default=False, cast=bool)
 PLEX_SECTIONS_TTL_HOURS = config("PLEX_SECTIONS_TTL_HOURS", default=24, cast=int)
+PLEX_SECTIONS_TIMEOUT_BUDGET = config(
+    "PLEX_SECTIONS_TIMEOUT_BUDGET",
+    default=15,
+    cast=int,
+)
 PLEX_HISTORY_PAGE_SIZE = config("PLEX_HISTORY_PAGE_SIZE", default=200, cast=int)
 PLEX_HISTORY_MAX_ITEMS = config("PLEX_HISTORY_MAX_ITEMS", default=0, cast=int)
 
@@ -1417,6 +1422,12 @@ CELERY_TASK_ROUTES = {
     # Fill-in artwork resolution for the home-page playback card; keeps the
     # HTTP request path free of provider calls.
     "Resolve live playback image": {
+        "queue": "interactive",
+        "priority": CELERY_TASK_PRIORITY_INTERACTIVE,
+    },
+    # Keeps the HTTP request path free of live Plex connection probing when
+    # loading Integrations settings.
+    "Refresh Plex library sections": {
         "queue": "interactive",
         "priority": CELERY_TASK_PRIORITY_INTERACTIVE,
     },

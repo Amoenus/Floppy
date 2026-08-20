@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 from django.contrib.auth import get_user_model
 from django.contrib.messages import get_messages
 from django.test import TestCase
@@ -5,6 +7,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from integrations.models import PlexAccount, PlexWebhookShare
+from integrations.plex import PlexAuthError
 
 
 class PlexUsernamesUpdateTests(TestCase):
@@ -336,3 +339,56 @@ class PlexWebhookShareTests(TestCase):
 
         self.assertRedirects(response, reverse("import_data"))
         self.assertFalse(PlexWebhookShare.objects.exists())
+
+
+class PlexSectionsRefreshTests(TestCase):
+    """Integrations settings page must not block on live Plex connection probing."""
+
+    def setUp(self):
+        self.credentials = {"username": "test", "password": "12345"}
+        self.user = get_user_model().objects.create_user(**self.credentials)
+        self.client.login(**self.credentials)
+        self.account = PlexAccount.objects.create(user=self.user, plex_token="token")
+
+    @patch("users.views.tasks.refresh_plex_sections.delay")
+    @patch("integrations.plex.list_sections")
+    def test_stale_sections_dispatch_background_refresh_without_blocking(
+        self,
+        mock_list_sections,
+        mock_delay,
+    ):
+        """The view must dispatch the refresh task, never call list_sections() itself."""
+        response = self.client.get(reverse("integrations"))
+
+        self.assertEqual(response.status_code, 200)
+        mock_delay.assert_called_once_with(self.user.id)
+        mock_list_sections.assert_not_called()
+
+    @patch("integrations.plex.list_sections")
+    def test_refresh_task_persists_sections_on_success(self, mock_list_sections):
+        from integrations.tasks import refresh_plex_sections
+
+        mock_list_sections.return_value = [{"id": "1", "title": "Movies"}]
+
+        refresh_plex_sections(self.user.id)
+
+        self.account.refresh_from_db()
+        self.assertEqual(self.account.sections, [{"id": "1", "title": "Movies"}])
+        self.assertIsNotNone(self.account.sections_refreshed_at)
+
+    @patch("integrations.plex.list_sections")
+    def test_refresh_task_leaves_cache_untouched_on_auth_error(
+        self,
+        mock_list_sections,
+    ):
+        from integrations.tasks import refresh_plex_sections
+
+        self.account.sections = [{"id": "stale", "title": "Old"}]
+        self.account.save(update_fields=["sections"])
+        mock_list_sections.side_effect = PlexAuthError("token revoked")
+
+        refresh_plex_sections(self.user.id)
+
+        self.account.refresh_from_db()
+        self.assertEqual(self.account.sections, [{"id": "stale", "title": "Old"}])
+        self.assertIsNone(self.account.sections_refreshed_at)

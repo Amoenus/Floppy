@@ -380,6 +380,40 @@ class CustomListManagerTest(TestCase):
         self.assertIn(tv_item.id, matched_ids)
         self.assertNotIn(untracked_episode_item.id, matched_ids)
 
+    def test_collection_filter_batches_large_id_sets(self):
+        """Collection lookups shouldn't blow SQLite's bound-parameter limit (#500 error).
+
+        Forcing a tiny `_id_batch_size` simulates a user with a collection large
+        enough to exceed `connection.features.max_query_params` without creating
+        thousands of rows.
+        """
+        movie_items = []
+        for index in range(5):
+            item = Item.objects.create(
+                title=f"Collected Movie {index}",
+                media_id=str(1000 + index),
+                media_type=MediaTypes.MOVIE.value,
+                source=Sources.TMDB.value,
+                image=f"https://example.com/movie{index}.jpg",
+            )
+            CollectionEntry.objects.create(user=self.user, item=item)
+            movie_items.append(item)
+
+        normalized_rules = smart_rules.normalize_rule_payload(
+            {"media_types": [MediaTypes.MOVIE.value], "status": "all"},
+            self.user,
+        )
+
+        with patch("lists.smart_rules._id_batch_size", return_value=2):
+            matched_ids = smart_rules.collect_matching_item_ids(
+                self.user,
+                normalized_rules,
+                include_collection_only_untracked=True,
+            )
+
+        for item in movie_items:
+            self.assertIn(item.id, matched_ids)
+
     def test_smart_list_language_filter(self):
         """Language filter should match item language metadata."""
         item = Item.objects.create(

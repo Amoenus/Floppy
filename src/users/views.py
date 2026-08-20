@@ -32,7 +32,7 @@ from app.models import Item, MediaTypes, Status
 from app.providers import tmdb
 from app.services import metadata_resolution
 from app.templatetags import app_tags
-from integrations import exports, plex
+from integrations import exports, plex, tasks
 from integrations.models import (
     ImportRun,
     LastFMAccount,
@@ -1257,16 +1257,7 @@ def integrations(request):
 
     if plex_account and plex_account.plex_token:
         if _should_refresh_plex_sections(plex_account):
-            try:
-                plex_account.sections = plex.list_sections(plex_account.plex_token)
-                plex_account.sections_refreshed_at = timezone.now()
-                plex_account.save(update_fields=["sections", "sections_refreshed_at"])
-            except Exception as exc:  # pragma: no cover - defensive
-                logger.warning(
-                    "Could not refresh Plex libraries for webhook settings for user %s: %s",
-                    user.username,
-                    exc,
-                )
+            tasks.refresh_plex_sections.delay(user.id)
 
         sections = plex_account.sections or []
         for section in sections:

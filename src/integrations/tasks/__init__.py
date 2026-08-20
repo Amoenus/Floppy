@@ -73,6 +73,7 @@ from integrations.tasks._media_imports import (
     import_xbox_recurring,
     import_yamtrack,
     push_jellyfin_watched,
+    refresh_plex_sections,
     sync_plex_watchlist,
 )
 from integrations.tasks._plex_collection import (
@@ -184,6 +185,7 @@ __all__ = [
     "process_stremio_webhook",
     "process_webhook",
     "push_jellyfin_watched",
+    "refresh_plex_sections",
     "sync_plex_watchlist",
     "update_collection_metadata_from_plex",
     "update_collection_metadata_from_plex_webhook",

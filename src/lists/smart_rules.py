@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import datetime
 from collections.abc import Iterable
+from itertools import batched
 
 from django.apps import apps
+from django.db import connection
 from django.db.models import Q
 from django.utils import timezone
 
@@ -658,17 +660,29 @@ def _matches_collection_filter(
     return True
 
 
+def _id_batch_size(value_count: int) -> int:
+    """Return a safe `__in=` batch size for the active database backend."""
+    max_query_params = connection.features.max_query_params
+    if max_query_params:
+        # Keep room for other parameters (e.g. media_type) in the same query.
+        return max(1, max_query_params - 8)
+    return max(1, value_count)
+
+
 def _collection_filter_context(owner) -> tuple[set[int], set[tuple[str, str]]]:
     """Return collection lookup sets for smart list collection filtering."""
     collected_item_ids = set(
         CollectionEntry.objects.filter(user=owner).values_list("item_id", flat=True),
     )
-    collected_episode_pairs = set(
-        Item.objects.filter(
-            id__in=collected_item_ids,
-            media_type=MediaTypes.EPISODE.value,
-        ).values_list("media_id", "source"),
-    )
+    collected_episode_pairs = set()
+    batch_size = _id_batch_size(len(collected_item_ids))
+    for id_batch in batched(collected_item_ids, batch_size):
+        collected_episode_pairs.update(
+            Item.objects.filter(
+                id__in=id_batch,
+                media_type=MediaTypes.EPISODE.value,
+            ).values_list("media_id", "source"),
+        )
     return collected_item_ids, collected_episode_pairs
 
 
@@ -711,21 +725,26 @@ def _collection_only_item_ids(
         return set()
 
     direct_type_match = Q(media_type=media_type) | Q(library_media_type=media_type)
-    candidate_item_ids = set(
-        Item.objects.filter(id__in=collected_item_ids)
-        .filter(direct_type_match)
-        .exclude(media_type=MediaTypes.EPISODE.value)
-        .values_list("id", flat=True),
-    )
+    batch_size = _id_batch_size(len(collected_item_ids))
+    candidate_item_ids = set()
+    for id_batch in batched(collected_item_ids, batch_size):
+        candidate_item_ids.update(
+            Item.objects.filter(id__in=id_batch)
+            .filter(direct_type_match)
+            .exclude(media_type=MediaTypes.EPISODE.value)
+            .values_list("id", flat=True),
+        )
 
     if media_type in {MediaTypes.TV.value, MediaTypes.ANIME.value}:
-        episode_pairs = {
-            (str(media_id), str(source))
-            for media_id, source in Item.objects.filter(
-                id__in=collected_item_ids,
-                media_type=MediaTypes.EPISODE.value,
-            ).values_list("media_id", "source")
-        }
+        episode_pairs = set()
+        for id_batch in batched(collected_item_ids, batch_size):
+            episode_pairs.update(
+                (str(media_id), str(source))
+                for media_id, source in Item.objects.filter(
+                    id__in=id_batch,
+                    media_type=MediaTypes.EPISODE.value,
+                ).values_list("media_id", "source")
+            )
         if episode_pairs:
             show_media_ids = {media_id for media_id, _source in episode_pairs}
             show_sources = {source for _media_id, source in episode_pairs}
@@ -742,12 +761,15 @@ def _collection_only_item_ids(
     if not candidate_item_ids:
         return set()
 
-    candidate_queryset = Item.objects.filter(id__in=candidate_item_ids)
-    if search_query:
-        candidate_queryset = candidate_queryset.filter(
-            Q(title__icontains=search_query) | Q(media_id__icontains=search_query),
-        )
-    return set(candidate_queryset.values_list("id", flat=True))
+    result_ids = set()
+    for id_batch in batched(candidate_item_ids, _id_batch_size(len(candidate_item_ids))):
+        candidate_queryset = Item.objects.filter(id__in=id_batch)
+        if search_query:
+            candidate_queryset = candidate_queryset.filter(
+                Q(title__icontains=search_query) | Q(media_id__icontains=search_query),
+            )
+        result_ids.update(candidate_queryset.values_list("id", flat=True))
+    return result_ids
 
 
 def _filter_item_ids_by_rating(
@@ -766,16 +788,18 @@ def _filter_item_ids_by_rating(
         return candidate_item_ids
 
     model = apps.get_model("app", media_type)
-    queryset = model.objects.filter(
-        user=owner,
-        item_id__in=candidate_item_ids,
-        score__isnull=False,
-    )
-    if rating_min:
-        queryset = queryset.filter(score__gte=float(rating_min))
-    if rating_max:
-        queryset = queryset.filter(score__lte=float(rating_max))
-    rated_item_ids = set(queryset.values_list("item_id", flat=True))
+    rated_item_ids = set()
+    for id_batch in batched(candidate_item_ids, _id_batch_size(len(candidate_item_ids))):
+        queryset = model.objects.filter(
+            user=owner,
+            item_id__in=id_batch,
+            score__isnull=False,
+        )
+        if rating_min:
+            queryset = queryset.filter(score__gte=float(rating_min))
+        if rating_max:
+            queryset = queryset.filter(score__lte=float(rating_max))
+        rated_item_ids.update(queryset.values_list("item_id", flat=True))
 
     if rating_filter == "not_rated":
         return candidate_item_ids - rated_item_ids
@@ -903,29 +927,36 @@ def collect_matching_item_ids(
             )
             if not candidate_item_ids:
                 continue
-            queryset = queryset.filter(item_id__in=candidate_item_ids)
+            batch_size = _id_batch_size(len(candidate_item_ids))
+            entry_querysets = [
+                queryset.filter(item_id__in=id_batch)
+                for id_batch in batched(candidate_item_ids, batch_size)
+            ]
+        else:
+            entry_querysets = [queryset]
 
-        for entry in queryset.iterator():
-            item = getattr(entry, "item", None)
-            if not item:
-                continue
+        for entry_queryset in entry_querysets:
+            for entry in entry_queryset.iterator():
+                item = getattr(entry, "item", None)
+                if not item:
+                    continue
 
-            if not _matches_item_filters(item, normalized_rules, today, region):
-                continue
+                if not _matches_item_filters(item, normalized_rules, today, region):
+                    continue
 
-            if collection_filter != "all" and not _matches_collection_filter(
-                entry=entry,
-                media_type=media_type,
-                collection_filter=collection_filter,
-                collected_item_ids=collected_item_ids,
-                collected_episode_pairs=collected_episode_pairs,
-            ):
-                continue
+                if collection_filter != "all" and not _matches_collection_filter(
+                    entry=entry,
+                    media_type=media_type,
+                    collection_filter=collection_filter,
+                    collected_item_ids=collected_item_ids,
+                    collected_episode_pairs=collected_episode_pairs,
+                ):
+                    continue
 
-            if _tag_filter_excludes(item.id):
-                continue
+                if _tag_filter_excludes(item.id):
+                    continue
 
-            matched_ids.add(item.id)
+                matched_ids.add(item.id)
 
         if (
             include_collection_only_untracked
@@ -941,12 +972,14 @@ def collect_matching_item_ids(
                 collection_context_cache=collection_context_cache,
             )
             if collection_only_ids:
-                for item in Item.objects.filter(id__in=collection_only_ids).iterator():
-                    if not _matches_item_filters(item, normalized_rules, today, region):
-                        continue
-                    if _tag_filter_excludes(item.id):
-                        continue
-                    matched_ids.add(item.id)
+                batch_size = _id_batch_size(len(collection_only_ids))
+                for id_batch in batched(collection_only_ids, batch_size):
+                    for item in Item.objects.filter(id__in=id_batch).iterator():
+                        if not _matches_item_filters(item, normalized_rules, today, region):
+                            continue
+                        if _tag_filter_excludes(item.id):
+                            continue
+                        matched_ids.add(item.id)
 
     return matched_ids
 
@@ -1145,7 +1178,7 @@ def build_rule_filter_data(
 
     region = getattr(owner, "watch_provider_region", None)
 
-    items = Item.objects.filter(id__in=item_ids).only(
+    only_fields = (
         "genres",
         "implied_genres",
         "release_datetime",
@@ -1158,6 +1191,12 @@ def build_rule_filter_data(
         "authors",
         "watch_providers",
     )
+    item_batch_size = _id_batch_size(len(item_ids))
+    items = [
+        item
+        for id_batch in batched(item_ids, item_batch_size)
+        for item in Item.objects.filter(id__in=id_batch).only(*only_fields)
+    ]
 
     format_labels = {
         "hardcover": "Hardcover",
