@@ -8,7 +8,7 @@ from celery.signals import before_task_publish, task_failure, task_success
 from django.apps import apps
 from django.conf import settings
 from django.db import transaction
-from django.db.models.signals import post_delete, post_save, pre_save
+from django.db.models.signals import m2m_changed, post_delete, post_save, pre_save
 from django.db.utils import OperationalError
 from django.dispatch import receiver
 from django.utils import timezone
@@ -47,6 +47,7 @@ from app.models import (
     Season,
     Sources,
 )
+from lists.models import CustomList, CustomListItem
 from lists.smart_rules import sync_smart_lists_for_item
 
 logger = logging.getLogger(__name__)
@@ -391,6 +392,48 @@ def sync_smart_lists_on_item_tag_change(sender, instance, **kwargs):
     if not owner or not item:
         return
     _sync_owner_smart_lists_for_items(owner, [item])
+
+
+@receiver([post_save, post_delete], sender=CustomListItem)
+def sync_smart_lists_on_list_membership_change(sender, instance, **kwargs):
+    """Re-evaluate referencing smart lists when a manual list's membership changes.
+
+    A smart list's "List" filter includes the full contents of any linked
+    (non-smart) list. Membership changes on that manual list happen outside
+    the normal media-tracking signals below, so they need their own hook.
+    """
+    if kwargs.get("raw"):
+        return
+    custom_list = getattr(instance, "custom_list", None)
+    item = getattr(instance, "item", None)
+    if not custom_list or not item or custom_list.is_smart:
+        return
+
+    owners = {custom_list.owner}
+    owners.update(custom_list.collaborators.all())
+    for owner in owners:
+        _sync_owner_smart_lists_for_items(owner, [item])
+
+
+@receiver(m2m_changed, sender=CustomList.items.through)
+def sync_smart_lists_on_list_items_m2m_change(
+    sender, instance, action, reverse, pk_set, **kwargs
+):
+    """Catch list-membership writes that bypass CustomListItem's save/delete.
+
+    `CustomList.items.add()` creates `CustomListItem` rows via the m2m
+    manager's `bulk_create()`, which doesn't call `save()`, so
+    `sync_smart_lists_on_list_membership_change` above never fires for it.
+    `m2m_changed` fires regardless of how the through rows were written.
+    """
+    if action != "post_add" or reverse or instance.is_smart or not pk_set:
+        return
+
+    items = list(Item.objects.filter(id__in=pk_set))
+    owners = {instance.owner}
+    owners.update(instance.collaborators.all())
+    for owner in owners:
+        _sync_owner_smart_lists_for_items(owner, items)
 
 
 @receiver(post_save, sender=Item)

@@ -41,6 +41,7 @@ SMART_FILTER_KEYS = (
     "provider",
     "tag",
     "tag_mode",
+    "list",
 )
 
 TAG_MODE_CHOICES = {"and", "or", "not"}
@@ -72,6 +73,7 @@ SMART_FILTER_DEFAULTS = {
     "provider": "",
     "tag": [],
     "tag_mode": "or",
+    "list": [],
 }
 
 MAX_RATING = 10.0
@@ -242,6 +244,22 @@ def _payload_getlist(payload, key: str) -> list[str]:
     return []
 
 
+def _valid_linked_list_ids(owner, raw_values: list[str]) -> list[int]:
+    """Return ids from raw_values that are non-smart lists owner can access."""
+    candidate_ids = {int(value) for value in raw_values if str(value).strip().isdigit()}
+    if not candidate_ids or not owner:
+        return []
+
+    from lists.models import CustomList
+
+    return list(
+        CustomList.objects.filter(id__in=candidate_ids, is_smart=False)
+        .filter(Q(owner=owner) | Q(collaborators=owner))
+        .distinct()
+        .values_list("id", flat=True),
+    )
+
+
 def get_available_media_types(owner) -> list[str]:
     """Return enabled media types that can participate in smart rules."""
     if owner and hasattr(owner, "get_enabled_media_types"):
@@ -368,6 +386,8 @@ def normalize_rule_payload(payload, owner):
         seen_tags.add(key)
         deduped_tags.append(value)
 
+    list_ids = _valid_linked_list_ids(owner, _payload_getlist(payload, "list"))
+
     return {
         "media_types": normalized_media_types,
         "status": normalized_statuses,
@@ -396,6 +416,7 @@ def normalize_rule_payload(payload, owner):
         "provider": str(_payload_get(payload, "provider", "") or "").strip(),
         "tag": deduped_tags,
         "tag_mode": tag_mode,
+        "list": list_ids,
     }
 
 
@@ -836,6 +857,21 @@ def _resolve_tag_id_sets(
     return set().union(*per_tag_id_sets), None
 
 
+def _resolve_list_membership_item_ids(list_ids: list[int]) -> set[int]:
+    """Return the union of item ids belonging to the given linked lists."""
+    if not list_ids:
+        return set()
+
+    from lists.models import CustomListItem
+
+    return set(
+        CustomListItem.objects.filter(custom_list_id__in=list_ids).values_list(
+            "item_id",
+            flat=True,
+        ),
+    )
+
+
 def collect_matching_item_ids(
     owner,
     normalized_rules: dict,
@@ -981,6 +1017,8 @@ def collect_matching_item_ids(
                             continue
                         matched_ids.add(item.id)
 
+    matched_ids |= _resolve_list_membership_item_ids(normalized_rules.get("list") or [])
+
     return matched_ids
 
 
@@ -994,6 +1032,16 @@ def item_matches_rules(
     """Return whether a single item currently matches a normalized rule set for an owner."""
     if not owner or not item:
         return False
+
+    list_ids = normalized_rules.get("list") or []
+    if list_ids:
+        from lists.models import CustomListItem
+
+        if CustomListItem.objects.filter(
+            custom_list_id__in=list_ids,
+            item_id=item.id,
+        ).exists():
+            return True
 
     target_media_types = _target_media_types(
         owner, normalized_rules.get("media_types", [])
@@ -1151,6 +1199,7 @@ def build_rule_filter_data(
     *,
     include_collection_only_untracked: bool = False,
     precomputed_tags: list[str] | None = None,
+    include_list_options: bool = True,
 ):
     """Build menu options for smart-rule filters from matched candidate media."""
     target_media_types = _target_media_types(owner, media_types)
@@ -1344,5 +1393,16 @@ def build_rule_filter_data(
             .values_list("name", flat=True)
             .order_by("name")
         )
+
+    filter_data["lists"] = []
+    if include_list_options:
+        from lists.models import CustomList
+
+        filter_data["lists"] = [
+            {"id": custom_list.id, "label": custom_list.name}
+            for custom_list in CustomList.objects.get_user_lists(owner)
+            .filter(is_smart=False)
+            .order_by("name")
+        ]
 
     return filter_data
