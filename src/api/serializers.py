@@ -423,12 +423,14 @@ class EpisodeSerializer(serializers.ModelSerializer):
                 lists_by_item_id = context.get("lists_by_item_id", {})
                 lists = lists_by_item_id.get(item.id, [])
 
+        serialized_item = ItemSerializer().to_representation(item) if item else None
+        if serialized_item is not None:
+            serialized_item["title"] = instance.get("name") or serialized_item["title"]
+
         return {
             "id": item.id if item is not None else None,
             "consumption_id": episode.id if episode is not None else None,
-            "item": ItemSerializer().to_representation(item)
-            if item is not None
-            else None,
+            "item": serialized_item,
             "item_id": ItemIdField().to_representation(item)
             if item is not None
             else None,

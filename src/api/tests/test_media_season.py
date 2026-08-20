@@ -954,7 +954,7 @@ class MediaSeasonTests(FloppyApiTestCase):
                     "episode_number": episode_item.episode_number,
                     "season_number": episode_item.season_number,
                     "show_id": tv_item.media_id,
-                    "name": episode_item.title,
+                    "name": f"Provider episode {episode_item.episode_number}",
                     "overview": "",
                     "vote_average": 0.0,
                     "vote_count": 0,
@@ -994,6 +994,7 @@ class MediaSeasonTests(FloppyApiTestCase):
         )
         self.assertTrue(first_result["tracked"])
         self.assertEqual(first_result["consumption_id"], tracked_episode.id)
+        self.assertEqual(first_result["item"]["title"], "Provider episode 1")
 
     @patch("api.views.services.get_media_metadata", side_effect=Exception("boom"))
     def test_season_episodes_get_invalid_media_id_returns_internal_server_error(
