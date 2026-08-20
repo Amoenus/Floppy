@@ -554,4 +554,7 @@
     {% endif %}
 
   </div>
+{% if media.episodes or episodes %}
+  {% include "app/components/_episode_scroll_restore.html" %}
+{% endif %}
 {% include "app/components/_scrollable_row_js.html" %}

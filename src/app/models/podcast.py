@@ -198,13 +198,12 @@ class Podcast(Media):
             minutes = self.played_up_to_seconds // 60
             return f"{minutes}m"
 
-        minutes = (self.progress or 0) // 60
-        return f"{minutes}m"
+        return f"{self.progress or 0}m"
 
     @property
     def progress_unit(self):
         """Return the unit `progress` is measured in."""
-        return "seconds"
+        return "minutes"
 
     @property
     def progress_percentage(self):

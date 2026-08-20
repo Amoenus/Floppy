@@ -2586,6 +2586,16 @@ components:
         score_count:
           type: integer
           nullable: true
+        cast:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+        crew:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
         details:
           $ref: '#/components/schemas/EpisodeDetails'
         related:
@@ -2611,8 +2621,10 @@ components:
             type: object
             additionalProperties: {}
       required:
+      - cast
       - consumptions
       - consumptions_number
+      - crew
       - details
       - genres
       - id
@@ -2672,6 +2684,16 @@ components:
         score_count:
           type: integer
           nullable: true
+        cast:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+        crew:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
         details:
           type: object
           additionalProperties: {}
@@ -2698,8 +2720,10 @@ components:
             type: object
             additionalProperties: {}
       required:
+      - cast
       - consumptions
       - consumptions_number
+      - crew
       - details
       - genres
       - id

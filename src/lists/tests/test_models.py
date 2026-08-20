@@ -306,6 +306,119 @@ class CustomListManagerTest(TestCase):
                 expected_ids,
             )
 
+    def test_normalize_rule_payload_restricts_list_filter_to_accessible_manual_lists(
+        self,
+    ):
+        """The list filter should only accept non-smart lists owner can access."""
+        inaccessible_list = CustomList.objects.create(
+            name="Not Mine",
+            owner=self.other_user,
+        )
+        smart_target = CustomList.objects.create(
+            name="Smart Target",
+            owner=self.user,
+            is_smart=True,
+        )
+
+        rules = smart_rules.normalize_rule_payload(
+            {
+                "list": [
+                    self.list1.id,
+                    self.list2.id,
+                    inaccessible_list.id,
+                    smart_target.id,
+                ],
+            },
+            self.user,
+        )
+
+        self.assertCountEqual(rules["list"], [self.list1.id, self.list2.id])
+
+    def test_collect_matching_item_ids_unions_linked_list_contents(self):
+        """List filter should include linked lists' items even if other filters fail."""
+        linked_item = Item.objects.create(
+            title="Untracked Linked Game",
+            media_id="link-1",
+            media_type=MediaTypes.GAME.value,
+            source=Sources.IGDB.value,
+        )
+        CustomListItem.objects.create(
+            custom_list=self.list1,
+            item=linked_item,
+            added_by=self.user,
+        )
+        other_item = Item.objects.create(
+            title="Unrelated Movie",
+            media_id="link-2",
+            media_type=MediaTypes.MOVIE.value,
+            source=Sources.TMDB.value,
+        )
+        Movie.objects.create(
+            item=other_item, user=self.user, status=Status.COMPLETED.value
+        )
+
+        rules = smart_rules.normalize_rule_payload(
+            {
+                "media_types": [MediaTypes.MOVIE.value],
+                "genre": "Nonexistent Genre",
+                "list": [self.list1.id],
+            },
+            self.user,
+        )
+
+        matched_ids = smart_rules.collect_matching_item_ids(self.user, rules)
+
+        self.assertIn(linked_item.id, matched_ids)
+        self.assertNotIn(other_item.id, matched_ids)
+
+    def test_item_matches_rules_short_circuits_for_linked_list_membership(self):
+        """A linked list's item should match regardless of other active filters."""
+        linked_item = Item.objects.create(
+            title="Linked Game",
+            media_id="link-3",
+            media_type=MediaTypes.GAME.value,
+            source=Sources.IGDB.value,
+        )
+        CustomListItem.objects.create(
+            custom_list=self.list1,
+            item=linked_item,
+            added_by=self.user,
+        )
+
+        rules = smart_rules.normalize_rule_payload(
+            {"genre": "Nonexistent Genre", "list": [self.list1.id]},
+            self.user,
+        )
+
+        self.assertTrue(smart_rules.item_matches_rules(self.user, linked_item, rules))
+
+    def test_manual_list_membership_change_syncs_referencing_smart_lists(self):
+        """Adding/removing an item on a linked manual list should resync smart lists."""
+        linked_item = Item.objects.create(
+            title="Freshly Linked Game",
+            media_id="link-4",
+            media_type=MediaTypes.GAME.value,
+            source=Sources.IGDB.value,
+        )
+        smart_list = CustomList.objects.create(
+            name="All Owned Games",
+            owner=self.user,
+            is_smart=True,
+            smart_filters={"list": [self.list1.id]},
+        )
+
+        membership = CustomListItem.objects.create(
+            custom_list=self.list1,
+            item=linked_item,
+            added_by=self.user,
+        )
+
+        self.assertTrue(smart_list.items.filter(id=linked_item.id).exists())
+
+        membership.delete()
+
+        self.assertFalse(smart_list.items.filter(id=linked_item.id).exists())
+
     def test_smart_list_collection_filter_uses_episode_collection_for_tv(self):
         """Collected TV rules should match when related episodes are collected."""
         tv_item = Item.objects.create(

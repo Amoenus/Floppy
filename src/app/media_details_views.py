@@ -905,7 +905,7 @@ def media_details(
                 range_start_candidates = []
                 range_end_candidates = []
                 completed_entries = 0
-                total_progress_seconds = 0
+                total_progress_minutes = 0
 
                 for entry in user_podcasts:
                     range_start = entry.start_date or entry.end_date or entry.created_at
@@ -916,9 +916,9 @@ def media_details(
                         range_end_candidates.append(range_end)
                     if entry.end_date or entry.status == Status.COMPLETED.value:
                         completed_entries += 1
-                    total_progress_seconds += int(entry.progress or 0)
+                    total_progress_minutes += int(entry.progress or 0)
 
-                total_listened_minutes = total_progress_seconds // 60
+                total_listened_minutes = total_progress_minutes
                 podcast_play_stats = {
                     "first_played": min(range_start_candidates)
                     if range_start_candidates

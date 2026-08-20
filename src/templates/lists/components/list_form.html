@@ -112,7 +112,7 @@
                   <p class="text-xs text-[var(--color-text-muted)] ml-7">{{ form.is_smart.help_text }}</p>
                 </div>
                 <label class="relative inline-flex items-center cursor-pointer ml-4">
-                  <input class="sr-only peer" type="checkbox" name="{{ form.is_smart.name }}" x-model="isSmart" :checked="listMode === 'smart'" {% if form.instance.is_smart %}checked{% endif %}>
+                  <input class="sr-only peer" type="checkbox" name="{{ form.is_smart.name }}" x-model="isSmart" :checked="typeof listMode !== 'undefined' && listMode === 'smart'" {% if form.instance.is_smart %}checked{% endif %}>
                   <div class="w-9 h-5 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-px after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4.5 after:w-4.5 after:transition-all peer-checked:bg-indigo-600"></div>
                 </label>
               </div>

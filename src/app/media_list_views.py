@@ -482,18 +482,16 @@ def build_filter_data_from_items(
         {"value": value, "label": value}
         for value in sorted(providers_set, key=lambda val: val.lower())
     ]
-    all_providers = (
-        [
-            {
-                "value": provider["provider_name"],
-                "label": provider["provider_name"],
+    all_providers_by_name = {}
+    if include_providers:
+        for provider in tmdb.global_watch_provider_catalog():
+            provider_name = provider["provider_name"]
+            all_providers_by_name[provider_name] = {
+                "value": provider_name,
+                "label": provider_name,
                 "image": provider["image"],
             }
-            for provider in tmdb.global_watch_provider_catalog()
-        ]
-        if include_providers
-        else []
-    )
+    all_providers = list(all_providers_by_name.values())
     media_statuses = [
         {"value": value, "label": value}
         for value in sorted(media_statuses_set, key=lambda val: val.lower())

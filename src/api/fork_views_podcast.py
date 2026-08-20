@@ -39,6 +39,9 @@ def _serialize_show(show, tracker=None):
         "title": show.title,
         "author": show.author,
         "image": show.image,
+        "description": show.description,
+        "genres": show.genres,
+        "language": show.language,
         "rss_feed_url": show.rss_feed_url,
         "tracker": tracker_payload,
     }

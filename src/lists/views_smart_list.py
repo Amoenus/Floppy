@@ -161,6 +161,13 @@ def _smart_list_detail_response(
                 else saved_rules["tag"],
                 "tag_exclude": request.GET.get("tag_exclude", ""),
                 "tag_mode": request.GET.get("tag_mode", saved_rules["tag_mode"]),
+                # Only an editor may override which manual lists are linked in:
+                # this can union in the full contents of any non-smart list the
+                # owner can access, so a public (non-editor) viewer must not be
+                # able to pass arbitrary list ids via the query string.
+                "list": request.GET.getlist("list")
+                if can_edit and "list" in request.GET
+                else saved_rules["list"],
                 "search": request.GET.get("q", saved_rules["search"]),
                 "sort": request.GET.get("sort", saved_rules["sort"]),
                 "sort_direction": request.GET.get(
@@ -319,6 +326,9 @@ def _smart_list_detail_response(
         media_types=active_rules["media_types"],
         status=active_rules["status"],
         search=active_rules["search"],
+        # Never hand a non-editor the owner's full catalog of manual lists
+        # (names/ids of private lists), only editors get the picker's options.
+        include_list_options=can_edit,
     )
     available_media_types = sorted(
         smart_rules.get_available_media_types(custom_list.owner),
@@ -334,6 +344,7 @@ def _smart_list_detail_response(
         [
             bool(active_rules.get("status")),
             bool(active_rules.get("tag")),
+            bool(active_rules.get("list")),
             active_rules.get("rating") not in {"", "all"},
             active_rules.get("rating_min"),
             active_rules.get("rating_max"),

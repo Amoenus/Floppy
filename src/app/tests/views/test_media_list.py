@@ -2874,6 +2874,38 @@ class MediaListViewTests(TestCase):
         self.assertContains(filtered_response, "Provider Filter Pinned Movie")
         self.assertNotContains(filtered_response, "Provider Filter Other Movie")
 
+    @mock.patch("app.media_list_views.tmdb.global_watch_provider_catalog")
+    def test_global_provider_choices_deduplicate_names(self, mock_catalog):
+        """Provider-name keys must remain unique for Alpine's x-for rendering."""
+        mock_catalog.return_value = [
+            {
+                "provider_id": 1,
+                "provider_name": "Amazon MX Player",
+                "image": "https://example.com/movie-logo.jpg",
+            },
+            {
+                "provider_id": 2,
+                "provider_name": "Amazon MX Player",
+                "image": "https://example.com/tv-logo.jpg",
+            },
+        ]
+
+        response = self.client.get(
+            reverse("medialist", args=[MediaTypes.MOVIE.value]),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.context["filter_data"]["all_providers"],
+            [
+                {
+                    "value": "Amazon MX Player",
+                    "label": "Amazon MX Player",
+                    "image": "https://example.com/tv-logo.jpg",
+                },
+            ],
+        )
+
     def test_toggle_pinned_provider_requires_authentication(self):
         self.client.logout()
         response = self.client.post(
@@ -3071,6 +3103,9 @@ class MediaListViewTests(TestCase):
             'hx-trigger="revealed threshold:200px once"',
             html=False,
         )
+        grid_html = grid_page.content.decode()
+        self.assertRegex(grid_html, r'x-show="trackOpen"\s+x-cloak')
+        self.assertRegex(grid_html, r'x-show="listsOpen"\s+x-cloak')
 
         first_page = self.client.get(
             reverse("medialist", args=[MediaTypes.MOVIE.value])
@@ -3095,6 +3130,7 @@ class MediaListViewTests(TestCase):
         )
         second_html = second_page.content.decode()
         self.assertNotIn("<thead", second_html)
+        self.assertRegex(second_html, r'x-show="trackOpen"\s+x-cloak')
 
         second_rows = re.findall(r"<tr[^>]*>(.*?)</tr>", second_html, flags=re.DOTALL)
         self.assertGreater(len(second_rows), 0)

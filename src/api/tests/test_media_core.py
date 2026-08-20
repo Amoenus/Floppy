@@ -153,6 +153,38 @@ class MediaCoreTests(FloppyApiTestCase):
         titles = [item["item"]["title"] for item in payload["results"]]
         self.assertEqual(titles, sorted(titles, reverse=True))
 
+    def test_media_list_get_sorts_by_user_score(self):
+        """Media list accepts score as a tracked-media sort field."""
+        for media, score in zip(self.movie_medias, (7, 9, 8), strict=True):
+            media.score = score
+            media.save(update_fields=["score"])
+
+        response = self.call_api(
+            "get",
+            "api_media_list",
+            params={"media_type": MediaTypes.MOVIE.value, "sort": "score_desc"},
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [item["score"] for item in response.json()["results"]],
+            [9, 8, 7],
+        )
+
+        response = self.call_api(
+            "get",
+            "api_media_list",
+            params={"sort": "score_desc"},
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [item["score"] for item in response.json()["results"][:3]],
+            [9, 8, 7],
+        )
+
     def test_media_list_get_with_exclude_filter_excludes_type(self):
         """Media list endpoint should exclude requested media types."""
         response = self.call_api(
@@ -406,6 +438,31 @@ class MediaCoreTests(FloppyApiTestCase):
             "genres": ["Drama"],
             "score": 7.8,
             "score_count": 30,
+            "cast": [
+                {
+                    "person_id": "101",
+                    "name": "Cast Member",
+                    "image": "https://example.com/cast.jpg",
+                    "known_for_department": "Acting",
+                    "gender": "unknown",
+                    "department": "Acting",
+                    "role": "Lead",
+                    "order": 0,
+                    "episode_count": 11,
+                }
+            ],
+            "crew": [
+                {
+                    "person_id": "202",
+                    "name": "Crew Member",
+                    "image": "https://example.com/crew.jpg",
+                    "known_for_department": "Directing",
+                    "gender": "unknown",
+                    "department": "Directing",
+                    "role": "Director",
+                    "order": 0,
+                }
+            ],
             "details": {
                 "format": "TV",
                 "first_air_date": "2004-01-12",
@@ -641,6 +698,8 @@ class MediaCoreTests(FloppyApiTestCase):
                 "genres",
                 "score",
                 "score_count",
+                "cast",
+                "crew",
                 "details",
                 "related",
                 "item_id",
@@ -651,6 +710,41 @@ class MediaCoreTests(FloppyApiTestCase):
                 "lists",
             },
         )
+        self.assertEqual(payload["cast"], mock_metadata.return_value["cast"])
+        self.assertEqual(payload["crew"], mock_metadata.return_value["crew"])
+
+    @patch("api.views.services.get_media_metadata")
+    def test_tv_detail_reports_tracked_season(self, mock_metadata):
+        """TV detail should preserve tracked state for provider seasons."""
+        tv_item = self.items_by_type[MediaTypes.TV.value][0]
+        season_media = self.season_medias[0]
+        mock_metadata.return_value = {
+            "media_id": tv_item.media_id,
+            "source": tv_item.source,
+            "media_type": MediaTypes.TV.value,
+            "related": {
+                "seasons": [
+                    {
+                        "media_id": tv_item.media_id,
+                        "source": tv_item.source,
+                        "media_type": MediaTypes.SEASON.value,
+                        "season_number": season_media.item.season_number,
+                    },
+                ],
+            },
+        }
+
+        response = self.call_api(
+            "get",
+            "api_media_detail",
+            args=(MediaTypes.TV.value, tv_item.source, tv_item.media_id),
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        season = response.json()["related"]["seasons"][0]
+        self.assertTrue(season["tracked"])
+        self.assertEqual(season["id"], season_media.item_id)
 
     def test_media_detail_get_invalid_type_returns_bad_request(self):
         """Media detail endpoint should reject unsupported media types."""

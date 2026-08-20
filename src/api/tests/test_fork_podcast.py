@@ -28,6 +28,9 @@ class PodcastApiTestCase(FloppyApiTestCase):
             podcast_uuid="show-uuid-1",
             title="Test Show",
             image="https://example.com/show.jpg",
+            description="A test podcast description.",
+            genres=["Technology", "News"],
+            language="en",
         )
         self.episode1 = PodcastEpisode.objects.create(
             show=self.show,
@@ -47,6 +50,21 @@ class PodcastApiTestCase(FloppyApiTestCase):
 
 class ShowTrackerTests(PodcastApiTestCase):
     """Show tracker CRUD."""
+
+    def test_detail_includes_show_metadata(self):
+        """Show detail exposes the stored discovery metadata."""
+        response = self.call_api(
+            "get",
+            "api_podcast_show_detail",
+            args=(self.show.id,),
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, HTTP.OK)
+        payload = response.json()
+        self.assertEqual(payload["description"], "A test podcast description.")
+        self.assertEqual(payload["genres"], ["Technology", "News"])
+        self.assertEqual(payload["language"], "en")
 
     def test_track_list_patch_delete(self):
         """Full tracker lifecycle."""
@@ -132,9 +150,13 @@ class EpisodePlayTests(PodcastApiTestCase):
             headers=self.auth_headers,
         )
         self.assertEqual(response.status_code, HTTP.CREATED)
+        payload = response.json()
+        self.assertEqual(payload["progress"], 30)
+        self.assertEqual(payload["progress_unit"], "minutes")
         podcast = Podcast.objects.get(user=self.user1, episode=self.episode1)
         self.assertEqual(podcast.item.media_id, "ep-uuid-1")
         self.assertEqual(podcast.progress, 30)
+        self.assertEqual(podcast.formatted_progress, "30m")
 
     def test_blank_date_uses_current_server_time(self):
         """A blank date records a completed play at the current server time."""
