@@ -131,6 +131,27 @@ class SeasonRewatch(TestCase):
         self.assertEqual(self.season.next_episode_number(), 1)
         self.assertEqual(self.season.status, Status.IN_PROGRESS.value)
 
+    def test_starting_an_already_open_rewatch_is_a_no_op(
+        self,
+        _mock_metadata,
+    ):
+        """A retried/duplicate start can't push an open pass's cutoff later.
+
+        Without this guard, a retry after the user had already replayed
+        an episode would overwrite rewatch_started_at with the later
+        timestamp, stranding that play as pre-cutoff history and forcing
+        them to replay it again.
+        """
+        original_start = datetime(2026, 8, 1, tzinfo=UTC)
+        self.season.start_rewatch(started_at=original_start)
+        self._watch(self.episode_items[0], datetime(2026, 8, 2, tzinfo=UTC))
+
+        self.season.start_rewatch(started_at=timezone.now())
+
+        self.season.refresh_from_db()
+        self.assertEqual(self.season.rewatch_started_at, original_start)
+        self.assertEqual(self.season.completed_episode_count, 1)
+
     def test_starting_a_rewatch_already_fully_replayed_is_rejected(
         self,
         _mock_metadata,
@@ -233,6 +254,52 @@ class SeasonRewatch(TestCase):
         self.assertIsNotNone(self.season.rewatch_started_at)
         self.assertEqual(self.season.status, Status.IN_PROGRESS.value)
         self.assertTrue(self.tv.is_rewatching)
+
+    def test_show_rewatch_leaves_an_already_open_season_untouched(
+        self,
+        _mock_metadata,
+    ):
+        """A retried show-level start can't push an open season's cutoff later.
+
+        Season 2 is added fresh (never watched, never rewatched) so the
+        retry still has somewhere to legitimately open a pass — proving
+        season 1 is skipped specifically because it's already mid-pass,
+        not because every season happened to be covered.
+        """
+        season_2_item = Item.objects.create(
+            media_id="123",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Show",
+            season_number=2,
+        )
+        season_2 = Season.objects.create(
+            item=season_2_item,
+            user=self.user,
+            related_tv=self.tv,
+            status=Status.PLANNING.value,
+        )
+
+        original_start = datetime(2026, 8, 1, tzinfo=UTC)
+        self.season.start_rewatch(started_at=original_start)
+        self._watch(self.episode_items[0], datetime(2026, 8, 2, tzinfo=UTC))
+
+        self.tv.start_rewatch(started_at=timezone.now())
+
+        self.season.refresh_from_db()
+        season_2.refresh_from_db()
+        self.assertEqual(self.season.rewatch_started_at, original_start)
+        self.assertIsNotNone(season_2.rewatch_started_at)
+
+    def test_show_rewatch_already_open_on_every_season_is_rejected(
+        self,
+        _mock_metadata,
+    ):
+        """A retry once every season is already mid-pass is refused, not silent."""
+        self.tv.start_rewatch(started_at=datetime(2026, 8, 1, tzinfo=UTC))
+
+        with self.assertRaises(RewatchAlreadyCompleteError):
+            self.tv.start_rewatch(started_at=timezone.now())
 
     def test_show_rewatch_already_fully_replayed_is_rejected(
         self,
