@@ -2940,6 +2940,55 @@ class ListsModalViewTests(TestCase):
         self.assertContains(response, "Test List 1")
         self.assertNotContains(response, "Test List 2")
 
+    def test_lists_modal_view_shows_no_count_when_not_on_any_list(self):
+        """No count line should render when the item isn't on any list."""
+        response = self.client.get(
+            reverse(
+                "lists_modal",
+                args=[Sources.TMDB.value, MediaTypes.MOVIE.value, 10494],
+            ),
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["on_list_count"], 0)
+        self.assertNotContains(response, "On 0 lists")
+
+    def test_lists_modal_view_shows_count_when_on_lists(self):
+        """Count should reflect how many of the user's lists include the item."""
+        CustomListItem.objects.create(custom_list=self.list1, item=self.item)
+        CustomListItem.objects.create(custom_list=self.list2, item=self.item)
+
+        response = self.client.get(
+            reverse(
+                "lists_modal",
+                args=[Sources.TMDB.value, MediaTypes.MOVIE.value, 10494],
+            ),
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["on_list_count"], 2)
+        self.assertContains(response, "On 2 lists")
+
+    def test_lists_modal_view_count_unaffected_by_tag_filter(self):
+        """Count reflects total membership even when tag filtering narrows the list."""
+        self.list1.tags = ["Active"]
+        self.list1.save(update_fields=["tags"])
+        self.list2.tags = ["Archive"]
+        self.list2.save(update_fields=["tags"])
+        CustomListItem.objects.create(custom_list=self.list1, item=self.item)
+        CustomListItem.objects.create(custom_list=self.list2, item=self.item)
+
+        response = self.client.get(
+            reverse(
+                "lists_modal",
+                args=[Sources.TMDB.value, MediaTypes.MOVIE.value, 10494],
+            )
+            + "?tag=Active",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.context["custom_lists"]), 1)
+        self.assertEqual(response.context["on_list_count"], 2)
+        self.assertContains(response, "On 2 lists")
+
 
 class ListItemToggleTests(TestCase):
     """Tests for the list_item_toggle view."""

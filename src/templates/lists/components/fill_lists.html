@@ -8,9 +8,14 @@
   {% if list_tags %}
     <div class="mb-4"
          x-data="{ open: false, selectedValue: '{{ selected_list_tag|default_if_none:''|escapejs }}', selectedLabel: '{{ selected_list_tag|default:'All lists'|escapejs }}' }">
-      <label class="block text-sm font-medium text-[var(--color-text-secondary)] mb-2" for="list-tag-filter-{{ item.id }}">
-        Filter by tag
-      </label>
+      <div class="flex items-center justify-between mb-2">
+        <label class="block text-sm font-medium text-[var(--color-text-secondary)]" for="list-tag-filter-{{ item.id }}">
+          Filter by tag
+        </label>
+        {% if on_list_count %}
+          <span class="text-sm text-[var(--color-text-secondary)]">On {{ on_list_count }} list{{ on_list_count|pluralize }}</span>
+        {% endif %}
+      </div>
       <div class="relative">
         <button type="button"
                 id="list-tag-filter-{{ item.id }}"
@@ -53,6 +58,10 @@
           {% endfor %}
         </div>
       </div>
+    </div>
+  {% elif on_list_count %}
+    <div class="mb-4 flex justify-end">
+      <span class="text-sm text-[var(--color-text-secondary)]">On {{ on_list_count }} list{{ on_list_count|pluralize }}</span>
     </div>
   {% endif %}
   <ul class="space-y-3">
