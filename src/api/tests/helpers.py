@@ -80,6 +80,7 @@ def check_complete_media_structure(test_case, item):
     test_case.assertIn("media_type", item)
     test_case.assertIn("title", item)
     test_case.assertIn("image", item)
+    test_case.assertIn("backdrop", item)
     test_case.assertIn("synopsis", item)
     test_case.assertIn("genres", item)
     test_case.assertIn("score", item)

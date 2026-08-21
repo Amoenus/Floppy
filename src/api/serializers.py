@@ -2,6 +2,7 @@ from django.conf import settings
 from django.utils.timezone import now
 from rest_framework import serializers
 
+from app.backdrops import resolve_backdrop  # FORK: horizontal artwork
 from app.helpers import build_provider_ids
 from app.models import (
     TV,
@@ -184,6 +185,8 @@ class CompleteEpisodeSerializer(serializers.Serializer):
             "title": episode.get("name"),
             "max_progress": 1,
             "image": image,
+            # FORK: show-level backdrop
+            "backdrop": resolve_backdrop(media_metadata),
             "synopsis": episode.get("overview"),
             "genres": media_metadata.get("genres", []),
             "score": float(episode.get("vote_average")),
@@ -349,6 +352,8 @@ class CompleteMediaSerializer(serializers.Serializer):
             if media_metadata.get("max_progress") is not None
             else 1,
             "image": media_metadata.get("image"),
+            # FORK: 16:9 artwork
+            "backdrop": resolve_backdrop(media_metadata),
             "synopsis": media_metadata.get("synopsis"),
             "genres": media_metadata.get("genres"),
             "score": float(media_metadata.get("score"))

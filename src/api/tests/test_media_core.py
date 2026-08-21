@@ -694,6 +694,7 @@ class MediaCoreTests(FloppyApiTestCase):
                 "title",
                 "max_progress",
                 "image",
+                "backdrop",
                 "synopsis",
                 "genres",
                 "score",

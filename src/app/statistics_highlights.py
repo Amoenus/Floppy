@@ -11,9 +11,9 @@ from django.core.cache import cache
 from django.db.models.functions import ExtractDay, ExtractMonth
 from django.utils import timezone
 
-from app import history_cache
+from app import backdrops, history_cache
 from app import statistics as stats
-from app.models import MediaTypes, Sources
+from app.models import MediaTypes
 
 logger = logging.getLogger(__name__)
 
@@ -90,156 +90,20 @@ def _history_entry_card_payload(entry):
 
 def _cached_horizontal_backdrop(item) -> str | None:
     """Return a cached horizontal backdrop without triggering provider lookups."""
-    if not item:
-        return None
-
-    if isinstance(item, dict):
-        source = item.get("source")
-        media_type = item.get("media_type")
-        media_id = item.get("media_id")
-    else:
-        source = getattr(item, "source", None)
-        media_type = getattr(item, "media_type", None)
-        media_id = getattr(item, "media_id", None)
-
-    if not source or not media_type or not media_id:
-        return None
-
-    if source == Sources.TMDB.value:
-        backdrop_media_type = media_type
-        if media_type in (
-            MediaTypes.EPISODE.value,
-            MediaTypes.SEASON.value,
-            MediaTypes.ANIME.value,
-        ):
-            backdrop_media_type = MediaTypes.TV.value
-        if backdrop_media_type in (MediaTypes.MOVIE.value, MediaTypes.TV.value):
-            cached_backdrop = cache.get(
-                f"tmdb_backdrop_{backdrop_media_type}_{media_id}"
-            )
-            if cached_backdrop and cached_backdrop != settings.IMG_NONE:
-                return cached_backdrop
-
-    if source == Sources.TVDB.value and media_type in (
-        MediaTypes.TV.value,
-        MediaTypes.SEASON.value,
-        MediaTypes.EPISODE.value,
-        MediaTypes.ANIME.value,
-    ):
-        ext_ids = (
-            item.get("provider_external_ids")
-            if isinstance(item, dict)
-            else getattr(item, "provider_external_ids", None)
-        ) or {}
-        tmdb_id = ext_ids.get("tmdb_id")
-        if tmdb_id:
-            cached_backdrop = cache.get(f"tmdb_backdrop_tv_{tmdb_id}")
-            if cached_backdrop and cached_backdrop != settings.IMG_NONE:
-                return cached_backdrop
-
-    if source == Sources.IGDB.value and media_type == MediaTypes.GAME.value:
-        cached_backdrop = cache.get(f"igdb_backdrop_{media_id}")
-        if cached_backdrop and cached_backdrop != settings.IMG_NONE:
-            return cached_backdrop
-
-    return None
+    return backdrops.cached_backdrop(item)
 
 
 def _get_horizontal_history_image(item, fallback_image, *, allow_network=True):
     """Prefer horizontal artwork when available, matching list hub behavior."""
-    if not item:
-        return fallback_image or settings.IMG_NONE
-
-    # Handle both dict (serialized) and model instance
-    if isinstance(item, dict):
-        image = fallback_image or item.get("image", "")
-        source = item.get("source")
-        media_type = item.get("media_type")
-        media_id = item.get("media_id")
+    if item is None:
+        poster = fallback_image
+    elif isinstance(item, dict):
+        poster = fallback_image or item.get("image", "")
     else:
-        image = fallback_image or getattr(item, "image", "")
-        source = getattr(item, "source", None)
-        media_type = getattr(item, "media_type", None)
-        media_id = getattr(item, "media_id", None)
+        poster = fallback_image or getattr(item, "image", "")
 
-    if not source or not media_type or not media_id:
-        return image or settings.IMG_NONE
-
-    cached_backdrop = _cached_horizontal_backdrop(item)
-    if cached_backdrop:
-        return cached_backdrop
-
-    if not allow_network:
-        return image or settings.IMG_NONE
-
-    try:
-        from lists.models import CustomList
-    except Exception:
-        return image or settings.IMG_NONE
-
-    # For episodes/seasons/anime, use the TV show's media_id to get the backdrop.
-    # Episodes/seasons share the same media_id as their TV show; TMDB stores
-    # anime as TV shows, so anime items (source=tmdb, media_type=anime) are
-    # fetched via the /tv/{id} endpoint too.
-    if source == Sources.TMDB.value and media_type in (
-        MediaTypes.EPISODE.value,
-        MediaTypes.SEASON.value,
-        MediaTypes.ANIME.value,
-    ):
-        try:
-            backdrop_url = CustomList()._get_tmdb_backdrop(
-                MediaTypes.TV.value, media_id
-            )
-            if backdrop_url and backdrop_url != settings.IMG_NONE:
-                return backdrop_url
-        except Exception:  # noqa: S110  # deliberate best-effort; failure is non-fatal here
-            pass
-
-    if source == Sources.TMDB.value and media_type in (
-        MediaTypes.MOVIE.value,
-        MediaTypes.TV.value,
-    ):
-        try:
-            backdrop_url = CustomList()._get_tmdb_backdrop(media_type, media_id)
-            if backdrop_url and backdrop_url != settings.IMG_NONE:
-                return backdrop_url
-        except Exception:  # noqa: S110  # deliberate best-effort; failure is non-fatal here
-            pass
-
-    # TVDB items store a tmdb_id cross-reference in provider_external_ids
-    # (populated by the TVDB provider when it finds a TMDB match).
-    # TV, Season, Episode, and Anime are all valid TVDB types.
-    if source == Sources.TVDB.value and media_type in (
-        MediaTypes.TV.value,
-        MediaTypes.SEASON.value,
-        MediaTypes.EPISODE.value,
-        MediaTypes.ANIME.value,
-    ):
-        ext_ids = (
-            item.get("provider_external_ids")
-            if isinstance(item, dict)
-            else getattr(item, "provider_external_ids", None)
-        ) or {}
-        tmdb_id = ext_ids.get("tmdb_id")
-        if tmdb_id:
-            try:
-                backdrop_url = CustomList()._get_tmdb_backdrop(
-                    MediaTypes.TV.value, tmdb_id
-                )
-                if backdrop_url and backdrop_url != settings.IMG_NONE:
-                    return backdrop_url
-            except Exception:  # noqa: S110  # deliberate best-effort; failure is non-fatal here
-                pass
-
-    if source == Sources.IGDB.value and media_type == MediaTypes.GAME.value:
-        try:
-            backdrop_url = CustomList()._get_igdb_backdrop(media_id)
-            if backdrop_url and backdrop_url != settings.IMG_NONE:
-                return backdrop_url
-        except Exception:  # noqa: S110  # deliberate best-effort; failure is non-fatal here
-            pass
-
-    return image or settings.IMG_NONE
+    backdrop = backdrops.resolve_backdrop(item, allow_network=allow_network)
+    return backdrop or poster or settings.IMG_NONE
 
 
 def _normalize_history_highlight_images(history_highlights):
