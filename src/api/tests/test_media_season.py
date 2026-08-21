@@ -2,7 +2,8 @@ from unittest.mock import patch
 
 from django.db.utils import OperationalError
 
-from app.models import Item, MediaTypes, Season, Sources
+from api.serializers import EpisodeSerializer
+from app.models import TV, Episode, Item, MediaTypes, Season, Sources
 
 from .base import FloppyApiTestCase
 from .helpers import (
@@ -1694,3 +1695,89 @@ class MediaSeasonTests(FloppyApiTestCase):
         )
 
         self.assertEqual(response.status_code, 400)
+
+
+class EpisodeSerializerAirDateTests(FloppyApiTestCase):
+    """Regression tests for #888 item 11 (unwatched episode air dates)."""
+
+    def setUp(self):
+        """Track a show with one season and one episode missing release_datetime."""
+        super().setUp()
+        tv_item = Item.objects.create(
+            media_id="air-date-show-1",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Air Date Show",
+        )
+        self.tv = TV.objects.create(item=tv_item, user=self.user1)
+        season_item = Item.objects.create(
+            media_id="air-date-show-1",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Air Date Show",
+            season_number=1,
+        )
+        self.season = Season.objects.create(
+            item=season_item,
+            user=self.user1,
+            related_tv=self.tv,
+        )
+        self.episode_item = Item.objects.create(
+            media_id="air-date-show-1",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="Air Date Show",
+            season_number=1,
+            episode_number=1,
+            release_datetime=None,
+        )
+        self.episode = Episode.objects.create(
+            item=self.episode_item,
+            related_season=self.season,
+        )
+
+    def test_tracked_episode_backfills_air_date_from_provider(self):
+        """A tracked episode with a null stored release_datetime uses the
+        provider's air_date instead of staying null, same as the untracked
+        case.
+        """
+        instance = {
+            "show_id": "1001",
+            "season_number": 1,
+            "episode_number": 1,
+            "name": "When You're Lost in the Darkness",
+            "air_date": "2023-01-15",
+        }
+        context = {
+            "source": Sources.TMDB.value,
+            "tracked_episodes": {1: self.episode},
+        }
+
+        result = EpisodeSerializer(context=context).to_representation(instance)
+
+        self.assertIsNotNone(result["item"]["release_datetime"])
+        self.assertTrue(
+            str(result["item"]["release_datetime"]).startswith("2023-01-15"),
+        )
+
+    def test_untracked_episode_still_backfills_air_date(self):
+        """Sibling untracked episode keeps working the same way."""
+        instance = {
+            "show_id": "1001",
+            "season_number": 1,
+            "episode_number": 2,
+            "name": "Infected",
+            "air_date": "2023-01-22",
+        }
+        context = {
+            "source": Sources.TMDB.value,
+            "tracked_episodes": {1: self.episode},
+        }
+
+        result = EpisodeSerializer(context=context).to_representation(instance)
+
+        self.assertFalse(result["tracked"])
+        self.assertIsNotNone(result["item"]["release_datetime"])
+        self.assertTrue(
+            str(result["item"]["release_datetime"]).startswith("2023-01-22"),
+        )

@@ -454,6 +454,14 @@ class EpisodeSerializer(serializers.ModelSerializer):
         serialized_item = ItemSerializer().to_representation(item) if item else None
         if serialized_item is not None:
             serialized_item["title"] = instance.get("name") or serialized_item["title"]
+            if not serialized_item.get("release_datetime") and instance.get(
+                "air_date",
+            ):
+                serialized_item["release_datetime"] = (
+                    app_helpers.extract_release_datetime(
+                        {"release_date": instance.get("air_date")},
+                    )
+                )
 
         return {
             "id": item.id if item is not None else None,
