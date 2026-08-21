@@ -549,6 +549,14 @@ uv run --no-sync gunicorn --config python:config.gunicorn config.wsgi:applicatio
 Do not start the service with bare `gunicorn config.wsgi:application`; that
 skips the shipped configuration and its process lifecycle hooks.
 
+When upgrading a source-based install, run `uv sync --locked --no-default-groups`
+after `git pull` and before restarting gunicorn/Celery — the same flag the
+[Dockerfile](Dockerfile) uses, so the runtime dependency set matches the
+container image instead of also pulling in lint/test tooling. `pyproject.toml`
+and `uv.lock` are the dependency source of truth (see "Local development"
+below); skipping this step after a `git pull` leaves new dependencies
+uninstalled and can crash Celery with a `ModuleNotFoundError` at runtime.
+
 Gunicorn does not write a request access log. A request line holds the query
 string, and a query string can hold an OAuth code or an integration token, so
 the container writes one access line at the Nginx boundary instead, with the
