@@ -358,6 +358,34 @@ class QueryCountTests(TestCase):
         self.client.get("/medialist/tv")  # warm the cache
         self._assert_query_budget("/medialist/tv", 20, "TV list cache hit")
 
+    def test_tv_list_cache_hit_page_two_query_budget(self):
+        """A cache-hit page-2 request stays within budget (issue #865).
+
+        Before the fix, a cache hit still unpickled the ENTIRE per-user
+        library just to slice out page 2 — invisible to a query-count pin
+        but very visible in wall time. The fix hydrates only the 32 rows on
+        the requested page, so this budget should track the plain cache-hit
+        budget above, not the library size.
+        """
+        self.client.get("/medialist/tv")  # warm the order + filter_data caches
+        self._assert_query_budget(
+            "/medialist/tv?page=2", 20, "TV list cache hit page 2"
+        )
+
+    def test_movie_list_cache_hit_query_budget(self):
+        """Second movie list request hits the media-list cache (issue #865)."""
+        self.client.get("/medialist/movie")  # warm the cache
+        self._assert_query_budget(
+            "/medialist/movie", 12, "movie list cache hit"
+        )
+
+    def test_movie_list_cache_hit_page_two_query_budget(self):
+        """A cache-hit page-2 movie request hydrates only its own page."""
+        self.client.get("/medialist/movie")  # warm the order + filter_data caches
+        self._assert_query_budget(
+            "/medialist/movie?page=2", 12, "movie list cache hit page 2"
+        )
+
     def test_movie_list_default_sort_query_budget(self):
         self._assert_query_budget(
             "/medialist/movie",
