@@ -98,14 +98,13 @@ class SeasonRewatch(TestCase):
 
     def test_repeat_play_keeps_manual_in_progress(self, _mock_metadata):
         """A repeat play must not reset a manually reopened season to Completed."""
-        self._set_status(Status.IN_PROGRESS.value)
+        self.season.start_rewatch()
 
         self._watch(self.episode_items[0], datetime(2026, 8, 18, tzinfo=UTC))
 
-        self.assertEqual(
-            Season.objects.get(pk=self.season.pk).status,
-            Status.IN_PROGRESS.value,
-        )
+        self.season.refresh_from_db()
+        self.assertIsNotNone(self.season.rewatch_started_at)
+        self.assertEqual(self.season.status, Status.IN_PROGRESS.value)
 
     def test_final_first_watch_still_completes(self, _mock_metadata):
         """Guard: finishing a season for the first time must still complete it."""
@@ -116,6 +115,21 @@ class SeasonRewatch(TestCase):
 
         self.assertEqual(
             Season.objects.get(pk=self.season.pk).status,
+            Status.COMPLETED.value,
+        )
+
+    def test_historical_repeat_play_does_not_block_completion(self, _mock_metadata):
+        """Issue #929: a fully-watched season must complete despite old repeat plays.
+
+        Imported libraries (Trakt, SIMKL, etc.) can carry duplicate/repeat
+        play history with no rewatch pass ever opened. That history alone
+        must not be mistaken for a deliberate reopen.
+        """
+        self._watch(self.episode_items[0], datetime(2023, 6, 1, tzinfo=UTC))
+
+        self.assertIsNone(self.season.rewatch_started_at)
+        self.assertEqual(
+            self.season.derived_status_from_episode_progress(max_progress=2),
             Status.COMPLETED.value,
         )
 

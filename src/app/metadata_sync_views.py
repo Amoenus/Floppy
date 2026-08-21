@@ -19,6 +19,7 @@ from app import (
     custom_metadata,
     helpers,
     metadata_utils,
+    view_constants,
 )
 from app.log_safety import exception_summary, safe_url
 from app.models import (
@@ -1354,6 +1355,15 @@ def enrich_synced_item(
         item.metadata_fetched_at = timezone.now()
         metadata_update_fields.append("metadata_fetched_at")
         item.save(update_fields=metadata_update_fields)
+
+    # A sync just did a live fetch: make sure the detail view's stored-metadata
+    # shortcut (media_details_views.can_skip_live_fetch) doesn't serve the
+    # impoverished Item-only fallback on the page load(s) that follow (#931).
+    cache.set(
+        view_constants.force_live_metadata_cache_key(item.id),
+        True,
+        timeout=view_constants.FORCE_LIVE_METADATA_TIMEOUT,
+    )
 
     if source == Sources.IGDB.value and route_media_type == MediaTypes.GAME.value:
         try:

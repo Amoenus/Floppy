@@ -870,12 +870,6 @@ class Season(Media):
         stats = self._get_episode_stats()
         return len(stats["completed_episode_numbers"])
 
-    @property
-    def has_repeat_plays(self):
-        """Return whether any episode of the season was played more than once."""
-        counts = self._get_episode_stats()["episode_counts"]
-        return any(count > 1 for count in counts.values())
-
     def _plays_sort_value(self):
         """Return completed-episode count (not furthest position) for plays/time-watched UI."""
         aggregated_progress = getattr(self, "aggregated_progress", None)
@@ -940,16 +934,6 @@ class Season(Media):
         progress_value = self.progress
 
         if self._is_fully_watched(max_progress):
-            # Without an explicit pass, a season the user reopened is fully
-            # watched by definition, so completion alone must not overrule the
-            # choice. Requiring a logged repeat keeps a normal final episode
-            # completing the season as before.
-            if (
-                self.rewatch_started_at is None
-                and self.status == Status.IN_PROGRESS.value
-                and self.has_repeat_plays
-            ):
-                return Status.IN_PROGRESS.value
             return Status.COMPLETED.value
         if progress_value > 0 or completed_episode_count > 0:
             return Status.IN_PROGRESS.value
