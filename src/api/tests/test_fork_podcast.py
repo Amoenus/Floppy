@@ -116,6 +116,26 @@ class ShowTrackerTests(PodcastApiTestCase):
         )
         self.assertEqual(response.status_code, HTTP.NOT_FOUND)
 
+    @patch("api.fork_views_podcast.podcast_import.import_show_from_itunes_id")
+    def test_itunes_id_track_rejects_invalid_tracker_before_importing(
+        self,
+        mock_import,
+    ):
+        """An invalid tracker payload 400s without importing the show.
+
+        Regression test: the import (RSS fetch, show creation, episode
+        catalog import) must not happen for a request that will fail
+        tracker validation anyway.
+        """
+        response = self.call_api(
+            "post",
+            "api_podcast_shows",
+            payload={"itunes_id": "12345", "score": "not-a-number"},
+            headers=self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.BAD_REQUEST)
+        mock_import.assert_not_called()
+
 
 class ShowEpisodesTests(PodcastApiTestCase):
     """GET podcasts/shows/{id}/episodes uses the standard limit/offset envelope."""

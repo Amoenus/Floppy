@@ -55,6 +55,12 @@ def _serialize_show(show, tracker=None):
     }
 
 
+class _PlaceholderShow:
+    """Stand-in for pre-validating tracker fields before a show exists."""
+
+    id = 0
+
+
 def _bind_show_form(data, instance, show):
     """Bind PodcastShowTrackerForm with partial-update semantics (raw scores)."""
     merged = {"show_id": show.id}
@@ -108,6 +114,17 @@ class PodcastShowsView(drf_views.APIView):
             if show is None:
                 return Response({"detail": "Show not found."}, status=HTTP.NOT_FOUND)
         else:
+            # Validate the tracker payload before importing: a bad score/status
+            # shouldn't leave a freshly-created show and its imported episode
+            # catalog behind just to fail form validation afterwards. show_id
+            # is a plain IntegerField (no FK check), so a placeholder id is
+            # safe to validate against.
+            precheck_form = _bind_show_form(request.data, None, _PlaceholderShow)
+            if not precheck_form.is_valid():
+                return Response(
+                    {"detail": "Invalid tracker data.", "errors": precheck_form.errors},
+                    status=HTTP.BAD_REQUEST,
+                )
             try:
                 show = podcast_import.import_show_from_itunes_id(itunes_id)
             except podcast_import.PodcastImportError as e:
@@ -207,21 +224,39 @@ class PodcastShowEpisodesView(drf_views.APIView):
         if err:
             return err
 
-        # podcast_episodes_api only understands page/page_size, so fetch a
-        # single page wide enough to cover this offset/limit window and
-        # slice it locally rather than trying to translate arbitrary
-        # offsets onto page boundaries.
-        inner_request = request._request
-        query = inner_request.GET.copy()
-        query["page"] = "1"
-        query["page_size"] = str(max(offset + limit, 1))
-        query["format"] = "json"
-        inner_request.GET = query
+        # podcast_episodes_api only understands page/page_size, and every
+        # episode it returns gets enriched via Item.objects.get_or_create(),
+        # so fetching from page 1 up to `offset` would do DB writes
+        # proportional to the offset on every request. Instead, land on the
+        # page_size-sized page containing `offset` and pull a second page
+        # only if this window straddles a page boundary — bounding the work
+        # to ~2*limit episodes regardless of how deep the offset is.
+        page_size = max(limit, 1)
+        start_page = offset // page_size + 1
+        remainder = offset % page_size
 
-        inner_response = podcast_episodes_api(inner_request, show_id)
-        inner_payload = json.loads(inner_response.content)
-        total_count = inner_payload["pagination"]["total_count"]
-        results = inner_payload["episodes"][offset : offset + limit]
+        def _fetch_page(page):
+            inner_request = request._request
+            query = inner_request.GET.copy()
+            query["page"] = str(page)
+            query["page_size"] = str(page_size)
+            query["format"] = "json"
+            inner_request.GET = query
+            inner_response = podcast_episodes_api(inner_request, show_id)
+            return json.loads(inner_response.content)
+
+        first_payload = _fetch_page(start_page)
+        total_count = first_payload["pagination"]["total_count"]
+        episodes = first_payload["episodes"]
+
+        if (
+            remainder + limit > len(episodes)
+            and first_payload["pagination"]["has_more"]
+        ):
+            second_payload = _fetch_page(start_page + 1)
+            episodes = episodes + second_payload["episodes"]
+
+        results = episodes[remainder : remainder + limit]
 
         next_url = None
         prev_url = None
