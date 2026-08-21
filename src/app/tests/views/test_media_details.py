@@ -2068,11 +2068,11 @@ class MediaDetailsViewTests(TestCase):
         mock_get_metadata.assert_not_called()
 
     @patch("app.providers.services.get_media_metadata")
-    def test_media_details_secondary_skips_provider_call_for_fresh_book_metadata(
+    def test_media_details_secondary_fetches_provider_for_fresh_book_metadata(
         self,
         mock_get_metadata,
     ):
-        """Secondary-phase loads reuse fresh stored metadata for non-TV types (#879)."""
+        """Secondary-phase loads need the complete provider payload (#879)."""
         Item.objects.create(
             media_id="377938",
             source=Sources.HARDCOVER.value,
@@ -2081,6 +2081,18 @@ class MediaDetailsViewTests(TestCase):
             image="https://images.example.com/custom-cover.jpg",
             metadata_fetched_at=timezone.now(),
         )
+        mock_get_metadata.return_value = {
+            "media_id": "377938",
+            "title": "The Lord of the Rings",
+            "media_type": MediaTypes.BOOK.value,
+            "source": Sources.HARDCOVER.value,
+            "image": "https://images.example.com/provider-cover.jpg",
+            "details": {},
+            "related": {},
+            "cast": [],
+            "crew": [],
+            "studios_full": [],
+        }
 
         response = self.client.get(
             reverse(
@@ -2096,7 +2108,83 @@ class MediaDetailsViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        mock_get_metadata.assert_not_called()
+        mock_get_metadata.assert_called_once_with(
+            MediaTypes.BOOK.value,
+            "377938",
+            Sources.HARDCOVER.value,
+            language="en",
+        )
+
+    @patch("app.providers.services.get_media_metadata")
+    def test_media_details_secondary_loads_full_fresh_tmdb_movie_metadata(
+        self,
+        mock_get_metadata,
+    ):
+        """Fresh stored movie metadata must not hide cast or recommendations."""
+        Item.objects.create(
+            media_id="10193",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Toy Story 3",
+            image="https://images.example.com/toy-story-3.jpg",
+            metadata_fetched_at=timezone.now(),
+        )
+        mock_get_metadata.return_value = {
+            "media_id": "10193",
+            "title": "Toy Story 3",
+            "media_type": MediaTypes.MOVIE.value,
+            "source": Sources.TMDB.value,
+            "source_url": "https://www.themoviedb.org/movie/10193",
+            "image": "https://images.example.com/toy-story-3.jpg",
+            "synopsis": "Woody and Buzz face a new chapter.",
+            "max_progress": 1,
+            "score": 8.0,
+            "details": {"release_date": "2010-06-16"},
+            "related": {
+                "recommendations": [
+                    {
+                        "media_id": "862",
+                        "title": "Toy Story",
+                        "media_type": MediaTypes.MOVIE.value,
+                        "source": Sources.TMDB.value,
+                        "image": "https://images.example.com/toy-story.jpg",
+                    },
+                ],
+            },
+            "cast": [
+                {
+                    "name": "Tom Hanks",
+                    "image": "https://images.example.com/tom-hanks.jpg",
+                    "role": "Woody",
+                },
+            ],
+            "crew": [],
+            "studios_full": [],
+        }
+
+        response = self.client.get(
+            reverse(
+                "media_details",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.MOVIE.value,
+                    "media_id": "10193",
+                    "title": "toy-story-3",
+                },
+            ),
+            {"fragment": "secondary"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        mock_get_metadata.assert_called_once_with(
+            MediaTypes.MOVIE.value,
+            "10193",
+            Sources.TMDB.value,
+            language="en",
+        )
+        self.assertContains(response, "media-grid-row-detail-cast", html=False)
+        self.assertContains(response, "Tom Hanks")
+        self.assertContains(response, "Toy Story")
 
     @patch("app.providers.services.get_media_metadata")
     def test_media_details_secondary_refetches_stale_book_metadata(

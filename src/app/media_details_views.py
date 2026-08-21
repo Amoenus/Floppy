@@ -1,7 +1,7 @@
 import json
 import logging
 import time
-from datetime import UTC, timedelta
+from datetime import UTC
 
 from django.apps import apps
 from django.conf import settings
@@ -89,19 +89,6 @@ def _stored_metadata_fallback(item):
         "crew": [],
         "studios_full": [],
     }
-
-
-def _needs_live_secondary_metadata(source, tracking_media_type):
-    """TMDB TV/season secondary logic force-refetches on empty cast/crew.
-
-    A stored-metadata fallback always reports empty cast/crew (they aren't
-    cached on Item), which would otherwise make should_refresh_tmdb_tv_credits
-    immediately undo the skip with its own live call.
-    """
-    return source == Sources.TMDB.value and tracking_media_type in (
-        MediaTypes.TV.value,
-        MediaTypes.SEASON.value,
-    )
 
 
 def _enrich_comic_issues(issues, user):
@@ -853,12 +840,6 @@ def media_details(
     if hardcover_edition_id:
         metadata_kwargs["edition_id"] = hardcover_edition_id
 
-    metadata_is_fresh = (
-        detail_item is not None
-        and detail_item.metadata_fetched_at is not None
-        and timezone.now() - detail_item.metadata_fetched_at
-        < timedelta(seconds=settings.CACHE_TIMEOUT)
-    )
     # A "Sync metadata with provider" action just did a live fetch: skip the
     # stored-metadata shortcut on the page load(s) that follow so the full
     # payload (score, cast, recommendations, etc.) isn't replaced by the
@@ -868,14 +849,10 @@ def media_details(
     )
     can_skip_live_fetch = (
         not force_live_metadata
+        and not render_secondary_only
         and detail_item is not None
         and detail_item.metadata_fetched_at is not None
     )
-    if render_secondary_only:
-        can_skip_live_fetch = can_skip_live_fetch and (
-            metadata_is_fresh
-            and not _needs_live_secondary_metadata(source, tracking_media_type)
-        )
 
     if can_skip_live_fetch:
         media_metadata = _stored_metadata_fallback(detail_item)
