@@ -64,7 +64,6 @@
     --color-indigo-500: oklch(58.5% 0.233 277.117);
     --color-indigo-600: oklch(51.1% 0.262 276.966);
     --color-indigo-700: oklch(45.7% 0.24 277.023);
-    --color-violet-100: oklch(94.3% 0.029 294.588);
     --color-violet-400: oklch(70.2% 0.183 293.541);
     --color-violet-500: oklch(60.6% 0.25 292.717);
     --color-violet-600: oklch(54.1% 0.281 293.009);
@@ -1610,6 +1609,9 @@
   .border-\[var\(--color-border\)\] {
     border-color: var(--color-border);
   }
+  .border-\[var\(--color-genre-badge-border\)\] {
+    border-color: var(--color-genre-badge-border);
+  }
   .border-\[var\(--color-link\)\] {
     border-color: var(--color-link);
   }
@@ -1951,6 +1953,9 @@
   }
   .bg-\[var\(--color-border\)\] {
     background-color: var(--color-border);
+  }
+  .bg-\[var\(--color-genre-badge-bg\)\] {
+    background-color: var(--color-genre-badge-bg);
   }
   .bg-\[var\(--color-hover-dim\)\] {
     background-color: var(--color-hover-dim);
@@ -2933,6 +2938,9 @@
   .text-\[var\(--color-error-text\)\] {
     color: var(--color-error-text);
   }
+  .text-\[var\(--color-genre-badge-text\)\] {
+    color: var(--color-genre-badge-text);
+  }
   .text-\[var\(--color-info-text\)\] {
     color: var(--color-info-text);
   }
@@ -3109,9 +3117,6 @@
   }
   .text-slate-400 {
     color: var(--color-slate-400);
-  }
-  .text-violet-100 {
-    color: var(--color-violet-100);
   }
   .text-violet-400 {
     color: var(--color-violet-400);
@@ -3399,6 +3404,48 @@
       background-color: var(--color-indigo-600);
     }
   }
+  .file\:mr-3 {
+    &::file-selector-button {
+      margin-right: calc(var(--spacing) * 3);
+    }
+  }
+  .file\:rounded {
+    &::file-selector-button {
+      border-radius: 0.25rem;
+    }
+  }
+  .file\:border-0 {
+    &::file-selector-button {
+      border-style: var(--tw-border-style);
+      border-width: 0px;
+    }
+  }
+  .file\:bg-indigo-600 {
+    &::file-selector-button {
+      background-color: var(--color-indigo-600);
+    }
+  }
+  .file\:px-3 {
+    &::file-selector-button {
+      padding-inline: calc(var(--spacing) * 3);
+    }
+  }
+  .file\:py-2 {
+    &::file-selector-button {
+      padding-block: calc(var(--spacing) * 2);
+    }
+  }
+  .file\:text-sm {
+    &::file-selector-button {
+      font-size: var(--text-sm);
+      line-height: var(--tw-leading, var(--text-sm--line-height));
+    }
+  }
+  .file\:text-white {
+    &::file-selector-button {
+      color: var(--color-white);
+    }
+  }
   .placeholder\:text-\[var\(--color-text\)\] {
     &::placeholder {
       color: var(--color-text);
@@ -3619,6 +3666,13 @@
     &:hover {
       @media (hover: hover) {
         background-color: var(--color-border);
+      }
+    }
+  }
+  .hover\:bg-\[var\(--color-genre-badge-hover-bg\)\] {
+    &:hover {
+      @media (hover: hover) {
+        background-color: var(--color-genre-badge-hover-bg);
       }
     }
   }
@@ -3970,16 +4024,6 @@
       }
     }
   }
-  .hover\:bg-violet-500\/\[0\.15\] {
-    &:hover {
-      @media (hover: hover) {
-        background-color: color-mix(in srgb, oklch(60.6% 0.25 292.717) 15%, transparent);
-        @supports (color: color-mix(in lab, red, red)) {
-          background-color: color-mix(in oklab, var(--color-violet-500) 15%, transparent);
-        }
-      }
-    }
-  }
   .hover\:bg-violet-700 {
     &:hover {
       @media (hover: hover) {
@@ -4151,6 +4195,15 @@
       @media (hover: hover) {
         --tw-brightness: brightness(110%);
         filter: var(--tw-blur,) var(--tw-brightness,) var(--tw-contrast,) var(--tw-grayscale,) var(--tw-hue-rotate,) var(--tw-invert,) var(--tw-saturate,) var(--tw-sepia,) var(--tw-drop-shadow,);
+      }
+    }
+  }
+  .hover\:file\:bg-indigo-700 {
+    &:hover {
+      @media (hover: hover) {
+        &::file-selector-button {
+          background-color: var(--color-indigo-700);
+        }
       }
     }
   }
@@ -5442,6 +5495,10 @@
   --color-link-hover: #c7d2fe;
   --color-status-clean: #10b981;
   --color-status-dirty: #f59e0b;
+  --color-genre-badge-bg: rgba(139, 92, 246, 0.07);
+  --color-genre-badge-border: rgba(167, 139, 250, 0.18);
+  --color-genre-badge-text: #ede9fe;
+  --color-genre-badge-hover-bg: rgba(139, 92, 246, 0.15);
   color-scheme: dark;
 }
 @media (prefers-color-scheme: light) {
@@ -5469,6 +5526,10 @@
     --color-link-hover: #4338ca;
     --color-status-clean: #047857;
     --color-status-dirty: #b45309;
+    --color-genre-badge-bg: rgba(139, 92, 246, 0.08);
+    --color-genre-badge-border: rgba(124, 58, 237, 0.25);
+    --color-genre-badge-text: #5b21b6;
+    --color-genre-badge-hover-bg: rgba(139, 92, 246, 0.16);
     color-scheme: light;
   }
 }
@@ -5496,6 +5557,10 @@ html.light {
   --color-link-hover: #4338ca;
   --color-status-clean: #047857;
   --color-status-dirty: #b45309;
+  --color-genre-badge-bg: rgba(139, 92, 246, 0.08);
+  --color-genre-badge-border: rgba(124, 58, 237, 0.25);
+  --color-genre-badge-text: #5b21b6;
+  --color-genre-badge-hover-bg: rgba(139, 92, 246, 0.16);
   color-scheme: light;
 }
 html.dark {
@@ -5522,6 +5587,10 @@ html.dark {
   --color-link-hover: #c7d2fe;
   --color-status-clean: #10b981;
   --color-status-dirty: #f59e0b;
+  --color-genre-badge-bg: rgba(139, 92, 246, 0.07);
+  --color-genre-badge-border: rgba(167, 139, 250, 0.18);
+  --color-genre-badge-text: #ede9fe;
+  --color-genre-badge-hover-bg: rgba(139, 92, 246, 0.15);
   color-scheme: dark;
 }
 .theme-toggle-icon-sun {

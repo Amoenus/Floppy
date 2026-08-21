@@ -4,9 +4,9 @@
       {% for genre in media.item.genres %}
         {% if genre_media_type %}
           <a href="{% url 'medialist' genre_media_type %}?genre={{ genre|urlencode }}"
-             class="inline-flex items-center whitespace-nowrap rounded-full border border-violet-400/18 bg-violet-500/[0.07] px-2 py-0.5 text-xs font-medium text-violet-100 transition-colors duration-200 hover:bg-violet-500/[0.15]">{{ genre }}</a>
+             class="inline-flex items-center whitespace-nowrap rounded-full border border-[var(--color-genre-badge-border)] bg-[var(--color-genre-badge-bg)] px-2 py-0.5 text-xs font-medium text-[var(--color-genre-badge-text)] transition-colors duration-200 hover:bg-[var(--color-genre-badge-hover-bg)]">{{ genre }}</a>
         {% else %}
-          <span class="inline-flex items-center whitespace-nowrap rounded-full border border-violet-400/18 bg-violet-500/[0.07] px-2 py-0.5 text-xs font-medium text-violet-100">{{ genre }}</span>
+          <span class="inline-flex items-center whitespace-nowrap rounded-full border border-[var(--color-genre-badge-border)] bg-[var(--color-genre-badge-bg)] px-2 py-0.5 text-xs font-medium text-[var(--color-genre-badge-text)]">{{ genre }}</span>
         {% endif %}
       {% endfor %}
     </div>
