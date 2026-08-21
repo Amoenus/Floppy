@@ -36,7 +36,12 @@ def import_show_from_itunes_id(itunes_id: str) -> PodcastShow:
     try:
         itunes_data = pocketcasts.lookup_by_itunes_id(itunes_id)
     except Exception as e:
-        lookup_error = f"Failed to look up iTunes id {itunes_id}: {exception_summary(e)}"
+        logger.warning(
+            "iTunes lookup failed for id=%s: %s",
+            itunes_id,
+            exception_summary(e),
+        )
+        lookup_error = f"Failed to look up iTunes id {itunes_id}."
         raise PodcastImportError(lookup_error) from e
 
     rss_feed_url = itunes_data.get("feed_url", "")
