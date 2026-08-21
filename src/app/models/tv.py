@@ -169,24 +169,32 @@ class TV(Media):
 
         A season already fully covered by plays at or after `started_at`
         is skipped rather than opened and immediately closed again —
-        that's more confusing than just leaving it alone. Raises
-        RewatchAlreadyCompleteError only if every season would be skipped,
-        so the caller can tell the user nothing would happen. Returns the
-        seasons that *were* skipped (empty if none) so a caller can still
-        tell the user about a partial skip, since that succeeds silently
-        otherwise.
+        that's more confusing than just leaving it alone. A season with
+        an already-open pass is left untouched too, so a duplicate
+        submission or retry can't silently push its cutoff later and
+        strand plays logged against the original one as pre-cutoff
+        history. Raises RewatchAlreadyCompleteError only if every season
+        would be skipped, so the caller can tell the user nothing would
+        happen. Returns the seasons that *were* skipped (empty if none)
+        so a caller can still tell the user about a partial skip, since
+        that succeeds silently otherwise.
         """
         from app.models.media import BasicMedia  # avoid a module-load cycle
 
         started_at = started_at or timezone.now()
-        seasons = [
+        all_seasons = [
             season
             for season in self.seasons.filter(item__season_number__gt=0)
             if season.status != Status.DROPPED.value
         ]
-        if not seasons:
+        if not all_seasons:
             no_seasons_msg = "This show has no seasons to rewatch."
             raise RewatchAlreadyCompleteError(no_seasons_msg)
+
+        seasons = [season for season in all_seasons if season.rewatch_started_at is None]
+        if not seasons:
+            already_open_msg = "Every season is already being rewatched."
+            raise RewatchAlreadyCompleteError(already_open_msg)
         BasicMedia.objects.annotate_max_progress(seasons, MediaTypes.SEASON.value)
 
         skipped = [
@@ -1001,13 +1009,18 @@ class Season(Media):
     def start_rewatch(self, started_at=None, max_progress=None):
         """Begin a new pass, keeping every existing play as history.
 
-        Raises RewatchAlreadyCompleteError if the plays already logged at
-        or after `started_at` already cover the season — opening a pass
+        A no-op if a pass is already open, so a duplicate submission or
+        retry can't silently push the cutoff later and strand plays
+        logged against the original one as pre-cutoff history. Raises
+        RewatchAlreadyCompleteError if the plays already logged at or
+        after `started_at` already cover the season — opening a pass
         that would immediately close itself again is more confusing than
         just refusing it. Looks up its own episode count when
         `max_progress` isn't supplied — see `stop_rewatch` for why that
         can't be a shared value.
         """
+        if self.rewatch_started_at is not None:
+            return
         started_at = started_at or timezone.now()
         if max_progress is None:
             from app.models.media import BasicMedia  # avoid a module-load cycle
