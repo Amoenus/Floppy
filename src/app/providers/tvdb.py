@@ -1221,6 +1221,10 @@ def search(media_type, query, page, language=None):
     for row in results:
         if not isinstance(row, dict):
             continue
+        entity_id = row.get("tvdb_id") or row.get("id")
+        row = _with_preferred_translation(  # noqa: PLW2901
+            {**row, "id": entity_id}, "series", language
+        )
         title_fields = _get_title_fields(row, language)
         result = {
             "media_id": str(row.get("tvdb_id") or row.get("id")),

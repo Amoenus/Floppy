@@ -540,7 +540,36 @@ class TVDBProviderTests(TestCase):
             result["results"][0]["localized_title"],
             "ソードアート・オンライン",
         )
-        self.assertEqual(mock_request.call_args.kwargs["params"]["lang"], "jpn")
+        self.assertEqual(
+            mock_request.call_args_list[0].kwargs["params"]["lang"], "jpn"
+        )
+
+    @patch("app.providers.tvdb._request")
+    def test_search_fetches_translation_when_row_has_none_embedded(
+        self, mock_request
+    ):
+        """Search rows without embedded translations should be localized via a
+        per-result translation fetch, matching the detail page's behavior.
+        """
+        mock_request.side_effect = [
+            {
+                "data": [
+                    {
+                        "id": "series-81797",
+                        "tvdb_id": 81797,
+                        "name": "ワンピース",
+                        "firstAired": "1999-10-20",
+                    },
+                ],
+            },
+            {"data": {"name": "One Piece"}},
+        ]
+
+        result = tvdb.search(MediaTypes.ANIME.value, "one piece", 1)
+
+        self.assertEqual(result["results"][0]["title"], "One Piece")
+        requested_paths = [call.args[0] for call in mock_request.call_args_list]
+        self.assertEqual(requested_paths[1], "series/81797/translations/eng")
 
     @patch("app.providers.tvdb.tv")
     @patch("app.providers.tvdb.tv_with_seasons")
