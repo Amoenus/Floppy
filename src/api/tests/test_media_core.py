@@ -757,8 +757,14 @@ class MediaCoreTests(FloppyApiTestCase):
 
         self.assertEqual(response.status_code, 400)
 
-    def test_media_detail_get_invalid_media_id_returns_internal_server_error(self):
-        """Media detail endpoint currently returns 500 for invalid provider ids."""
+    def test_media_detail_get_invalid_media_id_returns_ok_with_null_item_id(self):
+        """Media detail endpoint no longer 500s when provider metadata is bare.
+
+        Regression test for #888: build_item_id()/build_parent_id() used to
+        dereference `media_type` unconditionally, so metadata missing that
+        field (as returned here by the shared get_media_metadata patch)
+        crashed outside any handler instead of degrading gracefully.
+        """
         response = self.call_api(
             "get",
             "api_media_detail",
@@ -766,7 +772,9 @@ class MediaCoreTests(FloppyApiTestCase):
             headers=self.auth_headers,
         )
 
-        self.assertEqual(response.status_code, 500)
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.data["item_id"])
+        self.assertIsNone(response.data["parent_id"])
 
     @patch("api.views.services.get_media_metadata")
     def test_media_detail_patch_updates_media_fields(self, mock_metadata):

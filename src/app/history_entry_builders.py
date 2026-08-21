@@ -237,7 +237,7 @@ def _build_episode_entry(episode, episode_title_map=None):
         if runtime_minutes
         else None,
         "instance_id": episode.id,
-        "entry_key": episode.id,
+        "entry_key": str(episode.id),
     }
     _attach_entry_score(entry, episode)
     if genres:
@@ -274,7 +274,7 @@ def _build_movie_entry(movie):
         if runtime_minutes
         else None,
         "instance_id": movie.id,
-        "entry_key": movie.id,
+        "entry_key": str(movie.id),
     }
     _attach_entry_score(entry, movie)
     if genres:

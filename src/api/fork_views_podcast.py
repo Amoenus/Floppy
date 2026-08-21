@@ -1,5 +1,6 @@
 # FORK: first-class podcast endpoints (shows, episodes, plays) mirroring
 # the web podcast views. URL wiring lives in fork_urls.py.
+import json
 import logging
 from http import HTTPStatus as HTTP  # noqa: N814
 
@@ -10,8 +11,15 @@ from app import fork_services_podcast
 from app.forms import PodcastShowTrackerForm
 from app.models import PodcastEpisode, PodcastShow, PodcastShowTracker, Status
 from app.podcast_views import podcast_episodes_api
+from app.services import podcast_import
 
-from .helpers import paginate_data, parse_limit_offset, try_parse_datetime_input
+from .helpers import (
+    get_media_status,
+    make_page_url,
+    paginate_data,
+    parse_limit_offset,
+    try_parse_datetime_input,
+)
 from .serializers import serialize_data
 
 logger = logging.getLogger(__name__)
@@ -24,7 +32,7 @@ def _serialize_show(show, tracker=None):
     tracker_payload = None
     if tracker is not None:
         tracker_payload = {
-            "status": tracker.status,
+            "status": get_media_status(tracker.status),
             "score": str(tracker.score) if tracker.score is not None else None,
             "start_date": tracker.start_date,
             "end_date": tracker.end_date,
@@ -45,6 +53,12 @@ def _serialize_show(show, tracker=None):
         "rss_feed_url": show.rss_feed_url,
         "tracker": tracker_payload,
     }
+
+
+class _PlaceholderShow:
+    """Stand-in for pre-validating tracker fields before a show exists."""
+
+    id = 0
 
 
 def _bind_show_form(data, instance, show):
@@ -80,16 +94,41 @@ class PodcastShowsView(drf_views.APIView):
         )
 
     def post(self, request):
-        """Track a show by show_id (mirrors podcast_show_save)."""
+        """Track a show by show_id, or import+track one by itunes_id.
+
+        Mirrors podcast_show_save. When 'itunes_id' is given instead of
+        'show_id', resolves it the same way the web search-result page
+        does: reuse an already-imported show with the same RSS feed, or
+        create the show and import its episode catalog from the feed.
+        """
         show_id = request.data.get("show_id")
-        if not show_id:
+        itunes_id = request.data.get("itunes_id")
+        if not show_id and not itunes_id:
             return Response(
-                {"detail": "'show_id' is required."},
+                {"detail": "'show_id' or 'itunes_id' is required."},
                 status=HTTP.BAD_REQUEST,
             )
-        show = PodcastShow.objects.filter(id=show_id).first()
-        if show is None:
-            return Response({"detail": "Show not found."}, status=HTTP.NOT_FOUND)
+
+        if show_id:
+            show = PodcastShow.objects.filter(id=show_id).first()
+            if show is None:
+                return Response({"detail": "Show not found."}, status=HTTP.NOT_FOUND)
+        else:
+            # Validate the tracker payload before importing: a bad score/status
+            # shouldn't leave a freshly-created show and its imported episode
+            # catalog behind just to fail form validation afterwards. show_id
+            # is a plain IntegerField (no FK check), so a placeholder id is
+            # safe to validate against.
+            precheck_form = _bind_show_form(request.data, None, _PlaceholderShow)
+            if not precheck_form.is_valid():
+                return Response(
+                    {"detail": "Invalid tracker data.", "errors": precheck_form.errors},
+                    status=HTTP.BAD_REQUEST,
+                )
+            try:
+                show = podcast_import.import_show_from_itunes_id(itunes_id)
+            except podcast_import.PodcastImportError as e:
+                return Response({"detail": str(e)}, status=HTTP.BAD_REQUEST)
 
         tracker = PodcastShowTracker.objects.filter(
             user=request.user,
@@ -170,15 +209,76 @@ class PodcastShowEpisodesView(drf_views.APIView):
     """Paginated episode list with per-user play state.
 
     Delegates to the same view the web episode list uses
-    (podcast_views.podcast_episodes_api, JSON format), so the payload shape
-    is identical between surfaces.
+    (podcast_views.podcast_episodes_api, JSON format) but adapts its
+    page/page_size response into the standard limit/offset envelope used
+    by the rest of the API, so clients don't need a podcast-specific
+    pagination contract.
     """
 
     def get(self, request, show_id):
-        """Return catalog episodes with play state (page/page_size params)."""
+        """Return catalog episodes with play state (limit/offset params)."""
         if not PodcastShow.objects.filter(id=show_id).exists():
             return Response({"detail": "Show not found."}, status=HTTP.NOT_FOUND)
-        return podcast_episodes_api(request._request, show_id)
+
+        limit, offset, err = parse_limit_offset(request)
+        if err:
+            return err
+
+        # podcast_episodes_api only understands page/page_size, and every
+        # episode it returns gets enriched via Item.objects.get_or_create(),
+        # so fetching from page 1 up to `offset` would do DB writes
+        # proportional to the offset on every request. Instead, land on the
+        # page_size-sized page containing `offset` and pull a second page
+        # only if this window straddles a page boundary — bounding the work
+        # to ~2*limit episodes regardless of how deep the offset is.
+        page_size = max(limit, 1)
+        start_page = offset // page_size + 1
+        remainder = offset % page_size
+
+        def _fetch_page(page):
+            inner_request = request._request
+            query = inner_request.GET.copy()
+            query["page"] = str(page)
+            query["page_size"] = str(page_size)
+            query["format"] = "json"
+            inner_request.GET = query
+            inner_response = podcast_episodes_api(inner_request, show_id)
+            return json.loads(inner_response.content)
+
+        first_payload = _fetch_page(start_page)
+        total_count = first_payload["pagination"]["total_count"]
+        episodes = first_payload["episodes"]
+
+        if (
+            remainder + limit > len(episodes)
+            and first_payload["pagination"]["has_more"]
+        ):
+            second_payload = _fetch_page(start_page + 1)
+            episodes = episodes + second_payload["episodes"]
+
+        results = episodes[remainder : remainder + limit]
+
+        next_url = None
+        prev_url = None
+        end = offset + limit
+        if end < total_count:
+            next_url = make_page_url(request, limit, end)
+        if offset > 0:
+            prev_url = make_page_url(request, limit, max(0, offset - limit))
+
+        return Response(
+            {
+                "pagination": {
+                    "total": total_count,
+                    "limit": limit,
+                    "offset": offset,
+                    "next": next_url,
+                    "previous": prev_url,
+                },
+                "results": results,
+            },
+            status=HTTP.OK,
+        )
 
 
 # /api/v1/podcasts/shows/[show_id]/mark-all-played/
