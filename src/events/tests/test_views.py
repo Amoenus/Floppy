@@ -1,5 +1,5 @@
 import calendar
-from datetime import date, timedelta
+from datetime import UTC, date, timedelta
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -10,7 +10,7 @@ from django.utils import timezone
 
 from app import models as app_models
 from app.models import TV, Item, MediaTypes, Movie, Season, Sources, Status
-from events.models import Event
+from events.models import Event, SentinelDatetime
 
 
 class CalendarViewTests(TestCase):
@@ -465,6 +465,46 @@ class DownloadCalendarViewTests(TestCase):
         self.assertIn("BEGIN:VCALENDAR", body)
         self.assertIn("Export Movie", body)
         self.assertIn("Export Season", body)
+
+    def test_download_calendar_uses_all_day_event_for_sentinel_time(self):
+        """Events with an unknown release time should export as all-day."""
+        sentinel_dt = timezone.datetime(
+            2026,
+            7,
+            24,
+            SentinelDatetime.HOUR,
+            SentinelDatetime.MINUTE,
+            SentinelDatetime.SECOND,
+            SentinelDatetime.MICROSECOND,
+            tzinfo=UTC,
+        )
+        self.movie_event.datetime = sentinel_dt
+        self.movie_event.save()
+
+        response = self.client.get(
+            reverse("download_calendar", kwargs={"token": self.user.token}),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode()
+        self.assertIn("DTSTART;VALUE=DATE:20260724", body)
+        self.assertIn("DTEND;VALUE=DATE:20260725", body)
+        self.assertNotIn("DTSTART:20260724T115959Z", body)
+
+    def test_download_calendar_keeps_timed_event_for_known_time(self):
+        """Events with a known release time should keep a timed DTSTART/DTEND."""
+        known_dt = timezone.datetime(2026, 7, 24, 7, 0, 0, tzinfo=UTC)
+        self.movie_event.datetime = known_dt
+        self.movie_event.save()
+
+        response = self.client.get(
+            reverse("download_calendar", kwargs={"token": self.user.token}),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode()
+        self.assertIn("DTSTART:20260724T070000Z", body)
+        self.assertIn("DTEND:20260724T070000Z", body)
 
     def test_download_calendar_allows_head_requests(self):
         """HEAD requests should be accepted for calendar clients."""

@@ -209,9 +209,14 @@ def download_calendar(request, token: str):
         cal_event = icalendar.Event()
         cal_event.add("uid", release.id)
         cal_event.add("summary", str(release))
-        dt_tz_aware = release.datetime.replace(tzinfo=UTC)
-        cal_event.add("dtstart", dt_tz_aware)
-        cal_event.add("dtend", dt_tz_aware)
+        if release.is_sentinel_time:
+            start_date = release.datetime.date()
+            cal_event.add("dtstart", start_date)
+            cal_event.add("dtend", start_date + timedelta(days=1))
+        else:
+            dt_tz_aware = release.datetime.replace(tzinfo=UTC)
+            cal_event.add("dtstart", dt_tz_aware)
+            cal_event.add("dtend", dt_tz_aware)
         cal_event.add("dtstamp", now)
         cal.add_component(cal_event)
 
