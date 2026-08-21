@@ -340,3 +340,70 @@ class SyncMetadataViewTests(TestCase):
 
         self.assertEqual(response.status_code, 302)
         mock_delete_many.assert_called_once_with(cache_keys)
+
+    @patch("app.metadata_sync_views._sync_plex_rating")
+    @patch("app.views.Item.fetch_releases")
+    @patch("app.views.services.get_media_metadata")
+    def test_sync_metadata_forces_live_refetch_on_next_detail_view(
+        self,
+        mock_get_media_metadata,
+        mock_fetch_releases,
+        mock_sync_plex_rating,
+    ):
+        """The detail page right after a sync must not fall back to the
+        Item-only stub, which drops score/cast/recommendations (#931).
+        """
+        full_metadata = {
+            "media_id": "603",
+            "title": "The Matrix",
+            "media_type": MediaTypes.MOVIE.value,
+            "source": Sources.TMDB.value,
+            "image": "https://example.com/matrix.jpg",
+            "synopsis": "A hacker learns the truth about reality.",
+            "genres": ["Action"],
+            "score": 8.2,
+            "score_count": 24000,
+            "cast": [{"name": "Keanu Reeves", "character": "Neo"}],
+            "crew": [],
+            "studios_full": [],
+            "details": {"release_date": "1999-03-31"},
+            "related": {},
+        }
+        mock_get_media_metadata.return_value = full_metadata
+
+        sync_response = self.client.post(
+            reverse(
+                "sync_metadata",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.MOVIE.value,
+                    "media_id": "603",
+                },
+            ),
+            {"next": "/"},
+        )
+        self.assertEqual(sync_response.status_code, 302)
+
+        item = Item.objects.get(
+            media_id="603",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+        )
+        self.assertIsNotNone(item.metadata_fetched_at)
+        mock_get_media_metadata.reset_mock()
+
+        detail_response = self.client.get(
+            reverse(
+                "media_details",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.MOVIE.value,
+                    "media_id": "603",
+                    "title": "the-matrix",
+                },
+            ),
+        )
+
+        self.assertEqual(detail_response.status_code, 200)
+        mock_get_media_metadata.assert_called_once()
+        self.assertContains(detail_response, "8.2")

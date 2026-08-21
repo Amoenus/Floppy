@@ -65,7 +65,7 @@ from app.tag_views import (
     _resolve_detail_tag_genres,
 )
 from app.track_modal_views import _DummyPodcastWrapper
-from app.view_constants import DETAIL_SECONDARY_FRAGMENT
+from app.view_constants import DETAIL_SECONDARY_FRAGMENT, force_live_metadata_cache_key
 from lists.views_helpers import get_public_list_for_item
 
 logger = logging.getLogger(__name__)
@@ -1000,8 +1000,17 @@ def media_details(
         and timezone.now() - detail_item.metadata_fetched_at
         < timedelta(seconds=settings.CACHE_TIMEOUT)
     )
+    # A "Sync metadata with provider" action just did a live fetch: skip the
+    # stored-metadata shortcut on the page load(s) that follow so the full
+    # payload (score, cast, recommendations, etc.) isn't replaced by the
+    # Item-only fallback (#931).
+    force_live_metadata = detail_item is not None and cache.get(
+        force_live_metadata_cache_key(detail_item.id),
+    )
     can_skip_live_fetch = (
-        detail_item is not None and detail_item.metadata_fetched_at is not None
+        not force_live_metadata
+        and detail_item is not None
+        and detail_item.metadata_fetched_at is not None
     )
     if render_secondary_only:
         can_skip_live_fetch = can_skip_live_fetch and (

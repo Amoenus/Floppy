@@ -6,3 +6,10 @@ LOCAL_ONLY_MISSING_SEASON_BANNER = (
     "server, to restore provider data and progress tracking."
 )
 DETAIL_SECONDARY_FRAGMENT = "secondary"
+
+FORCE_LIVE_METADATA_TIMEOUT = 60  # seconds
+
+
+def force_live_metadata_cache_key(item_id):
+    """Cache key signalling a detail view must skip the stored-metadata shortcut."""
+    return f"force_live_metadata_{item_id}"
