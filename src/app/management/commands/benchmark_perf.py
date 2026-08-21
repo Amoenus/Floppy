@@ -21,6 +21,12 @@ ENDPOINTS = [
     ("GET", "/medialist/tv"),
     ("GET", "/medialist/season"),
     ("GET", "/medialist/anime"),
+    ("GET", "/medialist/movie"),
+    ("GET", "/medialist/game"),
+    ("GET", "/medialist/book"),
+    ("GET", "/medialist/manga"),
+    ("GET", "/medialist/music"),
+    ("GET", "/medialist/podcast"),
     ("GET", "/statistics"),
     ("GET", "/history"),
     ("GET", "/discover"),
@@ -28,6 +34,16 @@ ENDPOINTS = [
     ("GET", "/lists"),
     ("GET", "/health/"),
 ]
+
+# medialist paths whose "scroll" (pagination) requests we also benchmark
+# separately from first-load, matching how issue #865 was reported: a slow
+# first render followed by additional slow requests while scrolling further
+# pages of the same list.
+MEDIALIST_SCROLL_PATHS = [
+    "/medialist/tv",
+    "/medialist/movie",
+]
+SCROLL_PAGES = 3
 
 RUNS = 3
 
@@ -135,6 +151,29 @@ class Command(BaseCommand):
             f"(median of {runs} runs per endpoint; first run warms Django caches)"
         )
         self.stdout.write("")
+
+        # Reproduce the issue #865 report: a cold first load followed by
+        # scrolling through several more pages of the same list. Each row
+        # here is ONE request (not a median), in request order, so a
+        # regression that only shows up after the cache warms (or only on
+        # page >= 2) is visible instead of averaged away.
+        if MEDIALIST_SCROLL_PATHS:
+            self.stdout.write("Scroll reproduction (issue #865): cold load + N page requests")
+            self.stdout.write(divider)
+            for path in MEDIALIST_SCROLL_PATHS:
+                for page in range(1, SCROLL_PAGES + 2):
+                    reset_queries()
+                    t0 = time.perf_counter()
+                    client.get(path, {"page": page} if page > 1 else {})
+                    wall_ms = (time.perf_counter() - t0) * 1000
+                    n_queries = len(connection.queries)
+                    label = f"{path} page={page}" + (" (first load)" if page == 1 else "")
+                    self.stdout.write(
+                        f"{label:<{col_w[0]}} | {n_queries:>{col_w[1]}} | "
+                        f"{'':>{col_w[2]}} | {wall_ms:>{col_w[3]}.1f}"
+                    )
+            self.stdout.write(divider)
+            self.stdout.write("")
 
         conf.settings.DEBUG = original_debug
         conf.settings.ALLOWED_HOSTS = original_allowed_hosts

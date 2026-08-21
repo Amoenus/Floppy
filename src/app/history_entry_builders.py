@@ -225,6 +225,12 @@ def _build_episode_entry(episode, episode_title_map=None):
         "display_title": display_title,
         "episode_label": episode_label,
         "episode_code": episode_code,
+        # Tiebreaker for entries.sort()'s played_at_local key: plays logged
+        # in one bulk action often share an exact timestamp, so the season
+        # order they actually play in decides ties rather than whatever
+        # arbitrary order the query happened to return them in.
+        "season_number": episode_item.season_number if episode_item else None,
+        "episode_number": episode_item.episode_number if episode_item else None,
         "played_at_local": played_at_local,
         "runtime_minutes": runtime_minutes,
         "runtime_display": helpers.minutes_to_hhmm(runtime_minutes)

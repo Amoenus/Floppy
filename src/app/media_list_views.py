@@ -192,6 +192,85 @@ def _hydrate_time_left_page(user, order_slice):
     return entries
 
 
+def _serialize_media_list_order(entries):
+    """Compact, cache-friendly representation of a fully filtered/sorted list.
+
+    Stores only primary keys (plus the concrete model backing each row, since
+    a grouped-anime list mixes Anime and TV rows under one route media_type);
+    a cache hit hydrates one page from the DB instead of unpickling the whole
+    per-user library on every request (see issue #865 — this was the
+    dominant cost even when few SQL queries ran).
+    """
+    result = []
+    for entry in entries:
+        media = getattr(entry, "media", None)
+        result.append(
+            {
+                "media_pk": getattr(media, "pk", None),
+                "model": type(media).__name__.lower() if media is not None else None,
+                "item_pk": entry.item_id,
+            }
+        )
+    return result
+
+
+def _hydrate_media_list_page(user, media_type, order_slice):
+    """Rebuild MediaListEntry objects for a slice of a cached compact order."""
+    pks_by_model: dict[str, list] = {}
+    item_pks = []
+    for order_entry in order_slice:
+        media_pk = order_entry.get("media_pk")
+        if media_pk:
+            model_name = order_entry.get("model") or media_type
+            pks_by_model.setdefault(model_name, []).append(media_pk)
+        elif order_entry.get("item_pk"):
+            item_pks.append(order_entry["item_pk"])
+
+    media_by_key = {}
+    for model_name, media_pks in pks_by_model.items():
+        model = django_apps.get_model(app_label="app", model_name=model_name)
+        media_queryset = model.objects.filter(
+            user=user, pk__in=media_pks
+        ).select_related("item")
+        # Same prefetch profile as get_media_list, so per-page progress/runtime
+        # annotation doesn't devolve into per-item queries.
+        media_queryset = BasicMedia.objects._apply_prefetch_related(
+            media_queryset,
+            model_name,
+            list_mode=True,
+        )
+        media_list = list(media_queryset)
+        # Restore duplicate-tracking aggregates (aggregated_progress/status/
+        # score, dates, repeats) that get_media_list() would have attached —
+        # a raw pk lookup bypasses that window/aggregation pass entirely.
+        BasicMedia.objects._aggregate_duplicate_data(media_list, user, model_name)
+        for media in media_list:
+            media_by_key[(model_name, media.pk)] = media
+
+    items_by_pk = (
+        {item.pk: item for item in Item.objects.filter(pk__in=item_pks)}
+        if item_pks
+        else {}
+    )
+
+    entries = []
+    for order_entry in order_slice:
+        media_pk = order_entry.get("media_pk")
+        if media_pk:
+            model_name = order_entry.get("model") or media_type
+            media = media_by_key.get((model_name, media_pk))
+            if media is not None:
+                entries.append(MediaListEntry.from_media(media))
+            # Row deleted since the order was cached; skip until the
+            # invalidation signal refreshes the cache.
+            continue
+        item = items_by_pk.get(order_entry.get("item_pk"))
+        if item is None:
+            continue
+        entries.append(MediaListEntry(item=item, media=None))
+    return entries
+
+
 def _collect_reading_activity_day_keys(entries):
     """Return history/statistics day keys touched by reading entries."""
     day_keys = set()
@@ -1535,6 +1614,16 @@ def media_list(request, media_type):
             # from _time_left_cached_order in the time_left branch.
             _media_list_cached = []
 
+    # `_media_list_cached`, when present, holds a compact ordered list of
+    # {media_pk, item_pk} rows (see `_serialize_media_list_order`), not full
+    # objects — unpickling thousands of hydrated model instances per request
+    # was the dominant cost behind issue #865, even on a cache hit. Only take
+    # the fast (page-only-hydrate) path when filter_data is ALSO cached: the
+    # two caches are written together on every rebuild, so a filter_data miss
+    # here means the order cache is stale relative to it and both should be
+    # rebuilt together rather than drifting apart.
+    _media_list_full = None
+    _cached_media_list_order = None
     if _media_list_cached is None:
         media_queryset = BasicMedia.objects.get_media_list(
             user=request.user,
@@ -1856,17 +1945,28 @@ def media_list(request, media_type):
             _sort_reverse = direction == "desc"
             media_list = sorted(media_list, key=_mixed_sort_key, reverse=_sort_reverse)
 
+        _media_list_full = media_list
         if _media_list_cache_key:
             cache.set(
                 _media_list_cache_key,
-                media_list,
+                _serialize_media_list_order(media_list),
                 cache_utils.MEDIA_LIST_CACHE_TTL,
             )
             cache_utils.register_media_list_cache_key(
                 request.user.id, _media_list_cache_key
             )
+    elif filter_data is None:
+        # Order cache hit but filter_data cache missed: hydrate every cached
+        # row (one bulk query) instead of the full filter/sort pipeline, then
+        # fall through to the normal filter_data build below.
+        media_list = _hydrate_media_list_page(
+            request.user, media_type, _media_list_cached
+        )
+        _media_list_full = media_list
     else:
-        media_list = _media_list_cached
+        # Fast path: both caches are warm. Defer hydration to just the
+        # current page instead of rebuilding or unpickling the full library.
+        _cached_media_list_order = _media_list_cached
 
     if filter_data is None:
         tracked_item_ids = {
@@ -2034,8 +2134,17 @@ def media_list(request, media_type):
     else:
         # Paginate results normally
         items_per_page = 32
-        paginator = Paginator(media_list, items_per_page)
-        media_page = paginator.get_page(page)
+        if _cached_media_list_order is not None:
+            # Fast path: paginate the compact cached order and hydrate only
+            # this page's rows from the DB — no library-wide materialization.
+            paginator = Paginator(_cached_media_list_order, items_per_page)
+            media_page = paginator.get_page(page)
+            media_page.object_list = _hydrate_media_list_page(
+                request.user, media_type, media_page.object_list
+            )
+        else:
+            paginator = Paginator(_media_list_full, items_per_page)
+            media_page = paginator.get_page(page)
 
         BasicMedia.objects.annotate_max_progress(
             _tracked_media_entries(media_page.object_list),

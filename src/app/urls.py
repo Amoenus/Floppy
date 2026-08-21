@@ -165,6 +165,7 @@ urlpatterns = [
     ),
     path("media_save", views.media_save, name="media_save"),
     path("media_delete", views.media_delete, name="media_delete"),
+    path("media_rewatch", views.media_rewatch, name="media_rewatch"),
     path("episode_save", views.episode_save, name="episode_save"),
     path("episode_drop", views.episode_drop, name="episode_drop"),
     path("episode_bulk_save", views.episode_bulk_save, name="episode_bulk_save"),

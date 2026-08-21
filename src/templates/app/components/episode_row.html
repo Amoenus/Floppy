@@ -152,7 +152,7 @@
       {% endif %}
     </p>
     <p class="text-xs text-[var(--color-text-muted)] truncate mt-0.5">
-      {{ episode.air_date|user_date_format:user|default_if_none:"" }}{% if episode.runtime %} · {{ episode.runtime }}{% endif %}{% if not public_view|default:False and episode.history %}{% with wc=episode.history|watched_count %}{% if wc %} · {% if wc == 1 %}Watched once{% else %}Watched {{ wc }} times{% endif %}{% endif %}{% endwith %}{% endif %}
+      {{ episode.air_date|user_date_format:user|default_if_none:"" }}{% if episode.runtime %} · {{ episode.runtime }}{% endif %}{% if not public_view|default:False and episode.all_history %}{% with wc=episode.all_history|watched_count %}{% if wc %} · {% if wc == 1 %}Watched once{% else %}Watched {{ wc }} times{% endif %}{% endif %}{% endwith %}{% endif %}
     </p>
     {% if ep_detail_url %}</a>{% endif %}
   </div>
