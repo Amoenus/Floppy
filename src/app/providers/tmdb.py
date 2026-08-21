@@ -2042,7 +2042,7 @@ def item_watch_provider_names(item, region):
     return sorted({p["provider_name"] for p in providers if p.get("provider_name")})
 
 
-def process_episodes(season_metadata, episodes_in_db):
+def process_episodes(season_metadata, episodes_in_db, season=None):
     """Process the episodes for the selected season."""
     episodes_metadata = []
     episode_backdrop = None
@@ -2080,6 +2080,10 @@ def process_episodes(season_metadata, episodes_in_db):
 
     for episode in season_metadata["episodes"]:
         episode_number = episode["episode_number"]
+        pass_plays, all_plays = helpers.split_pass_history(
+            tracked_episodes.get(episode_number, []),
+            season,
+        )
 
         # Convert air_date to datetime object if it's a string
         air_date = episode.get("air_date")
@@ -2126,7 +2130,11 @@ def process_episodes(season_metadata, episodes_in_db):
                 "image_source": image_source,
                 "title": episode.get("name") or episode.get("title") or "",
                 "overview": episode.get("overview") or "",
-                "history": tracked_episodes.get(episode_number, []),
+                # Plays in the current rewatch pass — everything watched
+                # when no pass is open — so the row renders unwatched again
+                # while a rewatch is under way.
+                "history": pass_plays,
+                "all_history": all_plays,
                 "runtime": get_readable_duration(episode.get("runtime")),
             },
         )

@@ -241,6 +241,21 @@ def _track_modal_date_suggestion(label, iso_date, runtime_minutes=""):
     }
 
 
+def _rewatch_action(media, media_type):
+    """Return the rewatch action offered for a tracked show or season, if any.
+
+    Only finished entries can start a pass; an open one can always be ended.
+    """
+    if media is None or media_type not in {MediaTypes.TV.value, MediaTypes.SEASON.value}:
+        return None
+
+    if media.is_rewatching:
+        return {"action": "stop", "label": "End rewatch"}
+    if media.status == Status.COMPLETED.value:
+        return {"action": "start", "label": "Rewatch"}
+    return None
+
+
 def _render_standard_track_modal(
     request,
     source,
@@ -662,6 +677,8 @@ def _render_standard_track_modal(
         release_date_shortcut,
         release_date_runtime_minutes,
     )
+    rewatch_action = _rewatch_action(media, media_type)
+
     context = {
         "user": request.user,
         "title": title,
@@ -703,6 +720,17 @@ def _render_standard_track_modal(
             )
         ),
         "general_delete_formaction": f"{reverse('media_delete')}?next={return_url}",
+        "general_rewatch_formaction": (
+            f"{reverse('media_rewatch')}?action={rewatch_action['action']}"
+            f"&next={return_url}"
+            if rewatch_action
+            else ""
+        ),
+        "general_rewatch_label": rewatch_action["label"] if rewatch_action else "",
+        "general_rewatch_action": rewatch_action["action"] if rewatch_action else "",
+        "general_rewatch_started_at": (
+            getattr(media, "rewatch_started_at", None) if rewatch_action else None
+        ),
         "general_existing_instance": media,
         # Episodes are multi-watch: when the modal is bound to an existing watch
         # this re-opens it in create mode so a rewatch can still be logged.

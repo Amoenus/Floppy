@@ -26,6 +26,9 @@ def process_history_entry(entry, media_type, user):
     new_record, old_record = entry
     processed_entry = {
         "id": new_record.history_id,
+        # The tracked row this entry describes, so the timeline can offer to
+        # edit the play itself rather than only delete the record of it.
+        "instance_id": new_record.id,
         "date": new_record.history_date,
         "changes": [],
     }

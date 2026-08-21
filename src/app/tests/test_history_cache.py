@@ -11,12 +11,15 @@ from django.utils import timezone
 from app import history_cache, tasks
 from app.log_safety import stable_hmac
 from app.models import (
+    TV,
     Album,
     Artist,
+    Episode,
     Item,
     MediaTypes,
     Movie,
     Music,
+    Season,
     Sources,
     Status,
     Track,
@@ -498,3 +501,74 @@ class MusicHistoryOwnershipTests(TestCase):
 
         self.assertEqual(result["rebuilt"], 1)
         self.assertEqual(result["remaining"], 1)
+
+
+@patch(
+    "app.providers.services.get_media_metadata",
+    return_value={
+        "episodes": [{"episode_number": n} for n in (1, 2, 3)],
+        "max_progress": 3,
+        "image": "s.jpg",
+        "season/1": {"episodes": [{"episode_number": n} for n in (1, 2, 3)]},
+    },
+)
+class HistoryDayEpisodeOrderingTests(TestCase):
+    """A day's entries fall back to episode order when timestamps tie.
+
+    Sorting purely by played_at_local leaves same-timestamp plays (e.g. a
+    whole season logged in one bulk action) in whatever arbitrary order
+    the underlying queries happened to build, rather than the order the
+    show actually plays in.
+    """
+
+    def setUp(self):
+        cache.clear()
+
+    def test_same_timestamp_episodes_sort_by_episode_number(self, _mock_metadata):
+        """Ties fall back to the highest episode number first, newest-first style."""
+        user = get_user_model().objects.create_user(
+            username="order-test",
+            password="12345",
+        )
+        tv_item = Item.objects.create(
+            media_id="500",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Show",
+        )
+        tv = TV.objects.create(item=tv_item, user=user)
+        season_item = Item.objects.create(
+            media_id="500",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Show",
+            season_number=1,
+        )
+        season = Season.objects.create(
+            item=season_item,
+            user=user,
+            related_tv=tv,
+            status=Status.IN_PROGRESS.value,
+        )
+
+        played_at = timezone.now().replace(microsecond=0)
+        for n in (1, 2, 3):
+            item = Item.objects.create(
+                media_id="500",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.EPISODE.value,
+                title="Show",
+                season_number=1,
+                episode_number=n,
+            )
+            Episode.objects.create(item=item, related_season=season, end_date=played_at)
+
+        day_key = history_cache.history_day_key(played_at)
+        day = history_cache.build_history_day(user, day_key)
+
+        episode_codes = [
+            entry["episode_code"]
+            for entry in day["entries"]
+            if entry["media_type"] == MediaTypes.EPISODE.value
+        ]
+        self.assertEqual(episode_codes, ["S01E03", "S01E02", "S01E01"])

@@ -30,7 +30,7 @@ from django.http import HttpResponse, HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.templatetags.static import static
-from django.urls import reverse
+from django.urls import NoReverseMatch, reverse
 from django.utils import formats, timezone
 from django.utils.dateparse import parse_date
 from django.utils.http import url_has_allowed_host_and_scheme
@@ -280,6 +280,7 @@ from app.save_views import (
     episode_history_poll,
     episode_save,
     media_delete,
+    media_rewatch,
     media_save,
 )
 from app.score_views import (
@@ -823,10 +824,16 @@ def episode_details(
             from app.providers import manual
 
             processed_episodes = manual.process_episodes(
-                season_metadata, episodes_in_db
+                season_metadata,
+                episodes_in_db,
+                season=current_season_instance,
             )
         else:
-            processed_episodes = tmdb.process_episodes(season_metadata, episodes_in_db)
+            processed_episodes = tmdb.process_episodes(
+                season_metadata,
+                episodes_in_db,
+                season=current_season_instance,
+            )
 
     processed_episodes = _normalize_detail_episode_actions(processed_episodes)
     episode_data = next(
@@ -1287,6 +1294,21 @@ def search_parent_season(request):
     )
 
 
+def _track_modal_url(source, media_type, media_id, season_number):
+    """Return the track modal URL for these identifiers, or "" when unroutable."""
+    kwargs = {
+        "source": source,
+        "media_type": media_type,
+        "media_id": media_id,
+    }
+    if season_number is not None:
+        kwargs["season_number"] = season_number
+    try:
+        return reverse("track_modal", kwargs=kwargs)
+    except NoReverseMatch:
+        return ""
+
+
 @require_GET
 def history_modal(
     request,
@@ -1357,6 +1379,16 @@ def history_modal(
             "timeline": timeline_entries,
             "total_medias": total_medias,
             "return_url": request.GET.get("return_url", ""),
+            # Lets each entry reopen the play it describes, which is the only
+            # way to edit an earlier watch while a rewatch pass hides it from
+            # the season page.
+            "edit_modal_url": _track_modal_url(
+                source,
+                media_type,
+                media_id,
+                season_number,
+            ),
+            "episode_number": episode_number,
         },
     )
 
@@ -2189,6 +2221,7 @@ __all__ = [
     "media_delete",
     "media_details",
     "media_list",
+    "media_rewatch",
     "media_save",
     "media_search",
     "metadata_resolution",

@@ -403,6 +403,91 @@ class HomeScreenViewTests(TestCase):
         # Completed in the DB; Home only derives the status for display.
         self.assertEqual(stale_season.status, Status.IN_PROGRESS.value)
 
+    @patch("app.models.providers.services.get_media_metadata")
+    def test_home_in_progress_row_shows_seasons_being_rewatched(
+        self,
+        mock_get_metadata,
+    ):
+        """A fully watched season with a repeat play is a rewatch, not stale."""
+        self._set_enabled_media_types(MediaTypes.SEASON.value)
+
+        season_item = Item.objects.create(
+            title="Home Rewatched Season 1",
+            media_id="home-season-rewatch",
+            media_type=MediaTypes.SEASON.value,
+            source=Sources.TMDB.value,
+            image="https://example.com/home-season-rewatch.jpg",
+            season_number=1,
+        )
+        tv_item = Item.objects.create(
+            title="Home Rewatched Show",
+            media_id="home-season-rewatch",
+            media_type=MediaTypes.TV.value,
+            source=Sources.TMDB.value,
+            image="https://example.com/home-season-rewatch.jpg",
+        )
+        tv = TV.objects.create(
+            item=tv_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        season = Season.objects.create(
+            item=season_item,
+            user=self.user,
+            related_tv=tv,
+            status=Status.IN_PROGRESS.value,
+        )
+
+        now = timezone.now()
+        episode_items = []
+        for episode_number in range(1, 4):
+            episode_item = Item.objects.create(
+                media_id=season_item.media_id,
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.EPISODE.value,
+                title=f"Home Rewatched Season S01E{episode_number:02d}",
+                image="https://example.com/home-season-episode.jpg",
+                season_number=1,
+                episode_number=episode_number,
+                release_datetime=now - timedelta(days=episode_number),
+            )
+            episode_items.append(episode_item)
+            Episode.objects.create(
+                item=episode_item,
+                related_season=season,
+                end_date=now - timedelta(days=episode_number),
+            )
+
+        # The rewatch itself: episode 1 played a second time.
+        Episode.objects.create(
+            item=episode_items[0],
+            related_season=season,
+            end_date=now,
+        )
+
+        mock_get_metadata.return_value = {"max_progress": 3}
+
+        HomeScreenRow.objects.create(
+            user=self.user,
+            media_type=MediaTypes.SEASON.value,
+            position=0,
+            enabled=True,
+            row_type=HomeScreenRowTypeChoices.LIBRARY_QUERY,
+            sort_by=MediaSortChoices.TITLE,
+            direction=DirectionChoices.ASC,
+            filters={"status": Status.IN_PROGRESS.value},
+        )
+
+        groups = home_screen.build_home_page_groups(self.user, items_limit=10)
+
+        titles = [
+            entry.item.title
+            for group in groups
+            for row in group["rows"]
+            for entry in row["items"]
+        ]
+        self.assertEqual(titles, ["Home Rewatched Season 1"])
+
     def test_library_row_status_all_includes_collected_untracked_items(self):
         self._set_enabled_media_types(MediaTypes.MOVIE.value)
 

@@ -56,9 +56,7 @@ from app.models import (
 logger = logging.getLogger(__name__)
 
 
-def build_history_day(
-    user, day_key, logging_style_override=None, media_types=None
-):
+def build_history_day(user, day_key, logging_style_override=None, media_types=None):
     """Build a single history day payload for a user."""
     if not day_key:
         return None
@@ -71,12 +69,18 @@ def build_history_day(
     if not day_date:
         return None
     requested_media_types = expand_history_media_types(media_types)
-    include_episode = requested_media_types is None or "episode" in requested_media_types
+    include_episode = (
+        requested_media_types is None or "episode" in requested_media_types
+    )
     include_movie = requested_media_types is None or "movie" in requested_media_types
     include_music = requested_media_types is None or "music" in requested_media_types
-    include_podcast = requested_media_types is None or "podcast" in requested_media_types
+    include_podcast = (
+        requested_media_types is None or "podcast" in requested_media_types
+    )
     include_game = requested_media_types is None or "game" in requested_media_types
-    include_boardgame = requested_media_types is None or "boardgame" in requested_media_types
+    include_boardgame = (
+        requested_media_types is None or "boardgame" in requested_media_types
+    )
 
     day_start = timezone.make_aware(
         datetime.combine(day_date, datetime.min.time()),
@@ -203,7 +207,10 @@ def build_history_day(
         (MediaTypes.MANGA.value, Manga),
         (MediaTypes.ANIME.value, Anime),
     ):
-        if requested_media_types is not None and media_type_value not in requested_media_types:
+        if (
+            requested_media_types is not None
+            and media_type_value not in requested_media_types
+        ):
             continue
         records = (
             model.objects.filter(user=user)
@@ -511,21 +518,25 @@ def build_history_day(
     # Games / Boardgames
     if logging_style == "sessions":
         games = (
-            Game.objects.filter(user=user)
-            .filter(
-                models.Q(end_date__gte=day_start, end_date__lt=day_end)
-                | (
-                    models.Q(end_date__isnull=True)
-                    & models.Q(start_date__gte=day_start, start_date__lt=day_end)
+            (
+                Game.objects.filter(user=user)
+                .filter(
+                    models.Q(end_date__gte=day_start, end_date__lt=day_end)
+                    | (
+                        models.Q(end_date__isnull=True)
+                        & models.Q(start_date__gte=day_start, start_date__lt=day_end)
+                    )
+                    | (
+                        models.Q(end_date__isnull=True)
+                        & models.Q(start_date__isnull=True)
+                        & models.Q(created_at__gte=day_start, created_at__lt=day_end)
+                    )
                 )
-                | (
-                    models.Q(end_date__isnull=True)
-                    & models.Q(start_date__isnull=True)
-                    & models.Q(created_at__gte=day_start, created_at__lt=day_end)
-                )
+                .select_related("item")
             )
-            .select_related("item")
-        ) if include_game else Game.objects.none()
+            if include_game
+            else Game.objects.none()
+        )
         for game in games:
             activity_dt = game.end_date or game.start_date or game.created_at
             played_at_local = _localize_datetime(activity_dt)
@@ -568,21 +579,25 @@ def build_history_day(
             entries.append(entry)
 
         boardgames = (
-            BoardGame.objects.filter(user=user)
-            .filter(
-                models.Q(end_date__gte=day_start, end_date__lt=day_end)
-                | (
-                    models.Q(end_date__isnull=True)
-                    & models.Q(start_date__gte=day_start, start_date__lt=day_end)
+            (
+                BoardGame.objects.filter(user=user)
+                .filter(
+                    models.Q(end_date__gte=day_start, end_date__lt=day_end)
+                    | (
+                        models.Q(end_date__isnull=True)
+                        & models.Q(start_date__gte=day_start, start_date__lt=day_end)
+                    )
+                    | (
+                        models.Q(end_date__isnull=True)
+                        & models.Q(start_date__isnull=True)
+                        & models.Q(created_at__gte=day_start, created_at__lt=day_end)
+                    )
                 )
-                | (
-                    models.Q(end_date__isnull=True)
-                    & models.Q(start_date__isnull=True)
-                    & models.Q(created_at__gte=day_start, created_at__lt=day_end)
-                )
+                .select_related("item")
             )
-            .select_related("item")
-        ) if include_boardgame else BoardGame.objects.none()
+            if include_boardgame
+            else BoardGame.objects.none()
+        )
         for boardgame in boardgames:
             activity_dt = (
                 boardgame.end_date or boardgame.start_date or boardgame.created_at
@@ -748,7 +763,14 @@ def build_history_day(
     if not entries:
         return None
 
-    entries.sort(key=lambda entry: entry["played_at_local"], reverse=True)
+    entries.sort(
+        key=lambda entry: (
+            entry["played_at_local"],
+            entry.get("season_number") or 0,
+            entry.get("episode_number") or 0,
+        ),
+        reverse=True,
+    )
     total_minutes = sum(entry["runtime_minutes"] or 0 for entry in entries)
     first_entry_time = entries[0]["played_at_local"]
 

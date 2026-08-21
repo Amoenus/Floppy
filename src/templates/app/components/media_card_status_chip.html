@@ -1,0 +1,92 @@
+{% load app_tags %}
+{% load user_tags %}
+
+{# Wrapper always renders (even when nothing inside does) so media_save's OOB #}
+{# response can replace it outright — e.g. a season whose status chip was #}
+{# empty before a save but should show one now, or vice versa. #}
+<div id="media-status-chip-{{ media.id }}"
+     {% if status_chip_oob %}hx-swap-oob="outerHTML"{% endif %}>
+  {% if media|safe_attr:"is_statusless" %}
+    <div class="media-status-chip absolute top-2 left-2 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md flex items-center gap-1.5 shadow-md max-w-[calc(100%-1rem)] overflow-hidden"
+         data-mobile-hide-on-mobile="{% if current_sort_value == 'score' or current_sort_value == 'time_left' or current_sort_value == 'progress' %}true{% else %}false{% endif %}"
+         data-status-label="no-status">
+      <span class="text-xs font-medium text-white drop-shadow-sm truncate min-w-0">No Status</span>
+    </div>
+  {% elif media %}
+    {% with has_watched=media.end_date|default_if_none:media|safe_attr:"aggregated_end_date"|default_if_none:media.status %}
+      {% if media.status %}
+        {% if not recommend_mode or has_watched %}
+          <div class="media-status-chip absolute top-2 left-2 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md flex items-center gap-1.5 shadow-md max-w-[calc(100%-1rem)] overflow-hidden"
+               data-mobile-hide-on-mobile="{% if current_sort_value == 'score' or current_sort_value == 'time_left' or current_sort_value == 'progress' %}true{% else %}false{% endif %}">
+            {% if show_next_event_chip|default:False and media.next_event and not media.next_event.is_max_datetime %}
+              {% include "app/icons/clock.svg" with classes="w-3.5 h-3.5 text-indigo-300" %}
+              <span class="text-xs font-medium text-white drop-shadow-sm truncate min-w-0">
+                {% if media.next_event.content_number %}
+                  {{ media.item.media_type|short_unit }}{{ media.next_event.content_number }}
+                {% else %}
+                  Release
+                {% endif %}
+              </span>
+            {% elif media.aggregated_status %}
+              {% with status_value=media.aggregated_status %}
+                <div class="w-4 h-4 {{ status_value|status_color }}">
+                  {% if status_value == Status.COMPLETED.value %}
+                    {% include "app/icons/states/completed.svg" with classes="w-full h-full" %}
+                  {% elif status_value == Status.IN_PROGRESS.value %}
+                    {% include "app/icons/states/in-progress.svg" with classes="w-full h-full" %}
+                  {% elif status_value == Status.PAUSED.value %}
+                    {% include "app/icons/states/paused.svg" with classes="w-full h-full" %}
+                  {% elif status_value == Status.PLANNING.value %}
+                    {% include "app/icons/states/planning.svg" with classes="w-full h-full" %}
+                  {% elif status_value == Status.DROPPED.value %}
+                    {% include "app/icons/states/dropped.svg" with classes="w-full h-full" %}
+                  {% endif %}
+                </div>
+              {% endwith %}
+            {% else %}
+              {% with status_value=media.status %}
+                <div class="w-4 h-4 {{ status_value|status_color }}">
+                  {% if status_value == Status.COMPLETED.value %}
+                    {% include "app/icons/states/completed.svg" with classes="w-full h-full" %}
+                  {% elif status_value == Status.IN_PROGRESS.value %}
+                    {% include "app/icons/states/in-progress.svg" with classes="w-full h-full" %}
+                  {% elif status_value == Status.PAUSED.value %}
+                    {% include "app/icons/states/paused.svg" with classes="w-full h-full" %}
+                  {% elif status_value == Status.PLANNING.value %}
+                    {% include "app/icons/states/planning.svg" with classes="w-full h-full" %}
+                  {% elif status_value == Status.DROPPED.value %}
+                    {% include "app/icons/states/dropped.svg" with classes="w-full h-full" %}
+                  {% endif %}
+                </div>
+              {% endwith %}
+            {% endif %}
+          </div>
+        {% elif show_next_event_chip|default:False and media.next_event and not media.next_event.is_max_datetime %}
+          <div class="media-status-chip absolute top-2 left-2 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md flex items-center gap-1.5 shadow-md max-w-[calc(100%-1rem)] overflow-hidden"
+               data-mobile-hide-on-mobile="{% if current_sort_value == 'score' or current_sort_value == 'time_left' or current_sort_value == 'progress' %}true{% else %}false{% endif %}">
+            {% include "app/icons/clock.svg" with classes="w-3.5 h-3.5 text-indigo-300" %}
+            <span class="text-xs font-medium text-white drop-shadow-sm truncate min-w-0">
+              {% if media.next_event.content_number %}
+                {{ media.item.media_type|short_unit }}{{ media.next_event.content_number }}
+              {% else %}
+                Release
+              {% endif %}
+            </span>
+          </div>
+        {% endif %}
+      {% elif show_next_event_chip|default:False and media.next_event and not media.next_event.is_max_datetime %}
+        <div class="media-status-chip absolute top-2 left-2 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md flex items-center gap-1.5 shadow-md max-w-[calc(100%-1rem)] overflow-hidden"
+             data-mobile-hide-on-mobile="{% if current_sort_value == 'score' or current_sort_value == 'time_left' or current_sort_value == 'progress' %}true{% else %}false{% endif %}">
+          {% include "app/icons/clock.svg" with classes="w-3.5 h-3.5 text-indigo-300" %}
+          <span class="text-xs font-medium text-white drop-shadow-sm truncate min-w-0">
+            {% if media.next_event.content_number %}
+              {{ media.item.media_type|short_unit }}{{ media.next_event.content_number }}
+            {% else %}
+              Release
+            {% endif %}
+          </span>
+        </div>
+      {% endif %}
+    {% endwith %}
+  {% endif %}
+</div>
