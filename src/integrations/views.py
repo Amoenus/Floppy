@@ -2834,23 +2834,31 @@ def import_goodreads(request):
 
 @require_POST
 def import_hardcover(request):
-    """View for importing books data from Hardcover CSV."""
+    """View for importing books data from Hardcover CSV and/or saving a personal API key."""
     file = request.FILES.get("hardcover_csv")
+    api_key = request.POST.get("hardcover_api_key", "").strip()
 
-    if not file:
-        messages.error(request, "Hardcover CSV file is required.")
+    if not file and not api_key:
+        messages.error(request, "Enter a Hardcover API key or select a CSV file.")
         return _integration_redirect(request)
 
-    mode = request.POST["mode"]
-    tasks.import_hardcover.delay(
-        user_id=request.user.id,
-        file=_read_uploaded_file(file),
-        mode=mode,
-    )
-    messages.info(
-        request,
-        "The task to import media from Hardcover CSV file has been queued.",
-    )
+    if api_key:
+        request.user.hardcover_api_key = helpers.encrypt(api_key)
+        request.user.save(update_fields=["hardcover_api_key"])
+        messages.success(request, "Hardcover API key saved.")
+
+    if file:
+        mode = request.POST["mode"]
+        tasks.import_hardcover.delay(
+            user_id=request.user.id,
+            file=_read_uploaded_file(file),
+            mode=mode,
+        )
+        messages.info(
+            request,
+            "The task to import media from Hardcover CSV file has been queued.",
+        )
+
     return _integration_redirect(request, connected_slug="hardcover")
 
 

@@ -591,7 +591,7 @@ def _render_standard_track_modal(
                 hardcover_selected_edition = next(
                     (
                         edition
-                        for edition in hardcover.editions(media_id)
+                        for edition in hardcover.editions(media_id, user=request.user)
                         if edition["id"] == preference.edition_id
                     ),
                     None,

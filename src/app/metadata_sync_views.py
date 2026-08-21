@@ -149,7 +149,13 @@ def search_remap_candidates(request, source, media_type, media_id):
     }
     results = []
     if provider in allowed_providers and provider != item.source and query:
-        response = services.search(media_type, query, page=1, source=provider)
+        response = services.search(
+            media_type,
+            query,
+            page=1,
+            source=provider,
+            user=request.user,
+        )
         results = (response or {}).get("results") or []
 
     return render(
@@ -236,7 +242,7 @@ def list_hardcover_editions(request, media_id):
         media_type=MediaTypes.BOOK.value,
     ).first()
     query = (request.GET.get("q") or "").strip().lower()
-    editions = hardcover.editions(media_id)
+    editions = hardcover.editions(media_id, user=request.user)
     if query:
         editions = [
             edition

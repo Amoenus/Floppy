@@ -117,6 +117,7 @@ def media_save(request):
                 media_id,
                 source,
                 [season_number],
+                user=request.user,
             )
             if media_type == MediaTypes.BOOK.value:
                 number_of_pages = metadata.get("max_progress") or metadata.get(
@@ -151,6 +152,7 @@ def media_save(request):
                             item.media_type,
                             item.media_id,
                             item.source,
+                            user=request.user,
                         )
                         number_of_pages = metadata.get("max_progress") or metadata.get(
                             "details", {}

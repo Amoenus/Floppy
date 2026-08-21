@@ -990,6 +990,10 @@ class User(AbstractUser):
             "(e.g. socks5://user:pass@host:port)"
         ),
     )
+    hardcover_api_key = models.TextField(
+        blank=True,
+        help_text="Encrypted personal Hardcover API token, overrides the instance default",
+    )
 
     date_format = models.CharField(
         max_length=20,

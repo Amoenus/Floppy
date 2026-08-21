@@ -863,6 +863,7 @@ def media_details(
                 media_id,
                 source,
                 language=metadata_resolution.metadata_language_default(request.user),
+                user=request.user,
                 **metadata_kwargs,
             )
         except services.ProviderAPIError:
@@ -928,6 +929,7 @@ def media_details(
             media_id,
             source,
             language=metadata_resolution.metadata_language_default(request.user),
+            user=request.user,
         )
         if isinstance(media_metadata, dict):
             media_metadata.update(Item.title_fields_from_metadata(media_metadata))
@@ -946,6 +948,7 @@ def media_details(
             media_id,
             source,
             language=metadata_resolution.metadata_language_default(request.user),
+            user=request.user,
         )
         if isinstance(media_metadata, dict):
             media_metadata.update(Item.title_fields_from_metadata(media_metadata))
@@ -1292,7 +1295,12 @@ def media_details(
         if should_refresh_author_cache:
             cache_key = f"{source}_{media_type}_{media_id}"
             cache.delete(cache_key)
-            media_metadata = services.get_media_metadata(media_type, media_id, source)
+            media_metadata = services.get_media_metadata(
+                media_type,
+                media_id,
+                source,
+                user=request.user,
+            )
             if isinstance(media_metadata, dict):
                 media_metadata.setdefault("cast", [])
                 media_metadata.setdefault("crew", [])

@@ -573,6 +573,7 @@ def get_media_metadata(
     episode_number=None,
     language=None,
     edition_id=None,
+    user=None,
 ):
     """Return the metadata for the selected media."""
     if media_type == MediaTypes.MUSIC.value and source == Sources.MANUAL.value:
@@ -695,7 +696,7 @@ def get_media_metadata(
         MediaTypes.MOVIE.value: lambda: tmdb.movie(media_id, language),
         MediaTypes.GAME.value: lambda: igdb.game(media_id),
         MediaTypes.BOOK.value: lambda: (
-            hardcover.book(media_id, edition_id=edition_id)
+            hardcover.book(media_id, edition_id=edition_id, user=user)
             if source == Sources.HARDCOVER.value
             else _audiobookshelf_book(media_id)
             if source == Sources.AUDIOBOOKSHELF.value
@@ -888,7 +889,7 @@ def _extract_isbns(metadata):
     return normalized
 
 
-def _resolve_hardcover_isbn_search(query, page):
+def _resolve_hardcover_isbn_search(query, page, user=None):
     """Resolve ISBN queries against Hardcover using Open Library metadata."""
     from app import helpers
 
@@ -934,7 +935,7 @@ def _resolve_hardcover_isbn_search(query, page):
             seen_queries.add(normalized_query)
 
             try:
-                hardcover_results = hardcover.search(normalized_query, page)
+                hardcover_results = hardcover.search(normalized_query, page, user=user)
             except Exception:  # noqa: S112  # best-effort provider lookup
                 continue
 
@@ -947,7 +948,7 @@ def _resolve_hardcover_isbn_search(query, page):
                     continue
 
                 try:
-                    hardcover_metadata = hardcover.book(media_id)
+                    hardcover_metadata = hardcover.book(media_id, user=user)
                 except Exception:  # noqa: S112  # best-effort provider lookup
                     continue
 
@@ -986,7 +987,7 @@ def _resolve_hardcover_isbn_search(query, page):
     return best_fallback_response
 
 
-def _lookup_by_numeric_id(media_type, query, source):
+def _lookup_by_numeric_id(media_type, query, source, user=None):
     """Return full metadata for a media item identified by a numeric provider ID."""
     n = int(query)
     tv_types = (MediaTypes.TV.value, MediaTypes.SEASON.value, MediaTypes.EPISODE.value)
@@ -1011,7 +1012,7 @@ def _lookup_by_numeric_id(media_type, query, source):
     if media_type == MediaTypes.GAME.value:
         return igdb.game(n)
     if media_type == MediaTypes.BOOK.value and source == Sources.HARDCOVER.value:
-        return hardcover.book(n)
+        return hardcover.book(n, user=user)
     if media_type == MediaTypes.COMIC.value:
         return comicvine.comic(query)
     if media_type == MediaTypes.BOARDGAME.value:
@@ -1019,7 +1020,7 @@ def _lookup_by_numeric_id(media_type, query, source):
     return None
 
 
-def search_by_id(media_type, query, source=None):
+def search_by_id(media_type, query, source=None, user=None):
     """Try to look up a single media item directly by its provider ID.
 
     Returns a search-format response dict (1 result) when the query matches
@@ -1043,7 +1044,7 @@ def search_by_id(media_type, query, source=None):
                 )
             ):
                 return None
-            metadata = _lookup_by_numeric_id(media_type, query, source)
+            metadata = _lookup_by_numeric_id(media_type, query, source, user=user)
         elif _OL_ID_RE.match(query) and media_type == MediaTypes.BOOK.value:
             metadata = openlibrary.book(query)
         elif _UUID_RE.match(query) and media_type == MediaTypes.MUSIC.value:
@@ -1089,10 +1090,10 @@ def search(
     # jumping straight to that item.
     id_result = None
     if page == 1:
-        id_result = search_by_id(media_type, query, source)
+        id_result = search_by_id(media_type, query, source, user=user)
 
         if media_type == MediaTypes.BOOK.value and source != Sources.OPENLIBRARY.value:
-            isbn_result = _resolve_hardcover_isbn_search(query, page)
+            isbn_result = _resolve_hardcover_isbn_search(query, page, user=user)
             if isbn_result is not None:
                 return isbn_result
 
@@ -1132,7 +1133,7 @@ def search(
         MediaTypes.BOOK.value: lambda: (
             openlibrary.search(query, page)
             if source == Sources.OPENLIBRARY.value
-            else hardcover.search(query, page)
+            else hardcover.search(query, page, user=user)
         ),
         MediaTypes.COMIC.value: lambda: comicvine.search(query, page),
         MediaTypes.COMIC_ISSUE.value: lambda: comicvine.search_issues(query, page),
