@@ -2,6 +2,7 @@ from django.conf import settings
 from django.utils.timezone import now
 from rest_framework import serializers
 
+from app import helpers as app_helpers
 from app.helpers import build_provider_ids
 from app.models import (
     TV,
@@ -310,6 +311,10 @@ class CompleteMediaSerializer(serializers.Serializer):
             details["next_episode_season"] = media_metadata.pop("next_episode_season")
         if "last_issue_id" in media_metadata:
             details["last_issue_id"] = media_metadata.pop("last_issue_id")
+        if "provider_game_lengths" in media_metadata:
+            details["provider_game_lengths"] = media_metadata.pop(
+                "provider_game_lengths",
+            )
         if "year" in details:
             details["year"] = int(details["year"])
         if "players" in details:
@@ -433,6 +438,9 @@ class EpisodeSerializer(serializers.ModelSerializer):
                 image=image,
                 season_number=season_number,
                 episode_number=episode_number,
+                release_datetime=app_helpers.extract_release_datetime(
+                    {"release_date": instance.get("air_date")},
+                ),
             )
 
         if hasattr(episode, "lists"):
@@ -446,6 +454,14 @@ class EpisodeSerializer(serializers.ModelSerializer):
         serialized_item = ItemSerializer().to_representation(item) if item else None
         if serialized_item is not None:
             serialized_item["title"] = instance.get("name") or serialized_item["title"]
+            if not serialized_item.get("release_datetime") and instance.get(
+                "air_date",
+            ):
+                serialized_item["release_datetime"] = (
+                    app_helpers.extract_release_datetime(
+                        {"release_date": instance.get("air_date")},
+                    )
+                )
 
         return {
             "id": item.id if item is not None else None,
