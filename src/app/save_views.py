@@ -1,3 +1,4 @@
+import contextlib
 import json
 import logging
 from datetime import datetime, time, timedelta
@@ -244,6 +245,17 @@ def media_save(request):
             media = form.save(commit=False)
             media._pending_end_date = form.cleaned_data.get("end_date")
             media.save()
+            if (
+                isinstance(media, Season)
+                and old_status == Status.COMPLETED.value
+                and media.status == Status.IN_PROGRESS.value
+                and media.rewatch_started_at is None
+            ):
+                # The status dropdown is the only "reopen" affordance there
+                # is - treat it as starting a rewatch pass so a season with
+                # historical repeat plays can still complete normally, see #929.
+                with contextlib.suppress(RewatchAlreadyCompleteError):
+                    media.start_rewatch()
         else:
             media = form.save()
         BasicMedia.objects.annotate_max_progress([media], media_type)
