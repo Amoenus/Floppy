@@ -105,7 +105,13 @@ class RepairTVCalendarEventsTests(TestCase):
                 "app.management.commands.repair_tv_calendar_events.record_calendar_checks",
             ) as mock_record,
         ):
-            output = self._run("--apply", "--media-id", self.tv_item.media_id)
+            output = self._run(
+                "--apply",
+                "--media-id",
+                self.tv_item.media_id,
+                "--season-number",
+                "3",
+            )
 
         self.assertIn("APPLYING", output)
         self.assertIn("1 event(s) changed", output)
@@ -114,3 +120,24 @@ class RepairTVCalendarEventsTests(TestCase):
         mock_record.assert_called_once_with([self.tv_item])
         self.event.refresh_from_db()
         self.assertTrue(self.event.is_sentinel_time)
+
+    def test_explicit_dry_run_reports_non_sentinel_season_without_processing(self):
+        """Explicit season scopes can target mismatched provider dates safely."""
+        self.event.datetime = date_parser("2026-07-24")
+        self.event.save(update_fields=["datetime"])
+
+        with patch(
+            "app.management.commands.repair_tv_calendar_events.process_tv",
+        ) as mock_process:
+            output = self._run(
+                "--media-id",
+                self.tv_item.media_id,
+                "--season-number",
+                "3",
+            )
+
+        self.assertIn("DRY RUN", output)
+        self.assertIn("Silo (38052): S3", output)
+        mock_process.assert_not_called()
+        self.event.refresh_from_db()
+        self.assertEqual(self.event.datetime, date_parser("2026-07-24"))

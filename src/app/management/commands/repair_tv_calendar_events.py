@@ -3,7 +3,7 @@
 from collections import defaultdict
 from datetime import UTC
 
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.db.models.functions import ExtractHour, ExtractMinute, ExtractSecond
 
 from app.models import TV, MediaTypes, Sources
@@ -17,11 +17,11 @@ from events.models import Event
 
 
 class Command(BaseCommand):
-    """Report or repair TMDB TV events stored at the legacy 12:00Z time."""
+    """Report or repair TMDB TV events with unreliable provider dates."""
 
     help = (
-        "Refresh tracked TMDB TV seasons whose events use the fabricated "
-        "12:00:00Z provider time"
+        "Refresh tracked TMDB TV seasons whose events use fabricated or "
+        "mismatched provider dates"
     )
 
     def add_arguments(self, parser):
@@ -36,6 +36,16 @@ class Command(BaseCommand):
             help="Only process the specified TMDB TV media id",
         )
         parser.add_argument(
+            "--season-number",
+            type=int,
+            action="append",
+            dest="season_numbers",
+            help=(
+                "Explicitly refresh this season number; may be repeated and "
+                "requires --media-id"
+            ),
+        )
+        parser.add_argument(
             "--username",
             help="Only process shows tracked by this user",
         )
@@ -47,9 +57,14 @@ class Command(BaseCommand):
 
     def handle(self, *_args, **options):
         """Report candidates or refresh their affected seasons."""
+        if options["season_numbers"] and not options["media_id"]:
+            message = "--season-number requires --media-id"
+            raise CommandError(message)
+
         candidates = self._find_candidates(
             media_id=options["media_id"],
             username=options["username"],
+            season_numbers=options["season_numbers"],
         )
         if options["limit"] is not None:
             candidates = candidates[: options["limit"]]
@@ -84,8 +99,21 @@ class Command(BaseCommand):
             "Failed: {failed}".format(**counts),
         )
 
-    def _find_candidates(self, *, media_id=None, username=None):
+    def _find_candidates(
+        self,
+        *,
+        media_id=None,
+        username=None,
+        season_numbers=None,
+    ):
         """Return tracked TV items grouped with their affected seasons."""
+        if season_numbers:
+            return self._find_explicit_candidates(
+                media_id=media_id,
+                username=username,
+                season_numbers=season_numbers,
+            )
+
         event_queryset = (
             Event.objects.filter(
                 item__media_type=MediaTypes.SEASON.value,
@@ -131,6 +159,27 @@ class Command(BaseCommand):
             )
             if season_numbers and tv.item_id not in candidates:
                 candidates[tv.item_id] = (tv.item, season_numbers)
+
+        return sorted(
+            candidates.values(),
+            key=lambda candidate: (candidate[0].title, candidate[0].media_id),
+        )
+
+    def _find_explicit_candidates(self, *, media_id, username, season_numbers):
+        """Return explicitly requested tracked TV seasons regardless of dates."""
+        requested_seasons = sorted(set(season_numbers))
+        tv_queryset = TV.objects.filter(
+            item__media_type=MediaTypes.TV.value,
+            item__source=Sources.TMDB.value,
+            item__media_id=media_id,
+        ).select_related("item")
+        if username:
+            tv_queryset = tv_queryset.filter(user__username=username)
+
+        candidates = {}
+        for tv in tv_queryset.order_by("item_id", "id"):
+            if tv.item_id not in candidates:
+                candidates[tv.item_id] = (tv.item, requested_seasons)
 
         return sorted(
             candidates.values(),
