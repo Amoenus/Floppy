@@ -2630,8 +2630,14 @@ class Metadata(TestCase):
 class CastOrderRegressionTests(TestCase):
     """Regression tests for issue #92 — first cast member (order=0) being dropped."""
 
-    def test_get_cast_credits_ignores_malformed_aggregate_roles(self):
-        """A malformed aggregate role must not break TV metadata processing."""
+    def test_get_cast_credits_selects_top_role_across_wrapped_and_plain(self):
+        """List-wrapped aggregate roles are a valid TMDB shape, not malformed.
+
+        get_cast_credits flattens single-element list-wrapped role dicts and
+        plain dicts into one list, then picks the highest-episode_count role
+        across both shapes. The list-wrapped role here wins because it has the
+        higher episode_count.
+        """
         credits_data = {
             "cast": [
                 {
@@ -2650,8 +2656,35 @@ class CastOrderRegressionTests(TestCase):
 
         result = tmdb.get_cast_credits(credits_data, is_aggregate=True)
 
-        self.assertEqual(result[0]["role"], "Valid Role")
-        self.assertEqual(result[0]["episode_count"], 3)
+        self.assertEqual(result[0]["role"], "Nested Role")
+        self.assertEqual(result[0]["episode_count"], 13)
+
+    def test_all_list_wrapped_roles_not_empty(self):
+        """A cast whose roles are all single-wrapped lists must still resolve a role.
+
+        Matches the real TMDB shape for shows like The Good Doctor where every
+        aggregate role element is a single-element list wrapping a dict.
+        """
+        credits_data = {
+            "cast": [
+                {
+                    "id": 1,
+                    "name": "Actor",
+                    "roles": [
+                        [{"character": "Wrapped Role", "episode_count": 4}],
+                        [{"character": "Another Role", "episode_count": 2}],
+                    ],
+                    "known_for_department": "Acting",
+                    "gender": 2,
+                    "profile_path": None,
+                },
+            ],
+        }
+
+        result = tmdb.get_cast_credits(credits_data, is_aggregate=True)
+
+        self.assertEqual(result[0]["role"], "Wrapped Role")
+        self.assertEqual(result[0]["episode_count"], 6)
 
     def test_get_cast_credits_order_zero_is_first(self):
         """Cast member with order=0 must sort before members with higher orders."""
