@@ -21,6 +21,8 @@ COVER_ART_BASE = "https://coverartarchive.org"
 WIKIPEDIA_API_BASE = "https://en.wikipedia.org/api/rest_v1/page/summary"
 MIN_REQUEST_INTERVAL = 1.0  # MusicBrainz requires 1 req/sec for unauth requests
 DISCOGRAPHY_CACHE_VERSION = 2
+RELEASE_CACHE_VERSION = 2
+RELEASE_GROUP_RELEASES_CACHE_VERSION = 1
 _last_request_time = 0
 
 # User-Agent required by MusicBrainz API
@@ -307,6 +309,116 @@ def _cover_art_async_url(release_id):
     if not release_id:
         return settings.IMG_NONE
     return f"{COVER_ART_BASE}/release/{release_id}/front-250"
+
+
+def _unique_nonempty(values):
+    """Return non-empty values in their original order without duplicates."""
+    result = []
+    for raw_value in values:
+        value = str(raw_value or "").strip()
+        if value and value not in result:
+            result.append(value)
+    return result
+
+
+def _release_summary(release, *, include_image=True):
+    """Normalize the release fields needed by the release picker."""
+    release_id = release.get("id") or release.get("release_id")
+    media = release.get("media") or []
+    formats = _unique_nonempty(medium.get("format") for medium in media)
+    labels = []
+    catalog_numbers = []
+    for label_info in release.get("label-info") or []:
+        label = label_info.get("label") or {}
+        labels.extend([label.get("name")])
+        catalog_numbers.extend([label_info.get("catalog-number")])
+
+    track_count = release.get("track-count")
+    if track_count is None:
+        track_count = sum(
+            medium.get("track-count") or len(medium.get("tracks") or [])
+            for medium in media
+        )
+
+    return {
+        "release_id": release_id,
+        "title": release.get("title") or "Unknown release",
+        "release_date": release.get("date") or "",
+        "country": release.get("country") or "",
+        "status": release.get("status") or "",
+        "packaging": release.get("packaging") or "",
+        "formats": formats,
+        "format": ", ".join(formats),
+        "labels": _unique_nonempty(labels),
+        "label": ", ".join(_unique_nonempty(labels)),
+        "catalog_numbers": _unique_nonempty(catalog_numbers),
+        "barcode": release.get("barcode") or "",
+        "track_count": track_count or 0,
+        "image": (
+            _cover_art_async_url(release_id) if include_image and release_id else ""
+        ),
+    }
+
+
+def get_release_group_releases(release_group_id):
+    """Return all known MusicBrainz releases in a release group."""
+    if not release_group_id:
+        return []
+
+    cache_key = (
+        f"musicbrainz_release_group_releases_v{RELEASE_GROUP_RELEASES_CACHE_VERSION}_"
+        f"{release_group_id}"
+    )
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    releases = []
+    offset = 0
+    page_size = 100
+    while True:
+        response = _mb_request(
+            "release",
+            {
+                "release-group": release_group_id,
+                "inc": "labels+media+release-groups",
+                "limit": page_size,
+                "offset": offset,
+            },
+        )
+        batch = response.get("releases") or []
+        releases.extend(_release_summary(release) for release in batch)
+        if not batch:
+            break
+
+        total = response.get("release-count") or response.get("count")
+        offset += len(batch)
+        if (total and offset >= total) or len(batch) < page_size:
+            break
+
+    status_order = {
+        "official": 0,
+        "promotion": 1,
+        "pseudo-release": 2,
+        "bootleg": 3,
+        "withdrawn": 4,
+        "cancelled": 5,
+    }
+
+    def sort_key(release):
+        """Sort official releases first, then newest within each status."""
+        year = release["release_date"][:4]
+        return (
+            status_order.get(release["status"], 6),
+            -(int(year) if year.isdigit() else 0),
+            release["title"].casefold(),
+        )
+
+    releases.sort(
+        key=sort_key,
+    )
+    cache.set(cache_key, releases, 60 * 60 * 24 * 7)
+    return releases
 
 
 def search(query, page=1, skip_cover_art=False):
@@ -1206,19 +1318,20 @@ def get_release(release_id, skip_cover_art: bool = False):
         release_id: MusicBrainz release UUID
         skip_cover_art: If True, do not fetch cover art (use placeholder)
     """
-    cache_key = f"musicbrainz_release_{release_id}"
+    cache_key = f"musicbrainz_release_v{RELEASE_CACHE_VERSION}_{release_id}"
     cached = cache.get(cache_key)
     if cached:
         return cached
 
     params = {
-        "inc": "artists+recordings+release-groups+genres+tags",
+        "inc": "artist-credits+recordings+release-groups+genres+tags+labels+media",
     }
 
     response = _mb_request(f"release/{release_id}", params)
 
     title = response.get("title", "Unknown")
     date = response.get("date", "")
+    summary = _release_summary(response, include_image=False)
 
     # Get release group info for cover art fallback and type classification
     release_group = response.get("release-group", {})
@@ -1307,6 +1420,16 @@ def get_release(release_id, skip_cover_art: bool = False):
         "image": image,
         "genres": genres,
         "tracks": tracks,
+        "country": summary["country"],
+        "status": summary["status"],
+        "packaging": summary["packaging"],
+        "formats": summary["formats"],
+        "format": summary["format"],
+        "labels": summary["labels"],
+        "label": summary["label"],
+        "catalog_numbers": summary["catalog_numbers"],
+        "barcode": summary["barcode"],
+        "track_count": summary["track_count"],
     }
 
     cache.set(cache_key, result, 60 * 60 * 24 * 7)

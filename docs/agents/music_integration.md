@@ -122,6 +122,26 @@ class AlbumTracker(models.Model):
 
 Trackers are unique per user+artist/album (single tracker per target), default to `In Progress`, and mirror Media fields (status, score, start/end dates, notes).
 
+#### MusicReleasePreference
+Per-user display preference for a concrete MusicBrainz release/pressing. This is intentionally separate from `AlbumTracker`: it does not change the shared album identity or move play history to another tracklist.
+
+```python
+class MusicReleasePreference(models.Model):
+    user = models.ForeignKey(User, related_name="music_release_preferences")
+    album = models.ForeignKey(Album, related_name="music_release_preferences")
+    release_id = models.CharField(max_length=36)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+```
+
+Preferences are unique per user+album. The selected release overrides only the detail-page cover and release metadata; the canonical `Album`, `Track`, `Music`, collection, and history rows remain unchanged.
+
+On the album detail page and album tracking modal, a saved preference is hydrated from
+MusicBrainz only when the selected release still belongs to the album's release group.
+If the release is missing, no longer belongs to that group, or MusicBrainz is
+unavailable, the UI falls back to the canonical album metadata and cover without
+deleting the preference or changing any tracking rows.
+
 ### Enums
 
 ```python
@@ -205,9 +225,16 @@ def get_release_for_group(release_group_id):
 
 def get_release(release_id, skip_cover_art=False):
     """Get detailed release metadata (album-level)."""
-    # Fetches /release/{id} with inc=recordings+artists
-    # Returns: title, artist, release_date, release_type, image, tracklist (optional)
+    # Fetches /release/{id} with recordings, labels, release-groups, and media
+    # Returns: title, artist, release metadata, cover, and tracklist (optional)
     # skip_cover_art avoids cover art calls when hydrating many releases
+
+def get_release_group_releases(release_group_id):
+    """Get all releases/pressings in a MusicBrainz release group."""
+    # Browses /release with release-group filtering and pagination
+    # Returns normalized release_id, date, country, status, format, packaging,
+    # labels, catalog numbers, barcode, track count, and cover URL.
+    # Results are cached and official releases sort before other statuses.
 ```
 
 #### Cover Art Functions
@@ -383,6 +410,14 @@ def album_delete(request):
 @require_POST
 def song_save(request):
     """Add a listen for a track (like episode_save)."""
+
+@require_GET
+def list_music_releases(request, album_id):
+    """Return the HTMX release/pressing picker for an album."""
+
+@require_POST
+def set_music_release(request, album_id):
+    """Save a validated per-user release/pressing preference."""
 ```
 
 ### Creation Views
@@ -437,6 +472,10 @@ path("music/album/create/<str:release_mbid>/", views.create_album_from_search, n
 # Metadata sync
 path("music/artist/<int:artist_id>/sync/", views.sync_artist_discography_view, name="sync_artist_discography"),
 path("music/album/<int:album_id>/sync/", views.sync_album_metadata_view, name="sync_album_metadata"),
+
+# Release/pressing picker
+path("details/music/album/<int:album_id>/releases", views.list_music_releases, name="list_music_releases"),
+path("details/music/album/<int:album_id>/release", views.set_music_release, name="set_music_release"),
 ```
 
 ## Templates
@@ -455,8 +494,19 @@ Layout matches TV show detail:
 Layout matches Season detail:
 - **Hero section**: Album cover, title, artist link, release type/year chips, stats
 - **Action button**: Album tracking modal
-- **Left column**: Your History, Actions, Details
-- **Right column**: Track list with "Track Song" buttons for each track
+  - **Left column**: Your History, Actions, and Details
+  - **Right column**: Track list with "Track Song" buttons for each track
+
+The release picker uses the shared Hardcover edition-picker interaction pattern in the
+album tracking modal's Metadata tab, but validates MusicBrainz release IDs against the
+album's release group and keeps release selection separate from tracking state.
+
+The picker is available to authenticated users even when an album has no
+`AlbumTracker`. It sends a safe `return_url` through the HTMX form and uses the
+following internal endpoints:
+
+- `GET details/music/album/<album_id>/releases`: browse and filter release-group pressings.
+- `POST details/music/album/<album_id>/release`: validate membership in the release group and save the per-user preference.
 
 ### Album Grid (`src/templates/app/components/album_grid.html`)
 
@@ -511,6 +561,7 @@ Custom admin classes for music models:
 - `TrackAdmin`: Inline editing, filterable by album
 - `ArtistTrackerAdmin`: User/artist/status filters
 - `AlbumTrackerAdmin`: User/album/status filters
+- `MusicReleasePreferenceAdmin`: User/album/release ID filters
 
 ## Statistics
 

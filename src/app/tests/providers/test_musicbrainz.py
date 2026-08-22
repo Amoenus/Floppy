@@ -236,6 +236,89 @@ class MusicBrainzReleaseTests(SimpleTestCase):
         self.assertIn("", cache_values)
         self.assertIn([], cache_values)
 
+    def test_get_release_normalizes_pressing_metadata(self):
+        with (
+            patch("app.providers.musicbrainz.cache.get", return_value=None),
+            patch("app.providers.musicbrainz.cache.set"),
+            patch("app.providers.musicbrainz._mb_request") as mock_mb_request,
+        ):
+            mock_mb_request.return_value = {
+                "title": "Pressing Album",
+                "date": "1977-06-01",
+                "country": "US",
+                "status": "official",
+                "packaging": "Gatefold",
+                "barcode": "0123456789012",
+                "release-group": {"id": "release-group-mbid"},
+                "artist-credit": [],
+                "label-info": [
+                    {
+                        "catalog-number": "ABC-123",
+                        "label": {"name": "Example Records"},
+                    },
+                ],
+                "media": [
+                    {"format": "Vinyl", "track-count": 5, "tracks": []},
+                    {"format": "Vinyl", "track-count": 4, "tracks": []},
+                ],
+            }
+
+            data = musicbrainz.get_release("release-mbid", skip_cover_art=True)
+
+        self.assertEqual(data["country"], "US")
+        self.assertEqual(data["format"], "Vinyl")
+        self.assertEqual(data["label"], "Example Records")
+        self.assertEqual(data["catalog_numbers"], ["ABC-123"])
+        self.assertEqual(data["barcode"], "0123456789012")
+        self.assertEqual(data["track_count"], 9)
+
+    def test_get_release_group_releases_normalizes_and_sorts_results(self):
+        with (
+            patch("app.providers.musicbrainz.cache.get", return_value=None),
+            patch("app.providers.musicbrainz.cache.set") as mock_cache_set,
+            patch("app.providers.musicbrainz._mb_request") as mock_mb_request,
+        ):
+            mock_mb_request.return_value = {
+                "release-count": 2,
+                "releases": [
+                    {
+                        "id": "bootleg-release",
+                        "title": "Live Bootleg",
+                        "date": "2025",
+                        "status": "bootleg",
+                        "country": "DE",
+                        "media": [{"format": "CD", "track-count": 8}],
+                    },
+                    {
+                        "id": "official-release",
+                        "title": "Original Pressing",
+                        "date": "1977",
+                        "status": "official",
+                        "country": "US",
+                        "media": [{"format": "Vinyl", "track-count": 9}],
+                    },
+                ],
+            }
+
+            releases = musicbrainz.get_release_group_releases("group-mbid")
+
+        self.assertEqual(
+            [release["release_id"] for release in releases],
+            ["official-release", "bootleg-release"],
+        )
+        self.assertEqual(releases[0]["format"], "Vinyl")
+        self.assertEqual(releases[0]["track_count"], 9)
+        self.assertEqual(
+            mock_mb_request.call_args.args[1],
+            {
+                "release-group": "group-mbid",
+                "inc": "labels+media+release-groups",
+                "limit": 100,
+                "offset": 0,
+            },
+        )
+        self.assertTrue(mock_cache_set.called)
+
 
 class MusicBrainzCombinedSearchTests(SimpleTestCase):
     """Test combined music search result formatting."""

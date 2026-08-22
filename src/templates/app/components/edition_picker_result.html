@@ -1,0 +1,42 @@
+{% load app_tags %}
+
+{% if edition.image %}
+  <img src="{{ edition.image|image_url }}"
+       alt=""
+       loading="lazy"
+       class="object-cover w-10 h-10 rounded bg-[var(--color-surface-alt)] shrink-0">
+{% else %}
+  <span class="flex items-center justify-center w-10 h-10 text-gray-600 rounded bg-[var(--color-surface-alt)] shrink-0">
+    {% include "app/icons/magnifying-glass.svg" with classes="w-4 h-4" %}
+  </span>
+{% endif %}
+<span class="flex-1 min-w-0">
+  <span class="flex items-center gap-2">
+    <span class="block truncate text-[var(--color-text)]">{{ edition.title }}</span>
+    {% if picker_type == "music" and selected_release_id == edition.release_id %}
+      <span class="shrink-0 text-xs text-[var(--color-accent)]">Selected</span>
+    {% endif %}
+  </span>
+  {% if picker_type == "music" %}
+    <span class="block text-xs text-[var(--color-text-muted)] truncate">
+      {{ edition.release_date|default:"Date unknown" }}
+      {% if edition.country %} · {{ edition.country }}{% endif %}
+      {% if edition.status %} · {{ edition.status|title }}{% endif %}
+    </span>
+    <span class="block text-xs text-[var(--color-text-muted)] truncate">
+      {{ edition.format|default:"Format unknown" }}
+      {% if edition.packaging %} · {{ edition.packaging }}{% endif %}
+      {% if edition.label %} · {{ edition.label }}{% endif %}
+      {% if edition.track_count %} · {{ edition.track_count }} tracks{% endif %}
+    </span>
+    {% if edition.barcode %}
+      <span class="block text-xs text-[var(--color-text-muted)] truncate">Barcode: {{ edition.barcode }}</span>
+    {% endif %}
+  {% elif edition.language or edition.format %}
+    <span class="block text-xs text-[var(--color-text-muted)] truncate">
+      {{ edition.language|default:"" }}
+      {% if edition.language and edition.format %}·{% endif %}
+      {{ edition.format|default:"" }}
+    </span>
+  {% endif %}
+</span>

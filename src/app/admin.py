@@ -114,6 +114,7 @@ SpecialModels = [
     "ItemProviderLink",
     "MetadataProviderPreference",
     "HardcoverEditionPreference",
+    "MusicReleasePreference",
     "CollectionEntry",
     "Tag",
     "ItemTag",
@@ -142,6 +143,7 @@ from app.models import (  # noqa: E402
     ArtistTracker,
     BackfillReconcileState,
     MetadataBackfillState,
+    MusicReleasePreference,
     Track,
 )
 
@@ -169,6 +171,18 @@ admin.site.register(Album, AlbumAdmin)
 admin.site.register(Track, TrackAdmin)
 admin.site.register(ArtistTracker, ArtistTrackerAdmin)
 admin.site.register(AlbumTracker, AlbumTrackerAdmin)
+
+
+class MusicReleasePreferenceAdmin(admin.ModelAdmin):
+    """Admin for per-user MusicBrainz release choices."""
+
+    list_display = ["user", "album", "release_id", "updated_at"]
+    list_filter = ["updated_at"]
+    search_fields = ["user__username", "album__title", "release_id"]
+    raw_id_fields = ["user", "album"]
+
+
+admin.site.register(MusicReleasePreference, MusicReleasePreferenceAdmin)
 
 
 class MetadataBackfillStateAdmin(admin.ModelAdmin):

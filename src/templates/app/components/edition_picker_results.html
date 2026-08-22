@@ -1,0 +1,37 @@
+{% load app_tags %}
+
+<div role="listbox"
+     class="absolute z-50 w-full mt-1 overflow-auto text-[var(--color-text-secondary)] bg-[var(--color-surface)] rounded-md shadow-lg border border-gray-600 max-h-96">
+  {% if editions %}
+    {% for edition in editions %}
+      {% if selection_url %}
+        <form method="post"
+              action="{{ selection_url }}"
+              role="option"
+              aria-selected="{% if picker_type == 'music' and selected_release_id == edition.release_id %}true{% else %}false{% endif %}">
+          {% csrf_token %}
+          {% if picker_type == "music" %}
+            <input type="hidden" name="release_id" value="{{ edition.release_id }}">
+          {% else %}
+            <input type="hidden" name="edition_id" value="{{ edition.id }}">
+          {% endif %}
+          <input type="hidden" name="return_url" value="{{ return_url }}">
+          <button type="submit"
+                  class="flex w-full items-start gap-3 px-3 py-2 text-sm text-left hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)] transition-colors duration-150 cursor-pointer">
+            {% include "app/components/edition_picker_result.html" with edition=edition picker_type=picker_type selected_release_id=selected_release_id only %}
+          </button>
+        </form>
+      {% else %}
+        <a href="?edition_id={{ edition.id }}"
+           role="option"
+           class="flex items-start gap-3 px-3 py-2 text-sm hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)] transition-colors duration-150">
+          {% include "app/components/edition_picker_result.html" with edition=edition picker_type=picker_type selected_release_id=selected_release_id only %}
+        </a>
+      {% endif %}
+    {% endfor %}
+  {% elif query %}
+    <p class="px-3 py-2 text-sm text-[var(--color-text-muted)]">No editions match &ldquo;{{ query }}&rdquo;.</p>
+  {% else %}
+    <p class="px-3 py-2 text-sm text-[var(--color-text-muted)]">No editions found.</p>
+  {% endif %}
+</div>

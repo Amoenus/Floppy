@@ -3,11 +3,13 @@ import logging
 
 from django.conf import settings
 from django.contrib import messages
+from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse
-from django.shortcuts import get_object_or_404, redirect
+from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
-from django.views.decorators.http import require_POST
+from django.utils.http import url_has_allowed_host_and_scheme
+from django.views.decorators.http import require_GET, require_POST
 
 from app import fork_services_music, helpers
 from app.discover import tab_cache as discover_tab_cache
@@ -19,6 +21,7 @@ from app.models import (
     CollectionEntry,
     MediaTypes,
     Music,
+    MusicReleasePreference,
     Track,
 )
 from app.music_views import (
@@ -33,6 +36,124 @@ from app.services.music import ensure_album_has_release_id
 from app.track_modal_views import _track_modal_release_date_shortcut
 
 logger = logging.getLogger(__name__)
+
+
+def _music_release_redirect(request, album, return_url):
+    """Redirect to a safe caller URL or the canonical album page."""
+    if return_url and url_has_allowed_host_and_scheme(
+        return_url,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
+    ):
+        return redirect(return_url)
+    return redirect(_music_album_detail_url(album))
+
+
+def _music_release_search_text(release):
+    """Return searchable text for one normalized MusicBrainz release."""
+    return " ".join(
+        str(release.get(field) or "")
+        for field in (
+            "title",
+            "release_date",
+            "country",
+            "status",
+            "packaging",
+            "format",
+            "label",
+            "catalog_numbers",
+            "barcode",
+            "track_count",
+        )
+    ).casefold()
+
+
+@login_required
+@require_GET
+def list_music_releases(request, album_id):
+    """List MusicBrainz releases for an album's release group."""
+    album = get_object_or_404(Album, id=album_id)
+    query = (request.GET.get("q") or "").strip().casefold()
+    releases = []
+    if album.musicbrainz_release_group_id:
+        try:
+            releases = musicbrainz.get_release_group_releases(
+                album.musicbrainz_release_group_id,
+            )
+        except Exception as exc:  # pragma: no cover - defensive provider boundary
+            logger.warning(
+                "Failed to list releases for album %s: %s",
+                album.id,
+                exc,
+            )
+
+    if query:
+        releases = [
+            release
+            for release in releases
+            if query in _music_release_search_text(release)
+        ]
+
+    preference = MusicReleasePreference.objects.filter(
+        user=request.user,
+        album=album,
+    ).first()
+    return render(
+        request,
+        "app/components/hardcover_edition_results.html",
+        {
+            "picker_type": "music",
+            "editions": releases,
+            "query": query,
+            "selection_url": reverse(
+                "set_music_release",
+                kwargs={"album_id": album.id},
+            ),
+            "selected_release_id": preference.release_id if preference else None,
+            "return_url": helpers.normalize_navigation_url(
+                request.GET.get("return_url"),
+            ),
+        },
+    )
+
+
+@login_required
+@require_POST
+def set_music_release(request, album_id):
+    """Persist a validated per-user MusicBrainz release choice."""
+    album = get_object_or_404(Album, id=album_id)
+    return_url = helpers.normalize_navigation_url(request.POST.get("return_url"))
+    release_id = (request.POST.get("release_id") or "").strip()
+
+    if not release_id:
+        messages.error(request, "Select a release to use.")
+    elif not album.musicbrainz_release_group_id:
+        messages.error(request, "This album has no MusicBrainz release group.")
+    else:
+        try:
+            releases = musicbrainz.get_release_group_releases(
+                album.musicbrainz_release_group_id,
+            )
+        except Exception as exc:  # pragma: no cover - defensive provider boundary
+            logger.warning(
+                "Failed to validate release %s for album %s: %s",
+                release_id,
+                album.id,
+                exc,
+            )
+            releases = []
+
+        if not any(release.get("release_id") == release_id for release in releases):
+            messages.error(request, "That release is not part of this album.")
+        else:
+            MusicReleasePreference.objects.update_or_create(
+                user=request.user,
+                album=album,
+                defaults={"release_id": release_id},
+            )
+            messages.success(request, "Release updated.")
+
+    return _music_release_redirect(request, album, return_url)
 
 
 def album_track_modal(request, album_id):

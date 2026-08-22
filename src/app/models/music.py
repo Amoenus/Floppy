@@ -140,6 +140,41 @@ class Album(models.Model):
         return self.title
 
 
+class MusicReleasePreference(models.Model):
+    """Per-user MusicBrainz release choice for an album."""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="music_release_preferences",
+    )
+    album = models.ForeignKey(
+        Album,
+        on_delete=models.CASCADE,
+        related_name="music_release_preferences",
+    )
+    release_id = models.CharField(
+        max_length=36,
+        help_text="MusicBrainz Release ID (UUID) selected for display",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Model and field configuration."""
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "album"],
+                name="unique_music_release_preference_per_user_album",
+            ),
+        ]
+
+    def __str__(self):
+        """Return the selected release label."""
+        return f"{self.user_id}:{self.album_id}->release/{self.release_id}"
+
+
 class AlbumArtist(models.Model):
     """Album artist."""
 

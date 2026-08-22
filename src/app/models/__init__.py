@@ -59,6 +59,7 @@ from app.models.music import (
     ArtistMember,
     ArtistTracker,
     Music,
+    MusicReleasePreference,
     Track,
 )
 from app.models.playback import PlaybackProgress
@@ -123,6 +124,7 @@ __all__ = [
     "Movie",
     "MoviePlay",
     "Music",
+    "MusicReleasePreference",
     "Person",
     "PersonGender",
     "PlaybackProgress",

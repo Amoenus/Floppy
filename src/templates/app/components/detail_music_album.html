@@ -5,10 +5,10 @@
 
 <div class="flex flex-col md:flex-row gap-8 md:gap-10 mb-12 md:mb-8">
   <div class="w-full md:w-1/4 max-w-[250px] mx-auto md:mx-0">
-    {% if album.image and album.image != IMG_NONE %}
+    {% if album_display_image and album_display_image != IMG_NONE %}
       <img alt="{{ album.title }}"
            class="w-full rounded-lg shadow-lg bg-[var(--color-surface)] object-cover"
-           src="{{ album.image|image_url }}"
+           src="{{ album_display_image|image_url }}"
            referrerpolicy="origin">
     {% else %}
       <div class="w-full aspect-square rounded-lg shadow-lg bg-[var(--color-surface)] flex items-center justify-center">
@@ -347,8 +347,8 @@
             <div class="bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg">
               <div class="flex flex-col md:flex-row">
                 <div class="md:w-32 md:h-32 shrink-0">
-                  {% if album.image and album.image != IMG_NONE %}
-                    <img src="{{ album.image|image_url }}"
+                  {% if album_display_image and album_display_image != IMG_NONE %}
+                    <img src="{{ album_display_image|image_url }}"
                          alt="{{ track_data.track.title }}"
                          class="w-full h-full object-cover"
                          referrerpolicy="origin">

@@ -1,0 +1,307 @@
+from unittest.mock import patch
+
+from django.contrib.auth import get_user_model
+from django.test import TestCase
+from django.urls import reverse
+
+from app.models import (
+    Album,
+    Artist,
+    MusicReleasePreference,
+)
+
+
+class MusicReleaseViewTests(TestCase):
+    """Coverage for the per-user MusicBrainz release picker."""
+
+    def setUp(self):
+        self.credentials = {"username": "music-user", "password": "12345"}
+        self.user = get_user_model().objects.create_user(**self.credentials)
+        self.client.login(**self.credentials)
+        self.artist = Artist.objects.create(name="Test Artist")
+        self.album = Album.objects.create(
+            title="Test Album",
+            artist=self.artist,
+            musicbrainz_release_id="representative-release",
+            musicbrainz_release_group_id="release-group",
+            tracks_populated=True,
+            image="https://example.com/default.jpg",
+        )
+
+    def _release(self, release_id, title, **fields):
+        return {
+            "release_id": release_id,
+            "title": title,
+            "release_date": "1977",
+            "country": "US",
+            "status": "official",
+            "packaging": "Jewel Case",
+            "format": "CD",
+            "formats": ["CD"],
+            "label": "Example Records",
+            "labels": ["Example Records"],
+            "catalog_numbers": ["ABC-123"],
+            "barcode": "0123456789012",
+            "track_count": 9,
+            "image": "https://example.com/release.jpg",
+            **fields,
+        }
+
+    @patch("app.music_album_views.musicbrainz.get_release_group_releases")
+    def test_list_music_releases_renders_and_filters_results(self, mock_releases):
+        mock_releases.return_value = [
+            self._release("release-1", "Original Pressing"),
+            self._release(
+                "release-2",
+                "Deluxe Remaster",
+                format="Vinyl",
+                country="DE",
+            ),
+        ]
+
+        response = self.client.get(
+            reverse("list_music_releases", kwargs={"album_id": self.album.id}),
+            {"q": "vinyl"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Deluxe Remaster")
+        self.assertContains(response, "Vinyl")
+        self.assertNotContains(response, "Original Pressing")
+        self.assertContains(
+            response,
+            reverse("set_music_release", kwargs={"album_id": self.album.id}),
+        )
+        mock_releases.assert_called_once_with("release-group")
+
+    @patch("app.providers.musicbrainz.get_release")
+    def test_album_track_modal_places_release_picker_in_metadata_panel(
+        self,
+        mock_get_release,
+    ):
+        MusicReleasePreference.objects.create(
+            user=self.user,
+            album=self.album,
+            release_id="release-1",
+        )
+        mock_get_release.return_value = self._release(
+            "release-1",
+            "Original Pressing",
+            release_group_id="release-group",
+        )
+
+        response = self.client.get(
+            reverse("album_track_modal", kwargs={"album_id": self.album.id}),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context["metadata_tab_available"])
+        self.assertEqual(
+            response.context["music_release_picker"]["list_url"],
+            reverse("list_music_releases", kwargs={"album_id": self.album.id}),
+        )
+        self.assertEqual(
+            response.context["selected_music_release"]["release_id"],
+            "release-1",
+        )
+        self.assertContains(response, "Metadata")
+        self.assertContains(response, "Specific release")
+        self.assertContains(response, "Original Pressing")
+        self.assertContains(response, "Search releases...")
+        self.assertNotContains(response, "Search editions...")
+        mock_get_release.assert_called_once_with("release-1")
+
+    @patch("app.music_album_views.musicbrainz.get_release_group_releases")
+    def test_set_music_release_persists_preference(self, mock_releases):
+        mock_releases.return_value = [self._release("release-1", "Original Pressing")]
+
+        response = self.client.post(
+            reverse("set_music_release", kwargs={"album_id": self.album.id}),
+            {"release_id": "release-1", "return_url": "/music"},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], "/music")
+        preference = MusicReleasePreference.objects.get(
+            user=self.user,
+            album=self.album,
+        )
+        self.assertEqual(preference.release_id, "release-1")
+
+    @patch("app.music_album_views.musicbrainz.get_release_group_releases")
+    def test_set_music_release_rejects_release_from_another_group(self, mock_releases):
+        mock_releases.return_value = [self._release("release-1", "Original Pressing")]
+
+        response = self.client.post(
+            reverse("set_music_release", kwargs={"album_id": self.album.id}),
+            {"release_id": "other-group-release", "return_url": "/music"},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(
+            MusicReleasePreference.objects.filter(
+                user=self.user,
+                album=self.album,
+            ).exists(),
+        )
+
+    @patch("app.music_album_views.musicbrainz.get_release_group_releases")
+    def test_set_music_release_rejects_protocol_relative_return_url(
+        self, mock_releases
+    ):
+        mock_releases.return_value = [self._release("release-1", "Original Pressing")]
+
+        response = self.client.post(
+            reverse("set_music_release", kwargs={"album_id": self.album.id}),
+            {"release_id": "release-1", "return_url": "//evil.example/"},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertNotEqual(response["Location"], "//evil.example/")
+        self.assertIn("/details/music/artist/", response["Location"])
+
+    @patch("app.music_views.sync_services.populate_album_implied_genres")
+    @patch("app.music_views.sync_services.album_artist_credits_need_sync")
+    @patch("app.providers.musicbrainz.get_release")
+    def test_album_detail_falls_back_when_saved_release_is_stale(
+        self,
+        mock_get_release,
+        mock_credits_need_sync,
+        mock_genres,
+    ):
+        MusicReleasePreference.objects.create(
+            user=self.user,
+            album=self.album,
+            release_id="stale-release",
+        )
+        mock_credits_need_sync.return_value = False
+        mock_genres.return_value = False
+        mock_get_release.return_value = self._release(
+            "stale-release",
+            "Unrelated Release",
+            release_group_id="other-group",
+            image="https://example.com/stale.jpg",
+        )
+
+        response = self.client.get(
+            reverse(
+                "music_album_details",
+                kwargs={
+                    "artist_id": self.artist.id,
+                    "artist_slug": "test-artist",
+                    "album_id": self.album.id,
+                    "album_slug": "test-album",
+                },
+            ),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.context["selected_music_release"])
+        self.assertEqual(
+            response.context["album_display_image"],
+            "https://example.com/default.jpg",
+        )
+
+    @patch("app.music_views.sync_services.populate_album_implied_genres")
+    @patch("app.music_views.sync_services.album_artist_credits_need_sync")
+    @patch("app.providers.musicbrainz.get_release", side_effect=RuntimeError("offline"))
+    def test_album_detail_falls_back_when_provider_fails(
+        self,
+        mock_get_release,
+        mock_credits_need_sync,
+        mock_genres,
+    ):
+        MusicReleasePreference.objects.create(
+            user=self.user,
+            album=self.album,
+            release_id="unavailable-release",
+        )
+        mock_credits_need_sync.return_value = False
+        mock_genres.return_value = False
+
+        response = self.client.get(
+            reverse(
+                "music_album_details",
+                kwargs={
+                    "artist_id": self.artist.id,
+                    "artist_slug": "test-artist",
+                    "album_id": self.album.id,
+                    "album_slug": "test-album",
+                },
+            ),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.context["selected_music_release"])
+        self.assertEqual(
+            response.context["album_display_image"],
+            "https://example.com/default.jpg",
+        )
+        mock_get_release.assert_called_once_with("unavailable-release")
+
+    @patch("app.music_album_views.musicbrainz.get_release_group_releases")
+    def test_release_preference_is_isolated_per_user(self, mock_releases):
+        mock_releases.return_value = [self._release("release-1", "Original Pressing")]
+        other_credentials = {"username": "other-music-user", "password": "12345"}
+        other_user = get_user_model().objects.create_user(**other_credentials)
+        MusicReleasePreference.objects.create(
+            user=self.user,
+            album=self.album,
+            release_id="release-1",
+        )
+
+        self.client.force_login(other_user)
+        response = self.client.get(
+            reverse("list_music_releases", kwargs={"album_id": self.album.id}),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.context["selected_release_id"])
+
+    @patch("app.music_views.sync_services.populate_album_implied_genres")
+    @patch("app.music_views.sync_services.album_artist_credits_need_sync")
+    @patch("app.providers.musicbrainz.get_release")
+    def test_album_detail_uses_saved_release_for_display_only(
+        self,
+        mock_get_release,
+        mock_credits_need_sync,
+        mock_genres,
+    ):
+        MusicReleasePreference.objects.create(
+            user=self.user,
+            album=self.album,
+            release_id="selected-release",
+        )
+        mock_credits_need_sync.return_value = False
+        mock_genres.return_value = False
+        mock_get_release.return_value = self._release(
+            "selected-release",
+            "Original Pressing",
+            release_group_id="release-group",
+            image="https://example.com/selected.jpg",
+        )
+
+        response = self.client.get(
+            reverse(
+                "music_album_details",
+                kwargs={
+                    "artist_id": self.artist.id,
+                    "artist_slug": "test-artist",
+                    "album_id": self.album.id,
+                    "album_slug": "test-album",
+                },
+            ),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.context["album_display_image"],
+            "https://example.com/selected.jpg",
+        )
+        self.assertEqual(
+            response.context["selected_music_release"]["release_id"],
+            "selected-release",
+        )
+        self.album.refresh_from_db()
+        self.assertEqual(self.album.musicbrainz_release_id, "representative-release")
+        self.assertEqual(self.album.image, "https://example.com/default.jpg")
