@@ -240,6 +240,92 @@ class MergeItemTests(TestCase):
         self.assertEqual(keeper_progress.position_seconds, 900)
 
 
+class DedupeCrossProviderItemsTests(TestCase):
+    """Render-time dedupe uses verified provider identity without network calls."""
+
+    def _season_pair(self, *, parent_tvdb_id="81189"):
+        tmdb_show = Item.objects.create(
+            media_id="1396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Breaking Bad",
+            image="",
+            provider_external_ids={"tvdb_id": parent_tvdb_id},
+        )
+        tvdb_show = Item.objects.create(
+            media_id=parent_tvdb_id,
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Breaking Bad",
+            image="",
+        )
+        tmdb_season = Item.objects.create(
+            media_id=tmdb_show.media_id,
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=1,
+            title="Breaking Bad",
+            image="",
+        )
+        tvdb_season = Item.objects.create(
+            media_id=tvdb_show.media_id,
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=1,
+            title="Breaking Bad",
+            image="",
+        )
+        return tmdb_season, tvdb_season
+
+    def test_season_falls_back_to_parent_tvdb_id_and_honors_preference(self):
+        tmdb_season, tvdb_season = self._season_pair()
+
+        with self.assertNumQueries(1):
+            tmdb_result = item_merge.dedupe_cross_provider_items(
+                [tmdb_season, tvdb_season],
+                Sources.TMDB.value,
+            )
+        tvdb_result = item_merge.dedupe_cross_provider_items(
+            [tmdb_season, tvdb_season],
+            Sources.TVDB.value,
+        )
+
+        self.assertEqual(tmdb_result, [tmdb_season])
+        self.assertEqual(tvdb_result, [tvdb_season])
+
+    @patch("app.services.item_merge.tmdb.resolve_tvdb_id_for_tmdb_show")
+    def test_missing_parent_id_does_not_match_same_title(self, mock_resolve):
+        tmdb_season, tvdb_season = self._season_pair(parent_tvdb_id="81189")
+        Item.objects.filter(pk=tmdb_season.pk).update(provider_external_ids={})
+        Item.objects.filter(media_id="1396", source=Sources.TMDB.value).update(
+            provider_external_ids={},
+        )
+
+        result = item_merge.dedupe_cross_provider_items(
+            [tmdb_season, tvdb_season],
+            Sources.TMDB.value,
+        )
+
+        self.assertCountEqual(result, [tmdb_season, tvdb_season])
+        mock_resolve.assert_not_called()
+
+    def test_explicit_season_id_takes_precedence_over_parent(self):
+        tmdb_season, tvdb_season = self._season_pair()
+        Item.objects.filter(
+            media_id="1396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+        ).update(provider_external_ids={"tvdb_id": "99999"})
+        tmdb_season.provider_external_ids = {"tvdb_id": tvdb_season.media_id}
+
+        result = item_merge.dedupe_cross_provider_items(
+            [tmdb_season, tvdb_season],
+            Sources.TVDB.value,
+        )
+
+        self.assertEqual(result, [tvdb_season])
+
+
 class FindCrossProviderDuplicateTests(TestCase):
     """Verified-identity lookup only - never title matching."""
 

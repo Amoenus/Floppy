@@ -105,8 +105,9 @@ class EventManager(models.Manager):
         TVDB identity (the #620 dual-identity model); each identity gets its
         own independent Season `Item`s and `Event`s. Without this, the
         calendar shows the same real episode twice - once per identity
-        (#639). Uses the same verified `provider_external_ids["tvdb_id"]`
-        based dedup already used for Home rows.
+        (#639). Uses the same verified cached cross-provider mapping already
+        used for Home rows; Season rows fall back to their matching TMDB TV
+        item's mapping when the child row has no `tvdb_id` of its own.
         """
         if not (
             MediaTypes.TV.value in enabled_types
