@@ -1456,6 +1456,99 @@ class TestPlexPostImportSideEffects(TestCase):
         mock_schedule_stats.assert_called_once_with(self.user.id)
 
 
+class TestPlexUsernameImportBehavior(TestCase):
+    """Plex imports must not rewrite the user's configured username filters."""
+
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(username="plex-import-user")
+        self.account = PlexAccount.objects.create(
+            user=self.user,
+            plex_token="token",
+            plex_username="server-user",
+            plex_account_id="9999",
+        )
+        self.user.plex_usernames = "user1, user2"
+        self.user.save(update_fields=["plex_usernames"])
+
+    def test_successful_import_preserves_explicit_username_list(self):
+        """A completed import must not add the connected server account."""
+        with (
+            patch("integrations.imports.plex.plex_api.list_users", return_value=[]),
+            patch(
+                "integrations.imports.plex.plex_api.list_sections",
+                return_value=[
+                    {
+                        "id": "1",
+                        "machine_identifier": "machine",
+                        "title": "Movies",
+                        "type": "movie",
+                        "uri": "http://plex",
+                    }
+                ],
+            ),
+            patch(
+                "integrations.imports.plex.plex_api.list_resources",
+                return_value=[
+                    {
+                        "machine_identifier": "machine",
+                        "connections": [{"uri": "http://plex"}],
+                    }
+                ],
+            ),
+            patch(
+                "integrations.imports.plex.plex_api.fetch_history",
+                return_value=([], 0),
+            ),
+            patch(
+                "integrations.imports.plex.plex_api.fetch_section_all_items",
+                return_value=([], 0),
+            ),
+        ):
+            plex.importer("all", self.user, "new")
+
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.plex_usernames, "user1, user2")
+
+    def test_failed_import_preserves_explicit_username_list(self):
+        """An early Plex failure must not add the connected server account."""
+        from integrations.plex import PlexAuthError
+
+        with (
+            patch("integrations.imports.plex.plex_api.list_users", return_value=[]),
+            patch(
+                "integrations.imports.plex.plex_api.list_resources",
+                side_effect=PlexAuthError("token expired"),
+            ),
+        ):
+            with self.assertRaises(helpers.MediaImportError):
+                plex.importer("all", self.user, "new")
+
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.plex_usernames, "user1, user2")
+
+    def test_empty_username_list_uses_connected_account_without_persisting(self):
+        """An empty list still filters to the connected account without saving it."""
+        self.user.plex_usernames = ""
+        self.user.save(update_fields=["plex_usernames"])
+        importer = PlexHistoryImporter(
+            user=self.user,
+            account=self.account,
+            mode="new",
+            library="all",
+        )
+
+        with patch("integrations.imports.plex.plex_api.list_users", return_value=[]):
+            importer._init_allowed_usernames()
+            importer._init_allowed_account_ids()
+
+        self.assertEqual(importer._allowed_usernames, ["server-user"])
+        self.assertEqual(importer._allowed_account_ids, {"9999"})
+        self.assertTrue(importer._is_allowed_history_user({"accountID": "9999"}))
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.plex_usernames, "")
+
+
 class TestPlexMultiServerImport(TestCase):
     """Tests for multi-server / shared-library import resilience."""
 
