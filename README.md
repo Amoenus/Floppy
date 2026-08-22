@@ -619,17 +619,14 @@ this prevents Docker restart policies from repeating the same failure.
 
 The report identifies the incident with a fingerprint and issues a separate
 one-time **incident token**. The startup log prints the exact value to set, and
-the report repeats it under `actions`. Copy that token; the fingerprint is an
-identifier, not an approval. There are three choices:
+the report repeats it under `actions`. Copy the approval code from the startup
+log, or use the matching `incident_token`/`actions` entry in the protected
+report; the fingerprint is an identifier, not an approval. There are two
+choices:
 
 1. **Restore or repair:** stop Floppy, back up the database with its `-wal` and
    `-shm` files, then restore a known-good copy or repair the named rows.
-2. **Accept:** set `FLOPPY_SQLITE_CONFLICT_ACTION=accept:<incident-token>` and
-   recreate the container. Floppy starts without changing the conflicting rows.
-   Accept gets you back online on your current schema. It is not an upgrade
-   path: Django re-checks every foreign key while it applies a migration, so a
-   pending migration keeps failing until you repair or quarantine the rows.
-3. **Quarantine:** set
+2. **Quarantine:** set
    `FLOPPY_SQLITE_CONFLICT_ACTION=quarantine:<incident-token>` and recreate the
    container. Floppy first writes and verifies a full backup under
    `sqlite-recovery/`, then removes the orphaned child rows and verifies all

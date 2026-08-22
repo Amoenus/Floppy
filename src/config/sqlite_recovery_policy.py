@@ -538,6 +538,18 @@ def _annotate_blocked_report(
     return plan
 
 
+def _log_blocked_recovery_options(report: dict, plan: dict) -> None:
+    """Print the current repair approval code for a final blocked incident."""
+    token = report.get("incident_token")
+    if not plan.get("can_repair") or not isinstance(token, str) or not token:
+        return
+    _log(f"[entrypoint] SQLite recovery approval code: {token}")
+    _log(
+        "[entrypoint] To approve relationship repair, set "
+        f"{_ACTION_ENV}=quarantine:{token} and restart Floppy.",
+    )
+
+
 def check_database_for_startup(db_path: str) -> None:
     """Repair safe relationship damage or block before migrations."""
     emit = _status_emitter(db_path)
@@ -568,6 +580,7 @@ def check_database_for_startup(db_path: str) -> None:
         and plan.get("can_repair")
         and int(plan.get("safe_relationships", 0)) > 0
     ):
+        _log_blocked_recovery_options(report, plan)
         raise SystemExit(1)
 
     emit("running", "repair")
@@ -615,9 +628,10 @@ def check_database_for_startup(db_path: str) -> None:
     refreshed = _scan_and_publish_block(db_path, emit)
     if refreshed is None:
         return
-    _annotate_blocked_report(
+    refreshed_plan = _annotate_blocked_report(
         db_path,
         refreshed,
         prior_safe_repair=safe_summary,
     )
+    _log_blocked_recovery_options(refreshed, refreshed_plan)
     raise SystemExit(1)

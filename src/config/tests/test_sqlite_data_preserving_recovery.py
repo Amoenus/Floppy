@@ -1,3 +1,4 @@
+import io
 import json
 import os
 import sqlite3
@@ -95,7 +96,7 @@ class SqliteDataPreservingRecoveryTests(SimpleTestCase):
                     },
                 ),
                 self.assertRaises(SystemExit) as blocked,
-                mock.patch("sys.stderr"),
+                mock.patch("sys.stderr", new_callable=io.StringIO) as stderr,
             ):
                 check_database_for_startup(db_path)
 
@@ -123,6 +124,18 @@ class SqliteDataPreservingRecoveryTests(SimpleTestCase):
             conn.close()
 
             report = self._read_report(db_path)
+            token = report["incident_token"]
+            log_output = stderr.getvalue()
+            self.assertIn(f"SQLite recovery approval code: {token}", log_output)
+            self.assertIn(
+                f"FLOPPY_SQLITE_CONFLICT_ACTION=quarantine:{token}",
+                log_output,
+            )
+            self.assertEqual(
+                log_output.count("FLOPPY_SQLITE_CONFLICT_ACTION=quarantine:"),
+                1,
+            )
+            self.assertNotIn("FLOPPY_SQLITE_CONFLICT_ACTION=accept:", log_output)
             self.assertEqual(report["status"], "blocked")
             self.assertNotIn("accept", report["actions"])
             self.assertIn("quarantine", report["actions"])
