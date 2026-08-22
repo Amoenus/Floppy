@@ -1597,7 +1597,11 @@ def get_cast_credits(credits_data, is_aggregate=False):
         if is_aggregate:
             # TMDB aggregate_credits.roles may be a list of role dicts, or a
             # list of single-element lists wrapping those dicts. Normalize to
-            # a flat list of dicts so both shapes aggregate correctly.
+            # a flat list of dicts so both shapes aggregate correctly. This
+            # unwraps exactly one level: a role element that is itself a list
+            # is iterated, anything else is treated as a single role. Deeper
+            # nesting is not a real TMDB shape and is dropped by the dict
+            # filter below.
             roles = [
                 role
                 for inner in (cast.get("roles") or [])
@@ -1607,6 +1611,8 @@ def get_cast_credits(credits_data, is_aggregate=False):
             if roles:
                 top_role = max(roles, key=lambda role: role.get("episode_count") or 0)
                 role_value = top_role.get("character") or role_value
+            # episode_count is the person's total appearances across all their
+            # roles in this show, not episodes as the selected top_role only.
             total_eps = sum(r.get("episode_count") or 0 for r in roles)
             episode_count = total_eps if total_eps > 0 else None
 
