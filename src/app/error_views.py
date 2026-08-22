@@ -2,12 +2,15 @@ import traceback
 from urllib.parse import urlparse
 
 from django.contrib import messages
+from django.contrib.auth.decorators import login_not_required
 from django.contrib.auth.views import redirect_to_login
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import redirect, render
 from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_POST
 
 
 def format_exception_traceback(exception: BaseException | None) -> str:
@@ -236,6 +239,24 @@ def _safe_return_url(request: HttpRequest) -> str:
     ):
         return referer
     return reverse("home")
+
+
+@require_POST
+@csrf_exempt
+@login_not_required
+def retry_startup_check(request: HttpRequest) -> HttpResponse:
+    """Handle a stale SQLite recovery-page retry after Floppy has resumed.
+
+    The recovery server owns this endpoint while Django is offline. If a
+    browser submits its page after Django is serving again, no startup action
+    remains to perform; return the user to the page that opened recovery
+    instead of rendering a misleading 404.
+    """
+    messages.info(
+        request,
+        "Floppy has already resumed; the startup check no longer needs a retry.",
+    )
+    return redirect(_safe_return_url(request))
 
 
 def csrf_failure(

@@ -139,6 +139,7 @@ from app.discover_views import (
     discover_toggle_hidden,
     refresh_discover,
 )
+from app.error_views import retry_startup_check
 from app.forms import (
     BulkEpisodeTrackForm,
     CollectionEntryForm,
@@ -2251,6 +2252,7 @@ __all__ = [
     "resolve_column_config",
     "resolve_columns",
     "resolve_default_column_config",
+    "retry_startup_check",
     "run_retryable_db_operation",
     "safe_url",
     "sanitize_column_prefs",
