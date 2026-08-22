@@ -171,7 +171,7 @@ MEDIA_TYPE_CONFIG = {
         "date_key": "release_date",
     },
     MediaTypes.BOOK.value: {
-        "sources": [Sources.HARDCOVER, Sources.OPENLIBRARY],
+        "sources": [Sources.HARDCOVER, Sources.OPENLIBRARY, Sources.GOOGLEBOOKS],
         "default_source": Sources.HARDCOVER,
         "unicode_icon": "📖",
         "verb": ("read", "read"),

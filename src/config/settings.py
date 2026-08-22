@@ -1127,6 +1127,11 @@ HARDCOVER_API = config(
     ),
 )
 
+GOOGLE_BOOKS_API_KEY = config(
+    "GOOGLE_BOOKS_API_KEY",
+    default=secret("GOOGLE_BOOKS_API_KEY_FILE", ""),
+)
+
 COMICVINE_API = config(
     "COMICVINE_API",
     default=secret(

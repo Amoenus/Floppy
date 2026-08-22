@@ -605,6 +605,20 @@ class ServicesTests(TestCase):
 
         mock_book.assert_called_once_with("1")
 
+    @patch("app.providers.googlebooks.book")
+    def test_get_media_metadata_googlebooks_book(self, mock_book):
+        """Test the Google Books metadata provider routing."""
+        mock_book.return_value = {"title": "Test Google Book"}
+
+        result = services.get_media_metadata(
+            MediaTypes.BOOK.value,
+            "volume-1",
+            Sources.GOOGLEBOOKS.value,
+        )
+
+        self.assert_metadata_title_payload(result, "Test Google Book")
+        mock_book.assert_called_once_with("volume-1")
+
     @patch("app.providers.manual.metadata")
     def test_get_media_metadata_manual(self, mock_metadata):
         """Test the get_media_metadata function for manual media."""
@@ -989,6 +1003,70 @@ class ServicesTests(TestCase):
         self.assertEqual(result, [{"title": "Test Book"}])
 
         mock_search.assert_called_once_with("test", 1)
+
+    @override_settings(GOOGLE_BOOKS_API_KEY="test-google-key")
+    @patch("app.providers.googlebooks.search")
+    def test_search_googlebooks_book(self, mock_search):
+        """Test the Google Books search provider routing."""
+        mock_search.return_value = [{"title": "Test Google Book"}]
+
+        result = services.search(
+            MediaTypes.BOOK.value,
+            "test",
+            1,
+            source=Sources.GOOGLEBOOKS.value,
+            language="fr",
+        )
+
+        self.assertEqual(result, [{"title": "Test Google Book"}])
+        mock_search.assert_called_once_with("test", 1, language="fr")
+
+    @override_settings(GOOGLE_BOOKS_API_KEY="test-google-key")
+    @patch("app.providers.googlebooks.search")
+    @patch("app.providers.hardcover.search")
+    @patch("app.providers.services._resolve_hardcover_isbn_search")
+    def test_search_googlebooks_does_not_use_hardcover_isbn_bridge(
+        self,
+        mock_isbn_search,
+        mock_hardcover_search,
+        mock_google_search,
+    ):
+        """Google Books searches must not be replaced by Hardcover ISBN lookup."""
+        mock_google_search.return_value = [{"title": "Google result"}]
+
+        result = services.search(
+            MediaTypes.BOOK.value,
+            "9780123456789",
+            1,
+            source=Sources.GOOGLEBOOKS.value,
+        )
+
+        self.assertEqual(result, [{"title": "Google result"}])
+        mock_google_search.assert_called_once_with("9780123456789", 1, language=None)
+        mock_hardcover_search.assert_not_called()
+        mock_isbn_search.assert_not_called()
+
+    @override_settings(GOOGLE_BOOKS_API_KEY="")
+    @patch("app.providers.googlebooks.search")
+    @patch("app.providers.hardcover.search")
+    def test_removed_googlebooks_key_falls_back_to_hardcover(
+        self,
+        mock_hardcover_search,
+        mock_google_search,
+    ):
+        """A stale Google Books selection should fall back after key removal."""
+        mock_hardcover_search.return_value = [{"title": "Hardcover result"}]
+
+        result = services.search(
+            MediaTypes.BOOK.value,
+            "book",
+            1,
+            source=Sources.GOOGLEBOOKS.value,
+        )
+
+        self.assertEqual(result, [{"title": "Hardcover result"}])
+        mock_hardcover_search.assert_called_once_with("book", 1, user=None)
+        mock_google_search.assert_not_called()
 
     @patch("app.providers.comicvine.search")
     def test_search_comic(self, mock_search):

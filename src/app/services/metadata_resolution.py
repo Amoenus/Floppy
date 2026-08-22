@@ -67,6 +67,8 @@ def provider_is_enabled(provider: str) -> bool:
     """Return whether a provider is configured for live use."""
     if provider == Sources.TVDB.value:
         return bool(settings.TVDB_API_KEY)
+    if provider == Sources.GOOGLEBOOKS.value:
+        return bool(settings.GOOGLE_BOOKS_API_KEY)
     return True
 
 

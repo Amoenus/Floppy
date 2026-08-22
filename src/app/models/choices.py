@@ -12,6 +12,7 @@ class Sources(models.TextChoices):
     IMDB = "imdb", "IMDb"
     OPENLIBRARY = "openlibrary", "Open Library"
     HARDCOVER = "hardcover", "Hardcover"
+    GOOGLEBOOKS = "googlebooks", "Google Books"
     COMICVINE = "comicvine", "Comic Vine"
     BGG = "bgg", "BoardGameGeek"
     MUSICBRAINZ = "musicbrainz", "MusicBrainz"

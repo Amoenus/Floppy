@@ -2,12 +2,18 @@ from unittest.mock import patch
 
 from django.urls import reverse
 
+from api.helpers import check_source_type
+
 from .base import FloppyApiTestCase
 from .helpers import check_pagination_structure
 
 
 class SearchTests(FloppyApiTestCase):
     """Validate search endpoint contracts."""
+
+    def test_book_googlebooks_source_is_valid(self):
+        """Google Books is an accepted source for book API routes."""
+        self.assertTrue(check_source_type("book", "googlebooks"))
 
     def test_search_rejects_invalid_media_type(self):
         """Search endpoint should reject unknown media types."""

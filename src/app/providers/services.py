@@ -22,6 +22,7 @@ from app.models import Item, MediaTypes, Sources
 from app.providers import (
     bgg,
     comicvine,
+    googlebooks,
     hardcover,
     igdb,
     mal,
@@ -838,6 +839,8 @@ def get_media_metadata(
         MediaTypes.BOOK.value: lambda: (
             hardcover.book(media_id, edition_id=edition_id, user=user)
             if source == Sources.HARDCOVER.value
+            else googlebooks.book(media_id)
+            if source == Sources.GOOGLEBOOKS.value
             else _audiobookshelf_book(media_id)
             if source == Sources.AUDIOBOOKSHELF.value
             else _storyteller_book(media_id)
@@ -887,19 +890,33 @@ def _resolve_search_source(media_type, source=None):
     """Return the effective search provider for a media type."""
     resolved = _normalize_source_value(source)
     if resolved:
-        if resolved == Sources.TVDB.value and not tvdb.enabled():
+        if (
+            resolved == Sources.TVDB.value
+            and not tvdb.enabled()
+        ) or (
+            resolved == Sources.GOOGLEBOOKS.value
+            and not googlebooks.enabled()
+        ):
             resolved = None
         else:
             return resolved
 
     default_source = config.get_default_source_name(media_type)
     default_value = _normalize_source_value(default_source)
-    if default_value != Sources.TVDB.value or tvdb.enabled():
+    if default_value not in {Sources.TVDB.value, Sources.GOOGLEBOOKS.value} or (
+        default_value == Sources.TVDB.value
+        and tvdb.enabled()
+    ) or (
+        default_value == Sources.GOOGLEBOOKS.value
+        and googlebooks.enabled()
+    ):
         return default_value
 
     for candidate in config.get_sources(media_type) or []:
         candidate_value = _normalize_source_value(candidate)
         if candidate_value == Sources.TVDB.value and not tvdb.enabled():
+            continue
+        if candidate_value == Sources.GOOGLEBOOKS.value and not googlebooks.enabled():
             continue
         if candidate_value:
             return candidate_value
@@ -1204,7 +1221,7 @@ def search(
     if page == 1:
         id_result = search_by_id(media_type, query, source, user=user)
 
-        if media_type == MediaTypes.BOOK.value and source != Sources.OPENLIBRARY.value:
+        if media_type == MediaTypes.BOOK.value and source == Sources.HARDCOVER.value:
             isbn_result = _resolve_hardcover_isbn_search(query, page, user=user)
             if isbn_result is not None:
                 return isbn_result
@@ -1245,6 +1262,8 @@ def search(
         MediaTypes.BOOK.value: lambda: (
             openlibrary.search(query, page)
             if source == Sources.OPENLIBRARY.value
+            else googlebooks.search(query, page, language=language)
+            if source == Sources.GOOGLEBOOKS.value
             else hardcover.search(query, page, user=user)
         ),
         MediaTypes.COMIC.value: lambda: comicvine.search(query, page),

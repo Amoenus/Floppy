@@ -389,6 +389,7 @@ The only universally required variable is `SECRET`. For Docker installs you shou
 - `STEAM_API_KEY` - Steam game imports
 - `BGG_API_TOKEN` - board game metadata from [BoardGameGeek](https://boardgamegeek.com/using_the_xml_api)
 - `HARDCOVER_API` - Hardcover book metadata/imports
+- `GOOGLE_BOOKS_API_KEY` - optional Google Books book metadata ([Google Books API](https://developers.google.com/books/docs/v1/using)); supports `GOOGLE_BOOKS_API_KEY_FILE` for Docker secrets
 - `COMICVINE_API` - comic metadata
 - `LASTFM_API_KEY` - Last.fm integration and scrobble polling
 - `MUSICBRAINZ_URL` - custom MusicBrainz-compatible API root, including `/ws/2` (defaults to `https://musicbrainz.org/ws/2`)
@@ -422,6 +423,7 @@ IGDB_SECRET=IGDB_SECRET
 STEAM_API_KEY=STEAM_API_SECRET
 BGG_API_TOKEN=BGG_API_TOKEN
 HARDCOVER_API=HARDCOVER_API
+GOOGLE_BOOKS_API_KEY=GOOGLE_BOOKS_API_KEY
 COMICVINE_API=COMICVINE_API
 LASTFM_API_KEY=LASTFM_API_KEY
 SECRET=SECRET

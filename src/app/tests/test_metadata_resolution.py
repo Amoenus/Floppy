@@ -41,6 +41,33 @@ class MetadataResolutionTests(TestCase):
 
         self.assertEqual(provider, Sources.TMDB.value)
 
+    @override_settings(GOOGLE_BOOKS_API_KEY="")
+    def test_googlebooks_is_hidden_without_an_api_key(self):
+        """Google Books should not be offered when the instance is unconfigured."""
+        sources = metadata_resolution.available_metadata_sources(MediaTypes.BOOK.value)
+
+        self.assertNotIn(Sources.GOOGLEBOOKS, sources)
+        self.assertFalse(metadata_resolution.provider_is_enabled("googlebooks"))
+
+    @override_settings(GOOGLE_BOOKS_API_KEY="google-key")
+    def test_googlebooks_is_available_with_an_api_key(self):
+        """Google Books should be offered when the instance key is present."""
+        sources = metadata_resolution.available_metadata_sources(MediaTypes.BOOK.value)
+
+        self.assertIn(Sources.GOOGLEBOOKS, sources)
+        self.assertTrue(metadata_resolution.provider_is_enabled("googlebooks"))
+
+    @override_settings(GOOGLE_BOOKS_API_KEY="google-key")
+    def test_books_keep_hardcover_as_the_default_source(self):
+        """Adding Google Books must not change the book default provider."""
+        self.assertEqual(
+            metadata_resolution.metadata_default_source(
+                self.user,
+                MediaTypes.BOOK.value,
+            ),
+            Sources.HARDCOVER.value,
+        )
+
     def test_get_tracking_media_type_keeps_season_and_episode_distinct_from_tv(self):
         """A season/episode route must not collapse to "tv" via identity_media_type.
 
