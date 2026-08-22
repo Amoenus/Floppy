@@ -2748,6 +2748,63 @@ class CastOrderRegressionTests(TestCase):
         self.assertEqual(result[0]["known_for_department"], "789")
         self.assertEqual(result[0]["role"], "101")
 
+    def test_get_cast_credits_aggregate_roles_wrapped_in_list(self):
+        """Roles may ship as a list of lists when a credit repeats per episode.
+
+        Real TMDB aggregate_credits for the-good-doctor (71712) returns each
+        role element as a single-element list of a dict, e.g.
+        {"roles": [{"credit_id": "...", "character": "Dr. Shaun Murphy",
+                    "episode_count": 126}]}. get_cast_credits must not crash
+        on the list element and must still pick the top role by episode_count.
+        """
+        credits_data = {
+            "cast": [
+                {
+                    "id": 1,
+                    "name": "Lead",
+                    "character": "Dr. Main",
+                    "order": 0,
+                    "known_for_department": "Acting",
+                    "gender": 2,
+                    "profile_path": None,
+                    "roles": [
+                        [
+                            {
+                                "credit_id": "x1",
+                                "character": "Dr. Main",
+                                "episode_count": 126,
+                            }
+                        ]
+                    ],
+                },
+                {
+                    "id": 2,
+                    "name": "Supporting",
+                    "character": "Side Role",
+                    "order": 1,
+                    "known_for_department": "Acting",
+                    "gender": 2,
+                    "profile_path": None,
+                    "roles": [
+                        [
+                            {
+                                "credit_id": "x2",
+                                "character": "Side Role",
+                                "episode_count": 12,
+                            }
+                        ]
+                    ],
+                },
+            ]
+        }
+        result = tmdb.get_cast_credits(credits_data, is_aggregate=True)
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result[0]["name"], "Lead")
+        self.assertEqual(result[0]["episode_count"], 126)
+        self.assertEqual(result[0]["role"], "Dr. Main")
+        self.assertEqual(result[1]["name"], "Supporting")
+        self.assertEqual(result[1]["episode_count"], 12)
+
 
 class OpenLibraryPublishDateTests(TestCase):
     """Cover the free-form publish_date formats OpenLibrary returns."""

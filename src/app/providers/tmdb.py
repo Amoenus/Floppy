@@ -1595,9 +1595,13 @@ def get_cast_credits(credits_data, is_aggregate=False):
         role_value = cast.get("character", "")
         episode_count = None
         if is_aggregate:
+            # TMDB aggregate_credits.roles may be a list of role dicts, or a
+            # list of single-element lists wrapping those dicts. Normalize to
+            # a flat list of dicts so both shapes aggregate correctly.
             roles = [
                 role
-                for role in cast.get("roles", []) or []
+                for inner in (cast.get("roles") or [])
+                for role in (inner if isinstance(inner, list) else [inner])
                 if isinstance(role, dict)
             ]
             if roles:
