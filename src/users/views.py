@@ -1642,6 +1642,7 @@ def _import_source_media_summary(user):
         model = apps.get_model(app_label="app", model_name=media_type)
         sources = (
             model.objects.filter(user=user, import_run__isnull=False)
+            .order_by("import_run__source")
             .values_list("import_run__source", flat=True)
             .distinct()
         )
