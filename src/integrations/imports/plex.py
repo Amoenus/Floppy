@@ -130,7 +130,6 @@ class PlexHistoryImporter:
 
     def import_data(self):
         """Import history for the selected library."""
-        self._ensure_username_matches()
         self._ensure_account_id()
         self._init_allowed_usernames()
         self._init_allowed_account_ids()
@@ -231,23 +230,6 @@ class PlexHistoryImporter:
 
         deduped_warnings = "\n".join(dict.fromkeys(self.warnings))
         return result_counts, deduped_warnings
-
-    def _ensure_username_matches(self):
-        """Persist the Plex username into the user's webhook allow list."""
-        username = (self.account.plex_username or "").strip()
-        if not username:
-            return
-
-        existing = [
-            u.strip() for u in (self.user.plex_usernames or "").split(",") if u.strip()
-        ]
-
-        if username.lower() in [u.lower() for u in existing]:
-            return
-
-        updated = [*existing, username]
-        self.user.plex_usernames = ", ".join(updated)
-        self.user.save(update_fields=["plex_usernames"])
 
     def _ensure_account_id(self):
         """Fetch and persist the Plex account id if missing."""
