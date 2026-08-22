@@ -5,7 +5,19 @@ from uuid import UUID
 from django.db.utils import OperationalError
 from django.utils import timezone
 
-from app.models import MediaTypes, Movie, MoviePlay, Sources, Status
+from app.models import (
+    Item,
+    MediaTypes,
+    Movie,
+    MoviePlay,
+    Podcast,
+    PodcastEpisode,
+    PodcastShow,
+    Sources,
+    Status,
+)
+from app.providers import services as provider_services
+from app.providers.services import get_media_metadata as resolve_media_metadata
 
 from .base import FloppyApiTestCase
 from .helpers import (
@@ -775,6 +787,152 @@ class MediaCoreTests(FloppyApiTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIsNone(response.data["item_id"])
         self.assertIsNone(response.data["parent_id"])
+
+    @patch("api.views.services.get_media_metadata")
+    def test_media_detail_get_podcast_resolves_tracked_and_untracked_episodes(
+        self,
+        mock_metadata,
+    ):
+        """Generic podcast details should identify catalog and tracked episodes."""
+        show = PodcastShow.objects.create(
+            podcast_uuid="api-podcast-show",
+            source=Sources.POCKETCASTS.value,
+            title="API Podcast Show",
+            image="https://example.com/api-podcast.jpg",
+            description="API podcast description",
+            genres=["News"],
+        )
+        episode = PodcastEpisode.objects.create(
+            show=show,
+            episode_uuid="api-podcast-episode",
+            title="API Podcast Episode",
+            duration=1200,
+        )
+        mock_metadata.side_effect = resolve_media_metadata
+
+        untracked_response = self.call_api(
+            "get",
+            "api_media_detail",
+            args=(MediaTypes.PODCAST.value, Sources.POCKETCASTS.value, episode.episode_uuid),
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(untracked_response.status_code, 200)
+        untracked_payload = untracked_response.json()
+        self.assertEqual(untracked_payload["media_id"], episode.episode_uuid)
+        self.assertEqual(untracked_payload["source"], Sources.POCKETCASTS.value)
+        self.assertEqual(untracked_payload["media_type"], MediaTypes.PODCAST.value)
+        self.assertEqual(untracked_payload["title"], episode.title)
+        self.assertEqual(untracked_payload["image"], show.image)
+        self.assertFalse(untracked_payload["tracked"])
+
+        item = Item.objects.create(
+            media_id=episode.episode_uuid,
+            source=Sources.POCKETCASTS.value,
+            media_type=MediaTypes.PODCAST.value,
+            title=episode.title,
+            image=show.image,
+        )
+        Podcast.objects.create(
+            user=self.user1,
+            item=item,
+            show=show,
+            episode=episode,
+            status=Status.COMPLETED.value,
+        )
+
+        tracked_response = self.call_api(
+            "get",
+            "api_media_detail",
+            args=(MediaTypes.PODCAST.value, Sources.POCKETCASTS.value, episode.episode_uuid),
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(tracked_response.status_code, 200)
+        tracked_payload = tracked_response.json()
+        self.assertEqual(tracked_payload["media_id"], episode.episode_uuid)
+        self.assertEqual(tracked_payload["title"], episode.title)
+        self.assertTrue(tracked_payload["tracked"])
+
+    @patch("api.views.services.get_media_metadata")
+    def test_media_detail_get_unresolvable_podcast_returns_not_found(self, mock_metadata):
+        """An unknown podcast episode should return 404 instead of an empty 200."""
+        mock_metadata.side_effect = resolve_media_metadata
+
+        response = self.call_api(
+            "get",
+            "api_media_detail",
+            args=(MediaTypes.PODCAST.value, Sources.POCKETCASTS.value, "missing-episode"),
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json(), {"detail": "Media not found."})
+
+    @patch("api.views.services.get_media_metadata")
+    def test_media_detail_get_invalid_music_id_returns_not_found(self, mock_metadata):
+        """An invalid MusicBrainz ID should return 404 instead of an empty 200."""
+        mock_metadata.side_effect = resolve_media_metadata
+
+        response = self.call_api(
+            "get",
+            "api_media_detail",
+            args=(MediaTypes.MUSIC.value, Sources.MUSICBRAINZ.value, "invalid-id"),
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json(), {"detail": "Media not found."})
+
+    @patch("api.views.services.get_media_metadata")
+    def test_media_detail_get_music_preserves_identity_metadata(self, mock_metadata):
+        """Generic music details should preserve provider identity fields."""
+        mock_metadata.return_value = {
+            "media_id": "11111111-1111-1111-1111-111111111111",
+            "source": Sources.MUSICBRAINZ.value,
+            "media_type": MediaTypes.MUSIC.value,
+            "title": "API Song - API Artist",
+            "image": "https://example.com/api-song.jpg",
+            "synopsis": "",
+            "genres": [],
+            "related": {},
+            "details": {"artist": "API Artist"},
+            "max_progress": None,
+        }
+
+        response = self.call_api(
+            "get",
+            "api_media_detail",
+            args=(
+                MediaTypes.MUSIC.value,
+                Sources.MUSICBRAINZ.value,
+                "11111111-1111-1111-1111-111111111111",
+            ),
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["media_id"], "11111111-1111-1111-1111-111111111111")
+        self.assertEqual(payload["source"], Sources.MUSICBRAINZ.value)
+        self.assertEqual(payload["media_type"], MediaTypes.MUSIC.value)
+        self.assertEqual(payload["title"], "API Song - API Artist")
+
+    @patch("api.views.services.get_media_metadata", side_effect=RuntimeError("boom"))
+    def test_media_detail_get_provider_failure_remains_internal_server_error(
+        self,
+        _mock_metadata,
+    ):
+        """Unexpected provider failures should not be converted into 404s."""
+        response = self.call_api(
+            "get",
+            "api_media_detail",
+            args=(MediaTypes.MUSIC.value, Sources.MUSICBRAINZ.value, "valid-looking-id"),
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(response.data["errors"], "boom")
 
     @patch("api.views.services.get_media_metadata")
     def test_media_detail_patch_updates_media_fields(self, mock_metadata):

@@ -1171,6 +1171,20 @@ class MediaDetailView(drf_views.APIView):
                 media_id,
                 source,
                 language=metadata_resolution.metadata_language_default(request.user),
+                user=user,
+            )
+        except services.ProviderAPIError as error:
+            if error.status_code == HTTP.NOT_FOUND:
+                return Response(
+                    {"detail": "Media not found."},
+                    status=HTTP.NOT_FOUND,
+                )
+            return Response(
+                {
+                    "detail": HTTP.INTERNAL_SERVER_ERROR.phrase,
+                    "errors": str(error),
+                },
+                status=HTTP.INTERNAL_SERVER_ERROR,
             )
         except Exception as e:
             return Response(
