@@ -240,6 +240,11 @@ urlpatterns = [
         name="statistics_talent_fragment",
     ),
     path("history", views.history, name="history"),
+    path(
+        "history/day/<str:day_key>",
+        views.history_day_fragment,
+        name="history_day_fragment",
+    ),
     path("api/history-genres/", views.history_genres, name="history_genres"),
     path(
         "person/<source:source>/<str:person_id>/<slug:name>",

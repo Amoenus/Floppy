@@ -12,7 +12,7 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.core.paginator import EmptyPage, Paginator
 from django.db.models.functions import ExtractDay, ExtractMonth
 from django.db.utils import OperationalError
-from django.http import HttpResponse
+from django.http import HttpResponse, HttpResponseBadRequest, HttpResponseNotFound
 from django.shortcuts import render
 from django.utils import formats, timezone
 from django.utils.dateparse import parse_date
@@ -608,6 +608,13 @@ def _filter_history_by_enabled_media_types(history_days, user):
             if filtered_entries:
                 filtered_day = day.copy()
                 filtered_day["entries"] = filtered_entries
+                total_minutes = sum(
+                    entry.get("runtime_minutes") or 0 for entry in filtered_entries
+                )
+                filtered_day["total_minutes"] = total_minutes
+                filtered_day["total_runtime_display"] = (
+                    helpers.minutes_to_hhmm(total_minutes) if total_minutes else "0min"
+                )
                 filtered_days.append(filtered_day)
         else:
             filtered_days.append(day)
@@ -726,6 +733,107 @@ def _filter_cached_history_days(history_days, filters):
     return filtered_days
 
 
+def _history_day_key(day):
+    """Return the canonical cache key for a rendered history day."""
+    if not isinstance(day, dict):
+        return None
+    return history_cache.history_day_key(day.get("date"))
+
+
+def _annotate_history_day_for_template(day):
+    """Add stable template metadata without changing the entry list."""
+    if not isinstance(day, dict):
+        return None
+    annotated_day = day.copy()
+    entries = list(annotated_day.get("entries", []))
+    annotated_day.update(
+        {
+            "day_key": _history_day_key(annotated_day),
+            "entry_count": len(entries),
+            "entry_offset": 0,
+            "next_entry_offset": len(entries),
+            "has_more": False,
+            "remaining_entry_count": 0,
+        },
+    )
+    return annotated_day
+
+
+def _prepare_history_day_page(day, user, filters, offset=0):
+    """Filter and bound one cached month-view day for HTML rendering."""
+    filtered_days = _filter_cached_history_days([day], filters)
+    filtered_days = _filter_history_by_enabled_media_types(filtered_days, user)
+    if not filtered_days:
+        return None
+
+    annotated_day = _annotate_history_day_for_template(filtered_days[0])
+    if annotated_day is None:
+        return None
+
+    try:
+        offset = int(offset)
+    except (TypeError, ValueError):
+        offset = 0
+    offset = max(offset, 0)
+
+    page_size = history_cache.HISTORY_ENTRIES_PER_DAY_PAGE
+    entries = annotated_day["entries"]
+    annotated_day["entries"] = entries[offset : offset + page_size]
+    annotated_day["entry_offset"] = offset
+    annotated_day["next_entry_offset"] = offset + page_size
+    annotated_day["has_more"] = offset + page_size < annotated_day["entry_count"]
+    annotated_day["remaining_entry_count"] = max(
+        annotated_day["entry_count"] - annotated_day["next_entry_offset"],
+        0,
+    )
+    return annotated_day
+
+
+def _history_day_fragment_query(request, offset):
+    """Preserve the current history filters for the next day fragment."""
+    query = request.GET.copy()
+    query.pop("entry_offset", None)
+    query.pop("page", None)
+    query["entry_offset"] = str(offset)
+    return query.urlencode()
+
+
+def _parse_history_filters(request):
+    """Parse filters shared by the full history page and day fragments."""
+    filters = {}
+    int_params = (
+        "album",
+        "artist",
+        "tv",
+        "season",
+        "season_number",
+        "podcast_show",
+    )
+    str_params = (
+        "genre",
+        "implied_genre",
+        "media_type",
+        "media_id",
+        "source",
+        "person_source",
+        "person_id",
+    )
+    for param in int_params:
+        value = request.GET.get(param)
+        if value:
+            with contextlib.suppress(TypeError, ValueError):
+                filters[param] = int(value)
+    for param in str_params:
+        value = request.GET.get(param)
+        if value:
+            filters[param] = value
+
+    logging_style = request.GET.get("logging_style")
+    if logging_style not in ("sessions", "repeats"):
+        logging_style = None
+    return filters, logging_style
+
+
 @require_GET
 def history_genres(request):
     """Return sorted list of unique genres from the user's tracked items."""
@@ -790,37 +898,7 @@ def history(request):
         if history_mode != "release":
             history_mode = "activity"
 
-        filters = {}
-        int_params = [
-            "album",
-            "artist",
-            "tv",
-            "season",
-            "season_number",
-            "podcast_show",
-        ]
-        str_params = [
-            "genre",
-            "implied_genre",
-            "media_type",
-            "media_id",
-            "source",
-            "person_source",
-            "person_id",
-        ]
-        for param in int_params:
-            value = request.GET.get(param)
-            if value:
-                with contextlib.suppress(TypeError, ValueError):
-                    filters[param] = int(value)
-        for param in str_params:
-            value = request.GET.get(param)
-            if value:
-                filters[param] = value
-
-        logging_style = request.GET.get("logging_style")
-        if logging_style not in ("sessions", "repeats"):
-            logging_style = None
+        filters, logging_style = _parse_history_filters(request)
 
         date_filters = {}
         start_date_str = request.GET.get("start-date")
@@ -875,11 +953,18 @@ def history(request):
                 view_month,
                 logging_style_override=logging_style,
             )
-            history_days = _filter_cached_history_days(history_days, filters)
+            history_days = [
+                prepared_day
+                for day in history_days
+                if (
+                    prepared_day := _prepare_history_day_page(
+                        day,
+                        request.user,
+                        filters,
+                    )
+                )
+            ]
             history_refreshing = cache_meta.get("refreshing", False)
-            history_days = _filter_history_by_enabled_media_types(
-                history_days, request.user
-            )
 
             page_obj = None
             current_page = 1
@@ -956,6 +1041,12 @@ def history(request):
                 total_pages = paginator.num_pages
                 total_days = paginator.count
 
+            history_days = [
+                annotated_day
+                for day in history_days
+                if (annotated_day := _annotate_history_day_for_template(day))
+            ]
+
             prev_year = prev_month = next_year = next_month = None
             prev_month_name = next_month_name = None
             show_next_month = False
@@ -975,6 +1066,13 @@ def history(request):
             active_filters["history_mode"] = "release"
         month_nav_query = urlencode(active_filters)
         month_name = calendar.month_name[view_month] if use_month_cache else None
+
+        for day in history_days:
+            if day.get("has_more"):
+                day["next_entry_query"] = _history_day_fragment_query(
+                    request,
+                    day["next_entry_offset"],
+                )
 
         context = {
             "user": request.user,
@@ -1004,14 +1102,20 @@ def history(request):
         }
         day_entry_counts = []
         total_entries = 0
+        rendered_entries = 0
         for day in history_days:
             entries = (
                 day.get("entries", [])
                 if isinstance(day, dict)
                 else getattr(day, "entries", [])
             )
-            count = len(entries)
+            count = (
+                day.get("entry_count", len(entries))
+                if isinstance(day, dict)
+                else len(entries)
+            )
             total_entries += count
+            rendered_entries += len(entries)
             day_entry_counts.append((day.get("date_display") or day.get("date"), count))
         top_days = sorted(day_entry_counts, key=lambda item: item[1], reverse=True)[:3]
         logger.info(
@@ -1020,6 +1124,12 @@ def history(request):
             current_page,
             total_entries,
             top_days,
+        )
+        logger.info(
+            "history_page_rendered_entry_counts user_id=%s page=%s rendered_entries=%s",
+            request.user.id,
+            current_page,
+            rendered_entries,
         )
         render_start = time.perf_counter()
         logger.info(
@@ -1064,3 +1174,63 @@ def history(request):
         return render(request, "app/history.html", context)
     else:
         return response
+
+
+@require_GET
+def history_day_fragment(request, day_key):
+    """Render one bounded page of a month-view history day."""
+    normalized_day_key = history_cache.history_day_key(day_key)
+    if normalized_day_key != day_key:
+        return HttpResponseBadRequest("Invalid history day key.")
+    try:
+        history_cache._date_from_day_key(normalized_day_key)
+    except (TypeError, ValueError):
+        return HttpResponseBadRequest("Invalid history day key.")
+
+    raw_offset = request.GET.get("entry_offset", "0")
+    try:
+        entry_offset = int(raw_offset)
+    except (TypeError, ValueError):
+        return HttpResponseBadRequest("Invalid history entry offset.")
+    if entry_offset < 0:
+        return HttpResponseBadRequest("Invalid history entry offset.")
+
+    filters, logging_style = _parse_history_filters(request)
+    if not _can_use_cached_month_history(
+        "activity",
+        filters,
+        date_filters={},
+        anniversary_month=None,
+        anniversary_day=None,
+    ):
+        return HttpResponseBadRequest("History filters are not supported here.")
+
+    day = history_cache.get_cached_history_day(
+        request.user,
+        normalized_day_key,
+        logging_style_override=logging_style,
+    )
+    prepared_day = _prepare_history_day_page(
+        day,
+        request.user,
+        filters,
+        offset=entry_offset,
+    )
+    if prepared_day is None:
+        return HttpResponseNotFound("History day not found.")
+    if entry_offset > prepared_day["entry_count"]:
+        return HttpResponseBadRequest("Invalid history entry offset.")
+
+    prepared_day["next_entry_query"] = _history_day_fragment_query(
+        request,
+        prepared_day["next_entry_offset"],
+    )
+    return render(
+        request,
+        "app/components/history_day.html",
+        {
+            "day": prepared_day,
+            "history_mode": "activity",
+            "user": request.user,
+        },
+    )

@@ -155,6 +155,7 @@ from app.history_views import (
     _filter_cached_history_days,
     _filter_history_by_enabled_media_types,
     history,
+    history_day_fragment,
     history_genres,
 )
 from app.log_safety import exception_summary, safe_url
@@ -2212,6 +2213,7 @@ __all__ = [
     "get_object_or_404",
     "hardcover",
     "history",
+    "history_day_fragment",
     "history_genres",
     "igdb",
     "list_hardcover_editions",
