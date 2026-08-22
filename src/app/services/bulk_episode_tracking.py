@@ -33,6 +33,11 @@ from app.models import (
 )
 from app.providers import services
 from app.services.completion import normalize_completed_entry
+from app.services.episode_coordinates import (
+    InvalidEpisodeCoordinateError,
+    cleanup_episode_history_for_route,
+    resolve_episode_coordinate,
+)
 from app.services.tracking_hydration import ensure_item_metadata
 from app.signals import (
     flush_media_change_side_effects,
@@ -1007,6 +1012,27 @@ def apply_bulk_episode_plays(
             start_date=start_date,
             end_date=end_date,
         )
+
+    for episode in selected_episodes:
+        season_number = episode["season_number"]
+        try:
+            resolve_episode_coordinate(
+                domain["tracking_media_id"],
+                domain["tracking_source"],
+                season_number,
+                episode["episode_number"],
+                season_metadata=domain["season_payloads"][season_number],
+            )
+        except InvalidEpisodeCoordinateError:
+            cleanup_episode_history_for_route(
+                user,
+                domain["tracking_media_id"],
+                domain["tracking_source"],
+                season_number,
+                episode["episode_number"],
+                library_media_type=domain.get("library_media_type"),
+            )
+            raise
 
     grouped_tv, migrated_flat_anime, created_grouped_tracking = _resolve_grouped_target(
         user,

@@ -7,6 +7,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 
 from app.models import TV, Episode, Item, MediaTypes, Season, Sources, Status
+from app.services.episode_coordinates import InvalidEpisodeCoordinateError
 
 SEASON_METADATA = {
     "episodes": [{"episode_number": 1, "still_path": None}],
@@ -50,6 +51,25 @@ class GetEpisodeItemBucketTests(TestCase):
         season = self._make_season(MediaTypes.TV.value)
         item = season.get_episode_item(1, SEASON_METADATA)
         self.assertEqual(item.library_media_type, MediaTypes.TV.value)
+
+    def test_authoritative_metadata_rejects_detached_episode(self):
+        """A provider list cannot silently create an absent episode item."""
+        season = self._make_season(MediaTypes.SEASON.value)
+
+        with self.assertRaises(InvalidEpisodeCoordinateError):
+            season.get_episode_item(
+                99,
+                {"episodes": [{"episode_number": 1}]},
+            )
+
+        self.assertFalse(
+            Item.objects.filter(
+                media_id="63404",
+                media_type=MediaTypes.EPISODE.value,
+                season_number=21,
+                episode_number=99,
+            ).exists(),
+        )
 
 
 class EpisodeSeasonBucketMigrationTests(TestCase):

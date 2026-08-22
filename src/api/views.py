@@ -79,6 +79,7 @@ from .helpers import (
     parse_limit_offset,
     parse_sort_filter,
     resolve_calendar_date_range,
+    resolve_episode_coordinate_for_request,
     resolve_item_queryset,  # FORK: bucket-aware Item resolution
     try_parse_date,
     validate_body,
@@ -104,6 +105,36 @@ from .serializers import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_api_episode_coordinate(
+    request,
+    media_id,
+    source,
+    season_number,
+    episode_number,
+    *,
+    library_media_type=None,
+):
+    """Resolve an episode route and translate provider failures to API errors."""
+    try:
+        return resolve_episode_coordinate_for_request(
+            request.user,
+            media_id,
+            source,
+            season_number,
+            episode_number,
+            library_media_type=library_media_type,
+            language=metadata_resolution.metadata_language_default(request.user),
+        )
+    except Exception as error:
+        return None, Response(
+            {
+                "detail": "An error occurred while fetching media metadata.",
+                "errors": str(error),
+            },
+            status=HTTP.INTERNAL_SERVER_ERROR,
+        )
 
 # TODO!: check sorters and filters in paginate_data since data is not serialized yet. Maybe data should be serialized first and then sorted/paginated later?? Sorting/filtering should occur at db search level, pagination should be done right after, always at the db search level, then the data should be serialized.
 
@@ -3357,7 +3388,10 @@ class MediaEpisodeDetailView(drf_views.APIView):
     serializer_class = MediaSerializer
     permission_classes = [permissions.IsAuthenticated]
 
-    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
+    @extend_schema(
+        parameters=[MEDIA_TYPE_PARAM],
+        responses={204: None, 404: DetailErrorSerializer},
+    )
     def delete(
         self,
         request,
@@ -3391,6 +3425,17 @@ class MediaEpisodeDetailView(drf_views.APIView):
                 },
                 status=HTTP.BAD_REQUEST,
             )
+
+        _, coordinate_error = _resolve_api_episode_coordinate(
+            request,
+            media_id,
+            source,
+            season_number,
+            episode_number,
+            library_media_type=request.query_params.get("library_media_type"),
+        )
+        if coordinate_error:
+            return coordinate_error
 
         try:
             user_medias = BasicMedia.objects.filter_media(
@@ -3463,43 +3508,18 @@ class MediaEpisodeDetailView(drf_views.APIView):
                 status=HTTP.BAD_REQUEST,
             )
 
-        try:
-            media_metadata = services.get_media_metadata(
-                "season",
-                media_id,
-                source,
-                [season_number],
-                language=metadata_resolution.metadata_language_default(request.user),
-            )
-        except Exception as e:
-            return Response(
-                {
-                    "detail": "An error occurred while fetching media metadata.",
-                    "errors": str(e),
-                },
-                status=HTTP.INTERNAL_SERVER_ERROR,
-            )
-
-        if not media_metadata:
-            return Response(
-                {"detail": "Episode not found."},
-                status=HTTP.NOT_FOUND,
-            )
-        if "episodes" in media_metadata and media_metadata["episodes"] is not None:
-            episode = next(
-                (
-                    obj
-                    for obj in media_metadata["episodes"]
-                    if obj["episode_number"] == int(episode_number)
-                ),
-                None,
-            )
-
-        if not episode:
-            return Response(
-                {"detail": "Episode not found."},
-                status=HTTP.NOT_FOUND,
-            )
+        coordinate, coordinate_error = _resolve_api_episode_coordinate(
+            request,
+            media_id,
+            source,
+            season_number,
+            episode_number,
+            library_media_type=request.query_params.get("library_media_type"),
+        )
+        if coordinate_error:
+            return coordinate_error
+        media_metadata = dict(coordinate.season_metadata)
+        episode = coordinate.episode
 
         try:
             user_medias = BasicMedia.objects.filter_media_prefetch(
@@ -3520,7 +3540,7 @@ class MediaEpisodeDetailView(drf_views.APIView):
                 status=HTTP.INTERNAL_SERVER_ERROR,
             )
 
-        media_metadata.pop("episodes")
+        media_metadata.pop("episodes", None)
 
         lists = get_item_lists(
             user,
@@ -3544,7 +3564,10 @@ class MediaEpisodeDetailView(drf_views.APIView):
         )
         return Response(serialized, status=HTTP.OK)
 
-    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
+    @extend_schema(
+        parameters=[MEDIA_TYPE_PARAM],
+        responses={404: DetailErrorSerializer},
+    )
     def patch(
         self,
         request,
@@ -3579,6 +3602,17 @@ class MediaEpisodeDetailView(drf_views.APIView):
                 },
                 status=HTTP.BAD_REQUEST,
             )
+
+        _, coordinate_error = _resolve_api_episode_coordinate(
+            request,
+            media_id,
+            source,
+            season_number,
+            episode_number,
+            library_media_type=request.query_params.get("library_media_type"),
+        )
+        if coordinate_error:
+            return coordinate_error
 
         body = request.data or {}
 
@@ -3700,7 +3734,10 @@ class MediaEpisodeChangesHistoryView(drf_views.APIView):
 
     permission_classes = [permissions.IsAuthenticated]
 
-    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
+    @extend_schema(
+        parameters=[MEDIA_TYPE_PARAM],
+        responses={404: DetailErrorSerializer},
+    )
     def get(self, request, media_type, source, media_id, season_number, episode_number):
         """Retrieve changes history timeline entries for a specific episode."""
         limit, offset, err = parse_limit_offset(request)
@@ -3728,6 +3765,17 @@ class MediaEpisodeChangesHistoryView(drf_views.APIView):
                 },
                 status=HTTP.BAD_REQUEST,
             )
+
+        _, coordinate_error = _resolve_api_episode_coordinate(
+            request,
+            media_id,
+            source,
+            season_number,
+            episode_number,
+            library_media_type=request.query_params.get("library_media_type"),
+        )
+        if coordinate_error:
+            return coordinate_error
 
         user_medias = BasicMedia.objects.filter_media(
             request.user,
@@ -3769,7 +3817,10 @@ class MediaEpisodeConsumptionHistoryView(drf_views.APIView):
     serializer_class = HistorySerializer
     permission_classes = [permissions.IsAuthenticated]
 
-    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
+    @extend_schema(
+        parameters=[MEDIA_TYPE_PARAM],
+        responses={404: DetailErrorSerializer},
+    )
     def get(self, request, media_type, source, media_id, season_number, episode_number):
         """Retrieve the history timeline for a specific episode of a tv serie."""
         limit, offset, err = parse_limit_offset(request)
@@ -3797,6 +3848,17 @@ class MediaEpisodeConsumptionHistoryView(drf_views.APIView):
                 },
                 status=HTTP.BAD_REQUEST,
             )
+
+        _, coordinate_error = _resolve_api_episode_coordinate(
+            request,
+            media_id,
+            source,
+            season_number,
+            episode_number,
+            library_media_type=request.query_params.get("library_media_type"),
+        )
+        if coordinate_error:
+            return coordinate_error
 
         try:
             user_medias = BasicMedia.objects.filter_media(
@@ -3846,7 +3908,10 @@ class MediaEpisodeConsumptionEntryDetailView(drf_views.APIView):
     serializer_class = HistorySerializer
     permission_classes = [permissions.IsAuthenticated]
 
-    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
+    @extend_schema(
+        parameters=[MEDIA_TYPE_PARAM],
+        responses={404: DetailErrorSerializer},
+    )
     def delete(
         self,
         request,
@@ -3880,6 +3945,17 @@ class MediaEpisodeConsumptionEntryDetailView(drf_views.APIView):
                 status=HTTP.BAD_REQUEST,
             )
 
+        _, coordinate_error = _resolve_api_episode_coordinate(
+            request,
+            media_id,
+            source,
+            season_number,
+            episode_number,
+            library_media_type=request.query_params.get("library_media_type"),
+        )
+        if coordinate_error:
+            return coordinate_error
+
         try:
             user_medias = BasicMedia.objects.filter_media(
                 request.user,
@@ -3906,7 +3982,10 @@ class MediaEpisodeConsumptionEntryDetailView(drf_views.APIView):
 
         return Response(status=HTTP.NO_CONTENT)
 
-    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
+    @extend_schema(
+        parameters=[MEDIA_TYPE_PARAM],
+        responses={404: DetailErrorSerializer},
+    )
     def get(
         self,
         request,
@@ -3940,6 +4019,17 @@ class MediaEpisodeConsumptionEntryDetailView(drf_views.APIView):
                 status=HTTP.BAD_REQUEST,
             )
 
+        _, coordinate_error = _resolve_api_episode_coordinate(
+            request,
+            media_id,
+            source,
+            season_number,
+            episode_number,
+            library_media_type=request.query_params.get("library_media_type"),
+        )
+        if coordinate_error:
+            return coordinate_error
+
         try:
             user_medias = BasicMedia.objects.filter_media(
                 request.user,
@@ -3968,7 +4058,10 @@ class MediaEpisodeConsumptionEntryDetailView(drf_views.APIView):
         )
         return Response(serialized_data, status=HTTP.OK)
 
-    @extend_schema(parameters=[MEDIA_TYPE_PARAM])
+    @extend_schema(
+        parameters=[MEDIA_TYPE_PARAM],
+        responses={404: DetailErrorSerializer},
+    )
     def patch(
         self,
         request,
@@ -4001,6 +4094,17 @@ class MediaEpisodeConsumptionEntryDetailView(drf_views.APIView):
                 },
                 status=HTTP.BAD_REQUEST,
             )
+
+        _, coordinate_error = _resolve_api_episode_coordinate(
+            request,
+            media_id,
+            source,
+            season_number,
+            episode_number,
+            library_media_type=request.query_params.get("library_media_type"),
+        )
+        if coordinate_error:
+            return coordinate_error
 
         try:
             user_medias = BasicMedia.objects.filter_media(

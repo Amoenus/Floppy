@@ -9,7 +9,16 @@ from django.db import connection
 from django.test.utils import CaptureQueriesContext
 
 from app import history_cache
-from app.models import Episode, ItemTag, MediaTypes, Movie, MoviePlay, Sources, Tag
+from app.models import (
+    Episode,
+    Item,
+    ItemTag,
+    MediaTypes,
+    Movie,
+    MoviePlay,
+    Sources,
+    Tag,
+)
 
 from .base import FloppyApiTestCase
 
@@ -93,6 +102,82 @@ class EpisodeWatchTests(FloppyApiTestCase):
         """POST watch with a bad end_date returns 400."""
         response = self._watch(1, payload={"end_date": "not-a-date"})
         self.assertEqual(response.status_code, HTTP.BAD_REQUEST)
+
+    @patch(
+        "app.models.providers.services.get_media_metadata",
+        side_effect=_season_metadata_side_effect,
+    )
+    def test_watch_rejects_episode_not_in_season(self, _mock):
+        """POST watch rejects an episode number absent from season metadata."""
+        response = self._watch(99)
+
+        self.assertEqual(response.status_code, HTTP.NOT_FOUND)
+        self.assertFalse(
+            Episode.objects.filter(
+                related_season=self.season_medias[0],
+                item__episode_number=99,
+            ).exists(),
+        )
+        self.assertFalse(
+            Item.objects.filter(
+                media_id="1001",
+                media_type=MediaTypes.EPISODE.value,
+                season_number=1,
+                episode_number=99,
+            ).exists(),
+        )
+
+    @patch(
+        "app.models.providers.services.get_media_metadata",
+        side_effect=_season_metadata_side_effect,
+    )
+    def test_drop_rejects_episode_not_in_season(self, _mock):
+        """POST drop rejects an episode number absent from season metadata."""
+        response = self.call_api(
+            "post",
+            "api_media_episode_drop",
+            args=("tv", "tmdb", "1001", 1, 99),
+            payload={},
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, HTTP.NOT_FOUND)
+        self.assertFalse(
+            Episode.objects.filter(
+                related_season=self.season_medias[0],
+                item__episode_number=99,
+            ).exists(),
+        )
+
+    @patch(
+        "app.models.providers.services.get_media_metadata",
+        return_value={
+            **SEASON_METADATA,
+            "episodes": [
+                {**SEASON_METADATA["episodes"][0], "episode_number": 7},
+                {**SEASON_METADATA["episodes"][1], "episode_number": 42},
+            ],
+        },
+    )
+    def test_watch_accepts_nonsequential_episode_number(self, _mock):
+        """Provider episode membership is exact, including non-sequential numbers."""
+        response = self._watch(42)
+        self.assertEqual(response.status_code, HTTP.CREATED)
+        self.assertTrue(
+            Episode.objects.filter(
+                related_season=self.season_medias[0],
+                item__episode_number=42,
+            ).exists(),
+        )
+
+        history_response = self.call_api(
+            "get",
+            "api_media_episode_consumption_history",
+            args=("tv", "tmdb", "1001", 1, 42),
+            headers=self.auth_headers,
+        )
+        self.assertEqual(history_response.status_code, HTTP.OK)
+        self.assertEqual(len(history_response.json()["results"]), 1)
 
     def test_watch_non_tv_rejected(self):
         """POST watch on a non-tv media type returns 400."""

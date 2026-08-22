@@ -614,6 +614,39 @@ class CreateMedia(TestCase):
             True,
         )
 
+    @patch(
+        "app.providers.services.get_media_metadata",
+        return_value={"episodes": [{"episode_number": 1}]},
+    )
+    def test_create_episode_rejects_absent_provider_coordinate(self, _metadata_mock):
+        """Episode saves must fail before creating a season or history row."""
+        response = self.client.post(
+            reverse("episode_save"),
+            {
+                "media_id": "1668",
+                "season_number": 1,
+                "episode_number": 99,
+                "source": Sources.TMDB.value,
+                "date": "2023-06-01T00:00",
+            },
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertFalse(
+            Season.objects.filter(
+                user=self.user,
+                item__media_id="1668",
+                item__season_number=1,
+            ).exists(),
+        )
+        self.assertFalse(
+            Episode.objects.filter(
+                related_season__user=self.user,
+                item__media_id="1668",
+                item__episode_number=99,
+            ).exists(),
+        )
+
     @patch("app.models.providers.services.get_media_metadata")
     @patch("app.views.services.get_media_metadata")
     def test_create_episode_htmx_returns_inline_detail_updates(

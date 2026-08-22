@@ -18,6 +18,8 @@ from app.models import (
     Sources,
     Status,
 )
+from app.services.bulk_episode_tracking import apply_bulk_episode_plays
+from app.services.episode_coordinates import InvalidEpisodeCoordinateError
 from app.services.metadata_resolution import MetadataResolutionResult
 
 
@@ -94,6 +96,44 @@ class EpisodeBulkSaveViewTests(TestCase):
             f"{reverse('episode_bulk_save')}?next={next_url or self.return_url}",
             data,
             HTTP_HX_REQUEST="true",
+        )
+
+    def test_bulk_invalid_coordinate_aborts_before_tracking(self):
+        """Bulk writes reject absent coordinates before creating grouped rows."""
+        season_payload = {
+            "season_number": 1,
+            "season_title": "Season 1",
+            "episodes": [
+                _season_episode(1, air_date="2024-01-01"),
+                _season_episode(3, air_date="2024-01-03"),
+            ],
+        }
+        domain = {
+            "tracking_media_id": "1396",
+            "tracking_source": Sources.TMDB.value,
+            "library_media_type": MediaTypes.TV.value,
+            "season_payloads": {1: season_payload},
+        }
+
+        with self.assertRaises(InvalidEpisodeCoordinateError):
+            apply_bulk_episode_plays(
+                self.user,
+                domain,
+                selected_episodes=[
+                    {"season_number": 1, "episode_number": 2},
+                ],
+                write_mode="add",
+                distribution_mode="even",
+            )
+
+        self.assertFalse(
+            TV.objects.filter(user=self.user, item__media_id="1396").exists(),
+        )
+        self.assertFalse(
+            Episode.objects.filter(
+                related_season__user=self.user,
+                item__media_id="1396",
+            ).exists(),
         )
 
     def test_podcast_bulk_add_creates_show_tracker_and_completed_entries(self):

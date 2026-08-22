@@ -1512,6 +1512,28 @@ class Season(Media):
         tvdb_episode_images = {}
         normalized_episode_number = int(episode_number)
 
+        if (
+            isinstance(season_metadata, dict)
+            and isinstance(season_metadata.get("episodes"), list)
+        ):
+            from app.services.episode_coordinates import (
+                InvalidEpisodeCoordinateError,
+                cleanup_episode_history_for_season,
+                resolve_episode_coordinate,
+            )
+
+            try:
+                matched_episode = resolve_episode_coordinate(
+                    self.item.media_id,
+                    self.item.source,
+                    self.item.season_number,
+                    normalized_episode_number,
+                    season_metadata=season_metadata,
+                ).episode
+            except InvalidEpisodeCoordinateError:
+                cleanup_episode_history_for_season(self, normalized_episode_number)
+                raise
+
         if self.item.source == Sources.TMDB.value:
             if isinstance(season_metadata, dict):
                 tvdb_episode_images = season_metadata.get("_tvdb_episode_image_map")
@@ -1532,17 +1554,24 @@ class Season(Media):
         if isinstance(season_metadata, dict):
             episodes_by_number = season_metadata.get("_episodes_by_number")
             if episodes_by_number is None:
-                episodes_by_number = {
-                    episode.get("episode_number"): episode
-                    for episode in season_metadata.get("episodes") or []
-                    if isinstance(episode, dict)
-                    and episode.get("episode_number") is not None
-                }
+                episodes_by_number = {}
+                for episode in season_metadata.get("episodes") or []:
+                    if not isinstance(episode, dict):
+                        continue
+                    try:
+                        episode_key = int(episode["episode_number"])
+                    except (KeyError, TypeError, ValueError):
+                        continue
+                    episodes_by_number[episode_key] = episode
                 season_metadata["_episodes_by_number"] = episodes_by_number
             matched_episode = episodes_by_number.get(normalized_episode_number, {})
         else:
             for episode in season_metadata["episodes"]:
-                if episode["episode_number"] == normalized_episode_number:
+                try:
+                    metadata_episode_number = int(episode["episode_number"])
+                except (KeyError, TypeError, ValueError):
+                    continue
+                if metadata_episode_number == normalized_episode_number:
                     matched_episode = episode
                     break
 

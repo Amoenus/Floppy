@@ -21,7 +21,8 @@ from app.models import (
 )
 from app.services import metadata_resolution
 
-from .helpers import check_valid_type
+from .contract_serializers import DetailErrorSerializer
+from .helpers import check_valid_type, resolve_episode_coordinate_for_request
 from .schema import MEDIA_TYPE_PARAM, MEDIA_TYPE_TV_ONLY_PARAM
 
 logger = logging.getLogger(__name__)
@@ -213,7 +214,10 @@ class MediaProviderPreferenceView(drf_views.APIView):
 class MediaEpisodeScoreView(drf_views.APIView):
     """Set or clear the score on all plays of an episode."""
 
-    @extend_schema(parameters=[MEDIA_TYPE_TV_ONLY_PARAM])
+    @extend_schema(
+        parameters=[MEDIA_TYPE_TV_ONLY_PARAM],
+        responses={404: DetailErrorSerializer},
+    )
     def patch(
         self,
         request,
@@ -233,6 +237,23 @@ class MediaEpisodeScoreView(drf_views.APIView):
                 {"detail": "Episodes are supported only for 'tv' media type."},
                 status=HTTP.BAD_REQUEST,
             )
+
+        try:
+            _, coordinate_error = resolve_episode_coordinate_for_request(
+                request.user,
+                media_id,
+                source,
+                season_number,
+                episode_number,
+                language=metadata_resolution.metadata_language_default(request.user),
+            )
+        except Exception as error:
+            return Response(
+                {"detail": "Could not resolve episode.", "errors": str(error)},
+                status=HTTP.NOT_FOUND,
+            )
+        if coordinate_error:
+            return coordinate_error
 
         season = (
             Season.objects.filter(

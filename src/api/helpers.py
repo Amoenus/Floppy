@@ -24,10 +24,50 @@ from app.models import (
     Movie,
     Season,
 )
+from app.services.episode_coordinates import (
+    InvalidEpisodeCoordinateError,
+    cleanup_episode_history_for_route,
+    resolve_episode_coordinate,
+)
 from lists.models import CustomListItem
 from users.models import MediaStatusChoices
 
 logger = logging.getLogger(__name__)
+
+
+def resolve_episode_coordinate_for_request(
+    user,
+    media_id,
+    source,
+    season_number,
+    episode_number,
+    *,
+    library_media_type=None,
+    language=None,
+):
+    """Resolve an API episode coordinate and lazily remove detached history."""
+    try:
+        coordinate = resolve_episode_coordinate(
+            media_id,
+            source,
+            season_number,
+            episode_number,
+            language=language,
+        )
+    except InvalidEpisodeCoordinateError:
+        cleanup_episode_history_for_route(
+            user,
+            media_id,
+            source,
+            season_number,
+            episode_number,
+            library_media_type=library_media_type,
+        )
+        return None, Response(
+            {"detail": "Episode not found."},
+            status=HTTP.NOT_FOUND,
+        )
+    return coordinate, None
 
 MEDIA_MODIFIABLE_FIELDS = {
     MediaTypes.MOVIE.value: {"score", "status", "start_date", "end_date", "notes"},

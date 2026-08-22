@@ -16,15 +16,18 @@ from app.fork_services_episode import drop_episode, resolve_or_create_season
 from app.fork_services_movie import resolve_or_create_movie
 from app.history_cache_utils import normalize_history_media_type_tokens
 from app.models import Episode, ItemTag, MediaTypes, Movie, Season, Tag
+from app.services import metadata_resolution
 from app.tasks import bulk_episode_plays_task
 from app.templatetags.app_tags import media_url
 
+from .contract_serializers import DetailErrorSerializer
 from .helpers import (
     MEDIA_TYPE_MODEL_MAP,
     check_source_type,
     check_valid_type,
     paginate_data,
     parse_limit_offset,
+    resolve_episode_coordinate_for_request,
     resolve_item_queryset,
     try_parse_datetime_input,
 )
@@ -73,7 +76,10 @@ class MediaEpisodeWatchView(drf_views.APIView):
     the most recent play of the episode is removed.
     """
 
-    @extend_schema(parameters=[MEDIA_TYPE_TV_ONLY_PARAM])
+    @extend_schema(
+        parameters=[MEDIA_TYPE_TV_ONLY_PARAM],
+        responses={404: DetailErrorSerializer},
+    )
     def post(
         self,
         request,
@@ -102,6 +108,17 @@ class MediaEpisodeWatchView(drf_views.APIView):
 
         library_media_type = (request.data.get("library_media_type") or "").strip()
         try:
+            _, coordinate_error = resolve_episode_coordinate_for_request(
+                request.user,
+                media_id,
+                source,
+                season_number,
+                episode_number,
+                library_media_type=library_media_type,
+                language=metadata_resolution.metadata_language_default(request.user),
+            )
+            if coordinate_error:
+                return coordinate_error
             related_season = resolve_or_create_season(
                 request.user,
                 media_id,
@@ -134,7 +151,10 @@ class MediaEpisodeWatchView(drf_views.APIView):
         )
         return Response(serialize_data(episode), status=HTTP.CREATED)
 
-    @extend_schema(parameters=[MEDIA_TYPE_TV_ONLY_PARAM])
+    @extend_schema(
+        parameters=[MEDIA_TYPE_TV_ONLY_PARAM],
+        responses={404: DetailErrorSerializer},
+    )
     def delete(
         self,
         request,
@@ -148,6 +168,31 @@ class MediaEpisodeWatchView(drf_views.APIView):
         error = _tv_route_error(media_type, source)
         if error:
             return error
+
+        try:
+            _, coordinate_error = resolve_episode_coordinate_for_request(
+                request.user,
+                media_id,
+                source,
+                season_number,
+                episode_number,
+                language=metadata_resolution.metadata_language_default(request.user),
+            )
+        except Exception:
+            logger.exception(
+                "Failed to validate episode watch media_id=%s source=%s "
+                "season_number=%s episode_number=%s",
+                media_id,
+                source,
+                season_number,
+                episode_number,
+            )
+            return Response(
+                {"detail": "Could not resolve episode."},
+                status=HTTP.NOT_FOUND,
+            )
+        if coordinate_error:
+            return coordinate_error
 
         related_season = _get_tracked_season(
             request.user,
@@ -278,7 +323,10 @@ class MediaMovieWatchView(drf_views.APIView):
 class MediaEpisodeDropView(drf_views.APIView):
     """Mark an episode dropped — advances progress without watch history."""
 
-    @extend_schema(parameters=[MEDIA_TYPE_TV_ONLY_PARAM])
+    @extend_schema(
+        parameters=[MEDIA_TYPE_TV_ONLY_PARAM],
+        responses={404: DetailErrorSerializer},
+    )
     def post(
         self,
         request,
@@ -295,6 +343,17 @@ class MediaEpisodeDropView(drf_views.APIView):
 
         library_media_type = (request.data.get("library_media_type") or "").strip()
         try:
+            _, coordinate_error = resolve_episode_coordinate_for_request(
+                request.user,
+                media_id,
+                source,
+                season_number,
+                episode_number,
+                library_media_type=library_media_type,
+                language=metadata_resolution.metadata_language_default(request.user),
+            )
+            if coordinate_error:
+                return coordinate_error
             related_season = resolve_or_create_season(
                 request.user,
                 media_id,
