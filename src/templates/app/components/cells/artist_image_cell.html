@@ -1,7 +1,9 @@
+{% load app_tags %}
+
 {% if media.artist.image and media.artist.image != IMG_NONE %}
   <img alt="{{ media.artist.name }}"
        class="lazyload min-w-10 w-10 h-10 object-cover rounded-md parent-hover-tap:hidden"
-       data-src="{{ media.artist.image }}"
+       data-src="{{ media.artist.image|image_url }}"
        src="{{ IMG_NONE }}">
 {% else %}
   <div class="min-w-10 w-10 h-10 bg-[var(--color-surface-alt)] rounded-md flex items-center justify-center parent-hover-tap:hidden">

@@ -8,7 +8,7 @@
     {% if album.image and album.image != IMG_NONE %}
       <img alt="{{ album.title }}"
            class="w-full rounded-lg shadow-lg bg-[var(--color-surface)] object-cover"
-           src="{{ album.image }}"
+           src="{{ album.image|image_url }}"
            referrerpolicy="origin">
     {% else %}
       <div class="w-full aspect-square rounded-lg shadow-lg bg-[var(--color-surface)] flex items-center justify-center">
@@ -149,7 +149,7 @@
                          class="inline-flex h-8 items-center gap-2 rounded-full border {{ detail_link.chip_classes }} pl-0 pr-3 text-sm text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:brightness-110">
                         <span class="-my-px -ml-px flex h-8 w-8 shrink-0 items-center justify-center rounded-full border {{ detail_link.badge_classes }}">
                           {% if detail_link.logo_src %}
-                            <img src="{{ detail_link.logo_src }}"
+                            <img src="{{ detail_link.logo_src|image_url }}"
                                  alt=""
                                  aria-hidden="true"
                                  class="h-4 w-4 object-contain">
@@ -348,7 +348,7 @@
               <div class="flex flex-col md:flex-row">
                 <div class="md:w-32 md:h-32 shrink-0">
                   {% if album.image and album.image != IMG_NONE %}
-                    <img src="{{ album.image }}"
+                    <img src="{{ album.image|image_url }}"
                          alt="{{ track_data.track.title }}"
                          class="w-full h-full object-cover"
                          referrerpolicy="origin">

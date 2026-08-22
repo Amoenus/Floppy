@@ -45,6 +45,65 @@
         </div>
       </div>
 
+      <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg mb-6">
+        <div class="flex items-center mb-3">
+          {% include "app/icons/image.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
+          <h3 class="text-base font-medium">External Image Caching</h3>
+        </div>
+        <p class="text-[var(--color-text-muted)] mb-4 text-sm">
+          Proxy artwork from approved metadata providers through Floppy so browsers and API
+          clients do not need direct access to those providers. Cached images use disk space and
+          are removed automatically after 30 days without access.
+        </p>
+        <div class="grid gap-3 sm:grid-cols-2 mb-4 text-sm">
+          <div class="rounded-md bg-[var(--color-surface)] px-4 py-3">
+            <span class="block text-xs text-[var(--color-text-muted)]">Cached images</span>
+            <span class="block font-medium">{{ image_cache_stats.count }}</span>
+          </div>
+          <div class="rounded-md bg-[var(--color-surface)] px-4 py-3">
+            <span class="block text-xs text-[var(--color-text-muted)]">Disk usage</span>
+            <span class="block font-medium">{{ image_cache_size }}</span>
+          </div>
+        </div>
+        <p class="text-xs text-[var(--color-text-muted)] mb-4">
+          Only known provider image hosts are cached (including TMDB, TVDB, MyAnimeList, IGDB,
+          Open Library, Hardcover, ComicVine, BoardGameGeek, MusicBrainz, Pocket Casts, iTunes,
+          Kitsu, and AniList). Manual URLs, local services, placeholders, and unknown hosts stay
+          unchanged.
+        </p>
+        {% if request.user.is_superuser %}
+          <div class="flex flex-wrap items-center gap-3">
+            <form method="post" action="{% url 'update_image_cache' %}" class="flex items-center gap-3">
+              {% csrf_token %}
+              <label class="flex items-center gap-2 text-sm cursor-pointer">
+                <input type="checkbox"
+                       name="image_caching_enabled"
+                       value="1"
+                       {% if image_caching_enabled %}checked{% endif %}
+                       class="rounded border-gray-600 bg-[var(--color-surface)] text-indigo-600 focus:ring-indigo-500">
+                Enable external image caching
+              </label>
+              <button type="submit"
+                      class="px-3 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm">
+                Save
+              </button>
+            </form>
+            <form method="post"
+                  action="{% url 'clear_image_cache' %}"
+                  onsubmit="return window.confirm('Clear all cached external images? They will be downloaded again if caching remains enabled.');">
+              {% csrf_token %}
+              <button type="submit"
+                      class="px-3 py-2 bg-red-600/10 border border-red-600/40 text-[var(--color-error-text)] rounded-md hover:bg-red-600/20 transition-colors text-sm">
+                Clear Image Cache
+              </button>
+            </form>
+          </div>
+        {% else %}
+          <p class="text-sm text-[var(--color-text-muted)]">Only a superuser can change this setting or clear the cache.</p>
+          <p class="text-sm mt-1">Status: <span class="font-medium">{% if image_caching_enabled %}Enabled{% else %}Disabled{% endif %}</span></p>
+        {% endif %}
+      </div>
+
       <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg mb-6"
            x-data="{ confirmOpen: false, pending: null, openConfirm(key) { this.pending = key; this.confirmOpen = true; }, closeConfirm() { this.confirmOpen = false; this.pending = null; }, }">
         <div class="flex items-center mb-3">

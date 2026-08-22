@@ -100,6 +100,16 @@ urlpatterns = [
     ),
     path("settings/export", views.export_data, name="export_data"),
     path("settings/advanced", views.advanced, name="advanced"),
+    path(
+        "settings/advanced/image-cache",
+        views.update_image_cache,
+        name="update_image_cache",
+    ),
+    path(
+        "settings/advanced/image-cache/clear",
+        views.clear_image_cache,
+        name="clear_image_cache",
+    ),
     path("settings/advanced/logs", views.export_logs, name="export_logs"),
     path(
         "settings/advanced/server-port",

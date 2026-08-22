@@ -139,7 +139,7 @@
             {% if watch_providers %}
               {% for provider in watch_providers %}
                 <img class="size-10 rounded-md"
-                     src="{{ provider.image }}"
+                     src="{{ provider.image|image_url }}"
                      title="{{ provider.provider_name }}"
                      alt="{{ provider.provider_name }}" />
               {% endfor %}

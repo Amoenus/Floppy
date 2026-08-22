@@ -14,7 +14,7 @@
           <button type="submit"
                   class="flex w-full items-center gap-3 px-3 py-2 text-sm text-left hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)] transition-colors duration-150 cursor-pointer">
             {% if edition.image %}
-              <img src="{{ edition.image }}"
+              <img src="{{ edition.image|image_url }}"
                    alt=""
                    loading="lazy"
                    class="object-cover w-8 h-10 rounded bg-[var(--color-surface-alt)] shrink-0">
@@ -40,7 +40,7 @@
            role="option"
            class="flex items-center gap-3 px-3 py-2 text-sm hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)] transition-colors duration-150">
           {% if edition.image %}
-            <img src="{{ edition.image }}"
+            <img src="{{ edition.image|image_url }}"
                  alt=""
                  loading="lazy"
                  class="object-cover w-8 h-10 rounded bg-[var(--color-surface-alt)] shrink-0">

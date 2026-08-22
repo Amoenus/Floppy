@@ -10,7 +10,7 @@
         {% endif %}
         <img alt="{{ person.name|default:'Unknown Person' }}"
              class="media-card-poster lazyload w-full aspect-[2/3] bg-[var(--color-surface-alt)] {% if person.image and person.image != IMG_NONE %}object-cover{% endif %}"
-             data-src="{{ person.image|default:IMG_NONE }}"
+             data-src="{{ person.image|default:IMG_NONE|image_url }}"
              src="{{ IMG_NONE }}">
         {% if person.person_id and person.name %}</a>{% endif %}
         {% if person.episode_count %}

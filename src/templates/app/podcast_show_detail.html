@@ -15,7 +15,7 @@
       {% if show.image and show.image != IMG_NONE %}
         <img alt="{{ show.title }}"
              class="w-full rounded-lg shadow-lg bg-[var(--color-surface)] object-cover"
-             src="{{ show.image }}">
+             src="{{ show.image|image_url }}">
       {% else %}
         <div class="w-full aspect-square rounded-lg shadow-lg bg-[var(--color-surface)] flex items-center justify-center">
           {% include "app/icons/microphone.svg" with classes="w-24 h-24 text-[var(--color-text-muted)]" %}

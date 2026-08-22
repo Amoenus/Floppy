@@ -15,7 +15,7 @@
       {% if album.image and album.image != IMG_NONE %}
         <img alt="{{ album.title }}"
              class="w-full rounded-lg shadow-lg bg-[var(--color-surface)] object-cover"
-             src="{{ album.image }}"
+             src="{{ album.image|image_url }}"
              referrerpolicy="origin">
       {% else %}
         <div class="w-full aspect-square rounded-lg shadow-lg bg-[var(--color-surface)] flex items-center justify-center">
@@ -293,7 +293,7 @@
                 {# Track image (album cover thumbnail) - square like album art #}
                 <div class="md:w-32 md:h-32 shrink-0">
                   {% if album.image and album.image != IMG_NONE %}
-                    <img src="{{ album.image }}"
+                    <img src="{{ album.image|image_url }}"
                          alt="{{ track_data.track.title }}"
                          class="w-full h-full object-cover"
                          referrerpolicy="origin">

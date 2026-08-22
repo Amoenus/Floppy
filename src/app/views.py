@@ -49,6 +49,7 @@ from app import (
     helpers,
     history_cache,
     history_processor,
+    image_cache,
     live_playback,
     metadata_utils,
     statistics_cache,
@@ -393,6 +394,13 @@ from users.models import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+@login_not_required
+@require_GET
+def serve_image_cache(request, token):
+    """Serve an approved provider image from the public derived-data cache."""
+    return image_cache.serve_cached_image(token, request)
 
 
 def home(request):

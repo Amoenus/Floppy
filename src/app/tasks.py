@@ -10,7 +10,7 @@ from django.db.models import Q
 from django.utils import timezone
 from django_celery_results.models import TaskResult
 
-from app import cache_safety, history_cache, metadata_utils
+from app import cache_safety, history_cache, image_cache, metadata_utils
 from app.interactive_requests import interactive_request_active
 from app.log_safety import exception_summary
 from app.models import (
@@ -54,6 +54,19 @@ def cleanup_task_results(batch_size=5000):
     # between the two queries is not deleted as an abandoned result.
     deleted, _ = TaskResult.objects.filter(pk__in=candidate_ids).filter(eligible).delete()
     return deleted
+
+
+@shared_task(name="Cleanup image cache", ignore_result=True)
+def cleanup_image_cache():
+    """Remove provider images that have been unused for thirty days."""
+    summary = image_cache.cleanup_stale_images()
+    if summary["removed_count"]:
+        logger.info(
+            "Removed %s stale cached images (%s bytes)",
+            summary["removed_count"],
+            summary["removed_bytes"],
+        )
+    return summary
 
 
 @shared_task(name="Repair Celery broker bindings", ignore_result=True)

@@ -8,7 +8,7 @@
     {% if artist.image and artist.image != IMG_NONE %}
       <img alt="{{ artist.name }}"
            class="w-full rounded-lg shadow-lg bg-[var(--color-surface)] object-cover"
-           src="{{ artist.image }}">
+           src="{{ artist.image|image_url }}">
     {% else %}
       <div class="w-full aspect-square rounded-lg shadow-lg bg-[var(--color-surface)] flex items-center justify-center">
         {% icon 'music' is_active=False extra_classes="w-24 h-24 text-[var(--color-text-muted)]" %}
@@ -171,7 +171,7 @@
                          class="inline-flex h-8 items-center gap-2 rounded-full border {{ detail_link.chip_classes }} pl-0 pr-3 text-sm text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:brightness-110">
                         <span class="-my-px -ml-px flex h-8 w-8 shrink-0 items-center justify-center rounded-full border {{ detail_link.badge_classes }}">
                           {% if detail_link.logo_src %}
-                            <img src="{{ detail_link.logo_src }}"
+                            <img src="{{ detail_link.logo_src|image_url }}"
                                  alt=""
                                  aria-hidden="true"
                                  class="h-4 w-4 object-contain">

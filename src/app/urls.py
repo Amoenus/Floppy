@@ -8,6 +8,11 @@ register_converter(converters.SourceChecker, "source")
 
 
 urlpatterns = [
+    path(
+        "image-cache/<str:token>",
+        views.serve_image_cache,
+        name="image_cache",
+    ),
     path("", views.home, name="home"),
     path("discover", views.discover_page, name="discover"),
     path("discover/rows", views.discover_rows, name="discover_rows"),

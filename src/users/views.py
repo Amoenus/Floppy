@@ -25,7 +25,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 from django_celery_beat.models import PeriodicTask
 
-from app import history_cache, statistics_cache
+from app import history_cache, image_cache, statistics_cache
 from app.discover.feeds import get_external_row_definitions
 from app.discover.registry import DISCOVER_MEDIA_TYPES
 from app.models import Item, MediaTypes, Status
@@ -1581,6 +1581,7 @@ def export_data(request):
 @require_GET
 def advanced(request):
     """Render the advanced settings page."""
+    image_stats = image_cache.cache_stats()
     bug_report_body = (
         f"**Floppy version:** {settings.VERSION}\n\n"
         "**Describe the issue:**\n\n\n"
@@ -1590,11 +1591,43 @@ def advanced(request):
     )
     context = {
         "tmdb_proxy_configured": bool(request.user.tmdb_proxy_url),
+        "image_caching_enabled": image_cache.is_enabled(),
+        "image_cache_stats": image_stats,
+        "image_cache_size": image_cache.format_bytes(image_stats["bytes"]),
         "bug_report_title": "[BUG] ",
         "bug_report_body": bug_report_body,
         "media_types": DELETABLE_MEDIA_TYPES,
     }
     return render(request, "users/advanced.html", context)
+
+
+@require_POST
+def update_image_cache(request):
+    """Update the instance-wide image cache toggle for superusers."""
+    if not request.user.is_superuser:
+        return HttpResponse(status=403)
+    enabled = request.POST.get("image_caching_enabled") == "1"
+    image_cache.set_enabled(enabled)
+    messages.success(
+        request,
+        f"External image caching {'enabled' if enabled else 'disabled'}.",
+    )
+    return redirect("advanced")
+
+
+@require_POST
+def clear_image_cache(request):
+    """Clear all derived provider images for superusers."""
+    if not request.user.is_superuser:
+        return HttpResponse(status=403)
+    summary = image_cache.clear_cache()
+    messages.success(
+        request,
+        f"Cleared {summary['removed_count']} cached image"
+        f"{' ' if summary['removed_count'] == 1 else 's '}"
+        f"({summary['removed_bytes']} bytes).",
+    )
+    return redirect("advanced")
 
 
 @require_GET

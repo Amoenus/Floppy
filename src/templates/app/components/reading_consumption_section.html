@@ -79,7 +79,7 @@
               <span class="text-[var(--color-text-muted)] text-sm font-medium w-4">{{ forloop.counter }}</span>
               {% if item.media.item.image and item.media.item.image != IMG_NONE %}
               <img src="{{ IMG_NONE }}"
-                   data-src="{{ item.media.item.image }}"
+                   data-src="{{ item.media.item.image|image_url }}"
                    alt="{{ item.media.item.title }}"
                    class="lazyload w-10 h-10 rounded object-cover bg-[var(--color-surface)]">
               {% else %}
@@ -113,7 +113,7 @@
                 <span class="text-[var(--color-text-muted)] text-sm font-medium w-4">{{ forloop.counter }}</span>
                 {% if author.image %}
                 <img src="{{ IMG_NONE }}"
-                     data-src="{{ author.image }}"
+                   data-src="{{ author.image|image_url }}"
                      alt="{{ author.name }}"
                      class="lazyload w-10 h-10 rounded-full object-cover bg-[var(--color-surface)]">
                 {% else %}
@@ -184,7 +184,7 @@
               <span class="text-[var(--color-text-muted)] text-sm font-medium w-4">{{ forloop.counter }}</span>
               {% if media.item.image and media.item.image != IMG_NONE %}
               <img src="{{ IMG_NONE }}"
-                   data-src="{{ media.item.image }}"
+                   data-src="{{ media.item.image|image_url }}"
                    alt="{{ media.item.title }}"
                    class="lazyload w-10 h-10 rounded object-cover bg-[var(--color-surface)]">
               {% else %}

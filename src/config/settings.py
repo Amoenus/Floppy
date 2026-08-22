@@ -285,7 +285,7 @@ REST_FRAMEWORK = {
         "api.authentication.BearerAuthentication",
         "api.authentication.APIKeyAuthentication",
     ],
-    "DEFAULT_RENDERER_CLASSES": ("rest_framework.renderers.JSONRenderer",),
+    "DEFAULT_RENDERER_CLASSES": ("api.renderers.ImageCacheJSONRenderer",),
     # ``format`` is a media-list filter, not a renderer override.
     "URL_FORMAT_OVERRIDE": None,
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
@@ -1544,6 +1544,11 @@ CELERY_BEAT_SCHEDULE = {
     "reload_calendar": {
         "task": "Reload calendar",
         "schedule": 60 * 60 * 24,  # every 24 hours
+    },
+    "cleanup_image_cache": {
+        "task": "Cleanup image cache",
+        "schedule": crontab(hour=4, minute=0),
+        "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     },
     "send_release_notifications": {
         "task": "Send release notifications",

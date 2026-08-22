@@ -11,7 +11,7 @@ from django.utils.dateparse import parse_date
 from django.utils.html import format_html
 from unidecode import unidecode
 
-from app import config, helpers
+from app import config, helpers, image_cache
 from app.models import Item, MediaTypes, Sources, Status
 from app.providers import tmdb
 from app.services import metadata_resolution
@@ -67,6 +67,12 @@ def get_static_file_mtime(file_path):
 def no_underscore(arg1):
     """Return the title case of the string."""
     return arg1.replace("_", " ")
+
+
+@register.filter
+def image_url(value):
+    """Return a safe Floppy image proxy URL when external caching is enabled."""
+    return image_cache.rewrite_image_url(value)
 
 
 @register.filter

@@ -17,7 +17,7 @@
       {% if highlights.first_play %}
         <img alt="{{ highlights.first_play.title }}"
              class="media-card-poster lazyload w-full aspect-[3/2] bg-[var(--color-surface-alt)] {% if highlights.first_play.image %}object-cover{% endif %}"
-             {% if highlights.first_play.image %}data-src="{{ highlights.first_play.image }}"{% endif %}
+             {% if highlights.first_play.image %}data-src="{{ highlights.first_play.image|image_url }}"{% endif %}
              src="{{ IMG_NONE }}">
       {% else %}
         <div class="media-card-poster w-full aspect-[3/2] bg-[var(--color-surface-alt)]"></div>
@@ -56,7 +56,7 @@
       {% if highlights.last_play %}
         <img alt="{{ highlights.last_play.title }}"
              class="media-card-poster lazyload w-full aspect-[3/2] bg-[var(--color-surface-alt)] {% if highlights.last_play.image %}object-cover{% endif %}"
-             {% if highlights.last_play.image %}data-src="{{ highlights.last_play.image }}"{% endif %}
+             {% if highlights.last_play.image %}data-src="{{ highlights.last_play.image|image_url }}"{% endif %}
              src="{{ IMG_NONE }}">
       {% else %}
         <div class="media-card-poster w-full aspect-[3/2] bg-[var(--color-surface-alt)]"></div>
@@ -96,7 +96,7 @@
       {% if tc.entry %}
         <img alt="{{ tc.entry.title }}"
              class="media-card-poster lazyload w-full aspect-[3/2] bg-[var(--color-surface-alt)] {% if tc.entry.image %}object-cover{% endif %}"
-             {% if tc.entry.image %}data-src="{{ tc.entry.image }}"{% endif %}
+             {% if tc.entry.image %}data-src="{{ tc.entry.image|image_url }}"{% endif %}
              src="{{ IMG_NONE }}">
       {% else %}
         <div class="media-card-poster w-full aspect-[3/2] bg-[var(--color-surface-alt)]"></div>

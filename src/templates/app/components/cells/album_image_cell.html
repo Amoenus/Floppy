@@ -2,7 +2,7 @@
 {% if media.album.image and media.album.image != IMG_NONE %}
   <img alt="{{ media.album.title }}"
        class="lazyload min-w-10 w-10 h-10 object-cover rounded-md parent-hover-tap:hidden"
-       data-src="{{ media.album.image }}"
+       data-src="{{ media.album.image|image_url }}"
        src="{{ IMG_NONE }}">
 {% else %}
   <div class="min-w-10 w-10 h-10 bg-[var(--color-surface-alt)] rounded-md flex items-center justify-center parent-hover-tap:hidden">

@@ -22,7 +22,7 @@
     <div class="w-full md:w-1/4 max-w-[250px] mx-auto md:mx-0">
       <img alt="{{ media|display_title:user }}"
            class="w-full rounded-lg shadow-lg bg-[var(--color-surface)] object-cover"
-           src="{{ media.image }}">
+           src="{{ media.image|image_url }}">
     </div>
 
     {# Media details #}
@@ -509,7 +509,7 @@
                              class="inline-flex h-8 items-center gap-2 rounded-full border {{ detail_link.chip_classes }} pl-0 pr-3 text-sm text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:brightness-110">
                             <span class="-my-px -ml-px flex h-8 w-8 shrink-0 items-center justify-center rounded-full border {{ detail_link.badge_classes }}">
                               {% if detail_link.logo_src %}
-                                <img src="{{ detail_link.logo_src }}"
+                                <img src="{{ detail_link.logo_src|image_url }}"
                                      alt=""
                                      aria-hidden="true"
                                      class="h-4 w-4 object-contain">
