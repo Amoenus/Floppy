@@ -18,7 +18,7 @@ import os
 import sqlite3
 import tempfile
 from contextlib import redirect_stdout, suppress
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from io import StringIO
 from pathlib import Path
 from unittest import mock, skipIf
@@ -267,6 +267,7 @@ class DatabaseCheckTests(SimpleTestCase):
         with _TempDatabase() as temp:
             _make_database(temp.db_path)
             status_path = Path(f"{temp.db_path}.integrity.status.json")
+            now = datetime.now(UTC)
             status_path.write_text(
                 json.dumps(
                     {
@@ -274,6 +275,9 @@ class DatabaseCheckTests(SimpleTestCase):
                         "elapsed_seconds": 598.0,
                         "error_class": None,
                         "phase": "foreign_key_check",
+                        "phase_started_at": (now - timedelta(seconds=120)).isoformat(),
+                        "last_progress_at": (now - timedelta(seconds=10)).isoformat(),
+                        "progress_callbacks": 5,
                         "status": "running",
                         "updated_at": datetime.now(UTC).isoformat(),
                     }
@@ -291,6 +295,10 @@ class DatabaseCheckTests(SimpleTestCase):
         self.assertTrue(sidecar["available"])
         self.assertEqual(sidecar["phase"], "foreign_key_check")
         self.assertEqual(sidecar["status"], "running")
+        self.assertEqual(sidecar["progress_callbacks"], 5)
+        self.assertEqual(sidecar["progress_state"], "active")
+        self.assertGreater(sidecar["phase_elapsed_seconds"], 119)
+        self.assertLess(sidecar["progress_age_seconds"], 30)
 
     def test_timeout_ignores_a_stale_sidecar(self):
         with _TempDatabase() as temp:

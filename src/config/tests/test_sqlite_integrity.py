@@ -1290,6 +1290,8 @@ class SqliteIntegrityTests(SimpleTestCase):
             elapsed_seconds=12.5,
             read_bytes=1_048_576,
             progress_callbacks=42,
+            phase_started_at="2026-01-01T00:00:01+00:00",
+            last_progress_at="2026-01-01T00:00:12+00:00",
         )
 
         self.assertTrue(status_path.is_file())
@@ -1300,6 +1302,11 @@ class SqliteIntegrityTests(SimpleTestCase):
         self.assertEqual(status["elapsed_seconds"], 12.5)
         self.assertEqual(status["read_bytes"], 1_048_576)
         self.assertEqual(status["progress_callbacks"], 42)
+        self.assertEqual(status["phase_started_at"], "2026-01-01T00:00:01+00:00")
+        self.assertEqual(status["last_progress_at"], "2026-01-01T00:00:12+00:00")
+        self.assertIn("progress_age_seconds", status)
+        self.assertIn("progress_rate_per_minute", status)
+        self.assertIn("progress_state", status)
         # A status write must never carry the approval token or any other
         # incident-report secret; there is nothing secret to strip.
         self.assertNotIn("incident_token", status)
@@ -1369,6 +1376,55 @@ class SqliteIntegrityTests(SimpleTestCase):
         self.assertNotIn("elapsed=0s", output)
         self.assertIn("elapsed=185s", output)
         self.assertIn("progress_callbacks=0", output)
+        self.assertIn("phase_elapsed=185s", output)
+        self.assertIn("last_progress=185s_ago", output)
+        self.assertIn("progress_state=quiet", output)
+
+    def test_heartbeat_reports_recent_progress_and_callback_rate(self):
+        db_path = self.create_orphan_database(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, str(Path(db_path).parent), ignore_errors=True)
+        now = datetime.now(UTC)
+        sqlite_integrity.write_startup_status(
+            db_path,
+            status="running",
+            phase="quick_check",
+            started_at=(now - timedelta(seconds=120)).isoformat(),
+            phase_started_at=(now - timedelta(seconds=120)).isoformat(),
+            last_progress_at=(now - timedelta(seconds=10)).isoformat(),
+            elapsed_seconds=120.0,
+            progress_callbacks=5,
+        )
+
+        with mock.patch("sys.stderr", new_callable=io.StringIO) as stderr:
+            sqlite_integrity.print_startup_heartbeat(db_path)
+
+        output = stderr.getvalue()
+        self.assertIn("phase_elapsed=120s", output)
+        self.assertIn("progress_callbacks=5", output)
+        self.assertIn("progress_rate=2.5/min", output)
+        self.assertIn("last_progress=10s_ago", output)
+        self.assertIn("progress_state=active", output)
+
+    def test_heartbeat_reports_when_a_phase_has_no_callback_yet(self):
+        db_path = self.create_orphan_database(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, str(Path(db_path).parent), ignore_errors=True)
+        started_at = (datetime.now(UTC) - timedelta(seconds=10)).isoformat()
+        sqlite_integrity.write_startup_status(
+            db_path,
+            status="running",
+            phase="quick_check",
+            started_at=started_at,
+            phase_started_at=started_at,
+            elapsed_seconds=10.0,
+            progress_callbacks=0,
+        )
+
+        with mock.patch("sys.stderr", new_callable=io.StringIO) as stderr:
+            sqlite_integrity.print_startup_heartbeat(db_path)
+
+        output = stderr.getvalue()
+        self.assertIn("last_progress=10s_ago", output)
+        self.assertIn("progress_state=none_yet", output)
 
     def test_a_healthy_scan_clears_a_stale_timeout_status(self):
         """A prior boot's timeout must not describe the current, healthy one."""
@@ -1400,6 +1456,7 @@ class SqliteIntegrityTests(SimpleTestCase):
         """
         db_path = self.create_orphan_database(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, str(Path(db_path).parent), ignore_errors=True)
+        now = datetime.now(UTC)
         sqlite_integrity.write_startup_status(
             db_path,
             status="running",
@@ -1408,6 +1465,8 @@ class SqliteIntegrityTests(SimpleTestCase):
             elapsed_seconds=598.0,
             read_bytes=882_638_848,
             progress_callbacks=1234,
+            phase_started_at=(now - timedelta(seconds=600)).isoformat(),
+            last_progress_at=(now - timedelta(seconds=2)).isoformat(),
         )
 
         with mock.patch("sys.stderr", new_callable=io.StringIO) as stderr:
@@ -1423,6 +1482,11 @@ class SqliteIntegrityTests(SimpleTestCase):
         self.assertIn("phase=foreign_key_check", log_output)
         self.assertIn("read=842MB", log_output)
         self.assertIn("progress_callbacks=1234", log_output)
+        self.assertIn("progress_rate=123.4/min", log_output)
+        self.assertIn("progress_state=active", log_output)
+
+        self.assertIsNotNone(status["phase_started_at"])
+        self.assertIsNotNone(status["last_progress_at"])
 
     def test_mark_startup_status_timeout_without_any_prior_status(self):
         """The scanner can be killed before it writes anything at all."""

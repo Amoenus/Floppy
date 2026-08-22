@@ -81,6 +81,37 @@ class SqliteRecoveryPolicyTests(SimpleTestCase):
             self.assertFalse(reopened)
             self.assertEqual(report_path.read_text(), before)
 
+    def test_progress_metadata_resets_at_phase_boundaries(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = str(Path(tmp_dir) / "db.sqlite3")
+            Path(db_path).touch()
+            emit = sqlite_recovery_policy._status_emitter(db_path)
+
+            emit(
+                "running",
+                "quick_check",
+                progress_callbacks=22,
+                progress_at="2026-08-20T01:49:00+00:00",
+            )
+            quick_status = sqlite_integrity.read_startup_status(db_path)
+
+            emit("running", "foreign_key_check", progress_callbacks=0)
+            foreign_key_status = sqlite_integrity.read_startup_status(db_path)
+
+            self.assertEqual(quick_status["phase"], "quick_check")
+            self.assertEqual(quick_status["progress_callbacks"], 22)
+            self.assertEqual(
+                quick_status["last_progress_at"],
+                "2026-08-20T01:49:00+00:00",
+            )
+            self.assertEqual(foreign_key_status["phase"], "foreign_key_check")
+            self.assertEqual(foreign_key_status["progress_callbacks"], 0)
+            self.assertIsNone(foreign_key_status["last_progress_at"])
+            self.assertNotEqual(
+                quick_status["phase_started_at"],
+                foreign_key_status["phase_started_at"],
+            )
+
     @unittest.skipUnless(
         hasattr(os, "mkfifo") and hasattr(os, "O_NONBLOCK"),
         "requires POSIX FIFO support",

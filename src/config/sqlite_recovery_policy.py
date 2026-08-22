@@ -53,15 +53,26 @@ def _status_emitter(db_path: str) -> StatusEmitter:
     started_at = datetime.now(UTC).isoformat()
     version = os.environ.get("VERSION")
     commit_sha = os.environ.get("COMMIT_SHA")
+    current_phase = None
+    phase_started_at = started_at
+    last_progress_at = None
 
     def emit(
         status: str,
         phase: str,
         *,
         progress_callbacks: int | None = None,
+        progress_at: str | None = None,
         error_class: str | None = None,
         error_message: str | None = None,
     ) -> None:
+        nonlocal current_phase, last_progress_at, phase_started_at
+        if phase != current_phase:
+            current_phase = phase
+            phase_started_at = datetime.now(UTC).isoformat()
+            last_progress_at = None
+        if progress_at is not None:
+            last_progress_at = progress_at
         _log(f"[integrity] phase={phase} status={status}")
         write_startup_status(
             db_path,
@@ -70,6 +81,8 @@ def _status_emitter(db_path: str) -> StatusEmitter:
             started_at=started_at,
             elapsed_seconds=time.monotonic() - started_monotonic,
             progress_callbacks=progress_callbacks,
+            phase_started_at=phase_started_at,
+            last_progress_at=last_progress_at,
             version=version,
             commit_sha=commit_sha,
             error_class=error_class,
@@ -85,16 +98,20 @@ def _run_with_progress(
     *,
     phase: str,
     emit: StatusEmitter,
-) -> tuple[object, int]:
+) -> tuple[object, int, str | None]:
     """Run one SQLite operation and periodically publish progress counts."""
     progress_callbacks = 0
     last_report = time.monotonic()
+    last_progress_monotonic = None
+    last_progress_at = None
 
     def progress() -> int:
-        nonlocal last_report, progress_callbacks
+        nonlocal last_progress_at, last_progress_monotonic, last_report, progress_callbacks
         progress_callbacks += 1
         now = time.monotonic()
+        last_progress_monotonic = now
         if now - last_report >= _PROGRESS_REPORT_INTERVAL_SECONDS:
+            last_progress_at = datetime.now(UTC).isoformat()
             _log(
                 f"[integrity] phase={phase} status=running "
                 f"progress_callbacks={progress_callbacks}",
@@ -103,6 +120,7 @@ def _run_with_progress(
                 "running",
                 phase,
                 progress_callbacks=progress_callbacks,
+                progress_at=last_progress_at,
             )
             last_report = now
         return 0
@@ -112,7 +130,9 @@ def _run_with_progress(
         result = operation()
     finally:
         conn.set_progress_handler(None, 0)
-    return result, progress_callbacks
+        if last_progress_monotonic is not None and last_progress_at is None:
+            last_progress_at = datetime.now(UTC).isoformat()
+    return result, progress_callbacks, last_progress_at
 
 
 class UnsafeRecoverySchemaError(sqlite3.IntegrityError):
@@ -235,7 +255,7 @@ def _scan_and_publish_block(
     conn = sqlite3.connect(db_path, timeout=30.0)
     try:
         emit("running", "quick_check", progress_callbacks=0)
-        result, quick_progress = _run_with_progress(
+        result, quick_progress, quick_last_progress = _run_with_progress(
             conn,
             lambda: conn.execute("PRAGMA quick_check").fetchone(),
             phase="quick_check",
@@ -251,6 +271,7 @@ def _scan_and_publish_block(
                 "failed",
                 "quick_check",
                 progress_callbacks=quick_progress,
+                progress_at=quick_last_progress,
                 error_class="corruption",
                 error_message=f"quick_check returned {status!r}",
             )
@@ -260,9 +281,9 @@ def _scan_and_publish_block(
         emit(
             "running",
             "foreign_key_check",
-            progress_callbacks=quick_progress,
+            progress_callbacks=0,
         )
-        incident, _foreign_key_progress = _run_with_progress(
+        incident, foreign_key_progress, foreign_key_last_progress = _run_with_progress(
             conn,
             lambda: _inspect_foreign_keys(conn),
             phase="foreign_key_check",
@@ -277,7 +298,12 @@ def _scan_and_publish_block(
                         "[entrypoint] SQLite recovery report could not be finalized; "
                         f"the database is healthy and startup continues: {error}",
                     )
-            emit("ok", "foreign_key_check")
+            emit(
+                "ok",
+                "foreign_key_check",
+                progress_callbacks=foreign_key_progress,
+                progress_at=foreign_key_last_progress,
+            )
             return None
 
         emit("running", "describe_incident")

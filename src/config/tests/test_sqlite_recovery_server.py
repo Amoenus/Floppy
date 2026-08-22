@@ -113,6 +113,9 @@ class RecoveryPageTests(SimpleTestCase):
                 elapsed_seconds=600,
                 error_class="timeout",
                 error_message="scan exceeded 600s",
+                progress_callbacks=22,
+                phase_started_at="2026-08-20T01:39:43+00:00",
+                last_progress_at="2026-08-20T01:49:00+00:00",
                 version="test",
                 commit_sha="test",
             )
@@ -122,6 +125,8 @@ class RecoveryPageTests(SimpleTestCase):
                 page = response.read().decode()
             self.assertIn("Retry startup check", page)
             self.assertIn("action='/retry'", page)
+            self.assertIn("No recent SQLite progress observed", page)
+            self.assertIn("Progress rate", page)
 
             with self.post(f"{base}/retry") as response:
                 body = response.read().decode()

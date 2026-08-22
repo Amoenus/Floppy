@@ -752,13 +752,22 @@ directly.
 
 The startup SQLite scan writes its progress to `<database>.integrity.status.json`
 beside the database as it runs, and the container log gets one heartbeat line
-roughly every 30 seconds while the scan is in progress. If the scan still
-exceeds its bound, the entrypoint stops it, records `status: timeout` in that
-file along with the last phase, elapsed time, and bytes read, and the recovery
-page (both the live page and the offline `floppy-recovery.html` copy) shows
-that detail instead of the generic "cannot read the report" page. A timeout
-does not mean the database is corrupt; it means the scan did not finish in
-time. Run `floppy_preflight` (above) for a completed answer.
+roughly every 30 seconds while the scan is in progress. Each heartbeat reports
+the current phase, phase elapsed time, SQLite progress callbacks, callback rate,
+time since the last observed progress, and a state:
+
+- `active` means a progress callback was observed recently.
+- `quiet` means no callback was observed for more than 45 seconds. This can
+  indicate slow storage or a blocked operation; it does not prove corruption.
+- `none_yet` means the phase has not produced its first callback.
+
+A low but nonzero callback rate means the scan is advancing slowly. If the scan
+still exceeds its bound, the entrypoint stops it, records `status: timeout` in
+the sidecar along with this telemetry, and the recovery page (both the live
+page and the offline `floppy-recovery.html` copy) shows the same diagnosis
+instead of the generic "cannot read the report" page. A timeout does not mean
+the database is corrupt; it means the scan did not finish in time. Run
+`floppy_preflight` (above) for a completed answer.
 
 #### Verifying a published image actually has a fix
 
