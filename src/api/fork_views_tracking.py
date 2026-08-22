@@ -109,9 +109,16 @@ class MediaEpisodeWatchView(drf_views.APIView):
                 int(season_number),
                 library_media_type=library_media_type,
             )
-        except Exception as e:
+        except Exception:
+            logger.exception(
+                "Failed to resolve season for episode watch media_id=%s "
+                "source=%s season_number=%s",
+                media_id,
+                source,
+                season_number,
+            )
             return Response(
-                {"detail": "Could not resolve season.", "errors": str(e)},
+                {"detail": "Could not resolve season."},
                 status=HTTP.NOT_FOUND,
             )
 
@@ -295,9 +302,16 @@ class MediaEpisodeDropView(drf_views.APIView):
                 int(season_number),
                 library_media_type=library_media_type,
             )
-        except Exception as e:
+        except Exception:
+            logger.exception(
+                "Failed to resolve season for episode drop media_id=%s "
+                "source=%s season_number=%s",
+                media_id,
+                source,
+                season_number,
+            )
             return Response(
-                {"detail": "Could not resolve season.", "errors": str(e)},
+                {"detail": "Could not resolve season."},
                 status=HTTP.NOT_FOUND,
             )
 

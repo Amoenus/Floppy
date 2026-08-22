@@ -107,6 +107,24 @@ class EpisodeWatchTests(FloppyApiTestCase):
 
     @patch(
         "app.models.providers.services.get_media_metadata",
+        side_effect=AttributeError("'list' object has no attribute 'get'"),
+    )
+    def test_watch_resolution_error_does_not_expose_exception(self, _mock):
+        """POST watch returns a public error when season resolution fails."""
+        response = self.call_api(
+            "post",
+            "api_media_episode_watch",
+            args=("tv", "tmdb", "999999", 9, 1),
+            payload={},
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, HTTP.NOT_FOUND)
+        self.assertEqual(response.json(), {"detail": "Could not resolve season."})
+        self.assertFalse(Episode.objects.filter(item__media_id="999999").exists())
+
+    @patch(
+        "app.models.providers.services.get_media_metadata",
         side_effect=_season_metadata_side_effect,
     )
     def test_unwatch_removes_latest_play(self, _mock):
@@ -161,6 +179,24 @@ class EpisodeWatchTests(FloppyApiTestCase):
                 end_date=None,
             ).exists(),
         )
+
+    @patch(
+        "app.models.providers.services.get_media_metadata",
+        side_effect=AttributeError("'list' object has no attribute 'get'"),
+    )
+    def test_drop_resolution_error_does_not_expose_exception(self, _mock):
+        """POST drop returns a public error when season resolution fails."""
+        response = self.call_api(
+            "post",
+            "api_media_episode_drop",
+            args=("tv", "tmdb", "999999", 9, 1),
+            payload={},
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, HTTP.NOT_FOUND)
+        self.assertEqual(response.json(), {"detail": "Could not resolve season."})
+        self.assertFalse(Episode.objects.filter(item__media_id="999999").exists())
 
 
 class MovieWatchTests(FloppyApiTestCase):
