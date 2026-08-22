@@ -811,6 +811,18 @@ class AppTagsTests(TestCase):
         self.assertNotIn(":", podcast_id)
         self.assertEqual(podcast_id, "track-podcast-itunes-1247343210-4")
 
+        # URL-shaped podcast media IDs must produce valid CSS selectors (#949).
+        podcast_url_like = SimpleNamespace(
+            media_type=MediaTypes.PODCAST.value,
+            media_id="https://api.spreaker.com/episode/74415563",
+        )
+        podcast_url_id = app_tags.component_id("history", podcast_url_like)
+        self.assertEqual(
+            podcast_url_id,
+            "history-podcast-https---api-spreaker-com-episode-74415563",
+        )
+        self.assertRegex(podcast_url_id, r"^[A-Za-z0-9_-]+$")
+
     def test_media_view_url(self):
         """Test the media_view_url tag."""
         # Test with object for TV

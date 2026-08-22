@@ -1,3 +1,4 @@
+import re
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from uuid import uuid4
@@ -1236,10 +1237,9 @@ def component_id(component_type, media, instance_id=None):
     if instance_id:
         component_id += f"-{instance_id}"
 
-    # media_id can contain ":" (e.g. podcast "itunes:12345"), which is invalid
-    # inside a CSS id selector (htmx resolves hx-target="#..." via
-    # querySelectorAll and throws on it).
-    return component_id.replace(":", "-")
+    # htmx resolves hx-target="#..." via querySelectorAll, so URL-shaped
+    # media IDs must not leave CSS selector punctuation in the component ID.
+    return re.sub(r"[^A-Za-z0-9_-]", "-", component_id)
 
 
 @register.simple_tag

@@ -11,8 +11,9 @@ The system prioritizes **TMDB IDs** as the canonical source of truth. All Plex e
 1.  **Explicit TMDB ID**: Extracted directly from Plex GUIDs (e.g., `tmdb://123`).
 2.  **IMDB/TVDB Lookup**: If only IMDB (`tt123`) or TVDB (`789`) IDs are present, the system queries the TMDB `find` API to resolve the corresponding `tmdb_id`.
 3.  **Title Search Fallback**:
-    -   If no external IDs are found (or they return 404s), the system performs a search against TMDB using the media title.
-    -   **TV Shows**: Uses `grandparentTitle` (series title) or `title`. Match attempts to filter by year if available.
+    -   For TV history entries, Plex item metadata and then show metadata from `grandparentRatingKey`/`grandparentKey` are checked before title search.
+    -   If no deterministic IDs are found (or they return 404s), the system performs a search against TMDB using the media title.
+    -   **TV Shows**: Uses `grandparentTitle` (series title) or `title` only after the Plex show-level lookup. Match attempts to filter by year if available.
     -   **Movies**: Uses `title` and `year`.
 
 **GUID extraction & conflicts:**
@@ -42,7 +43,7 @@ Plex history import uses Plex's history endpoint as the canonical event stream. 
 -   Sorted newest-first (`sort=viewedAt:desc`) and paged with `X-Plex-Container-Start`/`X-Plex-Container-Size`. `PLEX_HISTORY_PAGE_SIZE` controls page size; `PLEX_HISTORY_MAX_ITEMS` (0 = no cap) limits how far back we fetch. There is no time windowing, so re-importing overlapping ranges is expected.
 
 **Fields we rely on:**
--   IDs: `Guid`/`guid` entries with TMDB/IMDB/TVDB identifiers are required for deterministic resolution. Order is: resolve IDs from the history row (including title search when allowed); if missing, fetch `GET {server_uri}/library/metadata/{ratingKey}` to pull GUIDs (no title search in this step); if still missing, the movie/TV recorders may still fall back to title search when a title is available, otherwise the entry is skipped.
+-   IDs: `Guid`/`guid` entries with TMDB/IMDB/TVDB identifiers are required for deterministic resolution. For TV history, resolve IDs from the history row, fetch `GET {server_uri}/library/metadata/{ratingKey}` when needed, then inspect the Plex show at `grandparentRatingKey`/`grandparentKey` before allowing title search. Movies retain their existing title fallback when a title is available; otherwise the entry is skipped.
 -   Titles: `title` or `grandparentTitle` is required for title-search fallback; Plex-only GUIDs without a title are skipped.
 -   Timing: `viewedAt` or `lastViewedAt` (epoch seconds) is the authoritative `watched_at`. If missing, we fall back to import time; `viewCount`/`viewOffset` are ignored. Rows missing `viewedAt`/`lastViewedAt` are nondeterministic and can dedupe poorly across runs.
 -   TV structure: `parentIndex` (season) and `index` (episode) must be numeric. Missing numbers can cause the entry to be skipped or treated as a movie in show libraries.

@@ -8555,15 +8555,16 @@ class MediaDetailsViewTests(TestCase):
     def test_podcast_episode_fragment_renders_for_show_with_no_user_plays(self):
         """Podcast episode HTMX fragments should render when no play history exists."""
         show = PodcastShow.objects.create(
-            podcast_uuid="itunes:1002937870",
+            podcast_uuid="gpodder-show-1",
             title="Dear Hank & John",
             author="Hank and John",
             image="http://example.com/podcast.jpg",
             rss_feed_url="",
+            source=Sources.GPODDER.value,
         )
         PodcastEpisode.objects.create(
             show=show,
-            episode_uuid="dhj-episode-2",
+            episode_uuid="https://api.spreaker.com/episode/74415563",
             title="Episode Two",
             duration=1800,
         )
@@ -8575,6 +8576,16 @@ class MediaDetailsViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Episode Two")
+        self.assertContains(
+            response,
+            'id="history-podcast-https---api-spreaker-com-episode-74415563"',
+            html=False,
+        )
+        self.assertContains(
+            response,
+            'hx-target="#history-podcast-https---api-spreaker-com-episode-74415563"',
+            html=False,
+        )
 
     @patch("events.tasks.reload_calendar.apply_async")
     @patch("integrations.podcast_rss.fetch_episodes_from_rss")
