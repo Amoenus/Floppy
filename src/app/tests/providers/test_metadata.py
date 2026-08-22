@@ -2628,7 +2628,7 @@ class Metadata(TestCase):
 
 
 class CastOrderRegressionTests(TestCase):
-    """Regression tests for issue #92 — first cast member (order=0) being dropped."""
+    """Regression tests for cast ordering (issue #92) and TMDB aggregate role shapes."""
 
     def test_get_cast_credits_selects_top_role_across_wrapped_and_plain(self):
         """List-wrapped aggregate roles are a valid TMDB shape, not malformed.
@@ -2685,6 +2685,35 @@ class CastOrderRegressionTests(TestCase):
 
         self.assertEqual(result[0]["role"], "Wrapped Role")
         self.assertEqual(result[0]["episode_count"], 6)
+
+    def test_get_cast_credits_flat_dict_roles_unchanged(self):
+        """The canonical flat-dict aggregate shape must be unaffected by flattening.
+
+        Regression guard: the list-wrapping normalization must not change the
+        output for the documented TMDB shape where every role element is a
+        plain dict. Top role by episode_count and summed episode_count must
+        match the pre-flattening behavior.
+        """
+        credits_data = {
+            "cast": [
+                {
+                    "id": 1,
+                    "name": "Actor",
+                    "roles": [
+                        {"character": "Main Role", "episode_count": 8},
+                        {"character": "Recurring Role", "episode_count": 3},
+                    ],
+                    "known_for_department": "Acting",
+                    "gender": 2,
+                    "profile_path": None,
+                },
+            ],
+        }
+
+        result = tmdb.get_cast_credits(credits_data, is_aggregate=True)
+
+        self.assertEqual(result[0]["role"], "Main Role")
+        self.assertEqual(result[0]["episode_count"], 11)
 
     def test_get_cast_credits_order_zero_is_first(self):
         """Cast member with order=0 must sort before members with higher orders."""
