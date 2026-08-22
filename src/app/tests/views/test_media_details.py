@@ -124,6 +124,11 @@ class MediaDetailsViewTests(TestCase):
         self.assertEqual(response.context["media"]["title"], "Test Movie")
         self.assertContains(
             response,
+            'href="/history?media_type=movie&media_id=238&source=tmdb"',
+            html=False,
+        )
+        self.assertContains(
+            response,
             'class="order-1 mt-5 mb-6 flex flex-col gap-3 sm:order-2 sm:flex-row sm:flex-wrap sm:items-center"',
             html=False,
         )
@@ -133,6 +138,7 @@ class MediaDetailsViewTests(TestCase):
             "238",
             Sources.TMDB.value,
             language="en",
+            user=self.user,
         )
 
     @patch("integrations.tasks.fetch_collection_metadata_for_item.delay")
