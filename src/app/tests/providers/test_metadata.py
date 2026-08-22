@@ -2512,6 +2512,29 @@ class Metadata(TestCase):
 class CastOrderRegressionTests(TestCase):
     """Regression tests for issue #92 — first cast member (order=0) being dropped."""
 
+    def test_get_cast_credits_ignores_malformed_aggregate_roles(self):
+        """A malformed aggregate role must not break TV metadata processing."""
+        credits_data = {
+            "cast": [
+                {
+                    "id": 1,
+                    "name": "Actor",
+                    "roles": [
+                        [{"character": "Nested Role", "episode_count": 10}],
+                        {"character": "Valid Role", "episode_count": 3},
+                    ],
+                    "known_for_department": "Acting",
+                    "gender": 2,
+                    "profile_path": None,
+                },
+            ],
+        }
+
+        result = tmdb.get_cast_credits(credits_data, is_aggregate=True)
+
+        self.assertEqual(result[0]["role"], "Valid Role")
+        self.assertEqual(result[0]["episode_count"], 3)
+
     def test_get_cast_credits_order_zero_is_first(self):
         """Cast member with order=0 must sort before members with higher orders."""
         credits_data = {
