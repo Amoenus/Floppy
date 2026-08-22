@@ -2,6 +2,7 @@ from datetime import UTC, date, datetime
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import requests
 from django.contrib.auth import get_user_model
 from django.template.loader import render_to_string
 from django.test import RequestFactory, TestCase, override_settings
@@ -31,6 +32,7 @@ from app.models import (
     Sources,
     Status,
 )
+from app.providers import services
 from app.services.metadata_resolution import MetadataResolutionResult
 
 
@@ -180,6 +182,49 @@ class TrackModalViewTests(TestCase):
         self.assertContains(response, 'hx-post="/discover/toggle-hidden"', html=False)
         self.assertContains(response, 'name="action"', html=False)
         self.assertNotContains(response, "Custom Metadata")
+
+    def test_track_modal_keeps_tracked_tmdb_show_deletable_when_provider_returns_404(
+        self,
+    ):
+        """An existing show can still be deleted when TMDB has removed it."""
+        item = Item.objects.create(
+            media_id="279977",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Deleted Show",
+            image="https://example.com/deleted-show.jpg",
+        )
+        tv = TV.objects.create(
+            item=item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        not_found_response = requests.Response()
+        not_found_response.status_code = requests.codes.not_found
+        self.mock_get_media_metadata.side_effect = services.ProviderAPIError(
+            Sources.TMDB.value,
+            requests.exceptions.HTTPError(response=not_found_response),
+        )
+
+        response = self.client.get(
+            reverse(
+                "track_modal",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.TV.value,
+                    "media_id": item.media_id,
+                },
+            )
+            + "?return_url=/details/tmdb/tv/279977/deleted-show",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["general_existing_instance"], tv)
+        content = response.content.decode()
+        delete_start = content.index('formaction="/media_delete')
+        delete_button = content[delete_start : content.index("</button>", delete_start)]
+        self.assertIn("bg-red-700", delete_button)
+        self.assertNotIn("disabled", delete_button)
 
     def test_track_modal_view_existing_episode_exposes_score(self):
         """Episode history edits should use the standard modal with rating support."""

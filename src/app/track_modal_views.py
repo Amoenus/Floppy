@@ -1,3 +1,4 @@
+import logging
 from contextlib import suppress
 from datetime import UTC, date
 from uuid import uuid4
@@ -29,8 +30,10 @@ from app.models import (
 )
 from app.providers import hardcover, services
 from app.services import bulk_episode_tracking, metadata_resolution
+from app.services.metadata_fallback import stored_metadata_fallback
 
 RUNTIME_UNKNOWN_AIRED = 999998  # aired but runtime unknown
+logger = logging.getLogger(__name__)
 
 
 class _EmptyHistoryProxy:
@@ -516,13 +519,25 @@ def _render_standard_track_modal(
 
     if media_type in (MediaTypes.TV.value, MediaTypes.ANIME.value):
         if base_metadata is None:
-            base_metadata = services.get_media_metadata(
-                media_type,
-                media_id,
-                source,
-                [season_number],
-                language=metadata_resolution.metadata_language_default(request.user),
-            )
+            try:
+                base_metadata = services.get_media_metadata(
+                    media_type,
+                    media_id,
+                    source,
+                    [season_number],
+                    language=metadata_resolution.metadata_language_default(
+                        request.user,
+                    ),
+                )
+            except services.ProviderAPIError:
+                if metadata_item is None:
+                    raise
+                logger.warning(
+                    "Falling back to stored metadata for tracking modal media_id=%s "
+                    "due to provider API error",
+                    media_id,
+                )
+                base_metadata = stored_metadata_fallback(metadata_item)
         metadata_resolution_result = metadata_resolution.resolve_detail_metadata(
             request.user,
             item=metadata_item,

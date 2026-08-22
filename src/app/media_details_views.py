@@ -59,6 +59,7 @@ from app.models import (
 from app.models.episode_runtimes import build_season_runtime_index
 from app.providers import services, tmdb
 from app.services import metadata_resolution
+from app.services.metadata_fallback import stored_metadata_fallback
 from app.tag_views import (
     _build_detail_tag_sections,
     _detail_request_url,
@@ -71,24 +72,6 @@ from lists.views_helpers import get_public_list_for_item
 logger = logging.getLogger(__name__)
 
 RUNTIME_UNKNOWN_AIRED = 999998  # aired but runtime unknown
-
-
-def _stored_metadata_fallback(item):
-    """Build a minimal media_metadata dict from a stored Item when the provider is unreachable."""
-    return {
-        "media_id": item.media_id,
-        "source": item.source,
-        "media_type": item.media_type,
-        "title": item.title,
-        "original_title": item.original_title,
-        "localized_title": item.localized_title,
-        "image": item.image,
-        "synopsis": item.synopsis,
-        "genres": item.genres,
-        "cast": [],
-        "crew": [],
-        "studios_full": [],
-    }
 
 
 def _enrich_comic_issues(issues, user):
@@ -854,8 +837,9 @@ def media_details(
         and detail_item.metadata_fetched_at is not None
     )
 
+    provider_metadata_unavailable = False
     if can_skip_live_fetch:
-        media_metadata = _stored_metadata_fallback(detail_item)
+        media_metadata = stored_metadata_fallback(detail_item)
     else:
         try:
             media_metadata = services.get_media_metadata(
@@ -869,11 +853,12 @@ def media_details(
         except services.ProviderAPIError:
             if detail_item is None:
                 raise
+            provider_metadata_unavailable = True
             logger.warning(
                 "Falling back to stored metadata for media_id=%s due to provider API error",
                 media_id,
             )
-            media_metadata = _stored_metadata_fallback(detail_item)
+            media_metadata = stored_metadata_fallback(detail_item)
 
     if isinstance(media_metadata, dict):
         media_metadata.update(Item.title_fields_from_metadata(media_metadata))
@@ -912,6 +897,7 @@ def media_details(
     should_refresh_tmdb_titles = (
         request.user.is_authenticated
         and source == Sources.TMDB.value
+        and not provider_metadata_unavailable
         and tracking_media_type
         in (
             MediaTypes.MOVIE.value,
@@ -936,6 +922,7 @@ def media_details(
 
     should_refresh_tmdb_tv_credits = (
         source == Sources.TMDB.value
+        and not provider_metadata_unavailable
         and tracking_media_type in (MediaTypes.TV.value, MediaTypes.SEASON.value)
         and isinstance(media_metadata, dict)
         and not media_metadata.get("cast")

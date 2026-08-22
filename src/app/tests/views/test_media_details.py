@@ -436,6 +436,57 @@ class MediaDetailsViewTests(TestCase):
         )
 
     @patch("app.providers.services.get_media_metadata")
+    def test_media_details_keeps_tracked_tmdb_show_available_when_provider_returns_404(
+        self,
+        mock_get_metadata,
+    ):
+        """A tracked show remains usable when TMDB has removed its record."""
+        item = Item.objects.create(
+            media_id="279977",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Deleted Show",
+            image="https://example.com/deleted-show.jpg",
+            synopsis="Stored synopsis",
+        )
+        tv = TV.objects.create(
+            item=item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        self.user.title_display_preference = "original"
+        self.user.save(update_fields=["title_display_preference"])
+
+        not_found_response = requests.Response()
+        not_found_response.status_code = requests.codes.not_found
+        mock_get_metadata.side_effect = services.ProviderAPIError(
+            Sources.TMDB.value,
+            requests.exceptions.HTTPError(response=not_found_response),
+        )
+
+        response = self.client.get(
+            reverse(
+                "media_details",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.TV.value,
+                    "media_id": item.media_id,
+                    "title": "deleted-show",
+                },
+            ),
+            {"fragment": "secondary"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(
+            response,
+            "app/components/detail_secondary_content.html",
+        )
+        self.assertEqual(response.context["media"]["title"], "Deleted Show")
+        self.assertEqual(response.context["media"]["synopsis"], "Stored synopsis")
+        self.assertEqual(response.context["current_instance"], tv)
+
+    @patch("app.providers.services.get_media_metadata")
     def test_media_details_renders_top_action_row_between_chips_and_description(
         self, mock_get_metadata
     ):
