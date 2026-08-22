@@ -1393,6 +1393,7 @@ CELERY_TASK_ROUTES = {
         "priority": CELERY_TASK_PRIORITY_BACKGROUND
     },
     "Sync IMDB ratings from datasets": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
+    "Sync MAL ratings from API": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Warm Discover API Cache": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Warm Discover Startup Tabs": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Warm History Day Cache Coverage": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
@@ -1647,6 +1648,11 @@ CELERY_BEAT_SCHEDULE = {
     "sync_imdb_ratings": {
         "task": "Sync IMDB ratings from datasets",
         "schedule": crontab(hour=5, minute=0),  # every day at 5 AM
+        "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
+    },
+    "sync_mal_ratings": {
+        "task": "Sync MAL ratings from API",
+        "schedule": crontab(hour=5, minute=15),  # every day at 5:15 AM
         "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     },
 }

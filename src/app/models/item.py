@@ -137,6 +137,16 @@ class Item(CalendarTriggerMixin, models.Model):
         blank=True,
         help_text="Rating count from IMDB public datasets",
     )
+    mal_rating = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Average rating value from MyAnimeList",
+    )
+    mal_rating_count = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Rating count from MyAnimeList",
+    )
     igdb_user_rating = models.FloatField(
         null=True,
         blank=True,

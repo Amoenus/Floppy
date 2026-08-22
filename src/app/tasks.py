@@ -180,6 +180,7 @@ from app.tasks_igdb_ratings import (  # noqa: E402
     reconcile_igdb_rating_backfill,
 )
 from app.tasks_imdb import refresh_imdb_game_credits_from_datasets  # noqa: E402
+from app.tasks_mal import sync_mal_ratings_from_api  # noqa: E402
 from app.tasks_metadata_cache import (  # noqa: E402
     _clear_item_metadata_cache,
     _exception_with_details,
@@ -1204,6 +1205,7 @@ __all__ = [
     "reconcile_provider_backfill",
     "reconcile_trakt_popularity",
     "refresh_discover_rows",
+    "sync_mal_ratings_from_api",
     "warm_discover_api_cache",
     "warm_discover_startup_tabs",
     "warm_history_day_cache_coverage",
