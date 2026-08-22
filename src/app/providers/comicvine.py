@@ -1,4 +1,5 @@
 import logging
+import re
 
 import requests
 from bs4 import BeautifulSoup
@@ -300,6 +301,7 @@ def get_volume_issues(volume_id, limit=100):
     """Get the list of issues for a comic volume, sorted by issue number."""
     cache_key = f"{Sources.COMICVINE.value}_volume_{volume_id}_issues"
     data = cache.get(cache_key)
+    cache_hit = data is not None
 
     if data is None:
         params = {
@@ -337,9 +339,21 @@ def get_volume_issues(volume_id, limit=100):
             for item in response.get("results", [])
         ]
 
+    data = sorted(data, key=_volume_issue_sort_key)
+
+    if not cache_hit:
         cache.set(cache_key, data)
 
     return data
+
+
+def _volume_issue_sort_key(issue):
+    """Sort volume issues by their leading numeric issue number."""
+    issue_number = str(issue.get("issue_number") or "").lstrip()
+    match = re.match(r"\d+", issue_number)
+    if match:
+        return (0, int(match.group()))
+    return (1, 0)
 
 
 def get_publisher_comics(publisher_id, current_id, limit=15):
