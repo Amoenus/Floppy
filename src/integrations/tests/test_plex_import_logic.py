@@ -1996,6 +1996,115 @@ class TestPlexIdentityAndScorePreservation(TestCase):
         mock_tmdb_search.assert_not_called()
         mock_services_search.assert_not_called()
 
+    @patch("integrations.webhooks.base.app.providers.tmdb.search")
+    @patch("integrations.imports.plex.services.search")
+    @patch("integrations.webhooks.base.app.providers.tmdb.find")
+    @patch("integrations.imports.plex.plex_api.fetch_metadata")
+    def test_tv_history_prefers_show_guids_before_title_search(
+        self,
+        mock_fetch_metadata,
+        mock_tmdb_find,
+        mock_services_search,
+        mock_tmdb_search,
+    ):
+        """TV history must use Plex show IDs before its ambiguous title fallback."""
+        tv_item = Item.objects.create(
+            title="Reacher",
+            media_id="108978",
+            media_type=MediaTypes.TV.value,
+            source=Sources.TMDB.value,
+            image="https://example.com/reacher.jpg",
+        )
+        existing_tv = TV.objects.create(
+            item=tv_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+
+        def fetch_metadata(_token, _uri, rating_key):
+            if str(rating_key) == "28795":
+                return {
+                    "type": "show",
+                    "title": "Reacher",
+                    "year": 2022,
+                    "Guid": [
+                        {"id": "imdb://tt9288030"},
+                        {"id": "tmdb://108978"},
+                        {"id": "tvdb://366924"},
+                    ],
+                }
+            return {
+                "type": "episode",
+                "Guid": [{"id": "plex://episode/reacher"}],
+            }
+
+        mock_fetch_metadata.side_effect = fetch_metadata
+        mock_tmdb_find.return_value = {"tv_results": [{"id": "108978"}]}
+        mock_services_search.return_value = {
+            "results": [{"media_id": "273207", "title": "Reacher"}],
+        }
+        mock_tmdb_search.return_value = {
+            "results": [{"media_id": "273207", "title": "Reacher"}],
+        }
+
+        importer = self._importer()
+        importer._current_section_uri = "http://plex"
+        for episode_number in range(1, 5):
+            importer._process_entry(
+                {
+                    "type": "episode",
+                    "title": f"Reacher S04E{episode_number:02d}",
+                    "grandparentTitle": "Reacher",
+                    "grandparentKey": "/library/metadata/28795",
+                    "parentIndex": 4,
+                    "index": episode_number,
+                    "ratingKey": f"episode-rk-{episode_number}",
+                    "guid": "plex://episode/reacher",
+                    "accountID": "111",
+                    "viewedAt": 1700000000 + episode_number,
+                },
+                "http://plex",
+                "show",
+            )
+
+        self.assertEqual(len(importer._episode_records), 4)
+        self.assertEqual(
+            {record["tmdb_id"] for record in importer._episode_records},
+            {"108978"},
+        )
+        self.assertEqual(
+            {record["tvdb_show_id"] for record in importer._episode_records},
+            {"366924"},
+        )
+        mock_services_search.assert_not_called()
+        mock_tmdb_search.assert_not_called()
+
+        importer._tv_metadata_cache = {
+            "108978": {
+                "media_id": "108978",
+                "title": "Reacher",
+                "original_title": "Reacher",
+                "localized_title": "Reacher",
+                "image": "https://example.com/reacher.jpg",
+                "tvdb_id": "366924",
+                "season/4": {
+                    "image": "https://example.com/reacher-s4.jpg",
+                    "episodes": [
+                        {"episode_number": episode_number}
+                        for episode_number in range(1, 5)
+                    ],
+                },
+            },
+        }
+        importer._build_bulk_media()
+
+        self.assertEqual(len(importer.bulk_media[MediaTypes.EPISODE.value]), 4)
+        self.assertEqual(
+            importer.bulk_media[MediaTypes.SEASON.value][0].related_tv.pk,
+            existing_tv.pk,
+        )
+        self.assertFalse(Item.objects.filter(media_id="273207").exists())
+
 
 class TestPlexEpisodeResyncForExistingShow(TestCase):
     """Regression test for issue #541.
