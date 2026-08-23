@@ -2583,6 +2583,9 @@ components:
         image:
           type: string
           nullable: true
+        backdrop:
+          type: string
+          nullable: true
         synopsis:
           type: string
           nullable: true
@@ -2633,6 +2636,7 @@ components:
             type: object
             additionalProperties: {}
       required:
+      - backdrop
       - cast
       - consumptions
       - consumptions_number
@@ -2679,6 +2683,9 @@ components:
         max_progress:
           type: integer
         image:
+          type: string
+          nullable: true
+        backdrop:
           type: string
           nullable: true
         synopsis:
@@ -2732,6 +2739,7 @@ components:
             type: object
             additionalProperties: {}
       required:
+      - backdrop
       - cast
       - consumptions
       - consumptions_number

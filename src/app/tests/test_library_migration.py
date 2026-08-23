@@ -1,7 +1,7 @@
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from app.models import TV, Anime, Episode, Item, MediaTypes, Season, Sources, Status
@@ -321,6 +321,7 @@ class LibraryMoveViewTests(TestCase):
         self.assertNotContains(response, "target_media_id")
 
     @patch.object(anime_mapping, "resolve_provider_series_id")
+    @override_settings(TVDB_API_KEY="test-tvdb-key")
     def test_flat_anime_search_falls_back_to_verified_grouped_provider(
         self,
         mock_resolve_provider_series_id,

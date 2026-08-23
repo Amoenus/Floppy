@@ -148,6 +148,8 @@ class CompleteMediaResponseSerializer(serializers.Serializer):
     title = serializers.CharField(allow_blank=True, allow_null=True)
     max_progress = serializers.IntegerField()
     image = serializers.CharField(allow_blank=True, allow_null=True)
+    # FORK: 16:9 artwork
+    backdrop = serializers.CharField(allow_null=True)
     synopsis = serializers.CharField(allow_blank=True, allow_null=True)
     genres = serializers.ListField(child=serializers.CharField(), allow_null=True)
     score = serializers.FloatField(allow_null=True)

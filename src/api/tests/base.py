@@ -57,7 +57,7 @@ class FloppyApiTestCase(APITestCase):
                 "episodes": [],
             },
         )
-        self._metadata_patcher.start()
+        self._metadata_mock = self._metadata_patcher.start()
         self.addCleanup(self._metadata_patcher.stop)
 
         self.items_by_type = {
