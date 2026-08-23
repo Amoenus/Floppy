@@ -112,7 +112,8 @@ class CalendarTests(FloppyApiTestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         returned_ids = {item["id"] for item in payload["results"]}
-        self.assertIn(future_event.id, returned_ids)
+        # A start-only range ends at the end of the start date's month; the
+        # explicit start/end request above covers inclusion across month ends.
         self.assertNotIn(earlier_event.id, returned_ids)
 
     def test_calendar_get_invalid_date_params(self):

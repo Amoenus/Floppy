@@ -54,7 +54,11 @@ class FloppyApiTestCase(APITestCase):
             return_value={
                 "max_progress": None,
                 "related": {"seasons": [], "recommendations": []},
-                "episodes": [],
+                "episodes": [
+                    {"episode_number": 1},
+                    {"episode_number": 2},
+                    {"episode_number": 3},
+                ],
             },
         )
         self._metadata_patcher.start()
