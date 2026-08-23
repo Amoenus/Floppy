@@ -164,6 +164,16 @@ urlpatterns = [
         name="migrate_grouped_anime",
     ),
     path(
+        "details/library-move-search/<int:item_id>",
+        views.search_library_move_candidates,
+        name="search_library_move_candidates",
+    ),
+    path(
+        "details/library-move/<int:item_id>",
+        views.move_library_item,
+        name="move_library_item",
+    ),
+    path(
         "track_modal/<source:source>/<media_type:media_type>/<path:media_id>/<int:season_number>",
         views.track_modal,
         name="track_modal",

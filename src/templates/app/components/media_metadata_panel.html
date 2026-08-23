@@ -100,6 +100,37 @@
     </section>
   {% endif %}
 
+  {% if can_move_library_item and metadata_item and library_move_context %}
+    <section class="space-y-3">
+      <div>
+        <h3 class="text-xl font-semibold text-[var(--color-text)]">Move to {{ library_move_context.target_label }}</h3>
+        <p class="text-sm text-[var(--color-text-muted)] mt-1">
+          Search {{ library_move_context.target_source_label }} for the matching show. The selected title becomes the new tracking identity while your watch history and owned relations are retained when the destination supports them.
+        </p>
+      </div>
+      <input type="text"
+             name="q"
+             placeholder="Search {{ library_move_context.target_label }}..."
+             autocomplete="off"
+             role="combobox"
+             aria-autocomplete="list"
+             aria-controls="library-move-results"
+             hx-get="{% url 'search_library_move_candidates' item_id=metadata_item.id %}?return_url={{ return_url|urlencode }}"
+             hx-trigger="focus, keyup changed delay:250ms"
+             hx-target="#library-move-results"
+             hx-indicator="#library-move-search-indicator"
+             hx-swap="innerHTML"
+             class="w-full h-10 px-3 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]">
+      <div id="library-move-search-indicator"
+           class="htmx-indicator flex items-center gap-2 text-sm text-[var(--color-text-muted)]"
+           aria-live="polite">
+        <span class="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-500"></span>
+        Searching {{ library_move_context.target_source_label }}...
+      </div>
+      <div id="library-move-results"></div>
+    </section>
+  {% endif %}
+
   {% if can_manage_hardcover_edition %}
     <section class="space-y-3"
              x-data="{ editionOpen: false }"

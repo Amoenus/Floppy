@@ -8,8 +8,10 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.cache import cache
 from django.db.models import Max, Min
+from django.db.utils import OperationalError
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_GET, require_POST
@@ -21,6 +23,7 @@ from app import (
     metadata_utils,
     view_constants,
 )
+from app.db_retry import is_retryable_error, run_retryable_db_operation
 from app.log_safety import exception_summary, safe_url
 from app.models import (
     CollectionEntry,
@@ -35,6 +38,7 @@ from app.providers import hardcover, services, tmdb, tvdb
 from app.services import (
     anime_migration,
     bulk_episode_tracking,
+    library_migration,
     metadata_resolution,
 )
 from app.services import game_lengths as game_length_services
@@ -172,6 +176,126 @@ def search_remap_candidates(request, source, media_type, media_id):
             ),
         },
     )
+
+
+@login_required
+@require_GET
+def search_library_move_candidates(request, item_id):
+    """Search the configured destination provider for a library move."""
+    item = get_object_or_404(Item, id=item_id)
+    move_context = library_migration.get_move_context(request.user, item)
+    query = (request.GET.get("q") or "").strip()
+    results = []
+    if move_context and query:
+        try:
+            response = services.search(
+                move_context["target_media_type"],
+                query,
+                page=1,
+                source=move_context["target_source"],
+                user=request.user,
+                language=metadata_resolution.metadata_language_default(
+                    request.user,
+                ),
+            )
+            results = (response or {}).get("results") or []
+        except services.ProviderAPIError:
+            logger.warning(
+                "Destination library search failed for item %s",
+                item_id,
+                exc_info=True,
+            )
+
+    return render(
+        request,
+        "app/components/library_move_results.html",
+        {
+            "results": results,
+            "item_id": item.id,
+            "query": query,
+            "return_url": helpers.normalize_navigation_url(
+                request.GET.get("return_url"),
+            ),
+            **(move_context or {}),
+        },
+    )
+
+
+@login_required
+@require_POST
+def move_library_item(request, item_id):
+    """Move one owned TV/Anime show into an explicit destination identity."""
+    item = get_object_or_404(Item, id=item_id)
+    return_url = helpers.normalize_navigation_url(request.POST.get("return_url"))
+    target_media_type = request.POST.get("target_media_type")
+    target_source = request.POST.get("target_source")
+    target_media_id = request.POST.get("target_media_id")
+    is_htmx = request.headers.get("HX-Request") == "true"
+    try:
+        target_item = run_retryable_db_operation(
+            lambda: library_migration.migrate_library_item(
+                request.user,
+                item,
+                target_media_type,
+                target_source,
+                target_media_id,
+            ),
+            operation_name="TV/Anime library migration",
+        ).value
+    except OperationalError as error:
+        if not is_retryable_error(error):
+            raise
+        if is_htmx:
+            return render(
+                request,
+                "app/components/library_move_results.html",
+                {
+                    "error": (
+                        "The database is busy with another operation. "
+                        "Nothing was changed; please try Move again."
+                    ),
+                },
+            )
+        raise
+    except library_migration.LibraryMigrationError as error:
+        if is_htmx:
+            return render(
+                request,
+                "app/components/library_move_results.html",
+                {"error": str(error)},
+            )
+        messages.error(request, str(error))
+        if return_url and url_has_allowed_host_and_scheme(
+            return_url,
+            allowed_hosts=None,
+        ):
+            return redirect(return_url)
+        return redirect(
+            "media_details",
+            source=item.source,
+            media_type=library_migration.library_bucket(item),
+            media_id=item.media_id,
+            title=item.get_display_title(request.user) or "item",
+        )
+
+    messages.success(
+        request,
+        f"Moved tracking to {target_item.get_display_title(request.user) or 'the selected title'}.",
+    )
+    destination_url = reverse(
+        "media_details",
+        kwargs={
+            "source": target_item.source,
+            "media_type": library_migration.library_bucket(target_item),
+            "media_id": target_item.media_id,
+            "title": target_item.get_display_title(request.user) or "item",
+        },
+    )
+    if is_htmx:
+        response = HttpResponse(status=204)
+        response["HX-Redirect"] = destination_url
+        return response
+    return redirect(destination_url)
 
 
 @login_required

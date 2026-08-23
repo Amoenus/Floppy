@@ -513,6 +513,24 @@ class TVDBProviderTests(TestCase):
         self.assertEqual(result["results"][0]["title"], "Sword Art Online")
         self.assertEqual(result["results"][0]["localized_title"], "Sword Art Online")
 
+    @patch("app.providers.tvdb._with_preferred_translation", side_effect=lambda row, *args, **kwargs: row)
+    @patch("app.providers.tvdb._request")
+    def test_search_promotes_direct_title_matches(self, mock_request, _mock_translation):
+        """Direct title matches should outrank broad TVDB search matches."""
+        rows = [
+            {"id": index, "name": f"Unrelated Series {index}"}
+            for index in range(1, 20)
+        ]
+        rows[-1] = {
+            "id": 424536,
+            "name": "Frieren: Beyond Journey's End",
+        }
+        mock_request.return_value = {"data": rows}
+
+        result = tvdb.search(MediaTypes.TV.value, "Frieren", 1)
+
+        self.assertEqual(result["results"][0]["media_id"], "424536")
+
     @override_settings(TMDB_LANG="ja")
     @patch("app.providers.tvdb._request")
     def test_search_prefers_configured_language_translation_rows(self, mock_request):

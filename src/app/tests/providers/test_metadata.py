@@ -2729,6 +2729,25 @@ class CastOrderRegressionTests(TestCase):
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]["sort_order"], 0)
 
+    def test_normalize_credit_rows_coerces_non_string_text_fields(self):
+        """Provider numeric text fields must not crash credit normalization."""
+        result = _normalize_credit_rows(
+            [
+                {
+                    "person_id": 42,
+                    "name": 123,
+                    "image": 456,
+                    "known_for_department": 789,
+                    "role": 101,
+                    "department": 112,
+                },
+            ],
+        )
+
+        self.assertEqual(result[0]["name"], "123")
+        self.assertEqual(result[0]["known_for_department"], "789")
+        self.assertEqual(result[0]["role"], "101")
+
 
 class OpenLibraryPublishDateTests(TestCase):
     """Cover the free-form publish_date formats OpenLibrary returns."""

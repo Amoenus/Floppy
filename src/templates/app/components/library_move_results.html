@@ -1,0 +1,54 @@
+{% load app_tags %}
+
+{% if error %}
+  <p class="mt-2 rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-300" role="alert">{{ error }}</p>
+{% elif results %}
+  <div class="mt-2 space-y-2 rounded-md border border-gray-600 bg-[var(--color-surface)] p-2">
+    <p class="px-2 pb-1 text-xs text-[var(--color-text-muted)]">
+      Confirm the exact title before moving your tracking identity.
+    </p>
+    {% for result in results %}
+      <form method="post"
+            action="{% url 'move_library_item' item_id=item_id %}"
+            hx-post="{% url 'move_library_item' item_id=item_id %}"
+            hx-target="#library-move-results"
+            hx-swap="innerHTML"
+            hx-indicator="this"
+            x-data="{ moving: false }"
+            @submit="moving = true"
+            class="relative">
+        {% csrf_token %}
+        <input type="hidden" name="target_media_type" value="{{ target_media_type }}">
+        <input type="hidden" name="target_source" value="{{ target_source }}">
+        <input type="hidden" name="target_media_id" value="{{ result.media_id }}">
+        <input type="hidden" name="return_url" value="{{ return_url }}">
+        <button type="submit"
+                :disabled="moving"
+                class="flex w-full items-center gap-3 rounded-md px-2 py-2 text-left hover:bg-[var(--color-surface-strong)] disabled:cursor-wait disabled:opacity-60">
+          {% if result.image %}
+            <img src="{{ result.image|image_url }}" alt="" loading="lazy" class="h-12 w-9 rounded object-cover bg-[var(--color-surface-alt)] shrink-0">
+          {% else %}
+            <span class="flex h-12 w-9 items-center justify-center rounded bg-[var(--color-surface-alt)] text-gray-600 shrink-0">
+              {% include "app/icons/magnifying-glass.svg" with classes="w-4 h-4" %}
+            </span>
+          {% endif %}
+          <span class="min-w-0 flex-1">
+            <span class="block truncate text-sm text-[var(--color-text)]">{{ result.title }}</span>
+            <span class="block truncate text-xs text-[var(--color-text-muted)]">
+              {{ target_source_label }}{% if result.year %} · {{ result.year }}{% endif %}
+            </span>
+          </span>
+          <span class="shrink-0 rounded bg-indigo-600 px-2 py-1 text-xs text-white">
+            <span x-show="!moving">Move</span>
+            <span x-show="moving" class="inline-flex items-center gap-1">
+              <span class="animate-spin rounded-full h-3 w-3 border-b border-white"></span>
+              Moving...
+            </span>
+          </span>
+        </button>
+      </form>
+    {% endfor %}
+  </div>
+{% elif query %}
+  <p class="mt-2 px-2 text-sm text-[var(--color-text-muted)]">No matching titles found.</p>
+{% endif %}
