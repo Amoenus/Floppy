@@ -22,7 +22,7 @@
     <div class="w-full md:w-1/4 max-w-[250px] mx-auto md:mx-0">
       <img alt="{{ media|display_title:user }}"
            class="w-full rounded-lg shadow-lg bg-[var(--color-surface)] object-cover"
-           src="{{ media.image }}">
+           src="{{ media.image|image_url }}">
     </div>
 
     {# Media details #}
@@ -218,7 +218,7 @@
 
       <div class="flex flex-col sm:contents">
       {# Score chips #}
-      {% if media.score_count is not None or trakt_score or imdb_score or user_medias and current_instance and not public_view|default:False %}
+      {% if media.score_count is not None or trakt_score or imdb_score or mal_score or user_medias and current_instance and not public_view|default:False %}
         <div class="order-2 mt-0 mb-5 flex w-full items-center justify-start gap-2 sm:order-1 sm:mt-4 sm:flex-wrap">
           {% if media.score_count is not None %}
             <div class="relative"
@@ -360,15 +360,32 @@
             </div>
           {% endif %}
 
+          {% if mal_score %}
+            <div class="inline-flex h-[1.875rem] min-w-0 shrink-0 items-center gap-0.5 overflow-hidden rounded-full border border-indigo-400/18 bg-indigo-500/[0.07] pl-0 pr-1.5 text-[12px] text-white shadow-sm sm:h-8 sm:gap-2 sm:pr-3 sm:text-sm">
+              <span class="sr-only">MyAnimeList score</span>
+              <span class="-my-px -ml-px flex h-[1.875rem] w-[1.875rem] shrink-0 items-center justify-center rounded-full border border-indigo-400/28 bg-indigo-500/14 sm:h-8 sm:w-8">
+                <img src="{% static 'img/myanimelist-logo.svg' %}"
+                     alt=""
+                     aria-hidden="true"
+                     class="h-3.5 w-3.5 object-contain sm:h-4 sm:w-4">
+              </span>
+              {% if mal_score.rating is not None %}
+                <span class="text-[12px] font-semibold text-[var(--color-text)] sm:text-sm">{{ mal_score.rating }}</span>
+              {% endif %}
+              <span class="text-[12px] text-[var(--color-text-muted)] sm:text-sm">|</span>
+              <span class="truncate text-[12px] text-[var(--color-text-secondary)] sm:text-sm">{{ mal_score.rating_count|intcomma }} rating{{ mal_score.rating_count|pluralize }}</span>
+            </div>
+          {% endif %}
+
           {% include "app/components/detail_score_chip_slot.html" with media=media current_instance=current_instance media_type=media_type user=user user_medias=user_medias public_view=public_view csrf_token=csrf_token only %}
 
         </div>
       {% endif %}
 
       {% if not public_view|default:False %}
-        {% if not activity_subtitle and media.score_count is None and not trakt_score and not imdb_score and not user_medias %}
+        {% if not activity_subtitle and media.score_count is None and not trakt_score and not imdb_score and not mal_score and not user_medias %}
           <div class="order-1 mt-5 mb-6 flex flex-col gap-3 sm:order-2 sm:flex-row sm:flex-wrap sm:items-center">
-        {% elif not activity_subtitle and media.score_count is None and not trakt_score and not imdb_score and user_medias and not current_instance %}
+        {% elif not activity_subtitle and media.score_count is None and not trakt_score and not imdb_score and not mal_score and user_medias and not current_instance %}
           <div class="order-1 mt-5 mb-6 flex flex-col gap-3 sm:order-2 sm:flex-row sm:flex-wrap sm:items-center">
         {% else %}
           <div class="order-1 mb-6 flex flex-col gap-3 sm:order-2 sm:flex-row sm:flex-wrap sm:items-center">
@@ -509,7 +526,7 @@
                              class="inline-flex h-8 items-center gap-2 rounded-full border {{ detail_link.chip_classes }} pl-0 pr-3 text-sm text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:brightness-110">
                             <span class="-my-px -ml-px flex h-8 w-8 shrink-0 items-center justify-center rounded-full border {{ detail_link.badge_classes }}">
                               {% if detail_link.logo_src %}
-                                <img src="{{ detail_link.logo_src }}"
+                                <img src="{{ detail_link.logo_src|image_url }}"
                                      alt=""
                                      aria-hidden="true"
                                      class="h-4 w-4 object-contain">
@@ -620,7 +637,7 @@
               </button>
             </form>
           </div>
-        {% if activity_subtitle or media.score_count is not None or trakt_score or imdb_score or user_medias and current_instance %}
+        {% if activity_subtitle or media.score_count is not None or trakt_score or imdb_score or mal_score or user_medias and current_instance %}
             </div>
         {% endif %}
         </div>

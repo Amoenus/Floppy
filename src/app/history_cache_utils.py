@@ -46,6 +46,7 @@ HISTORY_STALE_AFTER = _coerce_timedelta(
     timedelta(hours=1),
 )
 HISTORY_DAYS_PER_PAGE = 30
+HISTORY_ENTRIES_PER_DAY_PAGE = 30
 HISTORY_WARM_DAYS = getattr(settings, "HISTORY_CACHE_WARM_DAYS", 0)
 HISTORY_COLD_MISS_WARM_DAYS = getattr(
     settings,

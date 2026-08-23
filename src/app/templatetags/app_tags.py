@@ -1,3 +1,4 @@
+import re
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from uuid import uuid4
@@ -10,7 +11,7 @@ from django.utils.dateparse import parse_date
 from django.utils.html import format_html
 from unidecode import unidecode
 
-from app import config, helpers
+from app import config, helpers, image_cache
 from app.models import Item, MediaTypes, Sources, Status
 from app.providers import tmdb
 from app.services import metadata_resolution
@@ -66,6 +67,12 @@ def get_static_file_mtime(file_path):
 def no_underscore(arg1):
     """Return the title case of the string."""
     return arg1.replace("_", " ")
+
+
+@register.filter
+def image_url(value):
+    """Return a safe Floppy image proxy URL when external caching is enabled."""
+    return image_cache.rewrite_image_url(value)
 
 
 @register.filter
@@ -1236,10 +1243,9 @@ def component_id(component_type, media, instance_id=None):
     if instance_id:
         component_id += f"-{instance_id}"
 
-    # media_id can contain ":" (e.g. podcast "itunes:12345"), which is invalid
-    # inside a CSS id selector (htmx resolves hx-target="#..." via
-    # querySelectorAll and throws on it).
-    return component_id.replace(":", "-")
+    # htmx resolves hx-target="#..." via querySelectorAll, so URL-shaped
+    # media IDs must not leave CSS selector punctuation in the component ID.
+    return re.sub(r"[^A-Za-z0-9_-]", "-", component_id)
 
 
 @register.simple_tag

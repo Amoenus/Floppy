@@ -23,7 +23,12 @@ This document captures the end-to-end Pocket Casts workflow in Yamtrack: connect
 - **Pocket Casts API** (`src/integrations/pocketcasts_api.py` and `src/integrations/imports/pocketcasts.py`):
   - `POST /user/login` for credentials login (returns access/refresh tokens).
   - `POST /user/refresh` for token refresh.
-  - `POST /user/history` returns the last 100 history entries (no pagination).
+  - `POST /user/history` returns the last 100 history entries (no pagination). Not currently called
+    by the importer (only referenced by the unused `pocketcasts_api.validate_token`). Pocket Casts'
+    own support docs confirm this history is account-wide and subscription-independent — it includes
+    episodes from shows the user has since unfollowed — but the 100-entry cap has no known
+    workaround, so it can only supplement forward-looking sync, not backfill full unfollowed-show
+    history. See "Unfollowed-show history (issue #609)" below for the discovery writeup.
   - `POST /user/podcast/list` returns show metadata (descriptions, titles, authors).
   - `GET /discover/images/{size}/{podcast_uuid}.jpg` for authenticated artwork (used as fallback).
 - **RSS feeds** (`src/integrations/podcast_rss.py`): public RSS/Atom parsing for full episode lists and metadata.
@@ -201,6 +206,41 @@ This is the critical area for recurring sync issues.
 - **Title/date matching is fragile**: missing `published` dates or minor title changes prevent merges.
 - **UUID churn from RSS**: episodes created from RSS with a hash GUID cannot be matched later without title/date; they remain as parallel episodes.
 - **Concurrent imports are not serialized**: recurring + manual imports can overlap.
+
+## Unfollowed-show history (issue #609)
+Discovery for [#609](https://github.com/dannyvfilms/Floppy/issues/609): can Floppy import listening
+history for Pocket Casts shows the user has since unfollowed?
+
+- **The current importer cannot see this history at all.** `import_data()` discovers episodes by
+  walking `POST /user/podcast/list` (subscribed shows) and then `POST /user/podcast/episodes` per
+  show. A show that's been unfollowed is absent from `/user/podcast/list`, so nothing about it is
+  ever fetched, regardless of past listening.
+- **`POST /user/history` is the account-wide, subscription-independent source.** Pocket Casts' own
+  support docs state Listening History "will show episodes regardless of whether you are following
+  the podcast or not." Multiple independent reverse-engineered clients (e.g.
+  `rv3392/spotify-to-pocketcasts`, the `pocketcasts` npm package) confirm the endpoint is a plain
+  bearer-token `POST` with no required body.
+- **It is capped at the last 100 played episodes with no known pagination.** This matches Pocket
+  Casts' own documented behavior for the official apps ("will only show the last 100 episodes
+  you've played") and this repo's existing note next to the endpoint. No pagination/cursor
+  parameter is documented by any community client.
+- **Live re-verification against a real connected account was inconclusive, not disproving.**
+  Testing from this repo (2026-08) got `400 Bad Request` from `/user/history` across several
+  request-body variants matching what community clients use — but a known-good, currently-used
+  endpoint (`/user/podcast/list`) also started 400ing after the same short burst of test calls,
+  which points to rate-limiting from the test itself rather than a genuinely broken contract. The
+  account's stored token/connection state was unaffected. Re-testing should be a single, isolated
+  request (not a burst) if attempted again.
+
+**Conclusion:** unfollowed-show history is *proven reachable in principle* via `/user/history`
+(subscription-independent, confirmed by Pocket Casts' own docs), but *hard-capped at 100 entries
+account-wide* with no way to page past it — so it can only catch unfollowed-show plays going
+forward from whenever `/user/history` polling is added, not backfill history older than the last
+100 plays. That gap is a Pocket Casts platform limitation, not something Floppy can work around.
+Per this issue's scope rule, no importer/endpoint changes were made here — a follow-up
+implementation (poll `/user/history` in addition to the existing per-show walk, using new episode
+UUIDs not present in `podcast_metadata` to trigger `_fetch_show_full_metadata` lookups) should be
+its own scoped issue if pursued.
 
 ## Cache refresh
 - When podcasts are imported, `schedule_history_refresh` and `statistics_cache.schedule_all_ranges_refresh` are called to keep history and stats caches fresh.

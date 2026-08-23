@@ -27,7 +27,7 @@
       {% endif %}>
     <td class="px-2 py-3">
       <a href="{{ entry.item|media_url }}" class="flex items-center gap-3">
-        <img src="{{ entry.item.image|default:IMG_NONE }}"
+        <img src="{{ entry.item.image|default:IMG_NONE|image_url }}"
              class="w-10 h-14 object-cover bg-[var(--color-surface-alt)] rounded shrink-0"
              loading="lazy"
              alt="">

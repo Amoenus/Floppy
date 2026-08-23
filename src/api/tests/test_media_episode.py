@@ -3,7 +3,7 @@ from unittest.mock import patch
 from django.db.utils import OperationalError
 from django.urls import reverse
 
-from app.models import MediaTypes, Sources
+from app.models import Episode, Item, MediaTypes, Sources
 
 from .base import FloppyApiTestCase
 from .helpers import (
@@ -16,6 +16,22 @@ from .helpers import (
 
 class MediaEpisodeTests(FloppyApiTestCase):
     """Validate episode endpoint contracts."""
+
+    def setUp(self):
+        """Use an authoritative episode list for episode-route tests."""
+        super().setUp()
+        self._episode_metadata_patcher = patch(
+            "api.views.services.get_media_metadata",
+            return_value={
+                "episodes": [
+                    {"episode_number": episode_number}
+                    for episode_number in (1, 2, 3)
+                ],
+                "related": {"seasons": [{"season_number": 1}]},
+            },
+        )
+        self._episode_metadata_patcher.start()
+        self.addCleanup(self._episode_metadata_patcher.stop)
 
     def test_episode_endpoints_reject_non_tv_media_type(self):
         """Episode endpoints should return 400 when media_type is not tv."""
@@ -457,8 +473,8 @@ class MediaEpisodeTests(FloppyApiTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["results"], [])
 
-    def test_episode_consumption_history_invalid_episode_id_returns_empty_results(self):
-        """Episode history endpoint should return empty results for unknown episode."""
+    def test_episode_consumption_history_invalid_episode_id_returns_not_found(self):
+        """Episode history endpoint should reject unknown episode numbers."""
         tv_item = self.items_by_type[MediaTypes.TV.value][0]
         season_item = self.items_by_type[MediaTypes.SEASON.value][0]
         response = self.call_api(
@@ -474,8 +490,78 @@ class MediaEpisodeTests(FloppyApiTestCase):
             headers=self.auth_headers,
         )
 
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["results"], [])
+        self.assertEqual(response.status_code, 404)
+
+    def test_episode_consumption_history_cleans_up_detached_episode(self):
+        """Invalid history access removes the matching detached play rows."""
+        tv_item = self.items_by_type[MediaTypes.TV.value][0]
+        season_item = self.items_by_type[MediaTypes.SEASON.value][0]
+        detached_item = Item.objects.create(
+            media_id=tv_item.media_id,
+            source=tv_item.source,
+            media_type=MediaTypes.EPISODE.value,
+            title="Detached episode",
+            season_number=season_item.season_number,
+            episode_number=999,
+        )
+        detached_episode = Episode.objects.create(
+            item=detached_item,
+            related_season=self.season_medias[0],
+        )
+
+        response = self.call_api(
+            "get",
+            "api_media_episode_consumption_history",
+            args=(
+                MediaTypes.TV.value,
+                tv_item.source,
+                tv_item.media_id,
+                season_item.season_number,
+                999,
+            ),
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertFalse(Episode.objects.filter(pk=detached_episode.pk).exists())
+        self.assertTrue(Item.objects.filter(pk=detached_item.pk).exists())
+
+    def test_episode_history_provider_failure_preserves_detached_history(self):
+        """Unavailable provider metadata must not trigger destructive cleanup."""
+        tv_item = self.items_by_type[MediaTypes.TV.value][0]
+        season_item = self.items_by_type[MediaTypes.SEASON.value][0]
+        detached_item = Item.objects.create(
+            media_id=tv_item.media_id,
+            source=tv_item.source,
+            media_type=MediaTypes.EPISODE.value,
+            title="Detached episode",
+            season_number=season_item.season_number,
+            episode_number=999,
+        )
+        detached_episode = Episode.objects.create(
+            item=detached_item,
+            related_season=self.season_medias[0],
+        )
+
+        with patch(
+            "api.views.services.get_media_metadata",
+            side_effect=RuntimeError("provider unavailable"),
+        ):
+            response = self.call_api(
+                "get",
+                "api_media_episode_consumption_history",
+                args=(
+                    MediaTypes.TV.value,
+                    tv_item.source,
+                    tv_item.media_id,
+                    season_item.season_number,
+                    999,
+                ),
+                headers=self.auth_headers,
+            )
+
+        self.assertEqual(response.status_code, 500)
+        self.assertTrue(Episode.objects.filter(pk=detached_episode.pk).exists())
 
     def test_episode_consumption_entry_detail_get_returns_expected_structure(self):
         """Episode history entry-detail GET should return serialized consumption."""
@@ -533,7 +619,7 @@ class MediaEpisodeTests(FloppyApiTestCase):
         with patch(
             "app.models.providers.services.get_media_metadata",
             return_value={
-                f"season/{season_item.season_number}": {"episodes": [{}, {}]},
+                "episodes": [{"episode_number": episode_item.episode_number}],
                 "related": {"seasons": [{"season_number": season_item.season_number}]},
             },
         ):

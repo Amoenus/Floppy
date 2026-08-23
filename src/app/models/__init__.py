@@ -1,6 +1,7 @@
 # Kept as a package attribute: model modules and many test patch targets
 # resolve app.models.providers, from when app/models.py was a single module.
 from app import providers  # noqa: F401
+from app.models.application_settings import ApplicationSettings
 from app.models.choices import MediaTypes, ProviderMetadataStatus, Sources, Status
 from app.models.credits import (
     CREDITS_BACKFILL_VERSION,
@@ -58,6 +59,7 @@ from app.models.music import (
     ArtistMember,
     ArtistTracker,
     Music,
+    MusicReleasePreference,
     Track,
 )
 from app.models.playback import PlaybackProgress
@@ -86,6 +88,7 @@ __all__ = [
     "AlbumArtist",
     "AlbumTracker",
     "Anime",
+    "ApplicationSettings",
     "Artist",
     "ArtistMember",
     "ArtistTracker",
@@ -121,6 +124,7 @@ __all__ = [
     "Movie",
     "MoviePlay",
     "Music",
+    "MusicReleasePreference",
     "Person",
     "PersonGender",
     "PlaybackProgress",

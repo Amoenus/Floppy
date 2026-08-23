@@ -59,6 +59,11 @@ def _as_int(value):
         return None
 
 
+def _as_text(value):
+    """Normalize provider text fields that may arrive as non-string values."""
+    return str(value or "").strip()
+
+
 def is_regular_show_cast_credit(source, sort_order):
     """Return whether a show-level cast credit should count as series-regular fallback."""
     if source != Sources.TMDB.value:
@@ -236,14 +241,14 @@ def _normalize_credit_rows(rows):
         normalized.append(
             {
                 "person_id": str(person_id),
-                "name": (row.get("name") or "").strip(),
-                "image": (row.get("image") or "").strip(),
-                "known_for_department": (row.get("known_for_department") or "").strip(),
+                "name": _as_text(row.get("name")),
+                "image": _as_text(row.get("image")),
+                "known_for_department": _as_text(row.get("known_for_department")),
                 "gender": _coerce_gender(row.get("gender")),
-                "role": (
+                "role": _as_text(
                     row.get("role") or row.get("character") or row.get("job") or ""
-                ).strip(),
-                "department": (row.get("department") or "").strip(),
+                ),
+                "department": _as_text(row.get("department")),
                 "sort_order": _as_int(
                     row["order"]
                     if "order" in row and row["order"] is not None
@@ -263,8 +268,8 @@ def _normalize_studio_rows(rows):
         normalized.append(
             {
                 "studio_id": str(studio_id),
-                "name": (row.get("name") or "").strip(),
-                "logo": (row.get("logo") or "").strip(),
+                "name": _as_text(row.get("name")),
+                "logo": _as_text(row.get("logo")),
                 "sort_order": _as_int(
                     row["order"]
                     if "order" in row and row["order"] is not None
@@ -394,14 +399,14 @@ def _normalize_author_rows(rows):
         normalized.append(
             {
                 "person_id": str(person_id),
-                "name": (row.get("name") or "").strip(),
-                "image": (row.get("image") or "").strip(),
-                "known_for_department": (
+                "name": _as_text(row.get("name")),
+                "image": _as_text(row.get("image")),
+                "known_for_department": _as_text(
                     row.get("known_for_department") or row.get("department") or "Author"
-                ).strip(),
+                ),
                 "gender": _coerce_gender(row.get("gender")),
-                "role": (row.get("role") or "").strip(),
-                "department": (row.get("department") or "").strip(),
+                "role": _as_text(row.get("role")),
+                "department": _as_text(row.get("department")),
                 "sort_order": _as_int(
                     row["order"]
                     if "order" in row and row["order"] is not None
@@ -475,16 +480,14 @@ def upsert_person_profile(source, source_person_id, metadata):
         source=source,
         source_person_id=str(source_person_id),
         defaults={
-            "name": (metadata.get("name") or "").strip() or "Unknown Person",
-            "image": (metadata.get("image") or "").strip(),
-            "known_for_department": (
-                metadata.get("known_for_department") or ""
-            ).strip(),
-            "biography": (metadata.get("biography") or "").strip(),
+            "name": _as_text(metadata.get("name")) or "Unknown Person",
+            "image": _as_text(metadata.get("image")),
+            "known_for_department": _as_text(metadata.get("known_for_department")),
+            "biography": _as_text(metadata.get("biography")),
             "gender": _coerce_gender(metadata.get("gender")),
             "birth_date": _coerce_iso_date(metadata.get("birth_date")),
             "death_date": _coerce_iso_date(metadata.get("death_date")),
-            "place_of_birth": (metadata.get("place_of_birth") or "").strip(),
+            "place_of_birth": _as_text(metadata.get("place_of_birth")),
         },
     )
     return person

@@ -8,6 +8,11 @@ register_converter(converters.SourceChecker, "source")
 
 
 urlpatterns = [
+    path(
+        "image-cache/<str:token>",
+        views.serve_image_cache,
+        name="image_cache",
+    ),
     path("", views.home, name="home"),
     path("discover", views.discover_page, name="discover"),
     path("discover/rows", views.discover_rows, name="discover_rows"),
@@ -55,6 +60,16 @@ urlpatterns = [
         "details/music/artist/<int:artist_id>/<slug:artist_slug>/album/<int:album_id>/<slug:album_slug>/",
         views.music_album_details,
         name="music_album_details",
+    ),
+    path(
+        "details/music/album/<int:album_id>/releases",
+        views.list_music_releases,
+        name="list_music_releases",
+    ),
+    path(
+        "details/music/album/<int:album_id>/release",
+        views.set_music_release,
+        name="set_music_release",
     ),
     path(
         "details/<source:source>/tv/<str:media_id>/<str:title>/season/<int:season_number>/episode/<int:episode_number>",
@@ -149,6 +164,16 @@ urlpatterns = [
         name="migrate_grouped_anime",
     ),
     path(
+        "details/library-move-search/<int:item_id>",
+        views.search_library_move_candidates,
+        name="search_library_move_candidates",
+    ),
+    path(
+        "details/library-move/<int:item_id>",
+        views.move_library_item,
+        name="move_library_item",
+    ),
+    path(
         "track_modal/<source:source>/<media_type:media_type>/<path:media_id>/<int:season_number>",
         views.track_modal,
         name="track_modal",
@@ -166,6 +191,7 @@ urlpatterns = [
     path("media_save", views.media_save, name="media_save"),
     path("media_delete", views.media_delete, name="media_delete"),
     path("media_rewatch", views.media_rewatch, name="media_rewatch"),
+    path("retry", views.retry_startup_check, name="retry_startup_check"),
     path("episode_save", views.episode_save, name="episode_save"),
     path("episode_drop", views.episode_drop, name="episode_drop"),
     path("episode_bulk_save", views.episode_bulk_save, name="episode_bulk_save"),
@@ -239,6 +265,11 @@ urlpatterns = [
         name="statistics_talent_fragment",
     ),
     path("history", views.history, name="history"),
+    path(
+        "history/day/<str:day_key>",
+        views.history_day_fragment,
+        name="history_day_fragment",
+    ),
     path("api/history-genres/", views.history_genres, name="history_genres"),
     path(
         "person/<source:source>/<str:person_id>/<slug:name>",

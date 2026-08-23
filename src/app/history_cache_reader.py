@@ -187,6 +187,34 @@ def get_month_history(user, year: int, month: int, logging_style_override=None):
     return history_days, cache_meta
 
 
+def get_cached_history_day(user, day_key, logging_style_override=None):
+    """Read one cached history day, repairing only that day on a miss."""
+    normalized_day_key = _day_key_from_value(day_key)
+    if not normalized_day_key:
+        return None
+
+    logging_style = _normalize_logging_style(logging_style_override, user)
+    cache_key = _day_cache_key(user.id, logging_style, normalized_day_key)
+    payload = cache.get(cache_key)
+    if payload is not None:
+        return _deserialize_history_day(payload)
+
+    logger.warning(
+        "history_day_fragment_cache_miss user_id=%s logging_style=%s day_key=%s",
+        user.id,
+        logging_style,
+        normalized_day_key,
+    )
+    day_payload = _build_and_cache_history_day(
+        user,
+        normalized_day_key,
+        logging_style_override=logging_style,
+    )
+    if day_payload is None:
+        return None
+    return day_payload
+
+
 def get_history_days(
     user, filters=None, date_filters=None, logging_style_override=None
 ):

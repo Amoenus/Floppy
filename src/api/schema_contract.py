@@ -6,7 +6,7 @@ from typing import Any, NamedTuple
 
 from floppy_mcp.http_manifest import MCP_HTTP_MANIFEST
 
-from api.contract_serializers import InfoResponseSerializer
+from api.contract_serializers import DetailErrorSerializer, InfoResponseSerializer
 
 SCHEMA_REGENERATION_COMMAND = (
     "SECRET=test-only uv run --no-sync python src/manage.py spectacular "
@@ -268,7 +268,12 @@ _STATIC_OPERATION_OVERRIDES = {
         "/api/v1/media/{media_type}/{source}/{media_id}/{season_number}/"
         "episodes/{episode_number}/watch/",
         "POST",
-    ): {"responses": {201: _TRACKED_MEDIA_REF}},
+    ): {
+        "responses": {
+            201: _TRACKED_MEDIA_REF,
+            404: DetailErrorSerializer,
+        }
+    },
     ("/api/v1/music/songs/plays/", "POST"): {
         "responses": {201: _TRACKED_MEDIA_REF}
     },

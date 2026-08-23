@@ -20,7 +20,7 @@ from .helpers import date_parser
 
 logger = logging.getLogger(__name__)
 
-TVMAZE_MAP_CACHE_VERSION = 2
+TVMAZE_MAP_CACHE_VERSION = 4
 
 # Episode air dates before this year are treated as placeholder/unknown values
 # rather than real release dates.
@@ -51,7 +51,7 @@ def _clear_tv_time_left_cache(media_id, source, user_ids=None):
         cache_utils.clear_time_left_cache_for_user(user_id)
 
 
-def process_tv(tv_item, events_bulk, tv_metadata=None):
+def process_tv(tv_item, events_bulk, tv_metadata=None, force_seasons=None):
     """Process TV item and create events for all seasons and episodes.
 
     Returns True when the show was successfully checked (including when no season
@@ -60,7 +60,11 @@ def process_tv(tv_item, events_bulk, tv_metadata=None):
     logger.info("Processing TV show: %s", tv_item)
 
     try:
-        seasons_to_process = get_seasons_to_process(tv_item, tv_metadata=tv_metadata)
+        seasons_to_process = get_seasons_to_process(
+            tv_item,
+            tv_metadata=tv_metadata,
+            force_seasons=force_seasons,
+        )
 
         if not seasons_to_process:
             logger.info("%s - No seasons need processing", tv_item)
@@ -90,7 +94,7 @@ def _tv_provider(source):
     return tvdb if source == Sources.TVDB.value else tmdb
 
 
-def get_seasons_to_process(tv_item, tv_metadata=None):
+def get_seasons_to_process(tv_item, tv_metadata=None, force_seasons=None):
     """Identify which seasons of a TV show need to be processed."""
     if tv_metadata is None:
         tv_metadata = _tv_provider(tv_item.source).tv(tv_item.media_id)
@@ -128,13 +132,19 @@ def get_seasons_to_process(tv_item, tv_metadata=None):
         for event in existing_season_events
         if event.datetime >= now or event.datetime.year == 1
     }
-    seasons_to_process = [
-        season_num
-        for season_num in season_numbers
-        if season_num not in seasons_with_events
-        or (next_episode_season and season_num >= next_episode_season)
-        or season_num in seasons_with_refreshable_events
-    ]
+    if force_seasons is not None:
+        forced_seasons = {int(season_number) for season_number in force_seasons}
+        seasons_to_process = [
+            season_num for season_num in season_numbers if season_num in forced_seasons
+        ]
+    else:
+        seasons_to_process = [
+            season_num
+            for season_num in season_numbers
+            if season_num not in seasons_with_events
+            or (next_episode_season and season_num >= next_episode_season)
+            or season_num in seasons_with_refreshable_events
+        ]
 
     if not seasons_to_process:
         return []
@@ -204,7 +214,12 @@ def process_tv_seasons(tv_item, seasons_to_process, events_bulk):
         if season_created:
             item_changes = True
         processed_season_items.append(season_item)
-        if process_season_episodes(season_item, season_metadata, events_bulk):
+        if process_season_episodes(
+            season_item,
+            season_metadata,
+            events_bulk,
+            tv_metadata=process_seasons_data,
+        ):
             item_changes = True
 
     if item_changes:
@@ -357,7 +372,7 @@ def reopen_completed_tv_with_new_seasons(tv_item, season_items, events_bulk):
             )
 
 
-def process_season_episodes(item, metadata, events_bulk):
+def process_season_episodes(item, metadata, events_bulk, tv_metadata=None):
     """Process episodes for a season and add them to events_bulk."""
     tvmaze_map = {}
     if metadata.get("tvdb_id"):
@@ -400,6 +415,13 @@ def process_season_episodes(item, metadata, events_bulk):
             season_number,
             episode_number,
             tvmaze_map,
+            tvmaze_entry=_get_tvmaze_episode_entry(
+                item,
+                metadata,
+                episode_number,
+                tvmaze_map,
+                tv_metadata,
+            ),
         )
 
         events_bulk.append(
@@ -485,10 +507,136 @@ def process_season_episodes(item, metadata, events_bulk):
     return bool(new_items or items_to_update or season_release_updated)
 
 
-def get_episode_datetime(episode, season_number, episode_number, tvmaze_map):
+_TVMAZE_ENTRY_UNSET = object()
+
+
+def _get_tmdb_episode_position(
+    tv_metadata,
+    season_metadata,
+    season_number,
+    episode_number,
+):
+    """Return a TMDB episode's one-based position across regular seasons."""
+    if not tv_metadata:
+        return None
+
+    try:
+        season_number = int(season_number)
+        episode_number = int(episode_number)
+    except (TypeError, ValueError):
+        return None
+
+    if season_number <= 0 or episode_number <= 0:
+        return None
+
+    related_seasons = (tv_metadata.get("related") or {}).get("seasons") or []
+    ordered_seasons = []
+    for season in related_seasons:
+        try:
+            related_season_number = int(season.get("season_number"))
+        except (TypeError, ValueError):
+            continue
+        if related_season_number > 0:
+            ordered_seasons.append((related_season_number, season))
+
+    offset = 0
+    for related_season_number, season in sorted(ordered_seasons):
+        episode_count = season.get("episode_count")
+        if episode_count is None and related_season_number == season_number:
+            episode_count = len(season_metadata.get("episodes") or [])
+        try:
+            episode_count = int(episode_count)
+        except (TypeError, ValueError):
+            return None
+        if episode_count < 0:
+            return None
+
+        if related_season_number == season_number:
+            if episode_number > episode_count:
+                return None
+            return offset + episode_number
+        offset += episode_count
+
+    return None
+
+
+def _ordered_tvmaze_episode_entries(tvmaze_map):
+    """Return TVMaze entries in regular-season broadcast order."""
+    ordered_entries = []
+    for key, entry in tvmaze_map.items():
+        try:
+            season_number, episode_number = map(int, key.split("_", 1))
+        except (AttributeError, TypeError, ValueError):
+            continue
+        if season_number <= 0 or episode_number <= 0:
+            continue
+        ordered_entries.append((season_number, episode_number, entry))
+
+    ordered_entries.sort(key=lambda row: (row[0], row[1]))
+    return [entry for _, _, entry in ordered_entries]
+
+
+def _get_tvmaze_episode_entry(
+    item,
+    season_metadata,
+    episode_number,
+    tvmaze_map,
+    tv_metadata,
+):
+    """Resolve the TVMaze entry corresponding to a provider episode."""
+    season_number = season_metadata.get("season_number")
+    direct_key = f"{season_number}_{episode_number}"
+
+    if item.source == Sources.TVDB.value or tv_metadata is None:
+        return tvmaze_map.get(direct_key)
+
+    position = _get_tmdb_episode_position(
+        tv_metadata,
+        season_metadata,
+        season_number,
+        episode_number,
+    )
+    if position is None:
+        logger.info(
+            "%s - No reliable TMDB episode position for S%sE%s; using TMDB date",
+            item,
+            season_number,
+            episode_number,
+        )
+        return None
+
+    ordered_entries = _ordered_tvmaze_episode_entries(tvmaze_map)
+    if position > len(ordered_entries):
+        logger.info(
+            "%s - No TVMaze episode at position %s for S%sE%s; using TMDB date",
+            item,
+            position,
+            season_number,
+            episode_number,
+        )
+        return None
+
+    return ordered_entries[position - 1]
+
+
+def get_episode_datetime(
+    episode,
+    season_number,
+    episode_number,
+    tvmaze_map,
+    tvmaze_entry=_TVMAZE_ENTRY_UNSET,
+):
     """Determine the most accurate air datetime for an episode."""
-    tvmaze_key = f"{season_number}_{episode_number}"
-    tvmaze_airstamp = tvmaze_map.get(tvmaze_key)
+    if tvmaze_entry is _TVMAZE_ENTRY_UNSET:
+        tvmaze_key = f"{season_number}_{episode_number}"
+        tvmaze_entry = tvmaze_map.get(tvmaze_key)
+    if isinstance(tvmaze_entry, dict):
+        tvmaze_airdate = tvmaze_entry.get("airdate")
+        tvmaze_airstamp = tvmaze_entry.get("airstamp")
+    else:
+        # Keep test fixtures and callers using the pre-v3 cache shape working.
+        tvmaze_airdate = None
+        tvmaze_airstamp = tvmaze_entry
 
     tmdb_datetime = None
     if episode.get("air_date"):
@@ -502,12 +650,31 @@ def get_episode_datetime(episode, season_number, episode_number, tvmaze_map):
                 episode["air_date"],
             )
 
+    tvmaze_date_datetime = None
+    if tvmaze_airdate:
+        try:
+            tvmaze_date_datetime = date_parser(tvmaze_airdate)
+        except ValueError:
+            logger.warning(
+                "Invalid air date for S%sE%s from TVMaze: %s",
+                season_number,
+                episode_number,
+                tvmaze_airdate,
+            )
+
     if tvmaze_airstamp:
         tvmaze_datetime = datetime.fromisoformat(tvmaze_airstamp)
         if tmdb_datetime is None or abs(tvmaze_datetime - tmdb_datetime) <= timedelta(
             days=2,
         ):
             return tvmaze_datetime
+        return tmdb_datetime
+
+    if tvmaze_date_datetime is not None:
+        if tmdb_datetime is None or abs(tvmaze_date_datetime - tmdb_datetime) <= timedelta(
+            days=2,
+        ):
+            return tvmaze_date_datetime
         return tmdb_datetime
 
     if tmdb_datetime is not None:
@@ -534,14 +701,18 @@ def get_tvmaze_episode_map(tvdb_id):
         for episode in episodes:
             season_num = episode.get("season")
             episode_num = episode.get("number")
-            if (
-                season_num is not None
-                and episode_num is not None
-                and episode.get("airstamp")
-                and episode.get("airtime")
-            ):
-                key = f"{season_num}_{episode_num}"
-                tvmaze_map[key] = episode.get("airstamp")
+            airdate = episode.get("airdate")
+            airstamp = episode.get("airstamp")
+            if season_num is None or episode_num is None:
+                continue
+            entry = {}
+            if airdate or (airstamp and episode.get("airtime")):
+                entry["airdate"] = airdate or airstamp[:10]
+            if airstamp and episode.get("airtime"):
+                entry["airstamp"] = airstamp
+
+            key = f"{season_num}_{episode_num}"
+            tvmaze_map[key] = entry
 
     cache.set(cache_key, tvmaze_map)
     logger.info(

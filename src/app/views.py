@@ -49,6 +49,7 @@ from app import (
     helpers,
     history_cache,
     history_processor,
+    image_cache,
     live_playback,
     metadata_utils,
     statistics_cache,
@@ -106,6 +107,7 @@ from app.detail_builders import (
     _build_game_length_card,
     _build_game_lengths_context,
     _build_imdb_rating_context,
+    _build_mal_rating_context,
     _build_trakt_popularity_context,
     _format_game_length_minutes,
     _format_game_length_seconds,
@@ -139,6 +141,7 @@ from app.discover_views import (
     discover_toggle_hidden,
     refresh_discover,
 )
+from app.error_views import retry_startup_check
 from app.forms import (
     BulkEpisodeTrackForm,
     CollectionEntryForm,
@@ -154,6 +157,7 @@ from app.history_views import (
     _filter_cached_history_days,
     _filter_history_by_enabled_media_types,
     history,
+    history_day_fragment,
     history_genres,
 )
 from app.log_safety import exception_summary, safe_url
@@ -181,7 +185,9 @@ from app.metadata_sync_views import (
     _save_provider_metadata_status,
     list_hardcover_editions,
     migrate_grouped_anime,
+    move_library_item,
     remap_metadata_provider,
+    search_library_move_candidates,
     search_remap_candidates,
     set_hardcover_edition,
     sync_metadata,
@@ -227,6 +233,8 @@ from app.music_album_views import (
     album_track_modal,
     delete_all_album_plays_view,
     delete_all_artist_plays_view,
+    list_music_releases,
+    set_music_release,
     song_save,
     sync_album_metadata_view,
 )
@@ -391,6 +399,13 @@ from users.models import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+@login_not_required
+@require_GET
+def serve_image_cache(request, token):
+    """Serve an approved provider image from the public derived-data cache."""
+    return image_cache.serve_cached_image(token, request)
 
 
 def home(request):
@@ -2072,6 +2087,7 @@ __all__ = [
     "_build_hours_per_media_type_comparison",
     "_build_imdb_rating_context",
     "_build_local_tv_with_seasons_metadata",
+    "_build_mal_rating_context",
     "_build_missing_season_metadata",
     "_build_music_album_activity_subtitle",
     "_build_music_artist_activity_subtitle",
@@ -2211,9 +2227,11 @@ __all__ = [
     "get_object_or_404",
     "hardcover",
     "history",
+    "history_day_fragment",
     "history_genres",
     "igdb",
     "list_hardcover_editions",
+    "list_music_releases",
     "login_not_required",
     "mangaupdates",
     "manual",
@@ -2227,6 +2245,7 @@ __all__ = [
     "metadata_resolution",
     "metadata_utils",
     "migrate_grouped_anime",
+    "move_library_item",
     "music_album_details",
     "music_artist_details",
     "openlibrary",
@@ -2251,14 +2270,17 @@ __all__ = [
     "resolve_column_config",
     "resolve_columns",
     "resolve_default_column_config",
+    "retry_startup_check",
     "run_retryable_db_operation",
     "safe_url",
     "sanitize_column_prefs",
+    "search_library_move_candidates",
     "search_remap_candidates",
     "search_suggestions",
     "season_details",
     "select_featured_person",
     "set_hardcover_edition",
+    "set_music_release",
     "slugify",
     "song_save",
     "static",

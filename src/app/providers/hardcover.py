@@ -34,9 +34,18 @@ def cap_search_query(query):
     return capped_query[:word_boundary].rstrip()
 
 
-def _authorization_header():
+def _resolve_api_token(user):
+    """Return the user's personal Hardcover token if set, else the instance default."""
+    if user is not None and getattr(user, "hardcover_api_key", None):
+        from integrations.imports.helpers import decrypt
+
+        return decrypt(user.hardcover_api_key)
+    return None
+
+
+def _authorization_header(user=None):
     """Return the Hardcover auth header, normalizing raw tokens."""
-    api_token = (settings.HARDCOVER_API or "").strip()
+    api_token = (_resolve_api_token(user) or settings.HARDCOVER_API or "").strip()
     if not api_token:
         return api_token
     if api_token.lower().startswith("bearer "):
@@ -62,7 +71,7 @@ def handle_error(error):
     raise services.ProviderAPIError(Sources.HARDCOVER.value, error)
 
 
-def search(query, page):
+def search(query, page, user=None):
     """Search for books on Hardcover."""
     query = cap_search_query(query)
     cache_key = (
@@ -96,7 +105,7 @@ def search(query, page):
                 "POST",
                 base_url,
                 params={"query": search_query, "variables": variables},
-                headers={"Authorization": _authorization_header()},
+                headers={"Authorization": _authorization_header(user)},
             )
         except requests.exceptions.HTTPError as error:
             handle_error(error)
@@ -161,7 +170,7 @@ def search(query, page):
     return data
 
 
-def book(media_id, edition_id=None):
+def book(media_id, edition_id=None, user=None):
     """Get metadata for a book from Hardcover.
 
     `edition_id` optionally overrides the title/cover/format/ISBN with a
@@ -213,7 +222,7 @@ def book(media_id, edition_id=None):
                 "POST",
                 base_url,
                 params={"query": book_query, "variables": variables},
-                headers={"Authorization": _authorization_header()},
+                headers={"Authorization": _authorization_header(user)},
             )
         except requests.exceptions.HTTPError as error:
             handle_error(error)
@@ -248,14 +257,17 @@ def book(media_id, edition_id=None):
         title = book_data["title"]
         image = book_data.get("cached_image") or settings.IMG_NONE
 
-        selected_edition = _get_edition(edition_id) if edition_id else None
+        selected_edition = _get_edition(edition_id, user=user) if edition_id else None
         if selected_edition:
             edition_data = selected_edition
             title = selected_edition.get("title") or title
             image = _extract_image_url(selected_edition.get("cached_image")) or image
 
         edition_details = get_edition_details(edition_data)
-        series_data = process_series_data(book_data.get("featured_book_series"))
+        series_data = process_series_data(
+            book_data.get("featured_book_series"),
+            user=user,
+        )
 
         related = {}
         if series_data.get("books"):
@@ -300,7 +312,7 @@ def book(media_id, edition_id=None):
     return data
 
 
-def _get_edition(edition_id):
+def _get_edition(edition_id, user=None):
     """Fetch a single Hardcover edition's display fields by id."""
     edition_query = """
     query GetEdition($edition_id: Int!) {
@@ -328,7 +340,7 @@ def _get_edition(edition_id):
                 "query": edition_query,
                 "variables": {"edition_id": int(edition_id)},
             },
-            headers={"Authorization": _authorization_header()},
+            headers={"Authorization": _authorization_header(user)},
         )
     except requests.exceptions.HTTPError as error:
         handle_error(error)
@@ -349,7 +361,7 @@ def _get_edition(edition_id):
     return edition_data
 
 
-def editions(media_id):
+def editions(media_id, user=None):
     """List available Hardcover editions for a book, for the edition picker."""
     cache_key = f"{Sources.HARDCOVER.value}_editions_{media_id}"
     data = cache.get(cache_key)
@@ -386,7 +398,7 @@ def editions(media_id):
                     "query": editions_query,
                     "variables": {"book_id": int(media_id)},
                 },
-                headers={"Authorization": _authorization_header()},
+                headers={"Authorization": _authorization_header(user)},
             )
         except requests.exceptions.HTTPError as error:
             handle_error(error)
@@ -557,7 +569,7 @@ def get_image_url(response):
     return settings.IMG_NONE
 
 
-def author_profile(author_id):
+def author_profile(author_id, user=None):
     """Return metadata for a Hardcover author profile."""
     cache_key = f"{Sources.HARDCOVER.value}_person_{author_id}"
     data = cache.get(cache_key)
@@ -598,7 +610,7 @@ def author_profile(author_id):
             "POST",
             base_url,
             params={"query": profile_query, "variables": variables},
-            headers={"Authorization": _authorization_header()},
+            headers={"Authorization": _authorization_header(user)},
         )
     except requests.exceptions.HTTPError as error:
         handle_error(error)
@@ -661,7 +673,7 @@ def author_profile(author_id):
     return data
 
 
-def get_series_details(series_id):
+def get_series_details(series_id, user=None):
     """Fetch series details including all books in the series."""
     series_query = """
     query GetSeriesBooks($series_id: Int!) {
@@ -691,7 +703,7 @@ def get_series_details(series_id):
             "POST",
             base_url,
             params={"query": series_query, "variables": variables},
-            headers={"Authorization": _authorization_header()},
+            headers={"Authorization": _authorization_header(user)},
         )
     except requests.exceptions.HTTPError as error:
         logger.warning("Failed to fetch series details: %s", error)
@@ -704,7 +716,7 @@ def get_series_details(series_id):
     return response.get("data", {}).get("book_series", [])
 
 
-def process_series_data(featured_series):
+def process_series_data(featured_series, user=None):
     """Process series data from Hardcover API."""
     if not featured_series:
         return {}
@@ -714,7 +726,7 @@ def process_series_data(featured_series):
     series_books = []
 
     if series_id:
-        series_items = get_series_details(series_id)
+        series_items = get_series_details(series_id, user=user)
 
         if series_items:
             # Note: The Hardcover API currently doesn't expose the Series object directly via GraphQL

@@ -54,6 +54,7 @@ stripped. Last.fm is the only family below without a `_FILE` input.
 | Steam | `STEAM_API_KEY` | `STEAM_API_KEY_FILE` | empty |
 | BoardGameGeek | `BGG_API_TOKEN` | `BGG_API_TOKEN_FILE` | non-empty shared token |
 | Hardcover | `HARDCOVER_API` | `HARDCOVER_API_FILE` | non-empty shared `Bearer` token |
+| Google Books | `GOOGLE_BOOKS_API_KEY` | `GOOGLE_BOOKS_API_KEY_FILE` | empty |
 | Comic Vine | `COMICVINE_API` | `COMICVINE_API_FILE` | non-empty shared key |
 | Last.fm | `LASTFM_API_KEY` | none | empty |
 | Trakt | `TRAKT_API` | `TRAKT_API_FILE` | empty |
@@ -92,6 +93,7 @@ the later resolver and direct-read contract test must preserve.
 | `STEAM_API_KEY` | `integrations.imports.steam.SteamImporter.__init__` | Steam importer API key captured per importer instance |
 | `BGG_API_TOKEN` | `app.providers.bgg.search`, `._fetch_thumbnails`, `.boardgame`; `app.discover.provider_candidates._bgg_hot_candidates` | BGG bearer header for metadata and Discover |
 | `HARDCOVER_API` | `app.providers.hardcover._authorization_header` | normalized Hardcover authorization header used by provider calls |
+| `GOOGLE_BOOKS_API_KEY` | `app.providers.googlebooks.search`, `.book` | Google Books `key` request parameter for book search and volume metadata |
 | `COMICVINE_API` | `app.providers.comicvine.search`, `.comic`, `.get_volume_issues`, `.get_publisher_comics`, `.search_issues`, `.comic_issue`, `.issue`, `.person_profile`; `app.discover.provider_candidates._comicvine_volume_candidates`, `._comicvine_coming_soon_volume_candidates` | Comic Vine API parameter for metadata, people, issue, and Discover requests |
 | `LASTFM_API_KEY` | `integrations.lastfm_api._make_api_request`; `app.discover.provider_candidates._lastfm_top_tracks_candidates` | Last.fm integration calls and Discover top tracks; configured-state check is part of each symbol |
 | `TRAKT_API` | `app.providers.trakt.is_configured`, `._headers`; `app.discover.providers.trakt_adapter.TraktDiscoverAdapter._cache_request`; `integrations.views.trakt_oauth`; `integrations.imports.trakt.handle_oauth_callback`, `.get_username_from_oauth`, `.get_access_token`, `.TraktImporter._make_api_request`; `lists.imports.trakt._make_trakt_request`; `users.views.import_data`; `users.onboarding_views.onboarding_service_setup` | instance Trakt configured state, metadata/Discover headers, OAuth start/exchange/refresh, profile/list imports, and UI inference |
@@ -120,7 +122,7 @@ every possible dynamic provider call is statically enumerable.
 
 | Context | Verified indirect consumers and behavior |
 |---|---|
-| Interactive routing | `src/app/providers/services.py` dispatches search and metadata work to TMDB, TVDB, MAL, IGDB, BGG, Hardcover, and Comic Vine. `src/app/services/metadata_resolution.py` filters TVDB availability. Verified callers include `src/app/search_views.py`, metadata/detail/people views, `src/api/views.py`, `src/lists/views_recommendations.py`, and `src/lists/views_add_reorder.py`. |
+| Interactive routing | `src/app/providers/services.py` dispatches search and metadata work to TMDB, TVDB, MAL, IGDB, BGG, Hardcover, Google Books, and Comic Vine. `src/app/services/metadata_resolution.py` filters TVDB and Google Books availability. Verified callers include `src/app/search_views.py`, metadata/detail/people views, `src/api/views.py`, `src/lists/views_recommendations.py`, and `src/lists/views_add_reorder.py`. |
 | Discover and statistics | `src/app/discover/provider_candidates.py` and the TMDB/Trakt adapters fetch credentialed rows. `src/app/statistics_views.py` calls `tvdb.enabled()` for its page contexts. |
 | TVDB background work | `src/app/tasks_genre.py` gates genre backfill on `tvdb.enabled()` and calls TVDB lookup/genre helpers. `src/app/tasks_metadata_cache.py` derives TVDB metadata cache keys. `src/app/tasks_tv_provider_migration.py` and `src/app/services/tv_provider_migration.py` gate and fetch TVDB migration data. |
 | Other background work | `src/app/tasks_trakt.py` calls the Trakt provider for popularity and episode ratings. `src/app/tasks_providers.py`, `src/app/tasks_episode.py`, and `src/app/tasks_metadata_cache.py` fetch through provider services. Calendar modules under `src/events/calendar/` use provider services and direct TMDB, TVDB, MAL, and Comic Vine modules. Last.fm tasks in `src/integrations/tasks/_lastfm.py` call `src/integrations/lastfm_api.py`. |

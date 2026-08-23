@@ -11,7 +11,7 @@
         {% if tracker.show.image and tracker.show.image != IMG_NONE %}
           <img alt="{{ tracker.show.title }}"
                class="media-card-poster lazyload w-full aspect-[2/3] bg-[var(--color-surface-alt)] object-cover"
-               data-src="{{ tracker.show.image }}"
+               data-src="{{ tracker.show.image|image_url }}"
                src="{{ IMG_NONE }}">
         {% else %}
           <div class="w-full aspect-[2/3] bg-[var(--color-surface-alt)] flex items-center justify-center">

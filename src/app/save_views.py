@@ -33,6 +33,11 @@ from app.models import (
 )
 from app.providers import services
 from app.services import metadata_resolution
+from app.services.episode_coordinates import (
+    InvalidEpisodeCoordinateError,
+    cleanup_episode_history_for_route,
+    resolve_episode_coordinate,
+)
 from app.services.tracking_hydration import ensure_item_metadata
 from app.templatetags.app_tags import media_url
 from app.track_modal_views import (
@@ -117,6 +122,7 @@ def media_save(request):
                 media_id,
                 source,
                 [season_number],
+                user=request.user,
             )
             if media_type == MediaTypes.BOOK.value:
                 number_of_pages = metadata.get("max_progress") or metadata.get(
@@ -151,6 +157,7 @@ def media_save(request):
                             item.media_type,
                             item.media_id,
                             item.source,
+                            user=request.user,
                         )
                         number_of_pages = metadata.get("max_progress") or metadata.get(
                             "details", {}
@@ -838,6 +845,24 @@ def episode_save(request):
         episode.dropped = episode.status == Status.DROPPED.value
         episode.save()
     else:
+        try:
+            resolve_episode_coordinate(
+                media_id,
+                source,
+                season_number,
+                episode_number,
+                language=metadata_resolution.metadata_language_default(request.user),
+            )
+        except InvalidEpisodeCoordinateError:
+            cleanup_episode_history_for_route(
+                request.user,
+                media_id,
+                source,
+                season_number,
+                episode_number,
+                library_media_type=library_media_type,
+            )
+            return HttpResponse("Episode not found", status=404)
         related_season = fork_services_episode.resolve_or_create_season(
             request.user,
             media_id,
@@ -947,6 +972,25 @@ def episode_drop(request):
         request,
         fallback_media_type=MediaTypes.TV.value,
     )
+
+    try:
+        resolve_episode_coordinate(
+            media_id,
+            source,
+            season_number,
+            episode_number,
+            language=metadata_resolution.metadata_language_default(request.user),
+        )
+    except InvalidEpisodeCoordinateError:
+        cleanup_episode_history_for_route(
+            request.user,
+            media_id,
+            source,
+            season_number,
+            episode_number,
+            library_media_type=library_media_type,
+        )
+        return HttpResponse("Episode not found", status=404)
 
     related_season = fork_services_episode.resolve_or_create_season(
         request.user,

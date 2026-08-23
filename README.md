@@ -389,6 +389,7 @@ The only universally required variable is `SECRET`. For Docker installs you shou
 - `STEAM_API_KEY` - Steam game imports
 - `BGG_API_TOKEN` - board game metadata from [BoardGameGeek](https://boardgamegeek.com/using_the_xml_api)
 - `HARDCOVER_API` - Hardcover book metadata/imports
+- `GOOGLE_BOOKS_API_KEY` - optional Google Books book metadata ([Google Books API](https://developers.google.com/books/docs/v1/using)); supports `GOOGLE_BOOKS_API_KEY_FILE` for Docker secrets
 - `COMICVINE_API` - comic metadata
 - `LASTFM_API_KEY` - Last.fm integration and scrobble polling
 - `MUSICBRAINZ_URL` - custom MusicBrainz-compatible API root, including `/ws/2` (defaults to `https://musicbrainz.org/ws/2`)
@@ -422,6 +423,7 @@ IGDB_SECRET=IGDB_SECRET
 STEAM_API_KEY=STEAM_API_SECRET
 BGG_API_TOKEN=BGG_API_TOKEN
 HARDCOVER_API=HARDCOVER_API
+GOOGLE_BOOKS_API_KEY=GOOGLE_BOOKS_API_KEY
 COMICVINE_API=COMICVINE_API
 LASTFM_API_KEY=LASTFM_API_KEY
 SECRET=SECRET
@@ -619,17 +621,14 @@ this prevents Docker restart policies from repeating the same failure.
 
 The report identifies the incident with a fingerprint and issues a separate
 one-time **incident token**. The startup log prints the exact value to set, and
-the report repeats it under `actions`. Copy that token; the fingerprint is an
-identifier, not an approval. There are three choices:
+the report repeats it under `actions`. Copy the approval code from the startup
+log, or use the matching `incident_token`/`actions` entry in the protected
+report; the fingerprint is an identifier, not an approval. There are two
+choices:
 
 1. **Restore or repair:** stop Floppy, back up the database with its `-wal` and
    `-shm` files, then restore a known-good copy or repair the named rows.
-2. **Accept:** set `FLOPPY_SQLITE_CONFLICT_ACTION=accept:<incident-token>` and
-   recreate the container. Floppy starts without changing the conflicting rows.
-   Accept gets you back online on your current schema. It is not an upgrade
-   path: Django re-checks every foreign key while it applies a migration, so a
-   pending migration keeps failing until you repair or quarantine the rows.
-3. **Quarantine:** set
+2. **Quarantine:** set
    `FLOPPY_SQLITE_CONFLICT_ACTION=quarantine:<incident-token>` and recreate the
    container. Floppy first writes and verifies a full backup under
    `sqlite-recovery/`, then removes the orphaned child rows and verifies all
@@ -752,13 +751,22 @@ directly.
 
 The startup SQLite scan writes its progress to `<database>.integrity.status.json`
 beside the database as it runs, and the container log gets one heartbeat line
-roughly every 30 seconds while the scan is in progress. If the scan still
-exceeds its bound, the entrypoint stops it, records `status: timeout` in that
-file along with the last phase, elapsed time, and bytes read, and the recovery
-page (both the live page and the offline `floppy-recovery.html` copy) shows
-that detail instead of the generic "cannot read the report" page. A timeout
-does not mean the database is corrupt; it means the scan did not finish in
-time. Run `floppy_preflight` (above) for a completed answer.
+roughly every 30 seconds while the scan is in progress. Each heartbeat reports
+the current phase, phase elapsed time, SQLite progress callbacks, callback rate,
+time since the last observed progress, and a state:
+
+- `active` means a progress callback was observed recently.
+- `quiet` means no callback was observed for more than 45 seconds. This can
+  indicate slow storage or a blocked operation; it does not prove corruption.
+- `none_yet` means the phase has not produced its first callback.
+
+A low but nonzero callback rate means the scan is advancing slowly. If the scan
+still exceeds its bound, the entrypoint stops it, records `status: timeout` in
+the sidecar along with this telemetry, and the recovery page (both the live
+page and the offline `floppy-recovery.html` copy) shows the same diagnosis
+instead of the generic "cannot read the report" page. A timeout does not mean
+the database is corrupt; it means the scan did not finish in time. Run
+`floppy_preflight` (above) for a completed answer.
 
 #### Verifying a published image actually has a fix
 

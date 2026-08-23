@@ -1551,6 +1551,12 @@ paths:
       responses:
         '204':
           description: No response body
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+          description: ''
   /api/v1/media/{media_type}/{source}/{media_id}/{season_number}/episodes/{episode_number}/watch/:
     post:
       operationId: api_v1_media_episodes_watch_create
@@ -1605,6 +1611,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TrackedMediaResponse'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
           description: ''
   /api/v1/media/{media_type}/{source}/{media_id}/{season_number}/progress/:
     post:

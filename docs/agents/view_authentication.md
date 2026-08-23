@@ -112,6 +112,7 @@ The following endpoints in Floppy are intentionally public:
 | `/health/` | Liveness probe for container checks | `login_not_required(MainView.as_view())` in `config/urls.py` |
 | `/ping/` | Fast ping endpoint | `login_not_required(...)` in `config/urls.py` |
 | `/serviceworker.js` | PWA offline service worker | `@login_not_required` on `service_worker` in `app/views.py` |
+| `/image-cache/<token>` | Public provider artwork proxy for public lists and API clients | `@login_not_required` on `serve_image_cache` in `app/views.py` |
 | `/list/<reference>/rss` | Public list RSS feeds | `@login_not_required` on `list_rss_feed` in `lists/feeds.py` |
 | `/list/<reference>/json` | Public list JSON export | `@login_not_required` on `list_json` in `lists/feeds.py` |
 | `/list/<reference>` | Public list detail page | `@login_not_required` on `list_detail` in `lists/views.py` |

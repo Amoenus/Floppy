@@ -655,6 +655,39 @@ def _build_imdb_rating_context(detail_item, route_media_type):
     }
 
 
+def _build_mal_rating_context(detail_item, route_media_type):
+    """Return template-ready stored MyAnimeList rating metadata for anime."""
+    is_anime = route_media_type == MediaTypes.ANIME.value or (
+        route_media_type == MediaTypes.TV.value
+        and detail_item
+        and detail_item.media_type == MediaTypes.TV.value
+        and detail_item.library_media_type == MediaTypes.ANIME.value
+    )
+    if (
+        not detail_item
+        or not is_anime
+        or detail_item.mal_rating is None
+        or detail_item.mal_rating_count is None
+        or detail_item.mal_rating_count <= 0
+    ):
+        return None
+
+    rating = detail_item.mal_rating
+    if rating is not None:
+        with contextlib.suppress(InvalidOperation, TypeError, ValueError):
+            rating = float(
+                Decimal(str(rating)).quantize(
+                    Decimal("0.1"),
+                    rounding=ROUND_DOWN,
+                ),
+            )
+
+    return {
+        "rating": rating,
+        "rating_count": detail_item.mal_rating_count,
+    }
+
+
 def _apply_cached_hltb_link(media_metadata, detail_item):
     """Prefer a stored direct HLTB link when one has already been resolved."""
     if not detail_item or not isinstance(media_metadata, dict):
@@ -953,6 +986,24 @@ def _build_detail_link_sections(
     if isinstance(external_links, dict):
         for name, url in external_links.items():
             append_entry(external_entries, name, url, name)
+
+    is_anime = media_type == MediaTypes.ANIME.value or (
+        media_type == MediaTypes.TV.value
+        and item is not None
+        and item.media_type == MediaTypes.TV.value
+        and item.library_media_type == MediaTypes.ANIME.value
+    )
+    if is_anime and item is not None:
+        from app.services.mal_ratings import resolve_mal_id
+
+        mal_id = resolve_mal_id(item)
+        if mal_id:
+            append_entry(
+                external_entries,
+                "MyAnimeList",
+                f"https://myanimelist.net/anime/{mal_id}",
+                Sources.MAL.value,
+            )
 
     # Best-effort IMDB match for games (see app.services.imdb_game_credits) — not
     # provided by IGDB itself, so it's read off the Item rather than media_metadata.

@@ -285,7 +285,7 @@ REST_FRAMEWORK = {
         "api.authentication.BearerAuthentication",
         "api.authentication.APIKeyAuthentication",
     ],
-    "DEFAULT_RENDERER_CLASSES": ("rest_framework.renderers.JSONRenderer",),
+    "DEFAULT_RENDERER_CLASSES": ("api.renderers.ImageCacheJSONRenderer",),
     # ``format`` is a media-list filter, not a renderer override.
     "URL_FORMAT_OVERRIDE": None,
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
@@ -1127,6 +1127,11 @@ HARDCOVER_API = config(
     ),
 )
 
+GOOGLE_BOOKS_API_KEY = config(
+    "GOOGLE_BOOKS_API_KEY",
+    default=secret("GOOGLE_BOOKS_API_KEY_FILE", ""),
+)
+
 COMICVINE_API = config(
     "COMICVINE_API",
     default=secret(
@@ -1388,6 +1393,7 @@ CELERY_TASK_ROUTES = {
         "priority": CELERY_TASK_PRIORITY_BACKGROUND
     },
     "Sync IMDB ratings from datasets": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
+    "Sync MAL ratings from API": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Warm Discover API Cache": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Warm Discover Startup Tabs": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Warm History Day Cache Coverage": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
@@ -1545,6 +1551,11 @@ CELERY_BEAT_SCHEDULE = {
         "task": "Reload calendar",
         "schedule": 60 * 60 * 24,  # every 24 hours
     },
+    "cleanup_image_cache": {
+        "task": "Cleanup image cache",
+        "schedule": crontab(hour=4, minute=0),
+        "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
+    },
     "send_release_notifications": {
         "task": "Send release notifications",
         "schedule": 60 * 10,  # every 10 minutes
@@ -1637,6 +1648,11 @@ CELERY_BEAT_SCHEDULE = {
     "sync_imdb_ratings": {
         "task": "Sync IMDB ratings from datasets",
         "schedule": crontab(hour=5, minute=0),  # every day at 5 AM
+        "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
+    },
+    "sync_mal_ratings": {
+        "task": "Sync MAL ratings from API",
+        "schedule": crontab(hour=5, minute=15),  # every day at 5:15 AM
         "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     },
 }

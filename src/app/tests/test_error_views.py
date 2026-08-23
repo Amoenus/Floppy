@@ -177,3 +177,17 @@ class ErrorPageTests(TestCase):
             status_code=403,
             html=False,
         )
+
+    @override_settings(ROOT_URLCONF="config.urls")
+    def test_stale_startup_retry_returns_to_the_referring_page(self):
+        """A retry submitted after startup resumes should not become a 404."""
+        response = self.client.post(
+            "/retry",
+            HTTP_REFERER="http://testserver/track_modal/tmdb/tv/117648",
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            response.headers["Location"],
+            "http://testserver/track_modal/tmdb/tv/117648",
+        )

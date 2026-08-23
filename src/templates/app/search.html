@@ -84,7 +84,7 @@
                       {% if tracker.album.image and tracker.album.image != IMG_NONE %}
                         <img alt="{{ tracker.album.title }}"
                              class="media-card-poster lazyload w-full aspect-[1/1] object-cover bg-[var(--color-surface-alt)]"
-                             data-src="{{ tracker.album.image }}"
+                             data-src="{{ tracker.album.image|image_url }}"
                              src="{{ IMG_NONE }}">
                       {% else %}
                         <div class="w-full aspect-[1/1] bg-[var(--color-surface-alt)] flex items-center justify-center">
@@ -194,7 +194,7 @@
                       {% if artist.image and artist.image != IMG_NONE %}
                         <img alt="{{ artist.name }}"
                              class="media-card-poster lazyload w-full aspect-[2/3] object-cover bg-[var(--color-surface-alt)]"
-                             data-src="{{ artist.image }}"
+                             data-src="{{ artist.image|image_url }}"
                              onerror="this.onerror=null;this.src='{{ IMG_NONE }}';"
                              src="{{ IMG_NONE }}">
                       {% else %}
@@ -227,7 +227,7 @@
                       {% if artist.image and artist.image != IMG_NONE %}
                         <img alt="{{ artist.name }}"
                              class="media-card-poster lazyload w-full aspect-[2/3] object-cover bg-[var(--color-surface-alt)]"
-                             data-src="{{ artist.image }}"
+                             data-src="{{ artist.image|image_url }}"
                              onerror="this.onerror=null;this.src='{{ IMG_NONE }}';"
                              src="{{ IMG_NONE }}">
                       {% else %}
@@ -258,7 +258,7 @@
                       {% if release.image and release.image != IMG_NONE %}
                         <img alt="{{ release.title }}"
                              class="media-card-poster lazyload w-full aspect-[1/1] object-cover bg-[var(--color-surface-alt)]"
-                             data-src="{{ release.image }}"
+                             data-src="{{ release.image|image_url }}"
                              onerror="this.onerror=null;this.src='{{ IMG_NONE }}';"
                              src="{{ IMG_NONE }}">
                       {% else %}

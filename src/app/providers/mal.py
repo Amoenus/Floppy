@@ -16,6 +16,9 @@ base_fields = (
     "title,main_picture,media_type,start_date,end_date,synopsis,status,genres,"
     "mean,num_scoring_users,recommendations,alternative_titles"
 )
+RATING_FIELDS = "mean,num_scoring_users"
+RATING_CACHE_TIMEOUT = 60 * 60 * 24
+MAX_RATING = 10
 
 
 def handle_error(error):
@@ -41,6 +44,52 @@ def handle_error(error):
             return {"data": []}
 
     raise services.ProviderAPIError(Sources.MAL.value, error)
+
+
+def rating(media_id):
+    """Return a cached MyAnimeList rating pair for an anime ID.
+
+    This deliberately requests only the aggregate rating fields so the daily
+    rating sweep does not download full anime metadata for every tracked item.
+    ``None`` means MAL returned no usable rating; provider errors are raised so
+    callers can preserve the last successful local value.
+    """
+    normalized_media_id = str(media_id or "").strip()
+    if not normalized_media_id:
+        return None
+
+    cache_key = f"{Sources.MAL.value}_rating_{normalized_media_id}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    try:
+        response = services.api_request(
+            Sources.MAL.value,
+            "GET",
+            f"{base_url}/anime/{normalized_media_id}",
+            params={"fields": RATING_FIELDS},
+            headers={"X-MAL-CLIENT-ID": settings.MAL_API},
+        )
+    except requests.exceptions.HTTPError as error:
+        handle_error(error)
+        return None
+
+    try:
+        mean = float(response.get("mean"))
+        rating_count = int(response.get("num_scoring_users"))
+    except (AttributeError, TypeError, ValueError):
+        result = None
+    else:
+        result = (
+            (mean, rating_count)
+            if 0 <= mean <= MAX_RATING and rating_count > 0
+            else None
+        )
+
+    if result is not None:
+        cache.set(cache_key, result, timeout=RATING_CACHE_TIMEOUT)
+    return result
 
 
 def search(media_type, query, page):

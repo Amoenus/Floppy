@@ -22,6 +22,7 @@ from app.models import Item, MediaTypes, Sources
 from app.providers import (
     bgg,
     comicvine,
+    googlebooks,
     hardcover,
     igdb,
     mal,
@@ -52,7 +53,7 @@ RATE_LIMIT_MAX_WAIT_SECONDS = 60
 RATE_LIMIT_DEFAULT_WAIT_SECONDS = 5
 
 # MusicBrainz MBIDs are UUIDs (36 chars); shorter values are not valid
-# recording IDs and should be treated as "no metadata available".
+# recording IDs and should be treated as not found.
 MUSICBRAINZ_MBID_MIN_LENGTH = 30
 
 # ISBN-10 and ISBN-13 identifier lengths (digits only, after cleaning).
@@ -565,6 +566,136 @@ def _ensure_title_fields(metadata):
     return metadata
 
 
+def _stored_item_metadata(item):
+    """Build canonical metadata for an item already stored locally."""
+    return _ensure_title_fields(
+        {
+            "media_id": item.media_id,
+            "source": item.source,
+            "media_type": item.media_type,
+            "max_progress": None,
+            "title": item.title,
+            "image": item.image or settings.IMG_NONE,
+            "synopsis": item.synopsis,
+            "genres": item.genres or [],
+            "related": {},
+            "details": {},
+        },
+    )
+
+
+def _podcast_episode_metadata(episode):
+    """Build generic media-detail metadata for a catalogued podcast episode."""
+    show = episode.show
+    return _ensure_title_fields(
+        {
+            "media_id": episode.episode_uuid,
+            "source": show.source,
+            "media_type": MediaTypes.PODCAST.value,
+            "max_progress": None,
+            "title": episode.title,
+            "image": show.image or settings.IMG_NONE,
+            "synopsis": show.description,
+            "genres": show.genres or [],
+            "related": {},
+            "details": {
+                "show_id": show.id,
+                "show_uuid": show.podcast_uuid,
+                "show_title": show.title,
+                "author": show.author,
+                "description": show.description,
+                "language": show.language,
+                "published": episode.published,
+                "duration": episode.duration,
+                "audio_url": episode.audio_url,
+                "episode_number": episode.episode_number,
+                "season_number": episode.season_number,
+                "episode_type": episode.episode_type,
+                "file_type": episode.file_type,
+            },
+        },
+    )
+
+
+def _podcast_item_metadata(item, *, show=None, episode=None):
+    """Build podcast metadata from a tracked item when catalog links are stale."""
+    metadata = _stored_item_metadata(item)
+    details = metadata["details"]
+
+    if show is not None:
+        metadata["image"] = show.image or metadata["image"]
+        metadata["synopsis"] = show.description or metadata["synopsis"]
+        metadata["genres"] = show.genres or metadata["genres"]
+        details.update(
+            {
+                "show_id": show.id,
+                "show_uuid": show.podcast_uuid,
+                "show_title": show.title,
+                "author": show.author,
+                "description": show.description,
+                "language": show.language,
+            },
+        )
+
+    if episode is not None:
+        details.update(
+            {
+                "published": episode.published,
+                "duration": episode.duration,
+                "audio_url": episode.audio_url,
+                "episode_number": episode.episode_number,
+                "season_number": episode.season_number,
+                "episode_type": episode.episode_type,
+                "file_type": episode.file_type,
+            },
+        )
+        if episode.title:
+            metadata["title"] = episode.title
+
+    return _ensure_title_fields(metadata)
+
+
+def _resolve_podcast_metadata(media_id, source, user=None):
+    """Resolve a podcast episode from the local catalog or tracked cache."""
+    from app.models import Podcast, PodcastEpisode
+
+    tracked = None
+    if user is not None and getattr(user, "is_authenticated", False):
+        tracked = (
+            Podcast.objects.filter(
+                user=user,
+                item__media_id=media_id,
+                item__source=source,
+                item__media_type=MediaTypes.PODCAST.value,
+            )
+            .select_related("item", "show", "episode", "episode__show")
+            .first()
+        )
+
+    if tracked is not None:
+        episode = tracked.episode
+        show = tracked.show or (episode.show if episode is not None else None)
+        if episode is not None:
+            if episode.is_deleted or show is None or show.source != source:
+                raise_not_found_error(source, media_id, "podcast episode")
+            return _podcast_episode_metadata(episode)
+        return _podcast_item_metadata(tracked.item, show=show)
+
+    episode = (
+        PodcastEpisode.objects.filter(
+            episode_uuid=media_id,
+            show__source=source,
+            is_deleted=False,
+        )
+        .select_related("show")
+        .order_by("pk")
+        .first()
+    )
+    if episode is None:
+        raise_not_found_error(source, media_id, "podcast episode")
+    return _podcast_episode_metadata(episode)
+
+
 def get_media_metadata(
     media_type,
     media_id,
@@ -573,11 +704,22 @@ def get_media_metadata(
     episode_number=None,
     language=None,
     edition_id=None,
+    user=None,
 ):
     """Return the metadata for the selected media."""
     if media_type == MediaTypes.MUSIC.value and source == Sources.MANUAL.value:
+        item = Item.objects.filter(
+            media_id=media_id,
+            source=source,
+            media_type=media_type,
+        ).first()
+        if item is not None:
+            return _stored_item_metadata(item)
         return _ensure_title_fields(
             {
+                "media_id": media_id,
+                "source": source,
+                "media_type": media_type,
                 "max_progress": None,
                 "title": "",
                 "image": "",
@@ -695,8 +837,10 @@ def get_media_metadata(
         MediaTypes.MOVIE.value: lambda: tmdb.movie(media_id, language),
         MediaTypes.GAME.value: lambda: igdb.game(media_id),
         MediaTypes.BOOK.value: lambda: (
-            hardcover.book(media_id, edition_id=edition_id)
+            hardcover.book(media_id, edition_id=edition_id, user=user)
             if source == Sources.HARDCOVER.value
+            else googlebooks.book(media_id)
+            if source == Sources.GOOGLEBOOKS.value
             else _audiobookshelf_book(media_id)
             if source == Sources.AUDIOBOOKSHELF.value
             else _storyteller_book(media_id)
@@ -707,44 +851,16 @@ def get_media_metadata(
         MediaTypes.COMIC_ISSUE.value: lambda: comicvine.comic_issue(media_id),
         MediaTypes.BOARDGAME.value: lambda: bgg.boardgame(media_id),
         MediaTypes.MUSIC.value: lambda: musicbrainz.recording(media_id),
-        MediaTypes.PODCAST.value: lambda s=source: {
-            "max_progress": None,
-            "title": "",
-            "image": "",
-            "related": {},
-            "details": {},
-            # Podcasts use runtime_minutes from Item, not external metadata.
-            "source": s,  # Add source to fix KeyError in template tag
-        },
+        MediaTypes.PODCAST.value: lambda: _resolve_podcast_metadata(
+            media_id,
+            source,
+            user=user,
+        ),
     }
     if media_type == MediaTypes.MUSIC.value:
         if not media_id or len(str(media_id)) < MUSICBRAINZ_MBID_MIN_LENGTH:
-            return _ensure_title_fields(
-                {
-                    "max_progress": None,
-                    "title": "",
-                    "image": "",
-                    "related": {},
-                    "details": {},
-                },
-            )
-        try:
-            return _ensure_title_fields(metadata_retrievers[media_type]())
-        except Exception as exc:  # pragma: no cover - defensive guard for bad IDs
-            logger.debug(
-                "Music metadata lookup failed source=%s error=%s",
-                source,
-                exception_summary(exc),
-            )
-            return _ensure_title_fields(
-                {
-                    "max_progress": None,
-                    "title": "",
-                    "image": "",
-                    "related": {},
-                    "details": {},
-                },
-            )
+            raise_not_found_error(source, media_id, "music recording")
+        return _ensure_title_fields(metadata_retrievers[media_type]())
 
     return _ensure_title_fields(metadata_retrievers[media_type]())
 
@@ -774,19 +890,33 @@ def _resolve_search_source(media_type, source=None):
     """Return the effective search provider for a media type."""
     resolved = _normalize_source_value(source)
     if resolved:
-        if resolved == Sources.TVDB.value and not tvdb.enabled():
+        if (
+            resolved == Sources.TVDB.value
+            and not tvdb.enabled()
+        ) or (
+            resolved == Sources.GOOGLEBOOKS.value
+            and not googlebooks.enabled()
+        ):
             resolved = None
         else:
             return resolved
 
     default_source = config.get_default_source_name(media_type)
     default_value = _normalize_source_value(default_source)
-    if default_value != Sources.TVDB.value or tvdb.enabled():
+    if default_value not in {Sources.TVDB.value, Sources.GOOGLEBOOKS.value} or (
+        default_value == Sources.TVDB.value
+        and tvdb.enabled()
+    ) or (
+        default_value == Sources.GOOGLEBOOKS.value
+        and googlebooks.enabled()
+    ):
         return default_value
 
     for candidate in config.get_sources(media_type) or []:
         candidate_value = _normalize_source_value(candidate)
         if candidate_value == Sources.TVDB.value and not tvdb.enabled():
+            continue
+        if candidate_value == Sources.GOOGLEBOOKS.value and not googlebooks.enabled():
             continue
         if candidate_value:
             return candidate_value
@@ -888,7 +1018,7 @@ def _extract_isbns(metadata):
     return normalized
 
 
-def _resolve_hardcover_isbn_search(query, page):
+def _resolve_hardcover_isbn_search(query, page, user=None):
     """Resolve ISBN queries against Hardcover using Open Library metadata."""
     from app import helpers
 
@@ -934,7 +1064,7 @@ def _resolve_hardcover_isbn_search(query, page):
             seen_queries.add(normalized_query)
 
             try:
-                hardcover_results = hardcover.search(normalized_query, page)
+                hardcover_results = hardcover.search(normalized_query, page, user=user)
             except Exception:  # noqa: S112  # best-effort provider lookup
                 continue
 
@@ -947,7 +1077,7 @@ def _resolve_hardcover_isbn_search(query, page):
                     continue
 
                 try:
-                    hardcover_metadata = hardcover.book(media_id)
+                    hardcover_metadata = hardcover.book(media_id, user=user)
                 except Exception:  # noqa: S112  # best-effort provider lookup
                     continue
 
@@ -986,7 +1116,7 @@ def _resolve_hardcover_isbn_search(query, page):
     return best_fallback_response
 
 
-def _lookup_by_numeric_id(media_type, query, source):
+def _lookup_by_numeric_id(media_type, query, source, user=None):
     """Return full metadata for a media item identified by a numeric provider ID."""
     n = int(query)
     tv_types = (MediaTypes.TV.value, MediaTypes.SEASON.value, MediaTypes.EPISODE.value)
@@ -1011,7 +1141,7 @@ def _lookup_by_numeric_id(media_type, query, source):
     if media_type == MediaTypes.GAME.value:
         return igdb.game(n)
     if media_type == MediaTypes.BOOK.value and source == Sources.HARDCOVER.value:
-        return hardcover.book(n)
+        return hardcover.book(n, user=user)
     if media_type == MediaTypes.COMIC.value:
         return comicvine.comic(query)
     if media_type == MediaTypes.BOARDGAME.value:
@@ -1019,7 +1149,7 @@ def _lookup_by_numeric_id(media_type, query, source):
     return None
 
 
-def search_by_id(media_type, query, source=None):
+def search_by_id(media_type, query, source=None, user=None):
     """Try to look up a single media item directly by its provider ID.
 
     Returns a search-format response dict (1 result) when the query matches
@@ -1043,7 +1173,7 @@ def search_by_id(media_type, query, source=None):
                 )
             ):
                 return None
-            metadata = _lookup_by_numeric_id(media_type, query, source)
+            metadata = _lookup_by_numeric_id(media_type, query, source, user=user)
         elif _OL_ID_RE.match(query) and media_type == MediaTypes.BOOK.value:
             metadata = openlibrary.book(query)
         elif _UUID_RE.match(query) and media_type == MediaTypes.MUSIC.value:
@@ -1089,10 +1219,10 @@ def search(
     # jumping straight to that item.
     id_result = None
     if page == 1:
-        id_result = search_by_id(media_type, query, source)
+        id_result = search_by_id(media_type, query, source, user=user)
 
-        if media_type == MediaTypes.BOOK.value and source != Sources.OPENLIBRARY.value:
-            isbn_result = _resolve_hardcover_isbn_search(query, page)
+        if media_type == MediaTypes.BOOK.value and source == Sources.HARDCOVER.value:
+            isbn_result = _resolve_hardcover_isbn_search(query, page, user=user)
             if isbn_result is not None:
                 return isbn_result
 
@@ -1132,7 +1262,9 @@ def search(
         MediaTypes.BOOK.value: lambda: (
             openlibrary.search(query, page)
             if source == Sources.OPENLIBRARY.value
-            else hardcover.search(query, page)
+            else googlebooks.search(query, page, language=language)
+            if source == Sources.GOOGLEBOOKS.value
+            else hardcover.search(query, page, user=user)
         ),
         MediaTypes.COMIC.value: lambda: comicvine.search(query, page),
         MediaTypes.COMIC_ISSUE.value: lambda: comicvine.search_issues(query, page),

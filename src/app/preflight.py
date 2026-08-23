@@ -52,6 +52,7 @@ from config.sqlite_integrity import (
     IntegrityScanTimeoutError,
     inspect_database,
     read_startup_status,
+    startup_progress_diagnostics,
 )
 
 OK = "ok"
@@ -425,11 +426,17 @@ def _startup_status_sidecar_fact(db_path: Path, timeout_seconds: float) -> dict:
     age_seconds = (datetime.now(UTC) - updated).total_seconds()
     if age_seconds < 0 or age_seconds > 2 * timeout_seconds:
         return {"available": False, "ignored_reason": "stale or mismatched"}
+    diagnostics = startup_progress_diagnostics(status)
     return {
         "available": True,
         "elapsed_seconds": status.get("elapsed_seconds"),
         "error_class": status.get("error_class"),
         "phase": status.get("phase"),
+        "phase_elapsed_seconds": diagnostics["phase_elapsed_seconds"],
+        "progress_age_seconds": diagnostics["last_progress_age_seconds"],
+        "progress_callbacks": diagnostics["progress_callbacks"],
+        "progress_rate_per_minute": diagnostics["progress_rate_per_minute"],
+        "progress_state": diagnostics["progress_state"],
         "status": status.get("status"),
     }
 

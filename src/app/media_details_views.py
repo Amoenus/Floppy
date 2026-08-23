@@ -1,7 +1,7 @@
 import json
 import logging
 import time
-from datetime import UTC, timedelta
+from datetime import UTC
 
 from django.apps import apps
 from django.conf import settings
@@ -37,6 +37,7 @@ from app.detail_builders import (
     _build_episode_graph_from_season_cache,
     _build_game_lengths_context,
     _build_imdb_rating_context,
+    _build_mal_rating_context,
     _build_season_scores_graph,
     _build_series_graph_data,
     _build_stored_season_scores_graph,
@@ -59,6 +60,7 @@ from app.models import (
 from app.models.episode_runtimes import build_season_runtime_index
 from app.providers import services, tmdb
 from app.services import metadata_resolution
+from app.services.metadata_fallback import stored_metadata_fallback
 from app.tag_views import (
     _build_detail_tag_sections,
     _detail_request_url,
@@ -71,37 +73,6 @@ from lists.views_helpers import get_public_list_for_item
 logger = logging.getLogger(__name__)
 
 RUNTIME_UNKNOWN_AIRED = 999998  # aired but runtime unknown
-
-
-def _stored_metadata_fallback(item):
-    """Build a minimal media_metadata dict from a stored Item when the provider is unreachable."""
-    return {
-        "media_id": item.media_id,
-        "source": item.source,
-        "media_type": item.media_type,
-        "title": item.title,
-        "original_title": item.original_title,
-        "localized_title": item.localized_title,
-        "image": item.image,
-        "synopsis": item.synopsis,
-        "genres": item.genres,
-        "cast": [],
-        "crew": [],
-        "studios_full": [],
-    }
-
-
-def _needs_live_secondary_metadata(source, tracking_media_type):
-    """TMDB TV/season secondary logic force-refetches on empty cast/crew.
-
-    A stored-metadata fallback always reports empty cast/crew (they aren't
-    cached on Item), which would otherwise make should_refresh_tmdb_tv_credits
-    immediately undo the skip with its own live call.
-    """
-    return source == Sources.TMDB.value and tracking_media_type in (
-        MediaTypes.TV.value,
-        MediaTypes.SEASON.value,
-    )
 
 
 def _enrich_comic_issues(issues, user):
@@ -853,12 +824,6 @@ def media_details(
     if hardcover_edition_id:
         metadata_kwargs["edition_id"] = hardcover_edition_id
 
-    metadata_is_fresh = (
-        detail_item is not None
-        and detail_item.metadata_fetched_at is not None
-        and timezone.now() - detail_item.metadata_fetched_at
-        < timedelta(seconds=settings.CACHE_TIMEOUT)
-    )
     # A "Sync metadata with provider" action just did a live fetch: skip the
     # stored-metadata shortcut on the page load(s) that follow so the full
     # payload (score, cast, recommendations, etc.) isn't replaced by the
@@ -868,17 +833,14 @@ def media_details(
     )
     can_skip_live_fetch = (
         not force_live_metadata
+        and not render_secondary_only
         and detail_item is not None
         and detail_item.metadata_fetched_at is not None
     )
-    if render_secondary_only:
-        can_skip_live_fetch = can_skip_live_fetch and (
-            metadata_is_fresh
-            and not _needs_live_secondary_metadata(source, tracking_media_type)
-        )
 
+    provider_metadata_unavailable = False
     if can_skip_live_fetch:
-        media_metadata = _stored_metadata_fallback(detail_item)
+        media_metadata = stored_metadata_fallback(detail_item)
     else:
         try:
             media_metadata = services.get_media_metadata(
@@ -886,16 +848,18 @@ def media_details(
                 media_id,
                 source,
                 language=metadata_resolution.metadata_language_default(request.user),
+                user=request.user,
                 **metadata_kwargs,
             )
         except services.ProviderAPIError:
             if detail_item is None:
                 raise
+            provider_metadata_unavailable = True
             logger.warning(
                 "Falling back to stored metadata for media_id=%s due to provider API error",
                 media_id,
             )
-            media_metadata = _stored_metadata_fallback(detail_item)
+            media_metadata = stored_metadata_fallback(detail_item)
 
     if isinstance(media_metadata, dict):
         media_metadata.update(Item.title_fields_from_metadata(media_metadata))
@@ -934,6 +898,7 @@ def media_details(
     should_refresh_tmdb_titles = (
         request.user.is_authenticated
         and source == Sources.TMDB.value
+        and not provider_metadata_unavailable
         and tracking_media_type
         in (
             MediaTypes.MOVIE.value,
@@ -951,12 +916,14 @@ def media_details(
             media_id,
             source,
             language=metadata_resolution.metadata_language_default(request.user),
+            user=request.user,
         )
         if isinstance(media_metadata, dict):
             media_metadata.update(Item.title_fields_from_metadata(media_metadata))
 
     should_refresh_tmdb_tv_credits = (
         source == Sources.TMDB.value
+        and not provider_metadata_unavailable
         and tracking_media_type in (MediaTypes.TV.value, MediaTypes.SEASON.value)
         and isinstance(media_metadata, dict)
         and not media_metadata.get("cast")
@@ -969,6 +936,7 @@ def media_details(
             media_id,
             source,
             language=metadata_resolution.metadata_language_default(request.user),
+            user=request.user,
         )
         if isinstance(media_metadata, dict):
             media_metadata.update(Item.title_fields_from_metadata(media_metadata))
@@ -1239,6 +1207,7 @@ def media_details(
             )
     trakt_score = _build_trakt_popularity_context(detail_item, media_type)
     imdb_score = _build_imdb_rating_context(detail_item, media_type)
+    mal_score = _build_mal_rating_context(detail_item, media_type)
 
     author_detail_keys = ("author", "authors", "people")
     authors_linked = []
@@ -1315,7 +1284,12 @@ def media_details(
         if should_refresh_author_cache:
             cache_key = f"{source}_{media_type}_{media_id}"
             cache.delete(cache_key)
-            media_metadata = services.get_media_metadata(media_type, media_id, source)
+            media_metadata = services.get_media_metadata(
+                media_type,
+                media_id,
+                source,
+                user=request.user,
+            )
             if isinstance(media_metadata, dict):
                 media_metadata.setdefault("cast", [])
                 media_metadata.setdefault("crew", [])
@@ -2056,6 +2030,7 @@ def media_details(
         "activity_subtitle": activity_subtitle,
         "trakt_score": trakt_score,
         "imdb_score": imdb_score,
+        "mal_score": mal_score,
         "game_lengths": game_lengths,
         "game_lengths_pending": game_lengths_refresh_pending
         and not (game_lengths and game_lengths.get("available")),

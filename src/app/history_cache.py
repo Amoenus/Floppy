@@ -34,6 +34,7 @@ from app.history_cache_lifecycle import (  # noqa: F401
     schedule_history_refresh,
 )
 from app.history_cache_reader import (  # noqa: F401
+    get_cached_history_day,
     get_cached_history_page,
     get_cached_history_window,
     get_history_days,
@@ -60,6 +61,7 @@ from app.history_cache_utils import (  # noqa: F401
     HISTORY_DAY_CACHE_TIMEOUT,
     HISTORY_DAY_PREFIX,
     HISTORY_DAYS_PER_PAGE,
+    HISTORY_ENTRIES_PER_DAY_PAGE,
     HISTORY_INDEX_PREFIX,
     HISTORY_REFRESH_LOCK_MAX_AGE,
     HISTORY_REFRESH_LOCK_PREFIX,

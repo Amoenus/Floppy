@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime
 from typing import Any
 
@@ -529,6 +530,31 @@ def _get_title_fields(row: dict | None, language: str | None = None):
         "original_title": original_title,
         "localized_title": localized_title or original_title,
     }
+
+
+def _search_title_key(value) -> str:
+    """Normalize a title for provider-search relevance comparisons."""
+    return re.sub(r"\s+", " ", re.sub(r"[^\w]+", " ", str(value or "").casefold())).strip()
+
+
+def _search_result_rank(result: dict, query: str) -> tuple[int, int]:
+    """Rank direct title matches ahead of TVDB's broader search matches."""
+    normalized_query = _search_title_key(query)
+    if not normalized_query:
+        return (0, 0)
+
+    titles = {
+        _search_title_key(result.get(field))
+        for field in ("title", "localized_title", "original_title")
+    }
+    titles.discard("")
+    if normalized_query in titles:
+        return (0, 0)
+    if any(title.startswith(normalized_query) for title in titles):
+        return (1, 0)
+    if any(normalized_query in title for title in titles):
+        return (2, 0)
+    return (3, 0)
 
 
 def _artwork_image(artwork: dict) -> str | None:
@@ -1197,7 +1223,7 @@ def search_remote_id(remote_id: str):
 def search(media_type, query, page, language=None):
     """Search TVDB for TV or grouped anime titles."""
     cache_key = _cache_key(
-        "search", media_type, query, page, _preferred_language_code(language)
+        "search_v2", media_type, query, page, _preferred_language_code(language)
     )
     data = cache.get(cache_key)
     if data is not None:
@@ -1221,6 +1247,10 @@ def search(media_type, query, page, language=None):
     for row in results:
         if not isinstance(row, dict):
             continue
+        entity_id = row.get("tvdb_id") or row.get("id")
+        row = _with_preferred_translation(  # noqa: PLW2901
+            {**row, "id": entity_id}, "series", language
+        )
         title_fields = _get_title_fields(row, language)
         result = {
             "media_id": str(row.get("tvdb_id") or row.get("id")),
@@ -1235,6 +1265,8 @@ def search(media_type, query, page, language=None):
         }
         if result["media_id"]:
             normalized_results.append(result)
+
+    normalized_results.sort(key=lambda result: _search_result_rank(result, query))
 
     data = helpers.format_search_response(
         page, 20, len(normalized_results), normalized_results

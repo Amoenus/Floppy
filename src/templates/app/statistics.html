@@ -1518,7 +1518,7 @@
                 <div class="relative">
                   <img alt="{{ item.media.item }}"
                        class="lazyload w-full aspect-[2/3] bg-[var(--color-surface-alt)] {% if item.media.item.image != IMG_NONE %}object-cover{% endif %}"
-                       data-src="{{ item.media.item.image }}"
+                       data-src="{{ item.media.item.image|image_url }}"
                        src="{{ IMG_NONE }}">
                   
                   {% if item.media.status %}
@@ -1608,7 +1608,7 @@
                 <div class="relative">
                   <img alt="{{ item.media.item }}"
                        class="lazyload w-full aspect-[2/3] bg-[var(--color-surface-alt)] {% if item.media.item.image != IMG_NONE %}object-cover{% endif %}"
-                       data-src="{{ item.media.item.image }}"
+                       data-src="{{ item.media.item.image|image_url }}"
                        src="{{ IMG_NONE }}">
                   
                   {% if item.media.status %}
@@ -1691,7 +1691,7 @@
                 <div class="relative">
                   <img alt="{{ item.media.item }}"
                        class="lazyload w-full aspect-[2/3] bg-[var(--color-surface-alt)] {% if item.media.item.image != IMG_NONE %}object-cover{% endif %}"
-                       data-src="{{ item.media.item.image }}"
+                       data-src="{{ item.media.item.image|image_url }}"
                        src="{{ IMG_NONE }}">
                   
                   {% if item.media.status %}

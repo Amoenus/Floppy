@@ -68,19 +68,40 @@ class ImportDataViewTests(TestCase):
         self.assertContains(response, "Import History")
 
     def test_import_data_activity_lists_media_by_import_source(self):
-        """Media tagged with an ImportRun should appear in the bulk-delete section."""
+        """Media is grouped by media type and import source."""
         from app.models import Item, MediaTypes, Movie, Sources, Status
         from integrations.models import ImportRun
 
-        run = ImportRun.objects.create(user=self.user, source="trakt")
-        item = Item.objects.create(
-            media_id="bulk-delete-movie",
+        trakt_runs = [
+            ImportRun.objects.create(user=self.user, source="trakt"),
+            ImportRun.objects.create(user=self.user, source="trakt"),
+        ]
+        for index, run in enumerate(trakt_runs):
+            item = Item.objects.create(
+                media_id=f"bulk-delete-movie-{index}",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.MOVIE.value,
+                title=f"Bulk Delete Movie {index}",
+            )
+            Movie.objects.create(
+                item=item,
+                user=self.user,
+                status=Status.COMPLETED.value,
+                import_run=run,
+            )
+
+        simkl_run = ImportRun.objects.create(user=self.user, source="simkl")
+        simkl_item = Item.objects.create(
+            media_id="bulk-delete-movie-simkl",
             source=Sources.TMDB.value,
             media_type=MediaTypes.MOVIE.value,
-            title="Bulk Delete Movie",
+            title="Bulk Delete Movie from Simkl",
         )
         Movie.objects.create(
-            item=item, user=self.user, status=Status.COMPLETED.value, import_run=run
+            item=simkl_item,
+            user=self.user,
+            status=Status.COMPLETED.value,
+            import_run=simkl_run,
         )
 
         response = self.client.get(
@@ -89,9 +110,16 @@ class ImportDataViewTests(TestCase):
         )
 
         self.assertContains(response, "Imported Media by Source")
+        self.assertContains(response, "movie · 2 items")
+        self.assertContains(response, "movie · 1 item")
+        self.assertEqual(response.content.decode().count("movie · 2 items"), 1)
         self.assertContains(
             response,
             reverse("bulk_delete_by_import_source", args=["movie", "trakt"]),
+        )
+        self.assertContains(
+            response,
+            reverse("bulk_delete_by_import_source", args=["movie", "simkl"]),
         )
 
     def test_import_data_shows_lastfm_history_status_and_action(self):

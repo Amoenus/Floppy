@@ -136,11 +136,13 @@ def remove_collection_source_state(*, user, item, source: str):
     """Remove a source-specific collection snapshot and reconcile the durable entry."""
 
     def _remove_state():
-        CollectionSourceState.objects.filter(
+        removed_count, _ = CollectionSourceState.objects.filter(
             user=user,
             item=item,
             source=source,
         ).delete()
+        if not removed_count:
+            return _collection_entry_queryset(user=user, item=item).first()
         return _reconcile_collection_entry(user=user, item=item)
 
     return retry_on_lock(_remove_state)

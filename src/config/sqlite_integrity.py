@@ -36,6 +36,7 @@ _REPORT_SUFFIX = ".integrity.json"
 _DECISION_SUFFIX = ".integrity.decision"
 _STATUS_SUFFIX = ".integrity.status.json"
 _RECOVERY_PAGE_NAME = "floppy-recovery.html"
+_PROGRESS_QUIET_AFTER_SECONDS = 45.0
 # Lock contention and scan duration are different failures and need different
 # bounds. A long busy timeout turns a fast "another process holds the database"
 # answer into a long stall, so the diagnostic scan waits briefly for the lock and
@@ -204,6 +205,8 @@ def write_startup_status(
     elapsed_seconds: float,
     read_bytes: int | None = None,
     progress_callbacks: int | None = None,
+    phase_started_at: str | None = None,
+    last_progress_at: str | None = None,
     error_class: str | None = None,
     error_message: str | None = None,
     version: str | None = None,
@@ -217,6 +220,7 @@ def write_startup_status(
     swallowed: this file only describes what was happening when the scan was
     last observed, and must never itself change whether startup may continue.
     """
+    updated_at = datetime.now(UTC)
     payload = {
         "commit_sha": commit_sha,
         "database": str(Path(db_path).resolve()),
@@ -224,14 +228,24 @@ def write_startup_status(
         "error_class": error_class,
         "error_message": error_message,
         "phase": phase,
+        "phase_started_at": phase_started_at or started_at,
         "progress_callbacks": progress_callbacks,
+        "last_progress_at": last_progress_at,
         "read_bytes": read_bytes,
         "schema_version": 1,
         "started_at": started_at,
         "status": status,
-        "updated_at": datetime.now(UTC).isoformat(),
+        "updated_at": updated_at.isoformat(),
         "version": version,
     }
+    diagnostics = startup_progress_diagnostics(payload, now=updated_at)
+    payload.update(
+        {
+            "progress_age_seconds": diagnostics["last_progress_age_seconds"],
+            "progress_rate_per_minute": diagnostics["progress_rate_per_minute"],
+            "progress_state": diagnostics["progress_state"],
+        }
+    )
     contents = json.dumps(payload, sort_keys=True) + "\n"
     try:
         _publish_report(_status_path(db_path), contents, mode=0o644)
@@ -284,6 +298,89 @@ def _live_elapsed_text(status: dict) -> str:
     return f"{max(elapsed, 0):.0f}s"
 
 
+def _parse_timestamp(value: object) -> datetime | None:
+    try:
+        timestamp = datetime.fromisoformat(str(value))
+    except (TypeError, ValueError):
+        return None
+    if timestamp.tzinfo is None:
+        timestamp = timestamp.replace(tzinfo=UTC)
+    return timestamp
+
+
+def _timestamp_age_seconds(value: object, *, now: datetime) -> float | None:
+    timestamp = _parse_timestamp(value)
+    if timestamp is None:
+        return None
+    return max((now - timestamp).total_seconds(), 0.0)
+
+
+def startup_progress_diagnostics(
+    status: dict,
+    *,
+    now: datetime | None = None,
+) -> dict:
+    """Calculate operator-facing progress facts from one status snapshot.
+
+    A quiet progress state means that no SQLite VM progress callback has been
+    observed recently. It is a useful warning about slow I/O or a blocked
+    operation, not proof that the database is corrupt or permanently stuck.
+    Timeout snapshots use their own publication time as the reference so the
+    report describes the scan when it stopped, even if the page is opened much
+    later.
+    """
+    reference = now or datetime.now(UTC)
+    if reference.tzinfo is None:
+        reference = reference.replace(tzinfo=UTC)
+    if status.get("status") == "timeout":
+        timeout_at = _parse_timestamp(status.get("updated_at"))
+        if timeout_at is not None:
+            reference = timeout_at
+
+    phase_elapsed = _timestamp_age_seconds(
+        status.get("phase_started_at") or status.get("started_at"),
+        now=reference,
+    )
+    progress_age = _timestamp_age_seconds(
+        status.get("last_progress_at"),
+        now=reference,
+    )
+    progress_callbacks = status.get("progress_callbacks")
+    if not isinstance(progress_callbacks, int | float):
+        progress_callbacks = None
+
+    if progress_age is None and progress_callbacks == 0:
+        progress_age = phase_elapsed
+        progress_state = (
+            "quiet"
+            if progress_age is not None
+            and progress_age > _PROGRESS_QUIET_AFTER_SECONDS
+            else "none_yet"
+        )
+    elif progress_age is None:
+        progress_state = "unknown"
+    elif progress_age > _PROGRESS_QUIET_AFTER_SECONDS:
+        progress_state = "quiet"
+    else:
+        progress_state = "active"
+
+    progress_rate = None
+    if progress_callbacks is not None and phase_elapsed and phase_elapsed > 0:
+        progress_rate = progress_callbacks / phase_elapsed * 60
+
+    return {
+        "last_progress_age_seconds": progress_age,
+        "phase_elapsed_seconds": phase_elapsed,
+        "progress_callbacks": progress_callbacks,
+        "progress_rate_per_minute": progress_rate,
+        "progress_state": progress_state,
+    }
+
+
+def _format_seconds(value: object) -> str:
+    return f"{value:.0f}s" if isinstance(value, int | float) else "unknown"
+
+
 def print_startup_heartbeat(db_path: str) -> None:
     """Emit one operator heartbeat line from the startup-status sidecar.
 
@@ -296,13 +393,28 @@ def print_startup_heartbeat(db_path: str) -> None:
         _log("[entrypoint] SQLite integrity scan heartbeat: still running")
         return
     phase = status.get("phase", "unknown")
-    detail = f"phase={phase} elapsed={_live_elapsed_text(status)}"
+    diagnostics = startup_progress_diagnostics(status)
+    detail = (
+        f"phase={phase} elapsed={_live_elapsed_text(status)} "
+        f"phase_elapsed={_format_seconds(diagnostics['phase_elapsed_seconds'])}"
+    )
     read_bytes = status.get("read_bytes")
     if isinstance(read_bytes, int | float) and read_bytes:
         detail += f" read={read_bytes / 1_048_576:.0f}MB"
     progress_callbacks = status.get("progress_callbacks")
     if isinstance(progress_callbacks, int | float):
         detail += f" progress_callbacks={progress_callbacks:.0f}"
+    progress_rate = diagnostics["progress_rate_per_minute"]
+    if isinstance(progress_rate, int | float):
+        detail += f" progress_rate={progress_rate:.1f}/min"
+    progress_age = diagnostics["last_progress_age_seconds"]
+    progress_age_text = _format_seconds(progress_age)
+    detail += (
+        f" last_progress={progress_age_text}_ago"
+        if progress_age_text != "unknown"
+        else " last_progress=unknown"
+    )
+    detail += f" progress_state={diagnostics['progress_state']}"
     _log(f"[entrypoint] SQLite integrity scan heartbeat: {detail}")
 
 
@@ -322,6 +434,8 @@ def mark_startup_status_timeout(db_path: str, timeout_seconds: float) -> None:
     elapsed = max(elapsed, float(timeout_seconds))
     read_bytes = previous.get("read_bytes")
     progress_callbacks = previous.get("progress_callbacks")
+    phase_started_at = previous.get("phase_started_at")
+    last_progress_at = previous.get("last_progress_at")
     write_startup_status(
         db_path,
         status="timeout",
@@ -330,16 +444,34 @@ def mark_startup_status_timeout(db_path: str, timeout_seconds: float) -> None:
         elapsed_seconds=elapsed,
         read_bytes=read_bytes,
         progress_callbacks=progress_callbacks,
+        phase_started_at=phase_started_at,
+        last_progress_at=last_progress_at,
         error_class="timeout",
         error_message=f"scan exceeded {timeout_seconds:g}s",
         version=previous.get("version") or os.environ.get("VERSION"),
         commit_sha=previous.get("commit_sha") or os.environ.get("COMMIT_SHA"),
     )
-    detail = f"phase={phase} elapsed={elapsed:.0f}s"
+    timeout_status = read_startup_status(db_path) or previous
+    diagnostics = startup_progress_diagnostics(timeout_status)
+    detail = (
+        f"phase={phase} elapsed={elapsed:.0f}s "
+        f"phase_elapsed={_format_seconds(diagnostics['phase_elapsed_seconds'])}"
+    )
     if isinstance(read_bytes, int | float) and read_bytes:
         detail += f" read={read_bytes / 1_048_576:.0f}MB"
     if isinstance(progress_callbacks, int | float):
         detail += f" progress_callbacks={progress_callbacks:.0f}"
+    progress_rate = diagnostics["progress_rate_per_minute"]
+    if isinstance(progress_rate, int | float):
+        detail += f" progress_rate={progress_rate:.1f}/min"
+    progress_age = diagnostics["last_progress_age_seconds"]
+    progress_age_text = _format_seconds(progress_age)
+    detail += (
+        f" last_progress={progress_age_text}_ago"
+        if progress_age_text != "unknown"
+        else " last_progress=unknown"
+    )
+    detail += f" progress_state={diagnostics['progress_state']}"
     _log(
         "[entrypoint] SQLite integrity scan timed out after "
         f"{timeout_seconds:g}s; last observed {detail}",

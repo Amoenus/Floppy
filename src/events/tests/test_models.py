@@ -345,7 +345,6 @@ class EventManagerCrossProviderDedupTests(TestCase):
             source=Sources.TMDB.value,
             image="",
             season_number=1,
-            provider_external_ids={"tvdb_id": tvdb_id},
         )
         tvdb_season = Item.objects.create(
             title="Breaking Bad",

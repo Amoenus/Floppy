@@ -252,10 +252,10 @@ def dedupe_cross_provider_items(items: list[Item], preferred_source: str) -> lis
     reconciles them (#620), and a user may legitimately track a show under
     both identities on purpose - in which case both trees stay, and only the
     non-preferred one should be hidden from render-time listings (#639).
-    This hides the item the user doesn't prefer using only the already-cached
-    `provider_external_ids["tvdb_id"]` mapping - never a title match, and
-    never a network call, so it can't misfire on unrelated shows and can't
-    slow down rendering.
+    This hides the item the user doesn't prefer using only verified, cached
+    `provider_external_ids["tvdb_id"]` mappings - never a title match, and
+    never a network call. Season rows that lack their own mapping inherit the
+    cached mapping from the matching TMDB TV row through one bulk lookup.
     """
     tvdb_by_key = {
         (
@@ -271,6 +271,28 @@ def dedupe_cross_provider_items(items: list[Item], preferred_source: str) -> lis
     if not tvdb_by_key:
         return items
 
+    season_parent_tvdb_ids = {}
+    tmdb_season_media_ids = {
+        item.media_id
+        for item in items
+        if item.source == Sources.TMDB.value
+        and item.media_type == MediaTypes.SEASON.value
+        and not (item.provider_external_ids or {}).get("tvdb_id")
+    }
+    if tmdb_season_media_ids:
+        for parent in (
+            Item.objects.filter(
+                media_id__in=tmdb_season_media_ids,
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.TV.value,
+            )
+            .order_by("media_id", "id")
+            .values("media_id", "provider_external_ids")
+        ):
+            tvdb_id = (parent["provider_external_ids"] or {}).get("tvdb_id")
+            if tvdb_id and parent["media_id"] not in season_parent_tvdb_ids:
+                season_parent_tvdb_ids[parent["media_id"]] = str(tvdb_id)
+
     hidden_ids = set()
     for item in items:
         if item.source != Sources.TMDB.value or item.media_type not in (
@@ -279,6 +301,8 @@ def dedupe_cross_provider_items(items: list[Item], preferred_source: str) -> lis
         ):
             continue
         tvdb_id = (item.provider_external_ids or {}).get("tvdb_id")
+        if not tvdb_id and item.media_type == MediaTypes.SEASON.value:
+            tvdb_id = season_parent_tvdb_ids.get(item.media_id)
         if not tvdb_id:
             continue
         counterpart = tvdb_by_key.get(

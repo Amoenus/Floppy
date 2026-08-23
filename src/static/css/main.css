@@ -851,6 +851,9 @@
   .max-h-72 {
     max-height: calc(var(--spacing) * 72);
   }
+  .max-h-96 {
+    max-height: calc(var(--spacing) * 96);
+  }
   .max-h-\[70svh\] {
     max-height: 70svh;
   }
@@ -1610,6 +1613,9 @@
   .border-\[var\(--color-border\)\] {
     border-color: var(--color-border);
   }
+  .border-\[var\(--color-genre-badge-border\)\] {
+    border-color: var(--color-genre-badge-border);
+  }
   .border-\[var\(--color-link\)\] {
     border-color: var(--color-link);
   }
@@ -1832,6 +1838,12 @@
       border-color: color-mix(in oklab, var(--color-red-500) 30%, transparent);
     }
   }
+  .border-red-500\/40 {
+    border-color: color-mix(in srgb, oklch(63.7% 0.237 25.331) 40%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      border-color: color-mix(in oklab, var(--color-red-500) 40%, transparent);
+    }
+  }
   .border-red-600\/40 {
     border-color: color-mix(in srgb, oklch(57.7% 0.245 27.325) 40%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
@@ -1934,6 +1946,9 @@
       border-color: color-mix(in oklab, var(--color-violet-400) 28%, transparent);
     }
   }
+  .border-white {
+    border-color: var(--color-white);
+  }
   .border-white\/30 {
     border-color: color-mix(in srgb, #fff 30%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
@@ -1951,6 +1966,9 @@
   }
   .bg-\[var\(--color-border\)\] {
     background-color: var(--color-border);
+  }
+  .bg-\[var\(--color-genre-badge-bg\)\] {
+    background-color: var(--color-genre-badge-bg);
   }
   .bg-\[var\(--color-hover-dim\)\] {
     background-color: var(--color-hover-dim);
@@ -2933,6 +2951,9 @@
   .text-\[var\(--color-error-text\)\] {
     color: var(--color-error-text);
   }
+  .text-\[var\(--color-genre-badge-text\)\] {
+    color: var(--color-genre-badge-text);
+  }
   .text-\[var\(--color-info-text\)\] {
     color: var(--color-info-text);
   }
@@ -3109,9 +3130,6 @@
   }
   .text-slate-400 {
     color: var(--color-slate-400);
-  }
-  .text-violet-100 {
-    color: var(--color-violet-100);
   }
   .text-violet-400 {
     color: var(--color-violet-400);
@@ -3399,6 +3417,48 @@
       background-color: var(--color-indigo-600);
     }
   }
+  .file\:mr-3 {
+    &::file-selector-button {
+      margin-right: calc(var(--spacing) * 3);
+    }
+  }
+  .file\:rounded {
+    &::file-selector-button {
+      border-radius: 0.25rem;
+    }
+  }
+  .file\:border-0 {
+    &::file-selector-button {
+      border-style: var(--tw-border-style);
+      border-width: 0px;
+    }
+  }
+  .file\:bg-indigo-600 {
+    &::file-selector-button {
+      background-color: var(--color-indigo-600);
+    }
+  }
+  .file\:px-3 {
+    &::file-selector-button {
+      padding-inline: calc(var(--spacing) * 3);
+    }
+  }
+  .file\:py-2 {
+    &::file-selector-button {
+      padding-block: calc(var(--spacing) * 2);
+    }
+  }
+  .file\:text-sm {
+    &::file-selector-button {
+      font-size: var(--text-sm);
+      line-height: var(--tw-leading, var(--text-sm--line-height));
+    }
+  }
+  .file\:text-white {
+    &::file-selector-button {
+      color: var(--color-white);
+    }
+  }
   .placeholder\:text-\[var\(--color-text\)\] {
     &::placeholder {
       color: var(--color-text);
@@ -3619,6 +3679,13 @@
     &:hover {
       @media (hover: hover) {
         background-color: var(--color-border);
+      }
+    }
+  }
+  .hover\:bg-\[var\(--color-genre-badge-hover-bg\)\] {
+    &:hover {
+      @media (hover: hover) {
+        background-color: var(--color-genre-badge-hover-bg);
       }
     }
   }
@@ -3970,16 +4037,6 @@
       }
     }
   }
-  .hover\:bg-violet-500\/\[0\.15\] {
-    &:hover {
-      @media (hover: hover) {
-        background-color: color-mix(in srgb, oklch(60.6% 0.25 292.717) 15%, transparent);
-        @supports (color: color-mix(in lab, red, red)) {
-          background-color: color-mix(in oklab, var(--color-violet-500) 15%, transparent);
-        }
-      }
-    }
-  }
   .hover\:bg-violet-700 {
     &:hover {
       @media (hover: hover) {
@@ -4154,6 +4211,15 @@
       }
     }
   }
+  .hover\:file\:bg-indigo-700 {
+    &:hover {
+      @media (hover: hover) {
+        &::file-selector-button {
+          background-color: var(--color-indigo-700);
+        }
+      }
+    }
+  }
   .focus\:border-indigo-500 {
     &:focus {
       border-color: var(--color-indigo-500);
@@ -4319,6 +4385,11 @@
   .disabled\:opacity-50 {
     &:disabled {
       opacity: 50%;
+    }
+  }
+  .disabled\:opacity-60 {
+    &:disabled {
+      opacity: 60%;
     }
   }
   .disabled\:opacity-75 {
@@ -5442,6 +5513,10 @@
   --color-link-hover: #c7d2fe;
   --color-status-clean: #10b981;
   --color-status-dirty: #f59e0b;
+  --color-genre-badge-bg: rgba(139, 92, 246, 0.07);
+  --color-genre-badge-border: rgba(167, 139, 250, 0.18);
+  --color-genre-badge-text: #ede9fe;
+  --color-genre-badge-hover-bg: rgba(139, 92, 246, 0.15);
   color-scheme: dark;
 }
 @media (prefers-color-scheme: light) {
@@ -5469,6 +5544,10 @@
     --color-link-hover: #4338ca;
     --color-status-clean: #047857;
     --color-status-dirty: #b45309;
+    --color-genre-badge-bg: rgba(139, 92, 246, 0.08);
+    --color-genre-badge-border: rgba(124, 58, 237, 0.25);
+    --color-genre-badge-text: #5b21b6;
+    --color-genre-badge-hover-bg: rgba(139, 92, 246, 0.16);
     color-scheme: light;
   }
 }
@@ -5496,6 +5575,10 @@ html.light {
   --color-link-hover: #4338ca;
   --color-status-clean: #047857;
   --color-status-dirty: #b45309;
+  --color-genre-badge-bg: rgba(139, 92, 246, 0.08);
+  --color-genre-badge-border: rgba(124, 58, 237, 0.25);
+  --color-genre-badge-text: #5b21b6;
+  --color-genre-badge-hover-bg: rgba(139, 92, 246, 0.16);
   color-scheme: light;
 }
 html.dark {
@@ -5522,6 +5605,10 @@ html.dark {
   --color-link-hover: #c7d2fe;
   --color-status-clean: #10b981;
   --color-status-dirty: #f59e0b;
+  --color-genre-badge-bg: rgba(139, 92, 246, 0.07);
+  --color-genre-badge-border: rgba(167, 139, 250, 0.18);
+  --color-genre-badge-text: #ede9fe;
+  --color-genre-badge-hover-bg: rgba(139, 92, 246, 0.15);
   color-scheme: dark;
 }
 .theme-toggle-icon-sun {

@@ -1869,6 +1869,124 @@ class Metadata(TestCase):
         response = comicvine.comic("155969")
         self.assertEqual(response["title"], "Ultimate Spider-Man")
 
+    @patch("app.providers.comicvine.services.api_request")
+    def test_comic_volume_issues_sort_numerically(self, mock_api_request):
+        """Comic volume issues should use numeric rather than lexical ordering."""
+        volume_id = "numeric-order-test"
+        cache_key = f"{Sources.COMICVINE.value}_volume_{volume_id}_issues"
+        comicvine.cache.delete(cache_key)
+        self.addCleanup(comicvine.cache.delete, cache_key)
+        mock_api_request.return_value = {
+            "results": [
+                {
+                    "id": 1,
+                    "name": "Issue One",
+                    "issue_number": "1",
+                    "image": {"medium_url": "https://example.com/1.jpg"},
+                    "cover_date": "2024-01-01",
+                    "site_detail_url": "https://example.com/1",
+                },
+                {
+                    "id": 10,
+                    "name": "Issue Ten",
+                    "issue_number": "10",
+                    "image": {"medium_url": "https://example.com/10.jpg"},
+                    "cover_date": "2024-10-01",
+                    "site_detail_url": "https://example.com/10",
+                },
+                {
+                    "id": 11,
+                    "name": "Issue Eleven",
+                    "issue_number": "11",
+                    "image": {"medium_url": "https://example.com/11.jpg"},
+                    "cover_date": "2024-11-01",
+                    "site_detail_url": "https://example.com/11",
+                },
+                {
+                    "id": 2,
+                    "name": "Issue Two",
+                    "issue_number": "2",
+                    "image": {"medium_url": "https://example.com/2.jpg"},
+                    "cover_date": "2024-02-01",
+                    "site_detail_url": "https://example.com/2",
+                },
+                {
+                    "id": 23,
+                    "name": "Issue Two-Three",
+                    "issue_number": "2-3",
+                    "image": {"medium_url": "https://example.com/2-3.jpg"},
+                    "cover_date": "2024-03-01",
+                    "site_detail_url": "https://example.com/2-3",
+                },
+                {
+                    "id": 90,
+                    "name": "Annual",
+                    "issue_number": "Annual",
+                    "image": {"medium_url": "https://example.com/annual.jpg"},
+                    "cover_date": "2024-12-01",
+                    "site_detail_url": "https://example.com/annual",
+                },
+                {
+                    "id": 91,
+                    "name": "Special",
+                    "issue_number": "Special",
+                    "image": {"medium_url": "https://example.com/special.jpg"},
+                    "cover_date": "2024-12-02",
+                    "site_detail_url": "https://example.com/special",
+                },
+                {
+                    "id": 92,
+                    "name": "Unknown Issue",
+                    "issue_number": None,
+                    "image": {"medium_url": "https://example.com/unknown.jpg"},
+                    "cover_date": None,
+                    "site_detail_url": "https://example.com/unknown",
+                },
+            ],
+        }
+
+        result = comicvine.get_volume_issues(volume_id)
+
+        self.assertEqual(
+            [issue["issue_number"] for issue in result],
+            ["1", "2", "2-3", "10", "11", "Annual", "Special", ""],
+        )
+        self.assertEqual(result[0]["media_id"], "1")
+        self.assertEqual(result[0]["source"], Sources.COMICVINE.value)
+        self.assertEqual(result[0]["media_type"], MediaTypes.COMIC_ISSUE.value)
+        self.assertEqual(result[0]["title"], "Issue One")
+        self.assertEqual(result[0]["image"], "https://example.com/1.jpg")
+        self.assertEqual(result[0]["cover_date"], "2024-01-01")
+        self.assertEqual(
+            result[0]["site_detail_url"], "https://example.com/1"
+        )
+        self.assertEqual(result[0]["history"], [])
+        self.assertEqual(
+            mock_api_request.call_args.kwargs["params"]["sort"],
+            "issue_number:asc",
+        )
+
+    @patch("app.providers.comicvine.services.api_request")
+    def test_comic_volume_issues_sort_cached_data(self, mock_api_request):
+        """Cached volume issues should be corrected without a provider request."""
+        volume_id = "cached-order-test"
+        cache_key = f"{Sources.COMICVINE.value}_volume_{volume_id}_issues"
+        cached_issues = [
+            {"issue_number": "1"},
+            {"issue_number": "10"},
+            {"issue_number": "2"},
+        ]
+        comicvine.cache.set(cache_key, cached_issues)
+        self.addCleanup(comicvine.cache.delete, cache_key)
+
+        result = comicvine.get_volume_issues(volume_id)
+
+        self.assertEqual(
+            [issue["issue_number"] for issue in result],
+            ["1", "2", "10"],
+        )
+        mock_api_request.assert_not_called()
+
     @tag("network")
     def test_hardcover_book(self):
         """Test the metadata method for books from Hardcover."""
@@ -2512,6 +2630,29 @@ class Metadata(TestCase):
 class CastOrderRegressionTests(TestCase):
     """Regression tests for issue #92 — first cast member (order=0) being dropped."""
 
+    def test_get_cast_credits_ignores_malformed_aggregate_roles(self):
+        """A malformed aggregate role must not break TV metadata processing."""
+        credits_data = {
+            "cast": [
+                {
+                    "id": 1,
+                    "name": "Actor",
+                    "roles": [
+                        [{"character": "Nested Role", "episode_count": 10}],
+                        {"character": "Valid Role", "episode_count": 3},
+                    ],
+                    "known_for_department": "Acting",
+                    "gender": 2,
+                    "profile_path": None,
+                },
+            ],
+        }
+
+        result = tmdb.get_cast_credits(credits_data, is_aggregate=True)
+
+        self.assertEqual(result[0]["role"], "Valid Role")
+        self.assertEqual(result[0]["episode_count"], 3)
+
     def test_get_cast_credits_order_zero_is_first(self):
         """Cast member with order=0 must sort before members with higher orders."""
         credits_data = {
@@ -2587,6 +2728,25 @@ class CastOrderRegressionTests(TestCase):
         result = _normalize_credit_rows(rows)
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]["sort_order"], 0)
+
+    def test_normalize_credit_rows_coerces_non_string_text_fields(self):
+        """Provider numeric text fields must not crash credit normalization."""
+        result = _normalize_credit_rows(
+            [
+                {
+                    "person_id": 42,
+                    "name": 123,
+                    "image": 456,
+                    "known_for_department": 789,
+                    "role": 101,
+                    "department": 112,
+                },
+            ],
+        )
+
+        self.assertEqual(result[0]["name"], "123")
+        self.assertEqual(result[0]["known_for_department"], "789")
+        self.assertEqual(result[0]["role"], "101")
 
 
 class OpenLibraryPublishDateTests(TestCase):

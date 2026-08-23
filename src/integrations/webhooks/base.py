@@ -1350,6 +1350,10 @@ class BaseWebhookProcessor:
 
         season_key = f"season/{season_number}"
         season_metadata = tv_metadata.get(season_key)
+        season_metadata_authoritative = (
+            isinstance(season_metadata, dict)
+            and isinstance(season_metadata.get("episodes"), list)
+        )
         used_local_only_fallback = False
 
         # Try remapping before show recovery: the payload's episode-level GUID
@@ -1365,6 +1369,10 @@ class BaseWebhookProcessor:
             )
             if remapped is not None:
                 remapped_season, remapped_episode, season_metadata = remapped
+                season_metadata_authoritative = (
+                    isinstance(season_metadata, dict)
+                    and isinstance(season_metadata.get("episodes"), list)
+                )
                 logger.info(
                     "Remapped Plex episode %s S%sE%s to TMDB S%sE%s",
                     media_id,
@@ -1392,6 +1400,10 @@ class BaseWebhookProcessor:
                 tv_metadata = recovered_tv_metadata
                 self._remember_tvdb_override(media_id, external_ids)
                 season_metadata = tv_metadata.get(season_key)
+                season_metadata_authoritative = (
+                    isinstance(season_metadata, dict)
+                    and isinstance(season_metadata.get("episodes"), list)
+                )
                 logger.info(
                     "Recovered missing season %s using TMDB show %s",
                     season_number,
@@ -1413,6 +1425,7 @@ class BaseWebhookProcessor:
                 episode_number,
                 tv_metadata,
             )
+            season_metadata_authoritative = False
             if season_metadata and int(season_number) == 0:
                 cached_fallback = app.providers.tmdb.cache_fallback_season_metadata(
                     media_id,
@@ -1465,6 +1478,40 @@ class BaseWebhookProcessor:
                 season_metadata,
                 season_number,
             )
+
+        if season_metadata_authoritative:
+            from app.services.episode_coordinates import (
+                InvalidEpisodeCoordinateError,
+                cleanup_episode_history_for_route,
+                resolve_episode_coordinate,
+            )
+
+            try:
+                resolve_episode_coordinate(
+                    item_media_id if not existing_tv_item else media_id,
+                    item_source,
+                    season_number,
+                    episode_number,
+                    season_metadata=item_season_metadata,
+                )
+            except InvalidEpisodeCoordinateError:
+                cleanup_episode_history_for_route(
+                    user,
+                    item_media_id if not existing_tv_item else media_id,
+                    item_source,
+                    season_number,
+                    episode_number,
+                    library_media_type=library_media_type,
+                )
+                logger.warning(
+                    "Ignoring webhook for absent episode coordinate: %s S%02dE%02d",
+                    media_id,
+                    season_number,
+                    episode_number,
+                )
+                return None
+
+        if not existing_tv_item:
             tv_item, _ = app.models.Item.objects.get_or_create(
                 media_id=item_media_id,
                 source=item_source,

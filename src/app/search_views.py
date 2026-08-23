@@ -310,6 +310,7 @@ def media_search(request):
         query,
         search_page,
         source,
+        user=request.user,
         language=metadata_resolution.metadata_language_default(request.user),
     )
 

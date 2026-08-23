@@ -12,7 +12,7 @@
   <div class="w-full md:w-1/4 max-w-[250px] mx-auto md:mx-0">
     <img alt="{{ media|display_title:user }}"
          class="w-full rounded-lg shadow-lg bg-[var(--color-surface)] object-cover"
-         src="{{ media.image|default:IMG_NONE }}">
+         src="{{ media.image|default:IMG_NONE|image_url }}">
   </div>
 
   <div class="md:w-3/4">

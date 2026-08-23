@@ -10,6 +10,7 @@ from app import live_playback
 from app.models import (
     TV,
     Anime,
+    CollectionEntry,
     Episode,
     Item,
     ItemProviderLink,
@@ -19,6 +20,7 @@ from app.models import (
     Sources,
     Status,
 )
+from integrations.models import CollectionSourceState
 from integrations.webhooks.jellyfin import JellyfinWebhookProcessor
 
 
@@ -471,6 +473,264 @@ class JellyfinWebhookTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(Movie.objects.count(), 0)
+
+    @patch("integrations.webhooks.jellyfin.services.get_media_metadata")
+    def test_item_added_and_deleted_movie_syncs_jellyfin_collection(
+        self,
+        mock_get_media_metadata,
+    ):
+        """Movie library events should create and remove source-scoped ownership."""
+        mock_get_media_metadata.return_value = {
+            "media_id": "603",
+            "title": "The Matrix",
+            "image": "https://example.com/matrix.jpg",
+            "provider_external_ids": {"imdb_id": "tt0133093"},
+        }
+        payload = {
+            "Event": "ItemAdded",
+            "Item": {
+                "Type": "Movie",
+                "Name": "The Matrix",
+                "ProviderIds": {"Tmdb": "603", "Imdb": "tt0133093"},
+            },
+        }
+        processor = JellyfinWebhookProcessor()
+
+        processor.process_payload(payload, self.user)
+
+        item = Item.objects.get(
+            media_id="603",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+        )
+        self.assertTrue(
+            CollectionSourceState.objects.filter(
+                user=self.user,
+                item=item,
+                source="jellyfin",
+            ).exists(),
+        )
+        self.assertTrue(
+            CollectionEntry.objects.filter(user=self.user, item=item).exists()
+        )
+        self.assertEqual(Movie.objects.filter(user=self.user, item=item).count(), 0)
+
+        processor.process_payload(
+            {**payload, "Event": "ItemDeleted"},
+            self.user,
+        )
+
+        self.assertFalse(
+            CollectionSourceState.objects.filter(
+                user=self.user,
+                item=item,
+                source="jellyfin",
+            ).exists(),
+        )
+        self.assertFalse(
+            CollectionEntry.objects.filter(user=self.user, item=item).exists()
+        )
+
+    @patch("integrations.webhooks.jellyfin.services.get_media_metadata")
+    @patch.object(
+        JellyfinWebhookProcessor, "_find_tv_media_id", return_value=("1668", None, None)
+    )
+    def test_item_added_and_deleted_episode_syncs_collection_without_tracking(
+        self,
+        _mock_find_tv_media_id,
+        mock_get_media_metadata,
+    ):
+        """Episode library events should preserve season/episode identity."""
+
+        def metadata(
+            media_type, media_id, source, season_numbers=None, episode_number=None
+        ):
+            if media_type == MediaTypes.TV.value:
+                return {
+                    "media_id": media_id,
+                    "title": "Friends",
+                    "image": "https://example.com/friends.jpg",
+                    "provider_external_ids": {"tvdb_id": "79175"},
+                }
+            return {
+                "episode_title": "The One Where It All Began",
+                "image": "https://example.com/episode.jpg",
+            }
+
+        mock_get_media_metadata.side_effect = metadata
+        payload = {
+            "Event": "ItemAdded",
+            "Item": {
+                "Type": "Episode",
+                "Name": "The One Where It All Began",
+                "SeriesName": "Friends",
+                "ParentIndexNumber": 1,
+                "IndexNumber": 1,
+                "ProviderIds": {"Tvdb": "303821", "Imdb": "tt0583459"},
+            },
+        }
+        processor = JellyfinWebhookProcessor()
+
+        processor.process_payload(payload, self.user)
+
+        episode_item = Item.objects.get(
+            media_id="1668",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=1,
+            episode_number=1,
+        )
+        self.assertTrue(
+            CollectionSourceState.objects.filter(
+                user=self.user,
+                item=episode_item,
+                source="jellyfin",
+            ).exists(),
+        )
+        self.assertFalse(TV.objects.filter(user=self.user).exists())
+        self.assertFalse(Season.objects.filter(user=self.user).exists())
+        self.assertFalse(
+            Episode.objects.filter(related_season__user=self.user).exists()
+        )
+
+        processor.process_payload(
+            {**payload, "Event": "ItemDeleted"},
+            self.user,
+        )
+
+        self.assertFalse(
+            CollectionSourceState.objects.filter(
+                user=self.user,
+                item=episode_item,
+                source="jellyfin",
+            ).exists(),
+        )
+        self.assertFalse(
+            CollectionEntry.objects.filter(user=self.user, item=episode_item).exists()
+        )
+
+    @patch("integrations.webhooks.jellyfin.services.get_media_metadata")
+    def test_duplicate_item_added_is_idempotent_and_preserves_other_source_state(
+        self,
+        mock_get_media_metadata,
+    ):
+        """Repeated adds are safe and deleting Jellyfin leaves other ownership intact."""
+        mock_get_media_metadata.return_value = {
+            "media_id": "603",
+            "title": "The Matrix",
+            "image": "https://example.com/matrix.jpg",
+        }
+        payload = {
+            "Event": "ItemAdded",
+            "Item": {"Type": "Movie", "ProviderIds": {"Tmdb": "603"}},
+        }
+        processor = JellyfinWebhookProcessor()
+
+        processor.process_payload(payload, self.user)
+        processor.process_payload(payload, self.user)
+
+        item = Item.objects.get(media_id="603", media_type=MediaTypes.MOVIE.value)
+        CollectionSourceState.objects.create(
+            user=self.user,
+            item=item,
+            source="sonarr",
+        )
+        self.assertEqual(
+            CollectionEntry.objects.filter(user=self.user, item=item).count(),
+            1,
+        )
+        self.assertEqual(mock_get_media_metadata.call_count, 1)
+
+        processor.process_payload(
+            {**payload, "Event": "ItemDeleted"},
+            self.user,
+        )
+
+        self.assertFalse(
+            CollectionSourceState.objects.filter(
+                user=self.user,
+                item=item,
+                source="jellyfin",
+            ).exists(),
+        )
+        self.assertTrue(
+            CollectionSourceState.objects.filter(
+                user=self.user,
+                item=item,
+                source="sonarr",
+            ).exists(),
+        )
+        self.assertTrue(
+            CollectionEntry.objects.filter(user=self.user, item=item).exists()
+        )
+
+    @patch("integrations.webhooks.jellyfin.services.get_media_metadata")
+    def test_item_deleted_does_not_remove_manual_placeholder_without_jellyfin_state(
+        self,
+        mock_get_media_metadata,
+    ):
+        """An unrelated Jellyfin deletion must not remove manual ownership."""
+        item = Item.objects.create(
+            media_id="603",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="The Matrix",
+        )
+        CollectionEntry.objects.create(user=self.user, item=item)
+
+        JellyfinWebhookProcessor().process_payload(
+            {
+                "Event": "ItemDeleted",
+                "Item": {"Type": "Movie", "ProviderIds": {"Tmdb": "603"}},
+            },
+            self.user,
+        )
+
+        self.assertTrue(
+            CollectionEntry.objects.filter(user=self.user, item=item).exists()
+        )
+        mock_get_media_metadata.assert_not_called()
+
+    @patch("integrations.webhooks.jellyfin.services.get_media_metadata")
+    def test_collection_events_ignore_invalid_or_unsupported_payloads(
+        self,
+        mock_get_media_metadata,
+    ):
+        """Invalid collection notifications should not create items or call providers."""
+        processor = JellyfinWebhookProcessor()
+
+        for item in (
+            {"Type": "Series", "ProviderIds": {"Tmdb": "1668"}},
+            {"Type": "Movie", "ProviderIds": {}},
+            {
+                "Type": "Episode",
+                "ParentIndexNumber": "not-a-number",
+                "IndexNumber": 1,
+                "ProviderIds": {"Tvdb": "303821"},
+            },
+            {
+                "Type": "Episode",
+                "ParentIndexNumber": -1,
+                "IndexNumber": 1,
+                "ProviderIds": {"Tvdb": "303821"},
+            },
+        ):
+            processor.process_payload(
+                {"Event": "ItemAdded", "Item": item},
+                self.user,
+            )
+
+        processor.process_payload(
+            {
+                "Event": "ItemDeleted",
+                "Item": {"Type": "Movie", "ProviderIds": {"Tmdb": "999999"}},
+            },
+            self.user,
+        )
+
+        self.assertEqual(Item.objects.count(), 0)
+        self.assertEqual(CollectionEntry.objects.count(), 0)
+        mock_get_media_metadata.assert_not_called()
 
     @override_settings(TVDB_API_KEY="test-tvdb-key")
     @patch("app.providers.tmdb.tv_with_seasons")

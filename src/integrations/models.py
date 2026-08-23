@@ -710,6 +710,7 @@ class CollectionSourceState(models.Model):
 
     SOURCE_CHOICES = [
         ("plex", "Plex"),
+        ("jellyfin", "Jellyfin"),
         ("radarr", "Radarr"),
         ("sonarr", "Sonarr"),
     ]

@@ -461,6 +461,181 @@ class HistoryMonthViewTests(TestCase):
         self.assertContains(response, "Month View Movie")
         self.assertContains(response, "Month View Episode")
 
+    def _cache_large_history_day(self, *, keep_count=0, total_count=None):
+        """Create and cache many same-day movie entries for pagination tests."""
+        total_count = total_count or history_cache.HISTORY_ENTRIES_PER_DAY_PAGE + 5
+        now = timezone.now()
+        for index in range(total_count):
+            item = Item.objects.create(
+                media_id=f"large-history-{index}",
+                source=Sources.MANUAL.value,
+                media_type=MediaTypes.MOVIE.value,
+                title=f"Large History {index:03d}",
+                image=f"http://example.com/large-history-{index}.jpg",
+                genres=["keep"] if index >= total_count - keep_count else ["skip"],
+            )
+            played_at = now - timedelta(seconds=index)
+            Movie.objects.create(
+                item=item,
+                user=self.user,
+                status=Status.COMPLETED.value,
+                progress=1,
+                start_date=played_at,
+                end_date=played_at,
+            )
+
+        cache.clear()
+        day_key = history_cache.history_day_key(now)
+        day_payload = history_cache._build_and_cache_history_day(
+            self.user,
+            day_key,
+            logging_style_override="repeats",
+        )
+        return day_key, len(day_payload["entries"])
+
+    def test_large_month_day_renders_bounded_page_and_loads_more(self):
+        day_key, total_entries = self._cache_large_history_day()
+
+        response = self.client.get(reverse("history"))
+
+        self.assertEqual(response.status_code, 200)
+        day = next(
+            day
+            for day in response.context["history_days"]
+            if day["day_key"] == day_key
+        )
+        self.assertEqual(
+            day["entry_count"],
+            total_entries,
+        )
+        self.assertEqual(
+            len(day["entries"]),
+            history_cache.HISTORY_ENTRIES_PER_DAY_PAGE,
+        )
+        self.assertTrue(day["has_more"])
+        self.assertContains(response, "Load more")
+        self.assertNotContains(response, "Large History 034")
+
+        fragment = self.client.get(
+            reverse("history_day_fragment", kwargs={"day_key": day_key}),
+            {"entry_offset": history_cache.HISTORY_ENTRIES_PER_DAY_PAGE},
+        )
+
+        self.assertEqual(fragment.status_code, 200)
+        self.assertContains(fragment, "Large History 034")
+        self.assertContains(fragment, "Large History 030")
+        self.assertNotContains(fragment, "Large History 000")
+        self.assertNotContains(fragment, "Load more")
+
+    def test_history_day_fragment_filters_before_pagination(self):
+        day_key, _total_entries = self._cache_large_history_day(
+            keep_count=5,
+            total_count=history_cache.HISTORY_ENTRIES_PER_DAY_PAGE + 5,
+        )
+        music_item = Item.objects.create(
+            media_id="large-history-music",
+            source=Sources.MANUAL.value,
+            media_type=MediaTypes.MUSIC.value,
+            title="Large History Music",
+            image="http://example.com/large-history-music.jpg",
+            genres=["keep"],
+        )
+        played_at = timezone.now()
+        Music.objects.create(
+            item=music_item,
+            user=self.user,
+            status=Status.COMPLETED.value,
+            progress=1,
+            start_date=played_at,
+            end_date=played_at,
+        )
+        cache.clear()
+        history_cache._build_and_cache_history_day(
+            self.user,
+            day_key,
+            logging_style_override="repeats",
+        )
+
+        response = self.client.get(
+            reverse("history"),
+            {"genre": "keep", "media_type": MediaTypes.MOVIE.value},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        day = next(
+            day
+            for day in response.context["history_days"]
+            if day["day_key"] == day_key
+        )
+        self.assertEqual(day["entry_count"], 5)
+        self.assertEqual(len(day["entries"]), 5)
+        self.assertEqual(
+            {entry["title"] for entry in day["entries"]},
+            {f"Large History {index:03d}" for index in range(30, 35)},
+        )
+        self.assertNotContains(response, "Large History Music")
+        self.assertNotContains(response, "Load more")
+
+    def test_history_day_fragment_rejects_invalid_day_and_offset(self):
+        invalid_day = self.client.get(
+            reverse("history_day_fragment", kwargs={"day_key": "20261301"}),
+        )
+        self.assertEqual(invalid_day.status_code, 400)
+
+        day_key, total_entries = self._cache_large_history_day()
+        out_of_range_offset = self.client.get(
+            reverse("history_day_fragment", kwargs={"day_key": day_key}),
+            {"entry_offset": total_entries + 1},
+        )
+        self.assertEqual(out_of_range_offset.status_code, 400)
+
+        invalid_offset = self.client.get(
+            reverse("history_day_fragment", kwargs={"day_key": "20260101"}),
+            {"entry_offset": "not-an-integer"},
+        )
+        self.assertEqual(invalid_offset.status_code, 400)
+
+        negative_offset = self.client.get(
+            reverse("history_day_fragment", kwargs={"day_key": "20260101"}),
+            {"entry_offset": -1},
+        )
+        self.assertEqual(negative_offset.status_code, 400)
+
+    def test_history_day_fragment_does_not_expose_another_users_day(self):
+        other_user = get_user_model().objects.create_user(
+            username="history-other-user",
+            password="12345",
+        )
+        played_at = timezone.now() - timedelta(days=120)
+        item = Item.objects.create(
+            media_id="foreign-history",
+            source=Sources.MANUAL.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Foreign History Entry",
+            image="http://example.com/foreign-history.jpg",
+        )
+        Movie.objects.create(
+            item=item,
+            user=other_user,
+            status=Status.COMPLETED.value,
+            progress=1,
+            start_date=played_at,
+            end_date=played_at,
+        )
+        day_key = history_cache.history_day_key(played_at)
+        history_cache._build_and_cache_history_day(
+            other_user,
+            day_key,
+            logging_style_override="repeats",
+        )
+
+        response = self.client.get(
+            reverse("history_day_fragment", kwargs={"day_key": day_key}),
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertNotIn("Foreign History Entry", response.content.decode())
+
     def _create_movie_history(self, item, older_played_at, newer_played_at):
         Movie.objects.create(
             item=item,

@@ -5,7 +5,15 @@ import requests
 from django.core.cache import cache
 from django.test import TestCase, override_settings
 
-from app.models import Item, MediaTypes, Sources
+from app.models import (
+    Item,
+    MediaTypes,
+    Podcast,
+    PodcastEpisode,
+    PodcastShow,
+    Sources,
+    Status,
+)
 from app.providers import (
     igdb,
     mal,
@@ -597,6 +605,20 @@ class ServicesTests(TestCase):
 
         mock_book.assert_called_once_with("1")
 
+    @patch("app.providers.googlebooks.book")
+    def test_get_media_metadata_googlebooks_book(self, mock_book):
+        """Test the Google Books metadata provider routing."""
+        mock_book.return_value = {"title": "Test Google Book"}
+
+        result = services.get_media_metadata(
+            MediaTypes.BOOK.value,
+            "volume-1",
+            Sources.GOOGLEBOOKS.value,
+        )
+
+        self.assert_metadata_title_payload(result, "Test Google Book")
+        mock_book.assert_called_once_with("volume-1")
+
     @patch("app.providers.manual.metadata")
     def test_get_media_metadata_manual(self, mock_metadata):
         """Test the get_media_metadata function for manual media."""
@@ -672,6 +694,182 @@ class ServicesTests(TestCase):
 
         mock_episode.assert_called_once_with("1396", 1, "3", None)
 
+    def test_get_media_metadata_podcast_episode(self):
+        """Podcast detail metadata should resolve from the local episode catalog."""
+        show = PodcastShow.objects.create(
+            podcast_uuid="podcast-show-services",
+            source=Sources.POCKETCASTS.value,
+            title="Services Show",
+            author="Services Author",
+            image="https://example.com/show.jpg",
+            description="A service-test show.",
+            genres=["Technology"],
+            language="en",
+        )
+        episode = PodcastEpisode.objects.create(
+            show=show,
+            episode_uuid="podcast-episode-services",
+            title="Services Episode",
+            duration=1800,
+            episode_number=4,
+            season_number=2,
+        )
+
+        result = services.get_media_metadata(
+            MediaTypes.PODCAST.value,
+            episode.episode_uuid,
+            Sources.POCKETCASTS.value,
+        )
+
+        self.assertEqual(result["media_id"], episode.episode_uuid)
+        self.assertEqual(result["source"], Sources.POCKETCASTS.value)
+        self.assertEqual(result["media_type"], MediaTypes.PODCAST.value)
+        self.assertEqual(result["title"], episode.title)
+        self.assertEqual(result["image"], show.image)
+        self.assertEqual(result["synopsis"], show.description)
+        self.assertEqual(result["genres"], show.genres)
+        self.assertEqual(result["details"]["show_title"], show.title)
+        self.assertEqual(result["details"]["duration"], episode.duration)
+
+    def test_get_media_metadata_podcast_deleted_episode_is_not_found(self):
+        """Deleted podcast episodes should not resolve as generic media."""
+        show = PodcastShow.objects.create(
+            podcast_uuid="podcast-show-deleted",
+            source=Sources.POCKETCASTS.value,
+            title="Deleted Show",
+        )
+        episode = PodcastEpisode.objects.create(
+            show=show,
+            episode_uuid="podcast-episode-deleted",
+            title="Deleted Episode",
+            is_deleted=True,
+        )
+
+        with self.assertRaises(services.ProviderAPIError) as context:
+            services.get_media_metadata(
+                MediaTypes.PODCAST.value,
+                episode.episode_uuid,
+                Sources.POCKETCASTS.value,
+            )
+
+        self.assertEqual(context.exception.status_code, 404)
+
+    def test_get_media_metadata_podcast_source_mismatch_is_not_found(self):
+        """A podcast episode must belong to the requested provider source."""
+        show = PodcastShow.objects.create(
+            podcast_uuid="podcast-show-source-mismatch",
+            source=Sources.GPODDER.value,
+            title="GPodder Show",
+        )
+        episode = PodcastEpisode.objects.create(
+            show=show,
+            episode_uuid="podcast-episode-source-mismatch",
+            title="Source Mismatch Episode",
+        )
+
+        with self.assertRaises(services.ProviderAPIError) as context:
+            services.get_media_metadata(
+                MediaTypes.PODCAST.value,
+                episode.episode_uuid,
+                Sources.POCKETCASTS.value,
+            )
+
+        self.assertEqual(context.exception.status_code, 404)
+
+    def test_get_media_metadata_podcast_uses_tracked_item_fallback(self):
+        """Tracked legacy podcast items remain resolvable without catalog links."""
+        user = User.objects.create_user(username="podcast-services-user")
+        item = Item.objects.create(
+            media_id="podcast-legacy-item",
+            source=Sources.POCKETCASTS.value,
+            media_type=MediaTypes.PODCAST.value,
+            title="Cached Podcast Episode",
+            image="https://example.com/cached.jpg",
+        )
+        Podcast.objects.create(
+            user=user,
+            item=item,
+            status=Status.COMPLETED.value,
+        )
+
+        result = services.get_media_metadata(
+            MediaTypes.PODCAST.value,
+            item.media_id,
+            item.source,
+            user=user,
+        )
+
+        self.assertEqual(result["media_id"], item.media_id)
+        self.assertEqual(result["media_type"], MediaTypes.PODCAST.value)
+        self.assertEqual(result["title"], item.title)
+
+    @patch("app.providers.services.musicbrainz.recording")
+    def test_get_media_metadata_music_preserves_provider_identity(self, mock_recording):
+        """Music detail metadata should preserve MusicBrainz identity fields."""
+        mock_recording.return_value = {
+            "media_id": "11111111-1111-1111-1111-111111111111",
+            "source": Sources.MUSICBRAINZ.value,
+            "media_type": MediaTypes.MUSIC.value,
+            "title": "Test Song - Test Artist",
+            "image": "https://example.com/track.jpg",
+            "related": {},
+            "details": {"artist": "Test Artist"},
+        }
+
+        result = services.get_media_metadata(
+            MediaTypes.MUSIC.value,
+            "11111111-1111-1111-1111-111111111111",
+            Sources.MUSICBRAINZ.value,
+        )
+
+        self.assertEqual(result["media_id"], mock_recording.return_value["media_id"])
+        self.assertEqual(result["source"], Sources.MUSICBRAINZ.value)
+        self.assertEqual(result["media_type"], MediaTypes.MUSIC.value)
+        self.assertEqual(result["title"], "Test Song - Test Artist")
+        mock_recording.assert_called_once()
+
+    def test_get_media_metadata_music_invalid_id_is_not_found(self):
+        """Invalid MusicBrainz recording IDs should not produce empty metadata."""
+        with self.assertRaises(services.ProviderAPIError) as context:
+            services.get_media_metadata(
+                MediaTypes.MUSIC.value,
+                "invalid-recording-id",
+                Sources.MUSICBRAINZ.value,
+            )
+
+        self.assertEqual(context.exception.status_code, 404)
+
+    @patch("app.providers.services.musicbrainz.recording")
+    def test_get_media_metadata_music_provider_not_found_is_propagated(
+        self,
+        mock_recording,
+    ):
+        """MusicBrainz 404s should remain explicit not-found errors."""
+        response = type(
+            "Response",
+            (),
+            {
+                "status_code": 404,
+                "headers": {},
+                "text": "Recording not found",
+                "json": lambda self: {},
+            },
+        )()
+        mock_recording.side_effect = services.ProviderAPIError(
+            Sources.MUSICBRAINZ.value,
+            requests.exceptions.HTTPError(response=response),
+        )
+
+        with self.assertRaises(services.ProviderAPIError) as context:
+            services.get_media_metadata(
+                MediaTypes.MUSIC.value,
+                "11111111-1111-1111-1111-111111111111",
+                Sources.MUSICBRAINZ.value,
+            )
+
+        self.assertEqual(context.exception.status_code, 404)
+        mock_recording.assert_called_once()
+
     @patch("app.providers.hardcover.book")
     def test_get_media_metadata_hardcover_book(self, mock_book):
         """Test the get_media_metadata function for books from Hardcover."""
@@ -685,7 +883,7 @@ class ServicesTests(TestCase):
 
         self.assert_metadata_title_payload(result, "Test Hardcover Book")
 
-        mock_book.assert_called_once_with("1", edition_id=None)
+        mock_book.assert_called_once_with("1", edition_id=None, user=None)
 
     @patch("app.providers.mal.search")
     def test_search_anime(self, mock_search):
@@ -788,7 +986,7 @@ class ServicesTests(TestCase):
 
         self.assertEqual(result, [{"title": "Test Hardcover Book"}])
 
-        mock_search.assert_called_once_with("test", 1)
+        mock_search.assert_called_once_with("test", 1, user=None)
 
     @patch("app.providers.openlibrary.search")
     def test_search_openlibrary_book(self, mock_search):
@@ -805,6 +1003,70 @@ class ServicesTests(TestCase):
         self.assertEqual(result, [{"title": "Test Book"}])
 
         mock_search.assert_called_once_with("test", 1)
+
+    @override_settings(GOOGLE_BOOKS_API_KEY="test-google-key")
+    @patch("app.providers.googlebooks.search")
+    def test_search_googlebooks_book(self, mock_search):
+        """Test the Google Books search provider routing."""
+        mock_search.return_value = [{"title": "Test Google Book"}]
+
+        result = services.search(
+            MediaTypes.BOOK.value,
+            "test",
+            1,
+            source=Sources.GOOGLEBOOKS.value,
+            language="fr",
+        )
+
+        self.assertEqual(result, [{"title": "Test Google Book"}])
+        mock_search.assert_called_once_with("test", 1, language="fr")
+
+    @override_settings(GOOGLE_BOOKS_API_KEY="test-google-key")
+    @patch("app.providers.googlebooks.search")
+    @patch("app.providers.hardcover.search")
+    @patch("app.providers.services._resolve_hardcover_isbn_search")
+    def test_search_googlebooks_does_not_use_hardcover_isbn_bridge(
+        self,
+        mock_isbn_search,
+        mock_hardcover_search,
+        mock_google_search,
+    ):
+        """Google Books searches must not be replaced by Hardcover ISBN lookup."""
+        mock_google_search.return_value = [{"title": "Google result"}]
+
+        result = services.search(
+            MediaTypes.BOOK.value,
+            "9780123456789",
+            1,
+            source=Sources.GOOGLEBOOKS.value,
+        )
+
+        self.assertEqual(result, [{"title": "Google result"}])
+        mock_google_search.assert_called_once_with("9780123456789", 1, language=None)
+        mock_hardcover_search.assert_not_called()
+        mock_isbn_search.assert_not_called()
+
+    @override_settings(GOOGLE_BOOKS_API_KEY="")
+    @patch("app.providers.googlebooks.search")
+    @patch("app.providers.hardcover.search")
+    def test_removed_googlebooks_key_falls_back_to_hardcover(
+        self,
+        mock_hardcover_search,
+        mock_google_search,
+    ):
+        """A stale Google Books selection should fall back after key removal."""
+        mock_hardcover_search.return_value = [{"title": "Hardcover result"}]
+
+        result = services.search(
+            MediaTypes.BOOK.value,
+            "book",
+            1,
+            source=Sources.GOOGLEBOOKS.value,
+        )
+
+        self.assertEqual(result, [{"title": "Hardcover result"}])
+        mock_hardcover_search.assert_called_once_with("book", 1, user=None)
+        mock_google_search.assert_not_called()
 
     @patch("app.providers.comicvine.search")
     def test_search_comic(self, mock_search):

@@ -259,6 +259,21 @@ class ProviderPreferenceTests(FloppyApiTestCase):
 class EpisodeScoreTests(FloppyApiTestCase):
     """PATCH episode score updates all plays of the episode."""
 
+    def setUp(self):
+        """Use an authoritative season episode list for score routes."""
+        super().setUp()
+        self._episode_metadata_patcher = patch(
+            "api.views.services.get_media_metadata",
+            return_value={
+                "episodes": [
+                    {"episode_number": episode_number}
+                    for episode_number in (1, 2, 3)
+                ],
+            },
+        )
+        self._episode_metadata_patcher.start()
+        self.addCleanup(self._episode_metadata_patcher.stop)
+
     def _patch_score(self, payload, headers=None):
         return self.call_api(
             "patch",

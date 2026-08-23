@@ -12,7 +12,7 @@
   <div class="w-full md:w-1/4 max-w-[250px] mx-auto md:mx-0">
     <img alt="{{ episode_title }}"
          class="w-full rounded-lg shadow-lg bg-[var(--color-surface)] object-cover"
-         src="{% if episode %}{{ episode.image }}{% else %}{{ IMG_NONE }}{% endif %}">
+         src="{% if episode %}{{ episode.image|image_url }}{% else %}{{ IMG_NONE }}{% endif %}">
   </div>
 
   <div class="md:w-3/4">
@@ -336,7 +336,7 @@
               {% endif %}
               <img alt="{{ person.name|default:'Unknown Person' }}"
                    class="media-card-poster lazyload w-full aspect-[2/3] aspect-2/3 bg-[var(--color-surface-alt)] {% if person.image and person.image != IMG_NONE %}object-cover{% endif %}"
-                   data-src="{{ person.image|default:IMG_NONE }}"
+                   data-src="{{ person.image|default:IMG_NONE|image_url }}"
                    src="{{ IMG_NONE }}">
               {% if person.person_id and person.name %}
                 </a>
@@ -405,7 +405,7 @@
               {% endif %}
               <img alt="{{ person.name|default:'Unknown Person' }}"
                    class="media-card-poster lazyload w-full aspect-[2/3] aspect-2/3 bg-[var(--color-surface-alt)] {% if person.image and person.image != IMG_NONE %}object-cover{% endif %}"
-                   data-src="{{ person.image|default:IMG_NONE }}"
+                   data-src="{{ person.image|default:IMG_NONE|image_url }}"
                    src="{{ IMG_NONE }}">
               {% if person.person_id and person.name %}
                 </a>

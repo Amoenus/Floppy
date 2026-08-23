@@ -50,6 +50,40 @@ def _music_album_detail_url(album):
     return app_tags.music_album_url(album)
 
 
+def _selected_music_release(user, album):
+    """Return the user's valid release preference and its detailed metadata."""
+    from app.models import MusicReleasePreference
+    from app.providers import musicbrainz
+
+    preference = MusicReleasePreference.objects.filter(
+        user=user,
+        album=album,
+    ).first()
+    selected_release = None
+    if preference and album.musicbrainz_release_group_id:
+        try:
+            candidate_release = musicbrainz.get_release(preference.release_id)
+            if (
+                candidate_release.get("release_group_id")
+                == album.musicbrainz_release_group_id
+            ):
+                selected_release = candidate_release
+            else:
+                logger.warning(
+                    "Saved release %s does not belong to album %s release group",
+                    preference.release_id,
+                    album.id,
+                )
+        except Exception as exc:  # pragma: no cover - defensive provider boundary
+            logger.warning(
+                "Failed to load saved release %s for album %s: %s",
+                preference.release_id,
+                album.id,
+                exc,
+            )
+    return preference, selected_release
+
+
 def _music_activity_date_range(entries):
     """Return the earliest and latest meaningful activity dates from music entries."""
     start_candidates = []
@@ -164,6 +198,7 @@ def _render_music_tracker_modal(
     title,
     tracker,
     form,
+    album=None,
     save_url,
     delete_url,
     release_date_shortcut="",
@@ -207,6 +242,22 @@ def _render_music_tracker_modal(
         episode_plays_tab_label = "Track Plays"
         episode_plays_submit_label = "Save plays"
 
+    music_release_preference = None
+    selected_music_release = None
+    music_release_picker = {"available": False, "list_url": ""}
+    if album is not None:
+        music_release_preference, selected_music_release = _selected_music_release(
+            request.user,
+            album,
+        )
+        music_release_picker = {
+            "available": bool(album.musicbrainz_release_group_id),
+            "list_url": reverse(
+                "list_music_releases",
+                kwargs={"album_id": album.id},
+            ),
+        }
+
     response = render(
         request,
         "app/components/fill_track.html",
@@ -217,8 +268,12 @@ def _render_music_tracker_modal(
             "form": form,
             "media": tracker,
             "return_url": return_url,
-            "metadata_tab_available": False,
+            "metadata_tab_available": music_release_picker["available"],
             "metadata_fields": [],
+            "can_manage_hardcover_edition": False,
+            "music_release_preference": music_release_preference,
+            "selected_music_release": selected_music_release,
+            "music_release_picker": music_release_picker,
             "general_hidden_fields": field_groups["hidden_fields"],
             "general_fields": field_groups["general_fields"],
             "general_submit_formaction": (
@@ -838,6 +893,19 @@ def _render_music_album_details(request, artist, album):
         album=album,
     ).first()
 
+    music_release_preference, selected_music_release = _selected_music_release(
+        request.user,
+        album,
+    )
+
+    album_display_image = album.image or settings.IMG_NONE
+    if (
+        selected_music_release
+        and selected_music_release.get("image")
+        and selected_music_release["image"] != settings.IMG_NONE
+    ):
+        album_display_image = selected_music_release["image"]
+
     total_runtime = None
     if total_duration_ms:
         total_minutes = total_duration_ms // 60000
@@ -916,6 +984,7 @@ def _render_music_album_details(request, artist, album):
         "media_type": MediaTypes.MUSIC.value,
         "artist": artist or album.artist,
         "album": album,
+        "album_display_image": album_display_image,
         "media": {
             "media_type": MediaTypes.MUSIC.value,
             "source": Sources.MUSICBRAINZ.value,
@@ -925,7 +994,7 @@ def _render_music_album_details(request, artist, album):
                 or f"album-{album.id}"
             ),
             "title": album.title,
-            "image": album.image or settings.IMG_NONE,
+            "image": album_display_image,
             "synopsis": "",
             "details": {},
             "related": {},
@@ -937,6 +1006,15 @@ def _render_music_album_details(request, artist, album):
         "library_track_count": library_track_count,
         "total_runtime": total_runtime,
         "music_album_metadata": album_details,
+        "music_release_preference": music_release_preference,
+        "selected_music_release": selected_music_release,
+        "music_release_picker": {
+            "available": bool(album.musicbrainz_release_group_id),
+            "list_url": reverse(
+                "list_music_releases",
+                kwargs={"album_id": album.id},
+            ),
+        },
         "album_collection_metadata": collection_metadata,
         "album_collection_stats": None,
         "music_album_activity_subtitle": album_activity_subtitle,

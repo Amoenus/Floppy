@@ -100,6 +100,37 @@
     </section>
   {% endif %}
 
+  {% if can_move_library_item and metadata_item and library_move_context %}
+    <section class="space-y-3">
+      <div>
+        <h3 class="text-xl font-semibold text-[var(--color-text)]">Move to {{ library_move_context.target_label }}</h3>
+        <p class="text-sm text-[var(--color-text-muted)] mt-1">
+          Search {{ library_move_context.target_source_label }} for the matching show. The selected title becomes the new tracking identity while your watch history and owned relations are retained when the destination supports them.
+        </p>
+      </div>
+      <input type="text"
+             name="q"
+             placeholder="Search {{ library_move_context.target_label }}..."
+             autocomplete="off"
+             role="combobox"
+             aria-autocomplete="list"
+             aria-controls="library-move-results"
+             hx-get="{% url 'search_library_move_candidates' item_id=metadata_item.id %}?return_url={{ return_url|urlencode }}"
+             hx-trigger="focus, keyup changed delay:250ms"
+             hx-target="#library-move-results"
+             hx-indicator="#library-move-search-indicator"
+             hx-swap="innerHTML"
+             class="w-full h-10 px-3 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]">
+      <div id="library-move-search-indicator"
+           class="htmx-indicator flex items-center gap-2 text-sm text-[var(--color-text-muted)]"
+           aria-live="polite">
+        <span class="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-500"></span>
+        Searching {{ library_move_context.target_source_label }}...
+      </div>
+      <div id="library-move-results"></div>
+    </section>
+  {% endif %}
+
   {% if can_manage_hardcover_edition %}
     <section class="space-y-3"
              x-data="{ editionOpen: false }"
@@ -115,7 +146,7 @@
           <p class="text-xs font-medium text-[var(--color-text-muted)] mb-1">Selected edition</p>
           <div class="flex items-center gap-3 px-3 py-2 text-sm bg-[var(--color-surface)] rounded-md border border-gray-600">
             {% if hardcover_selected_edition.image %}
-              <img src="{{ hardcover_selected_edition.image }}" alt="" loading="lazy" class="object-cover w-8 h-10 rounded bg-[var(--color-surface-alt)] shrink-0">
+              <img src="{{ hardcover_selected_edition.image|image_url }}" alt="" loading="lazy" class="object-cover w-8 h-10 rounded bg-[var(--color-surface-alt)] shrink-0">
             {% else %}
               <span class="flex items-center justify-center w-8 h-10 text-gray-600 rounded bg-[var(--color-surface-alt)] shrink-0">
                 {% include "app/icons/magnifying-glass.svg" with classes="w-4 h-4" %}
@@ -147,6 +178,66 @@
                hx-swap="innerHTML"
                class="w-full h-10 px-3 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]">
         <div id="hardcover-edition-results" x-show="editionOpen" x-cloak></div>
+      </div>
+    </section>
+  {% endif %}
+
+  {% if music_release_picker.available %}
+    <section class="space-y-3"
+             x-data="{ releaseOpen: false }"
+             @click.outside="releaseOpen = false">
+      <div>
+        <h3 class="text-xl font-semibold text-[var(--color-text)]">Specific release</h3>
+        <p class="text-sm text-[var(--color-text-muted)] mt-1">
+          Pick a MusicBrainz pressing for its format, cover, and release details. Play history remains grouped under this album.
+        </p>
+      </div>
+      {% if selected_music_release %}
+        <div>
+          <p class="text-xs font-medium text-[var(--color-text-muted)] mb-1">Selected release</p>
+          <div class="flex items-start gap-3 px-3 py-2 text-sm bg-[var(--color-surface)] rounded-md border border-gray-600">
+            {% if selected_music_release.image %}
+              <img src="{{ selected_music_release.image|image_url }}" alt="" loading="lazy" class="object-cover w-8 h-10 rounded bg-[var(--color-surface-alt)] shrink-0">
+            {% else %}
+              <span class="flex items-center justify-center w-8 h-10 text-gray-600 rounded bg-[var(--color-surface-alt)] shrink-0">
+                {% include "app/icons/magnifying-glass.svg" with classes="w-4 h-4" %}
+              </span>
+            {% endif %}
+            <span class="flex-1 min-w-0">
+              <span class="block truncate text-[var(--color-text)]">{{ selected_music_release.title }}</span>
+              <span class="block text-xs text-[var(--color-text-muted)] truncate">
+                {{ selected_music_release.format|default:"Format unknown" }}
+                {% if selected_music_release.packaging %} · {{ selected_music_release.packaging }}{% endif %}
+                {% if selected_music_release.country %} · {{ selected_music_release.country }}{% endif %}
+                {% if selected_music_release.release_date %} · {{ selected_music_release.release_date }}{% endif %}
+              </span>
+              {% if selected_music_release.label or selected_music_release.barcode %}
+                <span class="block text-xs text-[var(--color-text-muted)] truncate">
+                  {{ selected_music_release.label }}{% if selected_music_release.label and selected_music_release.barcode %} · {% endif %}{{ selected_music_release.barcode }}
+                </span>
+              {% endif %}
+              {% if selected_music_release.track_count %}
+                <span class="block text-xs text-[var(--color-text-muted)]">{{ selected_music_release.track_count }} tracks in this release</span>
+              {% endif %}
+            </span>
+          </div>
+        </div>
+      {% endif %}
+      <div class="relative">
+        <input type="text"
+               name="q"
+               placeholder="Search releases..."
+               autocomplete="off"
+               role="combobox"
+               aria-autocomplete="list"
+               aria-controls="music-release-results"
+               @focus="releaseOpen = true"
+               hx-get="{{ music_release_picker.list_url }}?return_url={{ return_url|urlencode }}"
+               hx-trigger="focus, keyup changed delay:250ms"
+               hx-target="#music-release-results"
+               hx-swap="innerHTML"
+               class="w-full h-10 px-3 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]">
+        <div id="music-release-results" x-show="releaseOpen" x-cloak></div>
       </div>
     </section>
   {% endif %}

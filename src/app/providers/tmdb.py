@@ -1595,7 +1595,11 @@ def get_cast_credits(credits_data, is_aggregate=False):
         role_value = cast.get("character", "")
         episode_count = None
         if is_aggregate:
-            roles = cast.get("roles", []) or []
+            roles = [
+                role
+                for role in cast.get("roles", []) or []
+                if isinstance(role, dict)
+            ]
             if roles:
                 top_role = max(roles, key=lambda role: role.get("episode_count") or 0)
                 role_value = top_role.get("character") or role_value

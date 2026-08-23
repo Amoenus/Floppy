@@ -33,6 +33,7 @@ from config.sqlite_integrity import (
     _publish_report,
     _read_incident_report,
     read_startup_status,
+    startup_progress_diagnostics,
 )
 
 _HEALTH_PATHS = frozenset({"/health", "/health/"})
@@ -281,16 +282,41 @@ def _timeout_details(status: dict) -> str:
     phase = html.escape(str(status.get("phase", "unknown")))
     elapsed = status.get("elapsed_seconds")
     elapsed_text = f"{elapsed:.0f}s" if isinstance(elapsed, int | float) else "unknown"
+    diagnostics = startup_progress_diagnostics(status)
+    phase_elapsed = diagnostics["phase_elapsed_seconds"]
+    phase_elapsed_text = (
+        f"{phase_elapsed:.0f}s" if isinstance(phase_elapsed, int | float) else "unknown"
+    )
     read_bytes = status.get("read_bytes")
     items = [
         f"<li>Phase when stopped: <code>{phase}</code></li>",
         f"<li>Elapsed: {elapsed_text}</li>",
+        f"<li>Phase elapsed: {phase_elapsed_text}</li>",
     ]
     if isinstance(read_bytes, int | float) and read_bytes:
         items.append(f"<li>Read so far: ~{read_bytes / 1_048_576:.0f}MB</li>")
     progress_callbacks = status.get("progress_callbacks")
     if isinstance(progress_callbacks, int | float):
-        items.append(f"<li>SQLite progress callbacks: {progress_callbacks:.0f}</li>")
+        items.append(
+            f"<li>SQLite progress callbacks in phase: {progress_callbacks:.0f}</li>"
+        )
+    progress_rate = diagnostics["progress_rate_per_minute"]
+    if isinstance(progress_rate, int | float):
+        items.append(f"<li>Progress rate: {progress_rate:.1f} callbacks/min</li>")
+    progress_age = diagnostics["last_progress_age_seconds"]
+    if isinstance(progress_age, int | float):
+        items.append(f"<li>Last progress observed: {progress_age:.0f}s ago</li>")
+    else:
+        items.append("<li>Last progress observed: unknown</li>")
+    progress_state = diagnostics["progress_state"]
+    if progress_state == "quiet":
+        items.append(
+            "<li><strong>No recent SQLite progress observed.</strong> "
+            "This can indicate slow storage or a blocked operation; it does not "
+            "by itself prove corruption.</li>"
+        )
+    else:
+        items.append(f"<li>Progress state: <code>{progress_state}</code></li>")
     items.append(f"<li>Database: <code>{html.escape(str(status.get('database', 'unknown')))}</code></li>")
     version = html.escape(str(status.get("version") or "unknown"))
     commit_sha = html.escape(str(status.get("commit_sha") or "unknown"))

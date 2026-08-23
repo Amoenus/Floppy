@@ -1456,6 +1456,99 @@ class TestPlexPostImportSideEffects(TestCase):
         mock_schedule_stats.assert_called_once_with(self.user.id)
 
 
+class TestPlexUsernameImportBehavior(TestCase):
+    """Plex imports must not rewrite the user's configured username filters."""
+
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(username="plex-import-user")
+        self.account = PlexAccount.objects.create(
+            user=self.user,
+            plex_token="token",
+            plex_username="server-user",
+            plex_account_id="9999",
+        )
+        self.user.plex_usernames = "user1, user2"
+        self.user.save(update_fields=["plex_usernames"])
+
+    def test_successful_import_preserves_explicit_username_list(self):
+        """A completed import must not add the connected server account."""
+        with (
+            patch("integrations.imports.plex.plex_api.list_users", return_value=[]),
+            patch(
+                "integrations.imports.plex.plex_api.list_sections",
+                return_value=[
+                    {
+                        "id": "1",
+                        "machine_identifier": "machine",
+                        "title": "Movies",
+                        "type": "movie",
+                        "uri": "http://plex",
+                    }
+                ],
+            ),
+            patch(
+                "integrations.imports.plex.plex_api.list_resources",
+                return_value=[
+                    {
+                        "machine_identifier": "machine",
+                        "connections": [{"uri": "http://plex"}],
+                    }
+                ],
+            ),
+            patch(
+                "integrations.imports.plex.plex_api.fetch_history",
+                return_value=([], 0),
+            ),
+            patch(
+                "integrations.imports.plex.plex_api.fetch_section_all_items",
+                return_value=([], 0),
+            ),
+        ):
+            plex.importer("all", self.user, "new")
+
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.plex_usernames, "user1, user2")
+
+    def test_failed_import_preserves_explicit_username_list(self):
+        """An early Plex failure must not add the connected server account."""
+        from integrations.plex import PlexAuthError
+
+        with (
+            patch("integrations.imports.plex.plex_api.list_users", return_value=[]),
+            patch(
+                "integrations.imports.plex.plex_api.list_resources",
+                side_effect=PlexAuthError("token expired"),
+            ),
+        ):
+            with self.assertRaises(helpers.MediaImportError):
+                plex.importer("all", self.user, "new")
+
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.plex_usernames, "user1, user2")
+
+    def test_empty_username_list_uses_connected_account_without_persisting(self):
+        """An empty list still filters to the connected account without saving it."""
+        self.user.plex_usernames = ""
+        self.user.save(update_fields=["plex_usernames"])
+        importer = PlexHistoryImporter(
+            user=self.user,
+            account=self.account,
+            mode="new",
+            library="all",
+        )
+
+        with patch("integrations.imports.plex.plex_api.list_users", return_value=[]):
+            importer._init_allowed_usernames()
+            importer._init_allowed_account_ids()
+
+        self.assertEqual(importer._allowed_usernames, ["server-user"])
+        self.assertEqual(importer._allowed_account_ids, {"9999"})
+        self.assertTrue(importer._is_allowed_history_user({"accountID": "9999"}))
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.plex_usernames, "")
+
+
 class TestPlexMultiServerImport(TestCase):
     """Tests for multi-server / shared-library import resilience."""
 
@@ -1995,6 +2088,115 @@ class TestPlexIdentityAndScorePreservation(TestCase):
         self.assertEqual(importer._episode_records[0]["tmdb_id"], "111110")
         mock_tmdb_search.assert_not_called()
         mock_services_search.assert_not_called()
+
+    @patch("integrations.webhooks.base.app.providers.tmdb.search")
+    @patch("integrations.imports.plex.services.search")
+    @patch("integrations.webhooks.base.app.providers.tmdb.find")
+    @patch("integrations.imports.plex.plex_api.fetch_metadata")
+    def test_tv_history_prefers_show_guids_before_title_search(
+        self,
+        mock_fetch_metadata,
+        mock_tmdb_find,
+        mock_services_search,
+        mock_tmdb_search,
+    ):
+        """TV history must use Plex show IDs before its ambiguous title fallback."""
+        tv_item = Item.objects.create(
+            title="Reacher",
+            media_id="108978",
+            media_type=MediaTypes.TV.value,
+            source=Sources.TMDB.value,
+            image="https://example.com/reacher.jpg",
+        )
+        existing_tv = TV.objects.create(
+            item=tv_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+
+        def fetch_metadata(_token, _uri, rating_key):
+            if str(rating_key) == "28795":
+                return {
+                    "type": "show",
+                    "title": "Reacher",
+                    "year": 2022,
+                    "Guid": [
+                        {"id": "imdb://tt9288030"},
+                        {"id": "tmdb://108978"},
+                        {"id": "tvdb://366924"},
+                    ],
+                }
+            return {
+                "type": "episode",
+                "Guid": [{"id": "plex://episode/reacher"}],
+            }
+
+        mock_fetch_metadata.side_effect = fetch_metadata
+        mock_tmdb_find.return_value = {"tv_results": [{"id": "108978"}]}
+        mock_services_search.return_value = {
+            "results": [{"media_id": "273207", "title": "Reacher"}],
+        }
+        mock_tmdb_search.return_value = {
+            "results": [{"media_id": "273207", "title": "Reacher"}],
+        }
+
+        importer = self._importer()
+        importer._current_section_uri = "http://plex"
+        for episode_number in range(1, 5):
+            importer._process_entry(
+                {
+                    "type": "episode",
+                    "title": f"Reacher S04E{episode_number:02d}",
+                    "grandparentTitle": "Reacher",
+                    "grandparentKey": "/library/metadata/28795",
+                    "parentIndex": 4,
+                    "index": episode_number,
+                    "ratingKey": f"episode-rk-{episode_number}",
+                    "guid": "plex://episode/reacher",
+                    "accountID": "111",
+                    "viewedAt": 1700000000 + episode_number,
+                },
+                "http://plex",
+                "show",
+            )
+
+        self.assertEqual(len(importer._episode_records), 4)
+        self.assertEqual(
+            {record["tmdb_id"] for record in importer._episode_records},
+            {"108978"},
+        )
+        self.assertEqual(
+            {record["tvdb_show_id"] for record in importer._episode_records},
+            {"366924"},
+        )
+        mock_services_search.assert_not_called()
+        mock_tmdb_search.assert_not_called()
+
+        importer._tv_metadata_cache = {
+            "108978": {
+                "media_id": "108978",
+                "title": "Reacher",
+                "original_title": "Reacher",
+                "localized_title": "Reacher",
+                "image": "https://example.com/reacher.jpg",
+                "tvdb_id": "366924",
+                "season/4": {
+                    "image": "https://example.com/reacher-s4.jpg",
+                    "episodes": [
+                        {"episode_number": episode_number}
+                        for episode_number in range(1, 5)
+                    ],
+                },
+            },
+        }
+        importer._build_bulk_media()
+
+        self.assertEqual(len(importer.bulk_media[MediaTypes.EPISODE.value]), 4)
+        self.assertEqual(
+            importer.bulk_media[MediaTypes.SEASON.value][0].related_tv.pk,
+            existing_tv.pk,
+        )
+        self.assertFalse(Item.objects.filter(media_id="273207").exists())
 
 
 class TestPlexEpisodeResyncForExistingShow(TestCase):

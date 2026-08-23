@@ -57,6 +57,16 @@ class HardcoverEditionViewTests(TestCase):
         )
 
     @patch("app.metadata_sync_views.hardcover.editions")
+    def test_list_hardcover_editions_forwards_request_user(self, mock_editions):
+        mock_editions.return_value = []
+
+        self.client.get(
+            reverse("list_hardcover_editions", kwargs={"media_id": "778812"}),
+        )
+
+        mock_editions.assert_called_once_with("778812", user=self.user)
+
+    @patch("app.metadata_sync_views.hardcover.editions")
     def test_list_hardcover_editions_filters_by_query(self, mock_editions):
         mock_editions.return_value = [
             {

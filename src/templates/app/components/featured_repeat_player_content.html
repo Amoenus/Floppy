@@ -5,7 +5,7 @@
       <div class="flex justify-center lg:justify-start lg:items-center">
         {% if featured_person.image and featured_person.image != IMG_NONE %}
           <img src="{{ IMG_NONE }}"
-               data-src="{{ featured_person.image }}"
+               data-src="{{ featured_person.image|image_url }}"
                alt="{{ featured_person.name }}"
                class="lazyload rounded-full object-cover bg-[var(--color-surface-strong)] shrink-0"
                style="width: 8rem; height: 8rem;">

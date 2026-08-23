@@ -458,14 +458,19 @@ class HomeScreenViewTests(TestCase):
                 end_date=now - timedelta(days=episode_number),
             )
 
+        mock_get_metadata.return_value = {"max_progress": 3}
+
+        # A repeat play only counts as a rewatch once a pass is deliberately
+        # reopened (issue #929) - historical repeat plays alone must not
+        # keep a season stuck In Progress.
+        season.start_rewatch()
+
         # The rewatch itself: episode 1 played a second time.
         Episode.objects.create(
             item=episode_items[0],
             related_season=season,
             end_date=now,
         )
-
-        mock_get_metadata.return_value = {"max_progress": 3}
 
         HomeScreenRow.objects.create(
             user=self.user,

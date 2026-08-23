@@ -18,7 +18,7 @@
       <a href="{{ active_playback_card.details_url }}">
         <img alt="{{ active_playback_card.title }}"
              class="media-card-poster w-full aspect-[3/2] bg-[var(--color-surface-alt)]{% if active_playback_card.image != IMG_NONE %} object-cover{% endif %}"
-             src="{{ active_playback_card.image }}">
+             src="{{ active_playback_card.image|image_url }}">
       </a>
 
       {# Progress bar overlay at bottom of poster #}

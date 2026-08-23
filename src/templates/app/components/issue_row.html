@@ -8,7 +8,7 @@
       {% if ep_detail_url %}<a href="{{ ep_detail_url }}" class="block">{% endif %}
       <img src="{{ IMG_NONE }}"
            alt="#{{ episode.issue_number }}"
-           data-src="{{ episode.image }}"
+           data-src="{{ episode.image|image_url }}"
            class="lazyload md:w-64 md:h-40 {% if ep_detail_url %}hover:opacity-90 transition-opacity{% endif %} shrink-0 {% if episode.image != IMG_NONE %}object-cover{% endif %}">
       {% if ep_detail_url %}</a>{% endif %}
       {% if episode.history %}

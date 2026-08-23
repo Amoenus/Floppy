@@ -61,7 +61,7 @@ class HardcoverSearchRegressionTests(TestCase):
         self.assertEqual(result["results"], [])
         mock_book.assert_not_called()
         mock_openlibrary_book.assert_not_called()
-        mock_search.assert_called_once_with("9780063038936", 1)
+        mock_search.assert_called_once_with("9780063038936", 1, user=None)
 
     @patch("app.providers.services.hardcover.book")
     def test_search_by_id_skips_hardcover_lookup_for_valid_isbn10(
@@ -155,5 +155,9 @@ class HardcoverSearchRegressionTests(TestCase):
 
         self.assertEqual(result["results"][0]["media_id"], "103196")
         self.assertEqual(result["results"][0]["title"], "Daniel's Story")
-        mock_hardcover_search.assert_called_once_with("Daniel's Story Carol Matas", 1)
-        mock_hardcover_book.assert_called_once_with("103196")
+        mock_hardcover_search.assert_called_once_with(
+            "Daniel's Story Carol Matas",
+            1,
+            user=None,
+        )
+        mock_hardcover_book.assert_called_once_with("103196", user=None)

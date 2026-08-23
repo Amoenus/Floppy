@@ -381,6 +381,9 @@ def lists_modal(
             if not getattr(custom_list, "is_smart", False)
         ]
     custom_lists = list(custom_lists)
+    on_list_count = sum(
+        1 for custom_list in custom_lists if getattr(custom_list, "has_item", False)
+    )
 
     selected_tag = (request.GET.get("tag") or "").strip()
 
@@ -413,6 +416,7 @@ def lists_modal(
             "custom_lists": custom_lists,
             "list_tags": unique_tags,
             "selected_list_tag": selected_tag,
+            "on_list_count": on_list_count,
         },
     )
 

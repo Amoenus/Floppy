@@ -1,0 +1,64 @@
+{% load app_tags %}
+
+<div id="history-day-{{ day.day_key|default:'unknown' }}"
+     class="history-day space-y-4">
+  <div class="flex items-center justify-between gap-4 pb-3 border-b border-[var(--color-border)]">
+    <div class="history-date-row">
+      <span class="text-xl font-semibold text-[var(--color-text)]">{{ day.weekday }}</span>
+      <span class="text-xl text-[var(--color-text)]">{{ day.date_display }}</span>
+    </div>
+    <div class="text-right">
+      {% if history_mode == "release" %}
+        <p class="text-sm text-[var(--color-text-muted)]">
+          {% if day.release_count is not None %}
+            {{ day.release_count }} release{{ day.release_count|pluralize }}
+          {% else %}
+            {{ day.entries|length }} release{{ day.entries|length|pluralize }}
+          {% endif %}
+        </p>
+      {% else %}
+        <p class="text-sm text-[var(--color-text-muted)]">
+          {{ day.entry_count }} item{{ day.entry_count|pluralize }} &middot; {{ day.total_runtime_display }}
+        </p>
+      {% endif %}
+    </div>
+  </div>
+
+  {# Split entries by aspect ratio: 2:3 for video/games, 1:1 for music/podcasts #}
+  {% with square_types="music,podcast" %}
+    {# Standard 2:3 aspect ratio entries (TV, Movies, Games, Anime, etc.) #}
+    {% with standard_entries=day.entries|exclude_media_types:square_types %}
+      {% if standard_entries %}
+        <div class="media-grid">
+          {% for entry in standard_entries %}
+            {% include "app/components/history_card.html" with entry=entry card_class="search-result-card" history_mode=history_mode user=user %}
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    {# Square 1:1 aspect ratio entries (Music, Podcasts) #}
+    {% with square_entries=day.entries|filter_media_types:square_types %}
+      {% if square_entries %}
+        <div class="media-grid mt-4">
+          {% for entry in square_entries %}
+            {% include "app/components/history_card.html" with entry=entry card_class="search-result-card-square" history_mode=history_mode user=user %}
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+  {% endwith %}
+
+  {% if day.has_more %}
+    <div class="flex justify-center pt-2">
+      <button type="button"
+              class="px-4 py-2 rounded-md bg-[var(--color-surface)] text-[var(--color-text)] hover:bg-[var(--color-surface-strong)] transition-colors cursor-pointer text-sm"
+              hx-get="{% url 'history_day_fragment' day_key=day.day_key %}?{{ day.next_entry_query }}"
+              hx-target="closest .history-day"
+              hx-swap="outerHTML">
+        Load more
+        {% if day.remaining_entry_count %}({{ day.remaining_entry_count }} remaining){% endif %}
+      </button>
+    </div>
+  {% endif %}
+</div>

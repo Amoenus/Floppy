@@ -130,7 +130,6 @@ class PlexHistoryImporter:
 
     def import_data(self):
         """Import history for the selected library."""
-        self._ensure_username_matches()
         self._ensure_account_id()
         self._init_allowed_usernames()
         self._init_allowed_account_ids()
@@ -231,23 +230,6 @@ class PlexHistoryImporter:
 
         deduped_warnings = "\n".join(dict.fromkeys(self.warnings))
         return result_counts, deduped_warnings
-
-    def _ensure_username_matches(self):
-        """Persist the Plex username into the user's webhook allow list."""
-        username = (self.account.plex_username or "").strip()
-        if not username:
-            return
-
-        existing = [
-            u.strip() for u in (self.user.plex_usernames or "").split(",") if u.strip()
-        ]
-
-        if username.lower() in [u.lower() for u in existing]:
-            return
-
-        updated = [*existing, username]
-        self.user.plex_usernames = ", ".join(updated)
-        self.user.save(update_fields=["plex_usernames"])
 
     def _ensure_account_id(self):
         """Fetch and persist the Plex account id if missing."""
@@ -594,7 +576,14 @@ class PlexHistoryImporter:
             self._track_unknown_type(metadata)
             return
 
-        metadata, ids = self._ensure_external_ids(metadata, uri, section_type)
+        metadata, ids = self._ensure_external_ids(
+            metadata,
+            uri,
+            allow_title_search=(
+                media_type == MediaTypes.MOVIE.value
+                and section_type in ("show", "movie")
+            ),
+        )
         logger.debug(
             "Resolved Plex history ID presence: %s",
             presence_map(ids, ("tmdb_id", "imdb_id", "tvdb_id", "anidb_id")),
@@ -614,7 +603,14 @@ class PlexHistoryImporter:
                 and not self._has_external_ids(ids)
             ):
                 media_type = MediaTypes.TV.value
-                metadata, ids = self._ensure_external_ids(metadata, uri, section_type)
+                metadata, ids = self._ensure_external_ids(
+                    metadata,
+                    uri,
+                    allow_title_search=(
+                        media_type == MediaTypes.MOVIE.value
+                        and section_type in ("show", "movie")
+                    ),
+                )
 
             if not self._has_external_ids(ids):
                 if section_type == "show":
@@ -848,11 +844,10 @@ class PlexHistoryImporter:
         self,
         metadata: dict,
         uri: str,
-        section_type: str | None = None,
+        *,
+        allow_title_search: bool,
     ) -> tuple[dict, dict]:
         """Ensure external IDs are populated, fetching Plex metadata if needed."""
-        # Allow title search fallback for TV/Movie libraries to improve matching yields
-        allow_title_search = section_type in ("show", "movie")
         ids = self.processor.resolve_external_ids(
             {"Metadata": metadata},
             allow_title_search=allow_title_search,
