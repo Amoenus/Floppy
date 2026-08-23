@@ -381,10 +381,16 @@ def list_hardcover_editions(request, media_id):
         request,
         "app/components/hardcover_edition_results.html",
         {
+            "picker_type": "hardcover",
             "editions": editions,
             "query": query,
             "media_id": media_id,
             "item_id": item.id if item else None,
+            "selection_url": (
+                reverse("set_hardcover_edition", kwargs={"item_id": item.id})
+                if item
+                else ""
+            ),
             "return_url": helpers.normalize_navigation_url(
                 request.GET.get("return_url"),
             ),

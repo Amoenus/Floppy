@@ -170,6 +170,7 @@ def album_track_modal(request, album_id):
         title=album.title,
         tracker=tracker,
         form=form,
+        album=album,
         save_url=reverse("album_save"),
         delete_url=reverse("album_delete"),
         release_date_shortcut=_track_modal_release_date_shortcut(album.release_date),
