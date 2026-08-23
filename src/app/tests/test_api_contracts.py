@@ -444,6 +444,7 @@ class OpenAPIArtifactTests(SimpleTestCase):
             "title",
             "max_progress",
             "image",
+            "backdrop",
             "synopsis",
             "genres",
             "score",
