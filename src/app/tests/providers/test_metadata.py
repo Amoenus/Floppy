@@ -2722,7 +2722,7 @@ class CastOrderRegressionTests(TestCase):
         must produce a cast entry with the outer character and no episode count
         rather than raising.
         """
-        for roles in (None, [], None):
+        for roles in (None, []):
             credits_data = {
                 "cast": [
                     {
@@ -2739,6 +2739,23 @@ class CastOrderRegressionTests(TestCase):
             result = tmdb.get_cast_credits(credits_data, is_aggregate=True)
             self.assertEqual(result[0]["role"], "Fallback Role")
             self.assertIsNone(result[0]["episode_count"])
+
+        # roles key absent entirely — must behave the same as None/[].
+        credits_data = {
+            "cast": [
+                {
+                    "id": 1,
+                    "name": "Actor",
+                    "character": "Fallback Role",
+                    "known_for_department": "Acting",
+                    "gender": 2,
+                    "profile_path": None,
+                },
+            ],
+        }
+        result = tmdb.get_cast_credits(credits_data, is_aggregate=True)
+        self.assertEqual(result[0]["role"], "Fallback Role")
+        self.assertIsNone(result[0]["episode_count"])
 
     def test_get_cast_credits_order_zero_is_first(self):
         """Cast member with order=0 must sort before members with higher orders."""
