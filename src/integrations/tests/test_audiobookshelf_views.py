@@ -1,11 +1,14 @@
 # FORK: recurring-schedule coverage for the Audiobookshelf connect/import views.
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
+import requests
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django_celery_beat.models import CrontabSchedule, IntervalSchedule, PeriodicTask
 
+from integrations import audiobookshelf_cover
+from integrations.imports import helpers
 from integrations.models import AudiobookshelfAccount
 
 BASE_URL = "https://audiobookshelf.example.com"
@@ -125,3 +128,74 @@ class AudiobookshelfScheduleTests(TestCase):
                 kwargs__contains=f'"user_id": {self.user.id}',
             ).exists()
         )
+
+
+class AudiobookshelfCoverProxyTests(TestCase):
+    """The cover proxy authenticates to ABS server-side (see issue #861)."""
+
+    def setUp(self):
+        """Create a connected Audiobookshelf account to proxy covers for."""
+        self.user = get_user_model().objects.create_user(username="abs-cover")
+        self.account = AudiobookshelfAccount.objects.create(
+            user=self.user,
+            base_url=BASE_URL,
+            api_token=helpers.encrypt(API_TOKEN),
+        )
+
+    def _cover_url(self, library_item_id="item-1"):
+        return audiobookshelf_cover.build_cover_proxy_url(
+            self.account.id,
+            library_item_id,
+        )
+
+    @patch("integrations.views.requests.get")
+    def test_streams_cover_with_valid_token(self, mock_get):
+        """A valid signed token fetches the upstream cover with the stored token."""
+        mock_get.return_value = Mock(
+            status_code=200,
+            content=b"fake-image-bytes",
+            headers={"Content-Type": "image/webp"},
+        )
+
+        response = self.client.get(self._cover_url("item-1"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, b"fake-image-bytes")
+        self.assertEqual(response["Content-Type"], "image/webp")
+
+        mock_get.assert_called_once_with(
+            f"{BASE_URL}/api/items/item-1/cover",
+            headers={"Authorization": f"Bearer {API_TOKEN}"},
+            timeout=15,
+        )
+
+    def test_returns_404_for_invalid_token(self):
+        """A tampered or malformed token never reaches the ABS request."""
+        response = self.client.get(
+            reverse("audiobookshelf_cover", kwargs={"token": "not-a-real-token"}),
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_returns_404_when_account_no_longer_exists(self):
+        """A signed token for a deleted account 404s instead of erroring."""
+        url = audiobookshelf_cover.build_cover_proxy_url(999_999, "item-1")
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 404)
+
+    @patch("integrations.views.requests.get")
+    def test_returns_404_on_upstream_error_status(self, mock_get):
+        """An ABS-side auth failure surfaces as a 404, not a broken image."""
+        mock_get.return_value = Mock(status_code=401, content=b"", headers={})
+
+        response = self.client.get(self._cover_url())
+
+        self.assertEqual(response.status_code, 404)
+
+    @patch("integrations.views.requests.get")
+    def test_returns_404_on_request_exception(self, mock_get):
+        """A network failure talking to ABS surfaces as a 404."""
+        mock_get.side_effect = requests.ConnectionError("boom")
+
+        response = self.client.get(self._cover_url())
+
+        self.assertEqual(response.status_code, 404)

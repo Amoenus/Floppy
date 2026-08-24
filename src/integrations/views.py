@@ -20,7 +20,12 @@ from django.contrib.auth.decorators import login_not_required
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import IntegrityError
 from django.db.models import Q
-from django.http import HttpResponse, JsonResponse, StreamingHttpResponse
+from django.http import (
+    HttpResponse,
+    HttpResponseNotFound,
+    JsonResponse,
+    StreamingHttpResponse,
+)
 from django.shortcuts import redirect
 from django.urls import reverse
 from django.utils import timezone
@@ -30,6 +35,9 @@ from django.views.decorators.http import require_GET, require_POST
 import users
 from app import helpers as app_helpers
 from app.log_safety import exception_summary
+from integrations import (
+    audiobookshelf_cover as abs_cover_proxy,
+)
 from integrations import (
     exports,
     gpodder_api,
@@ -1574,6 +1582,56 @@ def import_audiobookshelf(request):
 
     messages.info(request, "Audiobookshelf import queued.")
     return redirect("import_data")
+
+
+AUDIOBOOKSHELF_COVER_TIMEOUT = 15
+
+
+@login_not_required
+@require_GET
+def audiobookshelf_cover(request, token):
+    """Stream an Audiobookshelf item's cover art using the account's own token.
+
+    The ABS `/api/items/:id/cover` endpoint requires a bearer token, so it
+    can't be embedded directly in an `<img src>`. This resolves the signed
+    token to the owning account, fetches the cover server-side with that
+    account's stored credentials, and streams it back (see #861).
+    """
+    resolved = abs_cover_proxy.resolve_cover_proxy_token(token)
+    if resolved is None:
+        return HttpResponseNotFound()
+    account_id, library_item_id = resolved
+
+    account = AudiobookshelfAccount.objects.filter(pk=account_id).first()
+    if account is None:
+        return HttpResponseNotFound()
+
+    try:
+        api_token = helpers.decrypt(account.api_token)
+    except Exception:
+        logger.warning(
+            "Failed to decrypt Audiobookshelf token for cover proxy account=%s",
+            account_id,
+        )
+        return HttpResponseNotFound()
+
+    cover_url = f"{account.base_url.rstrip('/')}/api/items/{library_item_id}/cover"
+    try:
+        upstream = requests.get(
+            cover_url,
+            headers={"Authorization": f"Bearer {api_token}"},
+            timeout=AUDIOBOOKSHELF_COVER_TIMEOUT,
+        )
+    except requests.RequestException:
+        return HttpResponseNotFound()
+
+    if upstream.status_code != HTTPStatus.OK:
+        return HttpResponseNotFound()
+
+    content_type = upstream.headers.get("Content-Type", "image/jpeg")
+    response = HttpResponse(upstream.content, content_type=content_type)
+    response["Cache-Control"] = "private, max-age=3600"
+    return response
 
 
 STORYTELLER_RECURRING_TASK_NAME = "Import from Storyteller (Recurring)"
