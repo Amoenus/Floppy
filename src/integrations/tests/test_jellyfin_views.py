@@ -4,6 +4,7 @@ from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 from django_celery_beat.models import PeriodicTask
 
 from integrations.jellyfin_client import JellyfinAuthError
@@ -76,6 +77,9 @@ class JellyfinViewTests(TestCase):
             jellyfin_username="olduser",
             push_watched_enabled=False,
             scheduled_push_enabled=True,
+            playback_reporting_available=True,
+            playback_reporting_last_rowid=99,
+            library_backfill_completed_at=timezone.now(),
         )
         mock_current_user.return_value = {"Id": "jf-2", "Name": "newuser"}
 
@@ -96,6 +100,43 @@ class JellyfinViewTests(TestCase):
         self.assertNotEqual(account.api_key, "jf-new-key")
         self.assertFalse(account.push_watched_enabled)
         self.assertTrue(account.scheduled_push_enabled)
+        # A different server/user must not carry over cached pull state from
+        # the old identity (stale rowid cursor, stale availability result).
+        self.assertIsNone(account.playback_reporting_available)
+        self.assertIsNone(account.playback_reporting_last_rowid)
+        self.assertIsNone(account.library_backfill_completed_at)
+
+    @patch("integrations.views.tasks.pull_jellyfin_history.delay")
+    @patch("integrations.views.JellyfinClient.get_current_user")
+    @patch("integrations.views.JellyfinClient.healthcheck")
+    def test_reconnect_same_identity_preserves_pull_state(
+        self,
+        mock_healthcheck,
+        mock_current_user,
+        mock_pull_delay,
+    ):
+        """Re-submitting the same server/user (e.g. to rotate the key) keeps pull state."""
+        JellyfinAccount.objects.create(
+            user=self.user,
+            base_url="https://jellyfin.local:8096",
+            api_key="old-encrypted-key",
+            jellyfin_user_id="jf-1",
+            playback_reporting_available=True,
+            playback_reporting_last_rowid=99,
+        )
+        mock_current_user.return_value = {"Id": "jf-1", "Name": "danny"}
+
+        self.client.post(
+            reverse("jellyfin_connect"),
+            {
+                "base_url": "https://jellyfin.local:8096",
+                "api_key": "jf-rotated-key",
+            },
+        )
+
+        account = JellyfinAccount.objects.get(user=self.user)
+        self.assertTrue(account.playback_reporting_available)
+        self.assertEqual(account.playback_reporting_last_rowid, 99)
 
     @patch("integrations.views.tasks.pull_jellyfin_history.delay")
     @patch("integrations.views.JellyfinClient.get_current_user")

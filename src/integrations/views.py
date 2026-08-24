@@ -1437,16 +1437,35 @@ def jellyfin_connect(request):
         )
         return redirect("integrations")
 
+    existing_account = getattr(request.user, "jellyfin_account", None)
+    identity_changed = existing_account is not None and (
+        existing_account.base_url != base_url
+        or existing_account.jellyfin_user_id != current_user["Id"]
+    )
+
+    defaults = {
+        "base_url": base_url,
+        "api_key": helpers.encrypt(api_key),
+        "jellyfin_user_id": current_user["Id"],
+        "jellyfin_username": current_user.get("Name", ""),
+        "connection_broken": False,
+        "last_error_message": "",
+    }
+    if existing_account is None or identity_changed:
+        # A different server/user invalidates any cached pull state: a
+        # Playback Reporting rowid or "unavailable" result from the old
+        # identity would otherwise silently carry over to the new one.
+        defaults.update(
+            {
+                "playback_reporting_available": None,
+                "playback_reporting_last_rowid": None,
+                "library_backfill_completed_at": None,
+            },
+        )
+
     account, _ = JellyfinAccount.objects.update_or_create(
         user=request.user,
-        defaults={
-            "base_url": base_url,
-            "api_key": helpers.encrypt(api_key),
-            "jellyfin_user_id": current_user["Id"],
-            "jellyfin_username": current_user.get("Name", ""),
-            "connection_broken": False,
-            "last_error_message": "",
-        },
+        defaults=defaults,
     )
 
     # Seamless by default: queue an automatic history pull right away so a

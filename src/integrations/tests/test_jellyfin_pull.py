@@ -59,6 +59,87 @@ class PullJellyfinHistoryTaskTests(TestCase):
         return_value="api-key",
     )
     @patch("integrations.jellyfin_client.JellyfinClient.iter_library_items")
+    @patch("integrations.jellyfin_client.JellyfinClient.fetch_playback_activity")
+    @patch("integrations.jellyfin_client.JellyfinClient.probe_playback_reporting")
+    def test_reprobes_after_a_prior_unavailable_result(
+        self,
+        mock_probe,
+        mock_fetch,
+        mock_library,
+        mock_decrypt_task,
+        mock_decrypt_importer,
+    ):
+        """A stale False result must not permanently lock the account into tier 2."""
+        self.account.playback_reporting_available = False
+        self.account.save(update_fields=["playback_reporting_available"])
+        mock_probe.return_value = True
+        mock_fetch.return_value = []
+        mock_library.return_value = []
+
+        pull_jellyfin_history(self.user.id)
+
+        mock_probe.assert_called_once()
+        self.account.refresh_from_db()
+        self.assertTrue(self.account.playback_reporting_available)
+
+    @patch("integrations.tasks._jellyfin_pull.events.tasks.reload_calendar.delay")
+    @patch(
+        "integrations.imports.jellyfin_playback_reporting.decrypt_or_raise",
+        return_value="api-key",
+    )
+    @patch(
+        "integrations.tasks._jellyfin_pull.decrypt_or_raise",
+        return_value="api-key",
+    )
+    @patch("integrations.jellyfin_client.JellyfinClient.iter_library_items")
+    @patch("integrations.jellyfin_client.JellyfinClient.probe_playback_reporting")
+    def test_library_backfill_triggers_one_catchup_reload_when_items_imported(
+        self,
+        mock_probe,
+        mock_library,
+        mock_decrypt_task,
+        mock_decrypt_importer,
+        mock_reload_calendar,
+    ):
+        from app.models import Item, MediaTypes, Movie, Status
+
+        item = Item.objects.create(
+            media_id="123",
+            source="tmdb",
+            media_type=MediaTypes.MOVIE.value,
+            title="Movie",
+            image="",
+        )
+        Movie.objects.create(
+            item=item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+            score=None,
+            notes="",
+        )
+        mock_probe.return_value = False
+        mock_library.return_value = [
+            {
+                "Id": "jf-item",
+                "Type": "Movie",
+                "ProviderIds": {"Tmdb": "123"},
+                "UserData": {"Played": True, "LastPlayedDate": "2024-01-02T03:04:05Z"},
+            },
+        ]
+
+        pull_jellyfin_history(self.user.id)
+
+        mock_reload_calendar.assert_called_once()
+
+    @patch(
+        "integrations.imports.jellyfin_playback_reporting.decrypt_or_raise",
+        return_value="api-key",
+    )
+    @patch(
+        "integrations.tasks._jellyfin_pull.decrypt_or_raise",
+        return_value="api-key",
+    )
+    @patch("integrations.jellyfin_client.JellyfinClient.iter_library_items")
     @patch("integrations.jellyfin_client.JellyfinClient.probe_playback_reporting")
     def test_falls_back_to_library_backfill_when_unavailable(
         self,

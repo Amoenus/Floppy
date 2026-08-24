@@ -16,6 +16,8 @@ from celery import shared_task
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 
+import events
+from app.mixins import disable_fetch_releases
 from integrations.imports.helpers import MediaImportError, decrypt_or_raise
 from integrations.imports.jellyfin_playback_reporting import (
     JellyfinPlaybackReportingImporter,
@@ -90,8 +92,13 @@ def _fetch_new_playback_activity(client, account) -> list[dict]:
 
 def _run_playback_activity_pull(user, account, client) -> dict | None:
     """Try the Playback Reporting API tier; return None if it's unavailable."""
+    # Reprobe whenever it isn't confirmed available, not just on the very
+    # first run: a prior "unavailable" result can be a transient outage, a
+    # plugin installed after the fact, or a key that later gained admin
+    # access. The probe is a single cheap GET, so retrying it every run
+    # this tier is skipped is worth the self-healing.
     available = account.playback_reporting_available
-    if available is None:
+    if not available:
         available = client.probe_playback_reporting()
     if not available:
         return None
@@ -154,10 +161,15 @@ def pull_jellyfin_history(user_id):
     client = JellyfinClient(account.base_url, api_key, account.jellyfin_user_id or None)
 
     try:
-        result = _run_playback_activity_pull(user, account, client)
-        if result is None:
-            account.playback_reporting_available = False
-            result = _run_library_backfill(user, account)
+        # A large initial backfill can complete thousands of movies/episodes
+        # in one run; each one would otherwise trigger its own per-item
+        # Item.fetch_releases()/reload_calendar task. Suppress those (same
+        # as import_media()) and do a single bounded catch-up afterward.
+        with disable_fetch_releases():
+            result = _run_playback_activity_pull(user, account, client)
+            if result is None:
+                account.playback_reporting_available = False
+                result = _run_library_backfill(user, account)
     except (JellyfinAuthError, JellyfinClientError, MediaImportError) as exc:
         logger.warning("Jellyfin history pull failed for user %s: %s", user_id, exc)
         JellyfinAccount.objects.filter(user=user).update(
@@ -170,5 +182,8 @@ def pull_jellyfin_history(user_id):
     account.last_pull_error_message = ""
     account.connection_broken = False
     account.save(update_fields=ACCOUNT_UPDATE_FIELDS)
+
+    if sum(result["counts"].values()):
+        events.tasks.reload_calendar.delay()
 
     return _format_pull_message(result)
