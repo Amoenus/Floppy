@@ -7,6 +7,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from django_celery_beat.models import CrontabSchedule, IntervalSchedule, PeriodicTask
 
+from app import image_cache
 from integrations import audiobookshelf_cover
 from integrations.imports import helpers
 from integrations.models import AudiobookshelfAccount
@@ -148,11 +149,21 @@ class AudiobookshelfCoverProxyTests(TestCase):
             library_item_id,
         )
 
+    def _mock_upstream(self, *, status_code=200, content=b"", headers=None):
+        """Build a requests.Response-shaped mock for the streaming proxy path."""
+        def iter_content(chunk_size):
+            return iter(
+                content[i : i + chunk_size] for i in range(0, len(content), chunk_size)
+            )
+
+        upstream = Mock(status_code=status_code, headers=headers or {})
+        upstream.iter_content = iter_content
+        return upstream
+
     @patch("integrations.views.requests.get")
     def test_streams_cover_with_valid_token(self, mock_get):
         """A valid signed token fetches the upstream cover with the stored token."""
-        mock_get.return_value = Mock(
-            status_code=200,
+        mock_get.return_value = self._mock_upstream(
             content=b"fake-image-bytes",
             headers={"Content-Type": "image/webp"},
         )
@@ -167,6 +178,7 @@ class AudiobookshelfCoverProxyTests(TestCase):
             f"{BASE_URL}/api/items/item-1/cover",
             headers={"Authorization": f"Bearer {API_TOKEN}"},
             timeout=15,
+            stream=True,
         )
 
     def test_returns_404_for_invalid_token(self):
@@ -185,7 +197,7 @@ class AudiobookshelfCoverProxyTests(TestCase):
     @patch("integrations.views.requests.get")
     def test_returns_404_on_upstream_error_status(self, mock_get):
         """An ABS-side auth failure surfaces as a 404, not a broken image."""
-        mock_get.return_value = Mock(status_code=401, content=b"", headers={})
+        mock_get.return_value = self._mock_upstream(status_code=401)
 
         response = self.client.get(self._cover_url())
 
@@ -195,6 +207,67 @@ class AudiobookshelfCoverProxyTests(TestCase):
     def test_returns_404_on_request_exception(self, mock_get):
         """A network failure talking to ABS surfaces as a 404."""
         mock_get.side_effect = requests.ConnectionError("boom")
+
+        response = self.client.get(self._cover_url())
+
+        self.assertEqual(response.status_code, 404)
+
+    @patch("integrations.views.requests.get")
+    def test_rejects_non_image_content_type(self, mock_get):
+        """An HTML (or otherwise non-image) upstream response is never served.
+
+        A compromised or attacker-controlled ABS server could otherwise have
+        active content served from Floppy's own origin to anyone holding the
+        signed proxy URL (#861 review).
+        """
+        mock_get.return_value = self._mock_upstream(
+            content=b"<script>alert(1)</script>",
+            headers={"Content-Type": "text/html"},
+        )
+
+        response = self.client.get(self._cover_url())
+
+        self.assertEqual(response.status_code, 404)
+
+    @patch("integrations.views.requests.get")
+    def test_rejects_svg_content_type(self, mock_get):
+        """SVG is an active format and must not be proxied as a plain image."""
+        mock_get.return_value = self._mock_upstream(
+            content=b"<svg onload='alert(1)'></svg>",
+            headers={"Content-Type": "image/svg+xml"},
+        )
+
+        response = self.client.get(self._cover_url())
+
+        self.assertEqual(response.status_code, 404)
+
+    @patch("integrations.views.requests.get")
+    def test_rejects_oversized_content_length(self, mock_get):
+        """A declared Content-Length above the cap is rejected before reading."""
+        mock_get.return_value = self._mock_upstream(
+            content=b"x",
+            headers={
+                "Content-Type": "image/jpeg",
+                "Content-Length": str(image_cache.MAX_IMAGE_BYTES + 1),
+            },
+        )
+
+        response = self.client.get(self._cover_url())
+
+        self.assertEqual(response.status_code, 404)
+
+    @patch("integrations.views.requests.get")
+    def test_rejects_stream_exceeding_max_bytes(self, mock_get):
+        """A body that grows past the cap while streaming is rejected mid-read.
+
+        Content-Length is attacker-controlled and can simply be omitted, so
+        the accumulated byte count must be enforced independently.
+        """
+        oversized = b"x" * (image_cache.MAX_IMAGE_BYTES + 1)
+        mock_get.return_value = self._mock_upstream(
+            content=oversized,
+            headers={"Content-Type": "image/jpeg"},
+        )
 
         response = self.client.get(self._cover_url())
 

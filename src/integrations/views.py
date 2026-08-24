@@ -34,6 +34,7 @@ from django.views.decorators.http import require_GET, require_POST
 
 import users
 from app import helpers as app_helpers
+from app import image_cache
 from app.log_safety import exception_summary
 from integrations import (
     audiobookshelf_cover as abs_cover_proxy,
@@ -1585,6 +1586,13 @@ def import_audiobookshelf(request):
 
 
 AUDIOBOOKSHELF_COVER_TIMEOUT = 15
+# Plain raster types only - an upstream ABS server (attacker-controlled, or
+# just compromised) returning e.g. text/html or image/svg+xml would have it
+# served as active content from Floppy's own origin to anyone holding the
+# signed proxy URL, since the account owner can share that URL freely.
+AUDIOBOOKSHELF_COVER_CONTENT_TYPES = frozenset(
+    {"image/jpeg", "image/png", "image/webp", "image/gif", "image/avif"},
+)
 
 
 @login_not_required
@@ -1595,7 +1603,11 @@ def audiobookshelf_cover(request, token):
     The ABS `/api/items/:id/cover` endpoint requires a bearer token, so it
     can't be embedded directly in an `<img src>`. This resolves the signed
     token to the owning account, fetches the cover server-side with that
-    account's stored credentials, and streams it back (see #861).
+    account's stored credentials, and streams it back (see #861). The
+    endpoint is deliberately anonymous, so the response is streamed with a
+    hard size cap and its content type is restricted to known-safe image
+    types - matching the bounded, allow-listed fetch app.image_cache already
+    does for provider artwork.
     """
     resolved = abs_cover_proxy.resolve_cover_proxy_token(token)
     if resolved is None:
@@ -1621,15 +1633,39 @@ def audiobookshelf_cover(request, token):
             cover_url,
             headers={"Authorization": f"Bearer {api_token}"},
             timeout=AUDIOBOOKSHELF_COVER_TIMEOUT,
+            stream=True,
         )
     except requests.RequestException:
         return HttpResponseNotFound()
 
-    if upstream.status_code != HTTPStatus.OK:
-        return HttpResponseNotFound()
+    try:
+        if upstream.status_code != HTTPStatus.OK:
+            return HttpResponseNotFound()
 
-    content_type = upstream.headers.get("Content-Type", "image/jpeg")
-    response = HttpResponse(upstream.content, content_type=content_type)
+        content_type = (
+            upstream.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
+        )
+        if content_type not in AUDIOBOOKSHELF_COVER_CONTENT_TYPES:
+            return HttpResponseNotFound()
+
+        try:
+            content_length = int(upstream.headers.get("Content-Length", "0"))
+        except ValueError:
+            content_length = 0
+        if content_length > image_cache.MAX_IMAGE_BYTES:
+            return HttpResponseNotFound()
+
+        body = bytearray()
+        for chunk in upstream.iter_content(chunk_size=64 * 1024):
+            if not chunk:
+                continue
+            body.extend(chunk)
+            if len(body) > image_cache.MAX_IMAGE_BYTES:
+                return HttpResponseNotFound()
+    finally:
+        upstream.close()
+
+    response = HttpResponse(bytes(body), content_type=content_type)
     response["Cache-Control"] = "private, max-age=3600"
     return response
 
