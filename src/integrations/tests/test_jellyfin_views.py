@@ -9,7 +9,11 @@ from django_celery_beat.models import PeriodicTask
 from integrations.jellyfin_client import JellyfinAuthError
 from integrations.jellyfin_sync import JELLYFIN_PUSH_TASK_NAME
 from integrations.models import JellyfinAccount
-from integrations.views import _ensure_jellyfin_push_schedule
+from integrations.tasks import JELLYFIN_PULL_TASK_NAME
+from integrations.views import (
+    _ensure_jellyfin_pull_schedule,
+    _ensure_jellyfin_push_schedule,
+)
 
 
 class JellyfinViewTests(TestCase):
@@ -20,9 +24,15 @@ class JellyfinViewTests(TestCase):
         self.user = get_user_model().objects.create_user(username="jf-view-user")
         self.client.force_login(self.user)
 
+    @patch("integrations.views.tasks.pull_jellyfin_history.delay")
     @patch("integrations.views.JellyfinClient.get_current_user")
     @patch("integrations.views.JellyfinClient.healthcheck")
-    def test_connect_persists_account(self, mock_healthcheck, mock_current_user):
+    def test_connect_persists_account(
+        self,
+        mock_healthcheck,
+        mock_current_user,
+        mock_pull_delay,
+    ):
         """Connecting Jellyfin should store an encrypted key and resolved user id."""
         mock_current_user.return_value = {"Id": "jf-1", "Name": "danny"}
 
@@ -41,10 +51,22 @@ class JellyfinViewTests(TestCase):
         self.assertEqual(account.jellyfin_username, "danny")
         self.assertNotEqual(account.api_key, "jf-key")
         mock_healthcheck.assert_called_once()
+        # Connecting should be seamless: an automatic history import is
+        # queued immediately, and the recurring schedule is armed.
+        mock_pull_delay.assert_called_once_with(user_id=self.user.id)
+        self.assertTrue(
+            PeriodicTask.objects.filter(task=JELLYFIN_PULL_TASK_NAME).exists()
+        )
 
+    @patch("integrations.views.tasks.pull_jellyfin_history.delay")
     @patch("integrations.views.JellyfinClient.get_current_user")
     @patch("integrations.views.JellyfinClient.healthcheck")
-    def test_connect_updates_existing_account(self, mock_healthcheck, mock_current_user):
+    def test_connect_updates_existing_account(
+        self,
+        mock_healthcheck,
+        mock_current_user,
+        mock_pull_delay,
+    ):
         """Reconnecting should update the existing account in place, preserving push settings."""
         existing = JellyfinAccount.objects.create(
             user=self.user,
@@ -75,9 +97,15 @@ class JellyfinViewTests(TestCase):
         self.assertFalse(account.push_watched_enabled)
         self.assertTrue(account.scheduled_push_enabled)
 
+    @patch("integrations.views.tasks.pull_jellyfin_history.delay")
     @patch("integrations.views.JellyfinClient.get_current_user")
     @patch("integrations.views.JellyfinClient.healthcheck")
-    def test_connect_surfaces_auth_error(self, mock_healthcheck, mock_current_user):
+    def test_connect_surfaces_auth_error(
+        self,
+        mock_healthcheck,
+        mock_current_user,
+        mock_pull_delay,
+    ):
         """A failed healthcheck should not persist an account."""
         mock_healthcheck.side_effect = JellyfinAuthError("bad key")
 
@@ -92,7 +120,9 @@ class JellyfinViewTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertFalse(JellyfinAccount.objects.filter(user=self.user).exists())
         mock_current_user.assert_not_called()
+        mock_pull_delay.assert_not_called()
 
+    @patch("integrations.views.tasks.pull_jellyfin_history.delay")
     @patch("integrations.views.JellyfinClient.find_user_by_name")
     @patch("integrations.views.JellyfinClient.get_current_user")
     @patch("integrations.views.JellyfinClient.healthcheck")
@@ -101,6 +131,7 @@ class JellyfinViewTests(TestCase):
         mock_healthcheck,
         mock_current_user,
         mock_find_user,
+        mock_pull_delay,
     ):
         """A Dashboard API key (no Users/Me) should resolve via the username."""
         mock_current_user.return_value = None
@@ -121,8 +152,13 @@ class JellyfinViewTests(TestCase):
         self.assertEqual(account.jellyfin_username, "danny")
         mock_healthcheck.assert_called_once()
         mock_find_user.assert_called_once_with("danny")
+        mock_pull_delay.assert_called_once_with(user_id=self.user.id)
 
-    def test_connect_requires_username_fallback_when_me_unresolved(self):
+    @patch("integrations.views.tasks.pull_jellyfin_history.delay")
+    def test_connect_requires_username_fallback_when_me_unresolved(
+        self,
+        mock_pull_delay,
+    ):
         """Without Users/Me and no username fallback, connect should fail cleanly."""
         with (
             patch("integrations.views.JellyfinClient.healthcheck"),
@@ -138,12 +174,13 @@ class JellyfinViewTests(TestCase):
                     "api_key": "jf-key",
                 },
             )
+        mock_pull_delay.assert_not_called()
 
         self.assertEqual(response.status_code, 302)
         self.assertFalse(JellyfinAccount.objects.filter(user=self.user).exists())
 
     def test_disconnect_removes_account_and_schedule(self):
-        """Disconnecting should delete the account and any push schedule."""
+        """Disconnecting should delete the account and any push/pull schedules."""
         account = JellyfinAccount.objects.create(
             user=self.user,
             base_url="https://jellyfin.local:8096",
@@ -152,6 +189,7 @@ class JellyfinViewTests(TestCase):
             scheduled_push_enabled=True,
         )
         _ensure_jellyfin_push_schedule(self.user, account)
+        _ensure_jellyfin_pull_schedule(self.user, account)
 
         response = self.client.post(reverse("jellyfin_disconnect"))
 
@@ -159,6 +197,9 @@ class JellyfinViewTests(TestCase):
         self.assertFalse(JellyfinAccount.objects.filter(user=self.user).exists())
         self.assertFalse(
             PeriodicTask.objects.filter(task=JELLYFIN_PUSH_TASK_NAME).exists()
+        )
+        self.assertFalse(
+            PeriodicTask.objects.filter(task=JELLYFIN_PULL_TASK_NAME).exists()
         )
 
     def test_settings_toggles_create_and_remove_schedule(self):
@@ -191,6 +232,58 @@ class JellyfinViewTests(TestCase):
         self.assertFalse(
             PeriodicTask.objects.filter(task=JELLYFIN_PUSH_TASK_NAME).exists()
         )
+
+    def test_settings_toggles_create_and_remove_pull_schedule(self):
+        """Toggling pull_history_enabled should create/remove the periodic task."""
+        JellyfinAccount.objects.create(
+            user=self.user,
+            base_url="https://jellyfin.local:8096",
+            api_key="encrypted",
+            jellyfin_user_id="jf-1",
+        )
+
+        response = self.client.post(
+            reverse("jellyfin_settings"),
+            {"pull_history_enabled": "on"},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        account = JellyfinAccount.objects.get(user=self.user)
+        self.assertTrue(account.pull_history_enabled)
+        self.assertTrue(
+            PeriodicTask.objects.filter(task=JELLYFIN_PULL_TASK_NAME).exists()
+        )
+
+        response = self.client.post(reverse("jellyfin_settings"), {})
+
+        account.refresh_from_db()
+        self.assertFalse(account.pull_history_enabled)
+        self.assertFalse(
+            PeriodicTask.objects.filter(task=JELLYFIN_PULL_TASK_NAME).exists()
+        )
+
+    @patch("integrations.views.tasks.pull_jellyfin_history.delay")
+    def test_pull_now_requires_connected_account(self, mock_delay):
+        """pull_now should refuse to queue without a connected account."""
+        response = self.client.post(reverse("jellyfin_pull_now"))
+
+        self.assertEqual(response.status_code, 302)
+        mock_delay.assert_not_called()
+
+    @patch("integrations.views.tasks.pull_jellyfin_history.delay")
+    def test_pull_now_queues_task(self, mock_delay):
+        """pull_now should enqueue the history pull task for a connected account."""
+        JellyfinAccount.objects.create(
+            user=self.user,
+            base_url="https://jellyfin.local:8096",
+            api_key="encrypted",
+            jellyfin_user_id="jf-1",
+        )
+
+        response = self.client.post(reverse("jellyfin_pull_now"))
+
+        self.assertEqual(response.status_code, 302)
+        mock_delay.assert_called_once_with(user_id=self.user.id)
 
     @patch("integrations.views.tasks.push_jellyfin_watched.delay")
     def test_push_now_requires_connected_account(self, mock_delay):
