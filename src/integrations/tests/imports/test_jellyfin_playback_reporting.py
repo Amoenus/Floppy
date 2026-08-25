@@ -214,3 +214,158 @@ class PlaybackReportingImporterTests(TestCase):
             "tvdb",
             2,
         )
+
+
+class PlaybackActivityAPIImportTests(TestCase):
+    """Cover the Playback Reporting REST API import path (no manual TSV)."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(username="pull-user")
+        self.account = JellyfinAccount.objects.create(
+            user=self.user,
+            base_url="https://jellyfin.example",
+            api_key="encrypted",
+            jellyfin_user_id="jf-user",
+        )
+
+    @patch(
+        "integrations.imports.jellyfin_playback_reporting.decrypt_or_raise",
+        return_value="api-key",
+    )
+    @patch("integrations.jellyfin_client.JellyfinClient.iter_library_items")
+    def test_imports_rows_with_rowid_identity_and_tracks_max_rowid(
+        self,
+        mock_library,
+        mock_decrypt,
+    ):
+        item = Item.objects.create(
+            media_id="123",
+            source="tmdb",
+            media_type=MediaTypes.MOVIE.value,
+            title="Movie",
+            image="",
+        )
+        Movie.objects.create(
+            item=item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+            score=None,
+            notes="",
+        )
+        mock_library.return_value = [
+            {"Id": "jf-item", "Type": "Movie", "ProviderIds": {"Tmdb": "123"}},
+        ]
+
+        entries = [
+            {
+                "rowid": 5,
+                "date_created": "2024-01-02 03:04:05",
+                "user_id": "jf-user",
+                "item_id": "jf-item",
+                "item_type": "Movie",
+                "item_name": "Example",
+                "playback_method": "DirectPlay",
+                "client_name": "Web",
+                "device_name": "Laptop",
+                "play_duration": "120",
+            },
+            {
+                "rowid": 2,
+                "date_created": "2024-01-01 00:00:00",
+                "user_id": "other-user",
+                "item_id": "jf-item",
+                "item_type": "Movie",
+                "item_name": "Example",
+                "playback_method": "DirectPlay",
+                "client_name": "Web",
+                "device_name": "Laptop",
+                "play_duration": "60",
+            },
+        ]
+
+        counts, warnings, max_rowid = JellyfinPlaybackReportingImporter(
+            self.user,
+            self.account,
+        ).import_activity_rows(entries)
+
+        self.assertEqual(counts[MediaTypes.MOVIE.value], 1)
+        self.assertEqual(warnings, "")
+        self.assertEqual(max_rowid, 5)
+        movie = item.movie_set.get(user=self.user)
+        play = movie.plays.get()
+        self.assertEqual(play.external_id, "jellyfin-playback-reporting:rowid:5")
+
+        # Re-running with the same rows does not create a second play.
+        counts, warnings, _ = JellyfinPlaybackReportingImporter(
+            self.user,
+            self.account,
+        ).import_activity_rows(entries)
+        self.assertEqual(counts[MediaTypes.MOVIE.value], 0)
+        self.assertEqual(movie.plays.count(), 1)
+
+
+class LibraryBackfillImportTests(TestCase):
+    """Cover the plugin-free backfill from Jellyfin's UserData.Played state."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(username="backfill-user")
+        self.account = JellyfinAccount.objects.create(
+            user=self.user,
+            base_url="https://jellyfin.example",
+            api_key="encrypted",
+            jellyfin_user_id="jf-user",
+        )
+
+    @patch(
+        "integrations.imports.jellyfin_playback_reporting.decrypt_or_raise",
+        return_value="api-key",
+    )
+    @patch("integrations.jellyfin_client.JellyfinClient.iter_library_items")
+    def test_backfills_only_played_items_once(self, mock_library, mock_decrypt):
+        item = Item.objects.create(
+            media_id="123",
+            source="tmdb",
+            media_type=MediaTypes.MOVIE.value,
+            title="Movie",
+            image="",
+        )
+        Movie.objects.create(
+            item=item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+            score=None,
+            notes="",
+        )
+        mock_library.return_value = [
+            {
+                "Id": "jf-item",
+                "Type": "Movie",
+                "ProviderIds": {"Tmdb": "123"},
+                "UserData": {"Played": True, "LastPlayedDate": "2024-01-02T03:04:05Z"},
+            },
+            {
+                "Id": "jf-unwatched",
+                "Type": "Movie",
+                "ProviderIds": {"Tmdb": "999"},
+                "UserData": {"Played": False},
+            },
+        ]
+
+        counts, warnings = JellyfinPlaybackReportingImporter(
+            self.user,
+            self.account,
+        ).import_library_backfill()
+
+        self.assertEqual(counts[MediaTypes.MOVIE.value], 1)
+        self.assertEqual(warnings, "")
+        movie = item.movie_set.get(user=self.user)
+        play = movie.plays.get()
+        self.assertEqual(play.external_id, "jellyfin-library-backfill:jf-item")
+
+        # Running again does not duplicate the single backfilled play.
+        counts, warnings = JellyfinPlaybackReportingImporter(
+            self.user,
+            self.account,
+        ).import_library_backfill()
+        self.assertEqual(counts[MediaTypes.MOVIE.value], 0)
+        self.assertEqual(movie.plays.count(), 1)
