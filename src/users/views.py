@@ -1327,6 +1327,7 @@ def integrations(request):
             "plex_connected": bool(plex_account and plex_account.plex_token),
             "jellyfin_account": jellyfin_account,
             "jellyfin_playback_reporting_import": jellyfin_playback_reporting_import,
+            "jellyfin_pull_interval_minutes": tasks.JELLYFIN_PULL_INTERVAL_MINUTES,
             "seerr_global_webhook_enabled": bool(settings.SEERR_GLOBAL_WEBHOOK_SECRET),
         },
     )

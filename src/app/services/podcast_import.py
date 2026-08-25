@@ -19,6 +19,49 @@ class PodcastImportError(Exception):
     """Raised when an iTunes id cannot be resolved into a podcast show."""
 
 
+def resolve_show_metadata(itunes_data: dict, rss_feed_url: str) -> dict:
+    """Return the iTunes lookup data with RSS-feed fallbacks applied.
+
+    iTunes' own lookup frequently omits the description, and when it does it
+    often omits the author and language too; the show's feed carries all
+    three. Returns a new dict instead of mutating `itunes_data`, and creates
+    nothing, so `PodcastLookupView`'s read-only preview can share it with the
+    import below and get the same metadata an import would store.
+    """
+    from integrations import podcast_rss
+
+    resolved = dict(itunes_data)
+    if resolved.get("description"):
+        return resolved
+    try:
+        rss_metadata = podcast_rss.fetch_show_metadata_from_rss(rss_feed_url)
+    except Exception as e:
+        logger.debug(
+            "Failed to fetch show metadata from RSS: %s",
+            exception_summary(e),
+        )
+        return resolved
+
+    for field in ("description", "author", "language"):
+        if not resolved.get(field) and rss_metadata.get(field):
+            resolved[field] = rss_metadata[field]
+    return resolved
+
+
+def find_existing_show(itunes_id: str, rss_feed_url: str) -> PodcastShow | None:
+    """Return the already-imported show for an iTunes result, if there is one.
+
+    Matches on the feed first and then on the iTunes-derived uuid — the same
+    two lookups `import_show_from_itunes_id` uses to avoid importing a show
+    twice, so a preview reports exactly what an import would reuse.
+    """
+    if rss_feed_url:
+        existing = PodcastShow.objects.filter(rss_feed_url=rss_feed_url).first()
+        if existing:
+            return existing
+    return PodcastShow.objects.filter(podcast_uuid=f"itunes:{itunes_id}").first()
+
+
 def import_show_from_itunes_id(itunes_id: str) -> PodcastShow:
     """Return the PodcastShow for an iTunes collection id, importing it if needed.
 
@@ -31,7 +74,6 @@ def import_show_from_itunes_id(itunes_id: str) -> PodcastShow:
             fails.
     """
     from app.providers import pocketcasts
-    from integrations import podcast_rss
 
     try:
         itunes_data = pocketcasts.lookup_by_itunes_id(itunes_id)
@@ -49,38 +91,20 @@ def import_show_from_itunes_id(itunes_id: str) -> PodcastShow:
         no_feed_error = f"Could not find an RSS feed for iTunes id {itunes_id}."
         raise PodcastImportError(no_feed_error)
 
-    existing_show = PodcastShow.objects.filter(rss_feed_url=rss_feed_url).first()
+    existing_show = find_existing_show(itunes_id, rss_feed_url)
     if existing_show:
         return existing_show
 
-    podcast_uuid = f"itunes:{itunes_id}"
-    existing_by_uuid = PodcastShow.objects.filter(podcast_uuid=podcast_uuid).first()
-    if existing_by_uuid:
-        return existing_by_uuid
-
-    description = itunes_data.get("description", "")
-    if not description:
-        try:
-            rss_metadata = podcast_rss.fetch_show_metadata_from_rss(rss_feed_url)
-            description = rss_metadata.get("description", description)
-            if not itunes_data.get("author") and rss_metadata.get("author"):
-                itunes_data["author"] = rss_metadata["author"]
-            if not itunes_data.get("language") and rss_metadata.get("language"):
-                itunes_data["language"] = rss_metadata["language"]
-        except Exception as e:
-            logger.debug(
-                "Failed to fetch show metadata from RSS: %s",
-                exception_summary(e),
-            )
+    metadata = resolve_show_metadata(itunes_data, rss_feed_url)
 
     show = PodcastShow.objects.create(
-        podcast_uuid=podcast_uuid,
-        title=itunes_data.get("title", "Unknown Podcast"),
-        author=itunes_data.get("author", ""),
-        image=itunes_data.get("artwork_url", ""),
-        description=description,
-        genres=itunes_data.get("genres", []),
-        language=itunes_data.get("language", ""),
+        podcast_uuid=f"itunes:{itunes_id}",
+        title=metadata.get("title", "Unknown Podcast"),
+        author=metadata.get("author", ""),
+        image=metadata.get("artwork_url", ""),
+        description=metadata.get("description", ""),
+        genres=metadata.get("genres", []),
+        language=metadata.get("language", ""),
         rss_feed_url=rss_feed_url,
     )
 

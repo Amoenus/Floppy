@@ -686,6 +686,23 @@ class JellyfinAccount(models.Model):
     connection_broken = models.BooleanField(default=False)
     last_error_message = models.TextField(blank=True, default="")
     last_sync_at = models.DateTimeField(null=True, blank=True)
+    pull_history_enabled = models.BooleanField(
+        default=True,
+        help_text="Automatically pull Jellyfin watch history on a recurring schedule",
+    )
+    playback_reporting_available = models.BooleanField(
+        null=True,
+        blank=True,
+        default=None,
+        help_text=(
+            "Whether the Playback Reporting plugin's API was reachable with "
+            "this account's key. Unknown (null) until the first pull runs."
+        ),
+    )
+    playback_reporting_last_rowid = models.BigIntegerField(null=True, blank=True)
+    library_backfill_completed_at = models.DateTimeField(null=True, blank=True)
+    last_pull_at = models.DateTimeField(null=True, blank=True)
+    last_pull_error_message = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

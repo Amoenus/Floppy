@@ -20,7 +20,12 @@ from django.contrib.auth.decorators import login_not_required
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import IntegrityError
 from django.db.models import Q
-from django.http import HttpResponse, JsonResponse, StreamingHttpResponse
+from django.http import (
+    HttpResponse,
+    HttpResponseNotFound,
+    JsonResponse,
+    StreamingHttpResponse,
+)
 from django.shortcuts import redirect
 from django.urls import reverse
 from django.utils import timezone
@@ -29,7 +34,11 @@ from django.views.decorators.http import require_GET, require_POST
 
 import users
 from app import helpers as app_helpers
+from app import image_cache
 from app.log_safety import exception_summary
+from integrations import (
+    audiobookshelf_cover as abs_cover_proxy,
+)
 from integrations import (
     exports,
     gpodder_api,
@@ -344,6 +353,78 @@ def _disable_jellyfin_push_schedule(user):
     return PeriodicTask.objects.filter(
         _plex_watchlist_task_filter(user.id),
         task=JELLYFIN_PUSH_TASK_NAME,
+    ).delete()
+
+
+def _ensure_jellyfin_pull_schedule(user, jellyfin_account):
+    """Create or enable the per-user Jellyfin history pull schedule."""
+    from django_celery_beat.models import IntervalSchedule, PeriodicTask
+
+    pull_task_name = tasks.JELLYFIN_PULL_TASK_NAME
+    pull_interval_minutes = tasks.JELLYFIN_PULL_INTERVAL_MINUTES
+
+    next_interval_start = timezone.now() + timedelta(minutes=pull_interval_minutes)
+    interval, _ = IntervalSchedule.objects.get_or_create(
+        every=pull_interval_minutes,
+        period=IntervalSchedule.MINUTES,
+    )
+    task_filter = PeriodicTask.objects.filter(
+        _plex_watchlist_task_filter(user.id),
+        task=pull_task_name,
+    )
+    existing_task = task_filter.first()
+    if existing_task:
+        was_enabled = existing_task.enabled
+        updated_fields = []
+        desired_name = (
+            f"{pull_task_name} for "
+            f"{jellyfin_account.jellyfin_username or user.username} "
+            f"(every {pull_interval_minutes} minutes)"
+        )
+        desired_kwargs = json.dumps({"user_id": user.id})
+        if existing_task.name != desired_name:
+            existing_task.name = desired_name
+            updated_fields.append("name")
+        if existing_task.interval_id != interval.id:
+            existing_task.interval = interval
+            updated_fields.append("interval")
+        if existing_task.crontab_id is not None:
+            existing_task.crontab = None
+            updated_fields.append("crontab")
+        if existing_task.kwargs != desired_kwargs:
+            existing_task.kwargs = desired_kwargs
+            updated_fields.append("kwargs")
+        if not existing_task.enabled:
+            existing_task.enabled = True
+            updated_fields.append("enabled")
+        if existing_task.start_time is None or not was_enabled:
+            existing_task.start_time = next_interval_start
+            updated_fields.append("start_time")
+        if updated_fields:
+            existing_task.save(update_fields=updated_fields)
+        return existing_task
+
+    return PeriodicTask.objects.create(
+        name=(
+            f"{pull_task_name} for "
+            f"{jellyfin_account.jellyfin_username or user.username} "
+            f"(every {pull_interval_minutes} minutes)"
+        ),
+        task=pull_task_name,
+        interval=interval,
+        kwargs=json.dumps({"user_id": user.id}),
+        start_time=next_interval_start,
+        enabled=True,
+    )
+
+
+def _disable_jellyfin_pull_schedule(user):
+    """Delete any per-user Jellyfin pull periodic tasks."""
+    from django_celery_beat.models import PeriodicTask
+
+    return PeriodicTask.objects.filter(
+        _plex_watchlist_task_filter(user.id),
+        task=tasks.JELLYFIN_PULL_TASK_NAME,
     ).delete()
 
 
@@ -1365,18 +1446,48 @@ def jellyfin_connect(request):
         )
         return redirect("integrations")
 
-    JellyfinAccount.objects.update_or_create(
-        user=request.user,
-        defaults={
-            "base_url": base_url,
-            "api_key": helpers.encrypt(api_key),
-            "jellyfin_user_id": current_user["Id"],
-            "jellyfin_username": current_user.get("Name", ""),
-            "connection_broken": False,
-            "last_error_message": "",
-        },
+    existing_account = getattr(request.user, "jellyfin_account", None)
+    identity_changed = existing_account is not None and (
+        existing_account.base_url != base_url
+        or existing_account.jellyfin_user_id != current_user["Id"]
     )
-    messages.success(request, "Connected Jellyfin.")
+
+    defaults = {
+        "base_url": base_url,
+        "api_key": helpers.encrypt(api_key),
+        "jellyfin_user_id": current_user["Id"],
+        "jellyfin_username": current_user.get("Name", ""),
+        "connection_broken": False,
+        "last_error_message": "",
+    }
+    if existing_account is None or identity_changed:
+        # A different server/user invalidates any cached pull state: a
+        # Playback Reporting rowid or "unavailable" result from the old
+        # identity would otherwise silently carry over to the new one.
+        defaults.update(
+            {
+                "playback_reporting_available": None,
+                "playback_reporting_last_rowid": None,
+                "library_backfill_completed_at": None,
+            },
+        )
+
+    account, _ = JellyfinAccount.objects.update_or_create(
+        user=request.user,
+        defaults=defaults,
+    )
+
+    # Seamless by default: queue an automatic history pull right away so a
+    # newly connected user sees their watch history without any manual
+    # export/upload step, and keep it running on a schedule going forward.
+    tasks.pull_jellyfin_history.delay(user_id=request.user.id)
+    if account.pull_history_enabled:
+        _ensure_jellyfin_pull_schedule(request.user, account)
+
+    messages.success(
+        request,
+        "Connected Jellyfin. Importing your watch history now.",
+    )
     return redirect("integrations")
 
 
@@ -1384,6 +1495,7 @@ def jellyfin_connect(request):
 def jellyfin_disconnect(request):
     """Disconnect the Jellyfin integration."""
     _disable_jellyfin_push_schedule(request.user)
+    _disable_jellyfin_pull_schedule(request.user)
     JellyfinAccount.objects.filter(user=request.user).delete()
     messages.info(request, "Disconnected Jellyfin.")
     return redirect("integrations")
@@ -1391,7 +1503,7 @@ def jellyfin_disconnect(request):
 
 @require_POST
 def jellyfin_settings(request):
-    """Update Jellyfin push-sync toggles."""
+    """Update Jellyfin push-sync and history-pull toggles."""
     account = getattr(request.user, "jellyfin_account", None)
     if not account:
         messages.error(request, "Connect Jellyfin before changing sync settings.")
@@ -1401,12 +1513,14 @@ def jellyfin_settings(request):
     account.push_unwatched_enabled = "push_unwatched_enabled" in request.POST
     account.scheduled_push_enabled = "scheduled_push_enabled" in request.POST
     account.instant_push_enabled = "instant_push_enabled" in request.POST
+    account.pull_history_enabled = "pull_history_enabled" in request.POST
     account.save(
         update_fields=[
             "push_watched_enabled",
             "push_unwatched_enabled",
             "scheduled_push_enabled",
             "instant_push_enabled",
+            "pull_history_enabled",
         ],
     )
 
@@ -1414,6 +1528,11 @@ def jellyfin_settings(request):
         _ensure_jellyfin_push_schedule(request.user, account)
     else:
         _disable_jellyfin_push_schedule(request.user)
+
+    if account.pull_history_enabled:
+        _ensure_jellyfin_pull_schedule(request.user, account)
+    else:
+        _disable_jellyfin_pull_schedule(request.user)
 
     messages.success(request, "Jellyfin sync settings updated.")
     return redirect("integrations")
@@ -1429,6 +1548,19 @@ def jellyfin_push_now(request):
 
     tasks.push_jellyfin_watched.delay(user_id=request.user.id)
     messages.info(request, "Jellyfin sync queued.")
+    return redirect("integrations")
+
+
+@require_POST
+def jellyfin_pull_now(request):
+    """Queue an immediate automatic Jellyfin history pull."""
+    account = getattr(request.user, "jellyfin_account", None)
+    if not account or not account.is_connected:
+        messages.error(request, "Connect Jellyfin before importing history.")
+        return redirect("integrations")
+
+    tasks.pull_jellyfin_history.delay(user_id=request.user.id)
+    messages.info(request, "Jellyfin history import queued.")
     return redirect("integrations")
 
 
@@ -1574,6 +1706,91 @@ def import_audiobookshelf(request):
 
     messages.info(request, "Audiobookshelf import queued.")
     return redirect("import_data")
+
+
+AUDIOBOOKSHELF_COVER_TIMEOUT = 15
+# Plain raster types only - an upstream ABS server (attacker-controlled, or
+# just compromised) returning e.g. text/html or image/svg+xml would have it
+# served as active content from Floppy's own origin to anyone holding the
+# signed proxy URL, since the account owner can share that URL freely.
+AUDIOBOOKSHELF_COVER_CONTENT_TYPES = frozenset(
+    {"image/jpeg", "image/png", "image/webp", "image/gif", "image/avif"},
+)
+
+
+@login_not_required
+@require_GET
+def audiobookshelf_cover(request, token):
+    """Stream an Audiobookshelf item's cover art using the account's own token.
+
+    The ABS `/api/items/:id/cover` endpoint requires a bearer token, so it
+    can't be embedded directly in an `<img src>`. This resolves the signed
+    token to the owning account, fetches the cover server-side with that
+    account's stored credentials, and streams it back (see #861). The
+    endpoint is deliberately anonymous, so the response is streamed with a
+    hard size cap and its content type is restricted to known-safe image
+    types - matching the bounded, allow-listed fetch app.image_cache already
+    does for provider artwork.
+    """
+    resolved = abs_cover_proxy.resolve_cover_proxy_token(token)
+    if resolved is None:
+        return HttpResponseNotFound()
+    account_id, library_item_id = resolved
+
+    account = AudiobookshelfAccount.objects.filter(pk=account_id).first()
+    if account is None:
+        return HttpResponseNotFound()
+
+    try:
+        api_token = helpers.decrypt(account.api_token)
+    except Exception:
+        logger.warning(
+            "Failed to decrypt Audiobookshelf token for cover proxy account=%s",
+            account_id,
+        )
+        return HttpResponseNotFound()
+
+    cover_url = f"{account.base_url.rstrip('/')}/api/items/{library_item_id}/cover"
+    try:
+        upstream = requests.get(
+            cover_url,
+            headers={"Authorization": f"Bearer {api_token}"},
+            timeout=AUDIOBOOKSHELF_COVER_TIMEOUT,
+            stream=True,
+        )
+    except requests.RequestException:
+        return HttpResponseNotFound()
+
+    try:
+        if upstream.status_code != HTTPStatus.OK:
+            return HttpResponseNotFound()
+
+        content_type = (
+            upstream.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
+        )
+        if content_type not in AUDIOBOOKSHELF_COVER_CONTENT_TYPES:
+            return HttpResponseNotFound()
+
+        try:
+            content_length = int(upstream.headers.get("Content-Length", "0"))
+        except ValueError:
+            content_length = 0
+        if content_length > image_cache.MAX_IMAGE_BYTES:
+            return HttpResponseNotFound()
+
+        body = bytearray()
+        for chunk in upstream.iter_content(chunk_size=64 * 1024):
+            if not chunk:
+                continue
+            body.extend(chunk)
+            if len(body) > image_cache.MAX_IMAGE_BYTES:
+                return HttpResponseNotFound()
+    finally:
+        upstream.close()
+
+    response = HttpResponse(bytes(body), content_type=content_type)
+    response["Cache-Control"] = "private, max-age=3600"
+    return response
 
 
 STORYTELLER_RECURRING_TASK_NAME = "Import from Storyteller (Recurring)"

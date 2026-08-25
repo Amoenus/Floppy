@@ -64,6 +64,7 @@ urlpatterns = [
     path("jellyfin/disconnect", views.jellyfin_disconnect, name="jellyfin_disconnect"),
     path("jellyfin/settings", views.jellyfin_settings, name="jellyfin_settings"),
     path("jellyfin/push", views.jellyfin_push_now, name="jellyfin_push_now"),
+    path("jellyfin/pull", views.jellyfin_pull_now, name="jellyfin_pull_now"),
     path(
         "jellyfin/playback-reporting/import",
         views.jellyfin_playback_reporting_import,
@@ -87,6 +88,11 @@ urlpatterns = [
         "import/audiobookshelf",
         views.import_audiobookshelf,
         name="import_audiobookshelf",
+    ),
+    path(
+        "import/audiobookshelf/cover/<str:token>",
+        views.audiobookshelf_cover,
+        name="audiobookshelf_cover",
     ),
     path(
         "import/storyteller/connect",

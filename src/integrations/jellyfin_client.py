@@ -134,3 +134,62 @@ class JellyfinClient:
             msg = "Jellyfin user id is not set"
             raise JellyfinClientError(msg)
         self._request("DELETE", f"/Users/{self.user_id}/PlayedItems/{item_id}")
+
+    def probe_playback_reporting(self) -> bool:
+        """Return True when the Playback Reporting plugin's API is reachable.
+
+        Every route on this controller requires an admin ("RequiresElevation")
+        API key, so a regular user's key returns False here just like a
+        missing plugin does -- both mean "fall back to the core-API tier".
+        """
+        try:
+            self._request("GET", "/user_usage_stats/type_filter_list")
+        except JellyfinClientError:
+            return False
+        return True
+
+    def fetch_playback_activity(self, since_rowid: int, limit: int) -> list[dict]:
+        """Return new Playback Reporting rows (with ``rowid``) after ``since_rowid``.
+
+        Uses the plugin's ``submit_custom_query`` endpoint, the same table
+        its own TSV export reads from, ordered by rowid for stable
+        pagination/cursoring.
+        """
+        # ints coerced above, not user-controlled strings
+        query = (
+            "SELECT rowid, DateCreated, UserId, ItemId, ItemType, ItemName, "  # noqa: S608
+            "PlaybackMethod, ClientName, DeviceName, PlayDuration "
+            f"FROM PlaybackActivity WHERE rowid > {int(since_rowid)} "
+            f"ORDER BY rowid ASC LIMIT {int(limit)}"
+        )
+        results = self._submit_custom_query(query)
+        columns = (
+            "rowid",
+            "date_created",
+            "user_id",
+            "item_id",
+            "item_type",
+            "item_name",
+            "playback_method",
+            "client_name",
+            "device_name",
+            "play_duration",
+        )
+        return [dict(zip(columns, row, strict=True)) for row in results]
+
+    def fetch_max_playback_activity_rowid(self) -> int:
+        """Return the highest existing Playback Activity rowid, or 0 if empty."""
+        results = self._submit_custom_query(
+            "SELECT MAX(rowid) FROM PlaybackActivity",
+        )
+        if not results or results[0][0] is None:
+            return 0
+        return int(results[0][0])
+
+    def _submit_custom_query(self, query: str) -> list[list]:
+        response = self._request(
+            "POST",
+            "/user_usage_stats/submit_custom_query",
+            json={"CustomQueryString": query, "ReplaceUserId": False},
+        ).json()
+        return response.get("results") or []

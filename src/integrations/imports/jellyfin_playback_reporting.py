@@ -29,6 +29,7 @@ from integrations.models import ImportRun
 logger = logging.getLogger(__name__)
 
 PLAYBACK_REPORTING_SOURCE = "jellyfin-playback-reporting"
+LIBRARY_BACKFILL_SOURCE = "jellyfin-library-backfill"
 MAX_WARNING_SAMPLES = 20
 MIN_COLUMNS = 9
 _JELLYFIN_PROVIDER_TO_SOURCE = {
@@ -224,6 +225,66 @@ def _provider_candidates(item: dict) -> list[tuple[str, str]]:
     return candidates
 
 
+def _row_from_api(entry: dict) -> PlaybackReportingRow | None:
+    """Build a row from one Playback Reporting REST API result entry."""
+    try:
+        date_value = _parse_datetime(str(entry["date_created"]))
+        play_duration = _validate_row_fields(
+            str(entry["user_id"]),
+            str(entry["item_id"]),
+            str(entry["item_type"]),
+            str(entry["play_duration"]),
+        )
+    except (KeyError, PlaybackReportingRowError, TypeError, ValueError):
+        return None
+
+    return PlaybackReportingRow(
+        date_created=date_value,
+        user_id=str(entry["user_id"]),
+        item_id=str(entry["item_id"]),
+        item_type=str(entry["item_type"]),
+        item_name=str(entry.get("item_name") or ""),
+        playback_method=str(entry.get("playback_method") or ""),
+        client_name=str(entry.get("client_name") or ""),
+        device_name=str(entry.get("device_name") or ""),
+        play_duration=play_duration,
+        line_number=int(entry.get("rowid") or 0),
+    )
+
+
+def _row_from_library_item(item: dict) -> PlaybackReportingRow | None:
+    """Synthesize a single-play row from a Jellyfin item's current played state.
+
+    Jellyfin's core API only exposes ``UserData.Played``/``LastPlayedDate``,
+    not a per-play log, so this can only ever produce one watch event per
+    item regardless of how many times it was actually replayed.
+    """
+    user_data = item.get("UserData") or {}
+    raw_timestamp = user_data.get("LastPlayedDate")
+    item_id = str(item.get("Id") or "")
+    item_type = str(item.get("Type") or "")
+    if not raw_timestamp or not item_id or not item_type:
+        return None
+
+    try:
+        date_value = _parse_datetime(str(raw_timestamp))
+    except PlaybackReportingRowError:
+        return None
+
+    return PlaybackReportingRow(
+        date_created=date_value,
+        user_id="",
+        item_id=item_id,
+        item_type=item_type,
+        item_name=str(item.get("Name") or ""),
+        playback_method="",
+        client_name="",
+        device_name="",
+        play_duration=1,
+        line_number=0,
+    )
+
+
 def _episode_numbers(item: dict) -> tuple[int, int] | None:
     """Return Jellyfin's season/episode numbers when both are usable."""
     try:
@@ -284,6 +345,107 @@ class JellyfinPlaybackReportingImporter:
             )
         return self.counts, "\n".join(dict.fromkeys(self.warnings))
 
+    def import_activity_rows(
+        self,
+        entries: list[dict],
+    ) -> tuple[dict[str, int], str, int | None]:
+        """Import rows fetched from the Playback Reporting REST API.
+
+        Unlike ``import_data``, ``entries`` come with a stable ``rowid`` from
+        the plugin's own database, so each row gets a rowid-based identity
+        instead of the TSV path's content hash. Returns counts, warnings, and
+        the highest rowid seen (for the caller to persist as a cursor).
+        """
+        if not self.account or not self.account.is_connected:
+            message = "Connect Jellyfin before importing Playback Reporting data."
+            raise MediaImportError(message)
+        if not self.account.jellyfin_user_id:
+            message = "Jellyfin user identity is missing. Reconnect Jellyfin before importing."
+            raise MediaImportError(message)
+
+        api_key = decrypt_or_raise(self.account.api_key)
+        client = JellyfinClient(
+            self.account.base_url,
+            api_key,
+            self.account.jellyfin_user_id,
+        )
+        library = self._load_library(client)
+        user_id = str(self.account.jellyfin_user_id)
+
+        max_rowid = None
+        total = len(entries)
+        for index, entry in enumerate(entries, start=1):
+            import_progress.report(index, total, "Jellyfin Playback Activity")
+            rowid = entry.get("rowid")
+            if isinstance(rowid, int):
+                max_rowid = rowid if max_rowid is None else max(max_rowid, rowid)
+
+            row = _row_from_api(entry)
+            if row is None:
+                self._skip(f"Row {rowid}: could not parse Playback Activity entry.")
+                continue
+            if row.user_id != user_id:
+                continue
+            self._import_row(row, library, source_id=row.source_identity(rowid=rowid))
+
+        self._save_skipped_count()
+        if self.skipped_count:
+            self.warnings.append(
+                f"Playback Reporting skipped {self.skipped_count} row(s); see the details above."
+            )
+        return self.counts, "\n".join(dict.fromkeys(self.warnings)), max_rowid
+
+    def import_library_backfill(self) -> tuple[dict[str, int], str]:
+        """Backfill history from Jellyfin's current Played/LastPlayedDate state.
+
+        Used when the Playback Reporting plugin's API is unavailable. Since
+        the core Jellyfin API only exposes the current played flag and the
+        last-played date, this produces at most one watch event per item --
+        no play counts, no per-rewatch history.
+        """
+        if not self.account or not self.account.is_connected:
+            message = "Connect Jellyfin before importing history."
+            raise MediaImportError(message)
+        if not self.account.jellyfin_user_id:
+            message = "Jellyfin user identity is missing. Reconnect Jellyfin before importing."
+            raise MediaImportError(message)
+
+        api_key = decrypt_or_raise(self.account.api_key)
+        client = JellyfinClient(
+            self.account.base_url,
+            api_key,
+            self.account.jellyfin_user_id,
+        )
+        library = self._load_library(client)
+        played_items = [
+            item
+            for item in library.values()
+            if str(item.get("Type", "")).casefold() in ("movie", "episode")
+            and (item.get("UserData") or {}).get("Played")
+        ]
+
+        total = len(played_items)
+        for index, item in enumerate(played_items, start=1):
+            import_progress.report(index, total, "Jellyfin Watch History")
+            item_id = str(item.get("Id") or "")
+            row = _row_from_library_item(item)
+            if row is None:
+                self._skip(f"Item {item_id}: missing a usable last-played date.")
+                continue
+            self._import_row(
+                row,
+                library,
+                source_id=f"{LIBRARY_BACKFILL_SOURCE}:{item_id}",
+            )
+
+        self._save_skipped_count()
+        if self.skipped_count:
+            self.warnings.append(
+                f"Jellyfin history backfill skipped {self.skipped_count} item(s); "
+                "see the details above."
+            )
+        return self.counts, "\n".join(dict.fromkeys(self.warnings))
+
     def _load_library(self, client: JellyfinClient) -> dict[str, dict]:
         """Hydrate source ItemIds from the connected user's Jellyfin library."""
         try:
@@ -296,7 +458,13 @@ class JellyfinPlaybackReportingImporter:
             message = f"Could not read Jellyfin library: {error}"
             raise MediaImportError(message) from error
 
-    def _import_row(self, row: PlaybackReportingRow, library: dict[str, dict]) -> None:
+    def _import_row(
+        self,
+        row: PlaybackReportingRow,
+        library: dict[str, dict],
+        *,
+        source_id: str | None = None,
+    ) -> None:
         item = library.get(row.item_id)
         normalized_type = row.item_type.casefold()
         if item is None:
@@ -328,7 +496,7 @@ class JellyfinPlaybackReportingImporter:
             return
 
         source, media_id = candidates[0]
-        source_id = row.source_identity()
+        source_id = source_id or row.source_identity()
         try:
             if normalized_type == "movie":
                 self._import_movie(row, media_id, source, source_id)

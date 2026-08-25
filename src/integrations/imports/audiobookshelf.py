@@ -27,7 +27,7 @@ from app.models import (
     Status,
 )
 from app.providers import services
-from integrations import import_progress
+from integrations import audiobookshelf_cover, import_progress
 from integrations.imports.helpers import MediaImportError, decrypt_or_raise
 from integrations.models import AudiobookshelfAccount
 
@@ -249,16 +249,17 @@ class AudiobookshelfImporter:
         series_name, series_position = self._extract_series_info(metadata)
 
         image = self._normalize_cover_url(item_metadata.get("coverPath"))
-        # ABS returns coverPath as a server filesystem path (e.g. /metadata/items/.../cover.jpg).
-        # Map any ABS-hosted non-API URL to the authenticated cover endpoint so that
-        # _should_prefer_provider_cover triggers provider enrichment with a valid fallback.
-        if image:
-            _parsed = urlparse(image)
-            _abs_host = urlparse(self.account.base_url).netloc.lower()
-            if _parsed.netloc.lower() == _abs_host and not (
-                "/api/items/" in _parsed.path and "/cover" in _parsed.path
-            ):
-                image = f"{self.account.base_url.rstrip('/')}/api/items/{library_item_id}/cover"
+        # ABS returns coverPath as a server filesystem path (e.g. /metadata/items/.../cover.jpg)
+        # and the ABS cover endpoint requires a bearer token a plain <img src> can never
+        # attach, so any ABS-hosted cover is served through Floppy's own authenticated
+        # proxy instead of the raw ABS URL (see #861). This also keeps
+        # _should_prefer_provider_cover triggering enrichment with a valid fallback,
+        # since the proxy URL is relative and therefore not an absolute http(s) URL.
+        if image and self._is_own_abs_host(image):
+            image = audiobookshelf_cover.build_cover_proxy_url(
+                self.account.id,
+                library_item_id,
+            )
 
         should_enrich = (
             self._should_prefer_provider_cover(image)
@@ -277,11 +278,16 @@ class AudiobookshelfImporter:
         )
 
         if self._should_prefer_provider_cover(image):
-            image = (
+            provider_image = (
                 provider_metadata.get("image")
                 if isinstance(provider_metadata, dict)
-                else image
+                else None
             )
+            # A provider match with no cover art of its own (Hardcover returns
+            # settings.IMG_NONE in that case) must not blank out a working
+            # fallback cover we already have (see #861).
+            if provider_image and provider_image != settings.IMG_NONE:
+                image = provider_image
         if not image:
             image = settings.IMG_NONE
 
@@ -671,8 +677,10 @@ class AudiobookshelfImporter:
         ):
             return image_url
         if item_metadata.get("coverPath") or image_url:
-            base = self.account.base_url.rstrip("/")
-            return f"{base}/api/items/{library_item_id}/cover"
+            return audiobookshelf_cover.build_cover_proxy_url(
+                self.account.id,
+                library_item_id,
+            )
         return ""
 
     def _ensure_podcast_episode(self, show, episode_metadata: dict[str, Any]):
@@ -942,23 +950,30 @@ class AudiobookshelfImporter:
         )
 
     def _is_stale_abs_cover(self, image_url: str) -> bool:
-        """Return True for ABS-hosted URLs that are not the proper API cover endpoint.
+        """Return True for a stored cover URL that predates the ABS cover proxy.
 
-        These are filesystem paths that were mapped to HTTP URLs before the URL
-        normalisation fix and need to be re-normalised on the next repair pass.
-        Using this instead of _should_prefer_provider_cover in the repair check
-        avoids infinite re-repair for items whose provider enrichment failed and
-        are left with the /api/items/{id}/cover fallback URL.
+        Older rows (including ones written before the proxy fix, see #861) may
+        still hold a raw ABS-hosted URL - even the previously "normalised"
+        /api/items/.../cover form, which requires a bearer token a plain
+        <img src> can never attach. Any such URL needs to be re-repaired into
+        the proxy form so the poster actually loads. Using this instead of
+        _should_prefer_provider_cover in the repair check avoids infinite
+        re-repair for items whose provider enrichment failed and are left with
+        the proxy fallback URL.
         """
         if not image_url or image_url == settings.IMG_NONE:
             return False
+        if audiobookshelf_cover.is_cover_proxy_url(image_url):
+            return False
+        return self._is_own_abs_host(image_url)
+
+    def _is_own_abs_host(self, image_url: str) -> bool:
+        """Return whether `image_url` points at this account's own ABS server."""
         parsed = urlparse(image_url)
         if parsed.scheme not in {"http", "https"}:
             return False
         abs_host = urlparse(self.account.base_url).netloc.lower()
-        return parsed.netloc.lower() == abs_host and not (
-            "/api/items/" in parsed.path and "/cover" in parsed.path
-        )
+        return parsed.netloc.lower() == abs_host
 
     def _extract_author_names(self, metadata: dict[str, Any]):
         raw_authors = metadata.get("authors")
@@ -1096,19 +1111,16 @@ class AudiobookshelfImporter:
         return urljoin(f"{self.account.base_url.rstrip('/')}/", cover)
 
     def _should_prefer_provider_cover(self, image_url):
+        """Return whether provider (Hardcover/OpenLibrary) art should be preferred.
+
+        True whenever we don't already have a real, directly-loadable image
+        URL: missing, the placeholder, or our own relative ABS cover proxy
+        URL, which is deliberately host-less and so falls into the "not an
+        absolute http(s) URL" branch below (see #861).
+        """
         if not image_url or image_url == settings.IMG_NONE:
             return True
-        parsed_image = urlparse(image_url)
-        if parsed_image.scheme not in {"http", "https"}:
-            return True
-
-        abs_host = urlparse(self.account.base_url).netloc.lower()
-        image_host = parsed_image.netloc.lower()
-        return (
-            image_host == abs_host
-            and "/api/items/" in parsed_image.path
-            and "/cover" in parsed_image.path
-        )
+        return urlparse(image_url).scheme not in {"http", "https"}
 
     def _resolve_provider_metadata(
         self, title: str, authors: list[str], isbns: list[str]

@@ -3782,6 +3782,7 @@ class MediaEpisodeDetailView(drf_views.APIView):
 class MediaEpisodeChangesHistoryView(drf_views.APIView):
     """Changes history episode view."""
 
+    serializer_class = ChangesHistoryEntrySerializer
     permission_classes = [permissions.IsAuthenticated]
 
     @extend_schema(

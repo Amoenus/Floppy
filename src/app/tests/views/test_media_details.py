@@ -2170,6 +2170,7 @@ class MediaDetailsViewTests(TestCase):
             "377938",
             Sources.HARDCOVER.value,
             language="en",
+            user=self.user,
         )
 
     @patch("app.providers.services.get_media_metadata")
@@ -2238,6 +2239,7 @@ class MediaDetailsViewTests(TestCase):
             "10193",
             Sources.TMDB.value,
             language="en",
+            user=self.user,
         )
         self.assertContains(response, "media-grid-row-detail-cast", html=False)
         self.assertContains(response, "Tom Hanks")
@@ -2499,8 +2501,9 @@ class MediaDetailsViewTests(TestCase):
             season_numbers=None,
             episode_number=None,
             language=None,
+            user=None,
         ):
-            del media_type, media_id, season_numbers, episode_number, language
+            del media_type, media_id, season_numbers, episode_number, language, user
             if source == Sources.TMDB.value:
                 tmdb_response = requests.Response()
                 tmdb_response.status_code = requests.codes.not_found
@@ -4103,8 +4106,9 @@ class MediaDetailsViewTests(TestCase):
             season_numbers=None,
             episode_number=None,
             language=None,
+            user=None,
         ):
-            del media_id, episode_number, language
+            del media_id, episode_number, language, user
             if media_type == MediaTypes.ANIME.value and source == Sources.TVDB.value:
                 return grouped_series_metadata
             if media_type == "tv_with_seasons" and source == Sources.TVDB.value:
@@ -4381,8 +4385,9 @@ class MediaDetailsViewTests(TestCase):
             season_numbers=None,
             episode_number=None,
             language=None,
+            user=None,
         ):
-            del media_id, episode_number, language
+            del media_id, episode_number, language, user
             if media_type == MediaTypes.ANIME.value and source == Sources.TVDB.value:
                 return {
                     **grouped_series_metadata,
@@ -7833,8 +7838,9 @@ class MediaDetailsViewTests(TestCase):
             season_numbers=None,
             episode_number=None,
             language=None,
+            user=None,
         ):
-            del episode_number, language
+            del episode_number, language, user
             self.assertEqual(media_id, "114410")
             self.assertEqual(source, Sources.TMDB.value)
             if media_type == MediaTypes.TV.value:
@@ -8117,8 +8123,9 @@ class MediaDetailsViewTests(TestCase):
             season_numbers=None,
             episode_number=None,
             language=None,
+            user=None,
         ):
-            del episode_number, language
+            del episode_number, language, user
             self.assertEqual(media_id, "76703")
             self.assertEqual(source, Sources.TVDB.value)
             if media_type == MediaTypes.ANIME.value:
@@ -8509,7 +8516,7 @@ class MediaDetailsViewTests(TestCase):
                 (MediaTypes.TV.value, "1396", Sources.TMDB.value),
             )
             self.assertFalse(args)
-            self.assertEqual(set(kwargs) - {"language"}, set())
+            self.assertEqual(set(kwargs) - {"language", "user"}, set())
             detail_call_count["count"] += 1
             if detail_call_count["count"] == 1:
                 return stale_metadata
