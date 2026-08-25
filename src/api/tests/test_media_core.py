@@ -933,7 +933,8 @@ class MediaCoreTests(FloppyApiTestCase):
         )
 
         self.assertEqual(response.status_code, 500)
-        self.assertEqual(response.data["errors"], "boom")
+        self.assertNotIn("errors", response.data)
+        self.assertNotIn("boom", response.data["detail"])
 
     @patch("api.views._queue_game_lengths_refresh", return_value=True)
     @patch("api.views.services.get_media_metadata")

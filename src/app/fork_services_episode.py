@@ -149,7 +149,9 @@ def resolve_or_create_season(
             source,
             [season_number],
         )
-        season_metadata = tv_with_seasons_metadata[f"season/{season_number}"]
+        season_metadata = tv_with_seasons_metadata.get(f"season/{season_number}")
+        if not isinstance(season_metadata, dict):
+            season_metadata = {}
 
         # Use season poster if available, otherwise fallback to TV show poster
         season_image = season_metadata.get("image") or tv_with_seasons_metadata.get(
