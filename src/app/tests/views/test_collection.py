@@ -80,6 +80,123 @@ class CollectionListViewTest(TestCase):
         self.assertEqual(len(response.context["collection_entries"]), 0)
 
 
+class CollectionCompletenessTest(TestCase):
+    """Test the collection page's partial/full collection filter and badge."""
+
+    def setUp(self):
+        """Set up a partially collected show and a fully collected show."""
+        self.client = Client()
+        self.credentials = {"username": "test", "password": "12345"}
+        self.user = get_user_model().objects.create_user(**self.credentials)
+
+        self.partial_show = Item.objects.create(
+            media_id="tv1",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Partial Show",
+            image="http://example.com/tv1.jpg",
+        )
+        self.partial_episode_collected = Item.objects.create(
+            media_id=self.partial_show.media_id,
+            source=self.partial_show.source,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=1,
+            episode_number=1,
+            title="Partial Show Episode 1",
+            image="http://example.com/tv1-e1.jpg",
+        )
+        Item.objects.create(
+            media_id=self.partial_show.media_id,
+            source=self.partial_show.source,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=1,
+            episode_number=2,
+            title="Partial Show Episode 2",
+            image="http://example.com/tv1-e2.jpg",
+        )
+        CollectionEntry.objects.create(
+            user=self.user,
+            item=self.partial_episode_collected,
+        )
+
+        self.full_show = Item.objects.create(
+            media_id="tv2",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Full Show",
+            image="http://example.com/tv2.jpg",
+        )
+        full_show_episode = Item.objects.create(
+            media_id=self.full_show.media_id,
+            source=self.full_show.source,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=1,
+            episode_number=1,
+            title="Full Show Episode 1",
+            image="http://example.com/tv2-e1.jpg",
+        )
+        CollectionEntry.objects.create(user=self.user, item=full_show_episode)
+
+    def test_completeness_filter_partial_only_matches_partial_show(self):
+        """Filtering by 'partial' returns only rows from the partial show."""
+        self.client.login(**self.credentials)
+        response = self.client.get(
+            reverse("collection_list"),
+            {"completeness": "partial"},
+        )
+        self.assertEqual(response.status_code, 200)
+        entries = response.context["collection_entries"]
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0].item_id, self.partial_episode_collected.id)
+
+    def test_completeness_filter_full_only_matches_full_show(self):
+        """Filtering by 'full' returns only rows from the fully collected show."""
+        self.client.login(**self.credentials)
+        response = self.client.get(
+            reverse("collection_list"),
+            {"completeness": "full"},
+        )
+        self.assertEqual(response.status_code, 200)
+        entries = response.context["collection_entries"]
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0].item.media_id, self.full_show.media_id)
+
+    def test_completeness_filter_all_returns_everything(self):
+        """The default 'all' filter is unaffected by completeness."""
+        self.client.login(**self.credentials)
+        response = self.client.get(reverse("collection_list"))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.context["collection_entries"]), 2)
+
+    def test_completeness_badge_attached_to_show_row(self):
+        """The partial show's TV-level row is annotated with completeness stats."""
+        CollectionEntry.objects.create(user=self.user, item=self.partial_show)
+
+        self.client.login(**self.credentials)
+        response = self.client.get(
+            reverse("collection_list"),
+            {"type": MediaTypes.TV.value},
+        )
+        self.assertEqual(response.status_code, 200)
+        entries = response.context["collection_entries"]
+        show_entry = next(e for e in entries if e.item_id == self.partial_show.id)
+        self.assertEqual(
+            show_entry.completeness,
+            {"collected": 1, "total": 2, "is_partial": True},
+        )
+
+    def test_completeness_not_attached_to_episode_row(self):
+        """Episode-grain rows don't carry a completeness badge."""
+        self.client.login(**self.credentials)
+        response = self.client.get(reverse("collection_list"))
+        self.assertEqual(response.status_code, 200)
+        entries = response.context["collection_entries"]
+        episode_entry = next(
+            e for e in entries if e.item_id == self.partial_episode_collected.id
+        )
+        self.assertFalse(hasattr(episode_entry, "completeness"))
+
+
 class CollectionAddViewTest(TestCase):
     """Test collection add view."""
 

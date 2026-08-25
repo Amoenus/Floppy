@@ -16,6 +16,7 @@
     resolution: '{{ resolution_filter|default:'all' }}',
     hdr: '{{ hdr_filter|default:'all' }}',
     rating: '{{ rating_filter|default:'all' }}',
+    completeness: '{{ completeness_filter|default:'all' }}',
     query: '{{ search_query|default:''|escapejs }}',
     searchMode: false,
     filtersOpen: false,
@@ -28,12 +29,13 @@
       {% for value, label in sort_choices %}'{{ value }}': '{{ label }}',{% endfor %}
     },
     ratingLabels: { 'all': 'Any', 'rated': 'Rated', 'not_rated': 'Not Rated' },
+    completenessLabels: { 'all': 'Any', 'partial': 'Partially Collected', 'full': 'Fully Collected' },
     getTypeLabel() { return this.typeLabels[this.type] || this.type; },
     activeFilterCount() {
-      return [this.type, this.format, this.resolution, this.hdr, this.rating].filter((v) => v !== 'all').length;
+      return [this.type, this.format, this.resolution, this.hdr, this.rating, this.completeness].filter((v) => v !== 'all').length;
     },
     clearFilters() {
-      this.type = 'all'; this.format = 'all'; this.resolution = 'all'; this.hdr = 'all'; this.rating = 'all';
+      this.type = 'all'; this.format = 'all'; this.resolution = 'all'; this.hdr = 'all'; this.rating = 'all'; this.completeness = 'all';
     },
     defaultDirection(value) { return value === 'collected_at' ? 'desc' : 'asc'; },
     setSort(value) {
@@ -53,6 +55,7 @@
       <input type="hidden" name="resolution" x-model="resolution">
       <input type="hidden" name="hdr" x-model="hdr">
       <input type="hidden" name="rating" x-model="rating">
+      <input type="hidden" name="completeness" x-model="completeness">
       <input type="hidden" name="q" x-model="query">
     </form>
 
@@ -171,6 +174,15 @@
                   <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="ratingLabels[rating]"></span>
                   <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
                 </button>
+                {% if has_tv_family_collection %}
+                  <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                          @click="filterView = 'completeness'"
+                          type="button">
+                    <span class="flex-shrink-0 mr-3">Completeness</span>
+                    <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="completenessLabels[completeness]"></span>
+                    <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
+                  </button>
+                {% endif %}
               </div>
 
               {# Type submenu #}
@@ -340,6 +352,48 @@
                   </button>
                 </div>
               </div>
+
+              {% if has_tv_family_collection %}
+                {# Completeness submenu #}
+                <div x-show="filterView === 'completeness'" x-cloak>
+                  <div class="flex items-center gap-2 px-4 py-2 border-b border-gray-700">
+                    <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer" @click="filterView = 'root'" type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
+                    <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Completeness</div>
+                  </div>
+                  <div class="max-h-64 overflow-y-auto">
+                    <button hx-get="{% url 'collection_list' %}"
+                            hx-target="#collection-view"
+                            hx-include="#filter-form"
+                            hx-indicator="#collection-loading-indicator"
+                            class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                            @click="completeness = 'all'; filtersOpen = false; filterView = 'root'"
+                            type="button">
+                      <span>Any</span>
+                      <span class="ml-auto" x-show="completeness === 'all'">{% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}</span>
+                    </button>
+                    <button hx-get="{% url 'collection_list' %}"
+                            hx-target="#collection-view"
+                            hx-include="#filter-form"
+                            hx-indicator="#collection-loading-indicator"
+                            class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                            @click="completeness = 'partial'; filtersOpen = false; filterView = 'root'"
+                            type="button">
+                      <span>Partially Collected</span>
+                      <span class="ml-auto" x-show="completeness === 'partial'">{% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}</span>
+                    </button>
+                    <button hx-get="{% url 'collection_list' %}"
+                            hx-target="#collection-view"
+                            hx-include="#filter-form"
+                            hx-indicator="#collection-loading-indicator"
+                            class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                            @click="completeness = 'full'; filtersOpen = false; filterView = 'root'"
+                            type="button">
+                      <span>Fully Collected</span>
+                      <span class="ml-auto" x-show="completeness === 'full'">{% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}</span>
+                    </button>
+                  </div>
+                </div>
+              {% endif %}
             </div>
           </div>
 

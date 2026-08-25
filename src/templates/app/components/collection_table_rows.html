@@ -32,6 +32,12 @@
              loading="lazy"
              alt="">
         <span class="text-[var(--color-text)]">{{ entry.item|display_title:user }}</span>
+        {% if entry.completeness.is_partial %}
+          <span class="shrink-0 rounded-md border border-amber-500/30 bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-100"
+                title="{{ entry.completeness.collected }} of {{ entry.completeness.total }} episodes collected">
+            {{ entry.completeness.collected }}/{{ entry.completeness.total }} &middot; Partial
+          </span>
+        {% endif %}
       </a>
     </td>
     <td class="px-2 py-3 text-sm text-[var(--color-text-muted)]">{{ entry.item.media_type|media_type_readable }}</td>
