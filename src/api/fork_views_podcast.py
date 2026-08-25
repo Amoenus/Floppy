@@ -4,14 +4,18 @@ import json
 import logging
 from http import HTTPStatus as HTTP  # noqa: N814
 
+from django.core.cache import cache
 from rest_framework import views as drf_views
 from rest_framework.response import Response
 
 from app import fork_services_podcast
 from app.forms import PodcastShowTrackerForm
+from app.log_safety import safe_url
 from app.models import PodcastEpisode, PodcastShow, PodcastShowTracker, Status
 from app.podcast_views import podcast_episodes_api
+from app.providers import pocketcasts, services
 from app.services import podcast_import
+from integrations import podcast_rss
 
 from .helpers import (
     get_media_status,
@@ -145,6 +149,121 @@ class PodcastShowsView(drf_views.APIView):
         tracker.show = show
         tracker.save()
         return Response(_serialize_show(show, tracker), status=HTTP.CREATED)
+
+
+# /api/v1/podcasts/lookup/[itunes_id]/
+class PodcastLookupView(drf_views.APIView):
+    """Preview an iTunes search result before importing it.
+
+    A read-only counterpart to the itunes_id branch of PodcastShowsView.post:
+    it wraps pocketcasts.lookup_by_itunes_id (a cached iTunes API call) and,
+    when the lookup has a feed, reads the RSS feed directly — the same feed
+    `import_show_from_itunes_id` would import from — for the metadata
+    fallbacks and the episode list. Nothing here creates a PodcastShow or a
+    PodcastEpisode row; that still only happens once the caller adds it.
+    `show_id` reports the show an import would reuse, or null.
+
+    Episodes come back in the standard limit/offset envelope, because a feed
+    can run past a thousand of them.
+    """
+
+    # Both feed reads land in the request/response cycle, and this endpoint
+    # gets hit while paging through search results, so cache what the feed
+    # gave us. A preview never needs to be fresher than the import that
+    # follows it, and the iTunes half of the lookup is already cached for a
+    # week in pocketcasts.lookup_by_itunes_id.
+    _FEED_CACHE_SECONDS = 15 * 60
+
+    @staticmethod
+    def _format_duration(seconds):
+        """Format a duration in seconds as "1h 9m" or "46m".
+
+        Matches the format `podcast_views.py` sends for every already-imported
+        episode, so a preview episode's duration reads the same as a tracked
+        one's.
+        """
+        if not seconds:
+            return ""
+        hours = seconds // 3600
+        minutes = (seconds % 3600) // 60
+        return f"{hours}h {minutes}m" if hours > 0 else f"{minutes}m"
+
+    def _read_feed(self, itunes_id, itunes_data, rss_feed_url):
+        """Return (metadata, episodes) for a feed, caching the pair briefly."""
+        cache_key = f"podcast_lookup_feed_{itunes_id}"
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        metadata = podcast_import.resolve_show_metadata(itunes_data, rss_feed_url)
+        episodes = self._feed_episodes(rss_feed_url)
+        cache.set(cache_key, (metadata, episodes), self._FEED_CACHE_SECONDS)
+        return metadata, episodes
+
+    def _feed_episodes(self, rss_feed_url):
+        """Serialize a feed's episodes; an unreadable feed previews as none."""
+        try:
+            episodes = podcast_rss.fetch_episodes_from_rss(rss_feed_url)
+        except Exception:
+            logger.warning(
+                "Failed to preview episodes from %s",
+                safe_url(rss_feed_url),
+            )
+            return []
+
+        return [
+            {
+                "title": episode.get("title", ""),
+                "published": episode.get("published"),
+                "duration": self._format_duration(episode.get("duration")),
+                "duration_seconds": episode.get("duration"),
+                "episode_number": episode.get("episode_number"),
+                "season_number": episode.get("season_number"),
+            }
+            for episode in episodes
+        ]
+
+    def get(self, request, itunes_id):
+        """Return iTunes + RSS metadata for the given collection id."""
+        limit, offset, err = parse_limit_offset(request)
+        if err:
+            return err
+
+        try:
+            itunes_data = pocketcasts.lookup_by_itunes_id(itunes_id)
+        except services.ProviderAPIError as error:
+            if error.status_code == HTTP.NOT_FOUND:
+                return Response({"detail": "Podcast not found."}, status=HTTP.NOT_FOUND)
+            return Response(
+                {
+                    "detail": HTTP.INTERNAL_SERVER_ERROR.phrase,
+                    "errors": str(error),
+                },
+                status=HTTP.INTERNAL_SERVER_ERROR,
+            )
+
+        rss_feed_url = itunes_data.get("feed_url", "")
+        metadata, episodes = itunes_data, []
+        if rss_feed_url:
+            metadata, episodes = self._read_feed(itunes_id, itunes_data, rss_feed_url)
+
+        existing_show = podcast_import.find_existing_show(itunes_id, rss_feed_url)
+
+        return Response(
+            {
+                "itunes_id": itunes_id,
+                "title": metadata.get("title", ""),
+                "author": metadata.get("author", ""),
+                "image": metadata.get("artwork_url", ""),
+                "description": metadata.get("description", ""),
+                "genres": metadata.get("genres", []),
+                "language": metadata.get("language", ""),
+                "rss_feed_url": rss_feed_url,
+                "show_id": existing_show.id if existing_show else None,
+                "episodes": paginate_data(request, episodes, limit, offset),
+            },
+            status=HTTP.OK,
+        )
 
 
 # /api/v1/podcasts/shows/[show_id]/

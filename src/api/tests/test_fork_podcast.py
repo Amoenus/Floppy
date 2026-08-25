@@ -1,9 +1,11 @@
 # FORK: tests for the first-class podcast API endpoints.
 import datetime
 from http import HTTPStatus as HTTP  # noqa: N814
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.contrib.messages import get_messages
+from django.core.cache import cache
 from django.urls import reverse
 
 from app import fork_services_podcast
@@ -135,6 +137,234 @@ class ShowTrackerTests(PodcastApiTestCase):
         )
         self.assertEqual(response.status_code, HTTP.BAD_REQUEST)
         mock_import.assert_not_called()
+
+
+class PodcastLookupTests(PodcastApiTestCase):
+    """Read-only iTunes preview, ahead of any import."""
+
+    ITUNES_DATA = {
+        "feed_url": "https://example.com/feed.xml",
+        "title": "Unimported Show",
+        "author": "Some Network",
+        "artwork_url": "https://example.com/art.jpg",
+        "description": "A show nobody's tracked yet.",
+        "genres": ["Comedy"],
+        "language": "en",
+    }
+
+    def setUp(self):
+        """Drop the feed cache so previews don't leak between tests."""
+        super().setUp()
+        cache.clear()
+        self.addCleanup(cache.clear)
+
+    def _lookup(self, itunes_id="999888", **kwargs):
+        return self.call_api(
+            "get",
+            "api_podcast_lookup",
+            args=(itunes_id,),
+            headers=self.auth_headers,
+            **kwargs,
+        )
+
+    @patch("integrations.podcast_rss.fetch_episodes_from_rss")
+    @patch("app.providers.pocketcasts.lookup_by_itunes_id")
+    def test_lookup_returns_itunes_metadata_without_importing(
+        self,
+        mock_lookup,
+        mock_episodes,
+    ):
+        """A lookup returns the provider's metadata and creates nothing."""
+        mock_lookup.return_value = dict(self.ITUNES_DATA)
+        mock_episodes.return_value = [
+            {
+                "title": "Pilot",
+                "published": datetime.datetime(2024, 1, 1, tzinfo=datetime.UTC),
+                "duration": 4140,
+                "episode_number": 1,
+            },
+        ]
+
+        response = self._lookup()
+
+        self.assertEqual(response.status_code, HTTP.OK)
+        payload = response.json()
+        self.assertEqual(payload["title"], "Unimported Show")
+        self.assertEqual(payload["author"], "Some Network")
+        self.assertEqual(payload["image"], "https://example.com/art.jpg")
+        self.assertEqual(payload["description"], "A show nobody's tracked yet.")
+        self.assertEqual(payload["genres"], ["Comedy"])
+        self.assertEqual(payload["rss_feed_url"], "https://example.com/feed.xml")
+        self.assertIsNone(payload["show_id"], "nothing is imported yet")
+
+        episodes = payload["episodes"]["results"]
+        self.assertEqual(len(episodes), 1)
+        self.assertEqual(episodes[0]["title"], "Pilot")
+        # "1h 9m" — matches the format podcast_views.py sends for a tracked
+        # episode's own duration; see PodcastLookupView._format_duration.
+        self.assertEqual(episodes[0]["duration"], "1h 9m")
+        self.assertEqual(episodes[0]["duration_seconds"], 4140)
+
+        mock_lookup.assert_called_once_with("999888")
+        # The whole feed is read, the way every other RSS caller reads it.
+        mock_episodes.assert_called_once_with("https://example.com/feed.xml")
+        self.assertFalse(
+            PodcastShow.objects.filter(podcast_uuid="itunes:999888").exists(),
+        )
+        self.assertFalse(
+            PodcastEpisode.objects.filter(title="Pilot").exists(),
+            "a preview episode must not be persisted",
+        )
+
+    @patch("integrations.podcast_rss.fetch_episodes_from_rss")
+    @patch("app.providers.pocketcasts.lookup_by_itunes_id")
+    def test_lookup_paginates_episodes_with_the_standard_envelope(
+        self,
+        mock_lookup,
+        mock_episodes,
+    ):
+        """A feed's episodes page like every other list in the API."""
+        mock_lookup.return_value = dict(self.ITUNES_DATA)
+        mock_episodes.return_value = [
+            {"title": f"Ep {index}", "duration": 60} for index in range(5)
+        ]
+
+        response = self._lookup(params={"limit": 2, "offset": 2})
+
+        self.assertEqual(response.status_code, HTTP.OK)
+        episodes = response.json()["episodes"]
+        self.assertEqual(episodes["pagination"]["total"], 5)
+        self.assertEqual(episodes["pagination"]["limit"], 2)
+        self.assertEqual(episodes["pagination"]["offset"], 2)
+        self.assertEqual(
+            [episode["title"] for episode in episodes["results"]],
+            ["Ep 2", "Ep 3"],
+        )
+
+    @patch("integrations.podcast_rss.fetch_episodes_from_rss")
+    @patch("app.providers.pocketcasts.lookup_by_itunes_id")
+    def test_lookup_reports_the_show_an_import_would_reuse(
+        self,
+        mock_lookup,
+        mock_episodes,
+    ):
+        """An already-imported feed previews with its existing show id."""
+        mock_lookup.return_value = dict(self.ITUNES_DATA)
+        mock_episodes.return_value = []
+        imported = PodcastShow.objects.create(
+            podcast_uuid="itunes:999888",
+            title="Unimported Show",
+            rss_feed_url="https://example.com/feed.xml",
+        )
+
+        response = self._lookup()
+
+        self.assertEqual(response.status_code, HTTP.OK)
+        self.assertEqual(response.json()["show_id"], imported.id)
+
+    @patch("integrations.podcast_rss.fetch_episodes_from_rss")
+    @patch("integrations.podcast_rss.fetch_show_metadata_from_rss")
+    @patch("app.providers.pocketcasts.lookup_by_itunes_id")
+    def test_lookup_falls_back_to_rss_for_a_blank_itunes_description(
+        self,
+        mock_lookup,
+        mock_rss_metadata,
+        mock_episodes,
+    ):
+        """ITunes' own lookup often has no description; the RSS feed does."""
+        mock_lookup.return_value = {
+            **self.ITUNES_DATA,
+            "author": "",
+            "artwork_url": "",
+            "description": "",
+            "genres": [],
+            "language": "",
+        }
+        mock_rss_metadata.return_value = {
+            "description": "From the feed, not iTunes.",
+            "author": "Feed Author",
+            "language": "en",
+        }
+        mock_episodes.return_value = []
+
+        response = self._lookup()
+
+        self.assertEqual(response.status_code, HTTP.OK)
+        payload = response.json()
+        self.assertEqual(payload["description"], "From the feed, not iTunes.")
+        self.assertEqual(payload["author"], "Feed Author")
+        self.assertEqual(payload["language"], "en")
+
+    @patch("integrations.podcast_rss.fetch_episodes_from_rss")
+    @patch("app.providers.pocketcasts.lookup_by_itunes_id")
+    def test_lookup_caches_the_feed_read(self, mock_lookup, mock_episodes):
+        """Paging through search results must not re-download a feed."""
+        mock_lookup.return_value = dict(self.ITUNES_DATA)
+        mock_episodes.return_value = []
+
+        self.assertEqual(self._lookup().status_code, HTTP.OK)
+        self.assertEqual(self._lookup().status_code, HTTP.OK)
+
+        mock_episodes.assert_called_once()
+
+    @patch("integrations.podcast_rss.fetch_episodes_from_rss")
+    @patch("app.providers.pocketcasts.lookup_by_itunes_id")
+    def test_lookup_without_a_feed_previews_no_episodes(
+        self,
+        mock_lookup,
+        mock_episodes,
+    ):
+        """An iTunes result with no feed still previews its own metadata."""
+        mock_lookup.return_value = {**self.ITUNES_DATA, "feed_url": ""}
+
+        response = self._lookup()
+
+        self.assertEqual(response.status_code, HTTP.OK)
+        payload = response.json()
+        self.assertEqual(payload["title"], "Unimported Show")
+        self.assertEqual(payload["rss_feed_url"], "")
+        self.assertEqual(payload["episodes"]["results"], [])
+        mock_episodes.assert_not_called()
+
+    @patch("integrations.podcast_rss.fetch_episodes_from_rss")
+    @patch("app.providers.pocketcasts.lookup_by_itunes_id")
+    def test_lookup_survives_an_unreadable_feed(self, mock_lookup, mock_episodes):
+        """A feed that won't parse previews as no episodes, not a 500."""
+        mock_lookup.return_value = dict(self.ITUNES_DATA)
+        mock_episodes.side_effect = ValueError("bad feed")
+
+        response = self._lookup()
+
+        self.assertEqual(response.status_code, HTTP.OK)
+        self.assertEqual(response.json()["episodes"]["results"], [])
+
+    @patch("app.providers.pocketcasts.lookup_by_itunes_id")
+    def test_lookup_of_unknown_id_404s(self, mock_lookup):
+        """An id iTunes doesn't recognise 404s rather than 500ing."""
+        mock_lookup.side_effect = self._provider_error(HTTP.NOT_FOUND)
+
+        response = self._lookup(itunes_id="0")
+
+        self.assertEqual(response.status_code, HTTP.NOT_FOUND)
+
+    @patch("app.providers.pocketcasts.lookup_by_itunes_id")
+    def test_lookup_reports_a_provider_outage_as_a_server_error(self, mock_lookup):
+        """A failing provider is the server's problem, not a missing podcast."""
+        mock_lookup.side_effect = self._provider_error(HTTP.BAD_GATEWAY)
+
+        response = self._lookup()
+
+        self.assertEqual(response.status_code, HTTP.INTERNAL_SERVER_ERROR)
+
+    @staticmethod
+    def _provider_error(status_code):
+        """Build the ProviderAPIError a failing provider call would raise."""
+        from app.providers import services
+
+        return services.ProviderAPIError(
+            "pocketcasts",
+            SimpleNamespace(response=SimpleNamespace(status_code=status_code)),
+        )
 
 
 class ShowEpisodesTests(PodcastApiTestCase):

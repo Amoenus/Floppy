@@ -169,6 +169,11 @@ urlpatterns = [
         name="api_podcast_shows",
     ),
     re_path(
+        r"^podcasts/lookup/(?P<itunes_id>\d+)/?$",
+        fork_views_podcast.PodcastLookupView.as_view(),
+        name="api_podcast_lookup",
+    ),
+    re_path(
         r"^podcasts/shows/(?P<show_id>\d+)/?$",
         fork_views_podcast.PodcastShowDetailView.as_view(),
         name="api_podcast_show_detail",

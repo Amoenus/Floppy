@@ -46,6 +46,7 @@ def get_fork_endpoint_cases() -> list[EndpointCase]:
             payload={"score": 8},
         ),
         EndpointCase("post", "api_music_bulk_plays", payload={}),
+        EndpointCase("get", "api_podcast_lookup", args=("1",)),
         EndpointCase("get", "api_podcast_shows"),
         EndpointCase("post", "api_podcast_shows", payload={"show_id": 1}),
         EndpointCase("get", "api_podcast_show_detail", args=(1,)),
