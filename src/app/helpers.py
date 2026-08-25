@@ -940,12 +940,17 @@ def get_collection_completeness_map(user, show_items):
     def collected_item_ids(item_ids):
         if not item_ids:
             return set()
-        return set(
-            CollectionEntry.objects.filter(
-                user=user,
-                item_id__in=item_ids,
-            ).values_list("item_id", flat=True)
-        )
+        item_ids = list(item_ids)
+        chunk_size = 500
+        collected = set()
+        for offset in range(0, len(item_ids), chunk_size):
+            collected.update(
+                CollectionEntry.objects.filter(
+                    user=user,
+                    item_id__in=item_ids[offset : offset + chunk_size],
+                ).values_list("item_id", flat=True)
+            )
+        return collected
 
     collected_season_ids = collected_item_ids([item.id for item in all_season_items])
     collected_episode_ids = collected_item_ids([item.id for item in all_episode_items])
