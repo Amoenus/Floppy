@@ -90,6 +90,11 @@ urlpatterns = [
         name="import_audiobookshelf",
     ),
     path(
+        "import/audiobookshelf/cover/<str:token>",
+        views.audiobookshelf_cover,
+        name="audiobookshelf_cover",
+    ),
+    path(
         "import/storyteller/connect",
         views.storyteller_connect,
         name="storyteller_connect",

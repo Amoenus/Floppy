@@ -19,6 +19,7 @@ from app.models import (
     Sources,
     Status,
 )
+from integrations import audiobookshelf_cover
 from integrations.imports import helpers
 from integrations.imports.audiobookshelf import (
     AudiobookshelfAuthError,
@@ -27,6 +28,12 @@ from integrations.imports.audiobookshelf import (
 )
 from integrations.imports.helpers import MediaImportError
 from integrations.models import AudiobookshelfAccount
+
+
+def cover_proxy_target(image_url):
+    """Resolve a Floppy ABS cover-proxy URL back to (account_id, library_item_id)."""
+    token = image_url.rsplit("/", 1)[-1]
+    return audiobookshelf_cover.resolve_cover_proxy_token(token)
 
 
 def podcast_progress(**overrides):
@@ -802,9 +809,13 @@ class AudiobookshelfImporterTests(TestCase):
         self.assertEqual(counts.get(MediaTypes.BOOK.value), 1)
         self.assertEqual(warnings, "")
         item = Book.objects.get(user=self.user).item
+        # The raw ABS cover URL requires a bearer token a plain <img src>
+        # can't attach, so it's served through Floppy's own proxy (#861).
+        self.assertTrue(item.image.startswith("/import/audiobookshelf/cover/"))
+        account = self.user.audiobookshelf_account
         self.assertEqual(
-            item.image,
-            "https://abs.example.com/api/items/item-4/cover",
+            cover_proxy_target(item.image),
+            (str(account.id), "item-4"),
         )
 
     @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_library_item")
@@ -837,9 +848,11 @@ class AudiobookshelfImporterTests(TestCase):
         self.assertEqual(counts.get(MediaTypes.BOOK.value), 1)
         self.assertEqual(warnings, "")
         item = Book.objects.get(user=self.user).item
+        self.assertTrue(item.image.startswith("/import/audiobookshelf/cover/"))
+        account = self.user.audiobookshelf_account
         self.assertEqual(
-            item.image,
-            "https://abs.example.com/api/items/item-fs/cover",
+            cover_proxy_target(item.image),
+            (str(account.id), "item-fs"),
         )
 
     @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_library_item")
@@ -934,10 +947,13 @@ class AudiobookshelfImporterTests(TestCase):
         self.assertEqual(warnings, "")
         mock_item.assert_called_once_with("stale-cover-item")
         item = Book.objects.get(user=self.user).item
-        # URL should be normalised to the proper API endpoint
+        # URL should be re-repaired into Floppy's authenticated cover proxy,
+        # not left as a raw ABS URL the browser can't load (#861).
+        self.assertTrue(item.image.startswith("/import/audiobookshelf/cover/"))
+        account = self.user.audiobookshelf_account
         self.assertEqual(
-            item.image,
-            "https://abs.example.com/api/items/stale-cover-item/cover",
+            cover_proxy_target(item.image),
+            (str(account.id), "stale-cover-item"),
         )
 
     @patch("integrations.imports.audiobookshelf.services.get_media_metadata")
@@ -1028,6 +1044,77 @@ class AudiobookshelfImporterTests(TestCase):
             MediaTypes.BOOK.value,
             "314",
             Sources.HARDCOVER.value,
+        )
+
+    @patch("integrations.imports.audiobookshelf.services.get_media_metadata")
+    @patch("integrations.imports.audiobookshelf.services.search")
+    @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_library_item")
+    @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_me")
+    def test_keeps_abs_cover_when_provider_match_has_no_image(
+        self,
+        mock_me,
+        mock_item,
+        mock_search,
+        mock_get_media_metadata,
+    ):
+        """A coverless provider match must not blank out a working ABS cover (#861)."""
+        mock_me.return_value = {
+            "mediaProgress": [
+                {
+                    "libraryItemId": "item-6",
+                    "currentTime": 600,
+                    "lastUpdate": 8_000,
+                },
+            ],
+        }
+        mock_item.return_value = {
+            "media": {
+                "duration": 4_800,
+                "metadata": {
+                    "title": "Coverless Match",
+                    "isbn": "978-0-7653-1178-8",
+                },
+            },
+            "coverPath": "/api/items/item-6/cover",
+        }
+        mock_search.return_value = {
+            "results": [
+                {
+                    "media_id": "500",
+                    "source": Sources.HARDCOVER.value,
+                    "title": "Coverless Match",
+                },
+            ],
+        }
+        # Hardcover matched the title but has no cached_image, so it
+        # returns settings.IMG_NONE for "image" instead of a real URL.
+        mock_get_media_metadata.return_value = {
+            "media_id": "500",
+            "source": Sources.HARDCOVER.value,
+            "media_type": MediaTypes.BOOK.value,
+            "title": "Coverless Match",
+            "image": settings.IMG_NONE,
+            "max_progress": 541,
+            "genres": ["Fantasy"],
+            "details": {
+                "author": "Some Author",
+                "isbn": ["9780765311788"],
+            },
+        }
+
+        importer = AudiobookshelfImporter(self.user)
+        importer.enable_provider_enrichment = True
+        counts, warnings = importer.import_data()
+
+        self.assertEqual(counts.get(MediaTypes.BOOK.value), 1)
+        self.assertEqual(warnings, "")
+        item = Book.objects.get(user=self.user).item
+        self.assertNotEqual(item.image, settings.IMG_NONE)
+        self.assertTrue(item.image.startswith("/import/audiobookshelf/cover/"))
+        account = self.user.audiobookshelf_account
+        self.assertEqual(
+            cover_proxy_target(item.image),
+            (str(account.id), "item-6"),
         )
 
     @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_me")

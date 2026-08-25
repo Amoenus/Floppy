@@ -20,7 +20,12 @@ from django.contrib.auth.decorators import login_not_required
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import IntegrityError
 from django.db.models import Q
-from django.http import HttpResponse, JsonResponse, StreamingHttpResponse
+from django.http import (
+    HttpResponse,
+    HttpResponseNotFound,
+    JsonResponse,
+    StreamingHttpResponse,
+)
 from django.shortcuts import redirect
 from django.urls import reverse
 from django.utils import timezone
@@ -29,7 +34,11 @@ from django.views.decorators.http import require_GET, require_POST
 
 import users
 from app import helpers as app_helpers
+from app import image_cache
 from app.log_safety import exception_summary
+from integrations import (
+    audiobookshelf_cover as abs_cover_proxy,
+)
 from integrations import (
     exports,
     gpodder_api,
@@ -1697,6 +1706,91 @@ def import_audiobookshelf(request):
 
     messages.info(request, "Audiobookshelf import queued.")
     return redirect("import_data")
+
+
+AUDIOBOOKSHELF_COVER_TIMEOUT = 15
+# Plain raster types only - an upstream ABS server (attacker-controlled, or
+# just compromised) returning e.g. text/html or image/svg+xml would have it
+# served as active content from Floppy's own origin to anyone holding the
+# signed proxy URL, since the account owner can share that URL freely.
+AUDIOBOOKSHELF_COVER_CONTENT_TYPES = frozenset(
+    {"image/jpeg", "image/png", "image/webp", "image/gif", "image/avif"},
+)
+
+
+@login_not_required
+@require_GET
+def audiobookshelf_cover(request, token):
+    """Stream an Audiobookshelf item's cover art using the account's own token.
+
+    The ABS `/api/items/:id/cover` endpoint requires a bearer token, so it
+    can't be embedded directly in an `<img src>`. This resolves the signed
+    token to the owning account, fetches the cover server-side with that
+    account's stored credentials, and streams it back (see #861). The
+    endpoint is deliberately anonymous, so the response is streamed with a
+    hard size cap and its content type is restricted to known-safe image
+    types - matching the bounded, allow-listed fetch app.image_cache already
+    does for provider artwork.
+    """
+    resolved = abs_cover_proxy.resolve_cover_proxy_token(token)
+    if resolved is None:
+        return HttpResponseNotFound()
+    account_id, library_item_id = resolved
+
+    account = AudiobookshelfAccount.objects.filter(pk=account_id).first()
+    if account is None:
+        return HttpResponseNotFound()
+
+    try:
+        api_token = helpers.decrypt(account.api_token)
+    except Exception:
+        logger.warning(
+            "Failed to decrypt Audiobookshelf token for cover proxy account=%s",
+            account_id,
+        )
+        return HttpResponseNotFound()
+
+    cover_url = f"{account.base_url.rstrip('/')}/api/items/{library_item_id}/cover"
+    try:
+        upstream = requests.get(
+            cover_url,
+            headers={"Authorization": f"Bearer {api_token}"},
+            timeout=AUDIOBOOKSHELF_COVER_TIMEOUT,
+            stream=True,
+        )
+    except requests.RequestException:
+        return HttpResponseNotFound()
+
+    try:
+        if upstream.status_code != HTTPStatus.OK:
+            return HttpResponseNotFound()
+
+        content_type = (
+            upstream.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
+        )
+        if content_type not in AUDIOBOOKSHELF_COVER_CONTENT_TYPES:
+            return HttpResponseNotFound()
+
+        try:
+            content_length = int(upstream.headers.get("Content-Length", "0"))
+        except ValueError:
+            content_length = 0
+        if content_length > image_cache.MAX_IMAGE_BYTES:
+            return HttpResponseNotFound()
+
+        body = bytearray()
+        for chunk in upstream.iter_content(chunk_size=64 * 1024):
+            if not chunk:
+                continue
+            body.extend(chunk)
+            if len(body) > image_cache.MAX_IMAGE_BYTES:
+                return HttpResponseNotFound()
+    finally:
+        upstream.close()
+
+    response = HttpResponse(bytes(body), content_type=content_type)
+    response["Cache-Control"] = "private, max-age=3600"
+    return response
 
 
 STORYTELLER_RECURRING_TASK_NAME = "Import from Storyteller (Recurring)"
