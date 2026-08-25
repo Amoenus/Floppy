@@ -1034,6 +1034,169 @@ class ImportTrakt(TestCase):
         self.assertEqual(new_season.status, Status.COMPLETED.value)
         self.assertEqual(new_tv.status, Status.COMPLETED.value)
 
+    @patch("app.models.providers.services.get_media_metadata")
+    @patch("integrations.imports.trakt.TraktImporter._get_metadata")
+    def test_import_data_cascades_completed_tv_status_to_other_seasons(
+        self, mock_get_metadata, mock_get_media_metadata
+    ):
+        """Regression test for #985: a show that Trakt import marks
+        Completed must also cascade that completion down to its other
+        seasons/episodes, exactly like manually marking a show Completed in
+        the UI does (TV.save() -> _completed()). The bulk_update_with_history
+        flush in import_data() never calls TV.save(), so without the fix
+        this cascade is silently skipped.
+        """
+        TMDB_ID = 99997
+        SEASON_NUMBER = 2
+        TOTAL_EPISODES = 5
+
+        # Season 1 already exists and is only partially watched; it isn't
+        # touched by the watch-history entry below, so only the completion
+        # cascade (not the history walk) can bring it to Completed.
+        item_tv, _ = Item.objects.get_or_create(
+            media_id=TMDB_ID,
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            defaults={"title": "Test Show", "image": ""},
+        )
+        tv_obj = TV.objects.create(
+            item=item_tv, user=self.user, status=Status.IN_PROGRESS.value
+        )
+        item_season1, _ = Item.objects.get_or_create(
+            media_id=TMDB_ID,
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=1,
+            defaults={"title": "Test Show", "image": ""},
+        )
+        Season.objects.create(
+            item=item_season1,
+            user=self.user,
+            related_tv=tv_obj,
+            status=Status.IN_PROGRESS.value,
+        )
+
+        def mock_metadata(media_type, tmdb_id, title, season_number=None):
+            if media_type == MediaTypes.TV.value:
+                return {
+                    "title": "Test Show",
+                    "image": "",
+                    "last_episode_season": SEASON_NUMBER,
+                    "max_progress": TOTAL_EPISODES,
+                }
+            if media_type == MediaTypes.SEASON.value:
+                return {
+                    "title": f"Season {season_number}",
+                    "image": "",
+                    "episodes": [
+                        {"episode_number": i, "still_path": None}
+                        for i in range(1, TOTAL_EPISODES + 1)
+                    ],
+                    "max_progress": TOTAL_EPISODES,
+                }
+            return None
+
+        mock_get_metadata.side_effect = mock_metadata
+
+        # Metadata used by TV._completed(), the cascade helper the fix wires
+        # up. It reports season 1 as the only remaining incomplete season.
+        mock_get_media_metadata.return_value = {
+            "max_progress": TOTAL_EPISODES,
+            "related": {"seasons": [{"season_number": 1, "image": ""}]},
+            "season/1": {
+                "image": "",
+                "season_number": 1,
+                "episodes": [{"episode_number": i} for i in range(1, TOTAL_EPISODES + 1)],
+            },
+        }
+
+        entry = {
+            "type": "episode",
+            "episode": {
+                "season": SEASON_NUMBER,
+                "number": TOTAL_EPISODES,
+                "title": "Finale",
+            },
+            "show": {"title": "Test Show", "ids": {"tmdb": TMDB_ID}},
+            "watched_at": "2024-06-01T00:00:00.000Z",
+        }
+
+        trakt_importer = TraktImporter("testuser", self.user, "overwrite")
+        trakt_importer.process_watched_episode(entry)
+        trakt_importer.process_history = lambda: None
+        trakt_importer.process_watchlist = lambda: None
+        trakt_importer.process_ratings = lambda: None
+        trakt_importer.process_notes = lambda: None
+        trakt_importer.process_comments = lambda: None
+        trakt_importer.process_collection = lambda: None
+        trakt_importer.process_dropped = lambda: None
+        trakt_importer._validate_username = lambda: None
+
+        trakt_importer.import_data()
+
+        season1 = Season.objects.get(
+            user=self.user,
+            item__media_id=str(TMDB_ID),
+            item__season_number=1,
+        )
+        self.assertEqual(season1.status, Status.COMPLETED.value)
+        self.assertTrue(season1.episodes.exists())
+
+    def test_import_data_cascades_dropped_tv_status_to_in_progress_seasons(self):
+        """Regression test for #985: a show hidden/dropped on Trakt must
+        have its in-progress seasons marked Dropped too, matching what
+        manually dropping a show does via TV.save() ->
+        _mark_in_progress_seasons_as_dropped(). Without the fix, the bulk
+        flush in import_data() only updates the TV row's own status.
+        """
+        TMDB_ID = 99996
+
+        item_tv, _ = Item.objects.get_or_create(
+            media_id=TMDB_ID,
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            defaults={"title": "Test Show", "image": ""},
+        )
+        tv_obj = TV.objects.create(
+            item=item_tv, user=self.user, status=Status.IN_PROGRESS.value
+        )
+        item_season, _ = Item.objects.get_or_create(
+            media_id=TMDB_ID,
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=1,
+            defaults={"title": "Test Show", "image": ""},
+        )
+        Season.objects.create(
+            item=item_season,
+            user=self.user,
+            related_tv=tv_obj,
+            status=Status.IN_PROGRESS.value,
+        )
+
+        trakt_importer = TraktImporter("testuser", self.user, "overwrite")
+        trakt_importer.dropped_tmdb_ids.add(TMDB_ID)
+        tv_obj.status = Status.DROPPED.value
+        trakt_importer.dropped_tvs.append(tv_obj)
+
+        trakt_importer.process_dropped = lambda: None
+        trakt_importer.process_history = lambda: None
+        trakt_importer.process_watchlist = lambda: None
+        trakt_importer.process_ratings = lambda: None
+        trakt_importer.process_notes = lambda: None
+        trakt_importer.process_comments = lambda: None
+        trakt_importer.process_collection = lambda: None
+        trakt_importer._validate_username = lambda: None
+
+        trakt_importer.import_data()
+
+        season = Season.objects.get(
+            user=self.user,
+            item__media_id=str(TMDB_ID),
+            item__season_number=1,
+        )
+        self.assertEqual(season.status, Status.DROPPED.value)
+
     @patch("integrations.imports.trakt.TraktImporter._get_metadata")
     def test_last_episode_import_does_not_complete_existing_show_in_new_mode(
         self, mock_get_metadata

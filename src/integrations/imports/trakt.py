@@ -450,6 +450,43 @@ class TraktImporter(TraktMetadataResolverMixin):
         if self.dropped_tvs:
             bulk_update_with_history(self.dropped_tvs, app.models.TV, fields=["status"])
 
+        # Neither bulk_create_media() nor bulk_update_with_history() call
+        # TV.save(), so the season/episode cascade it normally fires for a
+        # COMPLETED/DROPPED show never runs for Trakt-imported shows. A show
+        # created fresh this run has its final status baked directly into
+        # the bulk_create call (never touching completed_tvs/dropped_tvs
+        # below), so collect every TV row this run touched, not just the
+        # ones re-flushed above, and run the same cascade helpers TV.save()
+        # would use.
+        touched_tvs = {
+            tv.pk: tv
+            for tv in (
+                *self.bulk_media[MediaTypes.TV.value],
+                *self.completed_tvs,
+                *self.dropped_tvs,
+            )
+            if tv.pk
+        }
+        for tv_obj in touched_tvs.values():
+            if tv_obj.status == Status.COMPLETED.value:
+                try:
+                    tv_obj._completed()
+                except (
+                    services.ProviderAPIError,
+                    requests.exceptions.RequestException,
+                    KeyError,
+                    TypeError,
+                    ValueError,
+                ) as error:
+                    logger.warning(
+                        "Skipping completion fan-out due to missing metadata"
+                        " for %s: %s",
+                        tv_obj.item.media_id,
+                        error,
+                    )
+            elif tv_obj.status == Status.DROPPED.value:
+                tv_obj._mark_in_progress_seasons_as_dropped()
+
         imported_counts = {
             media_type: len(media_list)
             for media_type, media_list in self.bulk_media.items()
