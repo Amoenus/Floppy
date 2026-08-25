@@ -1,6 +1,7 @@
 import json
 import logging
 from collections import defaultdict
+from datetime import timedelta
 
 import requests
 from django.conf import settings
@@ -23,6 +24,12 @@ logger = logging.getLogger(__name__)
 TRAKT_API_BASE_URL = "https://api.trakt.tv"
 BULK_PAGE_SIZE = 1000
 TRAKT_UNKNOWN_DATE = "1970-01-01T00:00:00.000Z"
+
+# Plex's webhook fires at ~90% progress while Trakt's scrobbler waits for
+# playback to stop, so a webhook-recorded play and its later Trakt-imported
+# counterpart can land several minutes apart. Treat plays for the same item
+# within this window as the same watch instead of double-counting it.
+_DUPLICATE_PLAY_WINDOW = timedelta(minutes=15)
 
 
 def _parse_watched_at(watched_at: str):
@@ -383,6 +390,12 @@ class TraktImporter(TraktMetadataResolverMixin):
         # does not create duplicate episode history rows.
         self.existing_episode_watch_keys = self._get_existing_episode_watch_keys()
 
+        # Track existing play timestamps so a play already recorded (e.g. via
+        # Plex webhook) isn't duplicated by a nearby Trakt-imported play for
+        # the same item. See _DUPLICATE_PLAY_WINDOW.
+        self.existing_episode_play_times = self._get_existing_episode_play_times()
+        self.existing_movie_play_times = self._get_existing_movie_play_times()
+
         # Track media IDs to delete in overwrite mode
         self.to_delete = defaultdict(lambda: defaultdict(set))
 
@@ -429,6 +442,43 @@ class TraktImporter(TraktMetadataResolverMixin):
                 "item__episode_number",
                 "end_date",
             ),
+        )
+
+    def _get_existing_episode_play_times(self):
+        """Return existing episode play end_dates keyed by (tmdb_id, season, episode)."""
+        play_times = defaultdict(list)
+        rows = app.models.Episode.objects.filter(
+            related_season__user=self.user,
+            end_date__isnull=False,
+        ).values_list(
+            "item__media_id",
+            "item__season_number",
+            "item__episode_number",
+            "end_date",
+        )
+        for media_id, season_number, episode_number, end_date in rows:
+            play_times[(media_id, season_number, episode_number)].append(end_date)
+        return play_times
+
+    def _get_existing_movie_play_times(self):
+        """Return existing movie play end_dates keyed by tmdb_id."""
+        play_times = defaultdict(list)
+        rows = app.models.Movie.objects.filter(
+            user=self.user,
+            end_date__isnull=False,
+        ).values_list("item__media_id", "end_date")
+        for media_id, end_date in rows:
+            play_times[media_id].append(end_date)
+        return play_times
+
+    @staticmethod
+    def _is_duplicate_play(existing_times, candidate_dt):
+        """Return True if candidate_dt is within _DUPLICATE_PLAY_WINDOW of an existing play."""
+        if candidate_dt is None:
+            return False
+        return any(
+            abs(candidate_dt - existing_dt) <= _DUPLICATE_PLAY_WINDOW
+            for existing_dt in existing_times
         )
 
     def _raise_for_user_error(self, error):
@@ -686,6 +736,17 @@ class TraktImporter(TraktMetadataResolverMixin):
         watched_at = entry["watched_at"]
         watched_at_dt = _parse_watched_at(watched_at)
 
+        if self._is_duplicate_play(
+            self.existing_movie_play_times[tmdb_id],
+            watched_at_dt,
+        ):
+            logger.debug(
+                "Skipping Trakt movie watch for %s at %s: duplicate of an existing play",
+                movie["title"],
+                watched_at,
+            )
+            return
+
         key = f"{tmdb_id}"
 
         movie_obj = app.models.Movie(
@@ -700,6 +761,8 @@ class TraktImporter(TraktMetadataResolverMixin):
 
         self.media_instances[MediaTypes.MOVIE.value][key].append(movie_obj)
         self.bulk_media[MediaTypes.MOVIE.value].append(movie_obj)
+        if watched_at_dt is not None:
+            self.existing_movie_play_times[tmdb_id].append(watched_at_dt)
 
     def process_watched_episode(self, entry):
         """Process a single episode watch event."""
@@ -725,6 +788,21 @@ class TraktImporter(TraktMetadataResolverMixin):
         if episode_watch_key in self.existing_episode_watch_keys:
             logger.debug(
                 "Skipping existing episode watch for %s S%sE%s at %s",
+                show["title"],
+                season_number,
+                episode_number,
+                watched_at,
+            )
+            return
+
+        episode_key = (tmdb_id, season_number, episode_number)
+        if self._is_duplicate_play(
+            self.existing_episode_play_times[episode_key],
+            watched_at_dt,
+        ):
+            logger.debug(
+                "Skipping Trakt episode watch for %s S%sE%s at %s: "
+                "duplicate of an existing play",
                 show["title"],
                 season_number,
                 episode_number,
@@ -875,6 +953,8 @@ class TraktImporter(TraktMetadataResolverMixin):
         self.media_instances[MediaTypes.EPISODE.value][ep_key].append(episode_obj)
         self.bulk_media[MediaTypes.EPISODE.value].append(episode_obj)
         self.existing_episode_watch_keys.add(episode_watch_key)
+        if watched_at_dt is not None:
+            self.existing_episode_play_times[episode_key].append(watched_at_dt)
 
         # Update status if this is the last episode, but only for rows Floppy
         # just created (or an explicit overwrite re-sync) — never clobber the

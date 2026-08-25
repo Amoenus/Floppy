@@ -62,9 +62,97 @@ class ImportTrakt(TestCase):
         movie_obj = trakt_importer.bulk_media[MediaTypes.MOVIE.value][0]
         self.assertEqual(movie_obj.progress, 1)
 
-        # Process the same movie again to test repeat handling
+        # Reprocessing the exact same entry is a duplicate play (issue #854)
+        # and must not create a second row.
         trakt_importer.process_watched_movie(movie_entry)
+        self.assertEqual(len(trakt_importer.bulk_media[MediaTypes.MOVIE.value]), 1)
+
+    @patch("integrations.imports.trakt.TraktImporter._get_metadata")
+    def test_process_watched_movie_dedupes_nearby_play(self, mock_get_metadata):
+        """A movie watch within the dedupe window of an existing play is skipped."""
+        mock_get_metadata.return_value = {
+            "title": "Test Movie",
+            "image": "movie_image.jpg",
+        }
+
+        trakt_importer = TraktImporter("test", self.user, "new")
+        trakt_importer.process_watched_movie(
+            {
+                "type": "movie",
+                "movie": {"title": "Test Movie", "ids": {"tmdb": 67890}},
+                "watched_at": "2023-01-02T00:00:00.000Z",
+            },
+        )
+        self.assertEqual(len(trakt_importer.bulk_media[MediaTypes.MOVIE.value]), 1)
+
+        # 10 minutes later, same movie: within the 15 minute dedupe window.
+        trakt_importer.process_watched_movie(
+            {
+                "type": "movie",
+                "movie": {"title": "Test Movie", "ids": {"tmdb": 67890}},
+                "watched_at": "2023-01-02T00:10:00.000Z",
+            },
+        )
+        self.assertEqual(len(trakt_importer.bulk_media[MediaTypes.MOVIE.value]), 1)
+
+        # 1 day later, same movie: a legitimate rewatch outside the window.
+        trakt_importer.process_watched_movie(
+            {
+                "type": "movie",
+                "movie": {"title": "Test Movie", "ids": {"tmdb": 67890}},
+                "watched_at": "2023-01-03T00:00:00.000Z",
+            },
+        )
         self.assertEqual(len(trakt_importer.bulk_media[MediaTypes.MOVIE.value]), 2)
+
+        # A different movie at a nearby time is not a duplicate.
+        mock_get_metadata.return_value = {
+            "title": "Other Movie",
+            "image": "movie_image.jpg",
+        }
+        trakt_importer.process_watched_movie(
+            {
+                "type": "movie",
+                "movie": {"title": "Other Movie", "ids": {"tmdb": 11111}},
+                "watched_at": "2023-01-03T00:05:00.000Z",
+            },
+        )
+        self.assertEqual(len(trakt_importer.bulk_media[MediaTypes.MOVIE.value]), 3)
+
+    @patch("integrations.imports.trakt.TraktImporter._get_metadata")
+    def test_process_watched_movie_dedupes_against_existing_db_play(
+        self,
+        mock_get_metadata,
+    ):
+        """A Trakt-imported play is skipped if it's near an existing DB play (e.g. webhook)."""
+        item = Item.objects.get_or_create(
+            media_id="67890",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            defaults={"title": "Test Movie"},
+        )[0]
+        Movie.objects.create(
+            item=item,
+            user=self.user,
+            end_date="2023-01-02T00:00:00Z",
+            status=Status.COMPLETED.value,
+            progress=1,
+        )
+
+        mock_get_metadata.return_value = {
+            "title": "Test Movie",
+            "image": "movie_image.jpg",
+        }
+        trakt_importer = TraktImporter("test", self.user, "new")
+        trakt_importer.process_watched_movie(
+            {
+                "type": "movie",
+                "movie": {"title": "Test Movie", "ids": {"tmdb": 67890}},
+                "watched_at": "2023-01-02T00:12:00.000Z",
+            },
+        )
+
+        self.assertEqual(len(trakt_importer.bulk_media[MediaTypes.MOVIE.value]), 0)
 
     @patch("integrations.imports.trakt.TraktImporter._get_metadata")
     def test_process_watched_episode(self, mock_get_metadata):
@@ -131,6 +219,152 @@ class ImportTrakt(TestCase):
             },
         )
         self.assertEqual(len(trakt_importer.bulk_media[MediaTypes.EPISODE.value]), 2)
+
+    @patch("integrations.imports.trakt.TraktImporter._get_metadata")
+    def test_process_watched_episode_dedupes_nearby_play(self, mock_get_metadata):
+        """An episode watch within the dedupe window of an existing play is skipped."""
+
+        def mock_metadata_side_effect(media_type, _, __, ___=None):
+            if media_type == MediaTypes.TV.value:
+                return {
+                    "title": "Test Show",
+                    "image": "tv_image.jpg",
+                    "last_episode_season": 1,
+                    "max_progress": 1,
+                }
+            if media_type == MediaTypes.SEASON.value:
+                return {
+                    "title": "Season 1",
+                    "image": "season_image.jpg",
+                    "episodes": [
+                        {
+                            "episode_number": 1,
+                            "still_path": "/still.jpg",
+                            "title": "Pilot Episode Title",
+                        },
+                        {
+                            "episode_number": 2,
+                            "still_path": "/still2.jpg",
+                            "title": "Episode 2 Title",
+                        },
+                    ],
+                    "max_progress": 2,
+                }
+            return None
+
+        mock_get_metadata.side_effect = mock_metadata_side_effect
+
+        episode_entry = {
+            "type": "episode",
+            "episode": {"season": 1, "number": 1, "title": "Pilot"},
+            "show": {"title": "Test Show", "ids": {"tmdb": 12345}},
+            "watched_at": "2023-01-01T00:00:00.000Z",
+        }
+
+        trakt_importer = TraktImporter("testuser", self.user, "new")
+        trakt_importer.process_watched_episode(episode_entry)
+        self.assertEqual(len(trakt_importer.bulk_media[MediaTypes.EPISODE.value]), 1)
+
+        # 10 minutes later, same episode: within the 15 minute dedupe window.
+        trakt_importer.process_watched_episode(
+            {
+                **episode_entry,
+                "watched_at": "2023-01-01T00:10:00.000Z",
+            },
+        )
+        self.assertEqual(len(trakt_importer.bulk_media[MediaTypes.EPISODE.value]), 1)
+
+        # A different episode of the same show at a nearby time is not a duplicate.
+        trakt_importer.process_watched_episode(
+            {
+                "type": "episode",
+                "episode": {"season": 1, "number": 2, "title": "Episode 2"},
+                "show": {"title": "Test Show", "ids": {"tmdb": 12345}},
+                "watched_at": "2023-01-01T00:12:00.000Z",
+            },
+        )
+        self.assertEqual(len(trakt_importer.bulk_media[MediaTypes.EPISODE.value]), 2)
+
+    @patch("integrations.imports.trakt.TraktImporter._get_metadata")
+    def test_process_watched_episode_dedupes_against_existing_db_play(
+        self,
+        mock_get_metadata,
+    ):
+        """A Trakt-imported episode play is skipped if it's near an existing DB play."""
+        tv_item = Item.objects.get_or_create(
+            media_id="12345",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            defaults={"title": "Test Show"},
+        )[0]
+        tv_obj = TV.objects.create(
+            item=tv_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        season_item = Item.objects.get_or_create(
+            media_id="12345",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=1,
+            defaults={"title": "Season 1"},
+        )[0]
+        season_obj = Season.objects.create(
+            item=season_item,
+            related_tv=tv_obj,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        episode_item = Item.objects.get_or_create(
+            media_id="12345",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=1,
+            episode_number=1,
+            defaults={"title": "Pilot"},
+        )[0]
+        Episode.objects.create(
+            item=episode_item,
+            related_season=season_obj,
+            end_date="2023-01-01T00:00:00Z",
+        )
+
+        def mock_metadata_side_effect(media_type, _, __, ___=None):
+            if media_type == MediaTypes.TV.value:
+                return {
+                    "title": "Test Show",
+                    "image": "tv_image.jpg",
+                    "last_episode_season": 1,
+                    "max_progress": 1,
+                }
+            if media_type == MediaTypes.SEASON.value:
+                return {
+                    "title": "Season 1",
+                    "image": "season_image.jpg",
+                    "episodes": [
+                        {
+                            "episode_number": 1,
+                            "still_path": "/still.jpg",
+                            "title": "Pilot Episode Title",
+                        },
+                    ],
+                    "max_progress": 1,
+                }
+            return None
+
+        mock_get_metadata.side_effect = mock_metadata_side_effect
+
+        trakt_importer = TraktImporter("testuser", self.user, "new")
+        trakt_importer.process_watched_episode(
+            {
+                "type": "episode",
+                "episode": {"season": 1, "number": 1, "title": "Pilot"},
+                "show": {"title": "Test Show", "ids": {"tmdb": 12345}},
+                "watched_at": "2023-01-01T00:12:00.000Z",
+            },
+        )
+
+        self.assertEqual(len(trakt_importer.bulk_media[MediaTypes.EPISODE.value]), 0)
 
     @patch("integrations.imports.trakt.TraktImporter._get_metadata")
     def test_process_watched_episode_existing_show_imports_new_episode(
