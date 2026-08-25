@@ -17,6 +17,7 @@ from django.utils import timezone
 from app import config
 from app.models import TV, Item, MediaTypes, Season, Sources, Status
 from app.services.item_merge import dedupe_cross_provider_items
+from integrations.anime_mapping import resolve_provider_series_id
 
 # Statuses that represent inactive tracking
 # will be ignored when creating events
@@ -76,14 +77,26 @@ class EventManager(models.Manager):
             datetime__lte=end_datetime,
         ).select_related("item")
 
-        hidden_item_ids = self._cross_provider_hidden_season_item_ids(
-            user,
-            enabled_types,
-        )
+        hidden_item_ids = self.hidden_duplicate_item_ids(user, enabled_types)
         if hidden_item_ids:
             queryset = queryset.exclude(item_id__in=hidden_item_ids)
 
         return self.sort_with_sentinel_last(queryset)
+
+    def hidden_duplicate_item_ids(self, user, enabled_types):
+        """Return `Item` ids to exclude because a preferred duplicate exists.
+
+        Combines the TMDB/TVDB cross-provider dedup (#639) with the
+        Anime/TV cross-bucket dedup (#968), so both the calendar and
+        release notifications hide the same duplicates.
+        """
+        return self._cross_provider_hidden_season_item_ids(
+            user,
+            enabled_types,
+        ) | self._cross_bucket_hidden_anime_item_ids(
+            user,
+            enabled_types,
+        )
 
     def _active_tv_show_media_ids(self, user):
         """Return media_ids of the user's actively-tracked TV shows."""
@@ -139,6 +152,58 @@ class EventManager(models.Manager):
 
         kept_ids = {item.id for item in deduped}
         return {item.id for item in season_items if item.id not in kept_ids}
+
+    def _cross_bucket_hidden_anime_item_ids(self, user, enabled_types):
+        """Return Anime `Item` ids to hide because a tracked TV counterpart exists.
+
+        A user can track the same real show both in the Anime bucket (MAL)
+        and the TV bucket (TMDB/TVDB) - each gets its own independent `Item`
+        and `Event`s, so without this the calendar and release notifications
+        fire twice for the same episode (#968). Uses the pinned Kometa
+        Anime-IDs mapping (`integrations.anime_mapping`) to resolve a MAL id
+        to its verified TMDB/TVDB series id - never a title guess. The TV
+        bucket is always kept since it carries season/episode structure; the
+        Anime bucket duplicate is hidden.
+        """
+        if MediaTypes.ANIME.value not in enabled_types:
+            return set()
+        if not (
+            MediaTypes.TV.value in enabled_types
+            or MediaTypes.SEASON.value in enabled_types
+        ):
+            return set()
+
+        active_anime_items = list(
+            Item.objects.filter(
+                media_type=MediaTypes.ANIME.value,
+                source=Sources.MAL.value,
+                anime__user=user,
+            ).exclude(anime__status__in=INACTIVE_TRACKING_STATUSES),
+        )
+        if not active_anime_items:
+            return set()
+
+        active_tv_shows = set(
+            TV.objects.filter(
+                user=user,
+                item__media_type=MediaTypes.TV.value,
+            )
+            .exclude(status__in=INACTIVE_TRACKING_STATUSES)
+            .values_list("item__source", "item__media_id"),
+        )
+        if not active_tv_shows:
+            return set()
+
+        hidden_ids = set()
+        for anime_item in active_anime_items:
+            tmdb_id = resolve_provider_series_id(anime_item.media_id, "tmdb")
+            tvdb_id = resolve_provider_series_id(anime_item.media_id, "tvdb")
+            if (tmdb_id and (Sources.TMDB.value, tmdb_id) in active_tv_shows) or (
+                tvdb_id and (Sources.TVDB.value, tvdb_id) in active_tv_shows
+            ):
+                hidden_ids.add(anime_item.id)
+
+        return hidden_ids
 
     def _build_tv_query(self, user, enabled_types):
         """Build query for TV shows based on TV status and season statuses."""
