@@ -1870,6 +1870,39 @@ class Metadata(TestCase):
         self.assertEqual(response["title"], "Ultimate Spider-Man")
 
     @patch("app.providers.comicvine.services.api_request")
+    def test_comic_survives_issues_provider_error(self, mock_api_request):
+        """A failing issues/recommendations call shouldn't discard volume details."""
+        media_id = "provider-error-test"
+        cache_key = f"{Sources.COMICVINE.value}_{MediaTypes.COMIC.value}_{media_id}"
+        comicvine.cache.delete(cache_key)
+        self.addCleanup(comicvine.cache.delete, cache_key)
+
+        def side_effect(_source, _method, url, **_kwargs):
+            if url.endswith("/issues/"):
+                raise services.ProviderAPIError(Sources.COMICVINE.value, Exception())
+            return {
+                "results": {
+                    "site_detail_url": "https://example.com/volume",
+                    "name": "Test Volume",
+                    "last_issue": {"issue_number": "5", "id": 5},
+                    "description": "",
+                    "publisher": {"id": None, "name": "Test Publisher"},
+                    "start_year": "2020",
+                    "count_of_issues": 5,
+                    "people": [],
+                    "date_last_updated": "2024-01-01 00:00:00",
+                },
+            }
+
+        mock_api_request.side_effect = side_effect
+
+        response = comicvine.comic(media_id)
+
+        self.assertEqual(response["title"], "Test Volume")
+        self.assertEqual(response["details"]["publisher"], "Test Publisher")
+        self.assertEqual(response["issues"], [])
+
+    @patch("app.providers.comicvine.services.api_request")
     def test_comic_volume_issues_sort_numerically(self, mock_api_request):
         """Comic volume issues should use numeric rather than lexical ordering."""
         volume_id = "numeric-order-test"
