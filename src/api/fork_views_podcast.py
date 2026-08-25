@@ -8,7 +8,7 @@ from django.core.cache import cache
 from rest_framework import views as drf_views
 from rest_framework.response import Response
 
-from app import fork_services_podcast
+from app import fork_services_podcast, helpers
 from app.forms import PodcastShowTrackerForm
 from app.log_safety import safe_url
 from app.models import PodcastEpisode, PodcastShow, PodcastShowTracker, Status
@@ -174,20 +174,6 @@ class PodcastLookupView(drf_views.APIView):
     # week in pocketcasts.lookup_by_itunes_id.
     _FEED_CACHE_SECONDS = 15 * 60
 
-    @staticmethod
-    def _format_duration(seconds):
-        """Format a duration in seconds as "1h 9m" or "46m".
-
-        Matches the format `podcast_views.py` sends for every already-imported
-        episode, so a preview episode's duration reads the same as a tracked
-        one's.
-        """
-        if not seconds:
-            return ""
-        hours = seconds // 3600
-        minutes = (seconds % 3600) // 60
-        return f"{hours}h {minutes}m" if hours > 0 else f"{minutes}m"
-
     def _read_feed(self, itunes_id, itunes_data, rss_feed_url):
         """Return (metadata, episodes) for a feed, caching the pair briefly."""
         cache_key = f"podcast_lookup_feed_{itunes_id}"
@@ -215,7 +201,7 @@ class PodcastLookupView(drf_views.APIView):
             {
                 "title": episode.get("title", ""),
                 "published": episode.get("published"),
-                "duration": self._format_duration(episode.get("duration")),
+                "duration": helpers.seconds_to_hm(episode.get("duration")),
                 "duration_seconds": episode.get("duration"),
                 "episode_number": episode.get("episode_number"),
                 "season_number": episode.get("season_number"),

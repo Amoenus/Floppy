@@ -488,15 +488,7 @@ def media_details(
             for episode_obj, enriched in zip(
                 episodes[:initial_limit], enriched_episodes, strict=False
             ):
-                # Format duration
-                duration_str = ""
-                if episode_obj.duration:
-                    hours = episode_obj.duration // 3600
-                    minutes = (episode_obj.duration % 3600) // 60
-                    if hours > 0:
-                        duration_str = f"{hours}h {minutes}m"
-                    else:
-                        duration_str = f"{minutes}m"
+                duration_str = helpers.seconds_to_hm(episode_obj.duration)
 
                 # Get user's podcast media for this episode
                 episode_media = enriched["media"]
