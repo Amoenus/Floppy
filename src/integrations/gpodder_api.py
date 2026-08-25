@@ -180,12 +180,12 @@ def register_device(credentials: GPodderCredentials, device_id: str) -> None:
     )
 
 
-def fetch_subscriptions(credentials: GPodderCredentials) -> list[str]:
-    """Fetch the user's current subscription list."""
+def fetch_subscriptions(credentials: GPodderCredentials, device_id: str) -> list[str]:
+    """Fetch the user's current subscription list for the given device."""
     response = _request(
         "GET",
         credentials.server_url,
-        f"/subscriptions/{credentials.username}.json",
+        f"/subscriptions/{credentials.username}/{device_id}.json",
         username=credentials.username,
         password=credentials.password,
     )

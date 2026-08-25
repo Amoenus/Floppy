@@ -148,7 +148,9 @@ class GPodderImporter:
     def _load_subscriptions(self):
         """Return subscription metadata keyed by normalized feed URL."""
         subscriptions = {}
-        feed_urls = gpodder_api.fetch_subscriptions(self.credentials)
+        feed_urls = gpodder_api.fetch_subscriptions(
+            self.credentials, self.account.device_id
+        )
         for raw_feed_url in feed_urls:
             normalized_feed = gpodder_api.normalize_external_url(raw_feed_url)
             if not normalized_feed:
