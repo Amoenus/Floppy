@@ -626,6 +626,9 @@ class MediaManager(models.Manager):
                 ),
             )
 
+        if media_type == MediaTypes.MUSIC.value:
+            return base_queryset.select_related("album")
+
         return base_queryset
 
     def _sort_media_list(self, queryset, sort_filter, media_type=None, direction=None):
@@ -1389,6 +1392,25 @@ class MediaManager(models.Manager):
             )
             season.card_image_override = image
             season.card_image_source = image_source
+
+    def _fix_missing_music_images(self, music_list):
+        """Annotate music track cards with an album-cover fallback without persisting it."""
+        from app import helpers
+
+        for music in music_list:
+            item = getattr(music, "item", None)
+            if item is None:
+                continue
+
+            album = getattr(music, "album", None)
+            album_image = getattr(album, "image", None)
+
+            image, image_source = helpers.resolve_image_with_fallback(
+                item.image,
+                album_image,
+            )
+            music.card_image_override = image
+            music.card_image_source = image_source
 
     def _sort_in_progress_media(self, media_list, sort_by):
         """Sort in-progress media based on the sort criteria."""

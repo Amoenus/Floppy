@@ -1458,7 +1458,7 @@ def _item_matches_home_media_type(item: Item, media_type: str) -> bool:
 
 
 def _annotate_home_card_images(media_items):
-    """Annotate season cards with show-poster fallbacks when needed."""
+    """Annotate season/music cards with fallback art when needed."""
     season_items = [
         media
         for media in media_items
@@ -1467,6 +1467,15 @@ def _annotate_home_card_images(media_items):
     ]
     if season_items:
         BasicMedia.objects._fix_missing_season_images(season_items)
+
+    music_items = [
+        media
+        for media in media_items
+        if getattr(getattr(media, "item", None), "media_type", None)
+        == MediaTypes.MUSIC.value
+    ]
+    if music_items:
+        BasicMedia.objects._fix_missing_music_images(music_items)
 
 
 def _music_shell_item(media_id: str, title: str, image: str | None) -> Item:
@@ -2484,7 +2493,7 @@ def _build_row_section(
         ):
             image = entry.podcast_show.image
         else:
-            image = entry.item.image
+            image = getattr(entry.media, "card_image_override", None) or entry.item.image
         return not image or image == settings.IMG_NONE
 
     poll_for_covers = media_type in SQUARE_HOME_MEDIA_TYPES and any(

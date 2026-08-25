@@ -2155,6 +2155,18 @@ def media_list(request, media_type):
         prefill_episode_runtime_index(media_page.object_list)
     prefill_display_release_years(media_page.object_list)
 
+    if media_type == MediaTypes.MUSIC.value:
+        # Track cards fall back to the album's cover when the track's own
+        # Item.image wasn't backfilled after the album art was fetched.
+        # Similar to _fix_missing_season_images for TV seasons.
+        BasicMedia.objects._fix_missing_music_images(
+            [
+                entry.media
+                for entry in media_page.object_list
+                if entry.media is not None
+            ]
+        )
+
     if media_type == MediaTypes.GAME.value:
         if not collection_platforms_by_item_id:
             _page_item_ids = {

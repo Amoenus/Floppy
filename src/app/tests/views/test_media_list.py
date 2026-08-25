@@ -3,6 +3,7 @@ import re
 from datetime import timedelta
 from unittest import mock
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.template.loader import render_to_string
@@ -630,6 +631,42 @@ class MediaListViewTests(TestCase):
             ),
             rendered_cell,
         )
+
+    def test_music_tracks_subview_falls_back_to_album_cover_for_stale_item_image(self):
+        """Issue #974: a track's stale/missing Item.image should fall back to the
+        album's cover art on the tracks grid, mirroring what History already does.
+        """
+        artist = Artist.objects.create(name="Fallback Artist")
+        album_image = "http://example.com/fallback-album.jpg"
+        album = Album.objects.create(
+            title="Fallback Album", artist=artist, image=album_image
+        )
+        item = Item.objects.create(
+            media_id="fallback-track-1",
+            source=Sources.MUSICBRAINZ.value,
+            media_type=MediaTypes.MUSIC.value,
+            title="Fallback Track",
+            image=settings.IMG_NONE,
+        )
+        Music.objects.create(
+            item=item,
+            user=self.user,
+            artist=artist,
+            album=album,
+            status=Status.COMPLETED.value,
+            progress=1,
+        )
+
+        response = self.client.get(
+            reverse("medialist", args=[MediaTypes.MUSIC.value]),
+            {"subview": "tracks"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        entry = response.context["media_list"].object_list[0]
+        self.assertEqual(entry.media.card_image_override, album_image)
+        self.assertEqual(entry.media.card_image_source, "fallback")
+        self.assertContains(response, album_image)
 
     def test_music_media_list_resolves_artist_country_code_to_name(self):
         """Origin filter options should show country names, not raw ISO codes."""
