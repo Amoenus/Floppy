@@ -156,7 +156,7 @@ def _compute_podcast_top_lists(play_details, limit=STATISTICS_TOP_N):
     Returns:
         dict with most_played (by show), most_listened (by show), longest_episodes lists
     """
-    from app.helpers import minutes_to_hhmm
+    from app.helpers import minutes_to_hhmm, seconds_to_hm
 
     # Aggregate by show for most_played and most_listened
     show_stats = defaultdict(
@@ -298,12 +298,7 @@ def _compute_podcast_top_lists(play_details, limit=STATISTICS_TOP_N):
 
     # Format longest episodes duration (from seconds)
     for item in longest_episodes:
-        hours = item["duration_seconds"] // 3600
-        minutes = (item["duration_seconds"] % 3600) // 60
-        if hours > 0:
-            item["formatted_duration"] = f"{hours}h {minutes}m"
-        else:
-            item["formatted_duration"] = f"{minutes}m"
+        item["formatted_duration"] = seconds_to_hm(item["duration_seconds"])
 
     return {
         "most_played": most_played,

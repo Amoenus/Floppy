@@ -1380,9 +1380,7 @@ def _aggregate_statistics_from_days(
     for item in most_played + most_listened:
         item["formatted_duration"] = helpers.minutes_to_hhmm(item["minutes"])
     for item in longest_episodes:
-        hours = item["duration_seconds"] // 3600
-        minutes = (item["duration_seconds"] % 3600) // 60
-        item["formatted_duration"] = f"{hours}h {minutes}m" if hours else f"{minutes}m"
+        item["formatted_duration"] = helpers.seconds_to_hm(item["duration_seconds"])
     podcast_consumption.update(
         {
             "most_played": most_played,
