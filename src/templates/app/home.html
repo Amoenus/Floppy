@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% load app_tags %}
+{% load i18n %}
 
 {% block title %}
   Home - Floppy
@@ -90,13 +91,13 @@
         <div class="bg-[var(--color-surface-strong)] rounded-full p-4 w-16 h-16 mx-auto mb-4 flex items-center justify-center">
           {% include "app/icons/pulse.svg" with classes="w-8 h-8 text-[var(--color-text-muted)]" %}
         </div>
-        <h3 class="text-xl font-semibold mb-2">Nothing is configured for Home yet</h3>
+        <h3 class="text-xl font-semibold mb-2">{% trans "Nothing is configured for Home yet" %}</h3>
         <p class="text-[var(--color-text-muted)] text-center max-w-md mb-4">
-          Add or enable rows from the Home Screen settings page to populate this view.
+          {% trans "Add or enable rows from the Home Screen settings page to populate this view." %}
         </p>
         <div class="pt-4">
           <a href="{% url 'home_screen' %}"
-             class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors">Open Home Screen Settings</a>
+             class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors">{% trans "Open Home Screen Settings" %}</a>
         </div>
       </div>
     {% endif %}

@@ -208,6 +208,14 @@ class ThemeChoices(models.TextChoices):
     LIGHT = "light", "Light"
 
 
+class UiLanguageChoices(models.TextChoices):
+    """Choices for UI display language preference."""
+
+    AUTO = "auto", "Auto (browser language)"
+    EN = "en", "English"
+    ES = "es", "Español"
+
+
 class LogoStyleChoices(models.TextChoices):
     """Choices for the Floppy logo style preference."""
 
@@ -1005,6 +1013,13 @@ class User(AbstractUser):
         max_length=10,
         default=ThemeChoices.SYSTEM,
         choices=ThemeChoices.choices,
+    )
+
+    ui_language = models.CharField(
+        max_length=10,
+        default=UiLanguageChoices.AUTO,
+        choices=UiLanguageChoices.choices,
+        help_text="Preferred UI display language",
     )
 
     logo_style = models.CharField(

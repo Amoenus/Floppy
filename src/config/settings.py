@@ -329,6 +329,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "app.middleware.UserLanguageMiddleware",
     "app.middleware.DiscoverWarmupMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
@@ -370,6 +371,7 @@ TEMPLATES = [
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
                 "django.template.context_processors.media",
+                "django.template.context_processors.i18n",
                 "app.context_processors.export_vars",
                 "app.context_processors.media_enums",
                 "django.template.context_processors.request",
@@ -655,6 +657,13 @@ LOGGING = {
 # https://docs.djangoproject.com/en/stable/topics/i18n/
 
 LANGUAGE_CODE = "en-us"
+
+LANGUAGES = [
+    ("en", "English"),
+    ("es", "Español"),
+]
+
+LOCALE_PATHS = [BASE_DIR / "locale"]
 
 TIME_ZONE = os.getenv("TZ", "UTC")
 
