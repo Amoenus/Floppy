@@ -410,6 +410,7 @@ EXPECTED_SCHEMA_ERRORS: frozenset[SchemaFinding] = frozenset(
         ("api.fork_views_music.MusicSongPlayView", "serializer-unresolved"),
         ("api.fork_views_music.MusicTrackScoreView", "serializer-unresolved"),
         ("api.fork_views_podcast.PodcastEpisodePlayView", "serializer-unresolved"),
+        ("api.fork_views_podcast.PodcastLookupView", "serializer-unresolved"),
         (
             "api.fork_views_podcast.PodcastMarkAllPlayedView",
             "serializer-unresolved",

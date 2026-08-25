@@ -2,8 +2,8 @@ from django.conf import settings
 from django.utils.timezone import now
 from rest_framework import serializers
 
-from app.backdrops import resolve_backdrop  # FORK: horizontal artwork
 from app import helpers as app_helpers
+from app.backdrops import resolve_backdrop  # FORK: horizontal artwork
 from app.helpers import build_provider_ids
 from app.models import (
     TV,
