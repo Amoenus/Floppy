@@ -234,11 +234,17 @@ class PodcastLookupView(drf_views.APIView):
         except services.ProviderAPIError as error:
             if error.status_code == HTTP.NOT_FOUND:
                 return Response({"detail": "Podcast not found."}, status=HTTP.NOT_FOUND)
+            # Names the provider and nothing else. str(error) is only
+            # sanitised when the provider answered: with no response at all
+            # ProviderAPIError builds "Could not reach X (<exception>)", so
+            # returning it really would put exception text in a response body,
+            # which is what CodeQL's py/stack-trace-exposure flags. The error
+            # is already logged with its status and body shape, and there is
+            # nothing here a caller can act on beyond the status code, so this
+            # follows the provider-search handler in views.py and reports the
+            # label alone.
             return Response(
-                {
-                    "detail": HTTP.INTERNAL_SERVER_ERROR.phrase,
-                    "errors": str(error),
-                },
+                {"detail": f"{error.provider_label} lookup failed."},
                 status=HTTP.INTERNAL_SERVER_ERROR,
             )
 

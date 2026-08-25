@@ -356,6 +356,15 @@ class PodcastLookupTests(PodcastApiTestCase):
 
         self.assertEqual(response.status_code, HTTP.INTERNAL_SERVER_ERROR)
 
+    @patch("app.providers.pocketcasts.lookup_by_itunes_id")
+    def test_lookup_outage_names_the_provider_and_nothing_else(self, mock_lookup):
+        """The failure body carries no exception-derived text."""
+        mock_lookup.side_effect = self._provider_error(HTTP.BAD_GATEWAY)
+
+        payload = self._lookup().json()
+
+        self.assertEqual(payload, {"detail": "Pocket Casts lookup failed."})
+
     @staticmethod
     def _provider_error(status_code):
         """Build the ProviderAPIError a failing provider call would raise."""
