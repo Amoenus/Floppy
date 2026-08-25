@@ -743,6 +743,53 @@ class MediaManagerTests(TestCase):
         sorted_list = manager._sort_in_progress_media(anime_list, sort_by="recent")
         self.assertEqual(sorted_list, [anime3, anime2, anime1])
 
+    def test_sort_in_progress_media_recent_excludes_unstarted_created_at(self):
+        """Regression for #990: a zero-progress row's created_at must not
+        outrank an actively-watched row's progressed_at in the Recent sort.
+        """
+        manager = MediaManager()
+
+        # Actively-watched: real progress, older progressed_at.
+        watched_item = Item.objects.create(
+            media_id="990-watched",
+            source=Sources.MANUAL.value,
+            media_type=MediaTypes.ANIME.value,
+            title="Silo",
+        )
+        watched = Anime.objects.create(
+            item=watched_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+            progress=5,
+        )
+        watched.progressed_at = timezone.now() - timedelta(days=5)
+        watched.created_at = timezone.now() - timedelta(days=10)
+        watched.max_progress = 10
+        watched.next_event = None
+
+        # Auto-created, never watched: no progress, but a newer created_at.
+        unstarted_item = Item.objects.create(
+            media_id="990-unstarted",
+            source=Sources.MANUAL.value,
+            media_type=MediaTypes.ANIME.value,
+            title="Sakamoto Days",
+        )
+        unstarted = Anime.objects.create(
+            item=unstarted_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+            progress=0,
+        )
+        unstarted.progressed_at = None
+        unstarted.created_at = timezone.now() - timedelta(days=1)
+        unstarted.max_progress = 10
+        unstarted.next_event = None
+
+        sorted_list = manager._sort_in_progress_media(
+            [unstarted, watched], sort_by="recent"
+        )
+        self.assertEqual(sorted_list, [watched, unstarted])
+
     def test_sort_in_progress_media_completion_uses_completed_count_for_tv(self):
         """Regression for #527: completion sort should use watched count, not position."""
         manager = MediaManager()
