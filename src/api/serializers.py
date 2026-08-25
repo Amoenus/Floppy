@@ -312,9 +312,12 @@ class CompleteMediaSerializer(serializers.Serializer):
         if "last_issue_id" in media_metadata:
             details["last_issue_id"] = media_metadata.pop("last_issue_id")
         if "provider_game_lengths" in media_metadata:
-            details["provider_game_lengths"] = media_metadata.pop(
-                "provider_game_lengths",
-            )
+            game_lengths = media_metadata.pop("provider_game_lengths")
+            if isinstance(game_lengths, dict):
+                for source_key in ("hltb", "igdb"):
+                    if isinstance(game_lengths.get(source_key), dict):
+                        game_lengths[source_key].pop("raw", None)
+            details["provider_game_lengths"] = game_lengths
         if "year" in details:
             details["year"] = int(details["year"])
         if "players" in details:

@@ -934,6 +934,106 @@ class MediaCoreTests(FloppyApiTestCase):
         self.assertEqual(response.status_code, 500)
         self.assertEqual(response.data["errors"], "boom")
 
+    @patch("api.views._queue_game_lengths_refresh", return_value=True)
+    @patch("api.views.services.get_media_metadata")
+    def test_media_detail_get_game_creates_item_for_untracked_game(
+        self,
+        mock_metadata,
+        _mock_queue_refresh,
+    ):
+        """Untracked IGDB games should get an Item so lengths can resolve, #989."""
+        mock_metadata.return_value = {
+            "media_id": "9201",
+            "source": Sources.IGDB.value,
+            "media_type": MediaTypes.GAME.value,
+            "title": "Untracked Game",
+            "image": "https://example.com/untracked-game.jpg",
+            "synopsis": "",
+            "genres": [],
+            "related": {},
+            "details": {},
+            "max_progress": None,
+        }
+
+        self.assertFalse(
+            Item.objects.filter(
+                media_id="9201",
+                source=Sources.IGDB.value,
+                media_type=MediaTypes.GAME.value,
+            ).exists(),
+        )
+
+        response = self.call_api(
+            "get",
+            "api_media_detail",
+            args=(MediaTypes.GAME.value, Sources.IGDB.value, "9201"),
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(
+            Item.objects.filter(
+                media_id="9201",
+                source=Sources.IGDB.value,
+                media_type=MediaTypes.GAME.value,
+            ).exists(),
+        )
+        payload = response.json()
+        self.assertEqual(payload["details"]["provider_game_lengths"]["state"], "pending")
+
+    @patch("api.views.services.get_media_metadata")
+    def test_media_detail_get_game_ready_state_strips_raw_provider_payload(
+        self,
+        mock_metadata,
+    ):
+        """Existing lengths should report ready and omit raw provider blobs, #989."""
+        Item.objects.create(
+            media_id="9202",
+            source=Sources.IGDB.value,
+            media_type=MediaTypes.GAME.value,
+            title="Ready Game",
+            provider_game_lengths={
+                "active_source": "igdb",
+                "igdb": {
+                    "game_id": 9202,
+                    "summary": {
+                        "hastily_seconds": 3600,
+                        "normally_seconds": 7200,
+                        "completely_seconds": 10800,
+                        "count": 12,
+                    },
+                    "raw": [{"should": "not leak"}],
+                },
+            },
+            provider_game_lengths_source="igdb",
+            provider_game_lengths_match="exact_title_year",
+        )
+        mock_metadata.return_value = {
+            "media_id": "9202",
+            "source": Sources.IGDB.value,
+            "media_type": MediaTypes.GAME.value,
+            "title": "Ready Game",
+            "image": "https://example.com/ready-game.jpg",
+            "synopsis": "",
+            "genres": [],
+            "related": {},
+            "details": {},
+            "max_progress": None,
+        }
+
+        response = self.call_api(
+            "get",
+            "api_media_detail",
+            args=(MediaTypes.GAME.value, Sources.IGDB.value, "9202"),
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        lengths = response.json()["details"]["provider_game_lengths"]
+        self.assertEqual(lengths["state"], "ready")
+        self.assertEqual(lengths["igdb"]["summary"]["normally_seconds"], 7200)
+        self.assertNotIn("raw", lengths["igdb"])
+
     @patch("api.views.services.get_media_metadata")
     def test_media_detail_patch_updates_media_fields(self, mock_metadata):
         """Media detail PATCH should update mutable media fields."""

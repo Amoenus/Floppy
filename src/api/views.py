@@ -11,13 +11,19 @@ from django.utils.timezone import datetime, localdate, make_aware
 
 # FORK: the fork pins django-health-check 3.x (no async HealthCheckView);
 # HealthView below is implemented against the 3.x CheckMixin plugin API.
-from drf_spectacular.utils import OpenApiExample, OpenApiParameter, extend_schema
+from drf_spectacular.utils import (
+    OpenApiExample,
+    OpenApiParameter,
+    PolymorphicProxySerializer,
+    extend_schema,
+)
 from health_check.mixins import CheckMixin
 from rest_framework import permissions
 from rest_framework import views as drf_views
 from rest_framework.response import Response
 
 from app.activity_builders import (
+    _get_game_lengths_refresh_lock,
     _queue_game_lengths_refresh,
     _should_queue_game_lengths_refresh,
 )
@@ -56,6 +62,7 @@ from .changes_history_processor import (
 )
 from .contract_serializers import (
     CompleteEpisodeResponseSerializer,
+    CompleteGameResponseSerializer,
     CompleteMediaResponseSerializer,
     ConsumptionResponseSerializer,
     DetailErrorSerializer,
@@ -69,6 +76,7 @@ from .helpers import (
     MEDIA_TYPE_COMPLETE_MODEL_MAP,
     apply_aggregated_sort,
     apply_list_sort,
+    build_game_lengths_summary,
     build_lists_by_item_id,
     check_source_type,
     check_valid_type,
@@ -1140,7 +1148,14 @@ class MediaDetailView(drf_views.APIView):
         parameters=[MEDIA_TYPE_PARAM],
         operation_id="retrieveMediaItem",
         responses={
-            200: CompleteMediaResponseSerializer,
+            200: PolymorphicProxySerializer(
+                component_name="CompleteMediaItemResponse",
+                serializers=[
+                    CompleteMediaResponseSerializer,
+                    CompleteGameResponseSerializer,
+                ],
+                resource_type_field_name=None,
+            ),
             400: DetailErrorSerializer,
             403: DetailErrorSerializer,
             404: DetailErrorSerializer,
@@ -1254,22 +1269,43 @@ class MediaDetailView(drf_views.APIView):
             game_length_item = (
                 user_medias[0].item
                 if user_medias
-                else Item.objects.filter(
-                    media_id=media_id,
-                    source=source,
-                    media_type=media_type,
-                ).first()
+                else resolve_item_queryset(media_id, source, media_type).first()
             )
+            if game_length_item is None and source == Sources.IGDB.value:
+                try:
+                    game_length_item = Item.objects.create(
+                        media_id=media_id,
+                        source=source,
+                        media_type=media_type,
+                        image=media_metadata.get("image") or "",
+                        **Item.title_fields_from_metadata(media_metadata),
+                    )
+                except Exception:
+                    logger.warning(
+                        "game_length_item_create_failed media_id=%s",
+                        media_id,
+                        exc_info=True,
+                    )
+                    game_length_item = None
+
             if game_length_item:
-                media_metadata["provider_game_lengths"] = (
-                    game_length_item.provider_game_lengths
-                )
+                queued = False
                 if _should_queue_game_lengths_refresh(game_length_item):
-                    _queue_game_lengths_refresh(
+                    queued = _queue_game_lengths_refresh(
                         game_length_item,
                         force=False,
                         fetch_hltb=True,
                     )
+
+                payload = dict(game_length_item.provider_game_lengths or {})
+                if payload:
+                    state = "ready"
+                elif queued or _get_game_lengths_refresh_lock(game_length_item):
+                    state = "pending"
+                else:
+                    state = "unavailable"
+                payload["state"] = state
+                media_metadata["provider_game_lengths"] = payload
 
         data = {
             "media_metadata": media_metadata,
@@ -4590,6 +4626,27 @@ class SearchProviderView(drf_views.APIView):
             if isinstance(last_response, dict)
             else len(results_accum)
         )
+
+        if media_type == MediaTypes.GAME.value:
+            media_ids = [
+                r.get("media_id")
+                for r in results_accum
+                if r.get("source") == Sources.IGDB.value
+            ]
+            lengths_by_media_id = {
+                item.media_id: item.provider_game_lengths
+                for item in Item.objects.filter(
+                    media_type=MediaTypes.GAME.value,
+                    source=Sources.IGDB.value,
+                    media_id__in=media_ids,
+                ).exclude(provider_game_lengths={})
+            }
+            for r in results_accum:
+                summary = build_game_lengths_summary(
+                    lengths_by_media_id.get(r.get("media_id")),
+                )
+                if summary:
+                    r["provider_game_lengths_summary"] = summary
 
         resolved_total = total or len(results_accum)
         paginated_data = paginate_data(
