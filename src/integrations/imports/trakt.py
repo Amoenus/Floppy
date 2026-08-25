@@ -186,8 +186,8 @@ class TraktMetadataResolverMixin:
     Requires the including class to maintain a ``self.warnings`` list.
     """
 
-    def _get_tmdb_id(self, entry_data):
-        """Extract TMDB ID from entry data."""
+    def _get_tmdb_id(self, entry_data, media_type):
+        """Extract TMDB ID from entry data, falling back to a title search."""
         if (
             "ids" in entry_data
             and "tmdb" in entry_data["ids"]
@@ -195,10 +195,42 @@ class TraktMetadataResolverMixin:
         ):
             return str(entry_data["ids"]["tmdb"])
 
+        fallback_id = self._search_tmdb_id_by_title(media_type, entry_data)
+        if fallback_id:
+            return fallback_id
+
         self.warnings.append(
             f"{entry_data['title']}: No {Sources.TMDB.label} ID found.",
         )
         return None
+
+    def _search_tmdb_id_by_title(self, media_type, entry_data):
+        """Best-effort TMDB title search when Trakt has no tmdb id (#965).
+
+        Trakt's own id cross-reference for a show/movie can be missing even
+        though the title is findable on TMDB directly.
+        """
+        title = entry_data.get("title")
+        if not title:
+            return None
+
+        try:
+            results = services.search(
+                media_type,
+                title,
+                1,
+                source=Sources.TMDB.value,
+            ).get("results", [])
+        except services.ProviderAPIError:
+            return None
+
+        year = entry_data.get("year")
+        if year:
+            for result in results:
+                if result.get("year") == year:
+                    return str(result["media_id"])
+
+        return str(results[0]["media_id"]) if results else None
 
     def _get_metadata(self, media_type, tmdb_id, title, season_number=None):
         """Get metadata for a media item."""
@@ -630,7 +662,7 @@ class TraktImporter(TraktMetadataResolverMixin):
     def process_watched_movie(self, entry):
         """Process a single movie watch event."""
         movie = entry["movie"]
-        tmdb_id = self._get_tmdb_id(movie)
+        tmdb_id = self._get_tmdb_id(movie, MediaTypes.MOVIE.value)
         if not tmdb_id:
             return
 
@@ -672,7 +704,7 @@ class TraktImporter(TraktMetadataResolverMixin):
     def process_watched_episode(self, entry):
         """Process a single episode watch event."""
         show = entry["show"]
-        tmdb_id = self._get_tmdb_id(show)
+        tmdb_id = self._get_tmdb_id(show, MediaTypes.TV.value)
         if not tmdb_id:
             return
 
@@ -1014,7 +1046,7 @@ class TraktImporter(TraktMetadataResolverMixin):
     def _process_collected_movie(self, entry, trakt_collection):
         """Process a single Trakt collection movie entry."""
         movie = entry["movie"]
-        tmdb_id = self._get_tmdb_id(movie)
+        tmdb_id = self._get_tmdb_id(movie, MediaTypes.MOVIE.value)
         if not tmdb_id:
             return
 
@@ -1034,7 +1066,7 @@ class TraktImporter(TraktMetadataResolverMixin):
     def _process_collected_show(self, entry, trakt_collection):
         """Process a single Trakt collection show entry, including its episodes."""
         show = entry["show"]
-        tmdb_id = self._get_tmdb_id(show)
+        tmdb_id = self._get_tmdb_id(show, MediaTypes.TV.value)
         if not tmdb_id:
             return
 
@@ -1131,7 +1163,7 @@ class TraktImporter(TraktMetadataResolverMixin):
             for entry in hidden_data:
                 if entry.get("type") != "show":
                     continue
-                tmdb_id = self._get_tmdb_id(entry["show"])
+                tmdb_id = self._get_tmdb_id(entry["show"], MediaTypes.TV.value)
                 if tmdb_id:
                     self.dropped_tmdb_ids.add(tmdb_id)
 
@@ -1202,7 +1234,7 @@ class TraktImporter(TraktMetadataResolverMixin):
 
     def _process_episode_attribute(self, show_data, episode_data, attribute_updates):
         """Apply attribute updates (e.g. score) to existing Episode instances."""
-        tmdb_id = self._get_tmdb_id(show_data)
+        tmdb_id = self._get_tmdb_id(show_data, MediaTypes.TV.value)
         if not tmdb_id:
             return
 
@@ -1263,7 +1295,7 @@ class TraktImporter(TraktMetadataResolverMixin):
         entry_type=None,
     ):
         """Process media items for watchlist, ratings, and comments."""
-        tmdb_id = self._get_tmdb_id(media_data)
+        tmdb_id = self._get_tmdb_id(media_data, media_type)
         if not tmdb_id:
             return
 

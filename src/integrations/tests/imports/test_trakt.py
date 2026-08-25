@@ -1938,6 +1938,45 @@ class ImportTrakt(TestCase):
             2,
         )
 
+    @patch("integrations.imports.trakt.services.search")
+    def test_get_tmdb_id_falls_back_to_title_search(self, mock_search):
+        """Trakt export missing a tmdb id (#965) is resolved via title search."""
+        mock_search.return_value = {
+            "results": [{"media_id": 76942, "title": "OSL 24/7", "year": 2023}],
+        }
+        trakt_importer = TraktImporter("testuser", self.user, "new")
+
+        tmdb_id = trakt_importer._get_tmdb_id(
+            {"title": "OSL 24-7", "year": 2023, "ids": {"tmdb": None}},
+            MediaTypes.TV.value,
+        )
+
+        self.assertEqual(tmdb_id, "76942")
+        mock_search.assert_called_once_with(
+            MediaTypes.TV.value,
+            "OSL 24-7",
+            1,
+            source=Sources.TMDB.value,
+        )
+        self.assertEqual(trakt_importer.warnings, [])
+
+    @patch("integrations.imports.trakt.services.search")
+    def test_get_tmdb_id_warns_when_title_search_finds_nothing(self, mock_search):
+        """No tmdb id and no search match still records the existing warning."""
+        mock_search.return_value = {"results": []}
+        trakt_importer = TraktImporter("testuser", self.user, "new")
+
+        tmdb_id = trakt_importer._get_tmdb_id(
+            {"title": "OSL 24-7", "year": 2023, "ids": {}},
+            MediaTypes.TV.value,
+        )
+
+        self.assertIsNone(tmdb_id)
+        self.assertIn(
+            "OSL 24-7: No The Movie Database ID found.",
+            trakt_importer.warnings,
+        )
+
     @patch("integrations.imports.trakt.TraktImporter._get_paginated_data")
     def test_process_history_skips_unexpected_entry_error(self, mock_paginated):
         """A single failing entry is recorded as a warning, not fatal."""
