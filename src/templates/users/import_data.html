@@ -2825,6 +2825,7 @@
          class="space-y-6"
          hx-get="{% url 'import_data_activity' %}"
          hx-trigger="load, every 5s"
+         hx-sync="this:replace"
          hx-swap="innerHTML">
       <div class="bg-[var(--color-surface)] rounded-lg p-6">
         <div class="flex items-center mb-4">

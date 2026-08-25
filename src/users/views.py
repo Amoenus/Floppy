@@ -16,7 +16,7 @@ from django.contrib.auth.decorators import login_not_required, login_required
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.http import HttpResponse, JsonResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.defaultfilters import pluralize
@@ -1673,19 +1673,20 @@ def _import_source_media_summary(user):
         if media_type == MediaTypes.EPISODE.value:
             continue
         model = apps.get_model(app_label="app", model_name=media_type)
-        sources = (
+        rows = (
             model.objects.filter(user=user, import_run__isnull=False)
+            .values("import_run__source")
+            .annotate(count=Count("id"))
             .order_by("import_run__source")
-            .values_list("import_run__source", flat=True)
-            .distinct()
         )
-        for source in sources:
-            count = model.objects.filter(
-                user=user, import_run__source=source
-            ).count()
-            summary.append(
-                {"media_type": media_type, "source": source, "count": count}
-            )
+        summary.extend(
+            {
+                "media_type": media_type,
+                "source": row["import_run__source"],
+                "count": row["count"],
+            }
+            for row in rows
+        )
     return summary
 
 
