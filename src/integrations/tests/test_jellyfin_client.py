@@ -143,3 +143,72 @@ class JellyfinClientTests(SimpleTestCase):
 
         with self.assertRaises(JellyfinClientError):
             client.mark_played("item-42")
+
+    @patch("integrations.jellyfin_client.requests.request")
+    def test_probe_playback_reporting_true_when_reachable(self, mock_request):
+        """A 200 from the plugin's route means the API tier is usable."""
+        mock_request.return_value = MagicMock(status_code=200, content=b"[]")
+
+        self.assertTrue(self.client.probe_playback_reporting())
+        called_url = mock_request.call_args.args[1]
+        self.assertTrue(called_url.endswith("/user_usage_stats/type_filter_list"))
+
+    @patch("integrations.jellyfin_client.requests.request")
+    def test_probe_playback_reporting_false_when_forbidden(self, mock_request):
+        """A non-admin key (403) or missing plugin (404) both mean unavailable."""
+        mock_request.return_value = MagicMock(status_code=403, text="Forbidden")
+
+        self.assertFalse(self.client.probe_playback_reporting())
+
+    @patch("integrations.jellyfin_client.requests.request")
+    def test_fetch_playback_activity_parses_rows(self, mock_request):
+        """Rows come back positionally and are mapped to named columns."""
+        mock_request.return_value = MagicMock(
+            status_code=200,
+            json=lambda: {
+                "results": [
+                    [
+                        5,
+                        "2024-01-02 03:04:05",
+                        "jf-user",
+                        "jf-item",
+                        "Movie",
+                        "Example",
+                        "DirectPlay",
+                        "Web",
+                        "Laptop",
+                        120,
+                    ],
+                ],
+            },
+        )
+
+        rows = self.client.fetch_playback_activity(2, 100)
+
+        self.assertEqual(rows, [
+            {
+                "rowid": 5,
+                "date_created": "2024-01-02 03:04:05",
+                "user_id": "jf-user",
+                "item_id": "jf-item",
+                "item_type": "Movie",
+                "item_name": "Example",
+                "playback_method": "DirectPlay",
+                "client_name": "Web",
+                "device_name": "Laptop",
+                "play_duration": 120,
+            },
+        ])
+        body = mock_request.call_args.kwargs["json"]
+        self.assertIn("rowid > 2", body["CustomQueryString"])
+        self.assertIn("LIMIT 100", body["CustomQueryString"])
+
+    @patch("integrations.jellyfin_client.requests.request")
+    def test_fetch_max_playback_activity_rowid(self, mock_request):
+        """The max-rowid lookup returns 0 for an empty table."""
+        mock_request.return_value = MagicMock(
+            status_code=200,
+            json=lambda: {"results": [[None]]},
+        )
+
+        self.assertEqual(self.client.fetch_max_playback_activity_rowid(), 0)

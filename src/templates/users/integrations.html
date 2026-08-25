@@ -346,37 +346,78 @@
           {% endif %}
           <div class="border-t border-gray-600/50 pt-3 space-y-3">
             <div>
-              <h4 class="text-sm font-medium">Playback Reporting history</h4>
+              <h4 class="text-sm font-medium">Jellyfin &rarr; Floppy: auto-import history</h4>
               <p class="text-xs text-[var(--color-text-muted)] mt-1">
-                Import a Playback Reporting TSV backup for this Jellyfin user. This is a separate historical import and does not change webhook or watched-state sync behavior.
+                No manual export needed. Floppy pulls your watch history straight from your
+                Jellyfin server: full per-play history via the Playback Reporting plugin's API
+                when it's reachable with an admin key, otherwise a one-event-per-item backfill
+                from Jellyfin's current watched state.
               </p>
             </div>
-            {% if jellyfin_playback_reporting_import %}
-              <p class="text-xs text-[var(--color-text-muted)]">
-                Last import: {{ jellyfin_playback_reporting_import.get_status_display }}
-                ({{ jellyfin_playback_reporting_import.started_at|user_datetime_format:user }}),
-                {{ jellyfin_playback_reporting_import.created_count }} created,
-                {{ jellyfin_playback_reporting_import.skipped_count }} skipped.
-              </p>
+            <p class="text-xs text-[var(--color-text-muted)]">
+              {% if jellyfin_account.playback_reporting_available %}
+                Using Playback Reporting's API (full per-play history).
+              {% elif jellyfin_account.playback_reporting_available is False %}
+                Playback Reporting's API isn't reachable with this key &mdash; using the
+                current-watched-state backfill instead (one event per item).
+              {% else %}
+                Not yet run.
+              {% endif %}
+              {% if jellyfin_account.last_pull_at %}
+                Last run: {{ jellyfin_account.last_pull_at|user_datetime_format:user }}.
+              {% endif %}
+            </p>
+            {% if jellyfin_account.last_pull_error_message %}
+              <div class="text-xs text-[var(--color-warning-text)] bg-amber-500/10 border border-amber-400/30 rounded p-2">
+                <strong>Error:</strong> {{ jellyfin_account.last_pull_error_message }}
+              </div>
             {% endif %}
-            <form method="post"
-                  action="{% url 'jellyfin_playback_reporting_import' %}"
-                  enctype="multipart/form-data"
-                  class="space-y-2">
+            <form method="post" action="{% url 'jellyfin_pull_now' %}">
               {% csrf_token %}
-              <input name="playback_reporting_file"
-                     type="file"
-                     accept=".tsv,.txt,text/tab-separated-values,text/plain"
-                     required
-                     class="block w-full text-sm text-[var(--color-text-secondary)] file:mr-3 file:rounded file:border-0 file:bg-indigo-600 file:px-3 file:py-2 file:text-sm file:text-white hover:file:bg-indigo-700">
               <button type="submit"
                       class="px-4 py-2 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer">
-                Import / reimport history
+                Import history now
               </button>
             </form>
           </div>
+          <details class="border-t border-gray-600/50 pt-3">
+            <summary class="text-sm font-medium cursor-pointer">Or upload a Playback Reporting TSV manually</summary>
+            <div class="space-y-3 mt-3">
+              <p class="text-xs text-[var(--color-text-muted)]">
+                Only needed if your key can't reach the Playback Reporting API (e.g. a
+                non-admin key) and you'd rather not use the current-watched-state backfill above.
+              </p>
+              {% if jellyfin_playback_reporting_import %}
+                <p class="text-xs text-[var(--color-text-muted)]">
+                  Last import: {{ jellyfin_playback_reporting_import.get_status_display }}
+                  ({{ jellyfin_playback_reporting_import.started_at|user_datetime_format:user }}),
+                  {{ jellyfin_playback_reporting_import.created_count }} created,
+                  {{ jellyfin_playback_reporting_import.skipped_count }} skipped.
+                </p>
+              {% endif %}
+              <form method="post"
+                    action="{% url 'jellyfin_playback_reporting_import' %}"
+                    enctype="multipart/form-data"
+                    class="space-y-2">
+                {% csrf_token %}
+                <input name="playback_reporting_file"
+                       type="file"
+                       accept=".tsv,.txt,text/tab-separated-values,text/plain"
+                       required
+                       class="block w-full text-sm text-[var(--color-text-secondary)] file:mr-3 file:rounded file:border-0 file:bg-indigo-600 file:px-3 file:py-2 file:text-sm file:text-white hover:file:bg-indigo-700">
+                <button type="submit"
+                        class="px-4 py-2 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer">
+                  Import / reimport history
+                </button>
+              </form>
+            </div>
+          </details>
           <form method="post" action="{% url 'jellyfin_settings' %}" class="space-y-2">
             {% csrf_token %}
+            <label class="flex items-center gap-2 text-sm text-[var(--color-text-secondary)]">
+              <input type="checkbox" name="pull_history_enabled" {% if jellyfin_account.pull_history_enabled %}checked{% endif %}>
+              Automatically import new Jellyfin history (every {{ jellyfin_pull_interval_minutes }} minutes)
+            </label>
             <label class="flex items-center gap-2 text-sm text-[var(--color-text-secondary)]">
               <input type="checkbox" name="push_watched_enabled" {% if jellyfin_account.push_watched_enabled %}checked{% endif %}>
               Push watched status to Jellyfin
