@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import date
 
 from django.conf import settings
+from django.core.cache import cache
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 
@@ -13,6 +14,7 @@ from app import (
     credits,  # noqa: A004  # app.credits module, not the site builtin
     helpers,
     metadata_utils,
+    view_constants,
 )
 from app import statistics as stats
 from app.models import (
@@ -512,6 +514,15 @@ def ensure_item_metadata(
         update_fields.append("localized_title")
     if update_fields:
         item.save(update_fields=list(dict.fromkeys(update_fields)))
+
+    # A live fetch just happened: make sure the detail view's stored-metadata
+    # shortcut (media_details_views.can_skip_live_fetch) doesn't serve the
+    # impoverished Item-only fallback on the page load(s) that follow (#931, #992).
+    cache.set(
+        view_constants.force_live_metadata_cache_key(item.id),
+        True,
+        timeout=view_constants.FORCE_LIVE_METADATA_TIMEOUT,
+    )
 
     upsert_provider_links(
         item,
