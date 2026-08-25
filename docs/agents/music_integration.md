@@ -204,7 +204,7 @@ def search_combined(query, page=1):
 def get_artist(artist_id):
     """Get detailed artist metadata."""
     # Fetches from /artist/{id} with inc=url-rels+genres+tags+ratings
-    # Gets Wikipedia bio and image via URL relations
+    # Gets bio/image from Last.fm (by MBID) first, Wikipedia as fallback
     # Returns: name, type, country, genres, tags, rating, bio, image
 
 def get_artist_discography(artist_id, skip_cover_art=False):
@@ -252,12 +252,28 @@ def _get_cover_art(release_id):
     # Handles redirects to archive.org
 ```
 
-#### Wikipedia Integration
+#### Last.fm Integration
+
+```python
+def get_lastfm_bio(mbid):
+    """Fetch an artist bio from Last.fm's artist.getInfo, keyed by MBID."""
+    # Requires settings.LASTFM_API_KEY (optional, user-supplied); returns
+    # None immediately if unset.
+    # Resolves the artist deterministically by MusicBrainz ID, so unlike
+    # guessing a Wikipedia title from the artist name, it can't land on an
+    # unrelated same-named entity (see issue #979, e.g. "Tool" the band vs.
+    # the Wikipedia disambiguation/tool-the-implement page).
+    # Strips Last.fm's "Read more on Last.fm" boilerplate and HTML markup.
+    # Caches hits for 7 days and misses for 1 day.
+```
+
+#### Wikipedia Integration (fallback)
 
 ```python
 def get_wikipedia_data(title):
     """Fetch Wikipedia bio and image."""
     # Uses Wikipedia REST API: /api/rest_v1/page/summary/{title}
+    # Treats a "type": "disambiguation" response as a miss (not a valid bio)
     # Caches hits for 7 days and misses for 1 day
     # Returns: extract (bio text), image (photo URL)
 
@@ -265,12 +281,25 @@ def get_wikipedia_extract(title):
     """Legacy wrapper returning only the extract string."""
 ```
 
-### Wikipedia Bio Strategy
+### Bio Resolution Strategy
 
-1. Check MusicBrainz `url-rels` for Wikipedia link (e.g., `Queen_(band)`)
-2. If found, use exact Wikipedia article title
-3. If not, try artist name directly (works for `Kenny G`)
-4. Fall back to `{name}_{disambiguation}` (e.g., `Queen_(band)`)
+`get_artist()` resolves an artist's bio in priority order, stopping at the
+first strategy that returns text:
+
+1. **Last.fm `artist.getInfo`, by MBID** — primary source when
+   `LASTFM_API_KEY` is configured; deterministic, no title guessing.
+2. Check MusicBrainz `url-rels` for a Wikipedia link (e.g., `Queen_(band)`)
+   and use the exact article title if found.
+3. If the MusicBrainz `type` is `"Group"`, try `{name}_(band)` — the
+   standard Wikipedia disambiguation suffix for musical groups.
+4. Try the artist name directly (works for unambiguous names like
+   `Kenny G`).
+5. Fall back to `{name}_({disambiguation})` using MusicBrainz's own
+   disambiguation string (e.g., `Queen_(band)`).
+
+Steps 2-5 are Wikipedia-only and only run when step 1 doesn't yield a bio
+(no Last.fm key configured, artist not found, or empty bio) — they're the
+fallback path for users who haven't set up Last.fm.
 
 ## Services (`src/app/services/music.py`)
 
@@ -603,4 +632,4 @@ Custom admin classes for music models:
 3. **Changing album display**: Update `music_album_detail.html` and `album_grid.html`
 4. **Adding tracking features**: Mirror TV show/season patterns in views and templates
 5. **Performance issues**: Check if cover art is being fetched synchronously; use `skip_cover_art=True`
-6. **Missing Wikipedia data**: Check URL relations strategy in `get_artist()`
+6. **Missing/wrong bio data**: Check the bio resolution strategy (Last.fm by MBID, then Wikipedia fallbacks) in `get_artist()`
