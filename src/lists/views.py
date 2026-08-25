@@ -261,7 +261,7 @@ def list_detail(request, list_reference):
     )
 
     # Get distinct media types for filtering
-    media_types = items.values_list("media_type", flat=True).distinct()
+    media_types = items.order_by().values_list("media_type", flat=True).distinct()
     media_manager = MediaManager()
     media_by_item_id = {}
 
