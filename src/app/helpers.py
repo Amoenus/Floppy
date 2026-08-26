@@ -75,6 +75,18 @@ def minutes_to_hhmm(total_minutes):
     return f"{hours}h {minutes:02d}min"
 
 
+def seconds_to_hm(total_seconds):
+    """Convert a duration in seconds to "1h 9m", or to "46m" under an hour.
+
+    Returns "" for a missing or zero duration.
+    """
+    if not total_seconds:
+        return ""
+    hours = total_seconds // 3600
+    minutes = (total_seconds % 3600) // 60
+    return f"{hours}h {minutes}m" if hours else f"{minutes}m"
+
+
 def has_real_image(image):
     """Return whether the value is a usable artwork URL."""
     return bool(image and image != settings.IMG_NONE)
